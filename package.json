@@ -134,6 +134,7 @@
     "quipsly:retained:episode5-insta360-source-story": "pnpm quipsly:retained:insta360-source-story -- --profile episode5-segment4",
     "quipsly:smoke:source-card-work": "QUIPSLY_SOURCE_CARD_WORK_DB_SMOKE=1 QUIPSLY_LOCAL_DATABASE_URL=${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio} pnpm --dir apps/quipsly exec jest --runInBand --runTestsByPath 'src/app/(app)/nests/[slug]/source-card-work.integration.test.ts'",
     "quipsly:retained:episode5-source-follow-through": "node scripts/quipsly-retained-episode5-source-follow-through-operation.mjs",
+    "quipsly:retained:episode5-nest-portability": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-episode5-nest-portability-operation.mjs",
     "quipsly:retained:story-binder": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-story-binder-operation.mjs",
     "quipsly:retained:source-visual-overview": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-source-visual-overview-operation.mjs",
     "quipsly:retained:source-audio-navigation": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-source-audio-navigation-operation.mjs",

@@ -1,6 +1,15 @@
 import { documentSha256, stableDocumentJson } from "@/lib/document-portability";
+import {
+  EMPTY_PORTABLE_NEST_SOURCE_STORY,
+  portableNestSourceStoryCounts,
+  validatePortableNestSourceStory,
+  type PortableNestSourceStory,
+  type PortableNestSourceStoryCounts,
+} from "@/lib/nest-source-story-portability";
 
-export const NEST_EXPORT_SCHEMA_VERSION = "quipsly-nest-export-v1" as const;
+export const LEGACY_NEST_EXPORT_SCHEMA_VERSION =
+  "quipsly-nest-export-v1" as const;
+export const NEST_EXPORT_SCHEMA_VERSION = "quipsly-nest-export-v2" as const;
 
 const MAX_TAGS = 5_000;
 const MAX_ALIASES = 10_000;
@@ -44,7 +53,12 @@ const PROJECTION_STATUSES = new Set([
 const TASK_STATUSES = new Set(["OPEN", "DONE", "CANCELED"]);
 const GOAL_STATUSES = new Set(["ACTIVE", "PAUSED", "ACHIEVED", "ARCHIVED"]);
 const GOAL_TASK_RELATIONSHIPS = new Set(["CONTRIBUTES", "BLOCKS", "OUTCOME"]);
-const PLAN_BLOCK_STATUSES = new Set(["PLANNED", "COMPLETED", "SKIPPED", "CANCELED"]);
+const PLAN_BLOCK_STATUSES = new Set([
+  "PLANNED",
+  "COMPLETED",
+  "SKIPPED",
+  "CANCELED",
+]);
 
 export type PortableNestTagAlias = {
   id: string;
@@ -217,6 +231,7 @@ export type PortableNestBundlePayload = {
   goals: PortableNestGoal[];
   goalTaskLinks: PortableNestGoalTaskLink[];
   planBlocks: PortableNestPlanBlock[];
+  sourceStory: PortableNestSourceStory;
   boundaries: {
     ownerAuthorized: true;
     actorScopedWork: true;
@@ -227,6 +242,11 @@ export type PortableNestBundlePayload = {
     remindersRestoredActive: false;
     recurrenceRestoredActive: false;
     planBlocksRestoreAsCanceled: true;
+    sourceStoryIncluded: true;
+    sourceReferenceMetadataIncluded: true;
+    restoredSourceReferencesAvailable: false;
+    providerCredentialsIncluded: false;
+    providerLocatorsIncluded: false;
     externalResourcesFetched: false;
     externalSideEffects: false;
   };
@@ -247,11 +267,25 @@ export type PortableNestBundle = PortableNestBundlePayload & {
     progressReceiptCount: number;
     goalTaskLinkCount: number;
     planBlockCount: number;
-  };
+  } & PortableNestSourceStoryCounts;
 };
 
-export type ValidatedNestBundle = PortableNestBundlePayload & {
+export type ValidatedNestBundle = Omit<
+  PortableNestBundlePayload,
+  "schemaVersion" | "boundaries"
+> & {
+  schemaVersion:
+    | typeof NEST_EXPORT_SCHEMA_VERSION
+    | typeof LEGACY_NEST_EXPORT_SCHEMA_VERSION;
+  boundaries: Omit<
+    PortableNestBundlePayload["boundaries"],
+    "sourceStoryIncluded" | "sourceReferenceMetadataIncluded"
+  > & {
+    sourceStoryIncluded: boolean;
+    sourceReferenceMetadataIncluded: boolean;
+  };
   manifestSha256: string;
+  manifestVerified: true;
 };
 
 export type NestBundleValidationResult =
@@ -263,7 +297,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function stringValue(value: unknown, max: number, allowEmpty = false) {
-  if (typeof value !== "string" || value.length > max || (!allowEmpty && value.trim().length === 0)) {
+  if (
+    typeof value !== "string" ||
+    value.length > max ||
+    (!allowEmpty && value.trim().length === 0)
+  ) {
     return null;
   }
   return value;
@@ -277,16 +315,26 @@ function nullableString(value: unknown, max: number) {
 
 function dateString(value: unknown, nullable = false) {
   if (nullable && value == null) return null;
-  if (typeof value !== "string" || !Number.isFinite(new Date(value).getTime())) return undefined;
+  if (typeof value !== "string" || !Number.isFinite(new Date(value).getTime()))
+    return undefined;
   return value;
 }
 
 function safeInteger(value: unknown, minimum = 0) {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= minimum ? value : null;
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= minimum
+    ? value
+    : null;
 }
 
 function stringArray(value: unknown, max: number) {
-  if (!Array.isArray(value) || value.length > max || value.some((item) => typeof item !== "string")) return null;
+  if (
+    !Array.isArray(value) ||
+    value.length > max ||
+    value.some((item) => typeof item !== "string")
+  )
+    return null;
   return value as string[];
 }
 
@@ -302,42 +350,76 @@ export function nestManifestSha256(payload: PortableNestBundlePayload) {
   return documentSha256(stableDocumentJson(payload));
 }
 
-export function createPortableNestBundle(payload: PortableNestBundlePayload): PortableNestBundle {
+export function createPortableNestBundle(
+  payload: PortableNestBundlePayload,
+): PortableNestBundle {
   return {
     ...payload,
     integrity: {
       algorithm: "sha256",
       manifestSha256: nestManifestSha256(payload),
       tagCount: payload.tags.length,
-      aliasCount: payload.tags.reduce((count, tag) => count + tag.aliases.length, 0),
+      aliasCount: payload.tags.reduce(
+        (count, tag) => count + tag.aliases.length,
+        0,
+      ),
       noteCount: payload.notes.length,
-      blockCount: payload.notes.reduce((count, note) => count + note.blocks.length, 0),
+      blockCount: payload.notes.reduce(
+        (count, note) => count + note.blocks.length,
+        0,
+      ),
       spanCount: payload.notes.reduce(
-        (count, note) => count + note.blocks.reduce((blockCount, block) => blockCount + block.spans.length, 0),
+        (count, note) =>
+          count +
+          note.blocks.reduce(
+            (blockCount, block) => blockCount + block.spans.length,
+            0,
+          ),
         0,
       ),
       taskCount: payload.tasks.length,
-      taskEvidenceReceiptCount: payload.tasks.reduce((count, task) => count + task.evidenceReceipts.length, 0),
+      taskEvidenceReceiptCount: payload.tasks.reduce(
+        (count, task) => count + task.evidenceReceipts.length,
+        0,
+      ),
       goalCount: payload.goals.length,
-      progressReceiptCount: payload.goals.reduce((count, goal) => count + goal.progressReceipts.length, 0),
+      progressReceiptCount: payload.goals.reduce(
+        (count, goal) => count + goal.progressReceipts.length,
+        0,
+      ),
       goalTaskLinkCount: payload.goalTaskLinks.length,
       planBlockCount: payload.planBlocks.length,
+      ...portableNestSourceStoryCounts(payload.sourceStory),
     },
   };
 }
 
 export function validateNestBundle(input: unknown): NestBundleValidationResult {
-  if (!isRecord(input) || input.schemaVersion !== NEST_EXPORT_SCHEMA_VERSION) {
-    return { ok: false, error: `Choose a Quipsly Nest export using schema ${NEST_EXPORT_SCHEMA_VERSION}.` };
+  if (
+    !isRecord(input) ||
+    (input.schemaVersion !== NEST_EXPORT_SCHEMA_VERSION &&
+      input.schemaVersion !== LEGACY_NEST_EXPORT_SCHEMA_VERSION)
+  ) {
+    return {
+      ok: false,
+      error: `Choose a Quipsly Nest export using schema ${NEST_EXPORT_SCHEMA_VERSION} or ${LEGACY_NEST_EXPORT_SCHEMA_VERSION}.`,
+    };
   }
   const integrity = isRecord(input.integrity) ? input.integrity : null;
   const expectedManifest = stringValue(integrity?.manifestSha256, 64);
   if (!expectedManifest || !/^[a-f0-9]{64}$/.test(expectedManifest)) {
-    return { ok: false, error: "The Nest bundle is missing its SHA-256 verification manifest." };
+    return {
+      ok: false,
+      error: "The Nest bundle is missing its SHA-256 verification manifest.",
+    };
   }
   const { integrity: _integrity, ...rawPayload } = input;
   if (documentSha256(stableDocumentJson(rawPayload)) !== expectedManifest) {
-    return { ok: false, error: "The Nest bundle manifest does not match its contents. Nothing was restored." };
+    return {
+      ok: false,
+      error:
+        "The Nest bundle manifest does not match its contents. Nothing was restored.",
+    };
   }
 
   const exportedAt = dateString(input.exportedAt);
@@ -348,17 +430,38 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
   const sourceNestDescription = nullableString(sourceNest?.description, 10_000);
   const sourceNestLabel = nullableString(sourceNest?.sourceLabel, 2_000);
   const sourceNestUpdatedAt = dateString(sourceNest?.updatedAt);
-  if (!exportedAt || !sourceNestId || !sourceNestSlug || !sourceNestName
-    || sourceNestDescription === undefined || sourceNestLabel === undefined || !sourceNestUpdatedAt) {
-    return { ok: false, error: "The Nest bundle source identity is incomplete." };
+  if (
+    !exportedAt ||
+    !sourceNestId ||
+    !sourceNestSlug ||
+    !sourceNestName ||
+    sourceNestDescription === undefined ||
+    sourceNestLabel === undefined ||
+    !sourceNestUpdatedAt
+  ) {
+    return {
+      ok: false,
+      error: "The Nest bundle source identity is incomplete.",
+    };
   }
-  if (!Array.isArray(input.tags) || input.tags.length > MAX_TAGS
-    || !Array.isArray(input.notes) || input.notes.length > MAX_NOTES
-    || !Array.isArray(input.tasks) || input.tasks.length > MAX_TASKS
-    || !Array.isArray(input.goals) || input.goals.length > MAX_GOALS
-    || !Array.isArray(input.goalTaskLinks) || input.goalTaskLinks.length > MAX_LINKS
-    || !Array.isArray(input.planBlocks) || input.planBlocks.length > MAX_PLAN_BLOCKS) {
-    return { ok: false, error: "The Nest bundle has invalid or unsafe record counts." };
+  if (
+    !Array.isArray(input.tags) ||
+    input.tags.length > MAX_TAGS ||
+    !Array.isArray(input.notes) ||
+    input.notes.length > MAX_NOTES ||
+    !Array.isArray(input.tasks) ||
+    input.tasks.length > MAX_TASKS ||
+    !Array.isArray(input.goals) ||
+    input.goals.length > MAX_GOALS ||
+    !Array.isArray(input.goalTaskLinks) ||
+    input.goalTaskLinks.length > MAX_LINKS ||
+    !Array.isArray(input.planBlocks) ||
+    input.planBlocks.length > MAX_PLAN_BLOCKS
+  ) {
+    return {
+      ok: false,
+      error: "The Nest bundle has invalid or unsafe record counts.",
+    };
   }
 
   const tags: PortableNestTag[] = [];
@@ -366,8 +469,15 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
   const aliasSlugs = new Set<string>();
   let aliasCount = 0;
   for (const raw of input.tags) {
-    if (!isRecord(raw) || !Array.isArray(raw.aliases) || !Array.isArray(raw.revisions)) {
-      return { ok: false, error: "A tag record in the Nest bundle is invalid." };
+    if (
+      !isRecord(raw) ||
+      !Array.isArray(raw.aliases) ||
+      !Array.isArray(raw.revisions)
+    ) {
+      return {
+        ok: false,
+        error: "A tag record in the Nest bundle is invalid.",
+      };
     }
     const id = stringValue(raw.id, 200);
     const slug = stringValue(raw.slug, 200);
@@ -379,24 +489,49 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     const mergedIntoTagId = nullableString(raw.mergedIntoTagId, 200);
     const createdAt = dateString(raw.createdAt);
     const updatedAt = dateString(raw.updatedAt);
-    if (!id || !slug || !label || description === undefined || !category || !TAG_CATEGORIES.has(category)
-      || !nodeType || !TAG_NODE_TYPES.has(nodeType) || typeof raw.isPrivate !== "boolean"
-      || typeof raw.isActive !== "boolean" || archivedAt === undefined || mergedIntoTagId === undefined
-      || !createdAt || !updatedAt) {
-      return { ok: false, error: "A tag record in the Nest bundle is incomplete." };
+    if (
+      !id ||
+      !slug ||
+      !label ||
+      description === undefined ||
+      !category ||
+      !TAG_CATEGORIES.has(category) ||
+      !nodeType ||
+      !TAG_NODE_TYPES.has(nodeType) ||
+      typeof raw.isPrivate !== "boolean" ||
+      typeof raw.isActive !== "boolean" ||
+      archivedAt === undefined ||
+      mergedIntoTagId === undefined ||
+      !createdAt ||
+      !updatedAt
+    ) {
+      return {
+        ok: false,
+        error: "A tag record in the Nest bundle is incomplete.",
+      };
     }
     const aliases: PortableNestTagAlias[] = [];
     for (const rawAlias of raw.aliases) {
-      if (!isRecord(rawAlias)) return { ok: false, error: "A tag alias in the Nest bundle is invalid." };
+      if (!isRecord(rawAlias))
+        return {
+          ok: false,
+          error: "A tag alias in the Nest bundle is invalid.",
+        };
       const aliasId = stringValue(rawAlias.id, 200);
       const aliasSlug = stringValue(rawAlias.slug, 200);
       const aliasLabel = stringValue(rawAlias.label, 300);
       const aliasCreatedAt = dateString(rawAlias.createdAt);
       if (!aliasId || !aliasSlug || !aliasLabel || !aliasCreatedAt) {
-        return { ok: false, error: "A tag alias in the Nest bundle is incomplete." };
+        return {
+          ok: false,
+          error: "A tag alias in the Nest bundle is incomplete.",
+        };
       }
       if (aliasIds.has(aliasId) || aliasSlugs.has(aliasSlug)) {
-        return { ok: false, error: "The Nest bundle repeats a tag alias identity or slug." };
+        return {
+          ok: false,
+          error: "The Nest bundle repeats a tag alias identity or slug.",
+        };
       }
       aliasIds.add(aliasId);
       aliasSlugs.add(aliasSlug);
@@ -409,19 +544,30 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
       });
     }
     aliasCount += aliases.length;
-    if (aliasCount > MAX_ALIASES) return { ok: false, error: "The Nest bundle contains too many tag aliases." };
+    if (aliasCount > MAX_ALIASES)
+      return {
+        ok: false,
+        error: "The Nest bundle contains too many tag aliases.",
+      };
     if (raw.revisions.length > 10_000) {
       return { ok: false, error: "A tag contains too many revision receipts." };
     }
     const revisions: PortableNestTag["revisions"] = [];
     const revisionNumbers = new Set<number>();
     for (const rawRevision of raw.revisions) {
-      if (!isRecord(rawRevision)) return { ok: false, error: "A tag revision in the Nest bundle is invalid." };
+      if (!isRecord(rawRevision))
+        return {
+          ok: false,
+          error: "A tag revision in the Nest bundle is invalid.",
+        };
       const revision = safeInteger(rawRevision.revision, 1);
       const operation = stringValue(rawRevision.operation, 200);
       const revisionCreatedAt = dateString(rawRevision.createdAt);
       if (revision == null || !operation || !revisionCreatedAt) {
-        return { ok: false, error: "A tag revision in the Nest bundle is incomplete." };
+        return {
+          ok: false,
+          error: "A tag revision in the Nest bundle is incomplete.",
+        };
       }
       if (revisionNumbers.has(revision)) {
         return { ok: false, error: "A tag repeats a revision number." };
@@ -452,11 +598,22 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     });
   }
   const tagIds = new Set(tags.map((tag) => tag.id));
-  if (tagIds.size !== tags.length || new Set(tags.map((tag) => tag.slug)).size !== tags.length) {
-    return { ok: false, error: "The Nest bundle repeats a tag identity or canonical slug." };
+  if (
+    tagIds.size !== tags.length ||
+    new Set(tags.map((tag) => tag.slug)).size !== tags.length
+  ) {
+    return {
+      ok: false,
+      error: "The Nest bundle repeats a tag identity or canonical slug.",
+    };
   }
-  if (tags.some((tag) => tag.mergedIntoTagId && !tagIds.has(tag.mergedIntoTagId))) {
-    return { ok: false, error: "A merged tag points outside the exported Nest vocabulary." };
+  if (
+    tags.some((tag) => tag.mergedIntoTagId && !tagIds.has(tag.mergedIntoTagId))
+  ) {
+    return {
+      ok: false,
+      error: "A merged tag points outside the exported Nest vocabulary.",
+    };
   }
 
   const notes: PortableNestNote[] = [];
@@ -468,7 +625,10 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
   let textBytes = 0;
   for (const raw of input.notes) {
     if (!isRecord(raw) || !Array.isArray(raw.blocks)) {
-      return { ok: false, error: "A note document in the Nest bundle is invalid." };
+      return {
+        ok: false,
+        error: "A note document in the Nest bundle is invalid.",
+      };
     }
     const id = stringValue(raw.id, 200);
     const stableId = stringValue(raw.stableId, 500);
@@ -480,24 +640,43 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     // Restore those legacy private notes to the importing actor instead of
     // silently widening them to every collaborator in the destination Nest.
     const personal =
-      raw.personal === true
-      || (raw.personal === undefined && raw.isPrivate === true);
+      raw.personal === true ||
+      (raw.personal === undefined && raw.isPrivate === true);
     const documentTagIds = stringArray(raw.tagIds ?? [], MAX_TAGS);
     const createdAt = dateString(raw.createdAt);
     const updatedAt = dateString(raw.updatedAt);
-    if (!id || !stableId || !title || sourceLabel === undefined || sourcePath === undefined
-      || !projectionStatus || !PROJECTION_STATUSES.has(projectionStatus) || !documentTagIds
-      || documentTagIds.some((tagId) => !tagIds.has(tagId))
-      || typeof raw.isPrivate !== "boolean" || !createdAt || !updatedAt) {
-      return { ok: false, error: "A note document in the Nest bundle is incomplete." };
+    if (
+      !id ||
+      !stableId ||
+      !title ||
+      sourceLabel === undefined ||
+      sourcePath === undefined ||
+      !projectionStatus ||
+      !PROJECTION_STATUSES.has(projectionStatus) ||
+      !documentTagIds ||
+      documentTagIds.some((tagId) => !tagIds.has(tagId)) ||
+      typeof raw.isPrivate !== "boolean" ||
+      !createdAt ||
+      !updatedAt
+    ) {
+      return {
+        ok: false,
+        error: "A note document in the Nest bundle is incomplete.",
+      };
     }
     if (new Set(documentTagIds).size !== documentTagIds.length) {
-      return { ok: false, error: "A note document repeats a document-level tag reference." };
+      return {
+        ok: false,
+        error: "A note document repeats a document-level tag reference.",
+      };
     }
     const blocks: PortableNestNoteBlock[] = [];
     for (const rawBlock of raw.blocks) {
       if (!isRecord(rawBlock) || !Array.isArray(rawBlock.spans)) {
-        return { ok: false, error: "A note block in the Nest bundle is invalid." };
+        return {
+          ok: false,
+          error: "A note block in the Nest bundle is invalid.",
+        };
       }
       const blockId = stringValue(rawBlock.id, 200);
       const blockStableId = stringValue(rawBlock.stableId, 500);
@@ -511,44 +690,104 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
       const archivedAt = dateString(rawBlock.archivedAt, true);
       const blockCreatedAt = dateString(rawBlock.createdAt);
       const blockUpdatedAt = dateString(rawBlock.updatedAt);
-      if (!blockId || !blockStableId || order == null || blockTitle === undefined || body == null
-        || blockSourceLabel === undefined || blockSourcePath === undefined || externalId === undefined
-        || !blockProjectionStatus || !PROJECTION_STATUSES.has(blockProjectionStatus)
-        || typeof rawBlock.isPrivate !== "boolean" || archivedAt === undefined || !blockCreatedAt || !blockUpdatedAt) {
-        return { ok: false, error: "A note block in the Nest bundle is incomplete." };
+      if (
+        !blockId ||
+        !blockStableId ||
+        order == null ||
+        blockTitle === undefined ||
+        body == null ||
+        blockSourceLabel === undefined ||
+        blockSourcePath === undefined ||
+        externalId === undefined ||
+        !blockProjectionStatus ||
+        !PROJECTION_STATUSES.has(blockProjectionStatus) ||
+        typeof rawBlock.isPrivate !== "boolean" ||
+        archivedAt === undefined ||
+        !blockCreatedAt ||
+        !blockUpdatedAt
+      ) {
+        return {
+          ok: false,
+          error: "A note block in the Nest bundle is incomplete.",
+        };
       }
       if (blockIds.has(blockId) || blockStableIds.has(blockStableId)) {
-        return { ok: false, error: "The Nest bundle repeats a note-block identity or stable identity." };
+        return {
+          ok: false,
+          error:
+            "The Nest bundle repeats a note-block identity or stable identity.",
+        };
       }
       blockIds.add(blockId);
       blockStableIds.add(blockStableId);
       textBytes = addTextBytes(textBytes, body);
       const spans: PortableNestTaggedSpan[] = [];
       for (const rawSpan of rawBlock.spans) {
-        if (!isRecord(rawSpan)) return { ok: false, error: "A note tag anchor in the Nest bundle is invalid." };
+        if (!isRecord(rawSpan))
+          return {
+            ok: false,
+            error: "A note tag anchor in the Nest bundle is invalid.",
+          };
         const spanId = stringValue(rawSpan.id, 200);
         const tagId = stringValue(rawSpan.tagId, 200);
         const startOffset = safeInteger(rawSpan.startOffset);
         const endOffset = safeInteger(rawSpan.endOffset);
-        const selectedText = stringValue(rawSpan.selectedText, MAX_TEXT_BYTES, true);
+        const selectedText = stringValue(
+          rawSpan.selectedText,
+          MAX_TEXT_BYTES,
+          true,
+        );
         const noteBody = nullableString(rawSpan.noteBody, 20_000);
         const spanCreatedAt = dateString(rawSpan.createdAt);
-        if (!spanId || !tagId || !tagIds.has(tagId) || startOffset == null || endOffset == null
-          || endOffset < startOffset || endOffset > body.length || selectedText == null
-          || body.slice(startOffset, endOffset) !== selectedText || noteBody === undefined || !spanCreatedAt) {
-          return { ok: false, error: "A note tag anchor no longer matches its block or vocabulary." };
+        if (
+          !spanId ||
+          !tagId ||
+          !tagIds.has(tagId) ||
+          startOffset == null ||
+          endOffset == null ||
+          endOffset < startOffset ||
+          endOffset > body.length ||
+          selectedText == null ||
+          body.slice(startOffset, endOffset) !== selectedText ||
+          noteBody === undefined ||
+          !spanCreatedAt
+        ) {
+          return {
+            ok: false,
+            error:
+              "A note tag anchor no longer matches its block or vocabulary.",
+          };
         }
         if (spanIds.has(spanId)) {
-          return { ok: false, error: "The Nest bundle repeats a note tag-anchor identity." };
+          return {
+            ok: false,
+            error: "The Nest bundle repeats a note tag-anchor identity.",
+          };
         }
         spanIds.add(spanId);
         textBytes = addTextBytes(textBytes, noteBody);
-        spans.push({ id: spanId, tagId, startOffset, endOffset, selectedText, noteBody, createdAt: spanCreatedAt });
+        spans.push({
+          id: spanId,
+          tagId,
+          startOffset,
+          endOffset,
+          selectedText,
+          noteBody,
+          createdAt: spanCreatedAt,
+        });
       }
       spanCount += spans.length;
       blockCount += 1;
-      if (blockCount > MAX_BLOCKS || spanCount > MAX_SPANS || textBytes > MAX_TEXT_BYTES) {
-        return { ok: false, error: "The Nest bundle contains too much note content for this restore lane." };
+      if (
+        blockCount > MAX_BLOCKS ||
+        spanCount > MAX_SPANS ||
+        textBytes > MAX_TEXT_BYTES
+      ) {
+        return {
+          ok: false,
+          error:
+            "The Nest bundle contains too much note content for this restore lane.",
+        };
       }
       blocks.push({
         id: blockId,
@@ -567,10 +806,15 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
         updatedAt: blockUpdatedAt,
       });
     }
-    if (new Set(blocks.map((block) => block.id)).size !== blocks.length
-      || new Set(blocks.map((block) => block.stableId)).size !== blocks.length
-      || new Set(blocks.map((block) => block.order)).size !== blocks.length) {
-      return { ok: false, error: "A note repeats a block identity, stable identity, or order." };
+    if (
+      new Set(blocks.map((block) => block.id)).size !== blocks.length ||
+      new Set(blocks.map((block) => block.stableId)).size !== blocks.length ||
+      new Set(blocks.map((block) => block.order)).size !== blocks.length
+    ) {
+      return {
+        ok: false,
+        error: "A note repeats a block identity, stable identity, or order.",
+      };
     }
     notes.push({
       id,
@@ -587,17 +831,38 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
       updatedAt,
     });
   }
-  if (new Set(notes.map((note) => note.id)).size !== notes.length
-    || new Set(notes.map((note) => note.stableId)).size !== notes.length) {
+  if (
+    new Set(notes.map((note) => note.id)).size !== notes.length ||
+    new Set(notes.map((note) => note.stableId)).size !== notes.length
+  ) {
     return { ok: false, error: "The Nest bundle repeats a note identity." };
   }
+
+  const sourceStoryValidation =
+    input.schemaVersion === LEGACY_NEST_EXPORT_SCHEMA_VERSION
+      ? {
+          ok: true as const,
+          sourceStory: EMPTY_PORTABLE_NEST_SOURCE_STORY,
+          counts: portableNestSourceStoryCounts(
+            EMPTY_PORTABLE_NEST_SOURCE_STORY,
+          ),
+          textBytes: 0,
+        }
+      : validatePortableNestSourceStory({
+          value: input.sourceStory,
+          tagIds,
+          documentIds: new Set(notes.map((note) => note.id)),
+        });
+  if (!sourceStoryValidation.ok) return sourceStoryValidation;
+  textBytes += sourceStoryValidation.textBytes;
 
   const tasks: PortableNestTask[] = [];
   const reminderIds = new Set<string>();
   const taskEvidenceReceiptIds = new Set<string>();
   let taskEvidenceReceiptCount = 0;
   for (const raw of input.tasks) {
-    if (!isRecord(raw)) return { ok: false, error: "A task in the Nest bundle is invalid." };
+    if (!isRecord(raw))
+      return { ok: false, error: "A task in the Nest bundle is invalid." };
     const id = stringValue(raw.id, 200);
     const title = stringValue(raw.title, 500);
     const detail = nullableString(raw.detail, 20_000);
@@ -607,17 +872,32 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     const tagIdsForTask = stringArray(raw.tagIds, MAX_TAGS);
     const createdAt = dateString(raw.createdAt);
     const updatedAt = dateString(raw.updatedAt);
-    if (!id || !title || detail === undefined || !status || !TASK_STATUSES.has(status)
-      || dueAt === undefined || completedAt === undefined || !tagIdsForTask
-      || tagIdsForTask.some((tagId) => !tagIds.has(tagId)) || !createdAt || !updatedAt) {
-      return { ok: false, error: "A task in the Nest bundle is incomplete or references a missing tag." };
+    if (
+      !id ||
+      !title ||
+      detail === undefined ||
+      !status ||
+      !TASK_STATUSES.has(status) ||
+      dueAt === undefined ||
+      completedAt === undefined ||
+      !tagIdsForTask ||
+      tagIdsForTask.some((tagId) => !tagIds.has(tagId)) ||
+      !createdAt ||
+      !updatedAt
+    ) {
+      return {
+        ok: false,
+        error:
+          "A task in the Nest bundle is incomplete or references a missing tag.",
+      };
     }
     if (new Set(tagIdsForTask).size !== tagIdsForTask.length) {
       return { ok: false, error: "A task repeats a tag reference." };
     }
     let reminderSnapshot: PortableNestTask["reminderSnapshot"] = null;
     if (raw.reminderSnapshot != null) {
-      if (!isRecord(raw.reminderSnapshot)) return { ok: false, error: "A task reminder snapshot is invalid." };
+      if (!isRecord(raw.reminderSnapshot))
+        return { ok: false, error: "A task reminder snapshot is invalid." };
       const reminderId = stringValue(raw.reminderSnapshot.id, 200);
       const remindAt = dateString(raw.reminderSnapshot.remindAt);
       const reminderStatus = stringValue(raw.reminderSnapshot.status, 40);
@@ -626,7 +906,10 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
         return { ok: false, error: "A task reminder snapshot is incomplete." };
       }
       if (reminderIds.has(reminderId)) {
-        return { ok: false, error: "The Nest bundle repeats a reminder identity." };
+        return {
+          ok: false,
+          error: "The Nest bundle repeats a reminder identity.",
+        };
       }
       reminderIds.add(reminderId);
       reminderSnapshot = {
@@ -639,14 +922,30 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     }
     let recurrenceSnapshot: PortableNestTask["recurrenceSnapshot"] = null;
     if (raw.recurrenceSnapshot != null) {
-      if (!isRecord(raw.recurrenceSnapshot)) return { ok: false, error: "A task recurrence snapshot is invalid." };
+      if (!isRecord(raw.recurrenceSnapshot))
+        return { ok: false, error: "A task recurrence snapshot is invalid." };
       const seriesId = stringValue(raw.recurrenceSnapshot.seriesId, 200);
-      const occurrenceKey = stringValue(raw.recurrenceSnapshot.occurrenceKey, 500);
-      const scheduledLocalDate = stringValue(raw.recurrenceSnapshot.scheduledLocalDate, 40);
+      const occurrenceKey = stringValue(
+        raw.recurrenceSnapshot.occurrenceKey,
+        500,
+      );
+      const scheduledLocalDate = stringValue(
+        raw.recurrenceSnapshot.scheduledLocalDate,
+        40,
+      );
       const scheduledFor = dateString(raw.recurrenceSnapshot.scheduledFor);
       const recurrenceStatus = stringValue(raw.recurrenceSnapshot.status, 40);
-      if (!seriesId || !occurrenceKey || !scheduledLocalDate || !scheduledFor || !recurrenceStatus) {
-        return { ok: false, error: "A task recurrence snapshot is incomplete." };
+      if (
+        !seriesId ||
+        !occurrenceKey ||
+        !scheduledLocalDate ||
+        !scheduledFor ||
+        !recurrenceStatus
+      ) {
+        return {
+          ok: false,
+          error: "A task recurrence snapshot is incomplete.",
+        };
       }
       recurrenceSnapshot = {
         seriesId,
@@ -657,23 +956,37 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
         series: jsonRecord(raw.recurrenceSnapshot.series),
       };
     }
-    const rawEvidenceReceipts = raw.evidenceReceipts === undefined ? [] : raw.evidenceReceipts;
+    const rawEvidenceReceipts =
+      raw.evidenceReceipts === undefined ? [] : raw.evidenceReceipts;
     if (!Array.isArray(rawEvidenceReceipts)) {
-      return { ok: false, error: "A task evidence ledger in the Nest bundle is invalid." };
+      return {
+        ok: false,
+        error: "A task evidence ledger in the Nest bundle is invalid.",
+      };
     }
     const evidenceReceipts: PortableNestTask["evidenceReceipts"] = [];
     for (const rawReceipt of rawEvidenceReceipts) {
-      if (!isRecord(rawReceipt)) return { ok: false, error: "A task evidence receipt is invalid." };
+      if (!isRecord(rawReceipt))
+        return { ok: false, error: "A task evidence receipt is invalid." };
       const receiptId = stringValue(rawReceipt.id, 200);
       const kind = stringValue(rawReceipt.kind, 200);
       const note = nullableString(rawReceipt.note, 20_000);
       const occurredAt = dateString(rawReceipt.occurredAt);
       const receiptCreatedAt = dateString(rawReceipt.createdAt);
-      if (!receiptId || !kind || note === undefined || !occurredAt || !receiptCreatedAt) {
+      if (
+        !receiptId ||
+        !kind ||
+        note === undefined ||
+        !occurredAt ||
+        !receiptCreatedAt
+      ) {
         return { ok: false, error: "A task evidence receipt is incomplete." };
       }
       if (taskEvidenceReceiptIds.has(receiptId)) {
-        return { ok: false, error: "The Nest bundle repeats a task evidence-receipt identity." };
+        return {
+          ok: false,
+          error: "The Nest bundle repeats a task evidence-receipt identity.",
+        };
       }
       taskEvidenceReceiptIds.add(receiptId);
       evidenceReceipts.push({
@@ -688,7 +1001,10 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     }
     taskEvidenceReceiptCount += evidenceReceipts.length;
     if (taskEvidenceReceiptCount > MAX_TASK_EVIDENCE_RECEIPTS) {
-      return { ok: false, error: "The Nest bundle contains too many task evidence receipts." };
+      return {
+        ok: false,
+        error: "The Nest bundle contains too many task evidence receipts.",
+      };
     }
     textBytes = addTextBytes(addTextBytes(textBytes, title), detail);
     tasks.push({
@@ -708,7 +1024,8 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     });
   }
   const taskIds = new Set(tasks.map((task) => task.id));
-  if (taskIds.size !== tasks.length) return { ok: false, error: "The Nest bundle repeats a task identity." };
+  if (taskIds.size !== tasks.length)
+    return { ok: false, error: "The Nest bundle repeats a task identity." };
 
   const goals: PortableNestGoal[] = [];
   const progressReceiptIds = new Set<string>();
@@ -727,38 +1044,58 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     const tagIdsForGoal = stringArray(raw.tagIds, MAX_TAGS);
     const createdAt = dateString(raw.createdAt);
     const updatedAt = dateString(raw.updatedAt);
-    if (!id || parentGoalId === undefined || !title || description === undefined || !status || !GOAL_STATUSES.has(status)
-      || targetAt === undefined || achievedAt === undefined || !tagIdsForGoal
-      || tagIdsForGoal.some((tagId) => !tagIds.has(tagId)) || !createdAt || !updatedAt) {
-      return { ok: false, error: "A goal in the Nest bundle is incomplete or references a missing tag." };
+    if (
+      !id ||
+      parentGoalId === undefined ||
+      !title ||
+      description === undefined ||
+      !status ||
+      !GOAL_STATUSES.has(status) ||
+      targetAt === undefined ||
+      achievedAt === undefined ||
+      !tagIdsForGoal ||
+      tagIdsForGoal.some((tagId) => !tagIds.has(tagId)) ||
+      !createdAt ||
+      !updatedAt
+    ) {
+      return {
+        ok: false,
+        error:
+          "A goal in the Nest bundle is incomplete or references a missing tag.",
+      };
     }
     if (new Set(tagIdsForGoal).size !== tagIdsForGoal.length) {
       return { ok: false, error: "A goal repeats a tag reference." };
     }
     const progressReceipts: PortableNestGoal["progressReceipts"] = [];
     for (const rawReceipt of raw.progressReceipts) {
-      if (!isRecord(rawReceipt)) return { ok: false, error: "A goal progress receipt is invalid." };
+      if (!isRecord(rawReceipt))
+        return { ok: false, error: "A goal progress receipt is invalid." };
       const receiptId = stringValue(rawReceipt.id, 200);
       const kind = stringValue(rawReceipt.kind, 200);
-      const progressPercent = rawReceipt.progressPercent == null
-        ? null
-        : safeInteger(rawReceipt.progressPercent);
+      const progressPercent =
+        rawReceipt.progressPercent == null
+          ? null
+          : safeInteger(rawReceipt.progressPercent);
       const note = nullableString(rawReceipt.note, 20_000);
       const occurredAt = dateString(rawReceipt.occurredAt);
       const receiptCreatedAt = dateString(rawReceipt.createdAt);
       if (
-        !receiptId
-        || !kind
-        || (progressPercent === null && rawReceipt.progressPercent != null)
-        || (progressPercent != null && progressPercent > 100)
-        || note === undefined
-        || !occurredAt
-        || !receiptCreatedAt
+        !receiptId ||
+        !kind ||
+        (progressPercent === null && rawReceipt.progressPercent != null) ||
+        (progressPercent != null && progressPercent > 100) ||
+        note === undefined ||
+        !occurredAt ||
+        !receiptCreatedAt
       ) {
         return { ok: false, error: "A goal progress receipt is incomplete." };
       }
       if (progressReceiptIds.has(receiptId)) {
-        return { ok: false, error: "The Nest bundle repeats a goal progress-receipt identity." };
+        return {
+          ok: false,
+          error: "The Nest bundle repeats a goal progress-receipt identity.",
+        };
       }
       progressReceiptIds.add(receiptId);
       progressReceipts.push({
@@ -773,7 +1110,10 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     }
     progressReceiptCount += progressReceipts.length;
     if (progressReceiptCount > MAX_PROGRESS_RECEIPTS) {
-      return { ok: false, error: "The Nest bundle contains too many goal progress receipts." };
+      return {
+        ok: false,
+        error: "The Nest bundle contains too many goal progress receipts.",
+      };
     }
     textBytes = addTextBytes(addTextBytes(textBytes, title), description);
     goals.push({
@@ -792,31 +1132,64 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     });
   }
   const goalIds = new Set(goals.map((goal) => goal.id));
-  if (goalIds.size !== goals.length) return { ok: false, error: "The Nest bundle repeats a goal identity." };
-  if (goals.some((goal) => goal.parentGoalId && !goalIds.has(goal.parentGoalId))) {
-    return { ok: false, error: "A goal parent points outside the exported Nest work graph." };
+  if (goalIds.size !== goals.length)
+    return { ok: false, error: "The Nest bundle repeats a goal identity." };
+  if (
+    goals.some((goal) => goal.parentGoalId && !goalIds.has(goal.parentGoalId))
+  ) {
+    return {
+      ok: false,
+      error: "A goal parent points outside the exported Nest work graph.",
+    };
   }
 
   const goalTaskLinks: PortableNestGoalTaskLink[] = [];
   for (const raw of input.goalTaskLinks) {
-    if (!isRecord(raw)) return { ok: false, error: "A goal-task link in the Nest bundle is invalid." };
+    if (!isRecord(raw))
+      return {
+        ok: false,
+        error: "A goal-task link in the Nest bundle is invalid.",
+      };
     const goalId = stringValue(raw.goalId, 200);
     const taskId = stringValue(raw.taskId, 200);
     const relationship = stringValue(raw.relationship, 40);
     const createdAt = dateString(raw.createdAt);
-    if (!goalId || !goalIds.has(goalId) || !taskId || !taskIds.has(taskId)
-      || !relationship || !GOAL_TASK_RELATIONSHIPS.has(relationship) || !createdAt) {
-      return { ok: false, error: "A goal-task link points outside the exported work graph." };
+    if (
+      !goalId ||
+      !goalIds.has(goalId) ||
+      !taskId ||
+      !taskIds.has(taskId) ||
+      !relationship ||
+      !GOAL_TASK_RELATIONSHIPS.has(relationship) ||
+      !createdAt
+    ) {
+      return {
+        ok: false,
+        error: "A goal-task link points outside the exported work graph.",
+      };
     }
-    goalTaskLinks.push({ goalId, taskId, relationship, sourceJson: jsonRecord(raw.sourceJson), createdAt });
+    goalTaskLinks.push({
+      goalId,
+      taskId,
+      relationship,
+      sourceJson: jsonRecord(raw.sourceJson),
+      createdAt,
+    });
   }
-  if (new Set(goalTaskLinks.map((link) => `${link.goalId}:${link.taskId}`)).size !== goalTaskLinks.length) {
+  if (
+    new Set(goalTaskLinks.map((link) => `${link.goalId}:${link.taskId}`))
+      .size !== goalTaskLinks.length
+  ) {
     return { ok: false, error: "The Nest bundle repeats a goal-task link." };
   }
 
   const planBlocks: PortableNestPlanBlock[] = [];
   for (const raw of input.planBlocks) {
-    if (!isRecord(raw)) return { ok: false, error: "A focus block in the Nest bundle is invalid." };
+    if (!isRecord(raw))
+      return {
+        ok: false,
+        error: "A focus block in the Nest bundle is invalid.",
+      };
     const id = stringValue(raw.id, 200);
     const taskId = nullableString(raw.taskId, 200);
     const goalId = nullableString(raw.goalId, 200);
@@ -825,16 +1198,34 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     const timezone = stringValue(raw.timezone, 200);
     const status = stringValue(raw.status, 40);
     const completedAt = dateString(raw.completedAt, true);
-    const actualMinutes = raw.actualMinutes == null ? null : safeInteger(raw.actualMinutes, 1);
+    const actualMinutes =
+      raw.actualMinutes == null ? null : safeInteger(raw.actualMinutes, 1);
     const createdAt = dateString(raw.createdAt);
     const updatedAt = dateString(raw.updatedAt);
-    if (!id || taskId === undefined || goalId === undefined || Boolean(taskId) === Boolean(goalId)
-      || (taskId && !taskIds.has(taskId)) || (goalId && !goalIds.has(goalId))
-      || !startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt)
-      || !timezone || !status || !PLAN_BLOCK_STATUSES.has(status)
-      || completedAt === undefined || (raw.actualMinutes != null && (actualMinutes === null || actualMinutes > 1_440))
-      || !createdAt || !updatedAt) {
-      return { ok: false, error: "A focus block is incomplete or points outside the exported work graph." };
+    if (
+      !id ||
+      taskId === undefined ||
+      goalId === undefined ||
+      Boolean(taskId) === Boolean(goalId) ||
+      (taskId && !taskIds.has(taskId)) ||
+      (goalId && !goalIds.has(goalId)) ||
+      !startsAt ||
+      !endsAt ||
+      new Date(endsAt) <= new Date(startsAt) ||
+      !timezone ||
+      !status ||
+      !PLAN_BLOCK_STATUSES.has(status) ||
+      completedAt === undefined ||
+      (raw.actualMinutes != null &&
+        (actualMinutes === null || actualMinutes > 1_440)) ||
+      !createdAt ||
+      !updatedAt
+    ) {
+      return {
+        ok: false,
+        error:
+          "A focus block is incomplete or points outside the exported work graph.",
+      };
     }
     planBlocks.push({
       id,
@@ -852,20 +1243,43 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     });
   }
   if (new Set(planBlocks.map((block) => block.id)).size !== planBlocks.length) {
-    return { ok: false, error: "The Nest bundle repeats a focus-block identity." };
+    return {
+      ok: false,
+      error: "The Nest bundle repeats a focus-block identity.",
+    };
   }
   if (textBytes > MAX_TEXT_BYTES) {
-    return { ok: false, error: "The Nest bundle contains too much text for this restore lane." };
+    return {
+      ok: false,
+      error: "The Nest bundle contains too much text for this restore lane.",
+    };
   }
 
   const boundaries = isRecord(input.boundaries) ? input.boundaries : null;
-  if (!boundaries || boundaries.ownerAuthorized !== true || boundaries.actorScopedWork !== true
-    || boundaries.noteDocumentsIncluded !== true || boundaries.mediaBytesIncluded !== false
-    || boundaries.sessionsIncluded !== false || boundaries.collaboratorAssignmentsIncluded !== false
-    || boundaries.remindersRestoredActive !== false || boundaries.recurrenceRestoredActive !== false
-    || boundaries.planBlocksRestoreAsCanceled !== true || boundaries.externalResourcesFetched !== false
-    || boundaries.externalSideEffects !== false) {
-    return { ok: false, error: "The Nest bundle safety boundaries are missing or unsupported." };
+  if (
+    !boundaries ||
+    boundaries.ownerAuthorized !== true ||
+    boundaries.actorScopedWork !== true ||
+    boundaries.noteDocumentsIncluded !== true ||
+    boundaries.mediaBytesIncluded !== false ||
+    boundaries.sessionsIncluded !== false ||
+    boundaries.collaboratorAssignmentsIncluded !== false ||
+    boundaries.remindersRestoredActive !== false ||
+    boundaries.recurrenceRestoredActive !== false ||
+    boundaries.planBlocksRestoreAsCanceled !== true ||
+    (input.schemaVersion === NEST_EXPORT_SCHEMA_VERSION &&
+      (boundaries.sourceStoryIncluded !== true ||
+        boundaries.sourceReferenceMetadataIncluded !== true ||
+        boundaries.restoredSourceReferencesAvailable !== false ||
+        boundaries.providerCredentialsIncluded !== false ||
+        boundaries.providerLocatorsIncluded !== false)) ||
+    boundaries.externalResourcesFetched !== false ||
+    boundaries.externalSideEffects !== false
+  ) {
+    return {
+      ok: false,
+      error: "The Nest bundle safety boundaries are missing or unsupported.",
+    };
   }
 
   const counts = {
@@ -880,19 +1294,27 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     progressReceiptCount,
     goalTaskLinkCount: goalTaskLinks.length,
     planBlockCount: planBlocks.length,
+    ...sourceStoryValidation.counts,
   };
-  if (Object.entries(counts).some(([key, value]) => (
-    key === "taskEvidenceReceiptCount" && integrity?.[key] === undefined
-      ? value !== 0
-      : Number(integrity?.[key]) !== value
-  ))) {
-    return { ok: false, error: "The Nest bundle counts do not match its integrity manifest." };
+  if (
+    Object.entries(counts).some(([key, value]) =>
+      (key === "taskEvidenceReceiptCount" ||
+        key in sourceStoryValidation.counts) &&
+      integrity?.[key] === undefined
+        ? value !== 0
+        : Number(integrity?.[key]) !== value,
+    )
+  ) {
+    return {
+      ok: false,
+      error: "The Nest bundle counts do not match its integrity manifest.",
+    };
   }
 
   return {
     ok: true,
     bundle: {
-      schemaVersion: NEST_EXPORT_SCHEMA_VERSION,
+      schemaVersion: input.schemaVersion,
       exportedAt,
       sourceNest: {
         id: sourceNestId,
@@ -908,6 +1330,7 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
       goals,
       goalTaskLinks,
       planBlocks,
+      sourceStory: sourceStoryValidation.sourceStory,
       boundaries: {
         ownerAuthorized: true,
         actorScopedWork: true,
@@ -918,10 +1341,17 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
         remindersRestoredActive: false,
         recurrenceRestoredActive: false,
         planBlocksRestoreAsCanceled: true,
+        sourceStoryIncluded: input.schemaVersion === NEST_EXPORT_SCHEMA_VERSION,
+        sourceReferenceMetadataIncluded:
+          input.schemaVersion === NEST_EXPORT_SCHEMA_VERSION,
+        restoredSourceReferencesAvailable: false,
+        providerCredentialsIncluded: false,
+        providerLocatorsIncluded: false,
         externalResourcesFetched: false,
         externalSideEffects: false,
       },
       manifestSha256: expectedManifest,
+      manifestVerified: true,
     },
   };
 }

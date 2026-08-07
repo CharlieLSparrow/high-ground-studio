@@ -1,6 +1,10 @@
 /** @jest-environment node */
 
-import { createPortableNestBundle, NEST_EXPORT_SCHEMA_VERSION, type PortableNestBundlePayload } from "@/lib/nest-portability";
+import {
+  createPortableNestBundle,
+  NEST_EXPORT_SCHEMA_VERSION,
+  type PortableNestBundlePayload,
+} from "@/lib/nest-portability";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   applyNestRestore,
@@ -20,20 +24,38 @@ jest.mock("@/lib/server/nest-portable-restore", () => ({
   nestRestorePlanSha256: jest.fn(),
   NestRestorePlanChangedError: class NestRestorePlanChangedError extends Error {},
 }));
-jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
-jest.mock("@/lib/server/studio-project-access", () => ({ resolveStudioProjectAccess: jest.fn() }));
+jest.mock("@/lib/server/quipsly-session", () => ({
+  getQuipslySessionFromRequest: jest.fn(),
+}));
+jest.mock("@/lib/server/studio-project-access", () => ({
+  resolveStudioProjectAccess: jest.fn(),
+}));
 
 function emptyBundle() {
   const payload: PortableNestBundlePayload = {
     schemaVersion: NEST_EXPORT_SCHEMA_VERSION,
     exportedAt: "2026-07-24T21:00:00.000Z",
-    sourceNest: { id: "source-1", slug: "source", name: "Source", description: null, sourceLabel: null, updatedAt: "2026-07-24T20:00:00.000Z" },
+    sourceNest: {
+      id: "source-1",
+      slug: "source",
+      name: "Source",
+      description: null,
+      sourceLabel: null,
+      updatedAt: "2026-07-24T20:00:00.000Z",
+    },
     tags: [],
     notes: [],
     tasks: [],
     goals: [],
     goalTaskLinks: [],
     planBlocks: [],
+    sourceStory: {
+      sourceRevisions: [],
+      sourceSets: [],
+      sourceRanges: [],
+      cards: [],
+      boards: [],
+    },
     boundaries: {
       ownerAuthorized: true,
       actorScopedWork: true,
@@ -44,6 +66,11 @@ function emptyBundle() {
       remindersRestoredActive: false,
       recurrenceRestoredActive: false,
       planBlocksRestoreAsCanceled: true,
+      sourceStoryIncluded: true,
+      sourceReferenceMetadataIncluded: true,
+      restoredSourceReferencesAvailable: false,
+      providerCredentialsIncluded: false,
+      providerLocatorsIncluded: false,
       externalResourcesFetched: false,
       externalSideEffects: false,
     },
@@ -107,7 +134,9 @@ describe("portable Nest restore route", () => {
       planSha256: "b".repeat(64),
       plan: { noteCreates: 1, overwrites: 0 },
     });
-    expect(resolveStudioProjectAccess).toHaveBeenCalledWith(expect.objectContaining({ action: "manage" }));
+    expect(resolveStudioProjectAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "manage" }),
+    );
     expect(buildNestRestorePlan).toHaveBeenCalled();
     expect(applyNestRestore).not.toHaveBeenCalled();
   });
@@ -119,14 +148,17 @@ describe("portable Nest restore route", () => {
       boundaries: { overwroteExisting: false, externalSideEffects: false },
     } as never);
     const response = await POST(
-      new Request("http://localhost/api/nests/target/portable-restore?mode=apply", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-quipsly-restore-plan-sha256": "b".repeat(64),
+      new Request(
+        "http://localhost/api/nests/target/portable-restore?mode=apply",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-quipsly-restore-plan-sha256": "b".repeat(64),
+          },
+          body: JSON.stringify(emptyBundle()),
         },
-        body: JSON.stringify(emptyBundle()),
-      }),
+      ),
       { params: Promise.resolve({ slug: "target" }) },
     );
     const body = await response.json();
@@ -136,18 +168,24 @@ describe("portable Nest restore route", () => {
       mode: "apply",
       boundaries: { overwroteExisting: false, externalSideEffects: false },
     });
-    expect(applyNestRestore).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      expectedPlanSha256: "b".repeat(64),
-    }));
+    expect(applyNestRestore).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        expectedPlanSha256: "b".repeat(64),
+      }),
+    );
   });
 
   it("requires a reviewed plan token before apply", async () => {
     const response = await POST(
-      new Request("http://localhost/api/nests/target/portable-restore?mode=apply", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(emptyBundle()),
-      }),
+      new Request(
+        "http://localhost/api/nests/target/portable-restore?mode=apply",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(emptyBundle()),
+        },
+      ),
       { params: Promise.resolve({ slug: "target" }) },
     );
     expect(response.status).toBe(428);
@@ -155,16 +193,21 @@ describe("portable Nest restore route", () => {
   });
 
   it("reports destination drift before apply as a fresh-review requirement", async () => {
-    jest.mocked(applyNestRestore).mockRejectedValue(new NestRestorePlanChangedError());
+    jest
+      .mocked(applyNestRestore)
+      .mockRejectedValue(new NestRestorePlanChangedError());
     const response = await POST(
-      new Request("http://localhost/api/nests/target/portable-restore?mode=apply", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-quipsly-restore-plan-sha256": "b".repeat(64),
+      new Request(
+        "http://localhost/api/nests/target/portable-restore?mode=apply",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-quipsly-restore-plan-sha256": "b".repeat(64),
+          },
+          body: JSON.stringify(emptyBundle()),
         },
-        body: JSON.stringify(emptyBundle()),
-      }),
+      ),
       { params: Promise.resolve({ slug: "target" }) },
     );
     expect(response.status).toBe(409);

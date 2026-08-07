@@ -2899,12 +2899,14 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   found the retained 0.34-second proxy audio to be near digital silence at
   -160 dBFS; the UI reports that limitation instead of presenting a decorative
   waveform as usable sound.
-- The shared `Insta360` Drive root was inspected read-only. At inspection time
-  it contained eight capture-batch folders, 28 visible files, about 376.39 GB
-  of visible source data, 13 complete INSV/LRV segment pairs, and 11 expected
-  segments held because their uploads or companions were incomplete. The root
-  was still changing, so these are observed intake facts, not a completion
-  claim.
+- The shared `Insta360` Drive root was inspected read-only again on 2026-08-07.
+  It contained eight capture-batch folders, 30 visible files, 435.21 decimal GB
+  (405.33 GiB) of visible source data, 13 complete INSV/LRV segment pairs, and
+  11 expected segments held because their uploads or companions were
+  incomplete. Two capture folders were still empty, one exposed only a
+  zero-byte LRV, and one had three INSV originals without browsing companions.
+  The root was still changing, so these are observed intake facts, not a
+  completion or checksum claim.
 - Google Drive intake now models library root -> capture batch -> independently
   seekable segment -> exact INSV/LRV members. Google Picker can select one
   library root, Quipsly recursively inspects exactly one reviewed level,
@@ -2992,3 +2994,31 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   set, board, and card hash. The writing rail's source link now deliberately
   carries the card anchor, so a user lands on the decision they were writing
   from rather than merely returning to the right board.
+
+### 2026-08-07 Source Story portability v2 checkpoint
+
+- Nest export now writes `quipsly-nest-export-v2` while retaining validated
+  read compatibility for v1. The package includes provider-neutral Source
+  Story revisions, sets, exact ranges, selectors, 360 reframe recipes, cards,
+  tags, boards, sections, writing links, placements, and decision history.
+- Restored sources are disconnected `portable` references with exact evidence
+  but no provider locator, credential, access grant, local path, signed URL,
+  media byte, replica, or derivative. They truthfully remain unavailable until
+  a later checksum-proven relink.
+- Source-card Tasks rebind to the destination Nest and restored
+  card/range/set/revision/board identities while preserving
+  `sourceAvailable:false`. A restore therefore keeps the reason and decision
+  path without claiming the camera original moved.
+- Export document visibility now combines notes, the acting actor's personal
+  writing, and Source Story section writing inside one visibility boundary.
+  This fixes an earlier overwritten `OR` query that could include more shared
+  writing than the stated package scope.
+- Pure manifest/reference tests, route authorization tests, rendered owner-UX
+  tests, strict TypeScript, and a disposable PostgreSQL round trip cover v1
+  compatibility, tamper rejection, graph integrity, deterministic retry,
+  source/card/board/writing restoration, task-anchor rebinding, and zero
+  external effects. A read-only retained Episode 5 operation also exported and
+  revalidated the real card `0241e22a-ed33-44b0-aef2-ffcde24c12fd`, exact
+  range, source set, board, and three linked writing sections without provider
+  locators or bytes. The 194-page production build passes. Production and
+  physical-device recovery remain separate acceptance gates.

@@ -158,4 +158,112 @@ describe("Google Drive Insta360 package planning", () => {
       ],
     });
   });
+
+  it("preserves the observed 2026-08-07 shared Drive root without flattening ready and held segments", () => {
+    const batches = [
+      planGoogleDriveMediaFolder({
+        folderId: "1KNQ1Pu7gJBzhhIyvgTDzAYjILSa4Pkge",
+        folderName: "VID_20260117_094111_00_030_032-Original",
+        files: [],
+      }),
+      planGoogleDriveMediaFolder({
+        folderId: "1y1SZ7BIFfc13kS2p4xo2vQVsmeH6nr-U",
+        folderName: "VID_20260128_173606_00_025_027-Original",
+        files: [
+          file("VID_20260128_173606_00_025.insv", "30414917944"),
+          file("VID_20260128_173606_00_026.insv", "28405190969"),
+          file("VID_20260128_173606_00_027.insv", "13542281567"),
+        ],
+      }),
+      planGoogleDriveMediaFolder({
+        folderId: "1O9_6AhOJxTIOabGw6-MByApOA6liGAwJ",
+        folderName: "VID_20260425_172836_00_073_074-Original",
+        files: [],
+      }),
+      planGoogleDriveMediaFolder({
+        folderId: "1ig5RcNHb-InZX0oaaa_ROOUlbucWQH3o",
+        folderName: "VID_20260114_145426_00_025_027-Original",
+        files: [file("LRV_20260114_145426_01_027.lrv", "0")],
+      }),
+      planGoogleDriveMediaFolder({
+        folderId: "1Qr8-M37grx6YDcdEJop3aUzvNrtZtje3",
+        folderName: "VID_20260225_163604_00_005_007-Original",
+        files: [
+          file("VID_20260225_163604_00_005.insv", "31422861624"),
+          file("LRV_20260225_163604_01_005.lrv", "1911738674"),
+          file("VID_20260225_163604_00_006.insv", "30977216825"),
+          file("LRV_20260225_163604_01_006.lrv", "1911738675"),
+          file("VID_20260225_163604_00_007.insv", "20288557407"),
+          file("LRV_20260225_163604_01_007.lrv", "1252184409"),
+        ],
+      }),
+      planGoogleDriveMediaFolder({
+        folderId: "1iWrOpu4PhHd25ee3jBZVrqjHwiBLbG1l",
+        folderName: "VID_20260402_080506_00_001_004-Original",
+        files: [
+          file("VID_20260402_080506_00_001.insv", "29871493438"),
+          file("LRV_20260402_080506_01_001.lrv", "1911738680"),
+          file("VID_20260402_080506_00_002.insv", "28790411583"),
+          file("LRV_20260402_080506_01_002.lrv", "1912262969"),
+          file("VID_20260402_080506_00_003.insv", "27982483775"),
+          file("LRV_20260402_080506_01_003.lrv", "1912262969"),
+          file("VID_20260402_080506_00_004.insv", "1222300003"),
+          file("LRV_20260402_080506_01_004.lrv", "102420828"),
+        ],
+      }),
+      planGoogleDriveMediaFolder({
+        folderId: "1iDWlSDfbTGESd1WVBc3Qndg63Y0nUpDU",
+        folderName: "VID_20260507_180459_00_080_082-Original",
+        files: [
+          file("VID_20260507_180459_00_080.insv", "40631456066"),
+          file("LRV_20260507_180459_01_080.lrv", "1013633338"),
+          file("VID_20260507_180459_00_081.insv", "40520831298"),
+          file("LRV_20260507_180459_01_081.lrv", "1013633338"),
+          file("VID_20260507_180459_00_082.insv", "1314574693"),
+          file("LRV_20260507_180459_01_082.lrv", "49467741"),
+        ],
+      }),
+      planGoogleDriveMediaFolder({
+        folderId: "1UTIoye3Xi4GsGyf7BPvU8HLltDAk4_js",
+        folderName: "VID_20260212_161808_00_001_003-Original",
+        files: [
+          file("VID_20260212_161808_00_001.insv", "30783230264"),
+          file("LRV_20260212_161808_01_001.lrv", "1911738674"),
+          file("VID_20260212_161808_00_002.insv", "31111958841"),
+          file("LRV_20260212_161808_01_002.lrv", "1912262963"),
+          file("VID_20260212_161808_00_003.insv", "29304738143"),
+          file("LRV_20260212_161808_01_003.lrv", "1815269721"),
+        ],
+      }),
+    ];
+
+    const library = planGoogleDriveMediaLibrary({
+      rootFolderId: "1wu5WSOe1gvKIUdC3eXAzZZeaHjWQLlGP",
+      rootFolderName: "Insta360",
+      batches,
+    });
+
+    expect(library).toMatchObject({
+      status: "partial",
+      totalFiles: 30,
+      totalSizeBytes: "435214857419",
+      readySegmentCount: 13,
+      heldSegmentCount: 11,
+    });
+    expect(library.batches).toHaveLength(8);
+    expect(
+      library.batches.find((batch) =>
+        batch.folder.name.includes("20260128_173606"),
+      ),
+    ).toMatchObject({
+      totalFiles: 3,
+      readySegmentCount: 0,
+      heldSegmentCount: 3,
+      segments: [
+        expect.objectContaining({ status: "held-incomplete" }),
+        expect.objectContaining({ status: "held-incomplete" }),
+        expect.objectContaining({ status: "held-incomplete" }),
+      ],
+    });
+  });
 });

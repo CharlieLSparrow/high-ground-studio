@@ -8,9 +8,15 @@ import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { GET } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
-jest.mock("@/lib/server/nest-portable-export", () => ({ buildPortableNestExport: jest.fn() }));
-jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
-jest.mock("@/lib/server/studio-project-access", () => ({ resolveStudioProjectAccess: jest.fn() }));
+jest.mock("@/lib/server/nest-portable-export", () => ({
+  buildPortableNestExport: jest.fn(),
+}));
+jest.mock("@/lib/server/quipsly-session", () => ({
+  getQuipslySessionFromRequest: jest.fn(),
+}));
+jest.mock("@/lib/server/studio-project-access", () => ({
+  resolveStudioProjectAccess: jest.fn(),
+}));
 
 describe("portable Nest export route", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -39,15 +45,29 @@ describe("portable Nest export route", () => {
       projectSlug: "private",
     });
     jest.mocked(buildPortableNestExport).mockResolvedValue({
-      schemaVersion: "quipsly-nest-export-v1",
+      schemaVersion: "quipsly-nest-export-v2",
       exportedAt: "2026-07-24T21:00:00.000Z",
-      sourceNest: { id: "project-1", slug: "private", name: "Private", description: null, sourceLabel: null, updatedAt: "2026-07-24T20:00:00.000Z" },
+      sourceNest: {
+        id: "project-1",
+        slug: "private",
+        name: "Private",
+        description: null,
+        sourceLabel: null,
+        updatedAt: "2026-07-24T20:00:00.000Z",
+      },
       tags: [],
       notes: [],
       tasks: [],
       goals: [],
       goalTaskLinks: [],
       planBlocks: [],
+      sourceStory: {
+        sourceRevisions: [],
+        sourceSets: [],
+        sourceRanges: [],
+        cards: [],
+        boards: [],
+      },
       boundaries: {
         ownerAuthorized: true,
         actorScopedWork: true,
@@ -58,6 +78,11 @@ describe("portable Nest export route", () => {
         remindersRestoredActive: false,
         recurrenceRestoredActive: false,
         planBlocksRestoreAsCanceled: true,
+        sourceStoryIncluded: true,
+        sourceReferenceMetadataIncluded: true,
+        restoredSourceReferencesAvailable: false,
+        providerCredentialsIncluded: false,
+        providerLocatorsIncluded: false,
         externalResourcesFetched: false,
         externalSideEffects: false,
       },
@@ -75,6 +100,16 @@ describe("portable Nest export route", () => {
         progressReceiptCount: 0,
         goalTaskLinkCount: 0,
         planBlockCount: 0,
+        sourceRevisionCount: 0,
+        sourceSetCount: 0,
+        sourceSetMemberCount: 0,
+        sourceRangeCount: 0,
+        storyCardCount: 0,
+        storyCardRevisionCount: 0,
+        storyBoardCount: 0,
+        storySectionCount: 0,
+        storyPlacementCount: 0,
+        storyOperationCount: 0,
       },
     });
 
@@ -84,8 +119,12 @@ describe("portable Nest export route", () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("content-disposition")).toContain("quipsly-private-nest-2026-07-24.json");
-    expect(resolveStudioProjectAccess).toHaveBeenCalledWith(expect.objectContaining({ action: "manage" }));
+    expect(response.headers.get("content-disposition")).toContain(
+      "quipsly-private-nest-2026-07-24.json",
+    );
+    expect(resolveStudioProjectAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "manage" }),
+    );
     expect(buildPortableNestExport).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "prisma" }),
       { projectId: "project-1", actorUserId: "user-1" },

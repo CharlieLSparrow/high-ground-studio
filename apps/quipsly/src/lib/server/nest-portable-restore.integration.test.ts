@@ -14,619 +14,1129 @@ import {
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
-const runLocalDatabaseSmoke = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
+const runLocalDatabaseSmoke =
+  process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
 if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {
   if (!process.env.QUIPSLY_LOCAL_DATABASE_URL) {
-    throw new Error("QUIPSLY_LOCAL_DATABASE_URL is required for the portable Nest restore smoke.");
+    throw new Error(
+      "QUIPSLY_LOCAL_DATABASE_URL is required for the portable Nest restore smoke.",
+    );
   }
   process.env.DATABASE_URL = process.env.QUIPSLY_LOCAL_DATABASE_URL;
 }
 
-runLocalDatabaseSmoke("portable Nest export and restore local database smoke", () => {
-  const prisma = getPrismaClient();
-  const nonce = randomUUID().slice(0, 8);
-  const actorEmail = `nest-portable-${nonce}@example.test`;
-  const otherEmail = `nest-portable-other-${nonce}@example.test`;
-  let actorUserId = "";
-  let otherUserId = "";
-  let workspaceId = "";
-  let sourceProjectId = "";
-  let targetProjectId = "";
-  let sourceTagId = "";
-  let sourceTaskId = "";
-  let otherTaskId = "";
-  let sourceGoalId = "";
-  let sourcePlanBlockId = "";
-  let sourcePersonalDraftId = "";
-  const restoredTaskIds: string[] = [];
-  const restoredGoalIds: string[] = [];
-  const restoredPlanBlockIds: string[] = [];
+runLocalDatabaseSmoke(
+  "portable Nest export and restore local database smoke",
+  () => {
+    const prisma = getPrismaClient();
+    const nonce = randomUUID().slice(0, 8);
+    const actorEmail = `nest-portable-${nonce}@example.test`;
+    const otherEmail = `nest-portable-other-${nonce}@example.test`;
+    let actorUserId = "";
+    let otherUserId = "";
+    let workspaceId = "";
+    let sourceProjectId = "";
+    let targetProjectId = "";
+    let sourceTagId = "";
+    let sourceTaskId = "";
+    let otherTaskId = "";
+    let sourceGoalId = "";
+    let sourcePlanBlockId = "";
+    let sourcePersonalDraftId = "";
+    let sourceStoryWritingId = "";
+    let sourceRevisionId = "";
+    let sourceSetId = "";
+    let sourceRangeId = "";
+    let sourceCardId = "";
+    let sourceBoardId = "";
+    const restoredTaskIds: string[] = [];
+    const restoredGoalIds: string[] = [];
+    const restoredPlanBlockIds: string[] = [];
 
-  beforeAll(async () => {
-    const [actor, other] = await Promise.all([
-      prisma.user.create({ data: { primaryEmail: actorEmail, name: "Portable Nest owner" } }),
-      prisma.user.create({ data: { primaryEmail: otherEmail, name: "Other collaborator" } }),
-    ]);
-    actorUserId = actor.id;
-    otherUserId = other.id;
-    const workspace = await prisma.studioWorkspace.create({
-      data: { slug: `nest-portable-${nonce}`, name: "Portable Nest smoke", isPrivate: true },
-    });
-    workspaceId = workspace.id;
-    const [source, target] = await Promise.all([
-      prisma.studioProject.create({
+    beforeAll(async () => {
+      const [actor, other] = await Promise.all([
+        prisma.user.create({
+          data: { primaryEmail: actorEmail, name: "Portable Nest owner" },
+        }),
+        prisma.user.create({
+          data: { primaryEmail: otherEmail, name: "Other collaborator" },
+        }),
+      ]);
+      actorUserId = actor.id;
+      otherUserId = other.id;
+      const workspace = await prisma.studioWorkspace.create({
         data: {
-          workspaceId,
-          slug: `portable-source-${nonce}`,
-          name: "Portable source",
-          description: "Source project for exact restore proof.",
-          sourceLabel: "nest-kind:writing",
+          slug: `nest-portable-${nonce}`,
+          name: "Portable Nest smoke",
           isPrivate: true,
         },
-      }),
-      prisma.studioProject.create({
-        data: {
-          workspaceId,
-          slug: `portable-target-${nonce}`,
-          name: "Portable target",
-          sourceLabel: "nest-kind:writing",
-          isPrivate: true,
-        },
-      }),
-    ]);
-    sourceProjectId = source.id;
-    targetProjectId = target.id;
-    const sourceTag = await prisma.studioTag.create({
-      data: {
-        projectId: sourceProjectId,
-        slug: "proof-listen",
-        label: "Proof listen",
-        category: "review",
-        nodeType: "source_note",
-        isPrivate: true,
-      },
-    });
-    sourceTagId = sourceTag.id;
-    await prisma.studioTagAlias.create({
-      data: {
-        projectId: sourceProjectId,
-        tagId: sourceTag.id,
-        slug: "old-proof",
-        label: "Old proof",
-        createdByUserId: actorUserId,
-        provenanceJson: { source: "explicit rename" },
-      },
-    });
-    await prisma.studioTagAlias.create({
-      data: {
-        projectId: sourceProjectId,
-        tagId: sourceTag.id,
-        slug: "proofing",
-        label: "Proofing",
-        createdByUserId: actorUserId,
-        provenanceJson: { source: "historical collision" },
-      },
-    });
-    await prisma.studioTagRevision.create({
-      data: {
-        tagId: sourceTag.id,
-        revision: 1,
-        operation: "created",
-        actorUserId,
-        snapshotJson: { label: "Proof listen" },
-      },
-    });
-    await prisma.studioTag.create({
-      data: {
-        projectId: sourceProjectId,
-        slug: "proofing",
-        label: "Proofing canonical",
-        category: "review",
-        nodeType: "source_note",
-        isPrivate: true,
-      },
-    });
-    await prisma.studioTag.create({
-      data: {
-        projectId: targetProjectId,
-        slug: "proof-listen",
-        label: "Different destination meaning",
-        category: "meaning",
-        nodeType: "principle",
-        isPrivate: false,
-      },
-    });
-
-    const note = await prisma.studioDocument.create({
-      data: {
-        projectId: sourceProjectId,
-        stableId: `portable-note-${nonce}`,
-        title: "Episode proof note",
-        sourceLabel: "document-kind:note;origin:integration-smoke",
-        projectionStatus: "private",
-        isPrivate: true,
-      },
-    });
-    const body = "Listen to the full episode before delivery.";
-    const noteBlock = await prisma.studioDocumentBlock.create({
-      data: {
-        documentId: note.id,
-        stableId: `portable-note-block-${nonce}`,
-        order: 0,
-        body,
-        sourceLabel: "document-kind:note;origin:integration-smoke",
-        projectionStatus: "private",
-        isPrivate: true,
-      },
-    });
-    await prisma.studioTaggedSpan.create({
-      data: {
-        documentId: note.id,
-        blockId: noteBlock.id,
-        tagId: sourceTag.id,
-        startOffset: 0,
-        endOffset: 6,
-        selectedText: "Listen",
-        documentStableId: note.stableId,
-        documentTitleSnapshot: note.title,
-        blockStableId: noteBlock.stableId,
-        projectionStatus: "private",
-        isPrivate: true,
-        createdByLabel: actorEmail,
-      },
-    });
-    await prisma.studioDocumentTagLink.create({
-      data: {
-        documentId: note.id,
-        tagId: sourceTag.id,
-        createdByUserId: actorUserId,
-        sourceJson: { source: "integration-smoke", documentLevel: true },
-      },
-    });
-
-    const personalDraft = await prisma.studioDocument.create({
-      data: {
-        projectId: sourceProjectId,
-        personalOwnerUserId: actorUserId,
-        stableId: `portable-personal-evidence-${nonce}`,
-        title: "Private evidence response",
-        sourceLabel: "Quipsly evidence draft",
-        sourcePath: "docs/research/private-evidence.md",
-        projectionStatus: "private",
-        isPrivate: true,
-      },
-    });
-    sourcePersonalDraftId = personalDraft.id;
-    await prisma.studioDocumentBlock.createMany({
-      data: [
-        {
-          documentId: personalDraft.id,
-          stableId: `portable-personal-evidence-block-${nonce}`,
-          order: 1,
-          title: "Pinned source evidence",
-          body: "> Immutable source excerpt",
-          sourceLabel: "Quipsly evidence draft",
-          projectionStatus: "private",
-          isPrivate: true,
-        },
-        {
-          documentId: personalDraft.id,
-          stableId: `portable-personal-response-block-${nonce}`,
-          order: 2,
-          title: "Response",
-          body: "Actor-owned interpretation.",
-          sourceLabel: "Quipsly evidence draft",
-          projectionStatus: "private",
-          isPrivate: true,
-        },
-      ],
-    });
-
-    const [task, otherTask, goal] = await Promise.all([
-      prisma.actionItem.create({
+      });
+      workspaceId = workspace.id;
+      const [source, target] = await Promise.all([
+        prisma.studioProject.create({
+          data: {
+            workspaceId,
+            slug: `portable-source-${nonce}`,
+            name: "Portable source",
+            description: "Source project for exact restore proof.",
+            sourceLabel: "nest-kind:writing",
+            isPrivate: true,
+          },
+        }),
+        prisma.studioProject.create({
+          data: {
+            workspaceId,
+            slug: `portable-target-${nonce}`,
+            name: "Portable target",
+            sourceLabel: "nest-kind:writing",
+            isPrivate: true,
+          },
+        }),
+      ]);
+      sourceProjectId = source.id;
+      targetProjectId = target.id;
+      const sourceTag = await prisma.studioTag.create({
         data: {
           projectId: sourceProjectId,
-          assignedUserId: actorUserId,
-          title: "Proof-listen the episode",
-          detail: "Use headphones and take notes.",
-          dueAt: new Date("2026-07-25T18:00:00.000Z"),
-          sourceJson: { source: "human" },
+          slug: "proof-listen",
+          label: "Proof listen",
+          category: "review",
+          nodeType: "source_note",
+          isPrivate: true,
         },
-      }),
-      prisma.actionItem.create({
+      });
+      sourceTagId = sourceTag.id;
+      await prisma.studioTagAlias.create({
         data: {
           projectId: sourceProjectId,
-          assignedUserId: otherUserId,
-          title: "Other person's assignment must be excluded",
+          tagId: sourceTag.id,
+          slug: "old-proof",
+          label: "Old proof",
+          createdByUserId: actorUserId,
+          provenanceJson: { source: "explicit rename" },
         },
-      }),
-      prisma.goal.create({
+      });
+      await prisma.studioTagAlias.create({
         data: {
           projectId: sourceProjectId,
-          ownerUserId: actorUserId,
-          title: "Publish a trustworthy episode",
-          description: "Finish the proof-listen before delivery.",
-          targetAt: new Date("2026-07-26T18:00:00.000Z"),
-          sourceJson: { source: "human" },
+          tagId: sourceTag.id,
+          slug: "proofing",
+          label: "Proofing",
+          createdByUserId: actorUserId,
+          provenanceJson: { source: "historical collision" },
         },
-      }),
-    ]);
-    sourceTaskId = task.id;
-    otherTaskId = otherTask.id;
-    sourceGoalId = goal.id;
-    await Promise.all([
-      prisma.actionItemTagLink.create({ data: { actionItemId: task.id, tagId: sourceTag.id, createdByUserId: actorUserId } }),
-      prisma.goalTagLink.create({ data: { goalId: goal.id, tagId: sourceTag.id, createdByUserId: actorUserId } }),
-      prisma.taskReminder.create({
+      });
+      await prisma.studioTagRevision.create({
         data: {
-          id: `portable-reminder-${nonce}`,
-          actionItemId: task.id,
-          ownerUserId: actorUserId,
-          remindAt: new Date("2026-07-25T17:00:00.000Z"),
-          sourceJson: { source: "human" },
-        },
-      }),
-      prisma.actionItemEvidenceReceipt.create({
-        data: {
-          id: `portable-task-evidence-${nonce}`,
-          actionItemId: task.id,
+          tagId: sourceTag.id,
+          revision: 1,
+          operation: "created",
           actorUserId,
-          kind: "TRANSCRIPT_CANDIDATE_MERGED",
-          note: "Reviewed exact transcript evidence.",
-          occurredAt: new Date("2026-07-24T19:30:00.000Z"),
-          evidenceJson: {
-            schema: "quipsly-transcript-task-evidence-merge-v1",
-            receiptId: `portable-task-review-${nonce}`,
-            actionCandidateId: `portable-action-candidate-${nonce}`,
-            mergedAt: "2026-07-24T19:30:00.000Z",
-            candidateSource: {
-              schema: "quipsly-transcript-derived-task-v1",
-              roomId: `portable-source-room-${nonce}`,
-              transcriptJobId: `portable-transcript-job-${nonce}`,
-              segmentId: `portable-transcript-segment-${nonce}`,
-              startSeconds: 12.4,
-              endSeconds: 18.2,
-              providerTextSha256: "a".repeat(64),
-              providerSpeakerLabel: "Coach",
-              effectiveTextSnapshot: "Proof-listen this exact commitment.",
-              effectiveSpeakerLabelSnapshot: "Coach",
-              acceptedCorrectionId: null,
-              recordingAssetId: `portable-recording-${nonce}`,
-              playbackSourceId: `portable-source-${nonce}`,
+          snapshotJson: { label: "Proof listen" },
+        },
+      });
+      await prisma.studioTag.create({
+        data: {
+          projectId: sourceProjectId,
+          slug: "proofing",
+          label: "Proofing canonical",
+          category: "review",
+          nodeType: "source_note",
+          isPrivate: true,
+        },
+      });
+      await prisma.studioTag.create({
+        data: {
+          projectId: targetProjectId,
+          slug: "proof-listen",
+          label: "Different destination meaning",
+          category: "meaning",
+          nodeType: "principle",
+          isPrivate: false,
+        },
+      });
+
+      const note = await prisma.studioDocument.create({
+        data: {
+          projectId: sourceProjectId,
+          stableId: `portable-note-${nonce}`,
+          title: "Episode proof note",
+          sourceLabel: "document-kind:note;origin:integration-smoke",
+          projectionStatus: "private",
+          isPrivate: true,
+        },
+      });
+      const body = "Listen to the full episode before delivery.";
+      const noteBlock = await prisma.studioDocumentBlock.create({
+        data: {
+          documentId: note.id,
+          stableId: `portable-note-block-${nonce}`,
+          order: 0,
+          body,
+          sourceLabel: "document-kind:note;origin:integration-smoke",
+          projectionStatus: "private",
+          isPrivate: true,
+        },
+      });
+      await prisma.studioTaggedSpan.create({
+        data: {
+          documentId: note.id,
+          blockId: noteBlock.id,
+          tagId: sourceTag.id,
+          startOffset: 0,
+          endOffset: 6,
+          selectedText: "Listen",
+          documentStableId: note.stableId,
+          documentTitleSnapshot: note.title,
+          blockStableId: noteBlock.stableId,
+          projectionStatus: "private",
+          isPrivate: true,
+          createdByLabel: actorEmail,
+        },
+      });
+      await prisma.studioDocumentTagLink.create({
+        data: {
+          documentId: note.id,
+          tagId: sourceTag.id,
+          createdByUserId: actorUserId,
+          sourceJson: { source: "integration-smoke", documentLevel: true },
+        },
+      });
+
+      const personalDraft = await prisma.studioDocument.create({
+        data: {
+          projectId: sourceProjectId,
+          personalOwnerUserId: actorUserId,
+          stableId: `portable-personal-evidence-${nonce}`,
+          title: "Private evidence response",
+          sourceLabel: "Quipsly evidence draft",
+          sourcePath: "docs/research/private-evidence.md",
+          projectionStatus: "private",
+          isPrivate: true,
+        },
+      });
+      sourcePersonalDraftId = personalDraft.id;
+      await prisma.studioDocumentBlock.createMany({
+        data: [
+          {
+            documentId: personalDraft.id,
+            stableId: `portable-personal-evidence-block-${nonce}`,
+            order: 1,
+            title: "Pinned source evidence",
+            body: "> Immutable source excerpt",
+            sourceLabel: "Quipsly evidence draft",
+            projectionStatus: "private",
+            isPrivate: true,
+          },
+          {
+            documentId: personalDraft.id,
+            stableId: `portable-personal-response-block-${nonce}`,
+            order: 2,
+            title: "Response",
+            body: "Actor-owned interpretation.",
+            sourceLabel: "Quipsly evidence draft",
+            projectionStatus: "private",
+            isPrivate: true,
+          },
+        ],
+      });
+
+      const storyWriting = await prisma.studioDocument.create({
+        data: {
+          projectId: sourceProjectId,
+          stableId: `portable-story-writing-${nonce}`,
+          title: "Episode opening visual beat",
+          sourceLabel: "Story board section",
+          projectionStatus: "private",
+          isPrivate: true,
+        },
+      });
+      sourceStoryWritingId = storyWriting.id;
+      await prisma.studioDocumentBlock.create({
+        data: {
+          documentId: storyWriting.id,
+          stableId: `portable-story-writing-block-${nonce}`,
+          order: 0,
+          body: "Open on the exact lakeside select, then move into the conversation.",
+          sourceLabel: "Story board section",
+          projectionStatus: "private",
+          isPrivate: true,
+        },
+      });
+      const externalReference =
+        await prisma.studioExternalMediaReference.create({
+          data: {
+            projectId: sourceProjectId,
+            provider: "fixture",
+            externalFileId: `portable-source-file-${nonce}`,
+            fileName: `LRV_${nonce}.lrv`,
+            sizeBytes: 102_420_828n,
+            checksumSha256: "c".repeat(64),
+            accessState: "verified",
+            capabilityState: "readable",
+            providerLocatorJson: { providerLocator: "must-not-export" },
+            capabilitySnapshotJson: { scope: "fixture" },
+            importedByUserId: actorUserId,
+            importedByEmail: actorEmail,
+            clientRequestId: `portable-external-reference-${nonce}`,
+          },
+        });
+      const sourceRevision = await prisma.studioMediaSourceRevision.create({
+        data: {
+          projectId: sourceProjectId,
+          externalReferenceId: externalReference.id,
+          revisionKey: `portable-source-revision-${nonce}`,
+          identitySha256: "b".repeat(64),
+          contentSha256: "c".repeat(64),
+          sizeBytes: 102_420_828n,
+          durationSeconds: 81.76,
+          widthPixels: 1920,
+          heightPixels: 960,
+          framesPerSecond: 29.97,
+          mediaProjection: "equirectangular",
+          sourceState: "available",
+          verifiedAt: new Date("2026-07-24T18:00:00.000Z"),
+          verificationJson: { provider: "fixture", bytesVerified: true },
+          provenanceJson: { source: "portable-integration-smoke" },
+          createdByUserId: actorUserId,
+        },
+      });
+      sourceRevisionId = sourceRevision.id;
+      const sourceSet = await prisma.studioMediaSourceSet.create({
+        data: {
+          projectId: sourceProjectId,
+          kind: "insta360-camera-package",
+          captureKey: `VID_20260402_080506_${nonce}`,
+          displayName: "Episode 5 lakeside select",
+          identitySha256: "d".repeat(64),
+          sourceClockRevisionId: sourceRevision.id,
+          completeness: "complete",
+          metadataJson: { providerLocator: "must-not-export" },
+          clientRequestId: `portable-source-set-${nonce}`,
+          createdByUserId: actorUserId,
+        },
+      });
+      sourceSetId = sourceSet.id;
+      await prisma.studioMediaSourceSetMember.create({
+        data: {
+          sourceSetId: sourceSet.id,
+          sourceRevisionId: sourceRevision.id,
+          role: "browse-proxy",
+          ordinal: 0,
+          requiredForRender: false,
+          memberIdentitySha256: "e".repeat(64),
+          metadataJson: { localPath: "/must/not/export.mov" },
+        },
+      });
+      const sourceRange = await prisma.studioSourceRange.create({
+        data: {
+          projectId: sourceProjectId,
+          sourceRevisionId: sourceRevision.id,
+          sourceSetId: sourceSet.id,
+          selectorSha256: "f".repeat(64),
+          startSeconds: 12.25,
+          endSeconds: 24.5,
+          selectorJson: {
+            schema: "quipsly-source-range-v1",
+            startSeconds: 12.25,
+            endSeconds: 24.5,
+          },
+          reframeRecipeJson: {
+            schema: "quipsly-360-reframe-v1",
+            projection: "equirectangular",
+            aspectRatio: "16:9",
+            stabilization: "flowstate",
+            horizonLock: true,
+            keyframes: [],
+          },
+          createdByUserId: actorUserId,
+        },
+      });
+      sourceRangeId = sourceRange.id;
+      const sourceCard = await prisma.studioStoryCard.create({
+        data: {
+          projectId: sourceProjectId,
+          sourceRangeId: sourceRange.id,
+          stableId: `portable-story-card-${nonce}`,
+          title: "Lakeside reveal",
+          synopsis: "Use the exact 360 select as the opening visual beat.",
+          notes: "Check horizon before conform.",
+          purpose: "opening",
+          status: "selected",
+          visibility: "project",
+          revision: 1,
+          clientRequestId: `portable-story-card-request-${nonce}`,
+          createdByUserId: actorUserId,
+        },
+      });
+      sourceCardId = sourceCard.id;
+      await Promise.all([
+        prisma.studioStoryCardRevision.create({
+          data: {
+            cardId: sourceCard.id,
+            revision: 1,
+            operation: "created",
+            actorUserId,
+            clientRequestId: `portable-story-card-revision-${nonce}`,
+            snapshotJson: {
+              title: sourceCard.title,
+              sourceRangeId: sourceRange.id,
             },
           },
-        },
-      }),
-      prisma.goalProgressReceipt.create({
+        }),
+        prisma.studioStoryCardTagLink.create({
+          data: {
+            cardId: sourceCard.id,
+            tagId: sourceTag.id,
+            createdByUserId: actorUserId,
+          },
+        }),
+      ]);
+      const sourceBoard = await prisma.studioStoryBoard.create({
         data: {
-          goalId: goal.id,
-          actorUserId,
-          kind: "check-in",
-          progressPercent: 25,
-          note: "Rough cut is ready.",
-          occurredAt: new Date("2026-07-24T20:00:00.000Z"),
-          evidenceJson: { source: "human review" },
-        },
-      }),
-      prisma.goalTaskLink.create({
-        data: {
-          goalId: goal.id,
-          actionItemId: task.id,
-          relationship: "CONTRIBUTES",
+          projectId: sourceProjectId,
+          clientRequestId: `portable-story-board-${nonce}`,
+          slug: `episode-opening-${nonce}`,
+          title: "Episode opening",
+          description: "The source-backed opening sequence.",
+          kind: "episode",
+          layout: "board",
+          revision: 1,
           createdByUserId: actorUserId,
-          sourceJson: { explicit: true },
         },
-      }),
-    ]);
-    const plan = await prisma.workPlanBlock.create({
-      data: {
-        ownerUserId: actorUserId,
-        actionItemId: task.id,
-        startsAt: new Date("2026-07-25T19:00:00.000Z"),
-        endsAt: new Date("2026-07-25T19:50:00.000Z"),
-        timezone: "America/Denver",
-        sourceJson: { source: "human plan" },
-      },
-    });
-    sourcePlanBlockId = plan.id;
-  });
+      });
+      sourceBoardId = sourceBoard.id;
+      const sourceSection = await prisma.studioStoryBoardSection.create({
+        data: {
+          boardId: sourceBoard.id,
+          key: "episode-open",
+          title: "Episode Open",
+          synopsis: "Establish place before the conversation starts.",
+          sortOrder: 0,
+          documentId: storyWriting.id,
+          revision: 1,
+          createdByUserId: actorUserId,
+        },
+      });
+      await Promise.all([
+        prisma.studioStoryBoardOperation.create({
+          data: {
+            boardId: sourceBoard.id,
+            revision: 1,
+            previousRevision: 0,
+            operation: "created",
+            actorUserId,
+            clientRequestId: `portable-story-board-operation-${nonce}`,
+            snapshotJson: { title: sourceBoard.title },
+          },
+        }),
+        prisma.studioStoryBoardSectionOperation.create({
+          data: {
+            sectionId: sourceSection.id,
+            revision: 1,
+            previousRevision: 0,
+            operation: "create-section",
+            actorUserId,
+            clientRequestId: `portable-story-section-operation-${nonce}`,
+            requestSha256: "1".repeat(64),
+            snapshotJson: {
+              key: sourceSection.key,
+              title: sourceSection.title,
+            },
+          },
+        }),
+        prisma.studioStoryBoardPlacement.create({
+          data: {
+            boardId: sourceBoard.id,
+            cardId: sourceCard.id,
+            groupKey: sourceSection.key,
+            laneKey: "b-roll",
+            sortOrder: 0,
+            createdByUserId: actorUserId,
+          },
+        }),
+      ]);
 
-  afterAll(async () => {
-    try {
-      await prisma.workPlanBlock.deleteMany({
-        where: {
-          id: { in: [sourcePlanBlockId, ...restoredPlanBlockIds].filter(Boolean) },
+      const [task, otherTask, goal] = await Promise.all([
+        prisma.actionItem.create({
+          data: {
+            projectId: sourceProjectId,
+            assignedUserId: actorUserId,
+            title: "Proof-listen the episode",
+            detail: "Use headphones and take notes.",
+            dueAt: new Date("2026-07-25T18:00:00.000Z"),
+            sourceJson: {
+              source: "human",
+              sourceCardAnchor: {
+                schema: "quipsly-source-card-action-anchor-v1",
+                projectSlug: source.slug,
+                storyCardId: sourceCard.id,
+                storyCardStableId: sourceCard.stableId,
+                storyCardTitle: sourceCard.title,
+                storyCardRevision: sourceCard.revision,
+                sourceRangeId: sourceRange.id,
+                startSeconds: sourceRange.startSeconds,
+                endSeconds: sourceRange.endSeconds,
+                selectorSha256: sourceRange.selectorSha256,
+                sourceRevisionId: sourceRevision.id,
+                sourceRevisionIdentitySha256: sourceRevision.identitySha256,
+                sourceSetId: sourceSet.id,
+                captureKey: sourceSet.captureKey,
+                sourceDisplayName: sourceSet.displayName,
+                boardId: sourceBoard.id,
+                boardTitle: sourceBoard.title,
+                boardSection: sourceSection.key,
+                boardLane: "b-roll",
+                immutableSourceRange: true,
+              },
+            },
+          },
+        }),
+        prisma.actionItem.create({
+          data: {
+            projectId: sourceProjectId,
+            assignedUserId: otherUserId,
+            title: "Other person's assignment must be excluded",
+          },
+        }),
+        prisma.goal.create({
+          data: {
+            projectId: sourceProjectId,
+            ownerUserId: actorUserId,
+            title: "Publish a trustworthy episode",
+            description: "Finish the proof-listen before delivery.",
+            targetAt: new Date("2026-07-26T18:00:00.000Z"),
+            sourceJson: { source: "human" },
+          },
+        }),
+      ]);
+      sourceTaskId = task.id;
+      otherTaskId = otherTask.id;
+      sourceGoalId = goal.id;
+      await Promise.all([
+        prisma.actionItemTagLink.create({
+          data: {
+            actionItemId: task.id,
+            tagId: sourceTag.id,
+            createdByUserId: actorUserId,
+          },
+        }),
+        prisma.goalTagLink.create({
+          data: {
+            goalId: goal.id,
+            tagId: sourceTag.id,
+            createdByUserId: actorUserId,
+          },
+        }),
+        prisma.taskReminder.create({
+          data: {
+            id: `portable-reminder-${nonce}`,
+            actionItemId: task.id,
+            ownerUserId: actorUserId,
+            remindAt: new Date("2026-07-25T17:00:00.000Z"),
+            sourceJson: { source: "human" },
+          },
+        }),
+        prisma.actionItemEvidenceReceipt.create({
+          data: {
+            id: `portable-task-evidence-${nonce}`,
+            actionItemId: task.id,
+            actorUserId,
+            kind: "TRANSCRIPT_CANDIDATE_MERGED",
+            note: "Reviewed exact transcript evidence.",
+            occurredAt: new Date("2026-07-24T19:30:00.000Z"),
+            evidenceJson: {
+              schema: "quipsly-transcript-task-evidence-merge-v1",
+              receiptId: `portable-task-review-${nonce}`,
+              actionCandidateId: `portable-action-candidate-${nonce}`,
+              mergedAt: "2026-07-24T19:30:00.000Z",
+              candidateSource: {
+                schema: "quipsly-transcript-derived-task-v1",
+                roomId: `portable-source-room-${nonce}`,
+                transcriptJobId: `portable-transcript-job-${nonce}`,
+                segmentId: `portable-transcript-segment-${nonce}`,
+                startSeconds: 12.4,
+                endSeconds: 18.2,
+                providerTextSha256: "a".repeat(64),
+                providerSpeakerLabel: "Coach",
+                effectiveTextSnapshot: "Proof-listen this exact commitment.",
+                effectiveSpeakerLabelSnapshot: "Coach",
+                acceptedCorrectionId: null,
+                recordingAssetId: `portable-recording-${nonce}`,
+                playbackSourceId: `portable-source-${nonce}`,
+              },
+            },
+          },
+        }),
+        prisma.goalProgressReceipt.create({
+          data: {
+            goalId: goal.id,
+            actorUserId,
+            kind: "check-in",
+            progressPercent: 25,
+            note: "Rough cut is ready.",
+            occurredAt: new Date("2026-07-24T20:00:00.000Z"),
+            evidenceJson: { source: "human review" },
+          },
+        }),
+        prisma.goalTaskLink.create({
+          data: {
+            goalId: goal.id,
+            actionItemId: task.id,
+            relationship: "CONTRIBUTES",
+            createdByUserId: actorUserId,
+            sourceJson: { explicit: true },
+          },
+        }),
+      ]);
+      const plan = await prisma.workPlanBlock.create({
+        data: {
+          ownerUserId: actorUserId,
+          actionItemId: task.id,
+          startsAt: new Date("2026-07-25T19:00:00.000Z"),
+          endsAt: new Date("2026-07-25T19:50:00.000Z"),
+          timezone: "America/Denver",
+          sourceJson: { source: "human plan" },
         },
       });
-      await prisma.goal.deleteMany({
-        where: { id: { in: [sourceGoalId, ...restoredGoalIds].filter(Boolean) } },
-      });
-      await prisma.actionItem.deleteMany({
-        where: { id: { in: [sourceTaskId, otherTaskId, ...restoredTaskIds].filter(Boolean) } },
-      });
-      if (sourceProjectId || targetProjectId) {
-        await prisma.studioProject.deleteMany({
-          where: { id: { in: [sourceProjectId, targetProjectId].filter(Boolean) } },
+      sourcePlanBlockId = plan.id;
+    });
+
+    afterAll(async () => {
+      try {
+        await prisma.workPlanBlock.deleteMany({
+          where: {
+            id: {
+              in: [sourcePlanBlockId, ...restoredPlanBlockIds].filter(Boolean),
+            },
+          },
         });
+        await prisma.goal.deleteMany({
+          where: {
+            id: { in: [sourceGoalId, ...restoredGoalIds].filter(Boolean) },
+          },
+        });
+        await prisma.actionItem.deleteMany({
+          where: {
+            id: {
+              in: [sourceTaskId, otherTaskId, ...restoredTaskIds].filter(
+                Boolean,
+              ),
+            },
+          },
+        });
+        if (sourceProjectId || targetProjectId) {
+          const projectIds = [sourceProjectId, targetProjectId].filter(Boolean);
+          await prisma.studioStoryBoard.deleteMany({
+            where: { projectId: { in: projectIds } },
+          });
+          await prisma.studioStoryCard.deleteMany({
+            where: { projectId: { in: projectIds } },
+          });
+          await prisma.studioSourceRange.deleteMany({
+            where: { projectId: { in: projectIds } },
+          });
+          await prisma.studioMediaSourceSetMember.deleteMany({
+            where: { sourceSet: { projectId: { in: projectIds } } },
+          });
+          await prisma.studioMediaSourceSet.deleteMany({
+            where: { projectId: { in: projectIds } },
+          });
+          await prisma.studioMediaSourceRevision.deleteMany({
+            where: { projectId: { in: projectIds } },
+          });
+          await prisma.studioExternalMediaReference.deleteMany({
+            where: { projectId: { in: projectIds } },
+          });
+          await prisma.studioProject.deleteMany({
+            where: { id: { in: projectIds } },
+          });
+        }
+        if (workspaceId)
+          await prisma.studioWorkspace.deleteMany({
+            where: { id: workspaceId },
+          });
+        await prisma.user.deleteMany({
+          where: { id: { in: [actorUserId, otherUserId].filter(Boolean) } },
+        });
+      } finally {
+        await prisma.$disconnect();
       }
-      if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
-      await prisma.user.deleteMany({
-        where: { id: { in: [actorUserId, otherUserId].filter(Boolean) } },
-      });
-    } finally {
-      await prisma.$disconnect();
-    }
-  });
-
-  it("round-trips owner notes, tags, tasks, goals, links, and safe planning history without overwrites", async () => {
-    const exported = await buildPortableNestExport(prisma, {
-      projectId: sourceProjectId,
-      actorUserId,
-      exportedAt: new Date("2026-07-24T21:00:00.000Z"),
     });
-    expect(exported.tags).toEqual(expect.arrayContaining([expect.objectContaining({
-        slug: "proof-listen",
-        aliases: expect.arrayContaining([
-          expect.objectContaining({ slug: "old-proof" }),
-          expect.objectContaining({ slug: "proofing" }),
+
+    it("round-trips owner notes, tags, tasks, goals, links, and safe planning history without overwrites", async () => {
+      const exported = await buildPortableNestExport(prisma, {
+        projectId: sourceProjectId,
+        actorUserId,
+        exportedAt: new Date("2026-07-24T21:00:00.000Z"),
+      });
+      expect(exported.tags).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            slug: "proof-listen",
+            aliases: expect.arrayContaining([
+              expect.objectContaining({ slug: "old-proof" }),
+              expect.objectContaining({ slug: "proofing" }),
+            ]),
+          }),
         ]),
-      })]));
-    expect(exported).toMatchObject({
-      tasks: [{
-        id: sourceTaskId,
-        reminderSnapshot: { status: "ACTIVE" },
-        evidenceReceipts: [{
+      );
+      expect(exported).toMatchObject({
+        tasks: [
+          {
+            id: sourceTaskId,
+            reminderSnapshot: { status: "ACTIVE" },
+            evidenceReceipts: [
+              {
+                kind: "TRANSCRIPT_CANDIDATE_MERGED",
+                note: "Reviewed exact transcript evidence.",
+                evidenceJson: expect.objectContaining({
+                  schema: "quipsly-transcript-task-evidence-merge-v1",
+                }),
+              },
+            ],
+          },
+        ],
+        goals: [
+          { id: sourceGoalId, progressReceipts: [{ progressPercent: 25 }] },
+        ],
+        goalTaskLinks: [{ relationship: "CONTRIBUTES" }],
+        planBlocks: [{ id: sourcePlanBlockId, status: "PLANNED" }],
+        sourceStory: {
+          sourceRevisions: [{ id: sourceRevisionId, sourceState: "available" }],
+          sourceSets: [
+            { id: sourceSetId, members: [{ role: "browse-proxy" }] },
+          ],
+          sourceRanges: [
+            { id: sourceRangeId, startSeconds: 12.25, endSeconds: 24.5 },
+          ],
+          cards: [
+            {
+              id: sourceCardId,
+              title: "Lakeside reveal",
+              tagIds: [sourceTagId],
+            },
+          ],
+          boards: [
+            {
+              id: sourceBoardId,
+              sections: [{ documentId: sourceStoryWritingId }],
+              placements: [{ cardId: sourceCardId }],
+            },
+          ],
+        },
+        boundaries: {
+          actorScopedWork: true,
+          collaboratorAssignmentsIncluded: false,
+          remindersRestoredActive: false,
+          planBlocksRestoreAsCanceled: true,
+          sourceStoryIncluded: true,
+          sourceReferenceMetadataIncluded: true,
+          restoredSourceReferencesAvailable: false,
+          providerCredentialsIncluded: false,
+          providerLocatorsIncluded: false,
+        },
+      });
+      expect(JSON.stringify(exported.sourceStory)).not.toContain(
+        "must-not-export",
+      );
+      expect(exported.notes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: "Episode proof note",
+            blocks: [
+              expect.objectContaining({
+                spans: [expect.objectContaining({ selectedText: "Listen" })],
+              }),
+            ],
+          }),
+          expect.objectContaining({
+            id: sourcePersonalDraftId,
+            title: "Private evidence response",
+            sourceLabel: "Quipsly evidence draft",
+            personal: true,
+            blocks: [
+              expect.objectContaining({ title: "Pinned source evidence" }),
+              expect.objectContaining({ title: "Response" }),
+            ],
+          }),
+        ]),
+      );
+      expect(exported.tasks.some((task) => task.id === otherTaskId)).toBe(
+        false,
+      );
+
+      const validation = validateNestBundle(exported);
+      if (!validation.ok) throw new Error(validation.error);
+      const before = await buildNestRestorePlan(prisma, {
+        projectId: targetProjectId,
+        actorUserId,
+        bundle: validation.bundle,
+      });
+      expect(before).toMatchObject({
+        tagCreates: 2,
+        tagSlugCollisions: 1,
+        aliasCreates: 1,
+        aliasesDeferred: 1,
+        noteCreates: 3,
+        documentTagLinkCreates: 1,
+        taskCreates: 1,
+        taskEvidenceReceiptCreates: 1,
+        goalCreates: 1,
+        progressReceiptCreates: 1,
+        goalTaskLinkCreates: 1,
+        planBlockCreates: 1,
+        sourceRevisionCreates: 1,
+        sourceSetCreates: 1,
+        sourceRangeCreates: 1,
+        storyCardCreates: 1,
+        storyBoardCreates: 1,
+        storySectionCreates: 1,
+        storyPlacementCreates: 1,
+        sourceReferencesRestoredUnavailable: 1,
+        remindersDeferred: 1,
+        planBlocksCanceledForSafety: 1,
+        overwrites: 0,
+        sourceMutations: 0,
+        externalSideEffects: 0,
+      });
+
+      const first = await applyNestRestore(prisma, {
+        projectId: targetProjectId,
+        actorUserId,
+        actorEmail,
+        bundle: validation.bundle,
+        expectedPlanSha256: nestRestorePlanSha256(before),
+      });
+      restoredTaskIds.push(...Object.values(first.restoredTaskIds));
+      restoredGoalIds.push(...Object.values(first.restoredGoalIds));
+      restoredPlanBlockIds.push(...Object.values(first.restoredPlanBlockIds));
+      await expect(
+        prisma.studioDocument.findUniqueOrThrow({
+          where: {
+            id: first.restoredNoteDocumentIds[sourcePersonalDraftId],
+          },
+          select: {
+            personalOwnerUserId: true,
+            sourceLabel: true,
+            sourcePath: true,
+            blocks: {
+              orderBy: { order: "asc" },
+              select: { title: true, body: true },
+            },
+          },
+        }),
+      ).resolves.toMatchObject({
+        personalOwnerUserId: actorUserId,
+        sourceLabel: expect.stringContaining("Quipsly evidence draft"),
+        sourcePath: "docs/research/private-evidence.md",
+        blocks: [
+          {
+            title: "Pinned source evidence",
+            body: "> Immutable source excerpt",
+          },
+          {
+            title: "Response",
+            body: "Actor-owned interpretation.",
+          },
+        ],
+      });
+      await prisma.studioTag.update({
+        where: { id: first.restoredTagIds[sourceTagId] },
+        data: { label: "Destination owner edit" },
+      });
+      await expect(
+        applyNestRestore(prisma, {
+          projectId: targetProjectId,
+          actorUserId,
+          actorEmail,
+          bundle: validation.bundle,
+          expectedPlanSha256: nestRestorePlanSha256(before),
+        }),
+      ).rejects.toBeInstanceOf(NestRestorePlanChangedError);
+      const current = await buildNestRestorePlan(prisma, {
+        projectId: targetProjectId,
+        actorUserId,
+        bundle: validation.bundle,
+      });
+      const second = await applyNestRestore(prisma, {
+        projectId: targetProjectId,
+        actorUserId,
+        actorEmail,
+        bundle: validation.bundle,
+        expectedPlanSha256: nestRestorePlanSha256(current),
+      });
+      expect(current).toMatchObject({
+        tagCreates: 0,
+        tagReuses: 2,
+        aliasCreates: 0,
+        aliasReuses: 1,
+        aliasesDeferred: 1,
+        noteCreates: 0,
+        noteReuses: 3,
+        documentTagLinkCreates: 0,
+        taskCreates: 0,
+        taskReuses: 1,
+        taskEvidenceReceiptCreates: 0,
+        goalCreates: 0,
+        goalReuses: 1,
+        progressReceiptCreates: 0,
+        goalTaskLinkCreates: 0,
+        planBlockCreates: 0,
+        planBlockReuses: 1,
+        sourceRevisionCreates: 0,
+        sourceRevisionReuses: 1,
+        sourceSetCreates: 0,
+        sourceSetReuses: 1,
+        sourceRangeCreates: 0,
+        sourceRangeReuses: 1,
+        storyCardCreates: 0,
+        storyCardReuses: 1,
+        storyBoardCreates: 0,
+        storyBoardReuses: 1,
+        overwrites: 0,
+      });
+      expect(second.restoredTaskIds).toEqual(first.restoredTaskIds);
+      expect(second.restoredGoalIds).toEqual(first.restoredGoalIds);
+      expect(second.restoredNoteDocumentIds).toEqual(
+        first.restoredNoteDocumentIds,
+      );
+      expect(second.restoredStoryCardIds).toEqual(first.restoredStoryCardIds);
+      expect(second.restoredStoryBoardIds).toEqual(first.restoredStoryBoardIds);
+
+      const restoredTaskId = first.restoredTaskIds[sourceTaskId];
+      const restoredGoalId = first.restoredGoalIds[sourceGoalId];
+      const restoredPlanId = first.restoredPlanBlockIds[sourcePlanBlockId];
+      const exportedEpisodeNote = exported.notes.find(
+        (portableNote) => portableNote.title === "Episode proof note",
+      );
+      if (!exportedEpisodeNote)
+        throw new Error("portable episode note missing");
+      const [
+        task,
+        taskEvidence,
+        goal,
+        planBlock,
+        note,
+        reminderCount,
+        targetTags,
+        restoredRevision,
+        restoredSet,
+        restoredRange,
+        restoredCard,
+        restoredBoard,
+      ] = await Promise.all([
+        prisma.actionItem.findUnique({
+          where: { id: restoredTaskId },
+          include: { tagLinks: { include: { tag: true } } },
+        }),
+        prisma.actionItemEvidenceReceipt.findMany({
+          where: { actionItemId: restoredTaskId },
+          orderBy: { occurredAt: "asc" },
+        }),
+        prisma.goal.findUnique({
+          where: { id: restoredGoalId },
+          include: {
+            tagLinks: { include: { tag: true } },
+            progressReceipts: true,
+            taskLinks: true,
+          },
+        }),
+        prisma.workPlanBlock.findUnique({ where: { id: restoredPlanId } }),
+        prisma.studioDocument.findUnique({
+          where: { id: first.restoredNoteDocumentIds[exportedEpisodeNote.id] },
+          include: {
+            tagLinks: { include: { tag: true } },
+            blocks: { include: { taggedSpans: true } },
+          },
+        }),
+        prisma.taskReminder.count({ where: { actionItemId: restoredTaskId } }),
+        prisma.studioTag.findMany({
+          where: { projectId: targetProjectId },
+          include: { aliases: true },
+          orderBy: { label: "asc" },
+        }),
+        prisma.studioMediaSourceRevision.findUnique({
+          where: { id: first.restoredSourceRevisionIds[sourceRevisionId] },
+        }),
+        prisma.studioMediaSourceSet.findUnique({
+          where: { id: first.restoredSourceSetIds[sourceSetId] },
+          include: { members: true },
+        }),
+        prisma.studioSourceRange.findUnique({
+          where: { id: first.restoredSourceRangeIds[sourceRangeId] },
+        }),
+        prisma.studioStoryCard.findUnique({
+          where: { id: first.restoredStoryCardIds[sourceCardId] },
+          include: { revisions: true, tags: true },
+        }),
+        prisma.studioStoryBoard.findUnique({
+          where: { id: first.restoredStoryBoardIds[sourceBoardId] },
+          include: { sections: true, placements: true, operations: true },
+        }),
+      ]);
+      expect(task).toMatchObject({
+        projectId: targetProjectId,
+        assignedUserId: actorUserId,
+        title: "Proof-listen the episode",
+        tagLinks: [{ tag: { label: "Destination owner edit" } }],
+        sourceJson: {
+          sourceCardAnchor: {
+            projectSlug: `portable-target-${nonce}`,
+            storyCardId: first.restoredStoryCardIds[sourceCardId],
+            sourceRangeId: first.restoredSourceRangeIds[sourceRangeId],
+            sourceRevisionId: first.restoredSourceRevisionIds[sourceRevisionId],
+            sourceSetId: first.restoredSourceSetIds[sourceSetId],
+            boardId: first.restoredStoryBoardIds[sourceBoardId],
+            sourceAvailable: false,
+            immutableSourceRange: true,
+          },
+          reminderRestoredActive: false,
+          recurrenceRestoredActive: false,
+          overwroteExisting: false,
+          externalSideEffects: false,
+        },
+      });
+      expect(taskEvidence).toEqual([
+        expect.objectContaining({
           kind: "TRANSCRIPT_CANDIDATE_MERGED",
           note: "Reviewed exact transcript evidence.",
           evidenceJson: expect.objectContaining({
             schema: "quipsly-transcript-task-evidence-merge-v1",
           }),
-        }],
-      }],
-      goals: [{ id: sourceGoalId, progressReceipts: [{ progressPercent: 25 }] }],
-      goalTaskLinks: [{ relationship: "CONTRIBUTES" }],
-      planBlocks: [{ id: sourcePlanBlockId, status: "PLANNED" }],
-      boundaries: {
-        actorScopedWork: true,
-        collaboratorAssignmentsIncluded: false,
-        remindersRestoredActive: false,
-        planBlocksRestoreAsCanceled: true,
-      },
-    });
-    expect(exported.notes).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        title: "Episode proof note",
-        blocks: [expect.objectContaining({
-          spans: [expect.objectContaining({ selectedText: "Listen" })],
-        })],
-      }),
-      expect.objectContaining({
-        id: sourcePersonalDraftId,
-        title: "Private evidence response",
-        sourceLabel: "Quipsly evidence draft",
-        personal: true,
-        blocks: [
-          expect.objectContaining({ title: "Pinned source evidence" }),
-          expect.objectContaining({ title: "Response" }),
+        }),
+      ]);
+      expect(goal).toMatchObject({
+        projectId: targetProjectId,
+        ownerUserId: actorUserId,
+        title: "Publish a trustworthy episode",
+        progressReceipts: [{ progressPercent: 25 }],
+        taskLinks: [
+          { actionItemId: restoredTaskId, relationship: "CONTRIBUTES" },
         ],
-      }),
-    ]));
-    expect(exported.tasks.some((task) => task.id === otherTaskId)).toBe(false);
-
-    const validation = validateNestBundle(exported);
-    if (!validation.ok) throw new Error(validation.error);
-    const before = await buildNestRestorePlan(prisma, {
-      projectId: targetProjectId,
-      actorUserId,
-      bundle: validation.bundle,
-    });
-    expect(before).toMatchObject({
-      tagCreates: 2,
-      tagSlugCollisions: 1,
-      aliasCreates: 1,
-      aliasesDeferred: 1,
-      noteCreates: 2,
-      documentTagLinkCreates: 1,
-      taskCreates: 1,
-      taskEvidenceReceiptCreates: 1,
-      goalCreates: 1,
-      progressReceiptCreates: 1,
-      goalTaskLinkCreates: 1,
-      planBlockCreates: 1,
-      remindersDeferred: 1,
-      planBlocksCanceledForSafety: 1,
-      overwrites: 0,
-      sourceMutations: 0,
-      externalSideEffects: 0,
-    });
-
-    const first = await applyNestRestore(prisma, {
-      projectId: targetProjectId,
-      actorUserId,
-      actorEmail,
-      bundle: validation.bundle,
-      expectedPlanSha256: nestRestorePlanSha256(before),
-    });
-    restoredTaskIds.push(...Object.values(first.restoredTaskIds));
-    restoredGoalIds.push(...Object.values(first.restoredGoalIds));
-    restoredPlanBlockIds.push(...Object.values(first.restoredPlanBlockIds));
-    await expect(
-      prisma.studioDocument.findUniqueOrThrow({
-        where: {
-          id: first.restoredNoteDocumentIds[sourcePersonalDraftId],
+      });
+      expect(planBlock).toMatchObject({
+        ownerUserId: actorUserId,
+        actionItemId: restoredTaskId,
+        status: "CANCELED",
+        sourceJson: {
+          originalStatus: "PLANNED",
+          restoredCanceledForSafety: true,
+          externalCalendarMutated: false,
+          notificationScheduled: false,
         },
-        select: {
-          personalOwnerUserId: true,
-          sourceLabel: true,
-          sourcePath: true,
-          blocks: {
-            orderBy: { order: "asc" },
-            select: { title: true, body: true },
+      });
+      expect(note).toMatchObject({
+        projectId: targetProjectId,
+        title: "Episode proof note",
+        projectionStatus: "private",
+        isPrivate: true,
+        tagRevision: 1,
+        tagLinks: [{ tag: { label: "Destination owner edit" } }],
+        blocks: [
+          {
+            body: "Listen to the full episode before delivery.",
+            taggedSpans: [{ selectedText: "Listen" }],
           },
-        },
-      }),
-    ).resolves.toMatchObject({
-      personalOwnerUserId: actorUserId,
-      sourceLabel: expect.stringContaining("Quipsly evidence draft"),
-      sourcePath: "docs/research/private-evidence.md",
-      blocks: [
-        {
-          title: "Pinned source evidence",
-          body: "> Immutable source excerpt",
-        },
-        {
-          title: "Response",
-          body: "Actor-owned interpretation.",
-        },
-      ],
-    });
-    await prisma.studioTag.update({
-      where: { id: first.restoredTagIds[sourceTagId] },
-      data: { label: "Destination owner edit" },
-    });
-    await expect(applyNestRestore(prisma, {
-      projectId: targetProjectId,
-      actorUserId,
-      actorEmail,
-      bundle: validation.bundle,
-      expectedPlanSha256: nestRestorePlanSha256(before),
-    })).rejects.toBeInstanceOf(NestRestorePlanChangedError);
-    const current = await buildNestRestorePlan(prisma, {
-      projectId: targetProjectId,
-      actorUserId,
-      bundle: validation.bundle,
-    });
-    const second = await applyNestRestore(prisma, {
-      projectId: targetProjectId,
-      actorUserId,
-      actorEmail,
-      bundle: validation.bundle,
-      expectedPlanSha256: nestRestorePlanSha256(current),
-    });
-    expect(current).toMatchObject({
-      tagCreates: 0,
-      tagReuses: 2,
-      aliasCreates: 0,
-      aliasReuses: 1,
-      aliasesDeferred: 1,
-      noteCreates: 0,
-      noteReuses: 2,
-      documentTagLinkCreates: 0,
-      taskCreates: 0,
-      taskReuses: 1,
-      taskEvidenceReceiptCreates: 0,
-      goalCreates: 0,
-      goalReuses: 1,
-      progressReceiptCreates: 0,
-      goalTaskLinkCreates: 0,
-      planBlockCreates: 0,
-      planBlockReuses: 1,
-      overwrites: 0,
-    });
-    expect(second.restoredTaskIds).toEqual(first.restoredTaskIds);
-    expect(second.restoredGoalIds).toEqual(first.restoredGoalIds);
-    expect(second.restoredNoteDocumentIds).toEqual(first.restoredNoteDocumentIds);
-
-    const restoredTaskId = first.restoredTaskIds[sourceTaskId];
-    const restoredGoalId = first.restoredGoalIds[sourceGoalId];
-    const restoredPlanId = first.restoredPlanBlockIds[sourcePlanBlockId];
-    const exportedEpisodeNote = exported.notes.find(
-      (portableNote) => portableNote.title === "Episode proof note",
-    );
-    if (!exportedEpisodeNote) throw new Error("portable episode note missing");
-    const [task, taskEvidence, goal, planBlock, note, reminderCount, targetTags] = await Promise.all([
-      prisma.actionItem.findUnique({
-        where: { id: restoredTaskId },
-        include: { tagLinks: { include: { tag: true } } },
-      }),
-      prisma.actionItemEvidenceReceipt.findMany({
-        where: { actionItemId: restoredTaskId },
-        orderBy: { occurredAt: "asc" },
-      }),
-      prisma.goal.findUnique({
-        where: { id: restoredGoalId },
-        include: {
-          tagLinks: { include: { tag: true } },
-          progressReceipts: true,
-          taskLinks: true,
-        },
-      }),
-      prisma.workPlanBlock.findUnique({ where: { id: restoredPlanId } }),
-      prisma.studioDocument.findUnique({
-        where: { id: first.restoredNoteDocumentIds[exportedEpisodeNote.id] },
-        include: { tagLinks: { include: { tag: true } }, blocks: { include: { taggedSpans: true } } },
-      }),
-      prisma.taskReminder.count({ where: { actionItemId: restoredTaskId } }),
-      prisma.studioTag.findMany({
-        where: { projectId: targetProjectId },
-        include: { aliases: true },
-        orderBy: { label: "asc" },
-      }),
-    ]);
-    expect(task).toMatchObject({
-      projectId: targetProjectId,
-      assignedUserId: actorUserId,
-      title: "Proof-listen the episode",
-      tagLinks: [{ tag: { label: "Destination owner edit" } }],
-      sourceJson: {
-        reminderRestoredActive: false,
-        recurrenceRestoredActive: false,
+        ],
+      });
+      expect(reminderCount).toBe(0);
+      expect(restoredRevision).toMatchObject({
+        projectId: targetProjectId,
+        identitySha256: "b".repeat(64),
+        contentSha256: "c".repeat(64),
+        sizeBytes: 102_420_828n,
+        sourceState: "portable-reference",
+        verifiedAt: null,
+        verificationJson: expect.objectContaining({
+          mediaBytesPresent: false,
+          providerCapabilityPresent: false,
+          requiresExplicitRelink: true,
+        }),
+      });
+      expect(restoredSet).toMatchObject({
+        projectId: targetProjectId,
+        identitySha256: "d".repeat(64),
+        sourceClockRevisionId:
+          first.restoredSourceRevisionIds[sourceRevisionId],
+        members: [
+          expect.objectContaining({
+            sourceRevisionId: first.restoredSourceRevisionIds[sourceRevisionId],
+            role: "browse-proxy",
+          }),
+        ],
+      });
+      expect(restoredRange).toMatchObject({
+        projectId: targetProjectId,
+        sourceRevisionId: first.restoredSourceRevisionIds[sourceRevisionId],
+        sourceSetId: first.restoredSourceSetIds[sourceSetId],
+        selectorSha256: "f".repeat(64),
+        startSeconds: 12.25,
+        endSeconds: 24.5,
+      });
+      expect(restoredCard).toMatchObject({
+        projectId: targetProjectId,
+        sourceRangeId: first.restoredSourceRangeIds[sourceRangeId],
+        title: "Lakeside reveal",
+        revision: 1,
+        revisions: [
+          expect.objectContaining({ operation: "restored-from-portable-nest" }),
+        ],
+        tags: [
+          expect.objectContaining({ tagId: first.restoredTagIds[sourceTagId] }),
+        ],
+      });
+      expect(restoredBoard).toMatchObject({
+        projectId: targetProjectId,
+        title: "Episode opening",
+        revision: 1,
+        sections: [
+          expect.objectContaining({
+            key: "episode-open",
+            documentId: first.restoredNoteDocumentIds[sourceStoryWritingId],
+          }),
+        ],
+        placements: [
+          expect.objectContaining({
+            cardId: first.restoredStoryCardIds[sourceCardId],
+            groupKey: "episode-open",
+          }),
+        ],
+        operations: [
+          expect.objectContaining({ operation: "restored-from-portable-nest" }),
+        ],
+      });
+      expect(targetTags).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            slug: "proof-listen",
+            label: "Different destination meaning",
+          }),
+          expect.objectContaining({
+            slug: expect.stringMatching(/^proof-listen-restored-/),
+            label: "Destination owner edit",
+            aliases: [expect.objectContaining({ slug: "old-proof" })],
+          }),
+          expect.objectContaining({
+            slug: "proofing",
+            label: "Proofing canonical",
+          }),
+        ]),
+      );
+      expect(first.boundaries).toMatchObject({
         overwroteExisting: false,
+        sourceMutated: false,
+        remindersRestoredActive: false,
+        recurrenceRestoredActive: false,
+        planBlocksRestoredCanceled: true,
+        sourceStoryRestored: true,
+        restoredSourceReferencesAvailable: false,
+        providerCredentialsRestored: false,
+        providerLocatorsRestored: false,
+        mediaBytesRestored: false,
         externalSideEffects: false,
-      },
+      });
+      expect(first.receipt.integrityRecomputed).toBe(true);
     });
-    expect(taskEvidence).toEqual([expect.objectContaining({
-      kind: "TRANSCRIPT_CANDIDATE_MERGED",
-      note: "Reviewed exact transcript evidence.",
-      evidenceJson: expect.objectContaining({
-        schema: "quipsly-transcript-task-evidence-merge-v1",
-      }),
-    })]);
-    expect(goal).toMatchObject({
-      projectId: targetProjectId,
-      ownerUserId: actorUserId,
-      title: "Publish a trustworthy episode",
-      progressReceipts: [{ progressPercent: 25 }],
-      taskLinks: [{ actionItemId: restoredTaskId, relationship: "CONTRIBUTES" }],
-    });
-    expect(planBlock).toMatchObject({
-      ownerUserId: actorUserId,
-      actionItemId: restoredTaskId,
-      status: "CANCELED",
-      sourceJson: {
-        originalStatus: "PLANNED",
-        restoredCanceledForSafety: true,
-        externalCalendarMutated: false,
-        notificationScheduled: false,
-      },
-    });
-    expect(note).toMatchObject({
-      projectId: targetProjectId,
-      title: "Episode proof note",
-      projectionStatus: "private",
-      isPrivate: true,
-      tagRevision: 1,
-      tagLinks: [{ tag: { label: "Destination owner edit" } }],
-      blocks: [{ body: "Listen to the full episode before delivery.", taggedSpans: [{ selectedText: "Listen" }] }],
-    });
-    expect(reminderCount).toBe(0);
-    expect(targetTags).toEqual(expect.arrayContaining([
-      expect.objectContaining({ slug: "proof-listen", label: "Different destination meaning" }),
-      expect.objectContaining({
-        slug: expect.stringMatching(/^proof-listen-restored-/),
-        label: "Destination owner edit",
-        aliases: [expect.objectContaining({ slug: "old-proof" })],
-      }),
-      expect.objectContaining({ slug: "proofing", label: "Proofing canonical" }),
-    ]));
-    expect(first.boundaries).toMatchObject({
-      overwroteExisting: false,
-      sourceMutated: false,
-      remindersRestoredActive: false,
-      recurrenceRestoredActive: false,
-      planBlocksRestoredCanceled: true,
-      externalSideEffects: false,
-    });
-    expect(first.receipt.integrityRecomputed).toBe(true);
-  });
-});
+  },
+);

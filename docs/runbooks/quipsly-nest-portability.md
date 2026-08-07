@@ -51,6 +51,11 @@ jq '{
 Expected safety declarations include:
 
 - `mediaBytesIncluded:false`
+- `sourceStoryIncluded:true`
+- `sourceReferenceMetadataIncluded:true`
+- `restoredSourceReferencesAvailable:false`
+- `providerCredentialsIncluded:false`
+- `providerLocatorsIncluded:false`
 - `sessionsIncluded:false`
 - `collaboratorAssignmentsIncluded:false`
 - `remindersRestoredActive:false`
@@ -72,6 +77,10 @@ Stop if any boundary is missing or different.
    - tags versioned because the destination already owns that slug;
    - aliases deferred because another canonical name already owns the slug;
    - notes, blocks, and exact anchors;
+   - source references, source sets, exact ranges, and unavailable-until-relink
+     count;
+   - Source Story cards, boards, sections, placements, and board-slug
+     collisions;
    - tasks, reminders deferred, and reuse count;
    - goals, progress receipts, and relationships;
    - canceled focus-block snapshots.
@@ -90,14 +99,21 @@ Then leave the restore page and verify the product, not just the response:
 1. Open the destination **Notes** view and reopen at least one note.
 2. Open **Work** and verify open/resolved Tasks, Goals, progress, and links.
 3. Search or filter by a restored canonical tag.
-4. Confirm no imported reminder is active.
-5. Confirm no recurrence series was activated.
-6. Confirm imported focus blocks are canceled history, not Calendar promises.
+4. Open **Source Story** and verify a restored board, card, exact range, and
+   linked writing section.
+5. Confirm the restored source is visibly unavailable and asks for a deliberate
+   relink; do not accept a package that implies Drive/local/provider access was
+   transferred.
+6. Open a restored source-card Task in **Work** and verify its evidence returns
+   to the restored card/range/board while reporting `sourceAvailable:false`.
+7. Confirm no imported reminder is active.
+8. Confirm no recurrence series was activated.
+9. Confirm imported focus blocks are canceled history, not Calendar promises.
 
 Return to **Backup and transfer**, load the same file, and validate again. The
-retry preview should show deterministic reuse and zero new note/task/goal/link
-records. Applying the same package again is a supported ambiguity-recovery
-check; it must not duplicate records.
+retry preview should show deterministic reuse and zero new
+note/source/card/board/task/goal/link records. Applying the same package again
+is a supported ambiguity-recovery check; it must not duplicate records.
 
 ## Local engineering proof
 
@@ -120,6 +136,13 @@ QUIPSLY_LOCAL_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/high_g
   src/lib/server/nest-portable-restore.integration.test.ts
 ```
 
+Read-only retained Episode 5 export and graph validation:
+
+```bash
+QUIPSLY_LOCAL_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio' \
+  pnpm quipsly:retained:episode5-nest-portability
+```
+
 Compiler and release authority:
 
 ```bash
@@ -130,8 +153,9 @@ pnpm quipsly:release:local
 
 The integration test refuses to run unless explicitly enabled. It creates a
 disposable owner, collaborator, source Nest, and destination Nest; exercises
-the real relational graph; independently reads it back; and deletes only those
-exact fixtures.
+the real relational graph including an Insta360-like source set, exact range,
+tagged card, writing section, board placement, and source-card Work anchor;
+independently reads it back; and deletes only those exact fixtures.
 
 ### Authenticated iPhone and HTTP operation
 
@@ -194,6 +218,9 @@ lab database.
   Deterministic IDs make retry safer than inventing a new package.
 - **Alias is deferred:** decide vocabulary in the destination. Restore will not
   steal an existing canonical or former-name route.
+- **Source says relink required:** expected. Select a destination provider or
+  local file deliberately and prove the exact checksum before changing source
+  availability. Never paste a provider locator into the portable JSON.
 - **Tag is versioned:** both meanings remain. Reconcile them later through the
   canonical tag lifecycle; do not edit restore rows directly.
 - **A package is tampered or malformed:** return to the source Nest and export a
