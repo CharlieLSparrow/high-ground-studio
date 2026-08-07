@@ -69,6 +69,45 @@ struct CaptureTranscriptSpeakerGroup: Codable, Identifiable, Equatable {
     var id: String { providerSpeakerLabel }
 }
 
+struct CaptureTranscriptImpactChanges: Codable, Equatable {
+    let text: String
+    let speaker: String
+    let correctionReceipt: String
+}
+
+struct CaptureTranscriptDownstreamImpact: Codable, Identifiable, Equatable {
+    let artifactId: String
+    let artifactKind: String
+    let label: String
+    let status: String?
+    let href: String
+    let artifactUpdatedAt: String
+    let canAcknowledge: Bool
+    let state: String
+    let evidenceSnapshotCount: Int
+    let priorTextSnapshot: String?
+    let currentTextSnapshot: String
+    let priorSpeakerLabelSnapshot: String?
+    let currentSpeakerLabel: String?
+    let evidenceCorrectionId: String?
+    let currentCorrectionId: String?
+    let changes: CaptureTranscriptImpactChanges
+
+    var id: String { "\(artifactKind):\(artifactId)" }
+
+    var needsReview: Bool { state == "needs-review" }
+
+    var kindLabel: String {
+        switch artifactKind {
+        case "note": "Note"
+        case "task": "Task"
+        case "goal": "Goal"
+        case "follow-up": "Follow-up"
+        default: "Linked item"
+        }
+    }
+}
+
 struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let id: String
     let speakerLabel: String?
@@ -84,6 +123,7 @@ struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let speakerAttribution: CaptureTranscriptSpeakerAttribution?
     let proposals: [CaptureTranscriptCorrection]
     let correctionHistory: [CaptureTranscriptCorrection]
+    var downstreamImpacts: [CaptureTranscriptDownstreamImpact]? = nil
 }
 
 struct CaptureTranscriptPlayback: Codable, Equatable {
@@ -141,7 +181,31 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
             acceptedVerification: nil,
             speakerAttribution: nil,
             proposals: [proposal],
-            correctionHistory: [proposal]
+            correctionHistory: [proposal],
+            downstreamImpacts: [
+                .init(
+                    artifactId: "preview-task",
+                    artifactKind: "task",
+                    label: "Review the final cut this week",
+                    status: "OPEN",
+                    href: "/tasks/preview-task",
+                    artifactUpdatedAt: "2026-07-18T00:00:00.000Z",
+                    canAcknowledge: true,
+                    state: "needs-review",
+                    evidenceSnapshotCount: 1,
+                    priorTextSnapshot: "I will review the final cat this week.",
+                    currentTextSnapshot: "I will review the final cut this week.",
+                    priorSpeakerLabelSnapshot: "Speaker",
+                    currentSpeakerLabel: "Charlie",
+                    evidenceCorrectionId: nil,
+                    currentCorrectionId: "preview-accepted-correction",
+                    changes: .init(
+                        text: "changed",
+                        speaker: "changed",
+                        correctionReceipt: "changed"
+                    )
+                ),
+            ]
         )
         let participant = CaptureTranscriptParticipant(
             id: "preview-participant-charlie",
@@ -1845,7 +1909,60 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         heldSpeakerAttributionCount = speakerAttributions.filter { $0.disposition == .held }.count
     }
 
-    private func mutate(roomID: String, body: [String: Any], success: String) async {
+    func acknowledgeDownstreamImpact(
+        roomID: String,
+        transcriptJobID: String,
+        segment: CaptureTranscriptSegment,
+        impact: CaptureTranscriptDownstreamImpact,
+        previewOnly: Bool
+    ) async {
+        guard !previewOnly else {
+            errorMessage = "Preview linked-work reviews are intentionally disabled."
+            return
+        }
+        guard impact.needsReview, impact.canAcknowledge else {
+            errorMessage = "Only the current linked-item owner can keep its content after reviewing the corrected source."
+            return
+        }
+        let requestIdentity = [
+            roomID,
+            transcriptJobID,
+            segment.id,
+            impact.artifactKind,
+            impact.artifactId,
+            impact.currentCorrectionId ?? "provider",
+            impact.artifactUpdatedAt,
+        ].joined(separator: "|")
+        let digest = SHA256.hash(data: Data(requestIdentity.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        await mutate(
+            roomID: roomID,
+            body: [
+                "operation": "acknowledge-transcript-impact",
+                "roomId": roomID,
+                "transcriptJobId": transcriptJobID,
+                "segmentId": segment.id,
+                "artifactKind": impact.artifactKind,
+                "artifactId": impact.artifactId,
+                "clientRequestId": "iphone-transcript-impact-\(digest)",
+                "expectedArtifactUpdatedAt": impact.artifactUpdatedAt,
+                "expectedAcceptedCorrectionId": impact.currentCorrectionId ?? NSNull(),
+                "expectedEffectiveText": impact.currentTextSnapshot,
+                "expectedEffectiveSpeakerLabel": impact.currentSpeakerLabel ?? NSNull(),
+                "confirmedContentStillValid": true,
+            ],
+            success: "Linked \(impact.kindLabel.lowercased()) reviewed against the corrected source. Its content stayed unchanged and Nest appended an audit receipt.",
+            replay: "That exact linked-item review receipt was already saved."
+        )
+    }
+
+    private func mutate(
+        roomID: String,
+        body: [String: Any],
+        success: String,
+        replay: String = "That reviewed correction was already saved."
+    ) async {
         guard !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
             errorMessage = "Sign in with a stable Quipsly account before changing transcript review."
             return
@@ -1868,9 +1985,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             }
             let payload = try JSONDecoder().decode(CaptureTranscriptMutationResponse.self, from: data)
             guard payload.ok else { throw captureTranscriptError(data: data, fallback: "Transcript review could not be saved.") }
-            message = payload.idempotentReplay == true ? "That reviewed correction was already saved." : success
+            message = payload.idempotentReplay == true ? replay : success
             await load(roomID: roomID, previewOnly: false)
-            if errorMessage == nil { message = payload.idempotentReplay == true ? "That reviewed correction was already saved." : success }
+            if errorMessage == nil { message = payload.idempotentReplay == true ? replay : success }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2470,6 +2587,12 @@ struct CaptureTranscriptReviewView: View {
                     } else if let desk = client.desk {
                         sourceTruth(desk)
                             .id("source-truth")
+                        if desk.segments.contains(where: { segment in
+                            (segment.downstreamImpacts ?? []).contains(where: \.needsReview)
+                        }) {
+                            transcriptImpactSummary(desk)
+                                .id("linked-work-impact")
+                        }
                         speakerIdentitySection(desk)
                             .id("speaker-identities")
                         if focusSegmentID != nil {
@@ -2765,6 +2888,53 @@ struct CaptureTranscriptReviewView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .reviewCard()
+    }
+
+    private func transcriptImpactSummary(_ desk: CaptureTranscriptCorrectionDesk) -> some View {
+        let affected = desk.segments.flatMap { segment in
+            (segment.downstreamImpacts ?? [])
+                .filter(\.needsReview)
+                .map { (segment.id, $0) }
+        }
+        let textChanges = affected.filter { $0.1.changes.text == "changed" }.count
+        let speakerChanges = affected.filter { $0.1.changes.speaker == "changed" }.count
+        let firstSegmentID = affected.first?.0
+        return VStack(alignment: .leading, spacing: 10) {
+            Label(
+                "\(affected.count) linked work item\(affected.count == 1 ? "" : "s") need review",
+                systemImage: "arrow.triangle.branch"
+            )
+            .font(.headline)
+            .foregroundStyle(.orange)
+            Text("A reviewed transcript correction changed evidence already carried into notes, tasks, goals, or follow-ups. Quipsly will not silently rewrite that work.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("\(textChanges) wording change\(textChanges == 1 ? "" : "s") · \(speakerChanges) speaker change\(speakerChanges == 1 ? "" : "s")")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if let firstSegmentID {
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                        scrollTargetSegmentID = firstSegmentID
+                    }
+                    accessibilityFocusedSegmentID = firstSegmentID
+                } label: {
+                    Label("Review first affected source", systemImage: "waveform.and.magnifyingglass")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+                .accessibilityIdentifier("CaptureTranscriptImpactReviewFirst")
+            }
+            Text("Reviewing only appends an owner-scoped receipt. The linked item's words, state, owner, dates, tags, delivery, and publication remain unchanged.")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .reviewCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptImpactSummary")
     }
 
     private func sourceTruth(_ desk: CaptureTranscriptCorrectionDesk) -> some View {
@@ -4535,6 +4705,7 @@ private struct CaptureTranscriptSegmentCard: View {
     @State private var noteKind = MobileSessionNoteKind.sessionNote
     @State private var noteVisibility = MobileSessionNoteVisibility.authorPrivate
     @State private var noteRequestID = "iphone-transcript-note-\(UUID().uuidString)"
+    @State private var confirmedImpactIDs: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -4608,6 +4779,10 @@ private struct CaptureTranscriptSegmentCard: View {
                 .padding(12)
                 .background(Color.indigo.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityIdentifier("CaptureTranscriptSpeakerAttribution_\(segment.id)")
+            }
+
+            if let impacts = segment.downstreamImpacts, !impacts.isEmpty {
+                downstreamImpactReview(impacts)
             }
 
             ForEach(segment.proposals) { proposal in
@@ -4712,6 +4887,177 @@ private struct CaptureTranscriptSegmentCard: View {
         .onDisappear {
             draftSaveTask?.cancel()
             persistDraftIfNeeded()
+        }
+    }
+
+    private func downstreamImpactReview(
+        _ impacts: [CaptureTranscriptDownstreamImpact]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Linked work after transcript correction", systemImage: "arrow.triangle.branch")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(impacts.contains(where: \.needsReview) ? Color.orange : Color.green)
+            Text("These are canonical items whose saved transcript evidence points to this exact segment. Quipsly compares evidence; it never rewrites the item automatically.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(impacts) { impact in
+                downstreamImpactCard(impact)
+            }
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.065), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptDownstreamImpacts_\(segment.id)")
+    }
+
+    @ViewBuilder
+    private func downstreamImpactCard(
+        _ impact: CaptureTranscriptDownstreamImpact
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(impact.kindLabel.uppercased())
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(impact.needsReview ? Color.orange : Color.green)
+                    Text(impact.label)
+                        .font(.subheadline.weight(.bold))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Text(impactStateLabel(impact))
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(impact.needsReview ? Color.orange : Color.green)
+                    .multilineTextAlignment(.trailing)
+            }
+
+            if impact.needsReview {
+                if impact.changes.text == "changed" {
+                    comparisonRow(
+                        title: "Words used by linked item",
+                        prior: impact.priorTextSnapshot,
+                        current: impact.currentTextSnapshot
+                    )
+                }
+                if impact.changes.speaker == "changed" {
+                    comparisonRow(
+                        title: "Speaker used by linked item",
+                        prior: impact.priorSpeakerLabelSnapshot,
+                        current: impact.currentSpeakerLabel
+                    )
+                }
+                if impact.changes.text != "changed", impact.changes.speaker != "changed" {
+                    Label(
+                        "The accepted correction receipt changed while the displayed wording and speaker stayed the same.",
+                        systemImage: "doc.badge.clock"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if impact.canAcknowledge {
+                    Toggle(
+                        "I read the corrected source and this \(impact.kindLabel.lowercased()) still says what I intend.",
+                        isOn: Binding(
+                            get: { confirmedImpactIDs.contains(impact.id) },
+                            set: { confirmed in
+                                if confirmed {
+                                    confirmedImpactIDs.insert(impact.id)
+                                } else {
+                                    confirmedImpactIDs.remove(impact.id)
+                                }
+                            }
+                        )
+                    )
+                    .font(.caption.weight(.semibold))
+                    .tint(.orange)
+                    .accessibilityIdentifier("CaptureTranscriptImpactConfirm_\(impact.artifactKind)_\(impact.artifactId)")
+                    Button {
+                        Task {
+                            guard let transcriptJobID = client.desk?.transcriptJobId else { return }
+                            await client.acknowledgeDownstreamImpact(
+                                roomID: roomID,
+                                transcriptJobID: transcriptJobID,
+                                segment: segment,
+                                impact: impact,
+                                previewOnly: previewOnly
+                            )
+                        }
+                    } label: {
+                        Label("Keep \(impact.kindLabel.lowercased()) as written", systemImage: "checkmark.seal")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .disabled(
+                        !confirmedImpactIDs.contains(impact.id)
+                            || client.isMutating
+                            || previewOnly
+                            || decisionsLocked
+                    )
+                    .accessibilityIdentifier("CaptureTranscriptImpactAcknowledge_\(impact.artifactKind)_\(impact.artifactId)")
+                    .accessibilityHint("Appends a review receipt without changing the linked item's content or state.")
+                } else {
+                    Label(
+                        "The current owner must review this item. You can inspect the evidence, but Capture will not broaden write authority.",
+                        systemImage: "person.badge.shield.checkmark"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            } else if impact.state == "snapshot-unavailable" {
+                Label(
+                    "This older item lacks an exact correction snapshot, so Quipsly cannot safely mark it current.",
+                    systemImage: "questionmark.diamond"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Label(
+                    "This linked item already carries current transcript evidence.",
+                    systemImage: "checkmark.circle.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.green)
+            }
+        }
+        .padding(11)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 11))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptImpact_\(impact.artifactKind)_\(impact.artifactId)")
+    }
+
+    private func comparisonRow(
+        title: String,
+        prior: String?,
+        current: String?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text("Before · \(captureTranscriptNonempty(prior) ?? "Snapshot unavailable")")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Current · \(captureTranscriptNonempty(current) ?? "Unlabelled")")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.green)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(9)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 9))
+    }
+
+    private func impactStateLabel(_ impact: CaptureTranscriptDownstreamImpact) -> String {
+        switch impact.state {
+        case "needs-review": "NEEDS REVIEW"
+        case "snapshot-unavailable": "OLDER EVIDENCE"
+        default: "CURRENT"
         }
     }
 

@@ -1720,6 +1720,8 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptImpactSummary"].exists)
+        XCTAssertTrue(app.buttons["CaptureTranscriptImpactReviewFirst"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerIdentitySection"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerGroup_Speaker"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerWordReviewBoundary_Speaker"].exists)
@@ -1777,6 +1779,13 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let aiProposal = app.staticTexts["CaptureTranscriptAIProposal"]
         reveal(aiProposal)
+        let downstreamImpact = app.descendants(matching: .any)["CaptureTranscriptImpact_task_preview-task"]
+        XCTAssertTrue(downstreamImpact.exists)
+        XCTAssertTrue(app.switches["CaptureTranscriptImpactConfirm_task_preview-task"].exists)
+        XCTAssertFalse(
+            app.buttons["CaptureTranscriptImpactAcknowledge_task_preview-task"].isEnabled,
+            "Preview may explain transcript consequence review but must never append a canonical receipt."
+        )
         XCTAssertTrue(aiProposal.exists)
         XCTAssertTrue(app.staticTexts["AI proposal · not transcript truth"].exists)
         XCTAssertFalse(app.buttons["CaptureTranscriptAcceptAIButton"].isEnabled)
