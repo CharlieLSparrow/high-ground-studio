@@ -1,4 +1,5 @@
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+import type { EpisodeRenderProfileId } from "@high-ground/quipsly-media-processing";
 
 export const PROGRAM_EDIT_VERSION = "quipsly-program-edit.v1" as const;
 
@@ -170,10 +171,54 @@ export type EpisodeEditProcessingJob = {
   completedAt: string | null;
   error: string | null;
   manifestSha256: string | null;
+  renderProfile: EpisodeRenderProfileId | null;
   branchRevision: number | null;
   proofStartSeconds: number | null;
   proofEndSeconds: number | null;
   playbackUrl: string | null;
+};
+
+export type EpisodeRenderExecutorPlan = {
+  id: "browser" | "local-mac" | "cloud";
+  label: string;
+  status: "ready" | "offline" | "held" | "not-configured";
+  canQueue: boolean;
+  detail: string;
+  costKind: "none" | "metered";
+  costDetail: string;
+  qualityDetail: string;
+};
+
+export type EpisodeRenderPlan = {
+  schema: "quipsly-episode-render-plan-v1";
+  branchRevision: number;
+  renderProfile: EpisodeRenderProfileId;
+  profileLabel: string;
+  profileDescription: string;
+  sequenceStartSeconds: number;
+  sequenceEndSeconds: number;
+  durationSeconds: number;
+  output: {
+    width: 1280;
+    height: 720;
+    fps: 24;
+    videoCodec: "h264";
+    audioCodec: "aac";
+  };
+  sources: {
+    requiredCount: number;
+    browserPlayableCount: number;
+    exactLocalCount: number;
+    totalBytes: number;
+    labels: string[];
+  };
+  executors: EpisodeRenderExecutorPlan[];
+  boundaries: {
+    createsNoJob: true;
+    sourceMediaRemainsImmutable: true;
+    cloudUploadNotStarted: true;
+    publicationNotStarted: true;
+  };
 };
 
 export type EpisodeEditExecutionWorker = {

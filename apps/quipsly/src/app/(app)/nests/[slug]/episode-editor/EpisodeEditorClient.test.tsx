@@ -226,6 +226,7 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
           completedAt: "2026-08-07T08:01:00.000Z",
           error: null,
           manifestSha256: null,
+          renderProfile: null,
           branchRevision: null,
           proofStartSeconds: null,
           proofEndSeconds: null,
@@ -254,6 +255,7 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
             completedAt: "2026-08-07T09:10:00.000Z",
             error: null,
             manifestSha256: "1".repeat(64),
+            renderProfile: "proof-10s",
             branchRevision: 1,
             proofStartSeconds: 0,
             proofEndSeconds: 10,
@@ -269,6 +271,7 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
             completedAt: "2026-08-07T03:22:00.000Z",
             error: null,
             manifestSha256: "3".repeat(64),
+            renderProfile: "proof-10s",
             branchRevision: 3,
             proofStartSeconds: 0,
             proofEndSeconds: 10,
@@ -278,32 +281,46 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
       },
     }} />);
 
-    expect(screen.getByText("Verified local proof · revision 3")).toBeInTheDocument();
+    expect(screen.getByText("Verified fast proof · revision 3")).toBeInTheDocument();
     expect(container.querySelector("video")?.getAttribute("src")).toBe("/api/ingest/media/proof-revision-3");
   });
 
-  it("enables a local proof render only when a current Mac worker is observed", () => {
-    const { rerender } = render(<EpisodeEditorClient initialPayload={payload} />);
-    expect(screen.getByRole("button", { name: "Render 10s proof here" })).toBeDisabled();
-    rerender(<EpisodeEditorClient key="worker-online" initialPayload={{
-      ...payload,
-      executionInspection: {
-        ...payload.executionInspection,
-        native: { status: "observed", detail: "This Mac is online at 24 fps." },
-        workers: [{
-          id: "worker-1",
-          label: "Wall-E.local",
-          executorKind: "local-mac",
-          status: "online",
-          buildId: "build-1",
-          lastHeartbeatAt: "2026-08-07T18:00:00.000Z",
-          jobTypes: ["episode-render-proof"],
-          renderProfiles: ["episode-edit-proof-1280x720-24fps-v1"],
-        }],
-      },
-    }} />);
-    expect(screen.getByRole("button", { name: "Render 10s proof here" })).toBeEnabled();
-    expect(screen.getByText("this Mac online")).toBeInTheDocument();
+  it("shows an honest side-effect-free executor plan before a local render can be queued", async () => {
+    const user = userEvent.setup();
+    const renderPlan = {
+      schema: "quipsly-episode-render-plan-v1",
+      branchRevision: 0,
+      renderProfile: "proof-10s",
+      profileLabel: "Fast proof",
+      profileDescription: "Ten seconds for checking the current cut, picture, and sound.",
+      sequenceStartSeconds: 0,
+      sequenceEndSeconds: 10,
+      durationSeconds: 10,
+      output: { width: 1280, height: 720, fps: 24, videoCodec: "h264", audioCodec: "aac" },
+      sources: { requiredCount: 3, browserPlayableCount: 3, exactLocalCount: 3, totalBytes: 2_097_152, labels: ["Camera", "Charlie", "Homer"] },
+      executors: [
+        { id: "browser", label: "Browser preview", status: "ready", canQueue: false, detail: "Keep editing immediately.", costKind: "none", costDetail: "No render compute or upload started", qualityDetail: "Protected proxies" },
+        { id: "local-mac", label: "This Mac", status: "ready", canQueue: true, detail: "Exact sources are ready.", costKind: "none", costDetail: "No incremental cloud compute or transfer", qualityDetail: "Exact local source bytes" },
+        { id: "cloud", label: "Quipsly Cloud", status: "not-configured", canQueue: false, detail: "Cloud rendering is intentionally unavailable.", costKind: "metered", costDetail: "No upload started", qualityDetail: "Planned exact originals" },
+      ],
+      boundaries: { createsNoJob: true, sourceMediaRemainsImmutable: true, cloudUploadNotStarted: true, publicationNotStarted: true },
+    } as const;
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ...payload, operationResult: renderPlan }),
+    });
+    global.fetch = fetchMock as typeof fetch;
+    render(<EpisodeEditorClient initialPayload={payload} />);
+
+    await user.click(screen.getByRole("button", { name: "Render options" }));
+    expect(await screen.findByText("This Mac")).toBeInTheDocument();
+    expect(screen.getByText("Quipsly Cloud")).toBeInTheDocument();
+    expect(screen.getByText(/No job, upload, or publication was started/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Render fast proof on this Mac" })).toBeEnabled();
+    expect(fetchMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      body: expect.stringContaining('"action":"plan-render-proof"'),
+    }));
   });
 
   it("makes ambiguous audio evidence actionable through exact source selection", async () => {

@@ -5,6 +5,7 @@ import type {
   EpisodeEditTranscriptProjection,
   EpisodeEditTranscriptSegment,
 } from "@/lib/editor/program-edit-contract";
+import { episodeRenderProfile } from "@high-ground/quipsly-media-processing";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -166,6 +167,14 @@ export function projectEpisodeEditProcessingJob(row: {
   const proof = record(input.proof);
   const result = record(row.resultJson);
   const registration = record(result.registration);
+  let renderProfile: EpisodeEditProcessingJob["renderProfile"] = null;
+  if (row.type === "episode-render-proof") {
+    try {
+      renderProfile = episodeRenderProfile(input.renderProfile ?? "proof-10s").id;
+    } catch {
+      renderProfile = null;
+    }
+  }
   return {
     id: row.id,
     type: row.type,
@@ -176,6 +185,7 @@ export function projectEpisodeEditProcessingJob(row: {
     completedAt: row.completedAt?.toISOString() ?? null,
     error: row.error,
     manifestSha256: text(input.manifestSha256),
+    renderProfile,
     branchRevision: number(input.branchRevision),
     proofStartSeconds: number(proof.sequenceStartSeconds),
     proofEndSeconds: number(proof.sequenceEndSeconds),

@@ -10,9 +10,11 @@ import {
   decisionAt,
   formatEditClock,
   type EpisodeEditDeskPayload,
+  type EpisodeRenderPlan,
   type ProgramDecisionKind,
   type ProgramEditSource,
 } from "@/lib/editor/program-edit-contract";
+import type { EpisodeRenderProfileId } from "@high-ground/quipsly-media-processing";
 import { EpisodeWorkspaceNav } from "../episodes/[episodeSlug]/EpisodeWorkspaceNav";
 import { EpisodeCaptureTakeHandoff } from "./EpisodeCaptureTakeHandoff";
 
@@ -26,6 +28,13 @@ const decisionColors: Record<ProgramDecisionKind, string> = {
   bothWithClip: "#d9a32b",
   custom: "#8b7aa8",
 };
+
+function formatBytes(value: number) {
+  if (!value) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const rank = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return `${(value / 1024 ** rank).toFixed(rank > 1 ? 1 : 0)} ${units[rank]}`;
+}
 
 function SourceMonitorCanvas({
   source,
@@ -95,6 +104,9 @@ export default function EpisodeEditorClient({
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
   const [tags, setTags] = useState("");
+  const [renderOptionsOpen, setRenderOptionsOpen] = useState(false);
+  const [renderPlan, setRenderPlan] = useState<EpisodeRenderPlan | null>(null);
+  const [selectedRenderProfile, setSelectedRenderProfile] = useState<EpisodeRenderProfileId>("proof-10s");
   const [sourcePlaybackFailures, setSourcePlaybackFailures] = useState<string[]>([]);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const listenAudioRef = useRef<HTMLAudioElement>(null);
@@ -313,7 +325,7 @@ export default function EpisodeEditorClient({
   const post = useCallback(async (body: Record<string, unknown>) => {
     if (!episode) return;
     setSaving(true);
-    setMessage("Saving...");
+    setMessage(body.action === "plan-render-proof" ? "Checking source and executor readiness…" : "Saving...");
     try {
       const response = await fetch(
         `/api/nests/${encodeURIComponent(payload.projectSlug)}/episode-editor`,
@@ -348,7 +360,13 @@ export default function EpisodeEditorClient({
             signalInspection: current.signalInspection,
             executionInspection: current.executionInspection,
           });
-      setMessage(body.action === "queue-render-proof"
+      if (body.action === "plan-render-proof") {
+        setRenderPlan(result.operationResult as EpisodeRenderPlan);
+        setRenderOptionsOpen(true);
+      }
+      setMessage(body.action === "plan-render-proof"
+        ? "Render options checked. No job, upload, or publication was started."
+        : body.action === "queue-render-proof"
         ? `Frozen revision ${result.branch?.headRevision ?? 0}; this Mac is rendering the proof.`
         : body.action === "register-render-proof"
           ? "Proof bytes verified and ready to watch."
@@ -905,30 +923,97 @@ export default function EpisodeEditorClient({
             <p className="mt-2 text-xs leading-5 text-[#b7c4b8]">{payload.executionInspection.browser.detail}</p>
             <div className="mt-3 rounded-xl border border-[#405a49] bg-[#14231b] p-3">
               <div className="flex items-center justify-between gap-2">
-                <strong className="text-sm">Advanced Studio</strong>
-                <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${localRenderWorkerOnline ? "bg-emerald-900/70 text-emerald-100" : "bg-[#26342c] text-[#a7b6ab]"}`}>
-                  {localRenderWorkerOnline ? "this Mac online" : "heartbeat unobserved"}
+                <div>
+                  <strong className="text-sm">Make something watchable</strong>
+                  <p className="mt-1 text-xs leading-5 text-[#8fa094]">Preview now, or freeze an exact-source review on an available executor.</p>
+                </div>
+                <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black uppercase ${localRenderWorkerOnline ? "bg-emerald-900/70 text-emerald-100" : "bg-[#26342c] text-[#a7b6ab]"}`}>
+                  {localRenderWorkerOnline ? "Mac observed" : "Mac unobserved"}
                 </span>
               </div>
-              <p className="mt-1 text-xs leading-5 text-[#8fa094]">{payload.executionInspection.native.detail}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={!payload.canEdit || saving || !payload.branch || !localRenderWorkerOnline}
-                  onClick={() => void post({ action: "queue-render-proof", sequenceTime: playhead, expectedRevision: payload.branch?.headRevision ?? 0 })}
+                  disabled={!payload.canEdit || saving || !payload.branch}
+                  onClick={() => void post({
+                    action: "plan-render-proof",
+                    sequenceTime: playhead,
+                    expectedRevision: payload.branch?.headRevision ?? 0,
+                    renderProfile: selectedRenderProfile,
+                  })}
                   className="inline-flex min-h-9 items-center rounded-lg bg-[#d8ad56] px-3 text-xs font-black text-[#172018] disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Render 10s proof here
+                  Render options
                 </button>
                 {episode ? <Link href={`/editor?project=${encodeURIComponent(payload.projectSlug)}&episode=${encodeURIComponent(episode.slug)}`} className="inline-flex min-h-9 items-center rounded-lg border border-[#587160] px-3 text-xs font-black text-[#e7c97d] hover:border-[#d8ad56]">Open Advanced Studio</Link> : null}
               </div>
-              {!localRenderWorkerOnline ? <p className="mt-2 text-[11px] leading-4 text-amber-100/80">Start the local Quipsly stack or Advanced Studio worker to render without cloud compute. The browser edit remains fully usable.</p> : null}
             </div>
+            {renderOptionsOpen ? (
+              <div className="mt-3 rounded-xl border border-[#587160] bg-[#0a130e] p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <strong className="text-sm">Review from {formatEditClock(renderPlan?.sequenceStartSeconds ?? playhead)}</strong>
+                    <p className="mt-1 text-[11px] leading-4 text-[#8fa094]">Checking options creates no job and starts no upload.</p>
+                  </div>
+                  <button type="button" onClick={() => setRenderOptionsOpen(false)} className="text-xs text-[#8fa094] hover:text-white">Close</button>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {(["proof-10s", "section-review-30s"] as const).map((profile) => (
+                    <button
+                      key={profile}
+                      type="button"
+                      disabled={saving || !payload.branch}
+                      onClick={() => {
+                        setSelectedRenderProfile(profile);
+                        void post({ action: "plan-render-proof", sequenceTime: playhead, expectedRevision: payload.branch?.headRevision ?? 0, renderProfile: profile });
+                      }}
+                      className={`rounded-lg border p-2 text-left text-xs ${selectedRenderProfile === profile ? "border-[#d8ad56] bg-[#2a321f] text-[#f4dfac]" : "border-[#405a49] text-[#b7c4b8]"}`}
+                    >
+                      <strong className="block">{profile === "proof-10s" ? "Fast proof" : "Section review"}</strong>
+                      <span className="mt-1 block text-[10px] opacity-75">{profile === "proof-10s" ? "Up to 10 seconds" : "Up to 30 seconds"}</span>
+                    </button>
+                  ))}
+                </div>
+                {renderPlan ? (
+                  <>
+                    <div className="mt-3 rounded-lg bg-[#14231b] p-3 text-[11px] text-[#b7c4b8]">
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <strong>{renderPlan.profileLabel} · {renderPlan.durationSeconds.toFixed(1)}s · 720p/24</strong>
+                        <span>{renderPlan.sources.exactLocalCount}/{renderPlan.sources.requiredCount} exact here · {formatBytes(renderPlan.sources.totalBytes)}</span>
+                      </div>
+                      <p className="mt-1 text-[#8fa094]">{renderPlan.profileDescription}</p>
+                    </div>
+                    <div className="mt-2 space-y-2">
+                      {renderPlan.executors.map((executor) => (
+                        <article key={executor.id} className="rounded-lg border border-[#30483a] bg-[#101b15] p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <strong className="text-xs">{executor.label}</strong>
+                            <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${executor.status === "ready" ? "bg-emerald-900/70 text-emerald-100" : executor.status === "held" ? "bg-amber-900/60 text-amber-100" : "bg-[#26342c] text-[#a7b6ab]"}`}>{executor.status.replaceAll("-", " ")}</span>
+                          </div>
+                          <p className="mt-1 text-[11px] leading-4 text-[#b7c4b8]">{executor.detail}</p>
+                          <p className="mt-1 text-[10px] text-[#789585]">{executor.qualityDetail} · {executor.costDetail}</p>
+                          {executor.id === "local-mac" ? (
+                            <button
+                              type="button"
+                              disabled={!executor.canQueue || saving || !payload.branch}
+                              onClick={() => void post({ action: "queue-render-proof", sequenceTime: renderPlan.sequenceStartSeconds, expectedRevision: renderPlan.branchRevision, renderProfile: renderPlan.renderProfile })}
+                              className="mt-2 inline-flex min-h-9 items-center rounded-lg bg-[#d8ad56] px-3 text-xs font-black text-[#172018] disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Render {renderPlan.profileLabel.toLowerCase()} on this Mac
+                            </button>
+                          ) : null}
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                ) : <p className="mt-3 text-xs text-[#8fa094]">Choose a review length to inspect source and executor readiness.</p>}
+              </div>
+            ) : null}
             {latestRenderProof?.playbackUrl ? (
               <div className="mt-3 overflow-hidden rounded-xl border border-emerald-500/30 bg-black">
                 <video controls playsInline preload="metadata" src={latestRenderProof.playbackUrl} className="aspect-video w-full bg-black" />
                 <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[10px] text-emerald-100/80">
-                  <span>Verified local proof · revision {latestRenderProof.branchRevision ?? payload.branch?.headRevision ?? 0}</span>
+                  <span>Verified {latestRenderProof.renderProfile === "section-review-30s" ? "section review" : "fast proof"} · revision {latestRenderProof.branchRevision ?? payload.branch?.headRevision ?? 0}</span>
                   <span className="font-mono">{latestRenderProof.manifestSha256?.slice(0, 12)}</span>
                 </div>
               </div>

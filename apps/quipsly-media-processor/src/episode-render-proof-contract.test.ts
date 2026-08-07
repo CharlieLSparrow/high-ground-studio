@@ -36,6 +36,19 @@ test("Episode render proof binds one exact branch revision, source set, and dete
   }, /manifest digest mismatch/);
 });
 
+test("section review profile accepts thirty seconds and rejects longer manifests", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-section-review-contract-"));
+  const sourcePath = path.join(root, "source.wav");
+  await writeFile(sourcePath, Buffer.alloc(4_096, 9));
+  const job = await renderJob(root, sourcePath, "section-review-30s");
+  assert.equal(job.renderProfile, "section-review-30s");
+  assert.equal(job.target.variantKind, "episode-section-review");
+  assert.equal(job.proof.sequenceEndSeconds - job.proof.sequenceStartSeconds, 30);
+  const tooLong = structuredClone(job);
+  tooLong.proof.sequenceEndSeconds += 0.01;
+  assert.throws(() => parseEpisodeRenderProofJob(tooLong), /contract or target authority is invalid/);
+});
+
 test("local proof worker preserves exact source bytes and emits an unapproved output-ready receipt", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "quipsly-render-proof-worker-"));
   const sourcePath = path.join(root, "source.wav");
@@ -70,6 +83,35 @@ test("local proof worker preserves exact source bytes and emits an unapproved ou
   assert.equal(await sha256File(sourcePath), job.sources[0]!.sha256);
 });
 
+test("local worker receipt preserves the section review variant", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-section-review-worker-"));
+  const sourcePath = path.join(root, "source.wav");
+  await writeFile(sourcePath, Buffer.alloc(8_192, 17));
+  const job = await renderJob(root, sourcePath, "section-review-30s");
+  let receipt: any = null;
+  const store: LocalEpisodeRenderProofStore = {
+    claim: async () => ({ id: job.jobId, inputJson: job, attempt: 1, executionId: "execution_section_0001" }),
+    complete: async (input) => { receipt = input.receipt; return true; },
+    retry: async () => true,
+    fail: async () => true,
+  };
+  const result = await runOneLocalEpisodeRenderProofJob(store, {
+    render: async (_job, outputPath) => {
+      await writeFile(outputPath, Buffer.alloc(16_384, 19));
+      return { durationSeconds: 30, width: 1280, height: 720, fps: 24, videoCodec: "h264", audioCodec: "aac", completeDecode: true, fastStart: true, ffmpegVersion: "ffmpeg version test" };
+    },
+  }, {
+    executionId: "execution_section_0001",
+    buildId: "build_section_0001",
+    imageDigest: null,
+    leaseMs: 60_000,
+    localMediaRoot: root,
+    now: () => new Date("2026-08-07T18:05:00.000Z"),
+  });
+  assert.equal(result.disposition, "completed", JSON.stringify(result));
+  assert.equal(receipt.output.variantKind, "episode-section-review");
+});
+
 test("local proof receipt and capability heartbeat share one execution identity", () => {
   const runtime = newLocalEpisodeRenderProofRuntime({
     pool: {} as never,
@@ -81,7 +123,7 @@ test("local proof receipt and capability heartbeat share one execution identity"
   assert.equal(runtime.options.executionId, "execution_process_0001");
 });
 
-async function renderJob(root: string, sourcePath: string) {
+async function renderJob(root: string, sourcePath: string, renderProfile: "proof-10s" | "section-review-30s" = "proof-10s") {
   const sha256 = await sha256File(sourcePath);
   const jobId = "render_proof_job_0001";
   const base = {
@@ -97,9 +139,10 @@ async function renderJob(root: string, sourcePath: string) {
     sourceProjectionFingerprintSha256: "b".repeat(64),
     editStateFingerprintSha256: "c".repeat(64),
     manifestSha256: "0".repeat(64),
+    renderProfile,
     proof: {
       sequenceStartSeconds: 5,
-      sequenceEndSeconds: 15,
+      sequenceEndSeconds: renderProfile === "proof-10s" ? 15 : 35,
       decisionId: null,
       decisionKind: "audio-source-through",
       visualLaneIds: [],
@@ -122,7 +165,7 @@ async function renderJob(root: string, sourcePath: string) {
       contentType: "audio/wav",
       sequenceOffsetSeconds: 0,
       sourceStartSeconds: 0,
-      sourceDurationSeconds: 30,
+      sourceDurationSeconds: renderProfile === "proof-10s" ? 30 : 40,
     }],
     target: {
       provider: "local" as const,
@@ -135,7 +178,7 @@ async function renderJob(root: string, sourcePath: string) {
       height: 720 as const,
       fps: 24 as const,
       sampleRateHz: 48_000 as const,
-      variantKind: "episode-edit-proof" as const,
+      variantKind: renderProfile === "proof-10s" ? "episode-edit-proof" as const : "episode-section-review" as const,
     },
   };
   const placeholder = newEpisodeRenderProofJob(base);

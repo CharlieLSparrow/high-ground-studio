@@ -10,15 +10,17 @@ import { promisify } from "node:util";
 import { Prisma } from "@prisma/client";
 import {
   buildEpisodeRenderProofTargetLocator,
+  episodeRenderProfile,
   episodeRenderProofManifestCanonicalJson,
   newEpisodeRenderProofJob,
   parseEpisodeRenderProofJob,
   parseEpisodeRenderProofResult,
+  type EpisodeRenderProfileId,
   type EpisodeRenderProofJob,
   type EpisodeRenderProofSource,
 } from "@high-ground/quipsly-media-processing";
 
-import { decisionAt, type ProgramEditState } from "@/lib/editor/program-edit-contract";
+import { decisionAt, type EpisodeRenderPlan, type ProgramEditState } from "@/lib/editor/program-edit-contract";
 import {
   ensureEpisodeEditBranch,
   projectCanonicalEpisodeEditState,
@@ -45,10 +47,60 @@ export type EpisodeRenderProofQueueResult = {
     status: string;
     branchRevision: number;
     manifestSha256: string;
+    renderProfile: EpisodeRenderProfileId;
     sequenceStartSeconds: number;
     sequenceEndSeconds: number;
   };
 };
+
+export async function planEpisodeRenderProof(input: {
+  prisma: any;
+  projectSlug: string;
+  episodeSlug: string;
+  sequenceStartSeconds: number;
+  expectedRevision: number;
+  renderProfile: EpisodeRenderProfileId;
+  actor: EditActor & { email: string };
+}): Promise<EpisodeRenderPlan> {
+  const profile = episodeRenderProfile(input.renderProfile);
+  const sequenceStartSeconds = nonnegative(input.sequenceStartSeconds, "Choose a valid Episode time to review.");
+  const { episode, branch } = await ensureEpisodeEditBranch(input.projectSlug, input.episodeSlug, input.actor);
+  const current = await input.prisma.studioEditBranch.findUnique({ where: { id: branch.id } });
+  if (!current || current.headRevision !== input.expectedRevision) {
+    throw new EpisodeRenderProofError(
+      "The shared edit changed while render options were being checked. Refresh the Episode and try again.",
+      409,
+      "EPISODE_RENDER_PROOF_STALE_EDIT",
+    );
+  }
+  const state = projectState(episode, current.stateJson);
+  let manifest: EpisodeRenderProofJob | null = null;
+  let holdReason: string | null = null;
+  try {
+    manifest = await buildManifest({
+      prisma: input.prisma,
+      episode,
+      branch: current,
+      state,
+      sequenceStartSeconds,
+      clientRequestId: `render_plan_${randomUUID().replaceAll("-", "")}`,
+      requestedByEmail: input.actor.email,
+      renderProfile: profile.id,
+    });
+  } catch (error) {
+    if (!(error instanceof EpisodeRenderProofError) || error.code === "EPISODE_RENDER_PROOF_STALE_EDIT") throw error;
+    holdReason = error.message;
+  }
+  return renderPlan({
+    state,
+    branchRevision: current.headRevision,
+    requestedStartSeconds: sequenceStartSeconds,
+    profileId: profile.id,
+    manifest,
+    workerOnline: await localWorkerSupports(input.prisma, profile.capability),
+    holdReason,
+  });
+}
 
 export async function queueEpisodeRenderProof(input: {
   prisma: any;
@@ -57,8 +109,10 @@ export async function queueEpisodeRenderProof(input: {
   sequenceStartSeconds: number;
   expectedRevision: number;
   clientRequestId: string;
+  renderProfile?: EpisodeRenderProfileId;
   actor: EditActor & { email: string };
 }): Promise<EpisodeRenderProofQueueResult> {
+  const profile = episodeRenderProfile(input.renderProfile ?? "proof-10s");
   const clientRequestId = safeRequestId(input.clientRequestId);
   const sequenceStartSeconds = nonnegative(input.sequenceStartSeconds, "Choose a valid Episode time for the proof.");
   const { episode, branch } = await ensureEpisodeEditBranch(input.projectSlug, input.episodeSlug, input.actor);
@@ -87,6 +141,7 @@ export async function queueEpisodeRenderProof(input: {
       || existingJob.episodeProductionId !== episode.id
       || existingJob.branchId !== current.id
       || existingJob.branchRevision !== input.expectedRevision
+      || (existingJob.renderProfile ?? "proof-10s") !== profile.id
       || Math.abs(existingJob.proof.sequenceStartSeconds - sequenceStartSeconds) > 0.001
     ) {
       throw new EpisodeRenderProofError(
@@ -107,6 +162,7 @@ export async function queueEpisodeRenderProof(input: {
     sequenceStartSeconds,
     clientRequestId,
     requestedByEmail: input.actor.email,
+    renderProfile: profile.id,
   });
   const created = await input.prisma.studioWorkflowJob.create({
     data: {
@@ -154,6 +210,8 @@ export async function registerEpisodeRenderProof(input: {
   const envelope = record(row.resultJson);
   const result = parseEpisodeRenderProofResult(envelope.receipt, job);
   const verifiedOutputPath = await verifyLocalResult(result.output.locator, result.output.sha256, result.output.sizeBytes);
+  const isSectionReview = (job.renderProfile ?? "proof-10s") === "section-review-30s";
+  const attachmentRole = isSectionReview ? "episode-review-draft" : "episode-edit-proof";
 
   return input.prisma.$transaction(async (tx: any) => {
     const locked = await tx.studioWorkflowJob.findUnique({ where: { id: row.id } });
@@ -182,7 +240,7 @@ export async function registerEpisodeRenderProof(input: {
     if (!asset) {
       asset = await tx.studioMediaAsset.create({
         data: {
-          filename: `${input.episodeSlug}-edit-proof-r${job.branchRevision}.mp4`,
+          filename: `${input.episodeSlug}-${isSectionReview ? "section-review" : "edit-proof"}-r${job.branchRevision}.mp4`,
           url: playbackUrl,
           mimeType: "video/mp4",
           sizeBytes: BigInt(result.output.sizeBytes),
@@ -200,13 +258,13 @@ export async function registerEpisodeRenderProof(input: {
       create: {
         projectId: job.projectId,
         assetId: asset.id,
-        role: "episode-edit-proof",
+        role: attachmentRole,
         source: "episode-render-proof-registration",
         createdByEmail: input.actor.email.toLowerCase(),
         metadataJson: json(registrationMetadata(job, result, source.id, playbackUrl)),
       },
       update: {
-        role: "episode-edit-proof",
+        role: attachmentRole,
         source: "episode-render-proof-registration",
         metadataJson: json(registrationMetadata(job, result, source.id, playbackUrl)),
       },
@@ -256,7 +314,9 @@ async function buildManifest(input: {
   sequenceStartSeconds: number;
   clientRequestId: string;
   requestedByEmail: string;
+  renderProfile: EpisodeRenderProfileId;
 }): Promise<EpisodeRenderProofJob> {
+  const renderProfile = episodeRenderProfile(input.renderProfile);
   if (!input.state.sourceProjectionFingerprint || !/^[0-9a-f]{64}$/.test(input.state.sourceProjectionFingerprint)) {
     throw new EpisodeRenderProofError("The canonical Episode source projection is not fingerprinted yet.");
   }
@@ -268,7 +328,11 @@ async function buildManifest(input: {
     throw new EpisodeRenderProofError("Choose Charlie, Homer, Both, or a clip layout at this point before freezing a visual proof.");
   }
   const nextDecision = input.state.programDecisions.find((item) => item.startTime > start + 0.001);
-  const end = Math.min(input.state.durationSeconds, start + 10, nextDecision?.startTime ?? Number.POSITIVE_INFINITY);
+  const end = Math.min(
+    input.state.durationSeconds,
+    start + renderProfile.maxDurationSeconds,
+    nextDecision?.startTime ?? Number.POSITIVE_INFINITY,
+  );
   if (end - start < 0.35) throw new EpisodeRenderProofError("There is less than a third of a second before the next edit decision. Move the playhead into a longer section.");
 
   const visualLaneIds = unique(decision?.sourceLaneIDs ?? []);
@@ -361,7 +425,7 @@ async function buildManifest(input: {
     height: 720 as const,
     fps: 24 as const,
     sampleRateHz: 48_000 as const,
-    variantKind: "episode-edit-proof" as const,
+    variantKind: renderProfile.variantKind,
   };
   const base = {
     jobId,
@@ -376,6 +440,7 @@ async function buildManifest(input: {
     sourceProjectionFingerprintSha256: input.state.sourceProjectionFingerprint,
     editStateFingerprintSha256: fingerprint(input.state),
     manifestSha256: ZERO_SHA256,
+    renderProfile: renderProfile.id,
     proof: {
       sequenceStartSeconds: start,
       sequenceEndSeconds: end,
@@ -431,6 +496,7 @@ function registrationMetadata(job: EpisodeRenderProofJob, result: ReturnType<typ
     branchId: job.branchId,
     branchRevision: job.branchRevision,
     manifestSha256: job.manifestSha256,
+    renderProfile: job.renderProfile ?? "proof-10s",
     sourceId,
     playbackUrl,
     proof: job.proof,
@@ -462,10 +528,122 @@ function publicQueue(row: any, job: EpisodeRenderProofJob, idempotentReplay: boo
       status: row.status,
       branchRevision: job.branchRevision,
       manifestSha256: job.manifestSha256,
+      renderProfile: job.renderProfile ?? "proof-10s",
       sequenceStartSeconds: job.proof.sequenceStartSeconds,
       sequenceEndSeconds: job.proof.sequenceEndSeconds,
     },
   };
+}
+
+function renderPlan(input: {
+  state: ProgramEditState;
+  branchRevision: number;
+  requestedStartSeconds: number;
+  profileId: EpisodeRenderProfileId;
+  manifest: EpisodeRenderProofJob | null;
+  workerOnline: boolean;
+  holdReason: string | null;
+}): EpisodeRenderPlan {
+  const profile = episodeRenderProfile(input.profileId);
+  const start = input.manifest?.proof.sequenceStartSeconds
+    ?? Math.min(input.requestedStartSeconds, Math.max(0, input.state.durationSeconds - 0.05));
+  const end = input.manifest?.proof.sequenceEndSeconds
+    ?? Math.min(input.state.durationSeconds, start + profile.maxDurationSeconds);
+  const sourcesInRange = input.state.sources.filter((source) => (
+    start >= source.offsetSeconds
+    && end <= source.offsetSeconds + source.durationSeconds + 0.001
+    && Boolean(source.playbackUrl)
+  ));
+  const exactSources = input.manifest?.sources ?? [];
+  const localStatus = input.holdReason
+    ? "held" as const
+    : input.workerOnline
+      ? "ready" as const
+      : "offline" as const;
+  const localDetail = input.holdReason
+    ?? (input.workerOnline
+      ? `This Mac can freeze ${exactSources.length} exact source${exactSources.length === 1 ? "" : "s"} into this review without cloud compute.`
+      : "The exact-source render is valid, but no compatible local worker heartbeat is currently visible.");
+  return {
+    schema: "quipsly-episode-render-plan-v1",
+    branchRevision: input.branchRevision,
+    renderProfile: profile.id,
+    profileLabel: profile.label,
+    profileDescription: profile.description,
+    sequenceStartSeconds: start,
+    sequenceEndSeconds: end,
+    durationSeconds: Math.max(0, end - start),
+    output: { width: 1280, height: 720, fps: 24, videoCodec: "h264", audioCodec: "aac" },
+    sources: {
+      requiredCount: exactSources.length || sourcesInRange.length,
+      browserPlayableCount: sourcesInRange.length,
+      exactLocalCount: exactSources.length,
+      totalBytes: exactSources.reduce((total, source) => total + source.sizeBytes, 0),
+      labels: exactSources.length ? exactSources.map((source) => source.label) : sourcesInRange.map((source) => source.label),
+    },
+    executors: [
+      {
+        id: "browser",
+        label: "Browser preview",
+        status: "ready",
+        canQueue: false,
+        detail: "Keep editing immediately with protected playback sources. No new media file is created.",
+        costKind: "none",
+        costDetail: "No render compute or upload started",
+        qualityDetail: "Responsive editorial preview; protected proxies may be used",
+      },
+      {
+        id: "local-mac",
+        label: "This Mac",
+        status: localStatus,
+        canQueue: localStatus === "ready" && Boolean(input.manifest),
+        detail: localDetail,
+        costKind: "none",
+        costDetail: "No incremental cloud compute or transfer",
+        qualityDetail: "Exact local source bytes; 1280×720 H.264/AAC at 24 fps",
+      },
+      {
+        id: "cloud",
+        label: "Quipsly Cloud",
+        status: "not-configured",
+        canQueue: false,
+        detail: "Cloud rendering is intentionally unavailable until exact-source upload, generation locking, result verification, and spend disclosure are wired end to end.",
+        costKind: "metered",
+        costDetail: "No upload started and no cloud render charge incurred",
+        qualityDetail: "Planned: exact frozen originals with verified result receipt",
+      },
+    ],
+    boundaries: {
+      createsNoJob: true,
+      sourceMediaRemainsImmutable: true,
+      cloudUploadNotStarted: true,
+      publicationNotStarted: true,
+    },
+  };
+}
+
+async function localWorkerSupports(prisma: any, capability: string): Promise<boolean> {
+  if (!prisma.agentNode?.findMany) return false;
+  const workers = await prisma.agentNode.findMany({
+    where: { capabilities: { path: ["schema"], equals: "quipsly-execution-worker-capabilities-v1" } },
+    orderBy: [{ lastHeartbeatAt: "desc" }],
+    take: 8,
+    select: { status: true, capabilities: true, lastHeartbeatAt: true },
+  });
+  const now = Date.now();
+  return workers.some((worker: any) => {
+    const capabilities = record(worker.capabilities);
+    const heartbeat = worker.lastHeartbeatAt instanceof Date
+      ? worker.lastHeartbeatAt.getTime()
+      : new Date(worker.lastHeartbeatAt ?? 0).getTime();
+    return worker.status === "online"
+      && now - heartbeat <= 30_000
+      && capabilities.executorKind === "local-mac"
+      && Array.isArray(capabilities.jobTypes)
+      && capabilities.jobTypes.includes(JOB_TYPE)
+      && Array.isArray(capabilities.renderProfiles)
+      && capabilities.renderProfiles.includes(capability);
+  });
 }
 
 function fingerprint(value: unknown) {

@@ -1,7 +1,7 @@
 import { statSync } from "node:fs";
 
 import { parseEpisodeRenderProofJob } from "@high-ground/quipsly-media-processing";
-import { queueEpisodeRenderProof } from "./episode-render-proof";
+import { planEpisodeRenderProof, queueEpisodeRenderProof } from "./episode-render-proof";
 import { ensureEpisodeEditBranch, projectCanonicalEpisodeEditState } from "./episode-edit-store";
 import { resolveAllowedLocalStudioMediaPath } from "./studio-media-location-security";
 
@@ -73,6 +73,61 @@ describe("Episode render proof queue", () => {
     expect(job.proof).toEqual(expect.objectContaining({ decisionKind: "audio-source-through", audioLaneIds: ["audio_lane_0001"] }));
     expect(job.sources[0]).toEqual(expect.objectContaining({ sha256: "a".repeat(64), locator: TEST_SOURCE_PATH }));
     expect(job.manifestSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("freezes an explicit section review for up to thirty seconds", async () => {
+    const prisma = database();
+    const result = await queueEpisodeRenderProof({
+      prisma,
+      projectSlug: "high-ground-odyssey",
+      episodeSlug: "episode-9",
+      sequenceStartSeconds: 0,
+      expectedRevision: 4,
+      clientRequestId: "section_review_request_0001",
+      renderProfile: "section-review-30s",
+      actor: { userId: "user-1", email: "charlie@quipsly.com", type: "human" },
+    });
+    const created = prisma.studioWorkflowJob.create.mock.calls[0]?.[0];
+    const job = parseEpisodeRenderProofJob(created.data.inputJson, created.data.id);
+    expect(result.job).toEqual(expect.objectContaining({ renderProfile: "section-review-30s", sequenceEndSeconds: 30 }));
+    expect(job).toEqual(expect.objectContaining({ renderProfile: "section-review-30s" }));
+    expect(job.target.variantKind).toBe("episode-section-review");
+  });
+
+  it("plans local, browser, and cloud execution without creating a job or uploading media", async () => {
+    const prisma = database();
+    prisma.agentNode.findMany.mockResolvedValue([{
+      status: "online",
+      lastHeartbeatAt: new Date(),
+      capabilities: {
+        schema: "quipsly-execution-worker-capabilities-v1",
+        executorKind: "local-mac",
+        jobTypes: ["episode-render-proof"],
+        renderProfiles: ["episode-edit-proof-1280x720-24fps-v1"],
+      },
+    }]);
+    const plan = await planEpisodeRenderProof({
+      prisma,
+      projectSlug: "high-ground-odyssey",
+      episodeSlug: "episode-9",
+      sequenceStartSeconds: 5,
+      expectedRevision: 4,
+      renderProfile: "proof-10s",
+      actor: { userId: "user-1", email: "charlie@quipsly.com", type: "human" },
+    });
+    expect(plan.boundaries).toEqual({
+      createsNoJob: true,
+      sourceMediaRemainsImmutable: true,
+      cloudUploadNotStarted: true,
+      publicationNotStarted: true,
+    });
+    expect(plan.executors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "browser", status: "ready", canQueue: false }),
+      expect.objectContaining({ id: "local-mac", status: "ready", canQueue: true, costKind: "none" }),
+      expect.objectContaining({ id: "cloud", status: "not-configured", canQueue: false, costKind: "metered" }),
+    ]));
+    expect(plan.sources).toEqual(expect.objectContaining({ exactLocalCount: 1, requiredCount: 1, totalBytes: TEST_SOURCE_SIZE }));
+    expect(prisma.studioWorkflowJob.create).not.toHaveBeenCalled();
   });
 
   it("reconciles an incomplete imported placeholder with the measured protected source asset", async () => {
@@ -162,5 +217,6 @@ function database(onCreate: (input: any) => void = () => undefined): any {
     studioVideoSource: {
       findMany: jest.fn(async () => [{ id: "video_source_0001", providerSourceId: TEST_SOURCE_PATH, url: "/api/ingest/media/video_source_0001" }]),
     },
+    agentNode: { findMany: jest.fn(async () => []) },
   };
 }

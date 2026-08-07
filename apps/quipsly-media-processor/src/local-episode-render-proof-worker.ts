@@ -93,7 +93,7 @@ export async function runOneLocalEpisodeRenderProofJob(store: LocalEpisodeRender
         audioCodec: technical.audioCodec,
         completeDecode: true,
         fastStart: true,
-        variantKind: "episode-edit-proof",
+        variantKind: job.target.variantKind,
       },
       worker: {
         executionId: claim.executionId,

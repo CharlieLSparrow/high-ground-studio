@@ -42,7 +42,10 @@ export class LocalExecutionPresence {
         "episode-audio-mix",
         "episode-render-proof",
       ],
-      renderProfiles: ["episode-edit-proof-1280x720-24fps-v1"],
+      renderProfiles: [
+        "episode-edit-proof-1280x720-24fps-v1",
+        "episode-section-review-1280x720-24fps-v1",
+      ],
       localOnly: true,
       directDatabaseLease: true,
     };

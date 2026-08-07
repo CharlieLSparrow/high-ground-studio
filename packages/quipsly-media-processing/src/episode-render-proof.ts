@@ -2,6 +2,33 @@ export const EPISODE_RENDER_PROOF_CONTRACT_VERSION = 1 as const;
 export const EPISODE_RENDER_PROOF_JOB_KIND = "quipsly-episode-render-proof-job-v1" as const;
 export const EPISODE_RENDER_PROOF_RESULT_KIND = "quipsly-episode-render-proof-result-v1" as const;
 
+export const EPISODE_RENDER_PROFILES = {
+  "proof-10s": {
+    id: "proof-10s",
+    label: "Fast proof",
+    description: "Ten seconds for checking the current cut, picture, and sound.",
+    maxDurationSeconds: 10,
+    variantKind: "episode-edit-proof",
+    capability: "episode-edit-proof-1280x720-24fps-v1",
+  },
+  "section-review-30s": {
+    id: "section-review-30s",
+    label: "Section review",
+    description: "Up to thirty seconds from the playhead, stopping at the next cut decision.",
+    maxDurationSeconds: 30,
+    variantKind: "episode-section-review",
+    capability: "episode-section-review-1280x720-24fps-v1",
+  },
+} as const;
+
+export type EpisodeRenderProfileId = keyof typeof EPISODE_RENDER_PROFILES;
+export type EpisodeRenderVariantKind = (typeof EPISODE_RENDER_PROFILES)[EpisodeRenderProfileId]["variantKind"];
+
+export function episodeRenderProfile(value: unknown) {
+  if (value === "proof-10s" || value === "section-review-30s") return EPISODE_RENDER_PROFILES[value];
+  throw new Error("Episode render profile is invalid.");
+}
+
 export type EpisodeRenderProofSource = {
   laneId: string;
   mediaAssetId: string;
@@ -36,6 +63,8 @@ export type EpisodeRenderProofJob = {
   sourceProjectionFingerprintSha256: string;
   editStateFingerprintSha256: string;
   manifestSha256: string;
+  /** Missing only on retained v1 ten-second jobs created before profiles were explicit. */
+  renderProfile?: EpisodeRenderProfileId;
   proof: {
     sequenceStartSeconds: number;
     sequenceEndSeconds: number;
@@ -57,7 +86,7 @@ export type EpisodeRenderProofJob = {
     height: 720;
     fps: 24;
     sampleRateHz: 48_000;
-    variantKind: "episode-edit-proof";
+    variantKind: EpisodeRenderVariantKind;
   };
   boundaries: {
     sourceMediaRemainsImmutable: true;
@@ -89,7 +118,7 @@ export type EpisodeRenderProofResult = {
     audioCodec: string | null;
     completeDecode: true;
     fastStart: true;
-    variantKind: "episode-edit-proof";
+    variantKind: EpisodeRenderVariantKind;
   };
   worker: {
     executionId: string;
@@ -138,12 +167,20 @@ export function parseEpisodeRenderProofJob(
   const branchRevision = nonnegativeInteger(row.branchRevision, "branchRevision");
   const sequenceStartSeconds = nonnegative(rowValue(proof.sequenceStartSeconds), "proof.sequenceStartSeconds");
   const sequenceEndSeconds = positive(rowValue(proof.sequenceEndSeconds), "proof.sequenceEndSeconds");
+  const explicitRenderProfile = row.renderProfile === undefined ? undefined : episodeRenderProfile(row.renderProfile).id;
+  const renderProfile = explicitRenderProfile
+    ? episodeRenderProfile(explicitRenderProfile)
+    : target.variantKind === "episode-edit-proof"
+      ? EPISODE_RENDER_PROFILES["proof-10s"]
+      : target.variantKind === "episode-section-review"
+        ? EPISODE_RENDER_PROFILES["section-review-30s"]
+        : invalid("Episode render profile is missing or invalid.");
   if (
     row.kind !== EPISODE_RENDER_PROOF_JOB_KIND
     || row.version !== EPISODE_RENDER_PROOF_CONTRACT_VERSION
     || (expectedJobId && expectedJobId !== jobId)
     || sequenceEndSeconds <= sequenceStartSeconds
-    || sequenceEndSeconds - sequenceStartSeconds > 12.001
+    || sequenceEndSeconds - sequenceStartSeconds > renderProfile.maxDurationSeconds + 0.001
     || target.provider !== "local"
     || target.locator !== buildEpisodeRenderProofTargetLocator({ episodeProductionId, branchId, branchRevision, jobId })
     || target.contentType !== "video/mp4"
@@ -154,7 +191,7 @@ export function parseEpisodeRenderProofJob(
     || target.height !== 720
     || target.fps !== 24
     || target.sampleRateHz !== 48_000
-    || target.variantKind !== "episode-edit-proof"
+    || target.variantKind !== renderProfile.variantKind
     || declaredBoundaries.sourceMediaRemainsImmutable !== true
     || declaredBoundaries.editBranchRemainsCanonicalIntent !== true
     || declaredBoundaries.proofIsNotApprovedOutput !== true
@@ -187,6 +224,7 @@ export function parseEpisodeRenderProofJob(
     sourceProjectionFingerprintSha256: sha(row.sourceProjectionFingerprintSha256, "sourceProjectionFingerprintSha256"),
     editStateFingerprintSha256: sha(row.editStateFingerprintSha256, "editStateFingerprintSha256"),
     manifestSha256: sha(row.manifestSha256, "manifestSha256"),
+    ...(explicitRenderProfile ? { renderProfile: explicitRenderProfile } : {}),
     proof: {
       sequenceStartSeconds,
       sequenceEndSeconds,
@@ -208,7 +246,7 @@ export function parseEpisodeRenderProofJob(
       height: 720,
       fps: 24,
       sampleRateHz: 48_000,
-      variantKind: "episode-edit-proof",
+      variantKind: renderProfile.variantKind,
     },
     boundaries: boundaries(),
   };
@@ -273,7 +311,7 @@ export function parseEpisodeRenderProofResult(
       audioCodec: output.audioCodec === null ? null : requiredText(output.audioCodec, "output.audioCodec"),
       completeDecode: true,
       fastStart: true,
-      variantKind: "episode-edit-proof",
+      variantKind: job.target.variantKind,
     },
     worker: {
       executionId: safeId(worker.executionId, "worker.executionId"),

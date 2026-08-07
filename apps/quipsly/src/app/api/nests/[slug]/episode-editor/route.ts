@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PROGRAM_DECISION_KINDS, type ProgramDecisionKind } from "@/lib/editor/program-edit-contract";
+import { episodeRenderProfile } from "@high-ground/quipsly-media-processing";
 import {
   EpisodeEditConflict,
   ensureEpisodeEditBranch,
@@ -12,11 +13,20 @@ import { requireProjectAccess } from "@/lib/server/access";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   EpisodeRenderProofError,
+  planEpisodeRenderProof,
   queueEpisodeRenderProof,
   registerEpisodeRenderProof,
 } from "@/lib/server/episode-render-proof";
 
 export const dynamic = "force-dynamic";
+
+function requestedRenderProfile(value: unknown) {
+  try {
+    return episodeRenderProfile(value ?? "proof-10s").id;
+  } catch {
+    throw new EpisodeRenderProofError("Choose a supported Episode render profile.", 400, "EPISODE_RENDER_PROFILE_INVALID");
+  }
+}
 
 function actorFromAccess(access: Awaited<ReturnType<typeof requireProjectAccess>>): EditActor {
   const user = access.user as { id?: string; primaryEmail?: string; displayName?: string | null };
@@ -90,6 +100,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
         actor,
       });
+    } else if (action === "plan-render-proof") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required to inspect render options." }, { status: 400 });
+      operationResult = await planEpisodeRenderProof({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        sequenceStartSeconds: Number(body.sequenceTime ?? 0),
+        expectedRevision: Number(body.expectedRevision ?? 0),
+        renderProfile: requestedRenderProfile(body.renderProfile),
+        actor: { ...actor, email: actor.email },
+      });
     } else if (action === "queue-render-proof") {
       if (!actor.email) return NextResponse.json({ error: "A verified account email is required to queue a proof." }, { status: 400 });
       operationResult = await queueEpisodeRenderProof({
@@ -99,6 +120,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         sequenceStartSeconds: Number(body.sequenceTime ?? 0),
         expectedRevision: Number(body.expectedRevision ?? 0),
         clientRequestId: String(body.clientRequestId ?? crypto.randomUUID()),
+        renderProfile: requestedRenderProfile(body.renderProfile),
         actor: { ...actor, email: actor.email },
       });
     } else if (action === "register-render-proof") {
@@ -114,7 +136,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
       return NextResponse.json({ error: "Unknown editor action." }, { status: 400 });
     }
     return NextResponse.json({ ...await loadEpisodeEditDesk(slug, episodeSlug, true, {
-      includeInspection: action === "open-episode" || action === "queue-render-proof" || action === "register-render-proof",
+      includeInspection: action === "open-episode" || action === "plan-render-proof" || action === "queue-render-proof" || action === "register-render-proof",
       selectedMediaAssetId,
     }), operationResult }, {
       headers: { "Cache-Control": "no-store" },
