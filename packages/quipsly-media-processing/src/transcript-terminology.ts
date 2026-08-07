@@ -2,6 +2,7 @@ export const STUDIO_TRANSCRIPT_TERMINOLOGY_SNAPSHOT_KIND = "quipsly-transcript-t
 export const STUDIO_TRANSCRIPT_TERMINOLOGY_MAX_TERMS = 50;
 export const STUDIO_TRANSCRIPT_TERMINOLOGY_MAX_PROMPT_CHARACTERS = 1_000;
 export const STUDIO_TRANSCRIPT_TERMINOLOGY_PROVIDER_MODE = "initial-prompt-first-window" as const;
+export const DEEPGRAM_KEYTERM_MAX_TOKENS = 500;
 
 export type StudioTranscriptTerminologyTermSnapshot = {
   id: string;
@@ -35,6 +36,27 @@ export type StudioTranscriptTerminologySnapshot = {
     providerEvidenceRemainsImmutable: true;
     historicalTranscriptsAreNotRewritten: true;
     measuredAccuracyRequiredBeforeDefaultRouting: true;
+  };
+};
+
+export type DeepgramTerminologyProjection = {
+  provider: "deepgram";
+  mode: "nova-3-keyterm-repeated-parameter";
+  snapshotSha256: string;
+  keyterms: string[];
+  included: Array<{
+    termId: string;
+    variant: "canonical" | "alias";
+    text: string;
+    tokenCount: number;
+  }>;
+  omittedTermIds: string[];
+  totalTokenCount: number;
+  maxTokens: typeof DEEPGRAM_KEYTERM_MAX_TOKENS;
+  boundaries: {
+    valuesRequireIndependentQueryParameters: true;
+    noWeightsApplied: true;
+    providerContextIsNotTranscriptTruth: true;
   };
 };
 
@@ -72,6 +94,67 @@ export function compileWhisperTerminologyPrompt(
   else promptText += ".";
   omittedTermIds.push(...ordered.filter((term) => !includedTermIds.includes(term.id) && !omittedTermIds.includes(term.id)).map((term) => term.id));
   return { promptText, includedTermIds, omittedTermIds };
+}
+
+/**
+ * Deterministically projects the canonical terminology snapshot into Nova-3's
+ * repeated `keyterm` values. The projection uses no undocumented weights,
+ * rejects ambiguous delimiter characters, and retains every included variant
+ * so the request receipt can be audited later.
+ */
+export function compileDeepgramTerminologyKeyterms(
+  value: StudioTranscriptTerminologySnapshot,
+): DeepgramTerminologyProjection {
+  const snapshot = parseStudioTranscriptTerminologySnapshot(value);
+  const ordered = [...snapshot.terms].sort((left, right) =>
+    right.priority - left.priority
+    || left.canonicalText.localeCompare(right.canonicalText)
+    || left.id.localeCompare(right.id));
+  const included: DeepgramTerminologyProjection["included"] = [];
+  const omittedTermIds: string[] = [];
+  const seen = new Set<string>();
+  let totalTokenCount = 0;
+
+  for (const term of ordered) {
+    const variants = [
+      { variant: "canonical" as const, text: term.canonicalText },
+      ...term.aliases.map((text) => ({ variant: "alias" as const, text })),
+    ];
+    let includedAnyVariant = false;
+    for (const candidate of variants) {
+      const projectionText = deepgramKeytermText(candidate.text);
+      const normalizedText = normalized(projectionText);
+      if (seen.has(normalizedText)) continue;
+      const tokenCount = deepgramKeytermTokenCount(projectionText);
+      if (totalTokenCount + tokenCount > DEEPGRAM_KEYTERM_MAX_TOKENS) continue;
+      seen.add(normalizedText);
+      totalTokenCount += tokenCount;
+      includedAnyVariant = true;
+      included.push({
+        termId: term.id,
+        variant: candidate.variant,
+        text: projectionText,
+        tokenCount,
+      });
+    }
+    if (!includedAnyVariant) omittedTermIds.push(term.id);
+  }
+
+  return {
+    provider: "deepgram",
+    mode: "nova-3-keyterm-repeated-parameter",
+    snapshotSha256: snapshot.termsSha256,
+    keyterms: included.map((entry) => entry.text),
+    included,
+    omittedTermIds,
+    totalTokenCount,
+    maxTokens: DEEPGRAM_KEYTERM_MAX_TOKENS,
+    boundaries: {
+      valuesRequireIndependentQueryParameters: true,
+      noWeightsApplied: true,
+      providerContextIsNotTranscriptTruth: true,
+    },
+  };
 }
 
 export function parseStudioTranscriptTerminologySnapshot(value: unknown): StudioTranscriptTerminologySnapshot {
@@ -154,6 +237,18 @@ export function parseStudioTranscriptTerminologyTermSnapshot(value: unknown): St
 }
 
 function normalized(value: string) { return value.normalize("NFKC").trim().toLocaleLowerCase("en-US"); }
+function deepgramKeytermText(value: string) {
+  const result = value.normalize("NFKC").trim().replace(/\s+/gu, " ");
+  if (!result || result.length > 120 || /[,;\u0000-\u001f\u007f]/u.test(result)) {
+    throw new Error("Deepgram keyterm contains an unsupported delimiter or control character.");
+  }
+  return result;
+}
+function deepgramKeytermTokenCount(value: string) {
+  const tokens = value.match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu) ?? [];
+  if (!tokens.length) throw new Error("Deepgram keyterm has no lexical tokens.");
+  return tokens.length;
+}
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
 function text(value: unknown, field: string, allowEmpty = false) { const result = typeof value === "string" ? value.trim() : ""; if (!allowEmpty && !result) throw new Error(`${field} is required.`); return result; }

@@ -145,8 +145,10 @@ when a glossary changes.
 1. **Completed now:** request Apple time ranges explicitly and make the receipt
    describe the real custom configuration.
 2. **Completed now:** add and test the pure topology-first routing contract.
-3. Compile strict provider-specific terminology payloads, beginning with
-   Deepgram keyterms, with byte-for-byte receipts and size validation.
+3. **Completed now:** compile strict Deepgram Nova-3 keyterm projections from
+   canonical terms and aliases, retaining the snapshot, included variants,
+   token budget, and provider-use boundaries. The production worker still must
+   persist and submit this projection before the capability is operational.
 4. Evolve the Capture transcript manifest so `diarize` is topology-driven rather
    than structurally forced to `true`; retain backwards parsing for old jobs.
 5. Persist routing plans beside new attempts and expose the explanation in the
