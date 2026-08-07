@@ -46,9 +46,12 @@ function transcriptRows(value: unknown): { rows: unknown[]; sourceFormat: string
 }
 
 /**
- * Projects every retained Episode transcript shape onto one source-clock view.
- * Invalid or untimed rows stay out of the editor rather than receiving invented
- * timing. The provider transcript remains immutable; this is a read model only.
+ * Projects every retained Episode transcript shape onto one honest clock.
+ * Materialized Episode artifacts carry `time`, which is the reviewed Episode
+ * clock; their source timing remains separate provenance. Older source-only
+ * projections keep their source clock explicitly. Invalid or untimed rows stay
+ * out of the editor rather than receiving invented timing. Provider words remain
+ * immutable; this is a read model only.
  */
 export function projectEpisodeEditTranscript(value: unknown): EpisodeEditTranscriptProjection {
   const candidate = transcriptRows(value);
@@ -65,8 +68,13 @@ export function projectEpisodeEditTranscript(value: unknown): EpisodeEditTranscr
 
   const segments = candidate.rows.slice(0, 5_000).flatMap((item, index): EpisodeEditTranscriptSegment[] => {
     const row = record(item);
-    const startSeconds = number(row.sourceStartSeconds, row.startSeconds, row.start, row.time);
-    const explicitEnd = number(row.sourceEndSeconds, row.endSeconds, row.end);
+    const episodeStartSeconds = number(row.time);
+    const startSeconds = episodeStartSeconds ?? number(row.startSeconds, row.start, row.sourceStartSeconds);
+    const sourceStartSeconds = number(row.sourceStartSeconds);
+    const sourceEndSeconds = number(row.sourceEndSeconds);
+    const explicitEnd = episodeStartSeconds !== null
+      ? number(row.endSeconds, row.end)
+      : number(row.endSeconds, row.end, row.sourceEndSeconds);
     const duration = number(row.durationSeconds, row.duration);
     const endSeconds = explicitEnd ?? (
       startSeconds !== null && duration !== null
@@ -91,11 +99,15 @@ export function projectEpisodeEditTranscript(value: unknown): EpisodeEditTranscr
       id: text(row.id, row.segmentId) ?? `${candidate.sourceFormat}:${index}`,
       startSeconds,
       endSeconds,
+      timelineClock: episodeStartSeconds !== null ? "episode" : "source",
+      sourceStartSeconds,
+      sourceEndSeconds,
       text: body,
       speakerLabel: text(row.speakerLabel, row.speaker, row.speakerName),
       reviewStatus,
       sourceTranscriptJobId: text(row.sourceTranscriptJobId, row.transcriptJobId),
       sourceSegmentId: text(row.sourceSegmentId, row.segmentId),
+      acceptedReviewId: text(row.acceptedReviewId),
       deactivated: row.deactivated === true || row.deleted === true,
     }];
   }).sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
@@ -112,7 +124,7 @@ export function projectEpisodeEditTranscript(value: unknown): EpisodeEditTranscr
   }
   return {
     status: "available",
-    reason: `${segments.length} retained source-clock transcript ${segments.length === 1 ? "segment is" : "segments are"} available for edit inspection.`,
+    reason: `${segments.length} retained timed transcript ${segments.length === 1 ? "segment is" : "segments are"} available for edit inspection.`,
     sourceFormat: candidate.sourceFormat,
     segmentCount: segments.length,
     reviewedSegmentCount: segments.filter((segment) => segment.reviewStatus === "human-reviewed").length,
@@ -165,7 +177,7 @@ export function episodeEditExecutionInspection(jobs: EpisodeEditProcessingJob[])
   return {
     browser: {
       status: "ready",
-      detail: "Shared cut decisions, transcript inspection, notes, and source-clock review run in this browser workspace.",
+      detail: "Shared cut decisions, transcript inspection, notes, and reviewed Episode-clock or source-clock evidence run in this browser workspace.",
     },
     native: {
       status: "available-unobserved",

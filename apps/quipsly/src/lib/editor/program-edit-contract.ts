@@ -55,6 +55,12 @@ export type ProgramEditState = {
   version: typeof PROGRAM_EDIT_VERSION;
   durationSeconds: number;
   sources: ProgramEditSource[];
+  /**
+   * Fingerprint of the canonical Episode source projection used for this read.
+   * Edit intent lives on the branch; synchronized source truth stays on the
+   * Episode timeline and is projected into the branch instead of copied.
+   */
+  sourceProjectionFingerprint?: string;
   listenAudioUrl?: string;
   programDecisions: ProgramDecision[];
 };
@@ -104,11 +110,15 @@ export type EpisodeEditTranscriptSegment = {
   id: string;
   startSeconds: number;
   endSeconds: number;
+  timelineClock: "episode" | "source";
+  sourceStartSeconds: number | null;
+  sourceEndSeconds: number | null;
   text: string;
   speakerLabel: string | null;
   reviewStatus: "provider" | "human-reviewed" | "unknown";
   sourceTranscriptJobId: string | null;
   sourceSegmentId: string | null;
+  acceptedReviewId: string | null;
   deactivated: boolean;
 };
 
@@ -160,6 +170,7 @@ export type EpisodeEditMediaChoice = {
   role: string | null;
   sourceId: string | null;
   recordingAssetId: string | null;
+  captureGroupId: string | null;
 };
 
 export type EpisodeEditExecutionInspection = {
@@ -178,6 +189,7 @@ export type EpisodeEditDeskPayload = {
   inspectionFresh: boolean;
   projectId: string | null;
   projectSlug: string;
+  timelineFingerprint: string | null;
   episodes: EpisodeDeskEpisode[];
   selectedEpisode: EpisodeDeskEpisode | null;
   baseline: null | {

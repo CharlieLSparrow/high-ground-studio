@@ -14,6 +14,7 @@ import {
   type ProgramEditSource,
 } from "@/lib/editor/program-edit-contract";
 import { EpisodeWorkspaceNav } from "../episodes/[episodeSlug]/EpisodeWorkspaceNav";
+import { EpisodeCaptureTakeHandoff } from "./EpisodeCaptureTakeHandoff";
 
 const decisionColors: Record<ProgramDecisionKind, string> = {
   primary: "#3ea7b4",
@@ -94,6 +95,7 @@ export default function EpisodeEditorClient({
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
   const [tags, setTags] = useState("");
+  const [sourcePlaybackFailures, setSourcePlaybackFailures] = useState<string[]>([]);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const listenAudioRef = useRef<HTMLAudioElement>(null);
   const audioRefs = useRef(new Map<string, HTMLAudioElement>());
@@ -146,6 +148,14 @@ export default function EpisodeEditorClient({
     && signalEvidence.protectedPlayback
     ? signalEvidence
     : null;
+  const selectedMediaChoice = payload.mediaChoices.find((choice) => choice.id === payload.selectedMediaAssetId)
+    ?? (payload.mediaChoices.length === 1 ? payload.mediaChoices[0] : null);
+
+  const reportSourcePlaybackFailure = useCallback((sourceId: string) => {
+    setSourcePlaybackFailures((current) => current.includes(sourceId)
+      ? current
+      : [...current, sourceId]);
+  }, []);
 
   const syncMedia = useCallback((time: number, shouldPlay = false) => {
     for (const source of state.sources) {
@@ -156,16 +166,16 @@ export default function EpisodeEditorClient({
       const sourceTime = time - source.offsetSeconds;
       if (sourceTime >= 0 && (!source.durationSeconds || sourceTime <= source.durationSeconds)) {
         if (Math.abs(media.currentTime - sourceTime) > 0.18) media.currentTime = sourceTime;
-        if (shouldPlay && media.paused) void media.play().catch(() => undefined);
+        if (shouldPlay && media.paused) void media.play().catch(() => reportSourcePlaybackFailure(source.id));
       } else if (!media.paused) {
         media.pause();
       }
     }
     if (listenAudioRef.current && Math.abs(listenAudioRef.current.currentTime - time) > 0.18) {
       listenAudioRef.current.currentTime = time;
-      if (shouldPlay && listenAudioRef.current.paused) void listenAudioRef.current.play().catch(() => undefined);
+      if (shouldPlay && listenAudioRef.current.paused) void listenAudioRef.current.play().catch(() => reportSourcePlaybackFailure("episode-listen-audio"));
     }
-  }, [state.sources]);
+  }, [reportSourcePlaybackFailure, state.sources]);
 
   const seek = useCallback((time: number) => {
     const next = Math.min(duration, Math.max(0, time));
@@ -337,7 +347,23 @@ export default function EpisodeEditorClient({
     } finally {
       setSaving(false);
     }
-  }, [episode, payload.projectSlug]);
+  }, [episode, payload.projectSlug, payload.selectedMediaAssetId]);
+
+  const refreshCanonicalProjection = useCallback(async () => {
+    if (!episode) return;
+    const query = new URLSearchParams({ episode: episode.slug });
+    if (payload.selectedMediaAssetId) query.set("source", payload.selectedMediaAssetId);
+    const response = await fetch(
+      `/api/nests/${encodeURIComponent(payload.projectSlug)}/episode-editor?${query.toString()}`,
+      { cache: "no-store" },
+    );
+    const result = await response.json() as EpisodeEditDeskPayload & { error?: string };
+    if (!response.ok) throw new Error(result.error ?? "The shared Episode projection could not be refreshed.");
+    setPayload(result);
+    setMessage(result.transcript.status === "available"
+      ? `Capture evidence is on the Episode clock · ${result.transcript.segmentCount} timed turns.`
+      : "Capture sources are on the Episode clock; transcript evidence is still pending.");
+  }, [episode, payload.projectSlug, payload.selectedMediaAssetId]);
 
   const setDecision = useCallback((kind: ProgramDecisionKind) => {
     if (!payload.canEdit || !payload.branch) return;
@@ -505,6 +531,13 @@ export default function EpisodeEditorClient({
             </div>
           </div>
 
+          {sourcePlaybackFailures.length ? (
+            <div role="alert" className="rounded-2xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
+              <strong className="block">{sourcePlaybackFailures.length} protected {sourcePlaybackFailures.length === 1 ? "source could" : "sources could"} not be loaded here.</strong>
+              <span className="mt-1 block text-xs leading-5 text-amber-100/80">The edit and source receipts remain safe. Reconnect or restore the source before playback, transcript correction, or rendering.</span>
+            </div>
+          ) : null}
+
           <div className="rounded-3xl border border-[#2d4638] bg-[#0d1712] p-4">
             <div className="flex flex-wrap items-center gap-2">
               <button onClick={() => togglePlayback("edit")} className="rounded-xl bg-[#d8ad56] px-5 py-3 font-black text-[#172018]">
@@ -657,7 +690,7 @@ export default function EpisodeEditorClient({
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-mono text-xs text-[#d8ad56]">{formatEditClock(activeTranscriptSegment?.startSeconds ?? playhead)}</span>
                     <span className="rounded-full bg-[#1c3427] px-2 py-1 text-[10px] font-black uppercase text-[#9ac9a8]">
-                      {activeTranscriptSegment?.reviewStatus ?? "between segments"}
+                      {activeTranscriptSegment ? `${activeTranscriptSegment.timelineClock} clock · ${activeTranscriptSegment.reviewStatus}` : "between segments"}
                     </span>
                   </div>
                   <p className="mt-2 font-serif text-xl leading-relaxed text-[#f2ead8]">
@@ -678,7 +711,15 @@ export default function EpisodeEditorClient({
                       <span>
                         <span className="block text-sm leading-5 text-[#edf1eb]">{segment.text}</span>
                         <span className="mt-1 block text-[10px] font-bold uppercase tracking-wide text-[#7f9787]">
-                          {[segment.speakerLabel, segment.reviewStatus, segment.deactivated ? "held from edit" : null].filter(Boolean).join(" · ")}
+                          {[
+                            segment.speakerLabel,
+                            `${segment.timelineClock} clock`,
+                            segment.timelineClock === "episode" && segment.sourceStartSeconds !== null
+                              ? `source ${formatEditClock(segment.sourceStartSeconds).slice(0, 8)}`
+                              : null,
+                            segment.reviewStatus,
+                            segment.deactivated ? "held from edit" : null,
+                          ].filter(Boolean).join(" · ")}
                         </span>
                       </span>
                     </button>
@@ -724,6 +765,16 @@ export default function EpisodeEditorClient({
                   ))}
                 </select>
               </label>
+            ) : null}
+            {episode && selectedMediaChoice?.captureGroupId && payload.timelineFingerprint ? (
+              <EpisodeCaptureTakeHandoff
+                projectSlug={payload.projectSlug}
+                episodeSlug={episode.slug}
+                captureGroupId={selectedMediaChoice.captureGroupId}
+                expectedTimelineFingerprint={payload.timelineFingerprint}
+                canEdit={payload.canEdit}
+                onMaterialized={refreshCanonicalProjection}
+              />
             ) : null}
             {signalEvidence ? (
               <AudioEvidenceMap
@@ -882,6 +933,7 @@ export default function EpisodeEditorClient({
               else videoRefs.current.delete(source.id);
             }}
             src={source.playbackUrl}
+            onError={() => reportSourcePlaybackFailure(source.id)}
             muted
             playsInline
             preload="metadata"
@@ -895,10 +947,11 @@ export default function EpisodeEditorClient({
               else audioRefs.current.delete(source.id);
             }}
             src={source.playbackUrl}
+            onError={() => reportSourcePlaybackFailure(source.id)}
             preload="metadata"
           />
         ))}
-        {state.listenAudioUrl ? <audio ref={listenAudioRef} src={state.listenAudioUrl} preload="metadata" /> : null}
+        {state.listenAudioUrl ? <audio ref={listenAudioRef} src={state.listenAudioUrl} onError={() => reportSourcePlaybackFailure("episode-listen-audio")} preload="metadata" /> : null}
       </div>
     </main>
   );

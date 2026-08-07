@@ -24,8 +24,35 @@ describe("Episode edit inspection projections", () => {
         id: "line-1",
         startSeconds: 2.25,
         endSeconds: 4.5,
+        timelineClock: "source",
+        sourceStartSeconds: 2.25,
+        sourceEndSeconds: 4.5,
         text: "Provider words stay unchanged.",
         speakerLabel: "Charlie",
+      })],
+    }));
+  });
+
+  it("uses reviewed Episode time while retaining immutable source-clock provenance", () => {
+    expect(projectEpisodeEditTranscript({ transcript: [{
+      id: "aligned-line",
+      time: 102.5,
+      duration: 2,
+      sourceStartSeconds: 12.5,
+      sourceEndSeconds: 14.5,
+      text: "This line belongs at the reviewed Episode position.",
+      sourceTranscriptJobId: "transcript-1",
+      sourceSegmentId: "provider-segment-1",
+      acceptedReviewId: "alignment-review-1",
+    }] })).toEqual(expect.objectContaining({
+      status: "available",
+      segments: [expect.objectContaining({
+        startSeconds: 102.5,
+        endSeconds: 104.5,
+        timelineClock: "episode",
+        sourceStartSeconds: 12.5,
+        sourceEndSeconds: 14.5,
+        acceptedReviewId: "alignment-review-1",
       })],
     }));
   });

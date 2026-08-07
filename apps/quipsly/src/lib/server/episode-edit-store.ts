@@ -16,6 +16,10 @@ import {
 } from "@/lib/editor/program-edit-contract";
 import { canonicalEpisodeImportedMedia } from "@/lib/episode-production/imported-media";
 import {
+  episodeTimelineContentFingerprint,
+  timelineStateFromEpisodeArtifact,
+} from "@/app/(app)/episode-production/episodeArtifact";
+import {
   episodeEditExecutionInspection,
   projectEpisodeEditProcessingJob,
   projectEpisodeEditTranscript,
@@ -76,6 +80,13 @@ function webUrl(...values: unknown[]): string | undefined {
   return value && /^https?:\/\//i.test(value) ? value : undefined;
 }
 
+function protectedPlaybackUrl(...values: unknown[]): string | undefined {
+  const value = textValue(...values);
+  return value && (/^https?:\/\//i.test(value) || (value.startsWith("/") && !value.startsWith("//")))
+    ? value
+    : undefined;
+}
+
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
@@ -97,35 +108,72 @@ function sourceRole(label: string): ProgramEditSource["role"] {
   return "reference";
 }
 
-function normalizeSources(timelineJson: unknown, productionJson: unknown): ProgramEditSource[] {
+export function normalizeEpisodeEditSources(timelineJson: unknown, productionJson: unknown): ProgramEditSource[] {
   const root = record(timelineJson);
   const sequence = Array.isArray(root.sequences) ? record(root.sequences[0]) : root;
   const production = record(productionJson);
-  const candidates = [sequence.sources, sequence.lanes, sequence.videoLanes, production.sources, production.importedMedia];
+  const importedMedia = canonicalEpisodeImportedMedia(productionJson, timelineJson);
+  const importedByIdentity = new Map<string, JsonRecord>();
+  for (const imported of importedMedia) {
+    const item = record(imported);
+    for (const identity of [
+      textValue(item.id),
+      textValue(item.assetId),
+      textValue(item.sourceId),
+      textValue(item.recordingAssetId),
+    ]) {
+      if (identity) importedByIdentity.set(identity, item);
+    }
+  }
+  const candidates = [
+    sequence.sources,
+    sequence.lanes,
+    sequence.videoLanes,
+    sequence.timelineClips,
+    root.timelineClips,
+    production.timelineClips,
+    production.sources,
+    production.importedMedia,
+  ];
   const rows = candidates.find(Array.isArray) as unknown[] | undefined;
   if (!rows) return [];
 
   const seen = new Set<string>();
   return rows.flatMap((row, index) => {
     const lane = record(row);
-    const media = record(lane.sourceVideo ?? lane.media ?? lane.asset ?? lane.source);
+    const embeddedMedia = record(lane.sourceVideo ?? lane.media ?? lane.asset ?? lane.source);
+    const imported = importedByIdentity.get(textValue(
+      lane.assetId,
+      lane.sourceId,
+      embeddedMedia.id,
+      embeddedMedia.assetId,
+      embeddedMedia.sourceId,
+    ) ?? "") ?? {};
+    const media = { ...imported, ...embeddedMedia };
     const metadata = record(lane.metadata);
     const id = textValue(lane.id, media.id, lane.assetId, `source-${index}`) ?? `source-${index}`;
     if (seen.has(id)) return [];
     seen.add(id);
     const label = textValue(lane.label, lane.name, lane.title, media.label, media.name, media.filename, `Source ${index + 1}`) ?? `Source ${index + 1}`;
-    const proxyUrl = webUrl(media.proxyURL, media.proxyUrl, lane.proxyURL, lane.proxyUrl, media.playbackUrl);
-    const playbackUrl = proxyUrl ?? webUrl(media.url, media.remoteUrl, lane.url, lane.playbackUrl);
+    const proxy = record(media.proxy);
+    const proxyUrl = protectedPlaybackUrl(media.proxyURL, media.proxyUrl, proxy.proxyUrl, lane.proxyURL, lane.proxyUrl, media.playbackUrl);
+    const playbackUrl = proxyUrl ?? protectedPlaybackUrl(media.url, media.remoteUrl, lane.url, lane.playbackUrl);
+    const mediaKind = textValue(lane.kind, metadata.mediaKind, media.kind, media.contentType)?.toLowerCase() ?? "";
+    const sourceStartSeconds = optionalNumberValue(lane.sourceStart) ?? 0;
+    const sourceEndSeconds = optionalNumberValue(lane.sourceEnd);
+    const derivedSourceDuration = sourceEndSeconds === undefined
+      ? 0
+      : Math.max(0, sourceEndSeconds - sourceStartSeconds);
     return [{
       id,
       label,
-      role: textValue(metadata.mediaKind)?.toLowerCase() === "audio"
+      role: mediaKind === "audio" || mediaKind.startsWith("audio/")
         ? "audio"
-        : sourceRole(textValue(metadata.role, label) ?? label),
+        : sourceRole(textValue(lane.role, media.importRole, metadata.role, label) ?? label),
       playbackUrl,
       proxyUrl,
-      offsetSeconds: numberValue(lane.offsetSeconds, lane.offset, media.offsetSeconds, media.offset, media.sequenceStart),
-      durationSeconds: numberValue(lane.durationSeconds, lane.duration, media.durationSeconds, media.duration),
+      offsetSeconds: numberValue(lane.offsetSeconds, lane.offset, lane.startIn, media.offsetSeconds, media.offset, media.sequenceStart),
+      durationSeconds: numberValue(lane.durationSeconds, lane.duration, media.durationSeconds, media.duration, derivedSourceDuration),
       syncStatus: textValue(lane.syncStatus, media.syncStatus),
     } satisfies ProgramEditSource];
   });
@@ -268,6 +316,11 @@ export function normalizeEpisodeEditMediaChoices(
       syncRecording.recordingAssetId,
     ) ?? null;
     const sourceId = textValue(item.sourceId) ?? null;
+    const captureGroupId = textValue(
+      item.captureGroupId,
+      metadataRecording.captureGroupId,
+      syncRecording.captureGroupId,
+    ) ?? null;
     const id = recordingAssetId ?? textValue(item.id, item.assetId, sourceId) ?? null;
     if (!id || seen.has(id)) return [];
     seen.add(id);
@@ -285,25 +338,64 @@ export function normalizeEpisodeEditMediaChoices(
       role: textValue(item.importRole, sync.suggestedRole, metadata.role) ?? null,
       sourceId,
       recordingAssetId,
+      captureGroupId,
     }];
   });
 }
 
-function initialState(episode: { timelineJson: unknown; productionJson: unknown; updatedAt: Date }): ProgramEditState {
+export function resolveMaterializedTranscriptMediaSelection(
+  timelineJson: unknown,
+  choices: EpisodeEditMediaChoice[],
+): string | null {
+  const timeline = timelineStateFromEpisodeArtifact(timelineJson);
+  const recordingAssetIds = new Set(
+    (timeline.captureTakeMaterializations ?? [])
+      .map((receipt) => receipt.transcriptBinding?.recordingAssetId)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const matches = choices.filter((choice) => (
+    choice.recordingAssetId
+    && recordingAssetIds.has(choice.recordingAssetId)
+  ));
+  return matches.length === 1 ? matches[0].id : null;
+}
+
+export function projectCanonicalEpisodeEditState(episode: { timelineJson: unknown; transcriptJson?: unknown; productionJson: unknown; updatedAt: Date }): ProgramEditState {
   const timeline = record(episode.timelineJson);
   const sequence = Array.isArray(timeline.sequences) ? record(timeline.sequences[0]) : timeline;
   const production = record(episode.productionJson);
-  const sources = normalizeSources(episode.timelineJson, episode.productionJson);
+  const sources = normalizeEpisodeEditSources(episode.timelineJson, episode.productionJson);
+  const transcriptExtentSeconds = projectEpisodeEditTranscript(
+    episode.transcriptJson ?? episode.timelineJson,
+  ).segments.reduce((maximum, segment) => Math.max(maximum, segment.endSeconds), 0);
   const durationSeconds = Math.max(
     numberValue(sequence.durationSeconds, sequence.duration, timeline.durationSeconds, production.durationSeconds),
+    transcriptExtentSeconds,
     ...sources.map((source) => source.durationSeconds + source.offsetSeconds),
   );
   return {
     version: PROGRAM_EDIT_VERSION,
     durationSeconds,
     sources,
+    sourceProjectionFingerprint: fingerprint(sources),
     listenAudioUrl: findAudioUrl(episode.productionJson),
     programDecisions: normalizeDecisions(episode.timelineJson, episode.updatedAt),
+  };
+}
+
+function projectedState(
+  episode: { timelineJson: unknown; transcriptJson?: unknown; productionJson: unknown; updatedAt: Date },
+  branchState?: unknown,
+): ProgramEditState {
+  const canonical = projectCanonicalEpisodeEditState(episode);
+  if (branchState === undefined) return canonical;
+  const intent = parseState(branchState);
+  return {
+    ...intent,
+    durationSeconds: canonical.durationSeconds,
+    sources: canonical.sources,
+    sourceProjectionFingerprint: canonical.sourceProjectionFingerprint,
+    listenAudioUrl: canonical.listenAudioUrl,
   };
 }
 
@@ -313,6 +405,7 @@ function parseState(value: unknown): ProgramEditState {
     version: PROGRAM_EDIT_VERSION,
     durationSeconds: numberValue(state.durationSeconds),
     sources: Array.isArray(state.sources) ? state.sources as ProgramEditSource[] : [],
+    sourceProjectionFingerprint: textValue(state.sourceProjectionFingerprint),
     listenAudioUrl: textValue(state.listenAudioUrl),
     programDecisions: Array.isArray(state.programDecisions)
       ? (state.programDecisions as ProgramDecision[]).slice().sort((a, b) => a.startTime - b.startTime)
@@ -354,7 +447,7 @@ export async function ensureEpisodeEditBranch(projectSlug: string, episodeSlug: 
     orderBy: { version: "desc" },
   });
   if (!baseline) {
-    const state = initialState(episode);
+    const state = projectCanonicalEpisodeEditState(episode);
     baseline = await prisma.studioEditBaseline.create({
       data: {
         projectId: episode.projectId,
@@ -388,7 +481,7 @@ export async function ensureEpisodeEditBranch(projectSlug: string, episodeSlug: 
     where: { baselineId_slug: { baselineId: baseline.id, slug: "shared-editor-cut" } },
   });
   if (!branch) {
-    const state = initialState(episode);
+    const state = projectCanonicalEpisodeEditState(episode);
     branch = await prisma.studioEditBranch.create({
       data: {
         baselineId: baseline.id,
@@ -436,6 +529,7 @@ export async function loadEpisodeEditDesk(
       inspectionFresh: includeInspection,
       projectId: null,
       projectSlug,
+      timelineFingerprint: null,
       episodes: [],
       selectedEpisode: null,
       baseline: null,
@@ -457,6 +551,9 @@ export async function loadEpisodeEditDesk(
       canEdit,
     };
   }
+  const mediaChoices = normalizeEpisodeEditMediaChoices(selected.productionJson, selected.timelineJson);
+  const selectedMediaAssetId = options.selectedMediaAssetId
+    ?? resolveMaterializedTranscriptMediaSelection(selected.timelineJson, mediaChoices);
   const [baseline, signalInspection, processingJobs, workflowJobs] = await Promise.all([
     prisma.studioEditBaseline.findFirst({
       where: { episodeProductionId: selected.id, stableKey: "source-sync-baseline" },
@@ -467,7 +564,7 @@ export async function loadEpisodeEditDesk(
       projectId: selected.projectId,
       projectSlug,
       episodeSlug: selected.slug,
-      selectedMediaAssetId: options.selectedMediaAssetId,
+      selectedMediaAssetId,
     }).catch((): EpisodeEditSignalEvidenceResolution => ({
       status: "held",
       reason: "Audio evidence inspection could not complete. The editor left source selection unchanged.",
@@ -532,6 +629,9 @@ export async function loadEpisodeEditDesk(
     inspectionFresh: includeInspection,
     projectId: selected.projectId,
     projectSlug,
+    timelineFingerprint: episodeTimelineContentFingerprint(
+      timelineStateFromEpisodeArtifact(selected.timelineJson),
+    ),
     episodes: episodes.map((episode) => ({
       id: episode.id,
       slug: episode.slug,
@@ -562,7 +662,7 @@ export async function loadEpisodeEditDesk(
       headRevision: branch.headRevision,
       updatedAt: branch.updatedAt.toISOString(),
     } : null,
-    state: branch ? parseState(branch.stateJson) : initialState(selected),
+    state: branch ? projectedState(selected, branch.stateJson) : projectCanonicalEpisodeEditState(selected),
     watchDerivatives: normalizeWatchDerivatives(selected.productionJson),
     annotations: annotations.map((annotation) => ({
       id: annotation.id,
@@ -580,8 +680,8 @@ export async function loadEpisodeEditDesk(
       createdAt: annotation.createdAt.toISOString(),
     })),
     transcript: projectEpisodeEditTranscript(selected.transcriptJson),
-    mediaChoices: normalizeEpisodeEditMediaChoices(selected.productionJson, selected.timelineJson),
-    selectedMediaAssetId: options.selectedMediaAssetId ?? null,
+    mediaChoices,
+    selectedMediaAssetId,
     signalInspection: signalInspection ?? {
       status: "unavailable",
       reason: "Inspection was intentionally preserved from the open workspace during this fast edit save.",
@@ -609,11 +709,17 @@ export async function saveProgramDecision(input: {
   actor: EditActor;
 }) {
   const prisma = getPrismaClient();
-  const { branch } = await ensureEpisodeEditBranch(input.projectSlug, input.episodeSlug, input.actor);
+  const { episode, branch } = await ensureEpisodeEditBranch(input.projectSlug, input.episodeSlug, input.actor);
   await prisma.$transaction(async (tx) => {
-    const current = await tx.studioEditBranch.findUniqueOrThrow({ where: { id: branch.id } });
+    const [current, sourceEpisode] = await Promise.all([
+      tx.studioEditBranch.findUniqueOrThrow({ where: { id: branch.id } }),
+      tx.studioEpisodeProduction.findUniqueOrThrow({
+        where: { id: episode.id },
+        select: { timelineJson: true, transcriptJson: true, productionJson: true, updatedAt: true },
+      }),
+    ]);
     if (current.headRevision !== input.expectedRevision) throw new EpisodeEditConflict(current.headRevision);
-    const before = parseState(current.stateJson);
+    const before = projectedState(sourceEpisode, current.stateJson);
     const sourceSelection = sourceIDsForDecision(input.kind, before.sources);
     const decision: ProgramDecision = {
       id: randomUUID(),

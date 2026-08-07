@@ -12,6 +12,7 @@ const payload: EpisodeEditDeskPayload = {
   inspectionFresh: true,
   projectId: "project-1",
   projectSlug: "high-ground-odyssey",
+  timelineFingerprint: "timeline-fingerprint-1",
   episodes: [{
     id: "episode-1",
     slug: "episode-4-part-2",
@@ -101,6 +102,7 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    Reflect.deleteProperty(global, "fetch");
   });
 
   it("renders receipt-backed derivatives without changing the protected baseline", () => {
@@ -186,11 +188,15 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
           id: "segment-1",
           startSeconds: 2.25,
           endSeconds: 4.5,
+          timelineClock: "source",
+          sourceStartSeconds: 2.25,
+          sourceEndSeconds: 4.5,
           text: "The source clock owns this line.",
           speakerLabel: "Charlie",
           reviewStatus: "human-reviewed",
           sourceTranscriptJobId: "transcript-1",
           sourceSegmentId: "provider-segment-1",
+          acceptedReviewId: "review-1",
           deactivated: false,
         }],
       },
@@ -198,7 +204,7 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /The source clock owns this line/i }));
     expect(screen.getByRole("slider", { name: "Episode playhead" })).toHaveValue("2.25");
-    expect(screen.getByText("human-reviewed")).toBeInTheDocument();
+    expect(screen.getByText("source clock · human-reviewed")).toBeInTheDocument();
   });
 
   it("shows the real execution lane and does not invent queued rendering", () => {
@@ -231,8 +237,8 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
     render(<EpisodeEditorClient initialPayload={{
       ...payload,
       mediaChoices: [
-        { id: "recording-charlie", label: "Charlie MV7i.wav", kind: "audio", role: "primary audio", sourceId: "source-charlie", recordingAssetId: "recording-charlie" },
-        { id: "recording-homer", label: "Homer iPhone.mov", kind: "video", role: "secondary camera", sourceId: "source-homer", recordingAssetId: "recording-homer" },
+        { id: "recording-charlie", label: "Charlie MV7i.wav", kind: "audio", role: "primary audio", sourceId: "source-charlie", recordingAssetId: "recording-charlie", captureGroupId: null },
+        { id: "recording-homer", label: "Homer iPhone.mov", kind: "video", role: "secondary camera", sourceId: "source-homer", recordingAssetId: "recording-homer", captureGroupId: null },
       ],
       signalInspection: {
         status: "ambiguous",
@@ -249,5 +255,86 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
     expect(mockPush).toHaveBeenCalledWith(
       "/nests/high-ground-odyssey/episodes/episode-4-part-2?mode=edit&source=recording-charlie",
     );
+  });
+
+  it("offers a guarded Capture handoff from the canonical Episode workspace", async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+      ok: true,
+      captureGroupId: "capture-group-1",
+      sourceCount: 2,
+      transcriptJobId: "transcript-1",
+      productionUpdatedAt: "2026-08-07T08:00:00.000Z",
+      plan: {
+        ok: true,
+        status: "media-ready",
+        roomId: "recording-room-1",
+        changed: true,
+        nextAction: "Review before materializing.",
+        transcriptBinding: {
+          recordingAssetId: "recording-charlie",
+          blockIds: ["turn-1", "turn-2"],
+          speakerAttributionComplete: false,
+        },
+        issues: [],
+        impact: {
+          operation: "initial-materialization",
+          sourceLanesCreated: 2,
+          sourceLanesReused: 0,
+          transcriptBlocksAdded: 2,
+          transcriptBlocksReplaced: 0,
+          unrelatedTimelineClipsPreserved: 3,
+          unrelatedTranscriptBlocksPreserved: 4,
+        },
+      },
+    }),
+    });
+    Object.defineProperty(global, "fetch", { value: fetchMock, configurable: true });
+
+    render(<EpisodeEditorClient initialPayload={{
+      ...payload,
+      mediaChoices: [{
+        id: "recording-charlie",
+        label: "Charlie MV7i.wav",
+        kind: "audio",
+        role: "primary audio",
+        sourceId: "source-charlie",
+        recordingAssetId: "recording-charlie",
+        captureGroupId: "capture-group-1",
+      }],
+    }} canonicalWorkspace />);
+
+    expect(await screen.findByRole("heading", { name: "Put this take on the Episode clock" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Bring sources + transcript into edit" })).toBeEnabled();
+    expect(screen.getByText("2 turns")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("captureGroupId=capture-group-1"),
+      expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
+  it("surfaces protected playback failure without pretending the edit was damaged", () => {
+    const { container } = render(<EpisodeEditorClient initialPayload={{
+      ...payload,
+      state: {
+        ...payload.state,
+        sources: [{
+          id: "capture-audio-1",
+          label: "MV7i protected source",
+          role: "audio",
+          playbackUrl: "/api/ingest/media/capture-audio-1",
+          offsetSeconds: 0,
+          durationSeconds: 60,
+        }],
+      },
+    }} />);
+
+    const audio = container.querySelector("audio");
+    expect(audio).not.toBeNull();
+    fireEvent.error(audio!);
+    expect(screen.getByRole("alert")).toHaveTextContent("1 protected source could not be loaded here.");
+    expect(screen.getByRole("alert")).toHaveTextContent("The edit and source receipts remain safe.");
   });
 });

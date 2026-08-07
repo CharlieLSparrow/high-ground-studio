@@ -4,7 +4,13 @@ jest.mock("@/lib/prisma", () => ({
   getPrismaClient: jest.fn(() => ({})),
 }));
 
-import { normalizeEpisodeEditMediaChoices, normalizeWatchDerivatives } from "./episode-edit-store";
+import {
+  normalizeEpisodeEditMediaChoices,
+  normalizeEpisodeEditSources,
+  normalizeWatchDerivatives,
+  projectCanonicalEpisodeEditState,
+  resolveMaterializedTranscriptMediaSelection,
+} from "./episode-edit-store";
 
 describe("Episode editor Shared Watch derivatives", () => {
   it("loads only complete receipt-backed Episode Room timeline spans", () => {
@@ -83,7 +89,7 @@ describe("Episode editor exact source choices", () => {
           originalName: "Charlie MV7i.wav",
           kind: "audio",
           importRole: "primary audio",
-          metadata: { recordingSync: { recordingAssetId: "recording-charlie" } },
+          metadata: { recordingSync: { recordingAssetId: "recording-charlie", captureGroupId: "capture-group-1" } },
         },
         {
           id: "studio-media-1",
@@ -93,8 +99,114 @@ describe("Episode editor exact source choices", () => {
         },
       ],
     }, null)).toEqual([
-      expect.objectContaining({ id: "recording-charlie", recordingAssetId: "recording-charlie", sourceId: "capture-source-1", kind: "audio" }),
-      expect.objectContaining({ id: "studio-media-1", recordingAssetId: null, sourceId: "studio-source-1", kind: "video" }),
+      expect.objectContaining({ id: "recording-charlie", recordingAssetId: "recording-charlie", sourceId: "capture-source-1", captureGroupId: "capture-group-1", kind: "audio" }),
+      expect.objectContaining({ id: "studio-media-1", recordingAssetId: null, sourceId: "studio-source-1", captureGroupId: null, kind: "video" }),
     ]);
+  });
+
+  it("projects materialized timeline lanes from canonical Episode truth with imported playback", () => {
+    expect(normalizeEpisodeEditSources({
+      timelineClips: [{
+        id: "capture-clip-1",
+        assetId: "capture-media-1",
+        trackId: "A1",
+        startIn: 9.25,
+        duration: 20,
+        sourceStart: 2,
+        sourceEnd: 22,
+        name: "Charlie MV7i",
+        kind: "audio",
+      }],
+      importedMedia: [{
+        id: "capture-media-1",
+        originalName: "Charlie MV7i.wav",
+        kind: "audio",
+        playbackUrl: "/api/ingest/media/capture-media-1",
+      }],
+    }, null)).toEqual([expect.objectContaining({
+      id: "capture-clip-1",
+      role: "audio",
+      offsetSeconds: 9.25,
+      durationSeconds: 20,
+      playbackUrl: "/api/ingest/media/capture-media-1",
+    })]);
+  });
+
+  it("rejects protocol-relative playback and derives duration from the visible source range", () => {
+    expect(normalizeEpisodeEditSources({
+      timelineClips: [{
+        id: "protected-clip-1",
+        assetId: "protected-media-1",
+        startIn: 4,
+        sourceStart: 2,
+        sourceEnd: 22,
+        name: "Protected camera",
+        kind: "video",
+      }],
+      importedMedia: [{
+        id: "protected-media-1",
+        kind: "video",
+        playbackUrl: "//untrusted.example.test/source.mov",
+      }],
+    }, null)).toEqual([expect.objectContaining({
+      id: "protected-clip-1",
+      offsetSeconds: 4,
+      durationSeconds: 20,
+      playbackUrl: undefined,
+    })]);
+  });
+
+  it("keeps transcript-only Episodes seekable through their final timed turn", () => {
+    expect(projectCanonicalEpisodeEditState({
+      timelineJson: { transcript: [
+        { id: "turn-1", time: 0, duration: 1, text: "Opening" },
+        { id: "turn-2", time: 10, duration: 2.5, text: "Closing thought" },
+      ] },
+      transcriptJson: { transcript: [
+        { id: "turn-1", time: 0, duration: 1, text: "Opening" },
+        { id: "turn-2", time: 10, duration: 2.5, text: "Closing thought" },
+      ] },
+      productionJson: {},
+      updatedAt: new Date("2026-08-07T08:00:00.000Z"),
+    })).toEqual(expect.objectContaining({ durationSeconds: 12.5 }));
+  });
+
+  it("uses a materialization receipt to select the transcript's exact source", () => {
+    expect(resolveMaterializedTranscriptMediaSelection({
+      captureTakeMaterializations: [{
+        schema: "quipsly-capture-take-materialization-v1",
+        id: "materialization-1",
+        captureGroupId: "capture-group-1",
+        roomId: "room-1",
+        sourceSetFingerprintSha256: "source-fingerprint",
+        status: "media-materialized",
+        sourceBindings: [],
+        transcriptBinding: {
+          schema: "quipsly-capture-take-transcript-v1",
+          transcriptJobId: "transcript-1",
+          recordingAssetId: "recording-audio-1",
+          sourceClipId: "clip-1",
+          blockIds: ["turn-1"],
+          providerWordsImmutable: true,
+          reviewedCorrectionsAreOverlays: true,
+          speakerAttributionComplete: false,
+        },
+        speakerCameraMappingIds: [],
+        materializedByUserId: null,
+        materializedByEmail: "editor@example.test",
+        materializedAt: "2026-08-07T08:00:00.000Z",
+        boundaries: {
+          sourceMediaUnchanged: true,
+          providerWordsUnchanged: true,
+          reviewedAlignmentRequiredForNonSpineSources: true,
+          speakerIdentityNeverGuessed: true,
+          existingHumanTimelineDecisionsPreserved: true,
+          publicationNotStarted: true,
+        },
+      }],
+    }, [
+      { id: "recording-audio-1", label: "MV7i", kind: "audio", role: "spine", sourceId: "source-1", recordingAssetId: "recording-audio-1", captureGroupId: "capture-group-1" },
+      { id: "recording-video-1", label: "iPhone", kind: "video", role: "camera", sourceId: "source-2", recordingAssetId: "recording-video-1", captureGroupId: "capture-group-1" },
+    ])).toBe("recording-audio-1");
   });
 });

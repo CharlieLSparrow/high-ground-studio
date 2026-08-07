@@ -8155,3 +8155,23 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   Episode-program delivery authority; the existing asset-master foreign key
   must not be repurposed to fake it. Architecture and evidence:
   `docs/coordination/2026-08-06-session-program-output-authority.md`.
+
+## 2026-08-07 canonical Episode edit handoff checkpoint
+
+- Made the Episode collaboration space the primary edit experience without
+  duplicating synchronized-source authority. The canonical Episode timeline now
+  projects source truth into the shared branch; the branch owns revisioned edit
+  intent and annotations.
+- Added an in-workspace Capture handoff with exact source, alignment, decode,
+  transcript, impact, and held/current state. A unique receipt-bound transcript
+  source is selected automatically instead of asking collaborators to guess.
+- Corrected transcript clock semantics: materialized `time` drives the Episode
+  playhead while immutable source start/end remains visible provenance.
+  Transcript-only Episodes now derive enough duration to seek every timed turn.
+- Rendered dogfood covered one honestly held Capture take, one fully
+  materialized two-source/four-turn take, and one transcript-only Episode. It
+  also exposed and fixed same-origin playback rejection, silent playback
+  failure, misleading held-action copy, and SVG hydration mismatches.
+- Full verification passes 399 suites / 2,085 tests, strict TypeScript, and an
+  optimized 191-route build. Architecture and evidence:
+  `docs/coordination/2026-08-07-canonical-episode-edit-handoff.md`.
