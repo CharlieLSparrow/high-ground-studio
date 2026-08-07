@@ -140,6 +140,53 @@ struct CaptureTranscriptGate: Codable, Equatable {
     let error: String?
 }
 
+struct CaptureTranscriptLowConfidenceWord: Codable, Equatable {
+    let word: String
+    let confidence: Double
+    let startSeconds: TimeInterval
+    let endSeconds: TimeInterval
+}
+
+struct CaptureTranscriptAttentionSegment: Codable, Identifiable, Equatable {
+    let segmentId: String
+    let startSeconds: TimeInterval
+    let endSeconds: TimeInterval
+    let text: String
+    let reviewed: Bool
+    let minimumWordConfidence: Double?
+    let lowConfidenceWords: [CaptureTranscriptLowConfidenceWord]
+
+    var id: String { segmentId }
+}
+
+struct CaptureTranscriptEvidenceSummary: Codable, Equatable {
+    let provider: String?
+    let providerModel: String?
+    let segmentCount: Int
+    let wordCount: Int
+    let confidenceWordCount: Int
+    let meanWordConfidence: Double?
+    let medianWordConfidence: Double?
+    let lowConfidenceThreshold: Double?
+    let lowConfidenceThresholdAuthority: String?
+    let lowConfidenceWordCount: Int?
+    let confidenceIsNotMeasuredAccuracy: Bool
+    let reviewedSegmentCount: Int
+    let correctedSegmentCount: Int
+    let confirmedAsIsSegmentCount: Int
+    let reviewCoverage: Double
+    let measuredWordErrorRate: Double?
+    let measuredWordErrorCount: Int
+    let measuredReferenceWordCount: Int
+    let measuredScope: String
+    let attentionSegments: [CaptureTranscriptAttentionSegment]
+}
+
+struct CaptureTranscriptEvidence: Codable, Equatable {
+    let schema: String
+    let transcript: CaptureTranscriptEvidenceSummary
+}
+
 struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
     let ok: Bool
     let roomId: String
@@ -151,6 +198,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
     let participants: [CaptureTranscriptParticipant]?
     let speakerGroups: [CaptureTranscriptSpeakerGroup]?
     let segments: [CaptureTranscriptSegment]
+    let evidence: CaptureTranscriptEvidence?
     let boundaries: [String: Bool]
 
     static func preview(roomID: String) -> Self {
@@ -176,7 +224,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
             text: "My goal is to publish a thoughtful first episode, and I will review the final cut this week.",
             providerText: "My goal is to publish a thoughtful first episode, and I will review the final cut this week.",
             providerTextSha256: "preview-provider-sha256",
-            confidence: 0.94,
+            confidence: 0.58,
             acceptedCorrection: nil,
             acceptedVerification: nil,
             speakerAttribution: nil,
@@ -246,6 +294,48 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
                 ),
             ],
             segments: [segment],
+            evidence: .init(
+                schema: "quipsly-audio-transcript-evidence-v1",
+                transcript: .init(
+                    provider: "deepgram",
+                    providerModel: "nova-3",
+                    segmentCount: 1,
+                    wordCount: 17,
+                    confidenceWordCount: 17,
+                    meanWordConfidence: 0.86,
+                    medianWordConfidence: 0.91,
+                    lowConfidenceThreshold: 0.65,
+                    lowConfidenceThresholdAuthority: "quipsly-deepgram-default-v1",
+                    lowConfidenceWordCount: 1,
+                    confidenceIsNotMeasuredAccuracy: true,
+                    reviewedSegmentCount: 0,
+                    correctedSegmentCount: 0,
+                    confirmedAsIsSegmentCount: 0,
+                    reviewCoverage: 0,
+                    measuredWordErrorRate: nil,
+                    measuredWordErrorCount: 0,
+                    measuredReferenceWordCount: 0,
+                    measuredScope: "NONE",
+                    attentionSegments: [
+                        .init(
+                            segmentId: segment.id,
+                            startSeconds: segment.startSeconds,
+                            endSeconds: segment.endSeconds,
+                            text: segment.text,
+                            reviewed: false,
+                            minimumWordConfidence: 0.58,
+                            lowConfidenceWords: [
+                                .init(
+                                    word: "thoughtful",
+                                    confidence: 0.58,
+                                    startSeconds: 4.08,
+                                    endSeconds: 4.46
+                                ),
+                            ]
+                        ),
+                    ]
+                )
+            ),
             boundaries: [
                 "providerSegmentsImmutable": true,
                 "correctionOverlayVersioned": true,
@@ -2587,6 +2677,10 @@ struct CaptureTranscriptReviewView: View {
                     } else if let desk = client.desk {
                         sourceTruth(desk)
                             .id("source-truth")
+                        if let evidence = desk.evidence?.transcript {
+                            transcriptEvidenceSummary(evidence)
+                                .id("transcript-evidence")
+                        }
                         if desk.segments.contains(where: { segment in
                             (segment.downstreamImpacts ?? []).contains(where: \.needsReview)
                         }) {
@@ -2820,6 +2914,7 @@ struct CaptureTranscriptReviewView: View {
                     segment: segment,
                     recording: recording,
                     expectedRecordingAssetID: desk.playback?.recordingAssetId,
+                    attention: desk.evidence?.transcript.attentionSegments.first(where: { $0.segmentId == segment.id }),
                     previewOnly: previewOnly,
                     decisionsLocked: client.isUsingProtectedCache,
                     canUseProjectTeamNotes: canUseProjectTeamNotes,
@@ -2839,6 +2934,96 @@ struct CaptureTranscriptReviewView: View {
             return desk.segments
         }
         return [focusedSegment] + desk.segments.filter { $0.id != focusSegmentID }
+    }
+
+    private func transcriptEvidenceSummary(
+        _ evidence: CaptureTranscriptEvidenceSummary
+    ) -> some View {
+        let firstAttentionSegmentID = evidence.attentionSegments.first?.segmentId
+        let providerLabel = [
+            captureTranscriptNonempty(evidence.provider),
+            captureTranscriptNonempty(evidence.providerModel),
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+        return VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("Transcript evidence", systemImage: "waveform.badge.magnifyingglass")
+                    .font(.headline)
+                    .foregroundStyle(.indigo)
+                Spacer(minLength: 8)
+                if !providerLabel.isEmpty {
+                    Text(providerLabel)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            HStack(spacing: 8) {
+                transcriptEvidenceMetric(
+                    value: "\(evidence.reviewedSegmentCount)/\(evidence.segmentCount)",
+                    label: "segments reviewed"
+                )
+                transcriptEvidenceMetric(
+                    value: evidence.lowConfidenceWordCount.map(String.init) ?? "—",
+                    label: "triage words"
+                )
+                transcriptEvidenceMetric(
+                    value: evidence.measuredWordErrorRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "—",
+                    label: "measured WER"
+                )
+            }
+            if let threshold = evidence.lowConfidenceThreshold,
+               let authority = captureTranscriptNonempty(evidence.lowConfidenceThresholdAuthority) {
+                Text("\(Int((threshold * 100).rounded()))% is a review-priority threshold from \(authority). Provider confidence helps order listening; it is not measured transcript accuracy.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("This provider did not supply a qualified confidence-triage threshold. Quipsly will not invent one.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let firstAttentionSegmentID {
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                        scrollTargetSegmentID = firstAttentionSegmentID
+                    }
+                    accessibilityFocusedSegmentID = firstAttentionSegmentID
+                } label: {
+                    Label(
+                        "Review first of \(evidence.attentionSegments.count)",
+                        systemImage: "ear.badge.exclamationmark"
+                    )
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.indigo)
+                .accessibilityIdentifier("CaptureTranscriptEvidenceReviewFirst")
+            }
+            Text("Measured WER appears only after people have reviewed source-backed words. Unreviewed provider confidence never becomes an accuracy claim.")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .reviewCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptEvidenceSummary")
+    }
+
+    private func transcriptEvidenceMetric(value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(.primary)
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(9)
+        .background(Color.indigo.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
@@ -4678,6 +4863,7 @@ private struct CaptureTranscriptSegmentCard: View {
     let segment: CaptureTranscriptSegment
     let recording: LocalRecording?
     let expectedRecordingAssetID: String?
+    let attention: CaptureTranscriptAttentionSegment?
     let previewOnly: Bool
     let decisionsLocked: Bool
     let canUseProjectTeamNotes: Bool
@@ -4736,6 +4922,18 @@ private struct CaptureTranscriptSegmentCard: View {
                 .disabled(!hasExactLocalSource || client.isMutating)
                 .accessibilityLabel("Play transcript segment from \(segment.startSeconds.captureTranscriptTimestamp)")
                 .accessibilityIdentifier("CaptureTranscriptPlayButton_\(segment.id)")
+            }
+
+            if let attention {
+                transcriptConfidenceEvidence(attention)
+            } else if let confidence = segment.confidence {
+                Label(
+                    "\(Int((confidence * 100).rounded()))% provider confidence · not measured accuracy",
+                    systemImage: "waveform.badge.magnifyingglass"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("CaptureTranscriptProviderConfidence_\(segment.id)")
             }
 
             if let accepted = segment.acceptedCorrection {
@@ -4888,6 +5086,45 @@ private struct CaptureTranscriptSegmentCard: View {
             draftSaveTask?.cancel()
             persistDraftIfNeeded()
         }
+    }
+
+    private func transcriptConfidenceEvidence(
+        _ attention: CaptureTranscriptAttentionSegment
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label(
+                attention.reviewed ? "Confidence triage remains after review" : "Prioritized for listening",
+                systemImage: "ear.badge.exclamationmark"
+            )
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.indigo)
+            if let minimum = attention.minimumWordConfidence {
+                Text("Lowest provider word confidence: \(Int((minimum * 100).rounded()))%. This ranks review effort; it does not estimate whether the whole segment is correct.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("This unreviewed segment has no qualified word-confidence evidence. Listen before relying on it downstream.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !attention.lowConfidenceWords.isEmpty {
+                Text(
+                    "Listen around: "
+                        + attention.lowConfidenceWords.map {
+                            "\($0.word) (\(Int(($0.confidence * 100).rounded()))%)"
+                        }.joined(separator: " · ")
+                )
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.indigo)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(11)
+        .background(Color.indigo.opacity(0.075), in: RoundedRectangle(cornerRadius: 11))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("CaptureTranscriptConfidenceAttention_\(segment.id)")
     }
 
     private func downstreamImpactReview(

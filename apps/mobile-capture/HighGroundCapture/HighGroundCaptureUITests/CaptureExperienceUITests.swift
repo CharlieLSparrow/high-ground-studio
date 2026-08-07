@@ -1720,6 +1720,8 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptEvidenceSummary"].exists)
+        XCTAssertTrue(app.buttons["CaptureTranscriptEvidenceReviewFirst"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptImpactSummary"].exists)
         XCTAssertTrue(app.buttons["CaptureTranscriptImpactReviewFirst"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerIdentitySection"].exists)
@@ -1781,6 +1783,7 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(aiProposal)
         let downstreamImpact = app.descendants(matching: .any)["CaptureTranscriptImpact_task_preview-task"]
         XCTAssertTrue(downstreamImpact.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptConfidenceAttention_preview-segment"].exists)
         XCTAssertTrue(app.switches["CaptureTranscriptImpactConfirm_task_preview-task"].exists)
         XCTAssertFalse(
             app.buttons["CaptureTranscriptImpactAcknowledge_task_preview-task"].isEnabled,
