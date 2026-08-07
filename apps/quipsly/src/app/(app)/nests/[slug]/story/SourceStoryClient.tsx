@@ -508,6 +508,7 @@ type GoogleDriveConformPlan = {
     originalBytes: string;
     cachedBytes: string;
     remainingBytes: string;
+    shortfallBytes: string;
     executor: {
       status: "measured" | "unavailable";
       safeAvailableBytes: string | null;
@@ -2979,7 +2980,18 @@ export function SourceStoryClient({
                                 {driveConformPlan.holds.length ? (
                                   <ul className="mt-2 space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2 font-semibold text-amber-950">
                                     {driveConformPlan.holds.map((hold) => (
-                                      <li key={hold}>• {hold}</li>
+                                      <li key={hold}>
+                                        • {hold}
+                                        {hold ===
+                                          "This Mac does not have enough safe storage for the complete exact package." &&
+                                        driveConformPlan.storage
+                                          .shortfallBytes !== "0"
+                                          ? ` Free ${formatBytes(
+                                              driveConformPlan.storage
+                                                .shortfallBytes,
+                                            )} or choose another execution Mac.`
+                                          : ""}
+                                      </li>
                                     ))}
                                   </ul>
                                 ) : null}

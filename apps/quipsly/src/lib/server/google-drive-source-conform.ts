@@ -343,12 +343,13 @@ export async function planGoogleDriveSourceUnitConform(input: {
     .filter((member) => member.exactReplicaReady)
     .reduce((total, member) => total + member.sizeBytes, 0);
   const remainingBytes = totalBytes - cachedBytes;
-  if (
-    executorStorage.status === "measured" &&
-    Number(executorStorage.safeAvailableBytes) < remainingBytes
-  ) {
+  const storageShortfallBytes =
+    executorStorage.status === "measured"
+      ? Math.max(0, remainingBytes - Number(executorStorage.safeAvailableBytes))
+      : 0;
+  if (storageShortfallBytes > 0) {
     holds.push(
-      `This Mac needs ${remainingBytes - Number(executorStorage.safeAvailableBytes)} more safe bytes before it can retain the complete exact package.`,
+      "This Mac does not have enough safe storage for the complete exact package.",
     );
   }
   const allExact =
@@ -396,6 +397,7 @@ export async function planGoogleDriveSourceUnitConform(input: {
       originalBytes: String(originalBytes),
       cachedBytes: String(cachedBytes),
       remainingBytes: String(remainingBytes),
+      shortfallBytes: String(storageShortfallBytes),
       executor: executorStorage,
     },
     members: members.map((member) => {

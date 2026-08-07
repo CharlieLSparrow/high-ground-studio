@@ -58,11 +58,33 @@ function sourceUnit(options: { exact?: boolean; durationSeconds?: number }) {
 function prismaFixture(input: {
   source: ReturnType<typeof sourceUnit>;
   sourceSets?: Array<Record<string, unknown>>;
+  safeAvailableBytes?: number;
 }) {
   return {
     studioSourceUnit: { findFirst: jest.fn(async () => input.source) },
     studioWorkflowJob: { findMany: jest.fn(async () => []) },
-    agentNode: { findMany: jest.fn(async () => []) },
+    agentNode: {
+      findMany: jest.fn(async () =>
+        input.safeAvailableBytes === undefined
+          ? []
+          : [
+              {
+                capabilities: {
+                  executorKind: "local-mac",
+                  storage: {
+                    schema: "quipsly-local-media-storage-v1",
+                    status: "measured",
+                    availableBytes: input.safeAvailableBytes + 500,
+                    reserveBytes: 500,
+                    safeAvailableBytes: input.safeAvailableBytes,
+                    measuredAt: new Date().toISOString(),
+                  },
+                },
+                lastHeartbeatAt: new Date(),
+              },
+            ],
+      ),
+    },
     studioMediaSourceSet: {
       findMany: jest.fn(async () => input.sourceSets ?? []),
     },
@@ -85,6 +107,7 @@ describe("Google Drive source package conform planning", () => {
         originalBytes: "1000",
         cachedBytes: "0",
         remainingBytes: "1100",
+        shortfallBytes: "0",
       },
       sourceSet: null,
     });
@@ -96,6 +119,33 @@ describe("Google Drive source package conform planning", () => {
         }),
       ]),
     );
+  });
+
+  it("holds a transfer and reports an exact shortfall when the Mac cannot retain it safely", async () => {
+    const plan = await planGoogleDriveSourceUnitConform({
+      prisma: prismaFixture({
+        source: sourceUnit({}),
+        safeAvailableBytes: 400,
+      }),
+      projectId: "project_12345678",
+      sourceUnitId: "source_unit_12345678",
+      actorUserId: "user_12345678",
+    });
+    expect(plan).toMatchObject({
+      status: "held",
+      holds: [
+        "This Mac does not have enough safe storage for the complete exact package.",
+      ],
+      storage: {
+        remainingBytes: "1100",
+        shortfallBytes: "700",
+        executor: {
+          status: "measured",
+          safeAvailableBytes: "400",
+          localPathWithheld: true,
+        },
+      },
+    });
   });
 
   it("recognizes a render-ready set only when all exact members match", async () => {
