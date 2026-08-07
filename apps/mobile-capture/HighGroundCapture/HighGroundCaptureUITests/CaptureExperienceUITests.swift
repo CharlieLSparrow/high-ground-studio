@@ -2136,6 +2136,24 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureVideoPreviewPlaceholder"].exists)
         XCTAssertTrue(app.buttons["CaptureVideoPrepareButton"].exists)
         XCTAssertTrue(app.segmentedControls["CaptureVideoCameraPicker"].exists)
+        let qualityPicker = app.buttons["CaptureVideoQualityPicker"]
+        XCTAssertTrue(qualityPicker.exists)
+        XCTAssertTrue(
+            qualityPicker.label.contains("4K")
+                && qualityPicker.label.contains("24"),
+            "Production video must default visibly to 4K at 24 fps."
+        )
+        qualityPicker.tap()
+        for quality in ["4K · 24 fps", "4K · 30 fps", "1080p · 24 fps"] {
+            XCTAssertTrue(
+                app.buttons[quality].waitForExistence(timeout: 3),
+                "Expected an explicit \(quality) capture choice."
+            )
+        }
+        app.buttons["1080p · 24 fps"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Long-take profile with lower storage and thermal demand."].exists
+        )
         XCTAssertTrue(
             app.staticTexts.matching(
                 NSPredicate(format: "label BEGINSWITH %@", "Two immutable sources: a separate microphone master")
@@ -2166,6 +2184,37 @@ final class CaptureExperienceUITests: XCTestCase {
         modePicker.buttons["Audio"].tap()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.otherElements["CaptureVideoRecorderHero"].exists)
+    }
+
+    func testVideoQualityChoiceRemainsReachableAtLargestAccessibilityTextSize() throws {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ]
+        app.launch()
+
+        let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
+        XCTAssertTrue(modePicker.waitForExistence(timeout: 12))
+        modePicker.buttons["A/V"].tap()
+        let qualityPicker = app.buttons["CaptureVideoQualityPicker"]
+        reveal(qualityPicker)
+        XCTAssertTrue(qualityPicker.exists)
+        XCTAssertTrue(
+            qualityPicker.isHittable,
+            "Video quality must remain reachable at the largest accessibility text size."
+        )
+        qualityPicker.tap()
+        XCTAssertTrue(app.buttons["4K · 24 fps"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["1080p · 24 fps"].exists)
+
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
     }
 
     func testVideoOnlyConsentDoesNotAccidentallyAuthorizeAudioCapture() {

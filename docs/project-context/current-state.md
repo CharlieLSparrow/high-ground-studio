@@ -2590,3 +2590,21 @@ These should be treated as cleanup candidates later, not as authoritative produc
   two-source playback, pause, and session cleanup. Provider word correction,
   physical-iPhone recovery, and deployed-Nest playback remain separate gates.
   See `docs/coordination/quipsly-session-episode-assembly-truth-2026-08-06.md`.
+
+### 2026-08-06 explicit iPhone production-video quality
+
+- Capture now defaults to an explicit UHD 4K/24 production intent and also
+  offers 4K/30 plus a 1080p/24 endurance profile before camera permission.
+- The resolver evaluates real advertised frame-rate ranges independently,
+  prefers unbinned UHD, never invents a cadence across disjoint ranges, and
+  never silently changes 24 fps to 30 fps. Any same-cadence resolution fallback
+  is preserved as visibly unfulfilled intent.
+- Source-profile schema v5 retains requested and resolved quality plus camera
+  system pressure at Start. Serious pressure is visible; critical/shutdown
+  closes the immutable source rather than silently lowering its quality.
+- Seven deterministic policy cases, the complete mobile preflight, a
+  warning-free generic iOS Simulator build, and two operated iPhone 17 Pro
+  simulator journeys pass, including the largest accessibility text size.
+  Physical front/rear capture, actual MOV readback,
+  pressure/thermal operation, upload, and editor playback remain open. See
+  `docs/coordination/2026-08-06-iphone-video-quality-intent.md`.

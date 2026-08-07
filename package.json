@@ -176,6 +176,7 @@
     "quipsly:capture:sound-check:test": "bash apps/mobile-capture/HighGroundCapture/scripts/test-audio-sound-check-model.sh",
     "quipsly:capture:nest-evidence:test": "bash apps/mobile-capture/HighGroundCapture/scripts/test-nest-source-evidence-contract.sh",
     "quipsly:capture:source-plan:test": "bash apps/mobile-capture/HighGroundCapture/scripts/test-source-plan-projection.sh",
+    "quipsly:capture:video-quality:test": "bash apps/mobile-capture/HighGroundCapture/scripts/test-video-capture-quality-policy.sh",
     "quipsly:capture:source-plan:operate-local": "node scripts/quipsly-local-capture-source-plan-operation.mjs",
     "quipsly:capture:session-deep-link:test": "bash scripts/test-capture-session-deep-links.sh",
     "quipsly:capture:support-snapshot:test": "bash scripts/test-capture-support-snapshot.sh",

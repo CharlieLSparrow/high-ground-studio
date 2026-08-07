@@ -19,6 +19,7 @@ testflight_runner="$capture_root/../../../scripts/deploy-testflight.sh"
 isolated_release_runner="$capture_root/../../../scripts/release/quipsly-capture-release-from-commit.sh"
 isolated_preflight_runner="$capture_root/../../../scripts/release/quipsly-capture-preflight-from-commit.sh"
 nest_evidence_contract_test="$capture_root/scripts/test-nest-source-evidence-contract.sh"
+video_quality_policy_test="$capture_root/scripts/test-video-capture-quality-policy.sh"
 developer_dir="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 fail() {
@@ -160,6 +161,8 @@ require_absent_text "$testflight_runner" "gem install bundler" "TestFlight entry
 
 "$nest_evidence_contract_test"
 pass "Nest source-evidence comparison contract passes"
+bash "$video_quality_policy_test"
+pass "Video capture quality policy passes"
 
 app_settings="$(
   xcodebuild \

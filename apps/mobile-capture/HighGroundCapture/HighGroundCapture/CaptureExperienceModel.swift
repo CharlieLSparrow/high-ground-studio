@@ -1173,7 +1173,8 @@ final class CaptureExperienceModel: ObservableObject {
     func prepareVideoCapture(
         using videoCapture: VideoCaptureController,
         mode: CaptureRecordingMode,
-        position: VideoCaptureCameraPosition
+        position: VideoCaptureCameraPosition,
+        qualityIntent: VideoCaptureQualityIntent = .production4K24
     ) async {
         guard mode.recordsVideo else { return }
         guard !usesPreviewData else {
@@ -1205,7 +1206,8 @@ final class CaptureExperienceModel: ObservableObject {
         message = nil
         await videoCapture.prepare(
             position: position,
-            includesAudio: mode.movieIncludesAudio
+            includesAudio: mode.movieIncludesAudio,
+            qualityIntent: qualityIntent
         )
         isChangingCapture = false
         if videoCapture.state == .ready {

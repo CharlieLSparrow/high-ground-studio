@@ -371,7 +371,9 @@ enum LocalAudibleEventAnalyzer {
         let sizeBytes: Int64
     }
 
-    private static func sourceDigest(at fileURL: URL) throws -> SourceDigest {
+    nonisolated private static func sourceDigest(
+        at fileURL: URL
+    ) throws -> SourceDigest {
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { try? handle.close() }
         var hasher = SHA256()

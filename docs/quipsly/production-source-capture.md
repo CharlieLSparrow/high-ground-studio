@@ -6,10 +6,12 @@ Last reviewed: 2026-08-06
 Implementation checkpoint: the protected local ledger and canonical resumable
 manifest now carry a backward-compatible `audio | video` media kind,
 `captureGroupId`, exact source profile, and monotonic start/stop evidence. The
-native camera core now resolves the actual front/rear format, records fragmented
+native camera core now resolves the actual front/rear format from an explicit
+4K/24, 4K/30, or endurance 1080p/24 intent, records fragmented
 MOV sources behind an actor, makes pause/switch explicit source boundaries,
-closes room receipts across failures, storage, thermal, identity, and foreground
-changes, and decodes each finalized track through EOF before upload eligibility.
+closes room receipts across failures, storage, process thermal state, camera
+system pressure, identity, and foreground changes, and decodes each finalized
+track through EOF before upload eligibility.
 The finished MOV's actual encoded and presentation dimensions, rotation, codec,
 frame rate, audio shape, and duration are persisted independently of the
 negotiated camera profile. Material drift creates a visible upload hold without
@@ -18,7 +20,7 @@ through an app-owned AVPlayer surface instead of attempting audio-only playback.
 Fixed portrait rotation has also been removed. Apple's device rotation
 coordinator owns separate horizon-level preview and movie angles; the movie
 angle and derived portrait/landscape shape are locked immediately before the
-durable START receipt, preserved in source-profile schema v3, and compared with
+durable START receipt, preserved in source-profile schema v5, and compared with
 the finished QuickTime track transform. Changing orientation requires a new
 immutable source boundary rather than silently mutating one movie's semantics.
 Old audio ledgers and v2 upload manifests normalize to one-source capture groups
@@ -102,6 +104,21 @@ the active camera, thermal state, free space, or current audio pipeline cannot
 sustain.
 
 - [iPhone 16 technical specifications](https://www.apple.com/iphone-16/specs/)
+- [Apple supported frame-rate ranges](https://developer.apple.com/documentation/avfoundation/avcapturedevice/format/videosupportedframerateranges)
+- [Apple active format](https://developer.apple.com/documentation/avfoundation/avcapturedevice/activeformat)
+- [Apple camera system pressure](https://developer.apple.com/documentation/avfoundation/avcapturedevice/systempressurestate-swift.class)
+
+The production default is UHD 3840×2160 at exactly 24 fps. Selection examines
+each advertised frame-rate range independently; it never infers support across
+a gap or turns a 24 fps request into 30 fps. UHD wins over a larger 4K shape for
+editor/platform interoperability, and an exact-cadence 1080p fallback remains
+usable only with an explicit visible **intent not fulfilled** receipt. The
+requested intent, resolved format, camera identity, and system-pressure level at
+Start are retained with source-profile schema v5. Once Start is durable, quality
+does not change inside that immutable movie. Serious pressure warns; critical
+or shutdown pressure closes and preserves the source rather than silently
+downgrading it. Physical iPhone qualification remains required for each camera
+and profile.
 
 QuickTime movie fragments are required. Apple's default movie-file fragment
 interval is 10 seconds; fragments keep a partially written file usable through

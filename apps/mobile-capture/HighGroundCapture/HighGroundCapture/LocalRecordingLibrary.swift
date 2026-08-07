@@ -36,6 +36,9 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
     var cameraPosition: String?
     var cameraDeviceUniqueID: String?
     var captureRotationDegrees: Double?
+    var requestedVideoQuality: String?
+    var videoQualityIntentFulfilled: Bool?
+    var videoSystemPressureAtStart: String?
     var includesAudio: Bool
     var audioSampleRate: Double?
     var audioChannelCount: Int?
@@ -70,6 +73,9 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         cameraPosition: String? = nil,
         cameraDeviceUniqueID: String? = nil,
         captureRotationDegrees: Double? = nil,
+        requestedVideoQuality: String? = nil,
+        videoQualityIntentFulfilled: Bool? = nil,
+        videoSystemPressureAtStart: String? = nil,
         includesAudio: Bool,
         audioSampleRate: Double? = nil,
         audioChannelCount: Int? = nil,
@@ -103,6 +109,9 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         self.cameraPosition = cameraPosition
         self.cameraDeviceUniqueID = cameraDeviceUniqueID
         self.captureRotationDegrees = captureRotationDegrees
+        self.requestedVideoQuality = requestedVideoQuality
+        self.videoQualityIntentFulfilled = videoQualityIntentFulfilled
+        self.videoSystemPressureAtStart = videoSystemPressureAtStart
         self.includesAudio = includesAudio
         self.audioSampleRate = audioSampleRate
         self.audioChannelCount = audioChannelCount

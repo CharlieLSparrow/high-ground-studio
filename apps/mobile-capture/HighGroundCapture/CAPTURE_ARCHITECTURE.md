@@ -228,8 +228,9 @@ The current source is one AAC/M4A container, not independently finalized segment
 
 Local video is now a user-reachable production-source lane. It is a separate
 `AVCaptureSession` implementation behind a serial actor/executor, using
-`AVCaptureMovieFileOutput`, ten-second movie fragments, storage and thermal
-interlocks, and foreground-only camera behavior. It writes the same protected
+`AVCaptureMovieFileOutput`, ten-second movie fragments, storage, process thermal,
+and camera-system-pressure interlocks, and foreground-only camera behavior. It
+writes the same protected
 local source ledger and direct resumable-upload contract instead of adding a
 second product-truth path. Podcast-room mode records a video-only master while
 LiveKit owns realtime audio; solo mode may record the explicitly selected
@@ -238,12 +239,22 @@ opens another in the same capture group rather than risking an unrecoverable
 mid-file input mutation. The full source/clock/editor contract is documented in
 `docs/quipsly/production-source-capture.md`.
 
+Camera quality is an explicit creator intent, not a hidden preset. The default
+is UHD 4K/24; 4K/30 and 1080p/24 endurance are reachable before permission and
+remain reachable at accessibility XXXL. The deterministic resolver checks exact
+advertised frame-rate ranges and prefers unbinned UHD. It fails closed when the
+requested cadence is unavailable, while any same-cadence resolution fallback is
+named as unfulfilled intent. Start journals requested and resolved quality plus
+camera pressure. Runtime pressure is visible; serious pressure warns and
+critical/shutdown closes the source without changing its profile.
+
 Preview and movie orientation are not a fixed portrait assumption.
 `AVCaptureDevice.RotationCoordinator` supplies the device- and gravity-aware
 horizon-level preview and capture angles. Preview follows its own coordinator;
 immediately before the durable START receipt, the actor snapshots and locks the
-movie angle, orientation, camera ID, and negotiated format into source-profile
-schema v3. One immutable movie keeps one orientation. The UI tells the creator
+movie angle, orientation, camera ID, negotiated format, requested quality, and
+camera pressure at Start into source-profile schema v5. One immutable movie
+keeps one orientation and one quality profile. The UI tells the creator
 to frame before Start and to pause or stop before changing orientation. After
 finalization, the recorded QuickTime transform and presentation shape must
 agree with that receipt or upload is held while the local original remains

@@ -15,7 +15,24 @@ enum VideoCaptureCameraPosition: String, Codable, CaseIterable, Sendable {
     }
 }
 
+enum VideoCaptureSystemPressureLevel: String, Codable, Equatable, Sendable {
+    case nominal
+    case fair
+    case serious
+    case critical
+    case shutdown
+    case unknown
+
+    var preventsReliableCapture: Bool {
+        self == .critical || self == .shutdown
+    }
+
+    var displayName: String { rawValue.capitalized }
+}
+
 struct VideoCaptureResolvedProfile: Codable, Equatable, Sendable {
+    let qualityIntent: VideoCaptureQualityIntent
+    let qualityIntentFulfilled: Bool
     let cameraPosition: VideoCaptureCameraPosition
     let cameraDeviceUniqueID: String
     let cameraLocalizedName: String
@@ -29,6 +46,7 @@ struct VideoCaptureResolvedProfile: Codable, Equatable, Sendable {
     let audioChannelCount: Int?
     let movieFragmentSeconds: Double
     let captureRotationDegrees: Double
+    let systemPressureAtPrepare: VideoCaptureSystemPressureLevel
 
     var resolutionLabel: String {
         if width >= 3_840 && height >= 2_160 { return "4K" }
@@ -52,6 +70,12 @@ struct VideoCaptureResolvedProfile: Codable, Equatable, Sendable {
 
     var profileLabel: String {
         "\(resolutionLabel) · \(Int(framesPerSecond.rounded())) fps · \(codec.uppercased()) · \(presentationOrientationLabel)"
+    }
+
+    var qualityResolutionLabel: String {
+        qualityIntentFulfilled
+            ? "Requested \(qualityIntent.title) resolved exactly"
+            : "Requested \(qualityIntent.title); this camera resolved \(profileLabel)"
     }
 
     var estimatedBytesPerSecond: Int64 {
@@ -82,7 +106,7 @@ enum VideoCaptureServiceError: LocalizedError {
     case cameraPermissionDenied
     case microphonePermissionDenied
     case cameraUnavailable(VideoCaptureCameraPosition)
-    case compatibleFormatUnavailable(VideoCaptureCameraPosition)
+    case compatibleFormatUnavailable(VideoCaptureCameraPosition, VideoCaptureQualityIntent)
     case cameraInputUnavailable(String)
     case microphoneInputUnavailable(String)
     case movieOutputUnavailable
@@ -100,8 +124,8 @@ enum VideoCaptureServiceError: LocalizedError {
             "Microphone access is off. Quipsly did not start the solo video source."
         case .cameraUnavailable(let position):
             "The \(position.rawValue) camera is not available on this device."
-        case .compatibleFormatUnavailable(let position):
-            "The \(position.rawValue) camera has no reliable recording format at 1080p or better."
+        case .compatibleFormatUnavailable(let position, let quality):
+            "The \(position.rawValue) camera does not advertise a reliable \(quality.title) recording format. Choose another quality profile or camera."
         case .cameraInputUnavailable(let detail):
             "The selected camera could not be attached: \(detail)"
         case .microphoneInputUnavailable(let detail):
@@ -179,7 +203,8 @@ actor VideoCaptureService {
 
     func prepare(
         position: VideoCaptureCameraPosition,
-        includesAudio: Bool
+        includesAudio: Bool,
+        qualityIntent: VideoCaptureQualityIntent
     ) async throws -> VideoCaptureResolvedProfile {
         guard await permission(for: .video) else {
             throw VideoCaptureServiceError.cameraPermissionDenied
@@ -194,7 +219,11 @@ actor VideoCaptureService {
         }
 
         let device = try cameraDevice(position: position)
-        let selection = try selectFormat(device: device, position: position)
+        let selection = try selectFormat(
+            device: device,
+            position: position,
+            qualityIntent: qualityIntent
+        )
         let newCameraInput: AVCaptureDeviceInput
         do {
             newCameraInput = try AVCaptureDeviceInput(device: device)
@@ -336,6 +365,8 @@ actor VideoCaptureService {
             )
         }
         let profile = VideoCaptureResolvedProfile(
+            qualityIntent: qualityIntent,
+            qualityIntentFulfilled: selection.qualityIntentFulfilled,
             cameraPosition: position,
             cameraDeviceUniqueID: device.uniqueID,
             cameraLocalizedName: device.localizedName,
@@ -348,7 +379,8 @@ actor VideoCaptureService {
             audioSampleRate: audioDescription?.sampleRate,
             audioChannelCount: audioDescription?.channels,
             movieFragmentSeconds: 10,
-            captureRotationDegrees: captureRotationDegrees
+            captureRotationDegrees: captureRotationDegrees,
+            systemPressureAtPrepare: pressureLevel(for: device)
         )
         cameraInput = newCameraInput
         microphoneInput = newMicrophoneInput
@@ -370,6 +402,11 @@ actor VideoCaptureService {
         resolvedProfile
     }
 
+    func currentSystemPressureLevel() -> VideoCaptureSystemPressureLevel {
+        guard let device = cameraInput?.device else { return .unknown }
+        return pressureLevel(for: device)
+    }
+
     func lockCaptureOrientationForArming() throws -> VideoCaptureResolvedProfile {
         guard let profile = resolvedProfile,
               let rotationCoordinator,
@@ -383,6 +420,8 @@ actor VideoCaptureService {
             connection: videoConnection
         )
         let armedProfile = VideoCaptureResolvedProfile(
+            qualityIntent: profile.qualityIntent,
+            qualityIntentFulfilled: profile.qualityIntentFulfilled,
             cameraPosition: profile.cameraPosition,
             cameraDeviceUniqueID: profile.cameraDeviceUniqueID,
             cameraLocalizedName: profile.cameraLocalizedName,
@@ -395,7 +434,8 @@ actor VideoCaptureService {
             audioSampleRate: profile.audioSampleRate,
             audioChannelCount: profile.audioChannelCount,
             movieFragmentSeconds: profile.movieFragmentSeconds,
-            captureRotationDegrees: captureRotationDegrees
+            captureRotationDegrees: captureRotationDegrees,
+            systemPressureAtPrepare: profile.systemPressureAtPrepare
         )
         resolvedProfile = armedProfile
         return armedProfile
@@ -483,45 +523,54 @@ actor VideoCaptureService {
         let framesPerSecond: Double
         let frameDuration: CMTime
         let colorSpace: AVCaptureColorSpace
+        let qualityIntentFulfilled: Bool
     }
 
     private func selectFormat(
         device: AVCaptureDevice,
-        position: VideoCaptureCameraPosition
+        position: VideoCaptureCameraPosition,
+        qualityIntent: VideoCaptureQualityIntent
     ) throws -> FormatSelection {
-        let requestedFramesPerSecond = 30.0
-        let candidates = device.formats.compactMap { format -> FormatSelection? in
+        let formats = device.formats
+        let candidates = formats.enumerated().compactMap { index, format -> VideoCaptureFormatCandidate? in
             let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
-            guard dimensions.width >= 1_920,
-                  dimensions.height >= 1_080,
-                  dimensions.width <= 4_096,
-                  dimensions.height <= 2_304,
-                  format.videoSupportedFrameRateRanges.contains(where: {
-                      $0.minFrameRate <= requestedFramesPerSecond
-                          && $0.maxFrameRate >= requestedFramesPerSecond
-                  }) else {
-                return nil
-            }
-            let colorSpace: AVCaptureColorSpace =
-                format.supportedColorSpaces.contains(.P3_D65) ? .P3_D65 : .sRGB
-            return FormatSelection(
-                format: format,
-                dimensions: dimensions,
-                framesPerSecond: requestedFramesPerSecond,
-                frameDuration: CMTime(value: 1, timescale: 30),
-                colorSpace: colorSpace
+            return VideoCaptureFormatCandidate(
+                index: index,
+                width: Int(dimensions.width),
+                height: Int(dimensions.height),
+                supportedFrameRateRanges: format.videoSupportedFrameRateRanges.map {
+                    .init(
+                        minimum: $0.minFrameRate,
+                        maximum: $0.maxFrameRate
+                    )
+                },
+                isBinned: format.isVideoBinned
             )
         }
-        let sorted = candidates.sorted { lhs, rhs in
-            let leftPixels = Int64(lhs.dimensions.width) * Int64(lhs.dimensions.height)
-            let rightPixels = Int64(rhs.dimensions.width) * Int64(rhs.dimensions.height)
-            if leftPixels != rightPixels { return leftPixels > rightPixels }
-            return lhs.format.isVideoBinned == false && rhs.format.isVideoBinned == true
+        guard let resolution = VideoCaptureQualityPolicy.resolve(
+            qualityIntent,
+            candidates: candidates
+        ) else {
+            throw VideoCaptureServiceError.compatibleFormatUnavailable(
+                position,
+                qualityIntent
+            )
         }
-        guard let selection = sorted.first else {
-            throw VideoCaptureServiceError.compatibleFormatUnavailable(position)
-        }
-        return selection
+        let format = formats[resolution.candidate.index]
+        let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+        let colorSpace: AVCaptureColorSpace =
+            format.supportedColorSpaces.contains(.P3_D65) ? .P3_D65 : .sRGB
+        return FormatSelection(
+            format: format,
+            dimensions: dimensions,
+            framesPerSecond: resolution.framesPerSecond,
+            frameDuration: CMTime(
+                value: 1,
+                timescale: CMTimeScale(resolution.framesPerSecond.rounded())
+            ),
+            colorSpace: colorSpace,
+            qualityIntentFulfilled: resolution.fulfillsIntent
+        )
     }
 
     private func colorSpaceLabel(_ colorSpace: AVCaptureColorSpace) -> String {
@@ -530,6 +579,19 @@ actor VideoCaptureService {
         case .P3_D65: "P3-D65"
         case .HLG_BT2020: "HLG-BT.2020"
         default: "unknown-\(colorSpace.rawValue)"
+        }
+    }
+
+    private func pressureLevel(
+        for device: AVCaptureDevice
+    ) -> VideoCaptureSystemPressureLevel {
+        switch device.systemPressureState.level {
+        case .nominal: .nominal
+        case .fair: .fair
+        case .serious: .serious
+        case .critical: .critical
+        case .shutdown: .shutdown
+        default: .unknown
         }
     }
 

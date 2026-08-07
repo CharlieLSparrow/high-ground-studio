@@ -5822,6 +5822,7 @@ private struct CaptureRecorderView: View {
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var recordingMode: CaptureRecordingMode = .audio
     @State private var cameraPosition: VideoCaptureCameraPosition = .front
+    @State private var videoQualityIntent: VideoCaptureQualityIntent = .production4K24
     @State private var isRunningRehearsalCheck = false
     @StateObject private var soundCheck = CaptureAudioSoundCheckController()
     @StateObject private var sessionPreflight = CaptureSessionPreflightClient()
@@ -5957,6 +5958,7 @@ private struct CaptureRecorderView: View {
                                     ? audioCapture.captureState
                                     : nil,
                             cameraPosition: $cameraPosition,
+                            qualityIntent: $videoQualityIntent,
                             isBusy:
                                 model.isChangingCapture
                                 || model.isCoordinatingPodcastCapture,
@@ -5965,7 +5967,8 @@ private struct CaptureRecorderView: View {
                                     await model.prepareVideoCapture(
                                         using: videoCapture,
                                         mode: recordingMode,
-                                        position: cameraPosition
+                                        position: cameraPosition,
+                                        qualityIntent: videoQualityIntent
                                     )
                                 }
                             },
@@ -6450,7 +6453,8 @@ private struct CaptureRecorderView: View {
                     await model.prepareVideoCapture(
                         using: videoCapture,
                         mode: newMode,
-                        position: cameraPosition
+                        position: cameraPosition,
+                        qualityIntent: videoQualityIntent
                     )
                 }
             }
@@ -6463,7 +6467,21 @@ private struct CaptureRecorderView: View {
                 await model.prepareVideoCapture(
                     using: videoCapture,
                     mode: recordingMode,
-                    position: newPosition
+                    position: newPosition,
+                    qualityIntent: videoQualityIntent
+                )
+            }
+        }
+        .onChange(of: videoQualityIntent) { oldQuality, newQuality in
+            guard oldQuality != newQuality,
+                  recordingMode.recordsVideo,
+                  videoCapture.state == .ready else { return }
+            Task {
+                await model.prepareVideoCapture(
+                    using: videoCapture,
+                    mode: recordingMode,
+                    position: cameraPosition,
+                    qualityIntent: newQuality
                 )
             }
         }
@@ -6540,7 +6558,8 @@ private struct CaptureRecorderView: View {
                 await model.prepareVideoCapture(
                     using: videoCapture,
                     mode: recordingMode,
-                    position: cameraPosition
+                    position: cameraPosition,
+                    qualityIntent: videoQualityIntent
                 )
             }
         }
@@ -9986,6 +10005,7 @@ private struct VideoRecorderHero: View {
     @ObservedObject var controller: VideoCaptureController
     let coordinatedAudioState: AudioCaptureState?
     @Binding var cameraPosition: VideoCaptureCameraPosition
+    @Binding var qualityIntent: VideoCaptureQualityIntent
     let isBusy: Bool
     let onPrepare: () -> Void
     let onStart: () -> Void
@@ -10079,6 +10099,28 @@ private struct VideoRecorderHero: View {
             .disabled(isBusy || isCaptureGroupOpen || controller.state == .preparing)
             .accessibilityIdentifier("CaptureVideoCameraPicker")
 
+            VStack(alignment: .leading, spacing: 7) {
+                Picker("Recording quality", selection: $qualityIntent) {
+                    ForEach(VideoCaptureQualityIntent.allCases) { quality in
+                        Text(quality.title).tag(quality)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(isBusy || isCaptureGroupOpen || controller.state == .preparing)
+                .accessibilityIdentifier("CaptureVideoQualityPicker")
+                Text(qualityIntent.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureVideoQualityDetail")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(
+                Color.secondary.opacity(0.07),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+
             if let profile = controller.resolvedProfile {
                 VStack(alignment: .leading, spacing: 7) {
                     HStack {
@@ -10090,17 +10132,25 @@ private struct VideoRecorderHero: View {
                     Text(profile.cameraLocalizedName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    HStack(spacing: 12) {
-                        Label(
-                            profileAudioLabel,
-                            systemImage: mode.movieIncludesAudio ? "mic.fill" : "mic.slash"
+                    Text(profile.qualityResolutionLabel)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(
+                            profile.qualityIntentFulfilled
+                                ? CapturePalette.accent
+                                : .orange
                         )
-                        Label(
-                            "\(profile.presentationOrientationLabel) \(controller.state == .ready ? "at prepare" : "locked")",
-                            systemImage: "rectangle.portrait.and.arrow.right"
-                        )
-                        if let minutes = controller.estimatedAvailableMinutes {
-                            Label("≈\(minutes) min free", systemImage: "internaldrive")
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) {
+                            profileAudioEvidence
+                            profileOrientationEvidence(profile)
+                            profileStorageEvidence
+                            profilePressureEvidence
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            profileAudioEvidence
+                            profileOrientationEvidence(profile)
+                            profileStorageEvidence
+                            profilePressureEvidence
                         }
                     }
                     .font(.caption.weight(.semibold))
@@ -10210,6 +10260,45 @@ private struct VideoRecorderHero: View {
     private var showsPreview: Bool {
         controller.resolvedProfile != nil
             && ![.idle, .failed].contains(controller.state)
+    }
+
+    private var profileAudioEvidence: some View {
+        Label(
+            profileAudioLabel,
+            systemImage: mode.movieIncludesAudio ? "mic.fill" : "mic.slash"
+        )
+    }
+
+    private func profileOrientationEvidence(
+        _ profile: VideoCaptureResolvedProfile
+    ) -> some View {
+        Label(
+            "\(profile.presentationOrientationLabel) \(controller.state == .ready ? "at prepare" : "locked")",
+            systemImage: "rectangle.portrait.and.arrow.right"
+        )
+    }
+
+    @ViewBuilder
+    private var profileStorageEvidence: some View {
+        if let minutes = controller.estimatedAvailableMinutes {
+            Label("≈\(minutes) min free", systemImage: "internaldrive")
+        }
+    }
+
+    private var profilePressureEvidence: some View {
+        Label(
+            "Camera pressure \(controller.captureSystemPressure.displayName)",
+            systemImage: controller.captureSystemPressure.preventsReliableCapture
+                ? "exclamationmark.thermometer.fill"
+                : "gauge.with.dots.needle.33percent"
+        )
+        .foregroundStyle(
+            controller.captureSystemPressure == .serious
+                || controller.captureSystemPressure.preventsReliableCapture
+                ? Color.orange
+                : Color.secondary
+        )
+        .accessibilityIdentifier("CaptureVideoSystemPressure")
     }
 
     private var previewAspectRatio: CGFloat {

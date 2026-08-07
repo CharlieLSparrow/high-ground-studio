@@ -44,6 +44,7 @@ enum VideoCaptureControllerError: LocalizedError {
     case captureAlreadyActive
     case insufficientStorage(available: Int64, required: Int64)
     case thermalStateUnsafe
+    case captureSystemPressureUnsafe(VideoCaptureSystemPressureLevel)
     case sourceIdentityMismatch
 
     var errorDescription: String? {
@@ -64,6 +65,8 @@ enum VideoCaptureControllerError: LocalizedError {
             "Video did not start. \(Self.bytes(available)) is available; this profile requires at least \(Self.bytes(required)) of safe working space."
         case .thermalStateUnsafe:
             "Video did not start because the iPhone is too warm for a reliable high-quality source."
+        case .captureSystemPressureUnsafe(let level):
+            "Video did not start because the camera reported \(level.displayName.lowercased()) system pressure. Cool the iPhone and try again."
         case .sourceIdentityMismatch:
             "The movie callback did not match the protected source identity. Quipsly stopped without reassigning any bytes."
         }
@@ -83,6 +86,7 @@ final class VideoCaptureController: ObservableObject {
     @Published private(set) var availableBytes: Int64?
     @Published private(set) var estimatedAvailableMinutes: Int?
     @Published private(set) var safetyMessage: String?
+    @Published private(set) var captureSystemPressure: VideoCaptureSystemPressureLevel = .unknown
     @Published private(set) var lastErrorMessage: String?
     @Published private(set) var activeRecordingID: UUID?
     @Published private(set) var activeCaptureGroupID: UUID?
@@ -99,6 +103,7 @@ final class VideoCaptureController: ObservableObject {
         case accountChanged
         case storagePressure
         case thermalPressure
+        case captureSystemPressure
         case captureSessionInterrupted
         case captureSessionRuntimeError
 
@@ -118,6 +123,8 @@ final class VideoCaptureController: ObservableObject {
                 "Quipsly safely closed the source before storage reached the protected reserve."
             case .thermalPressure:
                 "Quipsly safely closed the source because the iPhone reached critical thermal pressure."
+            case .captureSystemPressure:
+                "Quipsly safely closed the source because the camera reached critical system pressure. The requested quality was never silently changed."
             case .captureSessionInterrupted:
                 "iOS interrupted the camera session. Quipsly closed and preserved every recoverable movie fragment instead of silently continuing with missing video."
             case .captureSessionRuntimeError:
@@ -133,6 +140,7 @@ final class VideoCaptureController: ObservableObject {
         let ownerSnapshot: AuthManager.StableOwnerSnapshot
         let context: VideoCaptureContext
         let includesAudio: Bool
+        let qualityIntent: VideoCaptureQualityIntent
         let fileURL: URL
         let startedAt: Date
         let monotonicStartedNanoseconds: UInt64
@@ -144,6 +152,7 @@ final class VideoCaptureController: ObservableObject {
         let context: VideoCaptureContext
         let includesAudio: Bool
         let cameraPosition: VideoCaptureCameraPosition
+        let qualityIntent: VideoCaptureQualityIntent
     }
 
     private let service = VideoCaptureService()
@@ -253,7 +262,8 @@ final class VideoCaptureController: ObservableObject {
 
     func prepare(
         position: VideoCaptureCameraPosition,
-        includesAudio: Bool
+        includesAudio: Bool,
+        qualityIntent: VideoCaptureQualityIntent = .production4K24
     ) async {
         guard !state.isActive else { return }
         guard AuthManager.shared.stableOwnerSnapshot() != nil else {
@@ -271,15 +281,21 @@ final class VideoCaptureController: ObservableObject {
         do {
             let profile = try await service.prepare(
                 position: position,
-                includesAudio: includesAudio
+                includesAudio: includesAudio,
+                qualityIntent: qualityIntent
             )
+            captureSystemPressure = profile.systemPressureAtPrepare
+            guard !profile.systemPressureAtPrepare.preventsReliableCapture else {
+                await service.shutdownPreview()
+                throw VideoCaptureControllerError.captureSystemPressureUnsafe(
+                    profile.systemPressureAtPrepare
+                )
+            }
             cameraPosition = position
             resolvedProfile = profile
             refreshStorageProjection(profile: profile)
             state = .ready
-            safetyMessage = profile.width >= 3_840 && profile.height >= 2_160
-                ? "\(profile.profileLabel) resolved on this device. Quality will not silently change during a source."
-                : "\(profile.profileLabel) is the highest reliable profile this camera reported. Quipsly is not claiming 4K."
+            safetyMessage = "\(profile.qualityResolutionLabel). Quality will not silently change during a source."
         } catch {
             fail(error)
         }
@@ -339,6 +355,14 @@ final class VideoCaptureController: ObservableObject {
                     required: requiredBytes
                 )
             }
+            let preflightSystemPressure = await service
+                .currentSystemPressureLevel()
+            captureSystemPressure = preflightSystemPressure
+            guard !preflightSystemPressure.preventsReliableCapture else {
+                throw VideoCaptureControllerError.captureSystemPressureUnsafe(
+                    preflightSystemPressure
+                )
+            }
 
             state = .arming
             let recordingID = UUID()
@@ -350,6 +374,14 @@ final class VideoCaptureController: ObservableObject {
             )
             guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
                 throw VideoCaptureControllerError.ownerChanged
+            }
+            let systemPressureAtStart = await service
+                .currentSystemPressureLevel()
+            captureSystemPressure = systemPressureAtStart
+            guard !systemPressureAtStart.preventsReliableCapture else {
+                throw VideoCaptureControllerError.captureSystemPressureUnsafe(
+                    systemPressureAtStart
+                )
             }
             // Snapshot and lock the horizon-level movie transform immediately
             // before the durable source receipt. The connection keeps this
@@ -377,7 +409,7 @@ final class VideoCaptureController: ObservableObject {
             )
             let runtimeEvidence = CaptureRuntimeEvidence.current()
             let sourceProfile = LocalRecordingSourceProfile(
-                schemaVersion: 3,
+                schemaVersion: 5,
                 container: "mov",
                 codec: profile.codec,
                 width: profile.width,
@@ -388,6 +420,9 @@ final class VideoCaptureController: ObservableObject {
                 cameraPosition: profile.cameraPosition.rawValue,
                 cameraDeviceUniqueID: profile.cameraDeviceUniqueID,
                 captureRotationDegrees: profile.captureRotationDegrees,
+                requestedVideoQuality: profile.qualityIntent.rawValue,
+                videoQualityIntentFulfilled: profile.qualityIntentFulfilled,
+                videoSystemPressureAtStart: systemPressureAtStart.rawValue,
                 includesAudio: profile.includesAudio,
                 audioSampleRate: profile.audioSampleRate,
                 audioChannelCount: profile.audioChannelCount,
@@ -451,6 +486,7 @@ final class VideoCaptureController: ObservableObject {
                 ownerSnapshot: ownerSnapshot,
                 context: context,
                 includesAudio: includesAudio,
+                qualityIntent: preparedProfile.qualityIntent,
                 fileURL: sourceURL,
                 startedAt: startedAt,
                 monotonicStartedNanoseconds: monotonicStarted
@@ -556,7 +592,8 @@ final class VideoCaptureController: ObservableObject {
             ownerSnapshot: activeCapture.ownerSnapshot,
             context: activeCapture.context,
             includesAudio: activeCapture.includesAudio,
-            cameraPosition: cameraPosition
+            cameraPosition: cameraPosition,
+            qualityIntent: activeCapture.qualityIntent
         )
         await stopIfActive(reason: .pause)
     }
@@ -570,7 +607,8 @@ final class VideoCaptureController: ObservableObject {
         }
         await prepare(
             position: pausedCapture.cameraPosition,
-            includesAudio: pausedCapture.includesAudio
+            includesAudio: pausedCapture.includesAudio,
+            qualityIntent: pausedCapture.qualityIntent
         )
         guard state == .ready else { return }
         let groupID = pausedCapture.captureGroupID
@@ -760,7 +798,8 @@ final class VideoCaptureController: ObservableObject {
             safetyMessage = "First camera source is closed and preserved. Preparing the \(nextPosition.rawValue) camera."
             await prepare(
                 position: nextPosition,
-                includesAudio: finishedCapture.includesAudio
+                includesAudio: finishedCapture.includesAudio,
+                qualityIntent: finishedCapture.qualityIntent
             )
             guard state == .ready else {
                 return
@@ -900,6 +939,25 @@ final class VideoCaptureController: ObservableObject {
                     await self.stopIfActive(reason: .thermalPressure)
                     return
                 }
+                let systemPressure = await self.service
+                    .currentSystemPressureLevel()
+                if systemPressure != self.captureSystemPressure {
+                    self.captureSystemPressure = systemPressure
+                    switch systemPressure {
+                    case .serious:
+                        self.safetyMessage = "Camera pressure is serious. Cool the iPhone; Quipsly will close this source before iOS shuts the camera down."
+                    case .fair:
+                        self.safetyMessage = "Camera pressure is fair. The requested profile remains unchanged and visible."
+                    case .nominal:
+                        self.safetyMessage = "Camera pressure returned to nominal. The requested profile remained unchanged."
+                    case .critical, .shutdown, .unknown:
+                        break
+                    }
+                }
+                if systemPressure.preventsReliableCapture {
+                    await self.stopIfActive(reason: .captureSystemPressure)
+                    return
+                }
             }
         }
     }
@@ -1013,6 +1071,7 @@ final class VideoCaptureController: ObservableObject {
     private func shutdownPreviewAndClearProfile() async {
         await service.shutdownPreview()
         resolvedProfile = nil
+        captureSystemPressure = .unknown
         estimatedAvailableMinutes = nil
         if !state.isActive {
             state = .idle
