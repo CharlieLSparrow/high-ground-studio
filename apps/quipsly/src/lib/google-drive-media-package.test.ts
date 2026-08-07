@@ -20,6 +20,9 @@ function file(
     createdTime: "2026-08-07T10:00:00.000Z",
     modifiedTime: "2026-06-24T06:00:00.000Z",
     driveId: "shared-drive-1",
+    durationSeconds: 60,
+    widthPixels: 2880,
+    heightPixels: 1440,
     canDownload: true,
     canCopy: true,
     canReadRevisions: true,
@@ -61,6 +64,27 @@ describe("Google Drive Insta360 package planning", () => {
         }),
       ],
     });
+  });
+
+  it("assigns stable primary and secondary roles to paired INSV originals", () => {
+    const plan = planGoogleDriveMediaFolder({
+      folderId: "paired-folder",
+      folderName: "VID_20260402_080506_00_001_001-Original",
+      files: [
+        file("VID_20260402_080506_00_001.insv", "1000"),
+        file("VID_20260402_080506_01_001.insv", "1000"),
+        file("LRV_20260402_080506_02_001.lrv", "100"),
+      ],
+    });
+    expect(plan.segments[0]?.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ channel: "00", role: "primary-original" }),
+        expect.objectContaining({
+          channel: "01",
+          role: "secondary-original",
+        }),
+      ]),
+    );
   });
 
   it("holds empty uploads and missing expected pairs without inventing a continuous clock", () => {

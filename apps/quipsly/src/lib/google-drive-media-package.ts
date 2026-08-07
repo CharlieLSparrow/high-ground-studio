@@ -14,13 +14,16 @@ export type GoogleDriveFolderMediaItem = {
   createdTime: string | null;
   modifiedTime: string | null;
   driveId: string | null;
+  durationSeconds: number | null;
+  widthPixels: number | null;
+  heightPixels: number | null;
   canDownload: boolean;
   canCopy: boolean;
   canReadRevisions: boolean;
 };
 
 export type GoogleDriveMediaPackageMember = GoogleDriveFolderMediaItem & {
-  role: "primary-original" | "browse-proxy";
+  role: "primary-original" | "secondary-original" | "browse-proxy";
   channel: string;
 };
 
@@ -101,7 +104,9 @@ function expectedSegments(folderName: string) {
 
 function packageStatus(members: GoogleDriveMediaPackageMember[]) {
   const originals = members.filter(
-    (member) => member.role === "primary-original",
+    (member) =>
+      member.role === "primary-original" ||
+      member.role === "secondary-original",
   );
   const browse = members.filter((member) => member.role === "browse-proxy");
   const reasons: string[] = [];
@@ -180,12 +185,32 @@ export function planGoogleDriveMediaFolder(input: {
 
   const segments = [...groups.values()]
     .map((group): GoogleDriveMediaPackageSegment => {
-      const members = [...group.members].sort(
-        (left, right) =>
-          left.role.localeCompare(right.role) ||
-          left.channel.localeCompare(right.channel) ||
-          left.name.localeCompare(right.name),
-      );
+      const originalChannels = [
+        ...new Set(
+          group.members
+            .filter((member) => member.role !== "browse-proxy")
+            .map((member) => member.channel),
+        ),
+      ].sort();
+      const members = group.members
+        .map(
+          (member) =>
+            ({
+              ...member,
+              role:
+                member.role === "browse-proxy"
+                  ? "browse-proxy"
+                  : member.channel === originalChannels[0]
+                    ? "primary-original"
+                    : "secondary-original",
+            }) satisfies GoogleDriveMediaPackageMember,
+        )
+        .sort(
+          (left, right) =>
+            left.role.localeCompare(right.role) ||
+            left.channel.localeCompare(right.channel) ||
+            left.name.localeCompare(right.name),
+        );
       const readiness = packageStatus(members);
       const capturedAt = captureInstant(group.date, group.time);
       return {

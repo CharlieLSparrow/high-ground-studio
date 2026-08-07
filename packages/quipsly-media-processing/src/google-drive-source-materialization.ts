@@ -4,6 +4,16 @@ export const GOOGLE_DRIVE_SOURCE_MATERIALIZATION_RESULT_KIND =
   "quipsly-google-drive-source-materialization-result-v1" as const;
 export const GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE =
   "exact-provider-replica-v1" as const;
+export const GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE =
+  "exact-provider-original-replica-v1" as const;
+
+export type GoogleDriveSourceMaterializationProfile =
+  | typeof GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE
+  | typeof GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE;
+export type GoogleDriveSourceMaterializationMemberRole =
+  | "browse-proxy"
+  | "primary-original"
+  | "secondary-original";
 
 const SAFE_ID = /^[A-Za-z0-9:_-]{8,200}$/;
 const SAFE_FILE_ID = /^[A-Za-z0-9._-]{1,512}$/;
@@ -32,12 +42,12 @@ export type GoogleDriveSourceMaterializationJob = {
     expectedMd5: string;
     expectedSizeBytes: number;
     contentType: string;
-    memberRole: "browse-proxy";
+    memberRole: GoogleDriveSourceMaterializationMemberRole;
   };
   target: {
     provider: "local-cache";
     locator: string;
-    profile: typeof GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE;
+    profile: GoogleDriveSourceMaterializationProfile;
   };
 };
 
@@ -57,7 +67,7 @@ export type GoogleDriveSourceMaterializationResult = {
     provider: "local-cache";
     locator: string;
     generation: string;
-    profile: typeof GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE;
+    profile: GoogleDriveSourceMaterializationProfile;
     contentType: string;
     sha256: string;
     md5: string;
@@ -76,7 +86,7 @@ export type GoogleDriveSourceMaterializationResult = {
   boundaries: {
     originalRemainsInDrive: true;
     replicaMatchesProviderRevision: true;
-    collaborationProxyQueuedFromVerifiedBytes: true;
+    collaborationProxyQueuedFromVerifiedBytes: boolean;
   };
 };
 
@@ -111,7 +121,7 @@ function safeRelativeLocator(value: string) {
     !value.startsWith("/") &&
     !value.includes("\0") &&
     !value.split("/").some((part) => !part || part === "." || part === "..") &&
-    /\.(?:lrv|mp4)$/i.test(value)
+    /\.(?:insv|lrv|mp4)$/i.test(value)
   );
 }
 
@@ -129,13 +139,14 @@ export function googleDriveSourceMaterializationIdentity(input: {
   projectId: string;
   sourceRevisionId: string;
   identitySha256: string;
+  profile?: GoogleDriveSourceMaterializationProfile;
 }) {
   return [
     "google-drive-source-materialization-v1",
     text(input.projectId),
     text(input.sourceRevisionId),
     text(input.identitySha256).toLowerCase(),
-    GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE,
+    input.profile ?? GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE,
   ].join(":");
 }
 
@@ -169,14 +180,14 @@ export function parseGoogleDriveSourceMaterializationJob(
     expectedMd5: text(sourceRow.expectedMd5).toLowerCase(),
     expectedSizeBytes: positiveSafeInteger(sourceRow.expectedSizeBytes),
     contentType: text(sourceRow.contentType).toLowerCase(),
-    memberRole: text(sourceRow.memberRole) as "browse-proxy",
+    memberRole: text(
+      sourceRow.memberRole,
+    ) as GoogleDriveSourceMaterializationMemberRole,
   };
   const target: GoogleDriveSourceMaterializationJob["target"] = {
     provider: text(targetRow.provider) as "local-cache",
     locator: text(targetRow.locator),
-    profile: text(
-      targetRow.profile,
-    ) as typeof GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE,
+    profile: text(targetRow.profile) as GoogleDriveSourceMaterializationProfile,
   };
   const job: GoogleDriveSourceMaterializationJob = {
     kind: row.kind as typeof GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_KIND,
@@ -214,10 +225,22 @@ export function parseGoogleDriveSourceMaterializationJob(
     !MD5.test(source.expectedMd5) ||
     source.expectedSizeBytes <= 0 ||
     !source.contentType.startsWith("video/") ||
-    source.memberRole !== "browse-proxy" ||
+    !["browse-proxy", "primary-original", "secondary-original"].includes(
+      source.memberRole,
+    ) ||
     target.provider !== "local-cache" ||
     !safeRelativeLocator(target.locator) ||
-    target.profile !== GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE
+    ![
+      GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE,
+      GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE,
+    ].includes(target.profile) ||
+    (source.memberRole === "browse-proxy" &&
+      (target.profile !== GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE ||
+        !/\.(?:lrv|mp4)$/i.test(target.locator))) ||
+    (source.memberRole !== "browse-proxy" &&
+      (target.profile !==
+        GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE ||
+        !/\.insv$/i.test(target.locator)))
   ) {
     throw new Error("Google Drive source materialization job is invalid.");
   }
@@ -237,7 +260,8 @@ export function newGoogleDriveSourceMaterializationResult(
     boundaries: {
       originalRemainsInDrive: true,
       replicaMatchesProviderRevision: true,
-      collaborationProxyQueuedFromVerifiedBytes: true,
+      collaborationProxyQueuedFromVerifiedBytes:
+        input.source.memberRole === "browse-proxy",
     },
   });
 }
@@ -267,7 +291,11 @@ export function parseGoogleDriveSourceMaterializationResult(
       target: {
         provider: "local-cache",
         locator:
-          expectedJob?.target.locator ?? "source-cache/result-placeholder.lrv",
+          expectedJob?.target.locator ??
+          (outputRow.profile ===
+          GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE
+            ? "source-cache/result-placeholder.insv"
+            : "source-cache/result-placeholder.lrv"),
         profile: outputRow.profile,
       },
     },
@@ -292,7 +320,7 @@ export function parseGoogleDriveSourceMaterializationResult(
       generation: text(outputRow.generation),
       profile: text(
         outputRow.profile,
-      ) as typeof GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE,
+      ) as GoogleDriveSourceMaterializationProfile,
       contentType: text(outputRow.contentType).toLowerCase(),
       sha256: text(outputRow.sha256).toLowerCase(),
       md5: text(outputRow.md5).toLowerCase(),
@@ -315,7 +343,7 @@ export function parseGoogleDriveSourceMaterializationResult(
       replicaMatchesProviderRevision:
         boundariesRow.replicaMatchesProviderRevision as true,
       collaborationProxyQueuedFromVerifiedBytes:
-        boundariesRow.collaborationProxyQueuedFromVerifiedBytes as true,
+        boundariesRow.collaborationProxyQueuedFromVerifiedBytes === true,
     },
   };
   const source = result.source;
@@ -334,7 +362,7 @@ export function parseGoogleDriveSourceMaterializationResult(
     result.output.sha256 !== source.observedSha256 ||
     result.output.md5 !== source.observedMd5 ||
     result.output.sizeBytes !== source.observedSizeBytes ||
-    result.output.profile !== GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE ||
+    result.output.profile !== baseJob.target.profile ||
     result.output.contentType !== source.contentType ||
     result.transfer.resumedFromBytes < 0 ||
     result.transfer.downloadedBytes < 0 ||
@@ -346,7 +374,8 @@ export function parseGoogleDriveSourceMaterializationResult(
     result.worker.attempt <= 0 ||
     result.boundaries.originalRemainsInDrive !== true ||
     result.boundaries.replicaMatchesProviderRevision !== true ||
-    result.boundaries.collaborationProxyQueuedFromVerifiedBytes !== true ||
+    result.boundaries.collaborationProxyQueuedFromVerifiedBytes !==
+      (source.memberRole === "browse-proxy") ||
     (expectedJob &&
       (result.jobId !== expectedJob.jobId ||
         result.replicaId !== expectedJob.replicaId ||

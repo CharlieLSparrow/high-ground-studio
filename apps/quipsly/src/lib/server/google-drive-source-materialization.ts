@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import {
+  GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE,
   GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE,
   googleDriveSourceMaterializationIdentity,
   newGoogleDriveSourceMaterializationJob,
@@ -10,12 +11,17 @@ import {
 } from "@high-ground/quipsly-media-processing";
 import type { PrismaClient } from "@prisma/client";
 
+import { externalMediaMemberRole } from "@/lib/external-media-contract";
+
 export const GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_TYPE =
   "google-drive-source-materialization";
 export const GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_SOURCE =
   "source-story.google-drive-materialization";
 
 const DEFAULT_MAX_FILE_BYTES = 64 * 1024 * 1024 * 1024;
+const DEFAULT_MAX_ORIGINAL_FILE_BYTES = 128 * 1024 * 1024 * 1024;
+
+export type GoogleDriveSourceMaterializationPurpose = "browse" | "conform";
 
 export class GoogleDriveSourceMaterializationRequestError extends Error {
   constructor(
@@ -71,11 +77,20 @@ function safeBytes(value: bigint | null) {
   return Number(value);
 }
 
-function configuredMaxBytes(environment: NodeJS.ProcessEnv) {
-  const configured = Number(environment.QUIPSLY_DRIVE_CACHE_MAX_FILE_BYTES);
+function configuredMaxBytes(
+  environment: NodeJS.ProcessEnv,
+  purpose: GoogleDriveSourceMaterializationPurpose,
+) {
+  const configured = Number(
+    purpose === "conform"
+      ? environment.QUIPSLY_DRIVE_CONFORM_MAX_FILE_BYTES
+      : environment.QUIPSLY_DRIVE_CACHE_MAX_FILE_BYTES,
+  );
   return Number.isSafeInteger(configured) && configured >= 1024 * 1024
     ? configured
-    : DEFAULT_MAX_FILE_BYTES;
+    : purpose === "conform"
+      ? DEFAULT_MAX_ORIGINAL_FILE_BYTES
+      : DEFAULT_MAX_FILE_BYTES;
 }
 
 export function publicGoogleDriveSourceMaterializationJob(job: {
@@ -91,8 +106,7 @@ export function publicGoogleDriveSourceMaterializationJob(job: {
   return {
     id: job.id,
     status: job.status,
-    failureCode:
-      typeof failure.code === "string" ? failure.code : null,
+    failureCode: typeof failure.code === "string" ? failure.code : null,
     transferredBytes:
       typeof progress.transferredBytes === "number"
         ? progress.transferredBytes
@@ -112,17 +126,16 @@ export async function requestGoogleDriveSourceMaterialization(input: {
   actorEmail: string;
   clientRequestId: string;
   retryFailed?: boolean;
+  purpose?: GoogleDriveSourceMaterializationPurpose;
   environment?: NodeJS.ProcessEnv;
 }) {
   const projectId = cleanId(input.projectId, "projectId");
   const referenceId = cleanId(input.referenceId, "referenceId");
-  const sourceRevisionId = cleanId(
-    input.sourceRevisionId,
-    "sourceRevisionId",
-  );
+  const sourceRevisionId = cleanId(input.sourceRevisionId, "sourceRevisionId");
   const actorUserId = cleanId(input.actorUserId, "actorUserId");
   const clientRequestId = requestId(input.clientRequestId);
   const actorEmail = input.actorEmail.trim().toLowerCase();
+  const purpose = input.purpose ?? "browse";
   const source = await input.prisma.studioMediaSourceRevision.findFirst({
     where: {
       id: sourceRevisionId,
@@ -192,13 +205,23 @@ export async function requestGoogleDriveSourceMaterialization(input: {
     );
   }
   const projection = object(source.projectionJson);
+  const memberRole = externalMediaMemberRole(projection.memberRole);
   if (
-    projection.memberRole !== "browse-proxy" ||
-    source.mediaProjection !== "equirectangular"
+    (purpose === "browse" &&
+      (memberRole !== "browse-proxy" ||
+        source.mediaProjection !== "equirectangular")) ||
+    (purpose === "conform" &&
+      (memberRole === "browse-proxy" ||
+        !memberRole ||
+        source.mediaProjection !== "dual-fisheye"))
   ) {
     throw new GoogleDriveSourceMaterializationRequestError(
-      "browse-proxy-required",
-      "Prepare the lightweight Insta360 LRV member for browsing. Full-resolution originals remain deferred until conform or export.",
+      purpose === "conform"
+        ? "exact-original-required"
+        : "browse-proxy-required",
+      purpose === "conform"
+        ? "Final conform can prepare only exact Insta360 original members. Browse companions stay in the lightweight preparation lane."
+        : "Prepare the lightweight Insta360 LRV member for browsing. Full-resolution originals remain deferred until an explicit final conform.",
       409,
     );
   }
@@ -221,8 +244,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
     !source.revisionKey ||
     !/^[0-9a-f]{32}$/.test(expectedMd5) ||
     !/^[A-Za-z0-9._-]{1,512}$/.test(externalFileId) ||
-    (resourceKey !== null &&
-      !/^[A-Za-z0-9._-]{1,512}$/.test(resourceKey)) ||
+    (resourceKey !== null && !/^[A-Za-z0-9._-]{1,512}$/.test(resourceKey)) ||
     !sizeBytes
   ) {
     throw new GoogleDriveSourceMaterializationRequestError(
@@ -231,25 +253,34 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       409,
     );
   }
-  if (sizeBytes > configuredMaxBytes(input.environment ?? process.env)) {
+  if (
+    sizeBytes > configuredMaxBytes(input.environment ?? process.env, purpose)
+  ) {
     throw new GoogleDriveSourceMaterializationRequestError(
       "source-exceeds-cache-limit",
-      "This LRV exceeds the configured local-cache file limit. Increase the reviewed limit or choose a smaller browsing member.",
+      purpose === "conform"
+        ? "This original exceeds the reviewed local conform file limit. Raise the limit only after checking the target Mac's storage plan."
+        : "This LRV exceeds the configured local-cache file limit. Increase the reviewed limit or choose a smaller browsing member.",
       409,
     );
   }
   if (!reference.mimeType?.startsWith("video/")) {
     throw new GoogleDriveSourceMaterializationRequestError(
       "video-required",
-      "The current Drive materializer accepts video browsing members only.",
+      "The current Drive materializer accepts video camera-package members only.",
       409,
     );
   }
 
+  const profile =
+    purpose === "conform"
+      ? GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE
+      : GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE;
   const identity = googleDriveSourceMaterializationIdentity({
     projectId,
     sourceRevisionId,
     identitySha256: source.identitySha256,
+    profile,
   });
   const jobId = deterministicId("gdmjob", identity);
   const replicaId = deterministicId("gdmreplica", identity);
@@ -258,7 +289,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
     "google-drive",
     source.project.slug,
     sourceRevisionId,
-    `${GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE}-${source.identitySha256.slice(0, 20)}.lrv`,
+    `${profile}-${source.identitySha256.slice(0, 20)}.${purpose === "conform" ? "insv" : "lrv"}`,
   ].join("/");
   const manifest = newGoogleDriveSourceMaterializationJob({
     jobId,
@@ -280,12 +311,12 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       expectedMd5,
       expectedSizeBytes: sizeBytes,
       contentType: reference.mimeType,
-      memberRole: "browse-proxy",
+      memberRole: memberRole!,
     },
     target: {
       provider: "local-cache",
       locator: targetLocator,
-      profile: GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE,
+      profile,
     },
   });
   const existing = await input.prisma.studioWorkflowJob.findUnique({
@@ -314,14 +345,18 @@ export async function requestGoogleDriveSourceMaterialization(input: {
         manifest.source.externalReferenceId ||
       retainedManifest.source.sourceRevisionId !==
         manifest.source.sourceRevisionId ||
-      retainedManifest.source.externalFileId !== manifest.source.externalFileId ||
+      retainedManifest.source.externalFileId !==
+        manifest.source.externalFileId ||
       retainedManifest.source.resourceKey !== manifest.source.resourceKey ||
-      retainedManifest.source.headRevisionKey !== manifest.source.headRevisionKey ||
-      retainedManifest.source.identitySha256 !== manifest.source.identitySha256 ||
+      retainedManifest.source.headRevisionKey !==
+        manifest.source.headRevisionKey ||
+      retainedManifest.source.identitySha256 !==
+        manifest.source.identitySha256 ||
       retainedManifest.source.expectedMd5 !== manifest.source.expectedMd5 ||
       retainedManifest.source.expectedSizeBytes !==
         manifest.source.expectedSizeBytes ||
       retainedManifest.source.contentType !== manifest.source.contentType ||
+      retainedManifest.source.memberRole !== manifest.source.memberRole ||
       retainedManifest.target.provider !== manifest.target.provider ||
       retainedManifest.target.locator !== manifest.target.locator ||
       retainedManifest.target.profile !== manifest.target.profile
@@ -351,6 +386,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
               ? [...failureHistory, priorFailure]
               : failureHistory,
             originalRemainsInDrive: true,
+            purpose,
           },
         },
       });
@@ -381,6 +417,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
         state: "queued",
         requestedBy: { actorUserId, actorEmail, clientRequestId },
         originalRemainsInDrive: true,
+        purpose,
       },
       requestedByEmail: actorEmail,
     },

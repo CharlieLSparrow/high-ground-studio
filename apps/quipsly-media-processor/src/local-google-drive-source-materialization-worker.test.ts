@@ -31,7 +31,8 @@ function digest(algorithm: "md5" | "sha256", bytes: Uint8Array) {
   return createHash(algorithm).update(bytes).digest("hex");
 }
 
-function fixture(bytes: Buffer) {
+function fixture(bytes: Buffer, options: { original?: boolean } = {}) {
+  const original = options.original === true;
   const job = newGoogleDriveSourceMaterializationJob({
     jobId: "gdmjob_12345678",
     replicaId: "gdmreplica_12345678",
@@ -52,13 +53,16 @@ function fixture(bytes: Buffer) {
       expectedMd5: digest("md5", bytes),
       expectedSizeBytes: bytes.length,
       contentType: "video/mp4",
-      memberRole: "browse-proxy",
+      memberRole: original ? "primary-original" : "browse-proxy",
     },
     target: {
       provider: "local-cache",
-      locator:
-        "source-cache/google-drive/homer-source-room/revision_12345678/exact-provider-replica-v1-aaaaaaaa.lrv",
-      profile: "exact-provider-replica-v1",
+      locator: original
+        ? "source-cache/google-drive/homer-source-room/revision_12345678/exact-provider-original-replica-v1-aaaaaaaa.insv"
+        : "source-cache/google-drive/homer-source-room/revision_12345678/exact-provider-replica-v1-aaaaaaaa.lrv",
+      profile: original
+        ? "exact-provider-original-replica-v1"
+        : "exact-provider-replica-v1",
     },
   });
   const claim: LocalGoogleDriveMaterializationClaim = {
@@ -165,6 +169,68 @@ test("Drive materializer resumes a partial LRV, verifies exact bytes, and retain
     assert.equal(
       receipts[0]?.boundaries.collaborationProxyQueuedFromVerifiedBytes,
       true,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Drive materializer retains an exact INSV original without promising a collaboration proxy", async () => {
+  const root = await mkdtemp(
+    path.join(tmpdir(), "quipsly-drive-materialize-original-"),
+  );
+  try {
+    const bytes = Buffer.from("retained exact INSV original fixture");
+    const { job, claim, resolved } = fixture(bytes, { original: true });
+    const receipts: Array<
+      Parameters<LocalGoogleDriveMaterializationStore["complete"]>[0]["receipt"]
+    > = [];
+    const store: LocalGoogleDriveMaterializationStore = {
+      claim: async () => claim,
+      resolve: async () => resolved,
+      progress: async () => true,
+      complete: async (input) => {
+        receipts.push(input.receipt);
+        return true;
+      },
+      retry: async () => true,
+      fail: async () => true,
+    };
+    const provider: GoogleDriveMaterializationProvider = {
+      inspect: async () => ({
+        externalFileId: job.source.externalFileId,
+        headRevisionKey: job.source.headRevisionKey,
+        md5: job.source.expectedMd5,
+        sizeBytes: bytes.length,
+        canDownload: true,
+      }),
+      download: async (input) => {
+        await writeFile(input.destinationPath, bytes);
+        await input.onProgress(bytes.length);
+        return {
+          resumedFromBytes: 0,
+          downloadedBytes: bytes.length,
+          providerRequestCount: 1,
+        };
+      },
+    };
+    const result = await runOneLocalGoogleDriveMaterializationJob(
+      store,
+      provider,
+      {
+        executionId: claim.executionId,
+        buildId: "build-1",
+        leaseMs: 60_000,
+        localMediaRoot: root,
+        minFreeBytes: 0,
+        now: () => new Date("2026-08-07T19:00:10.000Z"),
+      },
+    );
+    assert.equal(result.disposition, "completed", JSON.stringify(result));
+    assert.equal(receipts[0]?.source.memberRole, "primary-original");
+    assert.equal(
+      receipts[0]?.boundaries.collaborationProxyQueuedFromVerifiedBytes,
+      false,
     );
   } finally {
     await rm(root, { recursive: true, force: true });

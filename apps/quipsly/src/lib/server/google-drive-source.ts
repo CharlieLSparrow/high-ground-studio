@@ -28,6 +28,11 @@ type GoogleDriveFile = {
   resourceKey?: string;
   parents?: string[];
   trashed?: boolean;
+  videoMediaMetadata?: {
+    width?: number;
+    height?: number;
+    durationMillis?: string;
+  };
   capabilities?: {
     canDownload?: boolean;
     canCopy?: boolean;
@@ -106,7 +111,21 @@ function resourceKey(value: string | null | undefined) {
 }
 
 function googleDriveFileFields() {
-  return "id,name,mimeType,size,headRevisionId,md5Checksum,createdTime,modifiedTime,driveId,resourceKey,parents,trashed,capabilities(canDownload,canCopy,canReadRevisions)";
+  return "id,name,mimeType,size,headRevisionId,md5Checksum,createdTime,modifiedTime,driveId,resourceKey,parents,trashed,videoMediaMetadata(width,height,durationMillis),capabilities(canDownload,canCopy,canReadRevisions)";
+}
+
+function positiveInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : null;
+}
+
+function driveDurationSeconds(value: unknown) {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
+  const milliseconds = Number(value);
+  return Number.isSafeInteger(milliseconds) && milliseconds > 0
+    ? milliseconds / 1_000
+    : null;
 }
 
 function verifiedFile(input: {
@@ -150,6 +169,11 @@ function verifiedFile(input: {
       file.headRevisionId ??
       (file.md5Checksum ? `md5:${file.md5Checksum}` : null),
     checksumMd5: file.md5Checksum ?? null,
+    durationSeconds: driveDurationSeconds(
+      file.videoMediaMetadata?.durationMillis,
+    ),
+    widthPixels: positiveInteger(file.videoMediaMetadata?.width),
+    heightPixels: positiveInteger(file.videoMediaMetadata?.height),
     providerCreatedAt: file.createdTime ?? null,
     providerModifiedAt: file.modifiedTime ?? null,
     accessState: canDownload ? "available" : "restricted",
@@ -182,6 +206,11 @@ function folderItem(file: GoogleDriveFile): GoogleDriveFolderMediaItem {
     createdTime: file.createdTime ?? null,
     modifiedTime: file.modifiedTime ?? null,
     driveId: file.driveId ?? null,
+    durationSeconds: driveDurationSeconds(
+      file.videoMediaMetadata?.durationMillis,
+    ),
+    widthPixels: positiveInteger(file.videoMediaMetadata?.width),
+    heightPixels: positiveInteger(file.videoMediaMetadata?.height),
     canDownload: file.capabilities?.canDownload === true,
     canCopy: file.capabilities?.canCopy === true,
     canReadRevisions: file.capabilities?.canReadRevisions === true,
@@ -211,6 +240,9 @@ function selectedFolderItem(
         ? file.providerModifiedAt.toISOString()
         : (file.providerModifiedAt ?? null),
     driveId: file.sharedDriveId ?? null,
+    durationSeconds: file.durationSeconds ?? null,
+    widthPixels: file.widthPixels ?? null,
+    heightPixels: file.heightPixels ?? null,
     canDownload: file.canDownload,
     canCopy: file.canCopy,
     canReadRevisions: file.canReadRevisions,
@@ -260,6 +292,9 @@ function publicGoogleDriveMediaBatchPlan(
         mimeType: member.mimeType,
         sizeBytes: member.sizeBytes,
         modifiedTime: member.modifiedTime,
+        durationSeconds: member.durationSeconds,
+        widthPixels: member.widthPixels,
+        heightPixels: member.heightPixels,
         canDownload: member.canDownload,
       })),
     })),
@@ -731,7 +766,11 @@ async function attachGoogleDriveMediaPlanToNest(input: {
         segment: segment.segment,
         packageStatus: segment.status,
         reasons: segment.reasons,
-        expectedMemberRoles: ["primary-original", "browse-proxy"],
+        expectedMemberRoles: [
+          "primary-original",
+          "secondary-original",
+          "browse-proxy",
+        ],
         members: segment.members.map((member) => ({
           name: member.name,
           role: member.role,
@@ -784,6 +823,14 @@ async function attachGoogleDriveMediaPlanToNest(input: {
                   modifiedTime: member.modifiedTime ?? undefined,
                   driveId: member.driveId ?? undefined,
                   resourceKey: member.resourceKey ?? undefined,
+                  videoMediaMetadata: {
+                    durationMillis:
+                      member.durationSeconds === null
+                        ? undefined
+                        : String(Math.round(member.durationSeconds * 1_000)),
+                    width: member.widthPixels ?? undefined,
+                    height: member.heightPixels ?? undefined,
+                  },
                   capabilities: {
                     canDownload: member.canDownload,
                     canCopy: member.canCopy,

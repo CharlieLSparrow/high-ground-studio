@@ -97,7 +97,7 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
     }
   });
 
-  async function attach(memberRole: "browse-proxy" | "full-original") {
+  async function attach(memberRole: "browse-proxy" | "primary-original") {
     return attachVerifiedExternalMediaSource({
       prisma,
       value: {
@@ -122,7 +122,8 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
           headRevisionKey: `head-${memberRole}-${nonce}`,
           checksumMd5:
             memberRole === "browse-proxy" ? "a".repeat(32) : "b".repeat(32),
-          mediaProjection: "equirectangular",
+          mediaProjection:
+            memberRole === "browse-proxy" ? "equirectangular" : "dual-fisheye",
           projectionMetadata: { memberRole, segment: nonce },
           accessState: "available",
           capabilityState: "downloadable",
@@ -220,8 +221,8 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
     } satisfies Partial<GoogleDriveSourceMaterializationRequestError>);
   });
 
-  it("holds INSV originals and activates the existing proxy path only after exact LRV retention", async () => {
-    const original = await attach("full-original");
+  it("requires explicit conform for INSV originals and activates the proxy path only after exact LRV retention", async () => {
+    const original = await attach("primary-original");
     await expect(
       requestGoogleDriveSourceMaterialization({
         prisma,
@@ -236,6 +237,31 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
       code: "browse-proxy-required",
       status: 409,
     } satisfies Partial<GoogleDriveSourceMaterializationRequestError>);
+
+    await expect(
+      requestGoogleDriveSourceMaterialization({
+        prisma,
+        projectId,
+        referenceId: original.reference.id,
+        sourceRevisionId: original.sourceRevisionId,
+        actorUserId,
+        actorEmail,
+        clientRequestId: randomUUID(),
+        purpose: "conform",
+      }),
+    ).resolves.toMatchObject({
+      replayed: false,
+      state: "queued",
+      replica: null,
+      job: {
+        inputJson: {
+          source: { memberRole: "primary-original" },
+          target: {
+            profile: "exact-provider-original-replica-v1",
+          },
+        },
+      },
+    });
 
     const browse = await prisma.studioMediaSourceRevision.findFirstOrThrow({
       where: {

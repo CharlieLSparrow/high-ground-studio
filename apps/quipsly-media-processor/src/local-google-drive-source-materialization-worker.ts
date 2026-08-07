@@ -303,7 +303,7 @@ export async function runOneLocalGoogleDriveMaterializationJob(
       await rm(outputPath, { force: true }).catch(() => undefined);
       throw new GoogleDriveMaterializationTerminalError(
         "drive-materialization-byte-mismatch",
-        "The downloaded LRV does not match Drive's exact size and MD5 receipt.",
+        "The downloaded camera-package member does not match Drive's exact size and MD5 receipt.",
       );
     }
     const receipt = newGoogleDriveSourceMaterializationResult({
@@ -650,77 +650,80 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
         ],
       });
 
-      const proxyIdentity = externalSourceProxyIdentity({
-        projectId: input.job.projectId,
-        sourceRevisionId: input.job.source.sourceRevisionId,
-        identitySha256: input.job.source.identitySha256,
-      });
-      const proxyJobId = externalSourceProxyJobId(proxyIdentity);
-      const proxyDerivativeId = externalSourceProxyDerivativeId(proxyIdentity);
-      const proxyManifest = newExternalSourceProxyJob({
-        jobId: proxyJobId,
-        derivativeId: proxyDerivativeId,
-        projectId: input.job.projectId,
-        projectSlug: input.job.projectSlug,
-        actorUserId: input.job.actorUserId,
-        actorEmail: input.job.actorEmail,
-        queuedAt: input.now.toISOString(),
-        source: {
-          provider: "google-drive",
-          externalReferenceId: input.job.source.externalReferenceId,
+      if (input.job.source.memberRole === "browse-proxy") {
+        const proxyIdentity = externalSourceProxyIdentity({
+          projectId: input.job.projectId,
           sourceRevisionId: input.job.source.sourceRevisionId,
-          revisionKey: input.job.source.headRevisionKey,
           identitySha256: input.job.source.identitySha256,
-          expectedContentSha256: input.receipt.output.sha256,
-          expectedSizeBytes: input.receipt.output.sizeBytes,
-          contentType: input.job.source.contentType,
-        },
-        target: {
-          provider: "local",
-          locator: buildExternalSourceProxyTargetLocator({
-            projectSlug: input.job.projectSlug,
+        });
+        const proxyJobId = externalSourceProxyJobId(proxyIdentity);
+        const proxyDerivativeId =
+          externalSourceProxyDerivativeId(proxyIdentity);
+        const proxyManifest = newExternalSourceProxyJob({
+          jobId: proxyJobId,
+          derivativeId: proxyDerivativeId,
+          projectId: input.job.projectId,
+          projectSlug: input.job.projectSlug,
+          actorUserId: input.job.actorUserId,
+          actorEmail: input.job.actorEmail,
+          queuedAt: input.now.toISOString(),
+          source: {
+            provider: "google-drive",
+            externalReferenceId: input.job.source.externalReferenceId,
             sourceRevisionId: input.job.source.sourceRevisionId,
+            revisionKey: input.job.source.headRevisionKey,
             identitySha256: input.job.source.identitySha256,
-          }),
-          contentType: "video/mp4",
-          profile: EXTERNAL_SOURCE_PROXY_PROFILE,
-        },
-      });
-      await client.query({
-        text: `
-          INSERT INTO "StudioWorkflowJob" (
-            "id","projectId","type","status","source","priority","inputJson","resultJson","requestedByEmail","createdAt","updatedAt"
-          ) VALUES ($1,$2,$3,'queued',$4,70,$5::jsonb,$6::jsonb,$7,$8,$8)
-          ON CONFLICT ("id") DO NOTHING
-        `,
-        values: [
+            expectedContentSha256: input.receipt.output.sha256,
+            expectedSizeBytes: input.receipt.output.sizeBytes,
+            contentType: input.job.source.contentType,
+          },
+          target: {
+            provider: "local",
+            locator: buildExternalSourceProxyTargetLocator({
+              projectSlug: input.job.projectSlug,
+              sourceRevisionId: input.job.source.sourceRevisionId,
+              identitySha256: input.job.source.identitySha256,
+            }),
+            contentType: "video/mp4",
+            profile: EXTERNAL_SOURCE_PROXY_PROFILE,
+          },
+        });
+        await client.query({
+          text: `
+            INSERT INTO "StudioWorkflowJob" (
+              "id","projectId","type","status","source","priority","inputJson","resultJson","requestedByEmail","createdAt","updatedAt"
+            ) VALUES ($1,$2,$3,'queued',$4,70,$5::jsonb,$6::jsonb,$7,$8,$8)
+            ON CONFLICT ("id") DO NOTHING
+          `,
+          values: [
+            proxyJobId,
+            input.job.projectId,
+            PROXY_JOB_TYPE,
+            PROXY_JOB_SOURCE,
+            JSON.stringify(proxyManifest),
+            JSON.stringify({
+              state: "queued",
+              requestedBy: {
+                actorUserId: input.job.actorUserId,
+                actorEmail: input.job.actorEmail,
+                materializationJobId: input.job.jobId,
+              },
+              originalRemainsSourceTruth: true,
+            }),
+            input.job.actorEmail,
+            input.now,
+          ],
+        });
+        const retainedProxy = await client.query({
+          text: `SELECT "inputJson" FROM "StudioWorkflowJob" WHERE "id"=$1`,
+          values: [proxyJobId],
+        });
+        const retainedProxyManifest = parseExternalSourceProxyJob(
+          retainedProxy.rows[0]?.inputJson,
           proxyJobId,
-          input.job.projectId,
-          PROXY_JOB_TYPE,
-          PROXY_JOB_SOURCE,
-          JSON.stringify(proxyManifest),
-          JSON.stringify({
-            state: "queued",
-            requestedBy: {
-              actorUserId: input.job.actorUserId,
-              actorEmail: input.job.actorEmail,
-              materializationJobId: input.job.jobId,
-            },
-            originalRemainsSourceTruth: true,
-          }),
-          input.job.actorEmail,
-          input.now,
-        ],
-      });
-      const retainedProxy = await client.query({
-        text: `SELECT "inputJson" FROM "StudioWorkflowJob" WHERE "id"=$1`,
-        values: [proxyJobId],
-      });
-      const retainedProxyManifest = parseExternalSourceProxyJob(
-        retainedProxy.rows[0]?.inputJson,
-        proxyJobId,
-      );
-      assertRetainedProxyMatches(proxyManifest, retainedProxyManifest);
+        );
+        assertRetainedProxyMatches(proxyManifest, retainedProxyManifest);
+      }
       await client.query("COMMIT");
       return true;
     } catch (error) {
@@ -1089,11 +1092,11 @@ function authorizedTargetPath(root: string, locator: string) {
     !relative ||
     relative.startsWith("..") ||
     path.isAbsolute(relative) ||
-    !/\.(?:lrv|mp4)$/i.test(output)
+    !/\.(?:insv|lrv|mp4)$/i.test(output)
   ) {
     throw new GoogleDriveMaterializationTerminalError(
       "drive-materialization-target-path-rejected",
-      "The provider-cache target escaped its dedicated media root.",
+      "The provider-cache target escaped its dedicated media root or used an unsupported camera-package extension.",
     );
   }
   return output;
