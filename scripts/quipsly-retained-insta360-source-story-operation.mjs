@@ -290,6 +290,9 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
   let cookie = null;
   let firebaseApp = null;
   let firebaseUid = null;
+  let proofChatMessageId = null;
+  let proofChatThreadId = null;
+  let removeProofChatThread = false;
   try {
     const user = await prisma.user.create({ data: { primaryEmail: email, name: "Source Story readback" }, select: { id: true } });
     userId = user.id;
@@ -361,6 +364,7 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       ["source card", profile.cardTitle],
       ["sectioned arrangement", "Episode Open"],
       ["outline view", "Outline"],
+      ["source-card discussion", "Discuss this select"],
       ["spatial render status", "Exact-source 360 render"],
       ["spatial render handoff", "Quipsly can reframe automatically after one reviewed Insta360 Studio master export."],
       ["spatial master state", "A reviewed 5.7K stitch master is required."],
@@ -430,6 +434,42 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
     if (projectedBoardPlacement.groupKey !== boardSection || projectedBoardPlacement.laneKey !== boardLane) {
       throw new Error(`The authenticated Source Story API lost the retained board arrangement (${projectedBoardPlacement.groupKey}/${projectedBoardPlacement.laneKey}).`);
     }
+    const sourceCardThreadKey = `story-card:${projectedBoardPlacement.card.id}`;
+    const existingSourceCardThread = await prisma.studioNestChatThread.findUnique({
+      where: { projectId_key: { projectId: project.id, key: sourceCardThreadKey } },
+      select: { id: true },
+    });
+    removeProofChatThread = !existingSourceCardThread;
+    const discussionWrite = await fetch(`${appOrigin}/api/nest-chat`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "cache-control": "no-cache" },
+      body: JSON.stringify({
+        projectSlug: project.slug,
+        threadKey: sourceCardThreadKey,
+        body: "QA retained proof: this discussion remains anchored to the exact Episode 5 source select.",
+        clientMessageId: randomUUID(),
+        clientSurface: "nest-chat-web",
+      }),
+    });
+    const discussionWriteBody = await discussionWrite.json().catch(() => ({}));
+    proofChatMessageId = discussionWriteBody?.message?.id ?? null;
+    const discussionRead = await fetch(
+      `${appOrigin}/api/nest-chat?projectSlug=${encodeURIComponent(project.slug)}&threadKey=${encodeURIComponent(sourceCardThreadKey)}`,
+      { headers: { cookie, "cache-control": "no-cache" } },
+    );
+    const discussionReadBody = await discussionRead.json().catch(() => ({}));
+    proofChatThreadId = discussionReadBody?.thread?.id ?? existingSourceCardThread?.id ?? null;
+    const discussionMessage = Array.isArray(discussionReadBody?.messages)
+      ? discussionReadBody.messages.find((candidate) => candidate?.id === proofChatMessageId)
+      : null;
+    if (
+      discussionWrite.status !== 200 ||
+      discussionRead.status !== 200 ||
+      discussionReadBody?.sourceCard?.id !== projectedBoardPlacement.card.id ||
+      !discussionMessage
+    ) {
+      throw new Error(`The exact source-card collaboration thread failed authenticated write/readback (write ${discussionWrite.status}; read ${discussionRead.status}).`);
+    }
     if (sourceStoryBody?.spatialRenderReadiness?.readiness?.status !== "manual-stitch-handoff" || sourceStoryBody?.spatialRenderReadiness?.readiness?.automaticReframeReady !== true) {
       throw new Error("The Source Story API did not report the locally operated spatial executor boundary.");
     }
@@ -472,6 +512,9 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       sourceStoryApiStatus: sourceStoryReadback.status,
       writingPageStatus: writingPage.status,
       writingContextVisible: true,
+      sourceCardDiscussionWriteStatus: discussionWrite.status,
+      sourceCardDiscussionReadStatus: discussionRead.status,
+      sourceCardDiscussionAnchored: true,
       spatialRenderStatus: sourceStoryBody.spatialRenderReadiness.readiness.status,
       automaticReframeReady: sourceStoryBody.spatialRenderReadiness.readiness.automaticReframeReady,
       editorPageStatus: editorPage.status,
@@ -490,6 +533,8 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
     };
   } finally {
     if (cookie) await fetch(`${appOrigin}/api/auth/session`, { method: "DELETE", headers: { cookie } }).catch(() => undefined);
+    if (proofChatMessageId) await prisma.studioNestChatMessage.deleteMany({ where: { id: proofChatMessageId } });
+    if (removeProofChatThread && proofChatThreadId) await prisma.studioNestChatThread.deleteMany({ where: { id: proofChatThreadId } });
     if (firebaseApp && firebaseUid) await getAuth(firebaseApp).deleteUser(firebaseUid).catch(() => undefined);
     if (firebaseApp) await deleteApp(firebaseApp).catch(() => undefined);
     if (grantId) await prisma.studioProjectAccessGrant.deleteMany({ where: { id: grantId } });

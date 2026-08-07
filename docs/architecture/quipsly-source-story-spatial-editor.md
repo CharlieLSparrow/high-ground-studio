@@ -76,6 +76,22 @@ The ownership boundary is deliberate:
 
 The web surface links directly from both Cards and Outline views into the canonical writing page. It does not copy card synopsis/notes into prose or create a second editor state. Source cards remain visible evidence and planning material alongside the document rather than being destructively converted into paragraphs.
 
+## Source-card collaboration
+
+A card discussion is a scoped projection of the canonical Nest chat system.
+Its stable thread key is `story-card:<card-id>` and the application route
+verifies that the active, unarchived card belongs to the authorized project
+before a thread can be read or created. Each message records the card ID,
+stable ID, exact source-range ID, and card revision in provenance metadata.
+
+This keeps conversation and notification behavior shared across Episodes,
+Sessions, coaching engagements, and Story while making the evidence anchor
+explicit. Revising a card does not rewrite earlier messages, and discussion
+does not mutate a range, board arrangement, writing document, or timeline.
+Tasks remain canonical Work actions; a later create-action operation must
+reference this same card/range provenance rather than creating a Story-only
+task table.
+
 The binder is now a first-class editing surface rather than a projection that
 appears only after cards exist. An Editor can create an empty section, revise
 its visible title and editorial brief, move it earlier or later, start or open

@@ -171,8 +171,11 @@ reconciliation; they are useful browsing evidence but unsafe cursor identity.
    be presented as one continuous seekable file.
 3. Add a freeform exploratory board that can deliberately commit an order to a
    durable binder, preserving both arrangements and their receipts.
-4. Add comments/tasks beside a card and section through the existing Nest
-   collaboration and work kernels.
+4. Source-card discussion now uses the existing Nest collaboration kernel and
+   retains exact card/range/revision provenance. Next, create a deliberate
+   canonical Work action from that discussion or card without introducing a
+   Story-only task model; section-scoped discussion should reuse the same
+   pattern.
 5. Add collection rename, archive, and explicit reordering on the same
    revisioned operation ledger; do not turn filing order into binder order.
 6. Activate a licensed Insta360 MediaSDK stitch executor only after approval of
@@ -236,6 +239,9 @@ purpose-built lens:
 - **Source-backed cards** record an exact range, optional camera/view recipe,
   synopsis, notes, tags, and provenance. The card is the stable bridge between
   research, writing, collaboration, and editing.
+- **Card discussion** is a scoped view of canonical Nest chat, not a new comment
+  store. Its messages retain the card, source range, and card revision that
+  framed the conversation even if the card is revised later.
 - **Boards and binders** organize the same cards spatially or sequentially.
   Exploration remains reversible; committing an arrangement creates an
   explicit revision rather than silently replacing another person's order.
@@ -261,11 +267,12 @@ The next retained-media operation should prove that Homer can:
 4. mark a precise range and optional view recipe;
 5. find that source immediately in Working;
 6. arrange the card into a section;
-7. open the section's shared writing with the source card beside it; and
-8. promote the same immutable decision into an Episode timeline without
+7. open the section's shared writing with the source card beside it;
+8. discuss the exact select with its source range visibly retained; and
+9. promote the same immutable decision into an Episode timeline without
    changing the source, card, or prose.
 
-The current retained operation proves steps 1–3 and 5–8 across the application
+The current retained operation proves steps 1–3 and 5–9 across the application
 and database boundaries. A signed-in disposable operator opened 19 retained
 sources, switched to the 4-source Working collection and List view, saw the
 complete Insta360 package and ready collaboration proxy, retained its existing
@@ -274,6 +281,7 @@ kept the signed-out shell private. The same operator created and idempotently
 replayed a personal source collection, traversed the mixed library one source
 per cursor page without loss or duplication, and rendered the collection and
 server-wide search interactions in Chrome. Step 4 was already proved by the
-retained spatial-card operation; the next combined usability rehearsal should
-perform all eight steps consecutively as Homer rather than as separate QA
+retained spatial-card operation; step 8 now includes authenticated write/readback
+and cleanup on the real Episode 5 card. The next combined usability rehearsal
+should perform all nine steps consecutively as Homer rather than as separate QA
 operations.

@@ -2941,3 +2941,14 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   timeline. Filename and byte-count agreement with the shared Drive folder is
   recorded as inventory evidence only; provider-copy equality still requires
   a later checksum comparison through the authenticated Drive path.
+- Source cards now open a project-scoped discussion through the existing Nest
+  collaboration kernel rather than a Story-only comment table. The thread key
+  is bound to the card ID; the server refuses missing, archived, or cross-Nest
+  cards and records the card stable ID, exact source-range ID, and card revision
+  on every posted message.
+- The retained Episode 5 operation used a disposable Editor to post and read
+  back a message on card `0241e22a-ed33-44b0-aef2-ffcde24c12fd` through the
+  authenticated application route. Both requests returned HTTP 200, the API
+  projected the same source card, and the proof message, newly created thread,
+  session, access grant, Auth user, and database user were removed afterward.
+  No retained editorial discussion or test identity was left behind.

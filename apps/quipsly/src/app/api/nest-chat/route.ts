@@ -81,6 +81,11 @@ function normalizeEngagementId(input: unknown) {
   return /^[a-z0-9][a-z0-9_-]{0,119}$/.test(raw) ? raw : "";
 }
 
+function normalizeStoryCardId(input: unknown) {
+  const raw = String(input ?? "").trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9-]{0,127}$/.test(raw) ? raw : "";
+}
+
 function resolveThreadScope(threadKeyInput: unknown, episodeSlugInput: unknown) {
   const explicitEpisodeSlug = normalizeEpisodeSlug(episodeSlugInput);
   const key = explicitEpisodeSlug
@@ -95,9 +100,13 @@ function resolveThreadScope(threadKeyInput: unknown, episodeSlugInput: unknown) 
   const engagementId = key.startsWith("engagement:")
     ? normalizeEngagementId(key.slice("engagement:".length))
     : "";
+  const storyCardId = key.startsWith("story-card:")
+    ? normalizeStoryCardId(key.slice("story-card:".length))
+    : "";
   const invalidScope = (key.startsWith("session:") && !sessionRoomId)
     || (key.startsWith("engagement:") && !engagementId)
-    || (key.startsWith("episode:") && !episodeSlug);
+    || (key.startsWith("episode:") && !episodeSlug)
+    || (key.startsWith("story-card:") && !storyCardId);
   return {
     key: episodeSlug
       ? `episode:${episodeSlug}`
@@ -105,10 +114,13 @@ function resolveThreadScope(threadKeyInput: unknown, episodeSlugInput: unknown) 
         ? `session:${sessionRoomId}`
         : engagementId
           ? `engagement:${engagementId}`
-          : key,
+          : storyCardId
+            ? `story-card:${storyCardId}`
+            : key,
     episodeSlug: episodeSlug || null,
     sessionRoomId: sessionRoomId || null,
     engagementId: engagementId || null,
+    storyCardId: storyCardId || null,
     invalidScope,
   };
 }
@@ -351,6 +363,7 @@ async function loadThread(
       episode: null,
       sessionRoom: null,
       engagement,
+      sourceCard: null,
       thread,
       access: {
         role: engagement.members[0]?.role
@@ -395,6 +408,7 @@ async function loadThread(
       episode: null,
       sessionRoom,
       engagement: null,
+      sourceCard: null,
       thread,
       access: {
         role: sessionRoom.participants[0]?.role
@@ -435,12 +449,21 @@ async function loadThread(
         },
       })
     : null;
+  const sourceCard = scope.storyCardId
+    ? await prisma.studioStoryCard.findFirst({
+        where: { id: scope.storyCardId, projectId: project.id, archivedAt: null },
+        select: { id: true, stableId: true, title: true, revision: true, sourceRangeId: true },
+      })
+    : null;
   if (scope.episodeSlug && !episode) {
     return { ok: false as const, status: 404, error: "Episode chat is not available." };
   }
+  if (scope.storyCardId && !sourceCard) {
+    return { ok: false as const, status: 404, error: "Source-card thread is not available." };
+  }
 
-  const thread = await ensureThread(project.id, project.name, scope.key);
-  return { ok: true as const, project, episode, sessionRoom: null, engagement: null, thread, access };
+  const thread = await ensureThread(project.id, project.name, scope.key, sourceCard ? `${sourceCard.title} · source card` : undefined);
+  return { ok: true as const, project, episode, sessionRoom: null, engagement: null, sourceCard, thread, access };
 }
 
 export async function GET(request: NextRequest) {
@@ -486,6 +509,7 @@ export async function GET(request: NextRequest) {
       episode: loaded.episode,
       session: loaded.sessionRoom,
       engagement: loaded.engagement,
+      sourceCard: loaded.sourceCard,
       thread: {
         id: loaded.thread.id,
         key: loaded.thread.key,
@@ -565,6 +589,12 @@ export async function POST(request: NextRequest) {
         ...(scope.engagementId ? {
           coachingEngagementId: loaded.engagement?.id,
           coachingEngagementTitle: loaded.engagement?.title,
+        } : {}),
+        ...(scope.storyCardId ? {
+          sourceCardId: loaded.sourceCard?.id,
+          sourceCardStableId: loaded.sourceCard?.stableId,
+          sourceRangeId: loaded.sourceCard?.sourceRangeId,
+          sourceCardRevision: loaded.sourceCard?.revision,
         } : {}),
         ...(clientMessageId ? { clientMessageId } : {}),
       },

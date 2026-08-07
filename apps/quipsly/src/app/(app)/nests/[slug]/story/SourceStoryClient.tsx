@@ -22,6 +22,7 @@ import {
   ListPlus,
   Loader2,
   Link2,
+  MessageCircle,
   NotebookPen,
   Play,
   Plus,
@@ -57,6 +58,7 @@ import {
   type SourceLibraryMediaFilter,
   type SourceLibrarySortMode,
 } from "@/lib/source-library-projection";
+import { CollaborationThread } from "@/components/session-thread";
 
 import { GoogleDriveSourcePicker } from "./GoogleDriveSourcePicker";
 import {
@@ -1010,6 +1012,29 @@ export function SourceNavigationRail({
   );
 }
 
+function StoryCardDiscussionButton({
+  card,
+  active,
+  onToggle,
+}: {
+  card: SourceStoryCard;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      aria-label={`${active ? "Close" : "Open"} discussion for ${card.title}`}
+      onClick={onToggle}
+      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-black ${active ? "border-violet-800 bg-violet-800 text-white" : "border-violet-200 bg-violet-50 text-violet-950"}`}
+    >
+      <MessageCircle size={14} aria-hidden="true" />
+      {active ? "Close discussion" : "Discuss this select"}
+    </button>
+  );
+}
+
 function sourceStateLabel(value: string) {
   if (value === "checksum-bound") return "Checksum-bound source";
   if (value === "identity-unverified")
@@ -1166,6 +1191,7 @@ export function SourceStoryClient({
   );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [discussionCardId, setDiscussionCardId] = useState<string | null>(null);
 
   const selectedAsset =
     sourceAssets.find((asset) => asset.id === selectedAssetId) ?? null;
@@ -1249,6 +1275,9 @@ export function SourceStoryClient({
     workspace.boards.find((board) => board.id === selectedBoardId) ??
     workspace.boards[0] ??
     null;
+  const discussionCard = discussionCardId
+    ? (workspace.cards.find((card) => card.id === discussionCardId) ?? null)
+    : null;
   const sourceLibraryItems = useMemo(
     () =>
       buildSourceLibraryItems({
@@ -4282,6 +4311,21 @@ export function SourceStoryClient({
                                         {placement.card.synopsis}
                                       </p>
                                     ) : null}
+                                    <div className="mt-2">
+                                      <StoryCardDiscussionButton
+                                        card={placement.card}
+                                        active={
+                                          discussionCardId === placement.card.id
+                                        }
+                                        onToggle={() =>
+                                          setDiscussionCardId((current) =>
+                                            current === placement.card.id
+                                              ? null
+                                              : placement.card.id,
+                                          )
+                                        }
+                                      />
+                                    </div>
                                   </div>
                                   {canWrite ? (
                                     <div className="flex shrink-0 gap-1">
@@ -4478,6 +4522,21 @@ export function SourceStoryClient({
                                     </span>
                                   ) : null}
                                 </div>
+                                <div className="mt-3">
+                                  <StoryCardDiscussionButton
+                                    card={placement.card}
+                                    active={
+                                      discussionCardId === placement.card.id
+                                    }
+                                    onToggle={() =>
+                                      setDiscussionCardId((current) =>
+                                        current === placement.card.id
+                                          ? null
+                                          : placement.card.id,
+                                      )
+                                    }
+                                  />
+                                </div>
                                 {placement.card.sourceRange ? (
                                   <p className="mt-3 text-[10px] font-bold leading-4 text-[#806a4d]">
                                     {sourceStateLabel(
@@ -4561,6 +4620,23 @@ export function SourceStoryClient({
                 ) : null}
               </div>
             </section>
+          ) : null}
+
+          {discussionCard ? (
+            <div className="rounded-[2rem] border border-violet-200 bg-violet-50/60 p-2 shadow-sm">
+              <CollaborationThread
+                projectSlug={project.slug}
+                threadKey={`story-card:${discussionCard.id}`}
+                collaborationTitle={discussionCard.title}
+                heading={`${discussionCard.title} · discussion`}
+                clientSurface="nest-chat-web"
+                composerPlaceholder="Discuss this exact source select…"
+                viewOnlyPlaceholder="View-only source-select discussion"
+                canPost={canWrite}
+                scopeLabel="This source-backed card"
+                scopeDescription="Coordinate the story purpose, edit decision, camera treatment, research, or follow-through here. The card and immutable source range remain the evidence anchor; reviewed tasks stay canonical in Work."
+              />
+            </div>
           ) : null}
 
           {selectedBoard && cardsAvailableForBoard.length ? (

@@ -41,6 +41,9 @@ const prisma = {
   studioEpisodeProduction: {
     findUnique: jest.fn(),
   },
+  studioStoryCard: {
+    findFirst: jest.fn(),
+  },
   studioNestChatThread: {
     upsert: jest.fn(),
   },
@@ -89,6 +92,7 @@ describe("scoped Nest chat threads", () => {
       title: "Episode 4 Part 2",
       status: "READY_TO_RECORD",
     });
+    prisma.studioStoryCard.findFirst.mockResolvedValue({ id: "card-1", stableId: "stable-card-1", title: "Lake reveal", revision: 3, sourceRangeId: "range-1" });
     prisma.studioNestChatMessage.create.mockResolvedValue({
       id: "message-1",
       projectId: "project-1",
@@ -206,6 +210,50 @@ describe("scoped Nest chat threads", () => {
       actor: { role: "VIEWER" },
       thread: { key: "episode:episode-4-part-2" },
     });
+  });
+
+  it("binds a card discussion to an existing project source card", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, projectId: "project-1", role: "EDITOR" } as never);
+    prisma.studioNestChatThread.upsert.mockResolvedValue({ id: "thread-card-1", key: "story-card:card-1", title: "Lake reveal · source card", projectId: "project-1", createdAt, updatedAt: createdAt });
+
+    const response = await POST(request({
+      projectSlug: "high-ground-odyssey",
+      threadKey: "story-card:card-1",
+      body: "Use the path-light moment under the cold open.",
+      clientMessageId: "018f97c6-b7bf-7b2e-8f76-0b482e9f5e94",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(prisma.studioStoryCard.findFirst).toHaveBeenCalledWith({
+      where: { id: "card-1", projectId: "project-1", archivedAt: null },
+      select: { id: true, stableId: true, title: true, revision: true, sourceRangeId: true },
+    });
+    expect(prisma.studioNestChatThread.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { projectId_key: { projectId: "project-1", key: "story-card:card-1" } },
+      create: expect.objectContaining({ title: "Lake reveal · source card" }),
+    }));
+    expect(prisma.studioNestChatMessage.create).toHaveBeenCalledWith({ data: expect.objectContaining({ metadataJson: expect.objectContaining({
+      sourceCardId: "card-1",
+      sourceCardStableId: "stable-card-1",
+      sourceRangeId: "range-1",
+      sourceCardRevision: 3,
+    }) }) });
+  });
+
+  it("refuses an invented or archived source-card thread", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, projectId: "project-1", role: "EDITOR" } as never);
+    prisma.studioStoryCard.findFirst.mockResolvedValue(null);
+
+    const response = await POST(request({
+      projectSlug: "high-ground-odyssey",
+      threadKey: "story-card:invented-card",
+      body: "This must not create an orphan discussion.",
+    }));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ ok: false, error: "Source-card thread is not available." });
+    expect(prisma.studioNestChatThread.upsert).not.toHaveBeenCalled();
+    expect(prisma.studioNestChatMessage.create).not.toHaveBeenCalled();
   });
 
   it("authorizes a Session-only participant without granting the surrounding Nest", async () => {
