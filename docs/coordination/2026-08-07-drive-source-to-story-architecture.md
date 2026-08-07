@@ -190,3 +190,53 @@ replacement checksum binding, and a complete create/update/rebind revision
 sequence. The next coherent source slice is provider-neutral Drive attachment
 and capability refresh; timeline promotion should follow only after changed or
 revoked provider revisions can exercise this same recovery operation.
+
+## Provider-neutral external vault kernel
+
+The first Drive dependency is now implemented without pretending a Google
+connection exists. `StudioExternalMediaReference` is the current provider
+capability projection and has an optimistic revision. The new
+`StudioExternalMediaReferenceOperation` is its append-only attach/refresh
+ledger. Each operation records the actor, UUID request identity, normalized
+request hash, old/new revision, and a client-safe capability snapshot.
+
+The provider adapter boundary supplies a verified file description; browser
+metadata is never accepted as verified source truth. The kernel validates:
+
+- provider, connection, file, shared-drive, and revision identities;
+- non-negative byte count and SHA-256/MD5 checksum syntax;
+- access/capability consistency;
+- optimistic authority for refresh;
+- same-request convergence and changed-request collision;
+- immutable revision identity when a provider reuses a revision key.
+
+An exact SHA-256 plus byte count produces `checksum-bound`. A Drive-like head
+revision, provider MD5, and byte count produces `provider-revision-bound` and
+still requires the executor to stream and SHA-256 verify the resolved revision
+before rendering. Revocation updates only the reference projection and ledger;
+it does not rewrite the immutable content revision or any card that cites it.
+
+Nest's source library now projects connected-vault sources without returning
+`providerLocatorJson`, resource keys, local paths, or credentials. It labels
+downloadable, metadata-only, reauthentication, and unavailable states and
+does not offer direct playback until a verified collaboration proxy exists.
+
+### Retained vault operation
+
+The loopback-only retained operation inspected the actual local
+`Ted Lasso Be Curious.mp4`, hashed 19,100,059 bytes, and attached it to High
+Ground Odyssey as reference `cmsiwjuvc0000lsxlp616yx6q` with immutable source
+revision `cmsiwjuvl0001lsxltsbf5kxx`. The source is checksum-bound and
+downloadable. A second provider inspection advanced the capability projection
+to revision 2 while correctly reusing the same immutable source revision. No
+original was copied, no source was modified, and the signed-in
+browser rendered it as **Ready for verified proxy/execution** while explicitly
+withholding range marking until a collaboration proxy exists.
+
+Focused coverage proves normalized credential-free contracts, attach replay,
+request collision, changed provider revisions, stale refresh rejection,
+revocation without content rewrite, malicious revision-key reuse, independent
+same-file identities across Nests, and safe client projection. Google OAuth,
+Picker, server-side `files.get` verification, and capability refresh remain the
+next slice; the local-vault adapter is retained dogfood evidence, not a claim
+that Drive authorization is configured.

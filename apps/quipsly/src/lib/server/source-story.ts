@@ -938,7 +938,7 @@ export async function reorderStoryBoard(input: {
 }
 
 export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: string) {
-  const [boards, cards] = await Promise.all([
+  const [boards, cards, externalSources] = await Promise.all([
     prisma.studioStoryBoard.findMany({
       where: { projectId, archivedAt: null },
       orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
@@ -978,6 +978,38 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
                 externalReference: { select: { id: true, provider: true, fileName: true, mimeType: true, accessState: true, capabilityState: true, lastVerifiedAt: true } },
               },
             },
+          },
+        },
+      },
+    }),
+    prisma.studioExternalMediaReference.findMany({
+      where: { projectId },
+      orderBy: [{ updatedAt: "desc" }, { fileName: "asc" }],
+      take: 500,
+      select: {
+        id: true,
+        provider: true,
+        fileName: true,
+        mimeType: true,
+        sizeBytes: true,
+        headRevisionKey: true,
+        providerCreatedAt: true,
+        providerModifiedAt: true,
+        accessState: true,
+        capabilityState: true,
+        lastVerifiedAt: true,
+        revision: true,
+        revisions: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            revisionKey: true,
+            identitySha256: true,
+            contentSha256: true,
+            sizeBytes: true,
+            sourceState: true,
+            verifiedAt: true,
           },
         },
       },
@@ -1025,6 +1057,18 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
   const cardById = new Map(cards.map((card) => [card.id, card]));
   return {
     schema: SOURCE_STORY_SCHEMA_VERSION,
+    externalSources: externalSources.map(({ revisions, ...source }) => ({
+      ...source,
+      sizeBytes: source.sizeBytes?.toString() ?? null,
+      providerCreatedAt: source.providerCreatedAt?.toISOString() ?? null,
+      providerModifiedAt: source.providerModifiedAt?.toISOString() ?? null,
+      lastVerifiedAt: source.lastVerifiedAt?.toISOString() ?? null,
+      latestSourceRevision: revisions[0] ? {
+        ...revisions[0],
+        sizeBytes: revisions[0].sizeBytes?.toString() ?? null,
+        verifiedAt: revisions[0].verifiedAt?.toISOString() ?? null,
+      } : null,
+    })),
     cards: cards.map(projectCard),
     boards: boards.map((board) => ({
       id: board.id,

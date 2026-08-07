@@ -8219,3 +8219,26 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   cross-Nest refusal, old-range retention, exact checksum binding, and
   placement/board preservation. Strict TypeScript passes. Architecture and
   evidence: `docs/coordination/2026-08-07-drive-source-to-story-architecture.md`.
+
+## 2026-08-07 external media vault kernel checkpoint
+
+- Added a provider-neutral external-media attach/refresh kernel. The external
+  reference is a revisioned current capability projection; every verified
+  attach or refresh also writes an append-only operation with normalized
+  request hash, actor, old/new revision, and safe capability evidence.
+- Provider revision identity is immutable. Exact SHA-256 evidence becomes
+  checksum-bound; Drive-like head-revision/MD5 evidence remains provider-bound
+  until an executor streams and SHA-256 verifies the exact resolved bytes.
+  Reused revision keys with different byte evidence fail closed.
+- Nest Source to Story now shows connected-vault files and clear downloadable,
+  metadata-only, reauthentication, and unavailable states without exposing
+  provider locators, resource keys, local paths, or credentials. It withholds
+  direct playback and range marking until a collaboration proxy exists.
+- Operated the actual retained `Ted Lasso Be Curious.mp4` from the local source
+  vault. Quipsly hashed 19,100,059 bytes, retained a checksum-bound external
+  revision, copied no original, mutated no source, and rendered the reference
+  in the signed-in High Ground Odyssey UI as ready for verified proxy/execution.
+- Contract tests pass 3/3 and local PostgreSQL attach/refresh coverage passes
+  5/5, including replay, request collision, changed revision, stale refresh,
+  revocation, malicious revision reuse, and cross-Nest identity isolation.
+  Google OAuth, Picker, provider verification, and refresh are still open.

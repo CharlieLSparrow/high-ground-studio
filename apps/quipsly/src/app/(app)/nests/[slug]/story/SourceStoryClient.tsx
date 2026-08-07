@@ -7,6 +7,7 @@ import {
   ArrowUp,
   Check,
   CircleAlert,
+  Cloud,
   Clapperboard,
   Clock3,
   FileVideo2,
@@ -99,6 +100,29 @@ type SourceStoryBoard = {
 
 type SourceStoryWorkspace = {
   schema: "quipsly-source-story-v1";
+  externalSources: Array<{
+    id: string;
+    provider: string;
+    fileName: string;
+    mimeType: string | null;
+    sizeBytes: string | null;
+    headRevisionKey: string | null;
+    providerCreatedAt: string | null;
+    providerModifiedAt: string | null;
+    accessState: string;
+    capabilityState: string;
+    lastVerifiedAt: string | null;
+    revision: number;
+    latestSourceRevision: null | {
+      id: string;
+      revisionKey: string;
+      identitySha256: string;
+      contentSha256: string | null;
+      sizeBytes: string | null;
+      sourceState: string;
+      verifiedAt: string | null;
+    };
+  }>;
   cards: SourceStoryCard[];
   boards: SourceStoryBoard[];
 };
@@ -133,6 +157,13 @@ function sourceStateLabel(value: string) {
   if (value === "checksum-bound") return "Checksum-bound source";
   if (value === "identity-unverified") return "Registered identity · exact bytes still need verification";
   return value.replaceAll("-", " ");
+}
+
+function externalSourceHealth(accessState: string, capabilityState: string) {
+  if (accessState === "available" && capabilityState === "downloadable") return { label: "Ready for verified proxy/execution", tone: "border-emerald-200 bg-emerald-50 text-emerald-950" };
+  if (capabilityState === "metadata-only") return { label: "Metadata only · proxy and render held", tone: "border-amber-200 bg-amber-50 text-amber-950" };
+  if (capabilityState === "needs-reauth" || accessState === "revoked") return { label: "Reconnect source access", tone: "border-rose-200 bg-rose-50 text-rose-950" };
+  return { label: `${accessState.replaceAll("-", " ")} · ${capabilityState.replaceAll("-", " ")}`, tone: "border-zinc-200 bg-zinc-50 text-zinc-800" };
 }
 
 function boardGroupLabel(value: string) {
@@ -196,6 +227,12 @@ export function SourceStoryClient({
       ? initialAssets.filter((asset) => `${asset.filename} ${asset.mimeType ?? ""} ${asset.resolution ?? ""}`.toLowerCase().includes(query))
       : initialAssets;
   }, [initialAssets, sourceQuery]);
+  const filteredExternalSources = useMemo(() => {
+    const query = sourceQuery.trim().toLowerCase();
+    return query
+      ? workspace.externalSources.filter((source) => `${source.fileName} ${source.provider} ${source.mimeType ?? ""}`.toLowerCase().includes(query))
+      : workspace.externalSources;
+  }, [sourceQuery, workspace.externalSources]);
   const placedIds = useMemo(() => new Set(workspace.boards.flatMap((board) => board.placements.map((placement) => placement.cardId))), [workspace.boards]);
   const unplacedCards = workspace.cards.filter((card) => !placedIds.has(card.id));
 
@@ -394,6 +431,7 @@ export function SourceStoryClient({
           <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide">
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">Originals remain unchanged</span>
             <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-sky-900">{workspace.cards.length} cards</span>
+            <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-2 text-teal-900">{workspace.externalSources.length} vault source{workspace.externalSources.length === 1 ? "" : "s"}</span>
             <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-violet-900">{workspace.boards.length} boards</span>
           </div>
         </div>
@@ -412,6 +450,7 @@ export function SourceStoryClient({
           <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Registered project media. Browsing does not copy, proxy, transcribe, or render anything.</p>
           <label className="relative mt-4 block"><span className="sr-only">Search source media</span><Search size={16} className="absolute left-3 top-3.5 text-[#927b5b]" aria-hidden="true" /><input value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Search media…" className="min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white pl-9 pr-3 text-sm font-semibold outline-none focus-visible:ring-4 focus-visible:ring-sky-100" /></label>
           <div className="mt-3 max-h-[68vh] space-y-2 overflow-y-auto pr-1">
+            {filteredExternalSources.length ? <div className="pb-1"><p className="mb-2 flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#76522c]"><Cloud size={13} aria-hidden="true" />Connected vault</p>{filteredExternalSources.map((source) => { const health = externalSourceHealth(source.accessState, source.capabilityState); return <article key={source.id} className="mb-2 rounded-2xl border border-teal-200 bg-teal-50/60 p-3"><p className="line-clamp-2 text-sm font-black leading-5">{source.fileName}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-teal-900">{source.provider.replaceAll("-", " ")} · reference r{source.revision}</p><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-full border px-2 py-1 text-[10px] font-black ${health.tone}`}>{health.label}</span><span className="rounded-full border border-teal-200 bg-white px-2 py-1 text-[10px] font-bold text-teal-900">{formatBytes(source.sizeBytes)}</span></div><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">{source.latestSourceRevision ? `${sourceStateLabel(source.latestSourceRevision.sourceState)} · ${source.latestSourceRevision.revisionKey}` : "No immutable provider revision retained yet."}</p><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">External originals are not played directly here. Quipsly needs a verified collaboration proxy before range marking.</p></article>; })}</div> : null}
             {filteredAssets.map((asset) => {
               const selected = asset.id === selectedAsset?.id;
               return (
@@ -426,7 +465,7 @@ export function SourceStoryClient({
                 </button>
               );
             })}
-            {!filteredAssets.length ? <p className="rounded-2xl border border-dashed border-[#d9c7a5] p-5 text-sm font-semibold text-[#765f40]">No attached source matches this search.</p> : null}
+            {!filteredAssets.length && !filteredExternalSources.length ? <p className="rounded-2xl border border-dashed border-[#d9c7a5] p-5 text-sm font-semibold text-[#765f40]">No attached source matches this search.</p> : null}
           </div>
         </aside>
 

@@ -880,6 +880,7 @@ model User {
   storyDraftsUpdated                StoryDraft[]                                @relation("StoryDraftUpdatedBy")
   storyDraftsReviewed               StoryDraft[]                                @relation("StoryDraftReviewedBy")
   externalMediaReferencesImported   StudioExternalMediaReference[]              @relation("StudioExternalMediaReferenceImportedBy")
+  externalMediaOperationsAuthored   StudioExternalMediaReferenceOperation[]     @relation("StudioExternalMediaReferenceOperationActor")
   mediaSourceRevisionsCreated       StudioMediaSourceRevision[]                 @relation("StudioMediaSourceRevisionCreatedBy")
   sourceRangesCreated               StudioSourceRange[]                         @relation("StudioSourceRangeCreatedBy")
   storyCardsCreated                 StudioStoryCard[]                           @relation("StudioStoryCardCreatedBy")
@@ -4784,6 +4785,7 @@ model StudioExternalMediaReference {
   importedByUserId       String
   importedByEmail        String
   clientRequestId        String
+  revision               Int       @default(1)
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -4791,12 +4793,35 @@ model StudioExternalMediaReference {
   sourceUnit StudioSourceUnit?           @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
   importedBy User                        @relation("StudioExternalMediaReferenceImportedBy", fields: [importedByUserId], references: [id], onDelete: Restrict)
   revisions  StudioMediaSourceRevision[]
+  operations StudioExternalMediaReferenceOperation[]
 
   @@unique([projectId, provider, externalFileId])
   @@unique([projectId, importedByUserId, clientRequestId])
   @@index([projectId, accessState, updatedAt])
   @@index([sourceUnitId])
   @@index([connectionKey, provider])
+}
+
+// Append-only provider inspection and attachment receipts. The reference row
+// is the current capability projection; this ledger preserves how it changed.
+model StudioExternalMediaReferenceOperation {
+  id               String   @id @default(cuid())
+  referenceId      String
+  revision         Int
+  previousRevision Int
+  operation        String
+  actorUserId      String
+  clientRequestId  String
+  requestSha256    String
+  snapshotJson     Json
+  createdAt        DateTime @default(now())
+
+  reference StudioExternalMediaReference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  actor     User                         @relation("StudioExternalMediaReferenceOperationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([referenceId, revision])
+  @@unique([referenceId, actorUserId, clientRequestId])
+  @@index([actorUserId, createdAt])
 }
 
 // Immutable byte/revision identity used by ranges and render manifests. A
