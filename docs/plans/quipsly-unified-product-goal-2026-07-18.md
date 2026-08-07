@@ -8131,3 +8131,27 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   disposable retained Firebase identities, owner-only credential packets,
   summaries, simulator DerivedData, and isolated web output were removed after
   readback. Physical-device and production gates remain open.
+
+## 2026-08-06 Session program-output authority checkpoint
+
+- Closed the finishing ambiguity between an individually mastered microphone
+  and the reviewed Episode program. The canonical Session graph now joins the
+  exact Episode mix job, review, promotion, registered derivative, and all
+  integrity fingerprints before it calls the program active.
+- Active program authority keeps per-source masters as transparent alternates
+  but prevents their accidental Episode-packet selection. Existing historical
+  selections stay visible; mismatched or withdrawn evidence fails closed.
+- Outputs and the Finishing Cockpit expose the same five-stage truth: exact
+  tracks, lossless program, encoded AAC, encoded-byte proof-listen, and
+  reversible packet selection. No stage stands in for upload or publication.
+- The loopback-only retained operation computes the exact existing WAV hash,
+  writes idempotent fixture receipts, authenticates through the Firebase
+  emulator and first-party session cookie, and renders the real Session page.
+  It proves delivery encoding, packet selection, upload, publication, and
+  source mutation remain absent.
+- Verification passes 196 Session tests across 27 suites with one skipped test,
+  strict TypeScript, the isolated 189-route production build, and desktop plus
+  iPhone-width browser operation. The next coherent slice is an explicit
+  Episode-program delivery authority; the existing asset-master foreign key
+  must not be repurposed to fake it. Architecture and evidence:
+  `docs/coordination/2026-08-06-session-program-output-authority.md`.

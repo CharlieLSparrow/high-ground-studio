@@ -99,6 +99,7 @@
     "quipsly:retained:calendar-overview": "node scripts/quipsly-retained-calendar-overview-operation.mjs",
     "quipsly:retained:calendar-subscription": "node scripts/quipsly-retained-calendar-subscription-operation.mjs",
     "quipsly:retained:recording-editor": "node scripts/quipsly-retained-recording-editor-operation.mjs",
+    "quipsly:retained:versioned-output-graph": "QUIPSLY_RETAINED_OUTPUT_GRAPH_OPERATION=1 node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-versioned-output-graph-operation.mjs",
     "quipsly:retained:audio-processing": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-audio-mastery-transparency-operation.mjs",
     "quipsly:retained:audio-evidence-ui": "node scripts/quipsly-retained-audio-evidence-browser-smoke.mjs",
     "quipsly:retained:audible-event-review": "node scripts/quipsly-retained-audible-event-review-operation.mjs",

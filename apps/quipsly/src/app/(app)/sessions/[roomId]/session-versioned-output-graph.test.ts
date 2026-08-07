@@ -1,4 +1,4 @@
-import { buildSessionVersionedOutputGraph, type SessionOutputGraphAssetInput } from "./session-versioned-output-graph";
+import { buildSessionVersionedOutputGraph, type SessionOutputGraphAssetInput, type SessionOutputGraphProgramMixInput } from "./session-versioned-output-graph";
 
 const episode = { id: "episode-9", projectSlug: "high-ground-odyssey", slug: "episode-9", title: "Episode 9" };
 
@@ -11,6 +11,35 @@ function asset(overrides: Partial<SessionOutputGraphAssetInput> = {}): SessionOu
     attachmentRole: "primary-audio",
     masterCandidate: null,
     deliveryArtifact: null,
+    ...overrides,
+  };
+}
+
+function programMix(overrides: Partial<SessionOutputGraphProgramMixInput> = {}): SessionOutputGraphProgramMixInput {
+  return {
+    jobId: "episode-mix-1",
+    assetId: "episode-mix-asset-1",
+    sourceTrackCount: 3,
+    programFingerprintSha256: "d".repeat(64),
+    proposalSha256: "e".repeat(64),
+    previewSha256: "f".repeat(64),
+    reviewReceiptId: "episode-mix-review-1",
+    promotionReceiptId: "episode-mix-promotion-1",
+    operation: "PROMOTE" as const,
+    playbackUrl: "/api/ingest/media/program-mix-1",
+    occurredAt: "2026-08-06T22:30:00.000Z",
+    historicalEventCount: 1,
+    integrity: {
+      jobCompleted: true,
+      assetRegistered: true,
+      reviewApproved: true,
+      promotionMatchesJob: true,
+      promotionMatchesReview: true,
+      promotionMatchesProposal: true,
+      promotionMatchesBaseline: true,
+      promotionMatchesPreview: true,
+      promotionMatchesProgram: true,
+    },
     ...overrides,
   };
 }
@@ -61,5 +90,35 @@ describe("versioned Episode output graph", () => {
     expect(graph.currentPacket).toBeNull();
     expect(graph.assets[0].packetState).toBe("WITHDRAWN");
     expect(graph.selectionHistoryCount).toBe(2);
+  });
+
+  it("projects a reviewed program mix above single-source masters", () => {
+    const graph = buildSessionVersionedOutputGraph({
+      episode,
+      programMix: programMix(),
+      assets: [asset({
+        deliveryArtifact: { jobId: "delivery-1", status: "completed", promotionReceiptId: "promotion-1", deliverySha256: "b".repeat(64), playbackUrl: "/delivery", promotionStillActive: true, review: { id: "review-1", decision: "approved", reviewedAt: null }, readiness: { encodedAndVerified: true, proofListenApproved: true, outputPacketEligible: true } },
+      })],
+      selections: [],
+    });
+
+    expect(graph.programMix).toMatchObject({ state: "ACTIVE", sourceTrackCount: 3, packetState: "NOT_SELECTED" });
+    expect(graph.assets[0]).toMatchObject({ alternateToActiveProgramMix: true, packetEligible: true });
+    expect(graph.assets[0].nextAction).toContain("single-source branch");
+    expect(graph.counts).toMatchObject({ activeProgramMixes: 1, packetEligible: 0 });
+    expect(graph.boundaries.sourceMasterIsNotProgramMix).toBe(true);
+  });
+
+  it("holds a promoted program mix when its immutable evidence does not converge", () => {
+    const graph = buildSessionVersionedOutputGraph({
+      episode,
+      programMix: programMix({ integrity: { ...programMix().integrity, promotionMatchesPreview: false } }),
+      assets: [asset()],
+      selections: [],
+    });
+
+    expect(graph.programMix).toMatchObject({ state: "HELD", playbackUrl: null });
+    expect(graph.counts.activeProgramMixes).toBe(0);
+    expect(graph.assets[0].alternateToActiveProgramMix).toBe(false);
   });
 });

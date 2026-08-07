@@ -2608,3 +2608,22 @@ These should be treated as cleanup candidates later, not as authoritative produc
   Physical front/rear capture, actual MOV readback,
   pressure/thermal operation, upload, and editor playback remain open. See
   `docs/coordination/2026-08-06-iphone-video-quality-intent.md`.
+
+### 2026-08-06 Session program output authority
+
+- The Session versioned output graph now projects promoted Episode-level
+  multitrack programs separately from per-source microphone masters. Exact job,
+  review, promotion, program/proposal/preview fingerprints, registered asset,
+  Episode, and Nest identity must converge or the program is held.
+- An active program makes source-master branches visible single-source
+  alternates rather than eligible Episode substitutes. The UI does not invent
+  delivery completion: lossless program, encoded AAC, encoded-byte
+  proof-listen, packet selection, upload, and publication remain distinct.
+- An authenticated loopback-only retained operation established a real Quipsly
+  session cookie, rendered the active two-track program and open delivery
+  boundary, and proved no source mutation, encoding, packet selection, upload,
+  or publication occurred.
+- The complete Session directory passes 196 tests across 27 suites with one
+  skipped test; strict TypeScript, an isolated 189-route production build, and
+  desktop plus 390 by 844 responsive browser operation pass. See
+  `docs/coordination/2026-08-06-session-program-output-authority.md`.

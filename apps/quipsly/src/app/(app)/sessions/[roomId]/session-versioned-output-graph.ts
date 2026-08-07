@@ -46,8 +46,52 @@ export type SessionOutputGraphSelectionInput = {
   };
 };
 
+export type SessionOutputGraphProgramMixInput = {
+  jobId: string;
+  assetId: string | null;
+  sourceTrackCount: number;
+  programFingerprintSha256: string;
+  proposalSha256: string;
+  previewSha256: string;
+  reviewReceiptId: string | null;
+  promotionReceiptId: string;
+  operation: "PROMOTE" | "WITHDRAW";
+  playbackUrl: string | null;
+  occurredAt: string | null;
+  historicalEventCount: number;
+  integrity: {
+    jobCompleted: boolean;
+    assetRegistered: boolean;
+    reviewApproved: boolean;
+    promotionMatchesJob: boolean;
+    promotionMatchesReview: boolean;
+    promotionMatchesProposal: boolean;
+    promotionMatchesBaseline: boolean;
+    promotionMatchesPreview: boolean;
+    promotionMatchesProgram: boolean;
+  };
+};
+
 export type SessionVersionedOutputGraph = {
   episode: null | { id: string; projectSlug: string; slug: string; title: string };
+  programMix: null | {
+    jobId: string;
+    assetId: string | null;
+    sourceTrackCount: number;
+    programFingerprintSha256: string;
+    proposalSha256: string;
+    previewSha256: string;
+    reviewReceiptId: string | null;
+    promotionReceiptId: string;
+    state: "ACTIVE" | "WITHDRAWN" | "HELD";
+    playbackUrl: string | null;
+    occurredAt: string | null;
+    historicalEventCount: number;
+    packetState: "NOT_SELECTED" | "SELECTED" | "WITHDRAWN" | "OTHER_ASSET_SELECTED";
+    nextAction: string;
+    editorHref: string;
+    integrity: SessionOutputGraphProgramMixInput["integrity"];
+  };
   assets: Array<{
     recordingAssetId: string;
     mediaAssetId: string;
@@ -62,6 +106,7 @@ export type SessionVersionedOutputGraph = {
     deliveryArtifactSha256: string | null;
     deliveryPlaybackUrl: string | null;
     packetEligible: boolean;
+    alternateToActiveProgramMix: boolean;
     currentPacketId: string | null;
     nextAction: string;
     editorHref: string;
@@ -83,6 +128,7 @@ export type SessionVersionedOutputGraph = {
   selectionHistoryCount: number;
   counts: {
     sources: number;
+    activeProgramMixes: number;
     activeMasters: number;
     verifiedArtifacts: number;
     approvedArtifacts: number;
@@ -91,6 +137,7 @@ export type SessionVersionedOutputGraph = {
   };
   boundaries: {
     sourceIsNotMaster: true;
+    sourceMasterIsNotProgramMix: true;
     masterIsNotEncodedArtifact: true;
     proofListenIsNotPacketSelection: true;
     packetSelectionIsNotUpload: true;
@@ -141,6 +188,7 @@ function nextAction(args: {
 
 export function buildSessionVersionedOutputGraph(input: {
   episode: SessionVersionedOutputGraph["episode"];
+  programMix?: SessionOutputGraphProgramMixInput | null;
   assets: SessionOutputGraphAssetInput[];
   selections: SessionOutputGraphSelectionInput[];
 }): SessionVersionedOutputGraph {
@@ -150,6 +198,25 @@ export function buildSessionVersionedOutputGraph(input: {
   const currentAudio = object(currentPacketJson.audio);
   const currentReadiness = object(currentPacketJson.readiness);
   const selectedAssetId = text(currentAudio.assetId) || null;
+  const programMixIntegrity = input.programMix?.integrity;
+  const programMixIntegrityReady = Boolean(programMixIntegrity
+    && programMixIntegrity.jobCompleted
+    && programMixIntegrity.assetRegistered
+    && programMixIntegrity.reviewApproved
+    && programMixIntegrity.promotionMatchesJob
+    && programMixIntegrity.promotionMatchesReview
+    && programMixIntegrity.promotionMatchesProposal
+    && programMixIntegrity.promotionMatchesBaseline
+    && programMixIntegrity.promotionMatchesPreview
+    && programMixIntegrity.promotionMatchesProgram);
+  const programMixState = !input.programMix
+    ? null
+    : input.programMix.operation === "WITHDRAW"
+      ? "WITHDRAWN" as const
+      : programMixIntegrityReady
+        ? "ACTIVE" as const
+        : "HELD" as const;
+  const hasActiveProgramMix = programMixState === "ACTIVE";
   const assets = input.assets.map((asset) => {
     const masterState = !asset.masterCandidate
       ? "NOT_OBSERVED" as const
@@ -174,8 +241,11 @@ export function buildSessionVersionedOutputGraph(input: {
       deliveryArtifactSha256: asset.deliveryArtifact?.deliverySha256 ?? null,
       deliveryPlaybackUrl: asset.deliveryArtifact?.playbackUrl ?? null,
       packetEligible: asset.deliveryArtifact?.readiness.outputPacketEligible === true,
+      alternateToActiveProgramMix: hasActiveProgramMix,
       currentPacketId: packetState === "SELECTED" ? currentSelection?.packet.id ?? null : null,
-      nextAction: nextAction({ masterState, deliveryState: artifactState, packetState }),
+      nextAction: hasActiveProgramMix && packetState !== "SELECTED"
+        ? "Keep this single-source branch for repair and comparison while the active multitrack program advances."
+        : nextAction({ masterState, deliveryState: artifactState, packetState }),
       editorHref: input.episode
         ? `/editor?project=${encodeURIComponent(input.episode.projectSlug)}&episode=${encodeURIComponent(input.episode.slug)}&asset=${encodeURIComponent(asset.mediaAssetId)}#audio-mastery-heading`
         : "/editor",
@@ -183,6 +253,34 @@ export function buildSessionVersionedOutputGraph(input: {
   });
   return {
     episode: input.episode,
+    programMix: input.programMix && programMixState ? {
+      jobId: input.programMix.jobId,
+      assetId: input.programMix.assetId,
+      sourceTrackCount: input.programMix.sourceTrackCount,
+      programFingerprintSha256: input.programMix.programFingerprintSha256,
+      proposalSha256: input.programMix.proposalSha256,
+      previewSha256: input.programMix.previewSha256,
+      reviewReceiptId: input.programMix.reviewReceiptId,
+      promotionReceiptId: input.programMix.promotionReceiptId,
+      state: programMixState,
+      playbackUrl: programMixState === "ACTIVE" ? input.programMix.playbackUrl : null,
+      occurredAt: input.programMix.occurredAt,
+      historicalEventCount: input.programMix.historicalEventCount,
+      packetState: currentSelection
+        ? selectedAssetId === input.programMix.assetId ? "SELECTED" : "OTHER_ASSET_SELECTED"
+        : latestSelection?.operation === "WITHDRAW" && latestSelection.artifactSha256 === input.programMix.previewSha256
+          ? "WITHDRAWN"
+          : "NOT_SELECTED",
+      nextAction: programMixState === "HELD"
+        ? "Inspect the program-mix registration or receipt mismatch before finishing."
+        : programMixState === "WITHDRAWN"
+          ? "Review and deliberately promote the correct multitrack program version."
+          : "Encode this promoted program as a separately verified delivery artifact, then proof-listen the encoded bytes.",
+      editorHref: input.episode
+        ? `/editor?project=${encodeURIComponent(input.episode.projectSlug)}&episode=${encodeURIComponent(input.episode.slug)}#episode-audio-mix`
+        : "/editor",
+      integrity: input.programMix.integrity,
+    } : null,
     assets,
     currentPacket: currentSelection ? {
       id: currentSelection.packet.id,
@@ -201,14 +299,16 @@ export function buildSessionVersionedOutputGraph(input: {
     selectionHistoryCount: input.selections.length,
     counts: {
       sources: assets.length,
+      activeProgramMixes: hasActiveProgramMix ? 1 : 0,
       activeMasters: assets.filter((asset) => asset.masterState === "ACTIVE").length,
       verifiedArtifacts: assets.filter((asset) => !["NOT_OBSERVED", "PROCESSING", "FAILED"].includes(asset.deliveryState)).length,
       approvedArtifacts: assets.filter((asset) => asset.deliveryState === "APPROVED").length,
-      packetEligible: assets.filter((asset) => asset.packetEligible).length,
+      packetEligible: assets.filter((asset) => asset.packetEligible && !asset.alternateToActiveProgramMix).length,
       selectedPackets: currentSelection ? 1 : 0,
     },
     boundaries: {
       sourceIsNotMaster: true,
+      sourceMasterIsNotProgramMix: true,
       masterIsNotEncodedArtifact: true,
       proofListenIsNotPacketSelection: true,
       packetSelectionIsNotUpload: true,

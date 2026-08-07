@@ -35,6 +35,7 @@ export type SessionFinishingEvidence = {
   assembly?: SessionEpisodeAssemblyEvidence;
   versionedOutput?: {
     sources: number;
+    activeProgramMixes?: number;
     activeMasters: number;
     verifiedArtifacts: number;
     approvedArtifacts: number;
@@ -279,6 +280,14 @@ export function buildSessionFinishingCockpit(input: {
   });
 
   const versionedOutput = finishingEvidence.versionedOutput;
+  if (versionedOutput?.activeProgramMixes) attention.push({
+    id: "episode-program-delivery",
+    severity: "HIGH",
+    lane: "outputs",
+    title: "The reviewed multitrack program stops before delivery encoding",
+    detail: "The active program mix is versioned and preserved, but no program-authority AAC encoding and proof-listen path is projected yet. Single-microphone delivery artifacts remain alternates, not substitutes.",
+    consequence: "Quipsly cannot safely treat one participant's mastered track as the combined Episode enclosure.",
+  });
   if (versionedOutput?.activeMasters && !versionedOutput.verifiedArtifacts) attention.push({
     id: "episode-artifact-missing",
     severity: "REVIEW",
