@@ -2825,3 +2825,39 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   skipped test; strict TypeScript, an isolated 189-route production build, and
   desktop plus 390 by 844 responsive browser operation pass. See
   `docs/coordination/2026-08-06-session-program-output-authority.md`.
+
+### 2026-08-07 source navigation and Drive-backed Insta360 libraries
+
+- Source Room now derives a checksum- and generation-bound audio navigation
+  receipt from the exact collaboration proxy. Full decode produces bounded
+  waveform windows, broad frequency-band evidence, signal measurements, and
+  attention observations without changing source or derivative media.
+- The source viewer now combines an eight-sample protected filmstrip, waveform,
+  playhead, keyboard seek controls, and explicit I/O range marks. Measurements
+  remain evidence for a person to interpret rather than automatic edit
+  authority.
+- Retained HGO operation proved exact replay and unchanged input bytes. It also
+  found the retained 0.34-second proxy audio to be near digital silence at
+  -160 dBFS; the UI reports that limitation instead of presenting a decorative
+  waveform as usable sound.
+- The shared `Insta360` Drive root was inspected read-only. At inspection time
+  it contained eight capture-batch folders, 28 visible files, about 376.39 GB
+  of visible source data, 13 complete INSV/LRV segment pairs, and 11 expected
+  segments held because their uploads or companions were incomplete. The root
+  was still changing, so these are observed intake facts, not a completion
+  claim.
+- Google Drive intake now models library root -> capture batch -> independently
+  seekable segment -> exact INSV/LRV members. Google Picker can select one
+  library root, Quipsly recursively inspects exactly one reviewed level,
+  presents ready versus held segments before attachment, preserves originals
+  in Drive, and groups attached members through a project-owned source unit.
+- Drive folder and package operations remain selected-file scoped. Quipsly
+  rejects deeper unreviewed nesting, folders over bounded item limits, empty or
+  restricted members for execution, cross-Nest source units, and attempts to
+  reassign one external file between logical packages.
+- Focused unit and PostgreSQL integration suites pass, including the real
+  multi-segment naming topology, empty/in-progress uploads, library-root
+  aggregation, project ownership, idempotent attachment, and package grouping.
+  Drive-to-local proxy materialization and exact-source SHA-256 binding remain
+  the next execution slice; attachment does not claim those expensive bytes
+  were copied or rendered.

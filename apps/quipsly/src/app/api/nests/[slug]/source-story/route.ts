@@ -16,8 +16,10 @@ import {
 import { readSpatialRenderReadiness } from "@/lib/server/spatial-render-readiness";
 import { requireSourceStoryAccess } from "@/lib/server/source-story-access";
 import {
+  attachGoogleDriveFolderToNest,
   attachGoogleDriveFileToNest,
   googleDriveSourceErrorResponse,
+  inspectGoogleDriveFolderForNest,
 } from "@/lib/server/google-drive-source";
 import {
   ExternalSourceProxyRequestError,
@@ -27,6 +29,10 @@ import {
   SourceVisualOverviewRequestError,
   requestSourceVisualOverview,
 } from "@/lib/server/source-visual-overview";
+import {
+  SourceAudioNavigationRequestError,
+  requestSourceAudioNavigation,
+} from "@/lib/server/source-audio-navigation";
 import {
   SourceStoryConflictError,
   arrangeStoryBoard,
@@ -51,14 +57,20 @@ import {
   readSourceCollections,
   removeSourceFromCollection,
 } from "@/lib/server/source-collections";
-import { SpatialRenderQueueError, queueSpatialReframe, registerSpatialReframeResult } from "@/lib/server/spatial-render-job";
+import {
+  SpatialRenderQueueError,
+  queueSpatialReframe,
+  registerSpatialReframeResult,
+} from "@/lib/server/spatial-render-job";
 
 export const dynamic = "force-dynamic";
 
 function jsonSafe<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value, (_key, item) => (
-    typeof item === "bigint" ? item.toString() : item
-  ))) as T;
+  return JSON.parse(
+    JSON.stringify(value, (_key, item) =>
+      typeof item === "bigint" ? item.toString() : item,
+    ),
+  ) as T;
 }
 
 function text(value: unknown) {
@@ -68,32 +80,53 @@ function text(value: unknown) {
 function stringArray(value: unknown) {
   if (value === null || value === undefined) return [];
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new SourceStoryContractError("invalid-list", "The supplied identity list is malformed.");
+    throw new SourceStoryContractError(
+      "invalid-list",
+      "The supplied identity list is malformed.",
+    );
   }
   return value as string[];
 }
 
 function sourceSetMembers(value: unknown) {
-  if (!Array.isArray(value)) throw new SourceStoryContractError("invalid-source-set-members", "The source-set member list is malformed.");
+  if (!Array.isArray(value))
+    throw new SourceStoryContractError(
+      "invalid-source-set-members",
+      "The source-set member list is malformed.",
+    );
   return value.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new SourceStoryContractError("invalid-source-set-member", "A source-set member is malformed.");
+      throw new SourceStoryContractError(
+        "invalid-source-set-member",
+        "A source-set member is malformed.",
+      );
     }
     const member = item as Record<string, unknown>;
     return {
       sourceRevisionId: text(member.sourceRevisionId),
       role: text(member.role) as MediaSourceSetMemberRole,
-      ordinal: member.ordinal === undefined ? undefined : Number(member.ordinal),
-      requiredForRender: member.requiredForRender === undefined ? undefined : member.requiredForRender === true,
+      ordinal:
+        member.ordinal === undefined ? undefined : Number(member.ordinal),
+      requiredForRender:
+        member.requiredForRender === undefined
+          ? undefined
+          : member.requiredForRender === true,
     };
   });
 }
 
 function boardPlacements(value: unknown): StoryBoardPlacementIntent[] {
-  if (!Array.isArray(value)) throw new SourceStoryContractError("invalid-board-arrangement", "The board arrangement is malformed.");
+  if (!Array.isArray(value))
+    throw new SourceStoryContractError(
+      "invalid-board-arrangement",
+      "The board arrangement is malformed.",
+    );
   return value.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new SourceStoryContractError("invalid-board-placement", "A board placement is malformed.");
+      throw new SourceStoryContractError(
+        "invalid-board-placement",
+        "A board placement is malformed.",
+      );
     }
     const placement = item as Record<string, unknown>;
     return {
@@ -107,7 +140,10 @@ function boardPlacements(value: unknown): StoryBoardPlacementIntent[] {
 function statusFrom(value: unknown): StoryCardStatus {
   const candidate = text(value) as StoryCardStatus;
   if (!storyCardStatuses.includes(candidate)) {
-    throw new SourceStoryContractError("invalid-status", "The story card status is unsupported.");
+    throw new SourceStoryContractError(
+      "invalid-status",
+      "The story card status is unsupported.",
+    );
   }
   return candidate;
 }
@@ -116,59 +152,112 @@ function purposeFrom(value: unknown): StoryCardPurpose {
   const candidate = text(value) as StoryCardPurpose;
   if (!candidate) return "select";
   if (!storyCardPurposes.includes(candidate)) {
-    throw new SourceStoryContractError("invalid-purpose", "The story purpose is unsupported.");
+    throw new SourceStoryContractError(
+      "invalid-purpose",
+      "The story purpose is unsupported.",
+    );
   }
   return candidate;
 }
 
 function errorResponse(error: unknown) {
   const driveError = googleDriveSourceErrorResponse(error);
-  if (driveError) return NextResponse.json(driveError.body, { status: driveError.status });
+  if (driveError)
+    return NextResponse.json(driveError.body, { status: driveError.status });
   if (error instanceof SourceStoryConflictError) {
-    return NextResponse.json({ error: error.message, errorCode: error.code, currentRevision: error.currentRevision }, { status: 409 });
+    return NextResponse.json(
+      {
+        error: error.message,
+        errorCode: error.code,
+        currentRevision: error.currentRevision,
+      },
+      { status: 409 },
+    );
   }
   if (error instanceof SourceStoryContractError) {
-    return NextResponse.json({ error: error.message, errorCode: error.code }, { status: 400 });
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: 400 },
+    );
   }
   if (error instanceof ExternalSourceProxyRequestError) {
-    return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: error.status },
+    );
   }
   if (error instanceof SourceVisualOverviewRequestError) {
-    return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: error.status },
+    );
+  }
+  if (error instanceof SourceAudioNavigationRequestError) {
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: error.status },
+    );
   }
   if (error instanceof SpatialRenderQueueError) {
-    return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: error.status },
+    );
   }
-  const status = typeof (error as { status?: unknown })?.status === "number"
-    ? Number((error as { status: number }).status)
-    : 500;
+  const status =
+    typeof (error as { status?: unknown })?.status === "number"
+      ? Number((error as { status: number }).status)
+      : 500;
   const safeStatus = status === 401 || status === 404 ? status : 500;
   if (safeStatus === 500) console.error("[source-story] request failed", error);
-  return NextResponse.json({
-    error: safeStatus === 500 ? "The source workspace could not complete that operation." : (error as Error).message,
-  }, { status: safeStatus });
+  return NextResponse.json(
+    {
+      error:
+        safeStatus === 500
+          ? "The source workspace could not complete that operation."
+          : (error as Error).message,
+    },
+    { status: safeStatus },
+  );
 }
 
-export async function GET(request: Request, context: { params: Promise<{ slug: string }> }) {
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ slug: string }> },
+) {
   try {
     const { slug } = await context.params;
     const actor = await requireSourceStoryAccess(request, slug, "read");
-    const [workspace, sourceCollections, spatialRenderReadiness] = await Promise.all([
-      readSourceStoryWorkspace(getPrismaClient(), actor.projectId),
-      readSourceCollections(getPrismaClient(), { projectId: actor.projectId, actorUserId: actor.userId }),
-      readSpatialRenderReadiness(),
-    ]);
-    return NextResponse.json(jsonSafe({ ok: true, workspace: { ...workspace, sourceCollections }, spatialRenderReadiness }), { headers: { "Cache-Control": "no-store" } });
+    const [workspace, sourceCollections, spatialRenderReadiness] =
+      await Promise.all([
+        readSourceStoryWorkspace(getPrismaClient(), actor.projectId),
+        readSourceCollections(getPrismaClient(), {
+          projectId: actor.projectId,
+          actorUserId: actor.userId,
+        }),
+        readSpatialRenderReadiness(),
+      ]);
+    return NextResponse.json(
+      jsonSafe({
+        ok: true,
+        workspace: { ...workspace, sourceCollections },
+        spatialRenderReadiness,
+      }),
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     return errorResponse(error);
   }
 }
 
-export async function POST(request: Request, context: { params: Promise<{ slug: string }> }) {
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ slug: string }> },
+) {
   try {
     const { slug } = await context.params;
     const actor = await requireSourceStoryAccess(request, slug, "write");
-    const body = await request.json() as Record<string, unknown>;
+    const body = (await request.json()) as Record<string, unknown>;
     const action = text(body.action);
     const prisma = getPrismaClient();
     let operation: unknown;
@@ -181,6 +270,27 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         actorEmail: actor.email,
         connectionId: text(body.connectionId),
         externalFileId: text(body.externalFileId),
+        resourceKey: text(body.resourceKey) || null,
+        clientRequestId: text(body.clientRequestId),
+        requestUrl: request.url,
+      });
+    } else if (action === "inspect-google-drive-folder") {
+      operation = await inspectGoogleDriveFolderForNest({
+        prisma,
+        actorUserId: actor.userId,
+        connectionId: text(body.connectionId),
+        folderId: text(body.folderId),
+        resourceKey: text(body.resourceKey) || null,
+        requestUrl: request.url,
+      });
+    } else if (action === "attach-google-drive-folder") {
+      operation = await attachGoogleDriveFolderToNest({
+        prisma,
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        connectionId: text(body.connectionId),
+        folderId: text(body.folderId),
         resourceKey: text(body.resourceKey) || null,
         clientRequestId: text(body.clientRequestId),
         requestUrl: request.url,
@@ -206,6 +316,16 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         clientRequestId: text(body.clientRequestId),
         retryFailed: body.retryFailed === true,
       });
+    } else if (action === "request-source-audio-navigation") {
+      operation = await requestSourceAudioNavigation({
+        prisma,
+        projectId: actor.projectId,
+        sourceRevisionId: text(body.sourceRevisionId),
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        clientRequestId: text(body.clientRequestId),
+        retryFailed: body.retryFailed === true,
+      });
     } else if (action === "create-source-set") {
       operation = await createMediaSourceSet({
         prisma,
@@ -218,9 +338,12 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
           displayName: text(body.displayName),
           sourceClockRevisionId: text(body.sourceClockRevisionId),
           members: sourceSetMembers(body.members),
-          metadata: body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
-            ? body.metadata as Record<string, unknown>
-            : {},
+          metadata:
+            body.metadata &&
+            typeof body.metadata === "object" &&
+            !Array.isArray(body.metadata)
+              ? (body.metadata as Record<string, unknown>)
+              : {},
         },
       });
     } else if (action === "create-source-collection") {
@@ -281,9 +404,11 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
           sourceSetId: text(body.sourceSetId) || null,
           externalReferenceId: text(body.externalReferenceId) || null,
           boardId: text(body.boardId) || null,
-          expectedBoardRevision: body.expectedBoardRevision === null || body.expectedBoardRevision === undefined
-            ? null
-            : Number(body.expectedBoardRevision),
+          expectedBoardRevision:
+            body.expectedBoardRevision === null ||
+            body.expectedBoardRevision === undefined
+              ? null
+              : Number(body.expectedBoardRevision),
           clientRequestId: text(body.clientRequestId),
           title: text(body.title),
           synopsis: text(body.synopsis),
@@ -294,9 +419,10 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
           groupKey: text(body.groupKey) || undefined,
           laneKey: text(body.laneKey) || undefined,
           tagIds: stringArray(body.tagIds),
-          reframeRecipe: body.reframeRecipe && typeof body.reframeRecipe === "object"
-            ? body.reframeRecipe as StoryReframeRecipe
-            : null,
+          reframeRecipe:
+            body.reframeRecipe && typeof body.reframeRecipe === "object"
+              ? (body.reframeRecipe as StoryReframeRecipe)
+              : null,
         },
       });
     } else if (action === "update-card") {
@@ -328,9 +454,10 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
           startSeconds: Number(body.startSeconds),
           endSeconds: Number(body.endSeconds),
           reason: text(body.reason),
-          reframeRecipe: body.reframeRecipe && typeof body.reframeRecipe === "object"
-            ? body.reframeRecipe as StoryReframeRecipe
-            : null,
+          reframeRecipe:
+            body.reframeRecipe && typeof body.reframeRecipe === "object"
+              ? (body.reframeRecipe as StoryReframeRecipe)
+              : null,
         },
       });
     } else if (action === "reorder-board") {
@@ -434,9 +561,11 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
           clientRequestId: text(body.clientRequestId),
           expectedTimelineFingerprint: text(body.expectedTimelineFingerprint),
           placementMode: text(body.placementMode) as "append" | "at-time",
-          episodeStartSeconds: body.episodeStartSeconds === null || body.episodeStartSeconds === undefined
-            ? null
-            : Number(body.episodeStartSeconds),
+          episodeStartSeconds:
+            body.episodeStartSeconds === null ||
+            body.episodeStartSeconds === undefined
+              ? null
+              : Number(body.episodeStartSeconds),
           trackId: text(body.trackId) || "V1",
         },
       });
@@ -454,7 +583,11 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       });
     } else if (action === "queue-spatial-reframe") {
       const profile = text(body.profile);
-      if (profile !== "spatial-proof-720p24" && profile !== "spatial-flat-4k24") throw new SourceStoryContractError("invalid-spatial-render-profile", "Choose a supported spatial render profile.");
+      if (profile !== "spatial-proof-720p24" && profile !== "spatial-flat-4k24")
+        throw new SourceStoryContractError(
+          "invalid-spatial-render-profile",
+          "Choose a supported spatial render profile.",
+        );
       operation = await queueSpatialReframe({
         prisma,
         projectId: actor.projectId,
@@ -466,24 +599,52 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         localMediaRoot: localSpatialVaultRoot(),
       });
     } else if (action === "register-spatial-reframe") {
-      operation = await registerSpatialReframeResult({ prisma, projectId: actor.projectId, jobId: text(body.jobId), authorizedRoot: localSpatialVaultRoot() });
+      operation = await registerSpatialReframeResult({
+        prisma,
+        projectId: actor.projectId,
+        jobId: text(body.jobId),
+        authorizedRoot: localSpatialVaultRoot(),
+      });
     } else {
-      return NextResponse.json({ error: "Choose a supported source-story action." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Choose a supported source-story action." },
+        { status: 400 },
+      );
     }
 
     const [workspace, sourceCollections] = await Promise.all([
       readSourceStoryWorkspace(prisma, actor.projectId),
-      readSourceCollections(prisma, { projectId: actor.projectId, actorUserId: actor.userId }),
+      readSourceCollections(prisma, {
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+      }),
     ]);
-    return NextResponse.json(jsonSafe({ ok: true, operation, workspace: { ...workspace, sourceCollections } }), { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      jsonSafe({
+        ok: true,
+        operation,
+        workspace: { ...workspace, sourceCollections },
+      }),
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     return errorResponse(error);
   }
 }
 
 function localSpatialVaultRoot() {
-  if (process.env.NODE_ENV === "production" && !process.env.QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT?.trim()) {
-    throw new SpatialRenderQueueError("spatial-local-renderer-unavailable", "This executor has no local spatial render vault configured.", 503);
+  if (
+    process.env.NODE_ENV === "production" &&
+    !process.env.QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT?.trim()
+  ) {
+    throw new SpatialRenderQueueError(
+      "spatial-local-renderer-unavailable",
+      "This executor has no local spatial render vault configured.",
+      503,
+    );
   }
-  return path.resolve(process.env.QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT?.trim() || path.join(os.homedir(), "Movies", "Quipsly Media Vault"));
+  return path.resolve(
+    process.env.QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT?.trim() ||
+      path.join(os.homedir(), "Movies", "Quipsly Media Vault"),
+  );
 }

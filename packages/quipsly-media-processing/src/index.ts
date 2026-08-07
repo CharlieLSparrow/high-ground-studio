@@ -9,6 +9,7 @@ export * from "./episode-render-proof.js";
 export * from "./spatial-render.js";
 export * from "./external-source-proxy.js";
 export * from "./source-visual-overview.js";
+export * from "./source-audio-navigation.js";
 export * from "./audio-diagnosis-evaluation.js";
 export * from "./audio-signal-diagnosis.js";
 export * from "./audio-signal-profile.js";
@@ -63,10 +64,8 @@ export const EPISODE_COLLABORATION_PROXY_CLOUD_DEAD_LETTER_PREFIX =
 const SAFE_ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SAFE_PATH_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_BUCKET = /^[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]$/;
-const SAFE_SOURCE_OBJECT =
-  /^media-vault\/recordings\/[A-Za-z0-9/_\-.]+$/;
-const SAFE_PROXY_OBJECT =
-  /^media-vault\/proxy\/[A-Za-z0-9/_\-.]+\.mp4$/;
+const SAFE_SOURCE_OBJECT = /^media-vault\/recordings\/[A-Za-z0-9/_\-.]+$/;
+const SAFE_PROXY_OBJECT = /^media-vault\/proxy\/[A-Za-z0-9/_\-.]+\.mp4$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const GENERATION = /^[1-9][0-9]*$/;
 
@@ -207,19 +206,24 @@ export function buildCaptureProxyTargetObjectName(input: {
   ].join("/");
 }
 
-export function newCaptureProxyManifest(input: Omit<
-  CaptureProxyManifest,
-  "kind" | "version" | "status" | "lease" | "resultObjectName" | "failure"
->) {
-  return parseCaptureProxyManifest({
-    ...input,
-    kind: CAPTURE_PROXY_MANIFEST_KIND,
-    version: CAPTURE_PROXY_CONTRACT_VERSION,
-    status: "queued",
-    lease: null,
-    resultObjectName: null,
-    failure: null,
-  }, input.jobId);
+export function newCaptureProxyManifest(
+  input: Omit<
+    CaptureProxyManifest,
+    "kind" | "version" | "status" | "lease" | "resultObjectName" | "failure"
+  >,
+) {
+  return parseCaptureProxyManifest(
+    {
+      ...input,
+      kind: CAPTURE_PROXY_MANIFEST_KIND,
+      version: CAPTURE_PROXY_CONTRACT_VERSION,
+      status: "queued",
+      lease: null,
+      resultObjectName: null,
+      failure: null,
+    },
+    input.jobId,
+  );
 }
 
 export function parseCaptureProxyQueueReceipt(
@@ -228,12 +232,12 @@ export function parseCaptureProxyQueueReceipt(
   const row = record(value);
   const jobId = normalizedText(row.jobId);
   if (
-    row.kind !== CAPTURE_PROXY_QUEUE_KIND
-    || row.version !== CAPTURE_PROXY_CONTRACT_VERSION
-    || !normalizeCaptureProxyJobId(jobId)
-    || row.manifestObjectName !== buildCaptureProxyManifestObjectName(jobId)
-    || !GENERATION.test(normalizedText(row.manifestGeneration))
-    || !isIsoDate(row.enqueuedAt)
+    row.kind !== CAPTURE_PROXY_QUEUE_KIND ||
+    row.version !== CAPTURE_PROXY_CONTRACT_VERSION ||
+    !normalizeCaptureProxyJobId(jobId) ||
+    row.manifestObjectName !== buildCaptureProxyManifestObjectName(jobId) ||
+    !GENERATION.test(normalizedText(row.manifestGeneration)) ||
+    !isIsoDate(row.enqueuedAt)
   ) {
     throw new Error("Capture proxy queue receipt is invalid.");
   }
@@ -260,42 +264,40 @@ export function parseCaptureProxyManifest(
     : jobId;
   const status = normalizedText(row.status) as CaptureProxyStatus;
   const lease = row.lease == null ? null : parseLease(row.lease);
-  const resultObjectName = row.resultObjectName == null
-    ? null
-    : normalizedText(row.resultObjectName);
-  const failure = row.failure == null
-    ? null
-    : parseFailure(row.failure);
+  const resultObjectName =
+    row.resultObjectName == null ? null : normalizedText(row.resultObjectName);
+  const failure = row.failure == null ? null : parseFailure(row.failure);
   if (
-    row.kind !== CAPTURE_PROXY_MANIFEST_KIND
-    || row.version !== CAPTURE_PROXY_CONTRACT_VERSION
-    || !expected
-    || jobId !== expected
-    || !["queued", "processing", "completed", "failed-terminal"].includes(status)
-    || !requiredText(row.projectId)
-    || !SAFE_PATH_PART.test(normalizedText(row.projectSlug))
-    || !SAFE_PATH_PART.test(normalizedText(row.episodeSlug))
-    || !requiredText(row.actorUserId)
-    || !isEmail(row.actorEmail)
-    || !requiredText(row.captureId)
-    || !requiredText(row.captureGroupId)
-    || !isIsoDate(row.queuedAt)
-    || !isIsoDate(row.updatedAt)
-    || (status === "processing" && !lease)
-    || (status !== "processing" && lease)
-    || (
-      status === "completed"
-      && resultObjectName !== buildCaptureProxyResultObjectName(jobId)
-    )
-    || (status !== "completed" && resultObjectName)
-    || (status === "failed-terminal" && !failure)
-    || (status !== "failed-terminal" && failure)
-    || target.objectName !== buildCaptureProxyTargetObjectName({
-      projectSlug: normalizedText(row.projectSlug),
-      episodeSlug: normalizedText(row.episodeSlug),
-      rawAssetId: source.rawAssetId,
-      jobId,
-    })
+    row.kind !== CAPTURE_PROXY_MANIFEST_KIND ||
+    row.version !== CAPTURE_PROXY_CONTRACT_VERSION ||
+    !expected ||
+    jobId !== expected ||
+    !["queued", "processing", "completed", "failed-terminal"].includes(
+      status,
+    ) ||
+    !requiredText(row.projectId) ||
+    !SAFE_PATH_PART.test(normalizedText(row.projectSlug)) ||
+    !SAFE_PATH_PART.test(normalizedText(row.episodeSlug)) ||
+    !requiredText(row.actorUserId) ||
+    !isEmail(row.actorEmail) ||
+    !requiredText(row.captureId) ||
+    !requiredText(row.captureGroupId) ||
+    !isIsoDate(row.queuedAt) ||
+    !isIsoDate(row.updatedAt) ||
+    (status === "processing" && !lease) ||
+    (status !== "processing" && lease) ||
+    (status === "completed" &&
+      resultObjectName !== buildCaptureProxyResultObjectName(jobId)) ||
+    (status !== "completed" && resultObjectName) ||
+    (status === "failed-terminal" && !failure) ||
+    (status !== "failed-terminal" && failure) ||
+    target.objectName !==
+      buildCaptureProxyTargetObjectName({
+        projectSlug: normalizedText(row.projectSlug),
+        episodeSlug: normalizedText(row.episodeSlug),
+        rawAssetId: source.rawAssetId,
+        jobId,
+      })
   ) {
     throw new Error("Capture proxy manifest is invalid.");
   }
@@ -348,26 +350,25 @@ export function parseCaptureProxyResult(
     worker: {
       executionId: normalizedText(worker.executionId),
       buildId: normalizedText(worker.buildId),
-      imageDigest: worker.imageDigest == null
-        ? null
-        : normalizedText(worker.imageDigest),
+      imageDigest:
+        worker.imageDigest == null ? null : normalizedText(worker.imageDigest),
     },
     completedAt: normalizedText(row.completedAt),
   };
   if (
-    row.kind !== CAPTURE_PROXY_RESULT_KIND
-    || row.version !== CAPTURE_PROXY_CONTRACT_VERSION
-    || result.jobId !== expectedManifest.jobId
-    || result.manifestObjectName
-      !== buildCaptureProxyManifestObjectName(expectedManifest.jobId)
-    || !sameSource(result.source, expectedManifest.source)
-    || !sameTarget(result.output, expectedManifest.target)
-    || !GENERATION.test(result.output.generation)
-    || !SHA256.test(result.output.sha256)
-    || !result.output.crc32c
-    || !result.worker.executionId
-    || !result.worker.buildId
-    || !isIsoDate(result.completedAt)
+    row.kind !== CAPTURE_PROXY_RESULT_KIND ||
+    row.version !== CAPTURE_PROXY_CONTRACT_VERSION ||
+    result.jobId !== expectedManifest.jobId ||
+    result.manifestObjectName !==
+      buildCaptureProxyManifestObjectName(expectedManifest.jobId) ||
+    !sameSource(result.source, expectedManifest.source) ||
+    !sameTarget(result.output, expectedManifest.target) ||
+    !GENERATION.test(result.output.generation) ||
+    !SHA256.test(result.output.sha256) ||
+    !result.output.crc32c ||
+    !result.worker.executionId ||
+    !result.worker.buildId ||
+    !isIsoDate(result.completedAt)
   ) {
     throw new Error("Capture proxy result is invalid.");
   }
@@ -382,38 +383,46 @@ export function claimCaptureProxyManifest(input: {
   leaseDurationMs: number;
 }) {
   const { manifest, now } = input;
-  if (manifest.status === "completed" || manifest.status === "failed-terminal") {
-    return null;
-  }
   if (
-    manifest.status === "processing"
-    && manifest.lease
-    && Date.parse(manifest.lease.expiresAt) > now.getTime()
+    manifest.status === "completed" ||
+    manifest.status === "failed-terminal"
   ) {
     return null;
   }
   if (
-    !normalizeCaptureProxyJobId(input.leaseId)
-    || !requiredText(input.executionId)
-    || !Number.isSafeInteger(input.leaseDurationMs)
-    || input.leaseDurationMs < 60_000
+    manifest.status === "processing" &&
+    manifest.lease &&
+    Date.parse(manifest.lease.expiresAt) > now.getTime()
+  ) {
+    return null;
+  }
+  if (
+    !normalizeCaptureProxyJobId(input.leaseId) ||
+    !requiredText(input.executionId) ||
+    !Number.isSafeInteger(input.leaseDurationMs) ||
+    input.leaseDurationMs < 60_000
   ) {
     throw new Error("Capture proxy lease binding is invalid.");
   }
-  return parseCaptureProxyManifest({
-    ...manifest,
-    status: "processing",
-    updatedAt: now.toISOString(),
-    lease: {
-      id: input.leaseId,
-      executionId: normalizedText(input.executionId),
-      claimedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + input.leaseDurationMs).toISOString(),
-      attempt: (manifest.lease?.attempt ?? 0) + 1,
+  return parseCaptureProxyManifest(
+    {
+      ...manifest,
+      status: "processing",
+      updatedAt: now.toISOString(),
+      lease: {
+        id: input.leaseId,
+        executionId: normalizedText(input.executionId),
+        claimedAt: now.toISOString(),
+        expiresAt: new Date(
+          now.getTime() + input.leaseDurationMs,
+        ).toISOString(),
+        attempt: (manifest.lease?.attempt ?? 0) + 1,
+      },
+      resultObjectName: null,
+      failure: null,
     },
-    resultObjectName: null,
-    failure: null,
-  }, manifest.jobId);
+    manifest.jobId,
+  );
 }
 
 export function releaseCaptureProxyLease(input: {
@@ -422,12 +431,15 @@ export function releaseCaptureProxyLease(input: {
   now: Date;
 }) {
   assertActiveLease(input.manifest, input.leaseId);
-  return parseCaptureProxyManifest({
-    ...input.manifest,
-    status: "queued",
-    updatedAt: input.now.toISOString(),
-    lease: null,
-  }, input.manifest.jobId);
+  return parseCaptureProxyManifest(
+    {
+      ...input.manifest,
+      status: "queued",
+      updatedAt: input.now.toISOString(),
+      lease: null,
+    },
+    input.manifest.jobId,
+  );
 }
 
 export function completeCaptureProxyManifest(input: {
@@ -438,16 +450,17 @@ export function completeCaptureProxyManifest(input: {
 }) {
   assertActiveLease(input.manifest, input.leaseId);
   parseCaptureProxyResult(input.result, input.manifest);
-  return parseCaptureProxyManifest({
-    ...input.manifest,
-    status: "completed",
-    updatedAt: input.now.toISOString(),
-    lease: null,
-    resultObjectName: buildCaptureProxyResultObjectName(
-      input.manifest.jobId,
-    ),
-    failure: null,
-  }, input.manifest.jobId);
+  return parseCaptureProxyManifest(
+    {
+      ...input.manifest,
+      status: "completed",
+      updatedAt: input.now.toISOString(),
+      lease: null,
+      resultObjectName: buildCaptureProxyResultObjectName(input.manifest.jobId),
+      failure: null,
+    },
+    input.manifest.jobId,
+  );
 }
 
 export function failCaptureProxyManifest(input: {
@@ -461,18 +474,21 @@ export function failCaptureProxyManifest(input: {
   if (!requiredText(input.code) || !requiredText(input.message)) {
     throw new Error("Capture proxy failure evidence is incomplete.");
   }
-  return parseCaptureProxyManifest({
-    ...input.manifest,
-    status: "failed-terminal",
-    updatedAt: input.now.toISOString(),
-    lease: null,
-    resultObjectName: null,
-    failure: {
-      code: normalizedText(input.code),
-      message: normalizedText(input.message),
-      failedAt: input.now.toISOString(),
+  return parseCaptureProxyManifest(
+    {
+      ...input.manifest,
+      status: "failed-terminal",
+      updatedAt: input.now.toISOString(),
+      lease: null,
+      resultObjectName: null,
+      failure: {
+        code: normalizedText(input.code),
+        message: normalizedText(input.message),
+        failedAt: input.now.toISOString(),
+      },
     },
-  }, input.manifest.jobId);
+    input.manifest.jobId,
+  );
 }
 
 function parseSource(value: unknown): CaptureProxySourceBinding {
@@ -490,15 +506,15 @@ function parseSource(value: unknown): CaptureProxySourceBinding {
     uploadSessionId: normalizedText(row.uploadSessionId).toLowerCase(),
   };
   if (
-    !SAFE_BUCKET.test(result.bucketName)
-    || !SAFE_SOURCE_OBJECT.test(result.objectName)
-    || !GENERATION.test(result.generation)
-    || !SHA256.test(result.sha256)
-    || !result.contentType.startsWith("video/")
-    || !normalizeCaptureProxyJobId(result.rawAssetId)
-    || !normalizeCaptureProxyJobId(result.sourceId)
-    || !normalizeCaptureProxyJobId(result.recordingAssetId)
-    || !normalizeCaptureProxyJobId(result.uploadSessionId)
+    !SAFE_BUCKET.test(result.bucketName) ||
+    !SAFE_SOURCE_OBJECT.test(result.objectName) ||
+    !GENERATION.test(result.generation) ||
+    !SHA256.test(result.sha256) ||
+    !result.contentType.startsWith("video/") ||
+    !normalizeCaptureProxyJobId(result.rawAssetId) ||
+    !normalizeCaptureProxyJobId(result.sourceId) ||
+    !normalizeCaptureProxyJobId(result.recordingAssetId) ||
+    !normalizeCaptureProxyJobId(result.uploadSessionId)
   ) {
     throw new Error("Capture proxy source binding is invalid.");
   }
@@ -514,19 +530,17 @@ function parseTarget(value: unknown): CaptureProxyTargetBinding {
     profile: "collaboration-1080p-h264-aac-v1",
   };
   if (
-    !SAFE_BUCKET.test(result.bucketName)
-    || !SAFE_PROXY_OBJECT.test(result.objectName)
-    || row.contentType !== result.contentType
-    || row.profile !== result.profile
+    !SAFE_BUCKET.test(result.bucketName) ||
+    !SAFE_PROXY_OBJECT.test(result.objectName) ||
+    row.contentType !== result.contentType ||
+    row.profile !== result.profile
   ) {
     throw new Error("Capture proxy target binding is invalid.");
   }
   return result;
 }
 
-function parseTechnicalEvidence(
-  value: unknown,
-): CaptureProxyTechnicalEvidence {
+function parseTechnicalEvidence(value: unknown): CaptureProxyTechnicalEvidence {
   const row = record(value);
   const result: CaptureProxyTechnicalEvidence = {
     durationSeconds: finitePositive(row.durationSeconds),
@@ -540,10 +554,10 @@ function parseTechnicalEvidence(
     fastStart: true,
   };
   if (
-    row.videoCodec !== result.videoCodec
-    || (row.audioCodec !== null && row.audioCodec !== "aac")
-    || row.pixelFormat !== result.pixelFormat
-    || row.fastStart !== true
+    row.videoCodec !== result.videoCodec ||
+    (row.audioCodec !== null && row.audioCodec !== "aac") ||
+    row.pixelFormat !== result.pixelFormat ||
+    row.fastStart !== true
   ) {
     throw new Error("Capture proxy technical evidence is invalid.");
   }
@@ -560,11 +574,11 @@ function parseLease(value: unknown): CaptureProxyLease {
     attempt: positiveSafeInteger(row.attempt),
   };
   if (
-    !normalizeCaptureProxyJobId(result.id)
-    || !result.executionId
-    || !isIsoDate(result.claimedAt)
-    || !isIsoDate(result.expiresAt)
-    || Date.parse(result.expiresAt) <= Date.parse(result.claimedAt)
+    !normalizeCaptureProxyJobId(result.id) ||
+    !result.executionId ||
+    !isIsoDate(result.claimedAt) ||
+    !isIsoDate(result.expiresAt) ||
+    Date.parse(result.expiresAt) <= Date.parse(result.claimedAt)
   ) {
     throw new Error("Capture proxy lease is invalid.");
   }
@@ -589,16 +603,16 @@ function sameSource(
   right: CaptureProxySourceBinding,
 ) {
   return (
-    left.bucketName === right.bucketName
-    && left.objectName === right.objectName
-    && left.generation === right.generation
-    && left.sizeBytes === right.sizeBytes
-    && left.sha256 === right.sha256
-    && left.contentType === right.contentType
-    && left.rawAssetId === right.rawAssetId
-    && left.sourceId === right.sourceId
-    && left.recordingAssetId === right.recordingAssetId
-    && left.uploadSessionId === right.uploadSessionId
+    left.bucketName === right.bucketName &&
+    left.objectName === right.objectName &&
+    left.generation === right.generation &&
+    left.sizeBytes === right.sizeBytes &&
+    left.sha256 === right.sha256 &&
+    left.contentType === right.contentType &&
+    left.rawAssetId === right.rawAssetId &&
+    left.sourceId === right.sourceId &&
+    left.recordingAssetId === right.recordingAssetId &&
+    left.uploadSessionId === right.uploadSessionId
   );
 }
 
@@ -606,20 +620,19 @@ function sameTarget(
   left: CaptureProxyTargetBinding,
   right: CaptureProxyTargetBinding,
 ) {
-  return left.bucketName === right.bucketName
-    && left.objectName === right.objectName
-    && left.contentType === right.contentType
-    && left.profile === right.profile;
+  return (
+    left.bucketName === right.bucketName &&
+    left.objectName === right.objectName &&
+    left.contentType === right.contentType &&
+    left.profile === right.profile
+  );
 }
 
-function assertActiveLease(
-  manifest: CaptureProxyManifest,
-  leaseId: string,
-) {
+function assertActiveLease(manifest: CaptureProxyManifest, leaseId: string) {
   if (
-    manifest.status !== "processing"
-    || !manifest.lease
-    || manifest.lease.id !== leaseId
+    manifest.status !== "processing" ||
+    !manifest.lease ||
+    manifest.lease.id !== leaseId
   ) {
     throw new Error("Capture proxy lease is no longer active.");
   }
@@ -641,7 +654,7 @@ function safePathPart(value: string) {
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 
@@ -655,14 +668,14 @@ function requiredText(value: unknown) {
 
 function isEmail(value: unknown) {
   const normalized = normalizedText(value);
-  return normalized.length <= 320
-    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
+  return (
+    normalized.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)
+  );
 }
 
 function isIsoDate(value: unknown) {
   const normalized = normalizedText(value);
-  return normalized.length > 0
-    && Number.isFinite(Date.parse(normalized));
+  return normalized.length > 0 && Number.isFinite(Date.parse(normalized));
 }
 
 function positiveSafeInteger(value: unknown) {
@@ -773,19 +786,27 @@ export type EpisodeCollaborationProxyCloudQueueReceipt = {
   enqueuedAt: string;
 };
 
-export function buildEpisodeCollaborationProxyCloudManifestObjectName(jobId: string) {
+export function buildEpisodeCollaborationProxyCloudManifestObjectName(
+  jobId: string,
+) {
   return `${EPISODE_COLLABORATION_PROXY_CLOUD_MANIFEST_PREFIX}/${requiredJobId(jobId)}.json`;
 }
 
-export function buildEpisodeCollaborationProxyCloudQueueObjectName(jobId: string) {
+export function buildEpisodeCollaborationProxyCloudQueueObjectName(
+  jobId: string,
+) {
   return `${EPISODE_COLLABORATION_PROXY_CLOUD_QUEUE_PREFIX}/${requiredJobId(jobId)}.json`;
 }
 
-export function buildEpisodeCollaborationProxyCloudResultObjectName(jobId: string) {
+export function buildEpisodeCollaborationProxyCloudResultObjectName(
+  jobId: string,
+) {
   return `${EPISODE_COLLABORATION_PROXY_CLOUD_RESULT_PREFIX}/${requiredJobId(jobId)}.json`;
 }
 
-export function buildEpisodeCollaborationProxyCloudDeadLetterObjectName(jobId: string) {
+export function buildEpisodeCollaborationProxyCloudDeadLetterObjectName(
+  jobId: string,
+) {
   return `${EPISODE_COLLABORATION_PROXY_CLOUD_DEAD_LETTER_PREFIX}/${requiredJobId(jobId)}.json`;
 }
 
@@ -796,17 +817,20 @@ export function newEpisodeCollaborationProxyCloudManifest(
   if (job.source.provider !== "gcs" || job.target.provider !== "gcs") {
     throw new Error("Episode collaboration cloud manifest requires a GCS job.");
   }
-  return parseEpisodeCollaborationProxyCloudManifest({
-    kind: EPISODE_COLLABORATION_PROXY_CLOUD_MANIFEST_KIND,
-    version: 1,
-    job,
-    status: "queued",
-    queuedAt: job.queuedAt,
-    updatedAt: job.queuedAt,
-    lease: null,
-    resultObjectName: null,
-    failure: null,
-  }, job.jobId);
+  return parseEpisodeCollaborationProxyCloudManifest(
+    {
+      kind: EPISODE_COLLABORATION_PROXY_CLOUD_MANIFEST_KIND,
+      version: 1,
+      job,
+      status: "queued",
+      queuedAt: job.queuedAt,
+      updatedAt: job.queuedAt,
+      lease: null,
+      resultObjectName: null,
+      failure: null,
+    },
+    job.jobId,
+  );
 }
 
 export function parseEpisodeCollaborationProxyCloudQueueReceipt(
@@ -823,14 +847,17 @@ export function parseEpisodeCollaborationProxyCloudQueueReceipt(
     enqueuedAt: normalizedText(row.enqueuedAt),
   };
   if (
-    receipt.kind !== EPISODE_COLLABORATION_PROXY_CLOUD_QUEUE_KIND
-    || receipt.version !== 1
-    || !normalizeCaptureProxyJobId(receipt.jobId)
-    || receipt.manifestObjectName !== buildEpisodeCollaborationProxyCloudManifestObjectName(jobId)
-    || !GENERATION.test(receipt.manifestGeneration)
-    || !isIsoDate(receipt.enqueuedAt)
+    receipt.kind !== EPISODE_COLLABORATION_PROXY_CLOUD_QUEUE_KIND ||
+    receipt.version !== 1 ||
+    !normalizeCaptureProxyJobId(receipt.jobId) ||
+    receipt.manifestObjectName !==
+      buildEpisodeCollaborationProxyCloudManifestObjectName(jobId) ||
+    !GENERATION.test(receipt.manifestGeneration) ||
+    !isIsoDate(receipt.enqueuedAt)
   ) {
-    throw new Error("Episode collaboration proxy cloud queue receipt is invalid.");
+    throw new Error(
+      "Episode collaboration proxy cloud queue receipt is invalid.",
+    );
   }
   return receipt;
 }
@@ -841,11 +868,12 @@ export function parseEpisodeCollaborationProxyCloudManifest(
 ): EpisodeCollaborationProxyCloudManifest {
   const row = record(value);
   const job = parseEpisodeCollaborationProxyJob(row.job, expectedJobId);
-  const status = normalizedText(row.status) as EpisodeCollaborationProxyCloudStatus;
+  const status = normalizedText(
+    row.status,
+  ) as EpisodeCollaborationProxyCloudStatus;
   const lease = row.lease == null ? null : parseLease(row.lease);
-  const resultObjectName = row.resultObjectName == null
-    ? null
-    : normalizedText(row.resultObjectName);
+  const resultObjectName =
+    row.resultObjectName == null ? null : normalizedText(row.resultObjectName);
   const failure = row.failure == null ? null : parseFailure(row.failure);
   const manifest: EpisodeCollaborationProxyCloudManifest = {
     kind: row.kind as EpisodeCollaborationProxyCloudManifest["kind"],
@@ -859,24 +887,28 @@ export function parseEpisodeCollaborationProxyCloudManifest(
     failure,
   };
   if (
-    manifest.kind !== EPISODE_COLLABORATION_PROXY_CLOUD_MANIFEST_KIND
-    || manifest.version !== 1
-    || job.source.provider !== "gcs"
-    || job.target.provider !== "gcs"
-    || !validGenerationBoundGcsLocator(job.source.locator, job.source.generation)
-    || !isIsoDate(manifest.queuedAt)
-    || !isIsoDate(manifest.updatedAt)
-    || manifest.queuedAt !== job.queuedAt
-    || !["queued", "processing", "completed", "failed-terminal"].includes(status)
-    || (status === "processing" && !lease)
-    || (status !== "processing" && lease)
-    || (
-      status === "completed"
-      && resultObjectName !== buildEpisodeCollaborationProxyCloudResultObjectName(job.jobId)
-    )
-    || (status !== "completed" && resultObjectName)
-    || (status === "failed-terminal" && !failure)
-    || (status !== "failed-terminal" && failure)
+    manifest.kind !== EPISODE_COLLABORATION_PROXY_CLOUD_MANIFEST_KIND ||
+    manifest.version !== 1 ||
+    job.source.provider !== "gcs" ||
+    job.target.provider !== "gcs" ||
+    !validGenerationBoundGcsLocator(
+      job.source.locator,
+      job.source.generation,
+    ) ||
+    !isIsoDate(manifest.queuedAt) ||
+    !isIsoDate(manifest.updatedAt) ||
+    manifest.queuedAt !== job.queuedAt ||
+    !["queued", "processing", "completed", "failed-terminal"].includes(
+      status,
+    ) ||
+    (status === "processing" && !lease) ||
+    (status !== "processing" && lease) ||
+    (status === "completed" &&
+      resultObjectName !==
+        buildEpisodeCollaborationProxyCloudResultObjectName(job.jobId)) ||
+    (status !== "completed" && resultObjectName) ||
+    (status === "failed-terminal" && !failure) ||
+    (status !== "failed-terminal" && failure)
   ) {
     throw new Error("Episode collaboration proxy cloud manifest is invalid.");
   }
@@ -891,34 +923,43 @@ export function claimEpisodeCollaborationProxyCloudManifest(input: {
   leaseDurationMs: number;
 }) {
   const { manifest, now } = input;
-  if (manifest.status === "completed" || manifest.status === "failed-terminal") return null;
+  if (manifest.status === "completed" || manifest.status === "failed-terminal")
+    return null;
   if (
-    manifest.status === "processing"
-    && manifest.lease
-    && Date.parse(manifest.lease.expiresAt) > now.getTime()
-  ) return null;
+    manifest.status === "processing" &&
+    manifest.lease &&
+    Date.parse(manifest.lease.expiresAt) > now.getTime()
+  )
+    return null;
   if (
-    !normalizeCaptureProxyJobId(input.leaseId)
-    || !requiredText(input.executionId)
-    || !Number.isSafeInteger(input.leaseDurationMs)
-    || input.leaseDurationMs < 60_000
+    !normalizeCaptureProxyJobId(input.leaseId) ||
+    !requiredText(input.executionId) ||
+    !Number.isSafeInteger(input.leaseDurationMs) ||
+    input.leaseDurationMs < 60_000
   ) {
-    throw new Error("Episode collaboration proxy cloud lease binding is invalid.");
+    throw new Error(
+      "Episode collaboration proxy cloud lease binding is invalid.",
+    );
   }
-  return parseEpisodeCollaborationProxyCloudManifest({
-    ...manifest,
-    status: "processing",
-    updatedAt: now.toISOString(),
-    lease: {
-      id: input.leaseId,
-      executionId: normalizedText(input.executionId),
-      claimedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + input.leaseDurationMs).toISOString(),
-      attempt: (manifest.lease?.attempt ?? 0) + 1,
+  return parseEpisodeCollaborationProxyCloudManifest(
+    {
+      ...manifest,
+      status: "processing",
+      updatedAt: now.toISOString(),
+      lease: {
+        id: input.leaseId,
+        executionId: normalizedText(input.executionId),
+        claimedAt: now.toISOString(),
+        expiresAt: new Date(
+          now.getTime() + input.leaseDurationMs,
+        ).toISOString(),
+        attempt: (manifest.lease?.attempt ?? 0) + 1,
+      },
+      resultObjectName: null,
+      failure: null,
     },
-    resultObjectName: null,
-    failure: null,
-  }, manifest.job.jobId);
+    manifest.job.jobId,
+  );
 }
 
 export function releaseEpisodeCollaborationProxyCloudLease(input: {
@@ -927,12 +968,15 @@ export function releaseEpisodeCollaborationProxyCloudLease(input: {
   now: Date;
 }) {
   assertEpisodeCloudLease(input.manifest, input.leaseId);
-  return parseEpisodeCollaborationProxyCloudManifest({
-    ...input.manifest,
-    status: "queued",
-    updatedAt: input.now.toISOString(),
-    lease: null,
-  }, input.manifest.job.jobId);
+  return parseEpisodeCollaborationProxyCloudManifest(
+    {
+      ...input.manifest,
+      status: "queued",
+      updatedAt: input.now.toISOString(),
+      lease: null,
+    },
+    input.manifest.job.jobId,
+  );
 }
 
 export function completeEpisodeCollaborationProxyCloudManifest(input: {
@@ -943,16 +987,19 @@ export function completeEpisodeCollaborationProxyCloudManifest(input: {
 }) {
   assertEpisodeCloudLease(input.manifest, input.leaseId);
   parseEpisodeCollaborationProxyResult(input.result, input.manifest.job);
-  return parseEpisodeCollaborationProxyCloudManifest({
-    ...input.manifest,
-    status: "completed",
-    updatedAt: input.now.toISOString(),
-    lease: null,
-    resultObjectName: buildEpisodeCollaborationProxyCloudResultObjectName(
-      input.manifest.job.jobId,
-    ),
-    failure: null,
-  }, input.manifest.job.jobId);
+  return parseEpisodeCollaborationProxyCloudManifest(
+    {
+      ...input.manifest,
+      status: "completed",
+      updatedAt: input.now.toISOString(),
+      lease: null,
+      resultObjectName: buildEpisodeCollaborationProxyCloudResultObjectName(
+        input.manifest.job.jobId,
+      ),
+      failure: null,
+    },
+    input.manifest.job.jobId,
+  );
 }
 
 export function failEpisodeCollaborationProxyCloudManifest(input: {
@@ -964,20 +1011,25 @@ export function failEpisodeCollaborationProxyCloudManifest(input: {
 }) {
   assertEpisodeCloudLease(input.manifest, input.leaseId);
   if (!requiredText(input.code) || !requiredText(input.message)) {
-    throw new Error("Episode collaboration proxy cloud failure evidence is incomplete.");
+    throw new Error(
+      "Episode collaboration proxy cloud failure evidence is incomplete.",
+    );
   }
-  return parseEpisodeCollaborationProxyCloudManifest({
-    ...input.manifest,
-    status: "failed-terminal",
-    updatedAt: input.now.toISOString(),
-    lease: null,
-    resultObjectName: null,
-    failure: {
-      code: normalizedText(input.code),
-      message: normalizedText(input.message),
-      failedAt: input.now.toISOString(),
+  return parseEpisodeCollaborationProxyCloudManifest(
+    {
+      ...input.manifest,
+      status: "failed-terminal",
+      updatedAt: input.now.toISOString(),
+      lease: null,
+      resultObjectName: null,
+      failure: {
+        code: normalizedText(input.code),
+        message: normalizedText(input.message),
+        failedAt: input.now.toISOString(),
+      },
     },
-  }, input.manifest.job.jobId);
+    input.manifest.job.jobId,
+  );
 }
 
 function assertEpisodeCloudLease(
@@ -985,11 +1037,13 @@ function assertEpisodeCloudLease(
   leaseId: string,
 ) {
   if (
-    manifest.status !== "processing"
-    || !manifest.lease
-    || manifest.lease.id !== leaseId
+    manifest.status !== "processing" ||
+    !manifest.lease ||
+    manifest.lease.id !== leaseId
   ) {
-    throw new Error("Episode collaboration proxy cloud lease is no longer active.");
+    throw new Error(
+      "Episode collaboration proxy cloud lease is no longer active.",
+    );
   }
 }
 
@@ -1046,18 +1100,18 @@ export function parseEpisodeCollaborationProxyJob(
     target,
   };
   if (
-    job.kind !== EPISODE_COLLABORATION_PROXY_JOB_KIND
-    || job.version !== 1
-    || !normalizeCaptureProxyJobId(job.jobId)
-    || (expectedJobId && job.jobId !== expectedJobId)
-    || !SAFE_ID.test(job.projectId)
-    || !SAFE_PATH_PART.test(job.projectSlug)
-    || !SAFE_ID.test(job.episodeProductionId)
-    || !SAFE_PATH_PART.test(job.episodeSlug)
-    || (job.actorUserId !== null && !SAFE_ID.test(job.actorUserId))
-    || !isEmail(job.actorEmail)
-    || !isIsoDate(job.queuedAt)
-    || source.provider !== target.provider
+    job.kind !== EPISODE_COLLABORATION_PROXY_JOB_KIND ||
+    job.version !== 1 ||
+    !normalizeCaptureProxyJobId(job.jobId) ||
+    (expectedJobId && job.jobId !== expectedJobId) ||
+    !SAFE_ID.test(job.projectId) ||
+    !SAFE_PATH_PART.test(job.projectSlug) ||
+    !SAFE_ID.test(job.episodeProductionId) ||
+    !SAFE_PATH_PART.test(job.episodeSlug) ||
+    (job.actorUserId !== null && !SAFE_ID.test(job.actorUserId)) ||
+    !isEmail(job.actorEmail) ||
+    !isIsoDate(job.queuedAt) ||
+    source.provider !== target.provider
   ) {
     throw new Error("Episode collaboration proxy job is invalid.");
   }
@@ -1065,7 +1119,10 @@ export function parseEpisodeCollaborationProxyJob(
 }
 
 export function newEpisodeCollaborationProxyResult(
-  input: Omit<EpisodeCollaborationProxyResult, "kind" | "version" | "originalRemainsSourceTruth">,
+  input: Omit<
+    EpisodeCollaborationProxyResult,
+    "kind" | "version" | "originalRemainsSourceTruth"
+  >,
 ): EpisodeCollaborationProxyResult {
   return parseEpisodeCollaborationProxyResult({
     kind: EPISODE_COLLABORATION_PROXY_RESULT_KIND,
@@ -1084,14 +1141,18 @@ export function parseEpisodeCollaborationProxyResult(
   const outputRow = record(row.output);
   const workerRow = record(row.worker);
   const output = {
-    provider: normalizedText(outputRow.provider) as EpisodeCollaborationProxyProvider,
+    provider: normalizedText(
+      outputRow.provider,
+    ) as EpisodeCollaborationProxyProvider,
     locator: normalizedText(outputRow.locator),
     generation: normalizedText(outputRow.generation),
     sizeBytes: positiveSafeInteger(outputRow.sizeBytes),
     sha256: normalizedText(outputRow.sha256),
     crc32c: normalizedText(outputRow.crc32c) || null,
     contentType: normalizedText(outputRow.contentType) as "video/mp4",
-    profile: normalizedText(outputRow.profile) as typeof COLLABORATION_PROXY_PROFILE,
+    profile: normalizedText(
+      outputRow.profile,
+    ) as typeof COLLABORATION_PROXY_PROFILE,
     metadata: parseTechnicalEvidence(outputRow.metadata),
   };
   const result: EpisodeCollaborationProxyResult = {
@@ -1110,26 +1171,29 @@ export function parseEpisodeCollaborationProxyResult(
     originalRemainsSourceTruth: row.originalRemainsSourceTruth as true,
   };
   if (
-    result.kind !== EPISODE_COLLABORATION_PROXY_RESULT_KIND
-    || result.version !== 1
-    || !normalizeCaptureProxyJobId(result.jobId)
-    || !isIsoDate(result.completedAt)
-    || !result.worker.executionId
-    || !result.worker.buildId
-    || result.originalRemainsSourceTruth !== true
-    || output.provider !== source.provider
-    || !validProviderLocator(output.provider, output.locator, true)
-    || !output.generation
-    || !SHA256.test(output.sha256)
-    || (output.provider === "gcs" && !output.crc32c)
-    || output.contentType !== "video/mp4"
-    || output.profile !== COLLABORATION_PROXY_PROFILE
-    || (expectedJob && (
-      result.jobId !== expectedJob.jobId
-      || !sameEpisodeCollaborationProxySource(source, expectedJob.source)
-      || output.provider !== expectedJob.target.provider
-      || !outputLocatorMatchesTarget(output.provider, output.locator, expectedJob.target.locator)
-    ))
+    result.kind !== EPISODE_COLLABORATION_PROXY_RESULT_KIND ||
+    result.version !== 1 ||
+    !normalizeCaptureProxyJobId(result.jobId) ||
+    !isIsoDate(result.completedAt) ||
+    !result.worker.executionId ||
+    !result.worker.buildId ||
+    result.originalRemainsSourceTruth !== true ||
+    output.provider !== source.provider ||
+    !validProviderLocator(output.provider, output.locator, true) ||
+    !output.generation ||
+    !SHA256.test(output.sha256) ||
+    (output.provider === "gcs" && !output.crc32c) ||
+    output.contentType !== "video/mp4" ||
+    output.profile !== COLLABORATION_PROXY_PROFILE ||
+    (expectedJob &&
+      (result.jobId !== expectedJob.jobId ||
+        !sameEpisodeCollaborationProxySource(source, expectedJob.source) ||
+        output.provider !== expectedJob.target.provider ||
+        !outputLocatorMatchesTarget(
+          output.provider,
+          output.locator,
+          expectedJob.target.locator,
+        )))
   ) {
     throw new Error("Episode collaboration proxy result is invalid.");
   }
@@ -1151,13 +1215,13 @@ function parseEpisodeCollaborationProxySource(
     sourceId: normalizedText(row.sourceId),
   };
   if (
-    !validProvider(source.provider)
-    || !validProviderLocator(source.provider, source.locator, false)
-    || !source.generation
-    || !SHA256.test(source.sha256)
-    || !source.contentType.startsWith("video/")
-    || !SAFE_ID.test(source.rawAssetId)
-    || !SAFE_ID.test(source.sourceId)
+    !validProvider(source.provider) ||
+    !validProviderLocator(source.provider, source.locator, false) ||
+    !source.generation ||
+    !SHA256.test(source.sha256) ||
+    !source.contentType.startsWith("video/") ||
+    !SAFE_ID.test(source.rawAssetId) ||
+    !SAFE_ID.test(source.sourceId)
   ) {
     throw new Error("Episode collaboration proxy source is invalid.");
   }
@@ -1175,10 +1239,10 @@ function parseEpisodeCollaborationProxyTarget(
     profile: normalizedText(row.profile) as typeof COLLABORATION_PROXY_PROFILE,
   };
   if (
-    !validProvider(target.provider)
-    || !validProxyTargetLocator(target.locator)
-    || target.contentType !== "video/mp4"
-    || target.profile !== COLLABORATION_PROXY_PROFILE
+    !validProvider(target.provider) ||
+    !validProxyTargetLocator(target.locator) ||
+    target.contentType !== "video/mp4" ||
+    target.profile !== COLLABORATION_PROXY_PROFILE
   ) {
     throw new Error("Episode collaboration proxy target is invalid.");
   }
@@ -1189,17 +1253,21 @@ function sameEpisodeCollaborationProxySource(
   left: EpisodeCollaborationProxySource,
   right: EpisodeCollaborationProxySource,
 ) {
-  return left.provider === right.provider
-    && left.locator === right.locator
-    && left.generation === right.generation
-    && left.sizeBytes === right.sizeBytes
-    && left.sha256 === right.sha256
-    && left.contentType === right.contentType
-    && left.rawAssetId === right.rawAssetId
-    && left.sourceId === right.sourceId;
+  return (
+    left.provider === right.provider &&
+    left.locator === right.locator &&
+    left.generation === right.generation &&
+    left.sizeBytes === right.sizeBytes &&
+    left.sha256 === right.sha256 &&
+    left.contentType === right.contentType &&
+    left.rawAssetId === right.rawAssetId &&
+    left.sourceId === right.sourceId
+  );
 }
 
-function validProvider(value: string): value is EpisodeCollaborationProxyProvider {
+function validProvider(
+  value: string,
+): value is EpisodeCollaborationProxyProvider {
   return value === "local" || value === "gcs";
 }
 
@@ -1208,26 +1276,37 @@ function validProviderLocator(
   locator: string,
   output: boolean,
 ) {
-  if (!locator || locator.length > 4_096 || locator.includes("\0")) return false;
-  if (provider === "gcs") return /^gcs:\/\/[a-z0-9][a-z0-9._-]+\/.+/.test(locator);
+  if (!locator || locator.length > 4_096 || locator.includes("\0"))
+    return false;
+  if (provider === "gcs")
+    return /^gcs:\/\/[a-z0-9][a-z0-9._-]+\/.+/.test(locator);
   return locator.startsWith("/") && (output ? locator.endsWith(".mp4") : true);
 }
 
 function validGenerationBoundGcsLocator(locator: string, generation: string) {
-  const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(.+)\?generation=([1-9][0-9]*)$/.exec(locator);
+  const match =
+    /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(.+)\?generation=([1-9][0-9]*)$/.exec(
+      locator,
+    );
   return Boolean(
-    match
-    && match[3] === generation
-    && match[2].startsWith("media-vault/")
-    && !match[2].split("/").some((segment) => !segment || segment === "." || segment === ".."),
+    match &&
+    match[3] === generation &&
+    match[2].startsWith("media-vault/") &&
+    !match[2]
+      .split("/")
+      .some((segment) => !segment || segment === "." || segment === ".."),
   );
 }
 
 function validProxyTargetLocator(locator: string) {
-  return locator.length <= 1_024
-    && locator.startsWith("media-vault/proxy/episode-collaboration/")
-    && locator.endsWith(".mp4")
-    && !locator.split("/").some((segment) => !segment || segment === "." || segment === "..");
+  return (
+    locator.length <= 1_024 &&
+    locator.startsWith("media-vault/proxy/episode-collaboration/") &&
+    locator.endsWith(".mp4") &&
+    !locator
+      .split("/")
+      .some((segment) => !segment || segment === "." || segment === "..")
+  );
 }
 
 function outputLocatorMatchesTarget(

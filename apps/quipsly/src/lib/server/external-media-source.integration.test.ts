@@ -4,13 +4,22 @@ import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
 
-import { attachVerifiedExternalMediaSource, ExternalMediaConflictError } from "./external-media-source";
+import {
+  attachVerifiedExternalMediaSource,
+  ExternalMediaConflictError,
+} from "./external-media-source";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
-const runDatabaseSmoke = process.env.QUIPSLY_EXTERNAL_MEDIA_DB_SMOKE === "1" ? describe : describe.skip;
+const runDatabaseSmoke =
+  process.env.QUIPSLY_EXTERNAL_MEDIA_DB_SMOKE === "1"
+    ? describe
+    : describe.skip;
 if (process.env.QUIPSLY_EXTERNAL_MEDIA_DB_SMOKE === "1") {
-  if (!process.env.QUIPSLY_LOCAL_DATABASE_URL) throw new Error("QUIPSLY_LOCAL_DATABASE_URL is required for external media proof.");
+  if (!process.env.QUIPSLY_LOCAL_DATABASE_URL)
+    throw new Error(
+      "QUIPSLY_LOCAL_DATABASE_URL is required for external media proof.",
+    );
   process.env.DATABASE_URL = process.env.QUIPSLY_LOCAL_DATABASE_URL;
 }
 
@@ -48,13 +57,29 @@ runDatabaseSmoke("external media attach and capability history", () => {
   }
 
   beforeAll(async () => {
-    const actor = await prisma.user.create({ data: { primaryEmail: actorEmail, name: "External media operator" } });
+    const actor = await prisma.user.create({
+      data: { primaryEmail: actorEmail, name: "External media operator" },
+    });
     actorUserId = actor.id;
-    const workspace = await prisma.studioWorkspace.create({ data: { slug: `external-media-${nonce}`, name: "External media smoke" } });
+    const workspace = await prisma.studioWorkspace.create({
+      data: { slug: `external-media-${nonce}`, name: "External media smoke" },
+    });
     workspaceId = workspace.id;
     const [project, other] = await Promise.all([
-      prisma.studioProject.create({ data: { workspaceId, slug: `external-main-${nonce}`, name: "High Ground Odyssey" } }),
-      prisma.studioProject.create({ data: { workspaceId, slug: `external-other-${nonce}`, name: "Other Nest" } }),
+      prisma.studioProject.create({
+        data: {
+          workspaceId,
+          slug: `external-main-${nonce}`,
+          name: "High Ground Odyssey",
+        },
+      }),
+      prisma.studioProject.create({
+        data: {
+          workspaceId,
+          slug: `external-other-${nonce}`,
+          name: "Other Nest",
+        },
+      }),
     ]);
     projectId = project.id;
     otherProjectId = other.id;
@@ -62,8 +87,10 @@ runDatabaseSmoke("external media attach and capability history", () => {
 
   afterAll(async () => {
     try {
-      if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
-      if (actorUserId) await prisma.user.deleteMany({ where: { id: actorUserId } });
+      if (workspaceId)
+        await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
+      if (actorUserId)
+        await prisma.user.deleteMany({ where: { id: actorUserId } });
     } finally {
       await prisma.$disconnect();
     }
@@ -81,19 +108,48 @@ runDatabaseSmoke("external media attach and capability history", () => {
     };
     const attached = await attachVerifiedExternalMediaSource({ prisma, value });
     referenceId = attached.reference.id;
-    expect(attached).toMatchObject({ replayed: false, reference: { revision: 1, accessState: "available", capabilityState: "downloadable" } });
-    await expect(attachVerifiedExternalMediaSource({ prisma, value })).resolves.toMatchObject({ replayed: true, reference: { id: referenceId, revision: 1 } });
-    await expect(attachVerifiedExternalMediaSource({
-      prisma,
-      value: { ...value, verifiedFile: file({ externalFileId: `different-${nonce}` }) },
-    })).rejects.toMatchObject({ code: "request-reuse-conflict", currentRevision: 1 } satisfies Partial<ExternalMediaConflictError>);
+    expect(attached).toMatchObject({
+      replayed: false,
+      reference: {
+        revision: 1,
+        accessState: "available",
+        capabilityState: "downloadable",
+      },
+    });
+    await expect(
+      attachVerifiedExternalMediaSource({ prisma, value }),
+    ).resolves.toMatchObject({
+      replayed: true,
+      reference: { id: referenceId, revision: 1 },
+    });
+    await expect(
+      attachVerifiedExternalMediaSource({
+        prisma,
+        value: {
+          ...value,
+          verifiedFile: file({ externalFileId: `different-${nonce}` }),
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "request-reuse-conflict",
+      currentRevision: 1,
+    } satisfies Partial<ExternalMediaConflictError>);
 
     const [reference, revision, operation] = await Promise.all([
-      prisma.studioExternalMediaReference.findUniqueOrThrow({ where: { id: referenceId } }),
-      prisma.studioMediaSourceRevision.findFirstOrThrow({ where: { externalReferenceId: referenceId } }),
-      prisma.studioExternalMediaReferenceOperation.findFirstOrThrow({ where: { referenceId } }),
+      prisma.studioExternalMediaReference.findUniqueOrThrow({
+        where: { id: referenceId },
+      }),
+      prisma.studioMediaSourceRevision.findFirstOrThrow({
+        where: { externalReferenceId: referenceId },
+      }),
+      prisma.studioExternalMediaReferenceOperation.findFirstOrThrow({
+        where: { referenceId },
+      }),
     ]);
-    expect(reference.providerLocatorJson).toMatchObject({ externalFileId: file().externalFileId, resourceKey: file().resourceKey });
+    expect(reference.providerLocatorJson).toMatchObject({
+      externalFileId: file().externalFileId,
+      resourceKey: file().resourceKey,
+    });
     expect(revision).toMatchObject({
       revisionKey: "drive-revision-1",
       sourceState: "provider-revision-bound",
@@ -101,8 +157,14 @@ runDatabaseSmoke("external media attach and capability history", () => {
       sizeBytes: BigInt(4_200_000_000),
     });
     const serializedReceipt = JSON.stringify(operation.snapshotJson);
-    expect(serializedReceipt).not.toMatch(/resource-key|access.?token|refresh.?token|authorization|credential/i);
-    expect(operation).toMatchObject({ revision: 1, previousRevision: 0, operation: "attach" });
+    expect(serializedReceipt).not.toMatch(
+      /resource-key|access.?token|refresh.?token|authorization|credential/i,
+    );
+    expect(operation).toMatchObject({
+      revision: 1,
+      previousRevision: 0,
+      operation: "attach",
+    });
   });
 
   it("records a repeated provider observation without manufacturing a new state revision", async () => {
@@ -118,12 +180,17 @@ runDatabaseSmoke("external media attach and capability history", () => {
         verifiedFile: file(),
       },
     });
-    expect(observed).toMatchObject({ replayed: false, reference: { id: referenceId, revision: 1 } });
-    await expect(prisma.studioExternalMediaReferenceOperation.findMany({
-      where: { referenceId },
-      orderBy: { createdAt: "asc" },
-      select: { revision: true, previousRevision: true, operation: true },
-    })).resolves.toEqual([
+    expect(observed).toMatchObject({
+      replayed: false,
+      reference: { id: referenceId, revision: 1 },
+    });
+    await expect(
+      prisma.studioExternalMediaReferenceOperation.findMany({
+        where: { referenceId },
+        orderBy: { createdAt: "asc" },
+        select: { revision: true, previousRevision: true, operation: true },
+      }),
+    ).resolves.toEqual([
       { revision: 1, previousRevision: 0, operation: "attach" },
       { revision: 1, previousRevision: 1, operation: "observe" },
     ]);
@@ -147,22 +214,38 @@ runDatabaseSmoke("external media attach and capability history", () => {
         }),
       },
     });
-    expect(refreshed).toMatchObject({ replayed: false, reference: { id: referenceId, revision: 2, headRevisionKey: "drive-revision-2" } });
-    await expect(attachVerifiedExternalMediaSource({
-      prisma,
-      value: {
-        projectId,
-        actorUserId,
-        actorEmail,
-        clientRequestId: randomUUID(),
-        operation: "refresh",
-        expectedReferenceRevision: 1,
-        verifiedFile: file({ headRevisionKey: "drive-revision-3" }),
+    expect(refreshed).toMatchObject({
+      replayed: false,
+      reference: {
+        id: referenceId,
+        revision: 2,
+        headRevisionKey: "drive-revision-2",
       },
-    })).rejects.toMatchObject({ code: "stale-reference", currentRevision: 2 });
-    await expect(prisma.studioMediaSourceRevision.findMany({
-      where: { externalReferenceId: referenceId }, orderBy: { createdAt: "asc" }, select: { revisionKey: true },
-    })).resolves.toEqual([{ revisionKey: "drive-revision-1" }, { revisionKey: "drive-revision-2" }]);
+    });
+    await expect(
+      attachVerifiedExternalMediaSource({
+        prisma,
+        value: {
+          projectId,
+          actorUserId,
+          actorEmail,
+          clientRequestId: randomUUID(),
+          operation: "refresh",
+          expectedReferenceRevision: 1,
+          verifiedFile: file({ headRevisionKey: "drive-revision-3" }),
+        },
+      }),
+    ).rejects.toMatchObject({ code: "stale-reference", currentRevision: 2 });
+    await expect(
+      prisma.studioMediaSourceRevision.findMany({
+        where: { externalReferenceId: referenceId },
+        orderBy: { createdAt: "asc" },
+        select: { revisionKey: true },
+      }),
+    ).resolves.toEqual([
+      { revisionKey: "drive-revision-1" },
+      { revisionKey: "drive-revision-2" },
+    ]);
   });
 
   it("records revoked capability without rewriting content identity", async () => {
@@ -188,11 +271,23 @@ runDatabaseSmoke("external media attach and capability history", () => {
         }),
       },
     });
-    expect(result.reference).toMatchObject({ revision: 3, accessState: "revoked", capabilityState: "needs-reauth" });
-    await expect(prisma.studioMediaSourceRevision.count({ where: { externalReferenceId: referenceId } })).resolves.toBe(2);
-    await expect(prisma.studioExternalMediaReferenceOperation.findMany({
-      where: { referenceId }, orderBy: { revision: "asc" }, select: { revision: true, previousRevision: true, operation: true },
-    })).resolves.toEqual([
+    expect(result.reference).toMatchObject({
+      revision: 3,
+      accessState: "revoked",
+      capabilityState: "needs-reauth",
+    });
+    await expect(
+      prisma.studioMediaSourceRevision.count({
+        where: { externalReferenceId: referenceId },
+      }),
+    ).resolves.toBe(2);
+    await expect(
+      prisma.studioExternalMediaReferenceOperation.findMany({
+        where: { referenceId },
+        orderBy: { revision: "asc" },
+        select: { revision: true, previousRevision: true, operation: true },
+      }),
+    ).resolves.toEqual([
       { revision: 1, previousRevision: 0, operation: "attach" },
       { revision: 1, previousRevision: 1, operation: "observe" },
       { revision: 2, previousRevision: 1, operation: "refresh" },
@@ -201,26 +296,36 @@ runDatabaseSmoke("external media attach and capability history", () => {
   });
 
   it("fails closed when a provider reuses one revision key for different byte evidence", async () => {
-    await expect(attachVerifiedExternalMediaSource({
-      prisma,
-      value: {
-        projectId,
-        actorUserId,
-        actorEmail,
-        clientRequestId: randomUUID(),
-        operation: "refresh",
-        expectedReferenceRevision: 3,
-        verifiedFile: file({
-          headRevisionKey: "drive-revision-2",
-          checksumMd5: "c".repeat(32),
-          sizeBytes: "999",
-          providerModifiedAt: "2026-08-07T13:00:00.000Z",
-        }),
-      },
-    })).rejects.toMatchObject({ code: "provider-revision-conflict" });
-    await expect(prisma.studioExternalMediaReference.findUnique({ where: { id: referenceId }, select: { revision: true, accessState: true } }))
-      .resolves.toEqual({ revision: 3, accessState: "revoked" });
-    await expect(prisma.studioExternalMediaReferenceOperation.count({ where: { referenceId } })).resolves.toBe(4);
+    await expect(
+      attachVerifiedExternalMediaSource({
+        prisma,
+        value: {
+          projectId,
+          actorUserId,
+          actorEmail,
+          clientRequestId: randomUUID(),
+          operation: "refresh",
+          expectedReferenceRevision: 3,
+          verifiedFile: file({
+            headRevisionKey: "drive-revision-2",
+            checksumMd5: "c".repeat(32),
+            sizeBytes: "999",
+            providerModifiedAt: "2026-08-07T13:00:00.000Z",
+          }),
+        },
+      }),
+    ).rejects.toMatchObject({ code: "provider-revision-conflict" });
+    await expect(
+      prisma.studioExternalMediaReference.findUnique({
+        where: { id: referenceId },
+        select: { revision: true, accessState: true },
+      }),
+    ).resolves.toEqual({ revision: 3, accessState: "revoked" });
+    await expect(
+      prisma.studioExternalMediaReferenceOperation.count({
+        where: { referenceId },
+      }),
+    ).resolves.toBe(4);
   });
 
   it("keeps an identical external file identity isolated between Nests", async () => {
@@ -236,6 +341,71 @@ runDatabaseSmoke("external media attach and capability history", () => {
       },
     });
     expect(attached.reference.id).not.toBe(referenceId);
-    await expect(prisma.studioExternalMediaReference.count({ where: { provider: "google-drive", externalFileId: file().externalFileId } })).resolves.toBe(2);
+    await expect(
+      prisma.studioExternalMediaReference.count({
+        where: {
+          provider: "google-drive",
+          externalFileId: file().externalFileId,
+        },
+      }),
+    ).resolves.toBe(2);
+  });
+
+  it("binds a provider file to its project-owned package unit and rejects cross-package reassignment", async () => {
+    const [sourceUnit, otherSourceUnit] = await Promise.all([
+      prisma.studioSourceUnit.create({
+        data: {
+          projectId,
+          slug: `drive-package-${nonce}`,
+          kind: "insta360-drive-segment",
+          title: "Drive package",
+        },
+      }),
+      prisma.studioSourceUnit.create({
+        data: {
+          projectId,
+          slug: `drive-package-other-${nonce}`,
+          kind: "insta360-drive-segment",
+          title: "Other Drive package",
+        },
+      }),
+    ]);
+    const packageFile = file({
+      externalFileId: `package-member-${nonce}`,
+      fileName: "LRV_20260402_080506_01_001.lrv",
+    });
+    const attached = await attachVerifiedExternalMediaSource({
+      prisma,
+      value: {
+        projectId,
+        actorUserId,
+        actorEmail,
+        sourceUnitId: sourceUnit.id,
+        clientRequestId: randomUUID(),
+        operation: "attach",
+        verifiedFile: packageFile,
+      },
+    });
+    expect(attached.reference.sourceUnitId).toBe(sourceUnit.id);
+    await expect(
+      prisma.studioMediaSourceRevision.findFirstOrThrow({
+        where: { externalReferenceId: attached.reference.id },
+        select: { sourceUnitId: true },
+      }),
+    ).resolves.toEqual({ sourceUnitId: sourceUnit.id });
+    await expect(
+      attachVerifiedExternalMediaSource({
+        prisma,
+        value: {
+          projectId,
+          actorUserId,
+          actorEmail,
+          sourceUnitId: otherSourceUnit.id,
+          clientRequestId: randomUUID(),
+          operation: "attach",
+          verifiedFile: packageFile,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "source-unit-conflict" });
   });
 });

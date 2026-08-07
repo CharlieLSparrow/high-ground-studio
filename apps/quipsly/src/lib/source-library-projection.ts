@@ -1,5 +1,12 @@
 export type SourceLibraryCollection = "working" | "all" | "attention";
-export type SourceLibraryMediaFilter = "all" | "360" | "video" | "audio" | "image" | "browse-ready" | "render-ready";
+export type SourceLibraryMediaFilter =
+  | "all"
+  | "360"
+  | "video"
+  | "audio"
+  | "image"
+  | "browse-ready"
+  | "render-ready";
 export type SourceLibraryGroupMode = "capture-day" | "source-type" | "provider";
 export type SourceLibrarySortMode = "newest" | "name" | "selects";
 
@@ -16,6 +23,13 @@ export type SourceLibraryAsset = {
 
 export type SourceLibraryExternal = {
   id: string;
+  sourceUnit?: null | {
+    id: string;
+    kind: string;
+    title: string;
+    capturedAt: string | Date | null;
+    metadataJson: unknown;
+  };
   provider: string;
   fileName: string;
   mimeType: string | null;
@@ -43,7 +57,11 @@ export type SourceLibrarySet = {
   sourceClockRevision: {
     id: string;
     durationSeconds: number | null;
-    externalReference: null | { id: string; fileName: string; provider: string };
+    externalReference: null | {
+      id: string;
+      fileName: string;
+      provider: string;
+    };
     collaborationProxy: null | { id: string };
     spatialStitchMaster: null | { id: string };
     visualOverview?: null | { id: string; playbackUrl: string };
@@ -53,7 +71,12 @@ export type SourceLibrarySet = {
     sourceRevision: {
       id: string;
       sizeBytes: string | null;
-      externalReference: null | { id: string; provider: string; fileName: string; accessState: string };
+      externalReference: null | {
+        id: string;
+        provider: string;
+        fileName: string;
+        accessState: string;
+      };
     };
   }>;
 };
@@ -103,13 +126,16 @@ export type SourceLibraryGroup = {
 
 function safeTimestamp(...values: Array<string | null | undefined>) {
   for (const value of values) {
-    if (value && Number.isFinite(Date.parse(value))) return new Date(value).toISOString();
+    if (value && Number.isFinite(Date.parse(value)))
+      return new Date(value).toISOString();
   }
   return new Date(0).toISOString();
 }
 
 function cameraTimestamp(value: string) {
-  const match = value.match(/(?:^|[^0-9])(20\d{2})(0[1-9]|1[0-2])([0-2]\d|3[01])(?:[_-]?([0-2]\d)([0-5]\d)([0-5]\d))?/);
+  const match = value.match(
+    /(?:^|[^0-9])(20\d{2})(0[1-9]|1[0-2])([0-2]\d|3[01])(?:[_-]?([0-2]\d)([0-5]\d)([0-5]\d))?/,
+  );
   if (!match) return null;
   const [, year, month, day, hour = "00", minute = "00", second = "00"] = match;
   const timestamp = `${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`;
@@ -124,35 +150,52 @@ function mimeFamily(mimeType: string | null) {
 }
 
 function humanize(value: string) {
-  return value.replaceAll("_", " ").replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function sourceIdentity(card: SourceLibraryCard) {
   const range = card.sourceRange;
   if (!range) return null;
   if (range.sourceSet) return `source-set:${range.sourceSet.id}`;
-  if (range.sourceRevision.mediaAsset) return `asset:${range.sourceRevision.mediaAsset.id}`;
-  if (range.sourceRevision.externalReference) return `external:${range.sourceRevision.externalReference.id}`;
+  if (range.sourceRevision.mediaAsset)
+    return `asset:${range.sourceRevision.mediaAsset.id}`;
+  if (range.sourceRevision.externalReference)
+    return `external:${range.sourceRevision.externalReference.id}`;
   return null;
 }
 
-function usageBySource(cards: SourceLibraryCard[], boards: SourceLibraryBoard[]) {
+function usageBySource(
+  cards: SourceLibraryCard[],
+  boards: SourceLibraryBoard[],
+) {
   const boardIdsByCard = new Map<string, Set<string>>();
   for (const board of boards) {
     for (const placement of board.placements) {
-      const boardIds = boardIdsByCard.get(placement.cardId) ?? new Set<string>();
+      const boardIds =
+        boardIdsByCard.get(placement.cardId) ?? new Set<string>();
       boardIds.add(board.id);
       boardIdsByCard.set(placement.cardId, boardIds);
     }
   }
-  const usage = new Map<string, { selectCount: number; selectedCount: number; boardIds: Set<string> }>();
+  const usage = new Map<
+    string,
+    { selectCount: number; selectedCount: number; boardIds: Set<string> }
+  >();
   for (const card of cards) {
     const identity = sourceIdentity(card);
     if (!identity) continue;
-    const current = usage.get(identity) ?? { selectCount: 0, selectedCount: 0, boardIds: new Set<string>() };
+    const current = usage.get(identity) ?? {
+      selectCount: 0,
+      selectedCount: 0,
+      boardIds: new Set<string>(),
+    };
     current.selectCount += 1;
     if (["selected", "used"].includes(card.status)) current.selectedCount += 1;
-    for (const boardId of boardIdsByCard.get(card.id) ?? []) current.boardIds.add(boardId);
+    for (const boardId of boardIdsByCard.get(card.id) ?? [])
+      current.boardIds.add(boardId);
     usage.set(identity, current);
   }
   return usage;
@@ -163,7 +206,18 @@ function usageFields(key: string, usage: ReturnType<typeof usageBySource>) {
   const selectCount = value?.selectCount ?? 0;
   const selectedCount = value?.selectedCount ?? 0;
   const boardCount = value?.boardIds.size ?? 0;
-  return { selectCount, selectedCount, boardCount, isWorking: selectCount > 0 || boardCount > 0 };
+  return {
+    selectCount,
+    selectedCount,
+    boardCount,
+    isWorking: selectCount > 0 || boardCount > 0,
+  };
+}
+
+function record(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 export function buildSourceLibraryItems(input: {
@@ -174,25 +228,46 @@ export function buildSourceLibraryItems(input: {
   boards: SourceLibraryBoard[];
 }) {
   const usage = usageBySource(input.cards, input.boards);
-  const packagedRevisionIds = new Set(input.sourceSets.flatMap((sourceSet) => sourceSet.members.map((member) => member.sourceRevision.id)));
+  const packagedRevisionIds = new Set(
+    input.sourceSets.flatMap((sourceSet) =>
+      sourceSet.members.map((member) => member.sourceRevision.id),
+    ),
+  );
   const items: SourceLibraryItem[] = [];
 
   for (const sourceSet of input.sourceSets) {
     const key = `source-set:${sourceSet.id}`;
-    const requiredMembers = sourceSet.members.filter((member) => member.requiredForRender);
+    const requiredMembers = sourceSet.members.filter(
+      (member) => member.requiredForRender,
+    );
     const unavailableMember = requiredMembers.some((member) => {
       const accessState = member.sourceRevision.externalReference?.accessState;
       return accessState ? accessState !== "available" : false;
     });
-    const browseReady = Boolean(sourceSet.sourceClockRevision.collaborationProxy);
-    const renderReady = sourceSet.completeness === "complete"
-      && !unavailableMember
-      && Boolean(sourceSet.sourceClockRevision.spatialStitchMaster);
-    const health = renderReady ? "render-ready" : browseReady ? "browse-ready" : "needs-attention";
-    const provider = sourceSet.sourceClockRevision.externalReference?.provider
-      ?? sourceSet.members.find((member) => member.sourceRevision.externalReference)?.sourceRevision.externalReference?.provider
-      ?? "camera package";
-    const sizeBytes = sourceSet.members.reduce((total, member) => total + BigInt(member.sourceRevision.sizeBytes ?? 0), 0n).toString();
+    const browseReady = Boolean(
+      sourceSet.sourceClockRevision.collaborationProxy,
+    );
+    const renderReady =
+      sourceSet.completeness === "complete" &&
+      !unavailableMember &&
+      Boolean(sourceSet.sourceClockRevision.spatialStitchMaster);
+    const health = renderReady
+      ? "render-ready"
+      : browseReady
+        ? "browse-ready"
+        : "needs-attention";
+    const provider =
+      sourceSet.sourceClockRevision.externalReference?.provider ??
+      sourceSet.members.find(
+        (member) => member.sourceRevision.externalReference,
+      )?.sourceRevision.externalReference?.provider ??
+      "camera package";
+    const sizeBytes = sourceSet.members
+      .reduce(
+        (total, member) => total + BigInt(member.sourceRevision.sizeBytes ?? 0),
+        0n,
+      )
+      .toString();
     items.push({
       key,
       kind: "source-set",
@@ -200,10 +275,15 @@ export function buildSourceLibraryItems(input: {
       name: sourceSet.displayName,
       provider,
       mimeFamily: sourceSet.kind === "insta360-360" ? "360" : "video",
-      timestamp: safeTimestamp(cameraTimestamp(sourceSet.captureKey), cameraTimestamp(sourceSet.displayName), sourceSet.createdAt),
+      timestamp: safeTimestamp(
+        cameraTimestamp(sourceSet.captureKey),
+        cameraTimestamp(sourceSet.displayName),
+        sourceSet.createdAt,
+      ),
       durationSeconds: sourceSet.sourceClockRevision.durationSeconds,
       sizeBytes,
-      thumbnailUrl: sourceSet.sourceClockRevision.visualOverview?.playbackUrl ?? null,
+      thumbnailUrl:
+        sourceSet.sourceClockRevision.visualOverview?.playbackUrl ?? null,
       health,
       healthLabel: renderReady
         ? "Browse and final render ready"
@@ -215,16 +295,96 @@ export function buildSourceLibraryItems(input: {
               ? "Camera package is incomplete"
               : "Browse proxy required",
       ...usageFields(key, usage),
-      searchText: `${sourceSet.displayName} ${sourceSet.captureKey} ${sourceSet.kind} ${provider} ${sourceSet.members.map((member) => member.sourceRevision.externalReference?.fileName ?? "").join(" ")}`.toLowerCase(),
+      searchText:
+        `${sourceSet.displayName} ${sourceSet.captureKey} ${sourceSet.kind} ${provider} ${sourceSet.members.map((member) => member.sourceRevision.externalReference?.fileName ?? "").join(" ")}`.toLowerCase(),
+    });
+  }
+
+  const groupedExternalIds = new Set<string>();
+  const sourceUnitGroups = new Map<string, SourceLibraryExternal[]>();
+  for (const source of input.externalSources) {
+    if (!source.sourceUnit?.kind.startsWith("insta360-")) continue;
+    const group = sourceUnitGroups.get(source.sourceUnit.id) ?? [];
+    group.push(source);
+    sourceUnitGroups.set(source.sourceUnit.id, group);
+  }
+  for (const sources of sourceUnitGroups.values()) {
+    const representative =
+      sources.find((source) =>
+        source.fileName.toLowerCase().endsWith(".lrv"),
+      ) ?? sources[0];
+    if (!representative?.sourceUnit) continue;
+    for (const source of sources) groupedExternalIds.add(source.id);
+    const metadata = record(representative.sourceUnit.metadataJson);
+    const packageStatus =
+      typeof metadata?.packageStatus === "string"
+        ? metadata.packageStatus
+        : "held-incomplete";
+    const proxyReady = Boolean(
+      representative.latestSourceRevision?.collaborationProxy,
+    );
+    const accessReady = sources.every(
+      (source) =>
+        source.accessState === "available" &&
+        source.capabilityState === "downloadable",
+    );
+    const key = `external:${representative.id}`;
+    const totalSize = sources
+      .reduce((total, source) => total + BigInt(source.sizeBytes ?? 0), 0n)
+      .toString();
+    items.push({
+      key,
+      kind: "external",
+      id: representative.id,
+      name: representative.sourceUnit.title,
+      provider: representative.provider,
+      mimeFamily: "360",
+      timestamp: safeTimestamp(
+        representative.sourceUnit.capturedAt instanceof Date
+          ? representative.sourceUnit.capturedAt.toISOString()
+          : representative.sourceUnit.capturedAt,
+        cameraTimestamp(representative.sourceUnit.title),
+        representative.providerCreatedAt,
+        representative.createdAt,
+      ),
+      durationSeconds:
+        representative.latestSourceRevision?.durationSeconds ?? null,
+      sizeBytes: totalSize,
+      thumbnailUrl:
+        representative.latestSourceRevision?.visualOverview?.playbackUrl ??
+        null,
+      health: proxyReady ? "browse-ready" : "needs-attention",
+      healthLabel: proxyReady
+        ? "Browse ready · originals remain in Drive"
+        : !accessReady
+          ? "Camera package access needs repair"
+          : packageStatus !== "ready-to-attach"
+            ? "Camera package incomplete or still syncing"
+            : "Package attached · browse proxy pending",
+      ...usageFields(key, usage),
+      searchText:
+        `${representative.sourceUnit.title} ${representative.provider} Insta360 ${packageStatus} ${sources.map((source) => source.fileName).join(" ")}`.toLowerCase(),
     });
   }
 
   for (const source of input.externalSources) {
-    if (source.latestSourceRevision && packagedRevisionIds.has(source.latestSourceRevision.id)) continue;
+    if (groupedExternalIds.has(source.id)) continue;
+    if (
+      source.latestSourceRevision &&
+      packagedRevisionIds.has(source.latestSourceRevision.id)
+    )
+      continue;
     const key = `external:${source.id}`;
     const proxyReady = Boolean(source.latestSourceRevision?.collaborationProxy);
-    const accessReady = source.accessState === "available" && source.capabilityState === "downloadable";
-    const health = accessReady && proxyReady ? "render-ready" : proxyReady ? "browse-ready" : "needs-attention";
+    const accessReady =
+      source.accessState === "available" &&
+      source.capabilityState === "downloadable";
+    const health =
+      accessReady && proxyReady
+        ? "render-ready"
+        : proxyReady
+          ? "browse-ready"
+          : "needs-attention";
     items.push({
       key,
       kind: "external",
@@ -232,22 +392,31 @@ export function buildSourceLibraryItems(input: {
       name: source.fileName,
       provider: source.provider,
       mimeFamily: mimeFamily(source.mimeType),
-      timestamp: safeTimestamp(source.providerCreatedAt, cameraTimestamp(source.fileName), source.providerModifiedAt, source.createdAt),
+      timestamp: safeTimestamp(
+        source.providerCreatedAt,
+        cameraTimestamp(source.fileName),
+        source.providerModifiedAt,
+        source.createdAt,
+      ),
       durationSeconds: source.latestSourceRevision?.durationSeconds ?? null,
       sizeBytes: source.sizeBytes,
-      thumbnailUrl: source.latestSourceRevision?.visualOverview?.playbackUrl ?? null,
+      thumbnailUrl:
+        source.latestSourceRevision?.visualOverview?.playbackUrl ?? null,
       health,
-      healthLabel: accessReady && proxyReady
-        ? "Browse and original access ready"
-        : proxyReady
-          ? "Browse ready · original access needs repair"
-          : source.capabilityState === "needs-reauth" || source.accessState === "revoked"
-            ? "Reconnect source vault"
-            : source.capabilityState === "metadata-only"
-              ? "Metadata only · proxy held"
-              : "Browse proxy required",
+      healthLabel:
+        accessReady && proxyReady
+          ? "Browse and original access ready"
+          : proxyReady
+            ? "Browse ready · original access needs repair"
+            : source.capabilityState === "needs-reauth" ||
+                source.accessState === "revoked"
+              ? "Reconnect source vault"
+              : source.capabilityState === "metadata-only"
+                ? "Metadata only · proxy held"
+                : "Browse proxy required",
       ...usageFields(key, usage),
-      searchText: `${source.fileName} ${source.provider} ${source.mimeType ?? ""} ${source.accessState} ${source.capabilityState}`.toLowerCase(),
+      searchText:
+        `${source.fileName} ${source.provider} ${source.mimeType ?? ""} ${source.accessState} ${source.capabilityState}`.toLowerCase(),
     });
   }
 
@@ -260,59 +429,97 @@ export function buildSourceLibraryItems(input: {
       name: asset.filename,
       provider: "Quipsly media",
       mimeFamily: mimeFamily(asset.mimeType),
-      timestamp: safeTimestamp(cameraTimestamp(asset.filename), asset.updatedAt),
+      timestamp: safeTimestamp(
+        cameraTimestamp(asset.filename),
+        asset.updatedAt,
+      ),
       durationSeconds: asset.duration,
       sizeBytes: asset.sizeBytes,
       thumbnailUrl: asset.thumbnailUrl,
       health: asset.isProxy ? "browse-ready" : "render-ready",
       healthLabel: asset.isProxy ? "Browse proxy" : "Registered source ready",
       ...usageFields(key, usage),
-      searchText: `${asset.filename} ${asset.mimeType ?? ""} Quipsly media`.toLowerCase(),
+      searchText:
+        `${asset.filename} ${asset.mimeType ?? ""} Quipsly media`.toLowerCase(),
     });
   }
 
   return items;
 }
 
-export function filterSourceLibraryItems(items: SourceLibraryItem[], input: {
-  collection: SourceLibraryCollection;
-  mediaFilter: SourceLibraryMediaFilter;
-  query: string;
-  sort: SourceLibrarySortMode;
-}) {
+export function filterSourceLibraryItems(
+  items: SourceLibraryItem[],
+  input: {
+    collection: SourceLibraryCollection;
+    mediaFilter: SourceLibraryMediaFilter;
+    query: string;
+    sort: SourceLibrarySortMode;
+  },
+) {
   const query = input.query.trim().toLowerCase();
   return items
-    .filter((item) => input.collection === "all" || (input.collection === "working" ? item.isWorking : item.health === "needs-attention"))
+    .filter(
+      (item) =>
+        input.collection === "all" ||
+        (input.collection === "working"
+          ? item.isWorking
+          : item.health === "needs-attention"),
+    )
     .filter((item) => {
       if (input.mediaFilter === "all") return true;
-      if (input.mediaFilter === "browse-ready") return item.health !== "needs-attention";
-      if (input.mediaFilter === "render-ready") return item.health === "render-ready";
+      if (input.mediaFilter === "browse-ready")
+        return item.health !== "needs-attention";
+      if (input.mediaFilter === "render-ready")
+        return item.health === "render-ready";
       return item.mimeFamily === input.mediaFilter;
     })
     .filter((item) => !query || item.searchText.includes(query))
     .sort((left, right) => {
-      if (input.sort === "name") return left.name.localeCompare(right.name) || left.key.localeCompare(right.key);
-      if (input.sort === "selects") return right.selectCount - left.selectCount || right.timestamp.localeCompare(left.timestamp) || left.key.localeCompare(right.key);
-      return right.timestamp.localeCompare(left.timestamp) || left.key.localeCompare(right.key);
+      if (input.sort === "name")
+        return (
+          left.name.localeCompare(right.name) ||
+          left.key.localeCompare(right.key)
+        );
+      if (input.sort === "selects")
+        return (
+          right.selectCount - left.selectCount ||
+          right.timestamp.localeCompare(left.timestamp) ||
+          left.key.localeCompare(right.key)
+        );
+      return (
+        right.timestamp.localeCompare(left.timestamp) ||
+        left.key.localeCompare(right.key)
+      );
     });
 }
 
-export function groupSourceLibraryItems(items: SourceLibraryItem[], mode: SourceLibraryGroupMode): SourceLibraryGroup[] {
+export function groupSourceLibraryItems(
+  items: SourceLibraryItem[],
+  mode: SourceLibraryGroupMode,
+): SourceLibraryGroup[] {
   const groups = new Map<string, SourceLibraryGroup>();
   for (const item of items) {
     let key: string;
     let label: string;
     if (mode === "capture-day") {
       key = item.timestamp.slice(0, 10);
-      label = key === "1970-01-01" ? "Date not retained" : new Intl.DateTimeFormat("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        timeZone: "UTC",
-      }).format(new Date(item.timestamp));
+      label =
+        key === "1970-01-01"
+          ? "Date not retained"
+          : new Intl.DateTimeFormat("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              timeZone: "UTC",
+            }).format(new Date(item.timestamp));
     } else if (mode === "source-type") {
       key = item.kind;
-      label = item.kind === "source-set" ? "Camera packages" : item.kind === "external" ? "Connected vault" : "Quipsly media";
+      label =
+        item.kind === "source-set"
+          ? "Camera packages"
+          : item.kind === "external"
+            ? "Connected vault"
+            : "Quipsly media";
     } else {
       key = item.provider;
       label = humanize(item.provider);
@@ -329,7 +536,8 @@ export function sourceLibraryStats(items: SourceLibraryItem[]) {
     total: items.length,
     working: items.filter((item) => item.isWorking).length,
     attention: items.filter((item) => item.health === "needs-attention").length,
-    browseReady: items.filter((item) => item.health !== "needs-attention").length,
+    browseReady: items.filter((item) => item.health !== "needs-attention")
+      .length,
     renderReady: items.filter((item) => item.health === "render-ready").length,
     selects: items.reduce((total, item) => total + item.selectCount, 0),
   };

@@ -160,10 +160,15 @@ reconciliation; they are useful browsing evidence but unsafe cursor identity.
 
 ## Next production slices
 
-1. Extend the now-operational checksum-bound 4x2 contact-sheet derivative into
-   duration-aware filmstrips and audio waveforms. Keep each derivative bound to
-   the exact source revision and exact collaboration-proxy generation.
-2. Add waveform/filmstrip navigation and keyboard range marking to the viewer.
+1. Add Drive-to-local materialization for selected LRV browsing companions.
+   Stream into a bounded resumable cache, verify provider revision, MD5, byte
+   count, and locally computed SHA-256, then generate the existing collaboration
+   proxy without retaining a second original. Keep full INSV downloads deferred
+   until a selected range or final render actually needs them.
+2. Promote each verified Drive segment from its mutable source-unit intake
+   projection into the existing immutable media-source-set contract. The LRV
+   derivative owns that segment's source clock; split camera segments must not
+   be presented as one continuous seekable file.
 3. Add a freeform exploratory board that can deliberately commit an order to a
    durable binder, preserving both arrangements and their receipts.
 4. Add comments/tasks beside a card and section through the existing Nest
@@ -180,6 +185,35 @@ source-time samples for the retained HGO Insta360 package. Quipsly verified the
 input proxy before and after generation and verified the output SHA-256, size,
 MIME type, dimensions, profile, and source/proxy binding. Signed-in Chrome then
 loaded the exact protected derivative in the 19-source Source Story library.
+
+The audio-navigation extension is also operational. It full-decoded the exact
+retained collaboration proxy, preserved its SHA-256 and byte count before and
+after analysis, emitted bounded waveform and six-band frequency evidence, and
+replayed the deterministic job identity. The observed proxy was near digital
+silence, so the rendered UI showed -160 dBFS and a listen-before-relying warning
+rather than implying healthy audio.
+
+The supplied shared Drive folder materially changed the intake design. The root
+contains eight named capture-batch folders; each batch contains numbered INSV
+originals and LRV companions. A numbered pair is one independently seekable
+segment, while the folder is a batch and the shared root is a library. At the
+read-only inspection boundary, 13 pairs were complete and 11 expected segments
+were empty, missing, or still uploading. Quipsly now preserves all four levels
+instead of collapsing a multi-hour split recording into a false single clock.
+
+Google recommends the narrow `drive.file` scope with Picker so a person selects
+the exact files or folders an app may use. Picker officially supports folder
+selection, and Drive lists folder members by querying the parent relationship.
+Quipsly therefore keeps the existing selected-file scope, adds a folder-specific
+Picker mode, bounds traversal to one library level and 5,000 media items, and
+re-inspects the provider immediately before attachment. It does not request
+broad read access merely to make recursive discovery easier.
+
+Sources:
+
+- [Google Drive API scope guidance](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)
+- [Google Picker folder selection](https://developers.google.com/workspace/drive/picker/reference/picker.docsview.setselectfolderenabled)
+- [Google Drive parent-folder queries](https://developers.google.com/workspace/drive/api/guides/search-files)
 
 ## Product vocabulary without product silos
 

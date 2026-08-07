@@ -17,6 +17,52 @@ import type { PrismaClient } from "@prisma/client";
 export const SOURCE_VISUAL_OVERVIEW_JOB_TYPE = "source-visual-overview";
 export const SOURCE_VISUAL_OVERVIEW_JOB_SOURCE = "source-story.visual-overview";
 
+export type PublicSourceVisualNavigationFrames = {
+  columns: number;
+  rows: number;
+  sampleTimesSeconds: number[];
+};
+
+export function publicSourceVisualNavigationFrames(
+  verificationJson: unknown,
+): PublicSourceVisualNavigationFrames | null {
+  const verification =
+    verificationJson &&
+    typeof verificationJson === "object" &&
+    !Array.isArray(verificationJson)
+      ? (verificationJson as Record<string, unknown>)
+      : {};
+  const output =
+    verification.output &&
+    typeof verification.output === "object" &&
+    !Array.isArray(verification.output)
+      ? (verification.output as Record<string, unknown>)
+      : {};
+  const columns = Number(output.columns);
+  const rows = Number(output.rows);
+  const sampleTimesSeconds = Array.isArray(output.sampleTimesSeconds)
+    ? output.sampleTimesSeconds.map(Number)
+    : [];
+  if (
+    !Number.isSafeInteger(columns) ||
+    columns < 1 ||
+    columns > 12 ||
+    !Number.isSafeInteger(rows) ||
+    rows < 1 ||
+    rows > 12 ||
+    sampleTimesSeconds.length !== columns * rows ||
+    sampleTimesSeconds.some(
+      (value, index) =>
+        !Number.isFinite(value) ||
+        value < 0 ||
+        (index > 0 && value <= sampleTimesSeconds[index - 1]!),
+    )
+  ) {
+    return null;
+  }
+  return { columns, rows, sampleTimesSeconds };
+}
+
 export class SourceVisualOverviewRequestError extends Error {
   constructor(
     readonly code: string,
