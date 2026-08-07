@@ -382,7 +382,15 @@ private enum AppleOnDeviceTranscriptEngine {
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requestedLocale) else {
             throw OnDeviceTranscriptFailure.unsupportedLocale
         }
-        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        // Exact source return is a product invariant, so request the audio time
+        // range explicitly instead of relying on the plain `.transcription`
+        // preset, which does not include time-indexed result attributes.
+        let transcriber = SpeechTranscriber(
+            locale: locale,
+            transcriptionOptions: [],
+            reportingOptions: [],
+            attributeOptions: [.audioTimeRange]
+        )
         let modules: [any SpeechModule] = [transcriber]
         var status = await AssetInventory.status(forModules: modules)
         if status != .installed {
@@ -527,7 +535,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
             }.value
             guard before == after else { throw OnDeviceTranscriptFailure.sourceChanged }
 
-            let configuration = "Speech|SpeechTranscriber|transcription|final-only|audio-time-range|\(prepared.locale.identifier)"
+            let configuration = "Speech|SpeechTranscriber|custom-final-time-indexed-v1|final-only|audio-time-range|\(prepared.locale.identifier)"
             let sidecar = OnDeviceTranscriptSidecar(
                 schemaVersion: 1,
                 clientRequestId: UUID(),
@@ -543,7 +551,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 engine: .init(
                     framework: "Speech",
                     transcriber: "SpeechTranscriber",
-                    preset: "transcription",
+                    preset: "custom-final-time-indexed-v1",
                     configurationHash: SHA256.hash(data: Data(configuration.utf8)).hexString,
                     modelAssetStatus: "installed"
                 ),
