@@ -175,6 +175,10 @@ describe("AudioMasteryWorkspaceClient", () => {
     expect(screen.getByRole("link", { name: /Open video editor/ })).toHaveAttribute("href", "/editor?project=high-ground-odyssey&episode=episode-9&asset=asset-1");
     expect(screen.getByRole("button", { name: /Build signal map/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Transcribe canonical source/ })).toBeEnabled();
+    expect(screen.getByRole("navigation", { name: /One source clock, one clear next step/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Choose the program clock/i })).toHaveAttribute("href", "#audio-program");
+    expect(screen.getByRole("list", { name: "Audio workflow stages" })).toHaveTextContent("Source");
+    expect(screen.getByRole("list", { name: "Audio workflow stages" })).toHaveTextContent("Finish & prove");
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/api/media-vault/audio-mastery?"), expect.objectContaining({ cache: "no-store" })));
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("episode-inventory?projectId=project-1&projectSlug=high-ground-odyssey"),

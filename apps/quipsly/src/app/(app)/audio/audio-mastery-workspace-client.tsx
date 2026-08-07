@@ -45,8 +45,10 @@ import { AudioMasteryAudition } from "../editor/AudioMasteryAudition";
 import { DialogueRepairDesk } from "../editor/DialogueRepairDesk";
 import { StudioTranscriptReviewDesk } from "../editor/StudioTranscriptReviewDesk";
 import { TranscriptTerminologyDesk } from "./TranscriptTerminologyDesk";
+import { AudioWorkspaceGuide } from "./AudioWorkspaceGuide";
 import {
   audioMasteryLifecycle,
+  audioWorkspaceGuide,
   audioWorkspaceAssets,
   audioWorkspaceSignal,
   type AudioSignalProfileClientStatus,
@@ -197,6 +199,23 @@ export function AudioMasteryWorkspaceClient({
   const audioSignal = useMemo(
     () => audioWorkspaceSignal(signalStatus),
     [signalStatus?.audioSignal],
+  );
+  const workflowGuide = useMemo(
+    () => selectedAsset ? audioWorkspaceGuide({
+      asset: selectedAsset,
+      program: {
+        includedTrackCount: audioProgram.tracks.filter((track) => track.mixDisposition === "include").length,
+        alignedIncludedTrackCount: audioProgram.tracks.filter((track) => track.mixDisposition === "include" && (
+          track.processing.alignment.qualifiedForReview
+          || audioProgram.activeDecisions.some((decision) => decision.kind === "program-clock" && decision.assetId === track.assetId && decision.sourceId === track.sourceId)
+        )).length,
+        hasProgramClock: audioProgram.summary.hasProgramClock,
+      },
+      signalStatus,
+      transcriptStatus,
+      masteryStatus: status,
+    }) : null,
+    [audioProgram, selectedAsset, signalStatus, status, transcriptStatus],
   );
 
   const applyInitialSourceClockFocus = useCallback((media: HTMLMediaElement) => {
@@ -1045,18 +1064,21 @@ export function AudioMasteryWorkspaceClient({
           </aside>
 
           <main className="min-w-0 space-y-4">
-            <EpisodeAudioProgramMap
-              program={audioProgram}
-              selectedAssetId={selectedAsset.id}
-              onSelectTrack={(assetId) => {
-                setSelectedAssetId(assetId);
-                router.replace(selectionHref(selectedProject?.id ?? projectId, projectSlug, episodeSlug, assetId));
-              }}
-              decisionBusy={decisionBusy}
-              decisionNotice={decisionNotice}
-              onSetDecision={(track, kind, value) => void setTrackDecision(track, kind, value)}
-              onWithdrawDecision={(decision, reason) => void withdrawTrackDecision(decision, reason)}
-            />
+            {workflowGuide ? <AudioWorkspaceGuide guide={workflowGuide} /> : null}
+            <div id="audio-program" className="scroll-mt-4">
+              <EpisodeAudioProgramMap
+                program={audioProgram}
+                selectedAssetId={selectedAsset.id}
+                onSelectTrack={(assetId) => {
+                  setSelectedAssetId(assetId);
+                  router.replace(selectionHref(selectedProject?.id ?? projectId, projectSlug, episodeSlug, assetId));
+                }}
+                decisionBusy={decisionBusy}
+                decisionNotice={decisionNotice}
+                onSetDecision={(track, kind, value) => void setTrackDecision(track, kind, value)}
+                onWithdrawDecision={(decision, reason) => void withdrawTrackDecision(decision, reason)}
+              />
+            </div>
             <EpisodeAudioActivityMap
               map={audioActivityMap}
               selectedAssetId={selectedAsset.id}
@@ -1094,7 +1116,7 @@ export function AudioMasteryWorkspaceClient({
                 {...(currentAnalysisId && selectedEpisode ? { correlationContext: { projectId: activeProjectId, projectSlug, episodeProductionId: selectedEpisode.id, analysisReceiptId: currentAnalysisId, canWrite: selectedProject?.role !== "VIEWER" } } : {})}
               />
             ) : null}
-            <section id="selected-source" className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="selected-source-heading">
+            <section id="selected-source" className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="selected-source-heading">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-fuchsia-200"><FileAudio2 className="h-4 w-4" aria-hidden="true" /> Immutable source</div>
@@ -1125,7 +1147,7 @@ export function AudioMasteryWorkspaceClient({
             {notice ? <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold leading-6 text-sky-950" role="status" aria-live="polite">{notice}</div> : null}
             {status?.error ? <div className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-950" role="alert">{status.error}</div> : null}
 
-            <section className="rounded-2xl border border-fuchsia-200 bg-gradient-to-br from-fuchsia-50 to-indigo-50 p-4 shadow-sm sm:p-5" aria-labelledby="measurement-heading">
+            <section id="source-measurement" className="scroll-mt-4 rounded-2xl border border-fuchsia-200 bg-gradient-to-br from-fuchsia-50 to-indigo-50 p-4 shadow-sm sm:p-5" aria-labelledby="measurement-heading">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-800"><Gauge className="h-4 w-4" aria-hidden="true" /> Source measurement</div>
@@ -1164,7 +1186,7 @@ export function AudioMasteryWorkspaceClient({
               onActiveVocabularyChange={setActiveTerminologyRevisionToken}
             />
 
-            <section className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-50 p-4 shadow-sm sm:p-5" aria-labelledby="source-clock-heading">
+            <section id="source-clock" className="scroll-mt-4 rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-50 p-4 shadow-sm sm:p-5" aria-labelledby="source-clock-heading">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-800"><FileText className="h-4 w-4" aria-hidden="true" /> Shared source clock</div>
@@ -1264,7 +1286,7 @@ export function AudioMasteryWorkspaceClient({
             ) : null}
 
             {selectedAsset.canProcess && status?.derivative?.playbackUrl && status.proposal ? (
-              <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="audition-heading">
+              <section id="mastery-audition" className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="audition-heading">
                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-200"><SlidersHorizontal className="h-4 w-4" aria-hidden="true" /> Review and delivery</div>
                 <h2 id="audition-heading" className="mt-1 text-xl font-black">Matched source-to-preview audition</h2>
                 <AudioMasteryAudition

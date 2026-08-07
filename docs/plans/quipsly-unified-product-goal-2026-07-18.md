@@ -8018,3 +8018,27 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   episodes or claiming a real proof-watch.
 - Architecture and evidence:
   `docs/coordination/2026-08-07-evidence-bound-multicamera-shot-grammar.md`.
+
+## 2026-08-06 Audio Studio workflow-guide checkpoint
+
+- Audited the running local lane and the Audio Studio composition before adding
+  another audio subsystem. The retained source, program alignment, signal and
+  transcript evidence, mastering review, delivery, and proof-listen ledgers
+  were already deep; the main workspace still required a user to infer its
+  sequence from a long expert surface.
+- Added one read-only workflow guide over those existing authorities. It shows
+  Source, Map & align, Inspect, and Finish & prove with exact status detail,
+  anchors each stage in the real workspace, and recommends one deterministic
+  next action without writing media, decisions, or a duplicate workflow state.
+- The projection prioritizes source holds, then included-track clock/alignment,
+  complete-decode signal evidence, timed transcript evidence, suspicious
+  provider-output listening, mastering, matched audition, and final delivery
+  proof. Excluded and reference-only tracks do not falsely block included-track
+  readiness.
+- Focused model and workspace suites pass 18 tests, including held, partially
+  released, and review-required transcript evidence. Quipsly typecheck and an
+  isolated production build with final `BUILD_ID` pass. The local
+  service doctor confirms the correct clean product worktree owns Nest, Auth,
+  PostgreSQL, and both workers. The in-app browser still blocks localhost under
+  its URL policy, so this is component and local-service proof rather than a
+  newly operated rendered-browser claim.

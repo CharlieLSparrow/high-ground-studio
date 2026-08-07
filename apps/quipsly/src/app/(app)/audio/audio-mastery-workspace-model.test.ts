@@ -1,5 +1,6 @@
 import {
   audioMasteryLifecycle,
+  audioWorkspaceGuide,
   audioWorkspaceAssets,
   audioWorkspaceSignal,
   type AudioSignalProfileClientStatus,
@@ -135,5 +136,89 @@ describe("Audio Studio workspace projections", () => {
       ["deliver", true],
       ["proof", true],
     ]);
+  });
+
+  it("turns deep audio ledgers into one evidence-bound recommended next step", () => {
+    const asset = audioWorkspaceAssets(inventory(true))[0];
+    const guide = audioWorkspaceGuide({
+      asset,
+      program: { includedTrackCount: 2, alignedIncludedTrackCount: 1, hasProgramClock: true },
+      signalStatus: null,
+      transcriptStatus: null,
+      masteryStatus: null,
+    });
+
+    expect(guide.next).toEqual(expect.objectContaining({
+      href: "#audio-program",
+      label: "Finish source alignment",
+    }));
+    expect(guide.items.map((item) => [item.id, item.state, item.statusLabel])).toEqual([
+      ["source", "complete", "Retained"],
+      ["program", "attention", "Needs decisions"],
+      ["evidence", "available", "Available"],
+      ["finish", "available", "Available"],
+    ]);
+  });
+
+  it("prioritizes suspicious provider evidence before mastering", () => {
+    const asset = audioWorkspaceAssets(inventory(true))[0];
+    const guide = audioWorkspaceGuide({
+      asset,
+      program: { includedTrackCount: 1, alignedIncludedTrackCount: 1, hasProgramClock: true },
+      signalStatus: { status: "completed", audioSignal: { schemaVersion: 1 } } as unknown as AudioSignalProfileClientStatus,
+      transcriptStatus: {
+        status: "completed",
+        coverage: { segmentCount: 2 },
+        quality: { disposition: "review-required" },
+      } as unknown as import("@/lib/media-workflow-client-status").StudioSourceTranscriptClientStatus,
+      masteryStatus: null,
+    });
+
+    expect(guide.next).toEqual(expect.objectContaining({
+      href: "#source-clock",
+      label: "Review suspicious transcript evidence",
+    }));
+    expect(guide.items.find((item) => item.id === "evidence")).toEqual(expect.objectContaining({
+      state: "attention",
+      statusLabel: "Listen first",
+    }));
+  });
+
+  it("makes a held source the first intervention without hiding later stages", () => {
+    const asset = audioWorkspaceAssets(inventory(false))[0];
+    const guide = audioWorkspaceGuide({
+      asset,
+      program: { includedTrackCount: 1, alignedIncludedTrackCount: 0, hasProgramClock: false },
+      signalStatus: null,
+      transcriptStatus: null,
+      masteryStatus: null,
+    });
+
+    expect(guide.next).toEqual({
+      href: "#selected-source",
+      label: "Resolve the source hold",
+      detail: "Preserve only; processing is held.",
+    });
+    expect(guide.items).toHaveLength(4);
+    expect(guide.items[0]).toEqual(expect.objectContaining({ state: "held", statusLabel: "Held" }));
+  });
+
+  it("keeps a partially released source operable in the lane that is actually authorized", () => {
+    const asset = { ...audioWorkspaceAssets(inventory(true))[0], canProcess: true, canTranscribe: false };
+    const guide = audioWorkspaceGuide({
+      asset,
+      program: { includedTrackCount: 1, alignedIncludedTrackCount: 1, hasProgramClock: true },
+      signalStatus: { status: "completed", audioSignal: { schemaVersion: 1 } } as unknown as AudioSignalProfileClientStatus,
+      transcriptStatus: null,
+      masteryStatus: null,
+    });
+
+    expect(guide.items[0]).toEqual(expect.objectContaining({
+      state: "attention",
+      statusLabel: "Partially released",
+      detail: "Media processing released · transcription held.",
+    }));
+    expect(guide.next).toEqual(expect.objectContaining({ label: "Resolve the transcription hold" }));
+    expect(guide.items.find((item) => item.id === "finish")).toEqual(expect.objectContaining({ state: "available" }));
   });
 });

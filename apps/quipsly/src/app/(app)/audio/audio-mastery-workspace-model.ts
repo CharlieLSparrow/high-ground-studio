@@ -6,7 +6,7 @@ import type {
 } from "../editor/AudioMasteryAudition";
 import { parseAudioSignalEvidence, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 import { parseAudibleEventDetectorReceipt, type AudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
-import type { AudioSignalProfileClientStatus } from "@/lib/media-workflow-client-status";
+import type { AudioSignalProfileClientStatus, StudioSourceTranscriptClientStatus } from "@/lib/media-workflow-client-status";
 
 export type { AudioSignalProfileClientStatus, StudioSourceTranscriptClientStatus } from "@/lib/media-workflow-client-status";
 
@@ -219,4 +219,146 @@ export function audioMasteryLifecycle(status: AudioMasteryClientStatus | null) {
     { id: "deliver", label: "Deliver", complete: deliveryReady, detail: "Verified encoded bytes" },
     { id: "proof", label: "Proof-listen", complete: deliveryApproved, detail: "Human playback receipt" },
   ] as const;
+}
+
+export type AudioWorkspaceGuideState = "complete" | "attention" | "available" | "held";
+
+export type AudioWorkspaceGuideItem = {
+  id: "source" | "program" | "evidence" | "finish";
+  label: string;
+  href: string;
+  state: AudioWorkspaceGuideState;
+  statusLabel: string;
+  detail: string;
+};
+
+export type AudioWorkspaceGuide = {
+  items: AudioWorkspaceGuideItem[];
+  next: {
+    href: string;
+    label: string;
+    detail: string;
+  };
+};
+
+export function audioWorkspaceGuide({
+  asset,
+  program,
+  signalStatus,
+  transcriptStatus,
+  masteryStatus,
+}: {
+  asset: Pick<AudioWorkspaceAsset, "canProcess" | "canTranscribe" | "sourceSafe" | "safeNextAction">;
+  program: {
+    includedTrackCount: number;
+    alignedIncludedTrackCount: number;
+    hasProgramClock: boolean;
+  };
+  signalStatus: AudioSignalProfileClientStatus | null;
+  transcriptStatus: StudioSourceTranscriptClientStatus | null;
+  masteryStatus: AudioMasteryClientStatus | null;
+}): AudioWorkspaceGuide {
+  const sourceHeld = !asset.sourceSafe || (!asset.canProcess && !asset.canTranscribe);
+  const sourceLimited = !sourceHeld && (!asset.canProcess || !asset.canTranscribe);
+  const sourceDetail = sourceHeld
+    ? asset.safeNextAction
+    : sourceLimited
+      ? `${asset.canProcess ? "Media processing released" : "Media processing held"} · ${asset.canTranscribe ? "transcription released" : "transcription held"}.`
+      : "Immutable playback and source identity are available.";
+  const programReady = program.includedTrackCount > 0
+    && program.hasProgramClock
+    && program.alignedIncludedTrackCount >= program.includedTrackCount;
+  const signalReady = signalStatus?.status === "completed" && Boolean(signalStatus.audioSignal);
+  const transcriptReady = transcriptStatus?.status === "completed" && (transcriptStatus.coverage?.segmentCount ?? 0) > 0;
+  const transcriptNeedsReview = transcriptStatus?.quality?.disposition === "review-required";
+  const evidenceFailed = signalStatus?.status === "failed"
+    || signalStatus?.status === "blocked"
+    || transcriptStatus?.status === "failed";
+  const lifecycle = audioMasteryLifecycle(masteryStatus);
+  const finishedCount = lifecycle.filter((step) => step.complete).length;
+  const deliveryComplete = lifecycle.every((step) => step.complete);
+  const finishNeedsReview = Boolean(
+    masteryStatus?.status === "failed"
+    || masteryStatus?.status === "blocked"
+    || (masteryStatus?.derivative?.playbackUrl && masteryStatus.review.latest?.decision !== "approved")
+    || (masteryStatus?.delivery.status === "completed" && masteryStatus.delivery.review.latest?.decision !== "approved"),
+  );
+
+  const items: AudioWorkspaceGuideItem[] = [
+    {
+      id: "source",
+      label: "Source",
+      href: "#selected-source",
+      state: sourceHeld ? "held" : sourceLimited ? "attention" : "complete",
+      statusLabel: sourceHeld ? "Held" : sourceLimited ? "Partially released" : "Retained",
+      detail: sourceDetail,
+    },
+    {
+      id: "program",
+      label: "Map & align",
+      href: "#audio-program",
+      state: programReady ? "complete" : "attention",
+      statusLabel: programReady ? "Shared clock ready" : "Needs decisions",
+      detail: `${program.alignedIncludedTrackCount}/${program.includedTrackCount} included tracks aligned${program.hasProgramClock ? "" : " · no program clock"}.`,
+    },
+    {
+      id: "evidence",
+      label: "Inspect",
+      href: "#source-clock",
+      state: evidenceFailed || transcriptNeedsReview ? "attention" : signalReady && transcriptReady ? "complete" : sourceHeld ? "held" : "available",
+      statusLabel: evidenceFailed
+        ? "Retry evidence"
+        : transcriptNeedsReview
+          ? "Listen first"
+          : signalReady && transcriptReady
+            ? "Evidence assembled"
+            : "Available",
+      detail: transcriptNeedsReview
+        ? "Provider timing or confidence triage requires protected listening."
+        : `${signalReady ? "Signal map ready" : "Signal map pending"} · ${transcriptReady ? "timed transcript ready" : "transcript pending"}.`,
+    },
+    {
+      id: "finish",
+      label: "Finish & prove",
+      href: masteryStatus?.derivative?.playbackUrl ? "#mastery-audition" : "#source-measurement",
+      state: deliveryComplete ? "complete" : finishNeedsReview ? "attention" : !asset.canProcess ? "held" : "available",
+      statusLabel: deliveryComplete ? "Proof complete" : finishNeedsReview ? "Human review due" : !asset.canProcess ? "Media held" : "Available",
+      detail: `${finishedCount}/${lifecycle.length} source-to-delivery gates complete.`,
+    },
+  ];
+
+  let next = {
+    href: "#audio-program",
+    label: "Map the retained tracks",
+    detail: "Choose the program clock and make every included source's role explicit.",
+  };
+  if (sourceHeld) {
+    next = { href: "#selected-source", label: "Resolve the source hold", detail: asset.safeNextAction };
+  } else if (!programReady) {
+    next = {
+      href: "#audio-program",
+      label: program.hasProgramClock ? "Finish source alignment" : "Choose the program clock",
+      detail: `${program.alignedIncludedTrackCount}/${program.includedTrackCount} included tracks currently share qualified alignment evidence.`,
+    };
+  } else if (!asset.canProcess) {
+    next = { href: "#selected-source", label: "Release media processing", detail: asset.safeNextAction };
+  } else if (!signalReady) {
+    next = { href: "#source-clock", label: "Build the decoded signal map", detail: "Measure the complete source before interpreting or treating it." };
+  } else if (!asset.canTranscribe) {
+    next = { href: "#selected-source", label: "Resolve the transcription hold", detail: asset.safeNextAction };
+  } else if (!transcriptReady) {
+    next = { href: "#source-clock", label: "Create the timed transcript", detail: "Keep provider words and confidence attached to the same immutable source clock." };
+  } else if (transcriptNeedsReview) {
+    next = { href: "#source-clock", label: "Review suspicious transcript evidence", detail: "Listen to the deterministic attention queue before trusting or correcting provider output." };
+  } else if (masteryStatus?.status !== "completed") {
+    next = { href: "#source-measurement", label: "Measure and prepare a mastering preview", detail: "Create a verified, reversible proposal from the complete source decode." };
+  } else if (masteryStatus.derivative?.playbackUrl && masteryStatus.review.latest?.decision !== "approved") {
+    next = { href: "#mastery-audition", label: "Compare source and preview", detail: "Use matched-level playback before approving or rejecting the candidate." };
+  } else if (!deliveryComplete) {
+    next = { href: "#mastery-audition", label: "Finish the delivery proof", detail: `${finishedCount}/${lifecycle.length} gates are complete; continue from the first open gate.` };
+  } else {
+    next = { href: "#mastery-audition", label: "Delivery proof is complete", detail: "The exact encoded output has an explicit human playback receipt." };
+  }
+
+  return { items, next };
 }
