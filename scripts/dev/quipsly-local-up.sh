@@ -222,6 +222,18 @@ wait_for_macos_job_running() {
   return 1
 }
 
+wait_for_macos_job_absent() {
+  local label="$1"
+  local attempt
+  for attempt in $(seq 1 40); do
+    if ! launchctl_job_exists "${label}"; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  return 1
+}
+
 wait_for_port_release() {
   local port="$1"
   local label="$2"
@@ -269,6 +281,10 @@ start_macos_job() {
 
   if launchctl_job_exists "${label}"; then
     launchctl remove "${label}"
+    if ! wait_for_macos_job_absent "${label}"; then
+      echo "launchd did not finish removing ${label}; refusing to race its replacement." >&2
+      return 1
+    fi
   fi
 
   : >"${log_file}"

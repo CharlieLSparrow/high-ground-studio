@@ -208,7 +208,10 @@ test("local workers reload when their executable source fingerprint changes", ()
 
 test("macOS worker startup waits for launchd readiness instead of racing a fixed delay", () => {
   assert.match(up, /wait_for_macos_job_running\(\)/);
+  assert.match(up, /wait_for_macos_job_absent\(\)/);
   assert.match(up, /for attempt in \$\(seq 1 40\)/);
+  assert.match(up, /wait_for_macos_job_absent "\$\{label\}"/);
+  assert.match(up, /refusing to race its replacement/);
   assert.match(up, /wait_for_macos_job_running "\$\{transcript_worker_label\}"/);
   assert.match(up, /wait_for_macos_job_running "\$\{media_worker_label\}"/);
   assert.doesNotMatch(up, /start_macos_job "transcript-worker"[\s\S]{0,150}sleep 1/);
