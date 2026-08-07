@@ -28,8 +28,16 @@ Date: 2026-08-07
   timelines, or media.
 - Prisma format/validate/generate, Quipsly TypeScript, 31 focused tests against
   real PostgreSQL, and the complete 194-page production build pass. The local
-  schema has all 104 migrations applied. Retained signed-in HGO operation is
-  the next gate before this checkpoint is committed.
+  schema has all 104 migrations applied.
+- A retained signed-in HGO operation created personal collection
+  `cmsj7y4hl0003s7xlpwzxlcrq`, filed the complete Insta360 package, replayed
+  both requests without adding revisions or items, and traversed all 19
+  canonical sources one item per page without loss or duplication. Rendered
+  operation then selected the collection, reduced the bin to its one package,
+  returned to All, searched the complete library for `Insta360`, and received
+  one match across 19 sources. The 1920-pixel workspace had no horizontal
+  overflow; the remaining browser console noise came from Chrome extensions
+  and the deliberately replaced pre-login local session, not Source Story.
 
 ## Source bin checkpoint
 
@@ -43,10 +51,11 @@ Date: 2026-08-07
   readiness, and a multi-file Insta360 take remains one item with expandable
   package health and exact-member roles.
 - The client renders at most 60 source items before an explicit reveal and uses
-  rendering containment. The server now reports loaded and total source counts;
-  if any current 500-row database window is exceeded, the UI says exactly what
-  is retained versus loaded instead of silently dropping sources. Cursor-paged
-  server search is the next scale boundary.
+  rendering containment. The server reports loaded, matching, and canonical
+  totals; opaque cursor paging and server-wide search now replace the former
+  500-row boundary. The next scale-and-UX boundary is checksum-bound visual
+  derivatives so large libraries can be scanned by contact sheet, waveform,
+  and filmstrip without opening each source.
 - The retained authenticated High Ground Odyssey readback projects 19 source
   items, 4 working sources, 4 exact selects, 1 complete Insta360 package, and a
   ready spatial browse proxy. Browser operation selected Working and List,

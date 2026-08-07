@@ -192,6 +192,10 @@ and database boundaries. A signed-in disposable operator opened 19 retained
 sources, switched to the 4-source Working collection and List view, saw the
 complete Insta360 package and ready collaboration proxy, retained its existing
 exact select and board use, opened the durable binder and writing context, and
-kept the signed-out shell private. Step 4 was already proved by the retained
-spatial-card operation; the next combined usability rehearsal should perform
-all eight steps consecutively as Homer rather than as separate QA operations.
+kept the signed-out shell private. The same operator created and idempotently
+replayed a personal source collection, traversed the mixed library one source
+per cursor page without loss or duplication, and rendered the collection and
+server-wide search interactions in Chrome. Step 4 was already proved by the
+retained spatial-card operation; the next combined usability rehearsal should
+perform all eight steps consecutively as Homer rather than as separate QA
+operations.
