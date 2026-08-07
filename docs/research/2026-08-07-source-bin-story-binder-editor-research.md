@@ -209,6 +209,14 @@ Picker mode, bounds traversal to one library level and 5,000 media items, and
 re-inspects the provider immediately before attachment. It does not request
 broad read access merely to make recursive discovery easier.
 
+Read-only connected-Drive inspection on 2026-08-07 confirmed that the Episode
+5 batch `VID_20260402_080506_00_001_004-Original` exposes four complete numbered
+pairs. Segments 001–003 each contain an approximately 28–30 GB INSV and 1.9 GB
+LRV; segment 004 contains the 1,222,300,003-byte INSV and 102,420,828-byte LRV
+used by the retained operation. Provider names and byte counts match the local
+receipts, but Quipsly does not claim byte identity until its own OAuth boundary
+can read provider revision/checksum evidence and verify downloaded bytes.
+
 Sources:
 
 - [Google Drive API scope guidance](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)

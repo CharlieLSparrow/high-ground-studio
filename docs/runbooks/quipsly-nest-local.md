@@ -39,6 +39,14 @@ therefore resolves the preserved `high-ground-db` container and
 `high-ground-studio_postgres_data` volume rather than creating a shadow
 database.
 
+After changing an executable Nest input, rerun `pnpm quipsly:local:up` before a
+retained product proof. The launcher hashes tracked, modified, and untracked
+runtime inputs and reloads the exact launchd job when that fingerprint changes.
+Do not treat a webpack hot-reload response as release evidence: a stale module
+graph can keep `/api/health` green while a complex server-rendered page returns
+an internal module-call error. `quipsly:local:up`, then
+`quipsly:local:doctor`, establishes the source/runtime boundary cheaply.
+
 On macOS, the detached launchd job must receive a readable Nest environment
 file. The launcher uses `apps/quipsly/.env.local` when present, or an explicit
 external path:

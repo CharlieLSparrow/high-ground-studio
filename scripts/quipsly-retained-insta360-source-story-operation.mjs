@@ -374,6 +374,8 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
         ? [
             ["complete-decode waveform", "Complete-decode waveform"],
             ["measured audio shape", "Audio shape · measured, not an EQ decision"],
+            ["range playback", "Play selected range"],
+            ["whole-take selection", "Use full take"],
           ]
         : []),
     ].filter(([, evidence]) => !html.includes(evidence)).map(([label]) => label);

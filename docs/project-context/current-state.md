@@ -24,6 +24,14 @@ Date: 2026-08-07
   projections, protected prefix and suffix byte ranges, invalid-range refusal,
   outsider denial, exact source hashes, and idempotent placement. The app proof
   checks structured counts rather than concatenated React server-rendered text.
+- The visual/audio navigation rail now owns the source-range transport too. A
+  creator can mark In or Out at the current picture/sound playhead, see the
+  selected span on the waveform, play only that exact range, select the whole
+  take, or clear it before writing the reusable card. The existing I/O and JKL
+  keyboard path remains available; this adds a discoverable touch/mouse path.
+- Two interaction tests prove the exact callbacks and refuse range playback
+  when Out is not after In. The retained Episode 5 page also proves the new
+  range and whole-take controls at the authenticated rendered boundary.
 
 ## Google Drive OAuth installation boundary checkpoint
 

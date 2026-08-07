@@ -593,27 +593,41 @@ function dbfsPercent(value: number) {
   );
 }
 
-function SourceNavigationRail({
+export function SourceNavigationRail({
   visualOverview,
   audioNavigation,
   durationSeconds,
   playbackSeconds,
+  inPoint,
+  outPoint,
   canWrite,
   pending,
   sourceRevisionId,
   sourceLabel,
   onSeek,
+  onSetIn,
+  onSetOut,
+  onUseFullRange,
+  onClearRange,
+  onPlayRange,
   onRequestAudio,
 }: {
   visualOverview: MediaDerivative | null;
   audioNavigation: SourceAudioNavigationStatus | null;
   durationSeconds: number;
   playbackSeconds: number;
+  inPoint: number | null;
+  outPoint: number | null;
   canWrite: boolean;
   pending: boolean;
   sourceRevisionId: string | null;
   sourceLabel: string;
   onSeek: (seconds: number) => void;
+  onSetIn: (seconds: number) => void;
+  onSetOut: (seconds: number) => void;
+  onUseFullRange: (durationSeconds: number) => void;
+  onClearRange: () => void;
+  onPlayRange: (startSeconds: number, endSeconds: number) => void;
   onRequestAudio: (
     sourceRevisionId: string,
     label: string,
@@ -628,6 +642,23 @@ function SourceNavigationRail({
     0,
     Math.min(effectiveDuration || 0, playbackSeconds),
   );
+  const validRange =
+    inPoint !== null &&
+    outPoint !== null &&
+    outPoint > inPoint &&
+    effectiveDuration > 0;
+  const selectionLeft = validRange
+    ? Math.max(0, Math.min(100, (inPoint / effectiveDuration) * 100))
+    : 0;
+  const selectionWidth = validRange
+    ? Math.max(
+        0,
+        Math.min(
+          100 - selectionLeft,
+          ((outPoint - inPoint) / effectiveDuration) * 100,
+        ),
+      )
+    : 0;
   return (
     <section
       className="rounded-3xl border border-[#34302c] bg-[#201e1b] p-4 text-[#fffaf0] shadow-lg"
@@ -777,6 +808,16 @@ function SourceNavigationRail({
                   left: `${effectiveDuration > 0 ? (current / effectiveDuration) * 100 : 0}%`,
                 }}
               />
+              {validRange ? (
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0 border-x-2 border-amber-200 bg-amber-200/15"
+                  style={{
+                    left: `${selectionLeft}%`,
+                    width: `${selectionWidth}%`,
+                  }}
+                />
+              ) : null}
               {waveform.map((point, index) => (
                 <span
                   key={`${point.startSeconds}:${index}`}
@@ -798,6 +839,69 @@ function SourceNavigationRail({
                 className="mt-2 block min-h-11 w-full accent-sky-300"
               />
             </label>
+            <div
+              className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3"
+              aria-label="Source range transport"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] font-black uppercase tracking-wide text-[#e1c697]">
+                  {validRange
+                    ? `${formatClock(inPoint)} – ${formatClock(outPoint)} · ${(outPoint - inPoint).toFixed(2)} seconds`
+                    : "No source range marked"}
+                </p>
+                <p className="text-[10px] font-bold text-[#d8ccb8]">
+                  The amber span is the retained select.
+                </p>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                <button
+                  type="button"
+                  disabled={!canWrite || pending}
+                  onClick={() => onSetIn(current)}
+                  className="min-h-11 rounded-lg border border-sky-300/40 bg-sky-200/10 px-3 text-[10px] font-black text-sky-100 disabled:opacity-45"
+                >
+                  Mark In · {formatClock(current)}
+                </button>
+                <button
+                  type="button"
+                  disabled={!canWrite || pending}
+                  onClick={() => onSetOut(current)}
+                  className="min-h-11 rounded-lg border border-orange-300/40 bg-orange-200/10 px-3 text-[10px] font-black text-orange-100 disabled:opacity-45"
+                >
+                  Mark Out · {formatClock(current)}
+                </button>
+                <button
+                  type="button"
+                  disabled={!validRange}
+                  onClick={() =>
+                    validRange ? onPlayRange(inPoint, outPoint) : undefined
+                  }
+                  className="min-h-11 rounded-lg bg-white px-3 text-[10px] font-black text-[#201e1b] disabled:opacity-35"
+                >
+                  Play selected range
+                </button>
+                <button
+                  type="button"
+                  disabled={!canWrite || pending || effectiveDuration <= 0}
+                  onClick={() => onUseFullRange(effectiveDuration)}
+                  className="min-h-11 rounded-lg border border-white/20 px-3 text-[10px] font-black text-white disabled:opacity-35"
+                >
+                  Use full take
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !canWrite ||
+                    pending ||
+                    (inPoint === null && outPoint === null)
+                  }
+                  onClick={onClearRange}
+                  className="min-h-11 rounded-lg border border-white/20 px-3 text-[10px] font-black text-white disabled:opacity-35"
+                >
+                  Clear range
+                </button>
+              </div>
+            </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
               <p className="rounded-xl border border-white/10 bg-white/5 p-3 text-[10px] font-bold">
                 <span className="block uppercase text-[#d8bd91]">Average</span>
@@ -3526,11 +3630,34 @@ export function SourceStoryClient({
               audioNavigation={selectedAudioNavigation}
               durationSeconds={selectedViewerSource.duration ?? 0}
               playbackSeconds={playbackSeconds}
+              inPoint={inPoint}
+              outPoint={outPoint}
               canWrite={canWrite}
               pending={pending}
               sourceRevisionId={selectedViewerSource.sourceRevisionId}
               sourceLabel={selectedViewerSource.filename}
               onSeek={seekSelectedSource}
+              onSetIn={setInPoint}
+              onSetOut={setOutPoint}
+              onUseFullRange={(durationSeconds) => {
+                setInPoint(0);
+                setOutPoint(durationSeconds);
+              }}
+              onClearRange={() => {
+                playbackBoundaryRef.current = null;
+                setInPoint(null);
+                setOutPoint(null);
+              }}
+              onPlayRange={(startSeconds, endSeconds) => {
+                const media = mediaRef.current;
+                if (!media) return;
+                playbackBoundaryRef.current = endSeconds;
+                media.currentTime = startSeconds;
+                setPlaybackSeconds(startSeconds);
+                void media.play().catch(() => {
+                  playbackBoundaryRef.current = null;
+                });
+              }}
               onRequestAudio={(sourceRevisionId, label, retryFailed) => {
                 void requestAudioNavigation(
                   sourceRevisionId,
