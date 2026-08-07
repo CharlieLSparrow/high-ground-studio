@@ -1710,7 +1710,6 @@ export async function openStoryBoardSectionWriting(input: {
       where: {
         boardId: value.boardId,
         key: value.sectionKey,
-        archivedAt: null,
         board: { projectId: value.projectId, archivedAt: null },
       },
       include: {
@@ -1741,6 +1740,7 @@ export async function openStoryBoardSectionWriting(input: {
       return { section: { ...section, revision: replay.revision, document }, document, replayed: true };
     }
 
+    if (section.archivedAt) throw new SourceStoryContractError("section-project-mismatch", "That story section is unavailable in this Nest.");
     if (section.document) return { section, document: section.document, replayed: true };
     if (section.revision !== value.expectedRevision) {
       throw new SourceStoryConflictError("stale-section", "This story section changed on another surface.", section.revision);

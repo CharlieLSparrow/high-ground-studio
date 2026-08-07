@@ -1050,7 +1050,8 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     };
     await expect(updateStoryBoardSection({ prisma, actorUserId, value: updateValue })).resolves.toMatchObject({ replayed: false, section: { revision: 2, title: updateValue.title } });
     await expect(updateStoryBoardSection({ prisma, actorUserId, value: updateValue })).resolves.toMatchObject({ replayed: true, section: { revision: 2 } });
-    const writing = await openStoryBoardSectionWriting({ prisma, actorUserId, actorEmail, value: { projectId, boardId, sectionKey: created.section.key, expectedRevision: 2, clientRequestId: randomUUID() } });
+    const writingRequestId = randomUUID();
+    const writing = await openStoryBoardSectionWriting({ prisma, actorUserId, actorEmail, value: { projectId, boardId, sectionKey: created.section.key, expectedRevision: 2, clientRequestId: writingRequestId } });
     expect(writing).toMatchObject({ replayed: false, section: { revision: 3 }, document: { id: expect.any(String) } });
 
     const beforeOrder = (await readSourceStoryWorkspace(prisma, projectId)).boards.find((board) => board.id === boardId)!;
@@ -1087,6 +1088,8 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     const archiveValue = { projectId, boardId, sectionId: created.section.id, expectedBoardRevision: 8, expectedSectionRevision: 3, clientRequestId: archiveRequestId };
     await expect(archiveStoryBoardSection({ prisma, actorUserId, value: archiveValue })).resolves.toMatchObject({ boardRevision: 9, sectionRevision: 4, replayed: false });
     await expect(archiveStoryBoardSection({ prisma, actorUserId, value: archiveValue })).resolves.toMatchObject({ boardRevision: 9, replayed: true });
+    await expect(openStoryBoardSectionWriting({ prisma, actorUserId, actorEmail, value: { projectId, boardId, sectionKey: created.section.key, expectedRevision: 2, clientRequestId: writingRequestId } })).resolves.toMatchObject({ replayed: true, document: { id: writing.document.id } });
+    await expect(openStoryBoardSectionWriting({ prisma, actorUserId, actorEmail, value: { projectId, boardId, sectionKey: created.section.key, expectedRevision: 4, clientRequestId: randomUUID() } })).rejects.toMatchObject({ code: "section-project-mismatch" });
     const [archived, retainedDocument, finalBoard] = await Promise.all([
       prisma.studioStoryBoardSection.findUniqueOrThrow({ where: { id: created.section.id }, include: { operations: { orderBy: { revision: "asc" } } } }),
       prisma.studioDocument.findUnique({ where: { id: writing.document.id } }),
