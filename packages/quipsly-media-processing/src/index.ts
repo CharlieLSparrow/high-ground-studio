@@ -10,6 +10,7 @@ export * from "./spatial-render.js";
 export * from "./external-source-proxy.js";
 export * from "./source-visual-overview.js";
 export * from "./source-audio-navigation.js";
+export * from "./google-drive-source-materialization.js";
 export * from "./audio-diagnosis-evaluation.js";
 export * from "./audio-signal-diagnosis.js";
 export * from "./audio-signal-profile.js";

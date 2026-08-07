@@ -22,10 +22,7 @@ const stateHelper = readFileSync(stateHelperPath, "utf8");
 const up = readFileSync(upPath, "utf8");
 const down = readFileSync(downPath, "utf8");
 const doctor = readFileSync(doctorPath, "utf8");
-const generatedMobileDogfood = readFileSync(
-  generatedMobileDogfoodPath,
-  "utf8",
-);
+const generatedMobileDogfood = readFileSync(generatedMobileDogfoodPath, "utf8");
 const captureAuthManager = readFileSync(
   fileURLToPath(
     new URL(
@@ -68,7 +65,10 @@ const localMediaWorkerStores = [
   filename,
   source: readFileSync(
     fileURLToPath(
-      new URL(`../../apps/quipsly-media-processor/src/${filename}`, import.meta.url),
+      new URL(
+        `../../apps/quipsly-media-processor/src/${filename}`,
+        import.meta.url,
+      ),
     ),
     "utf8",
   ),
@@ -83,18 +83,12 @@ test("machine-wide services use machine-wide ownership state", () => {
     assert.match(script, /source "\$\{script_dir\}\/quipsly-local-state\.sh"/);
     assert.match(script, /state_dir="?\$\(quipsly_local_state_dir\)"?/);
   }
-  assert.match(
-    up,
-    /QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio/,
-  );
+  assert.match(up, /QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio/);
   assert.match(
     up,
     /compose --project-name "\$\{compose_project\}" up -d postgres/,
   );
-  assert.match(
-    quipslyPackageJson,
-    /"dev": "next dev --webpack"/,
-  );
+  assert.match(quipslyPackageJson, /"dev": "next dev --webpack"/);
   assert.match(
     quipslyPackageJson,
     /"build": "[^"]*next build --webpack"/,
@@ -113,8 +107,14 @@ test("machine-wide services use machine-wide ownership state", () => {
   assert.match(up, /local-episode-worker\.ts/);
   assert.match(up, /quipsly-local-transcript-worker\.mjs/);
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT/);
-  assert.match(up, /local_capture_vault_root="\$\{QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-\$\{local_media_root\}\/capture-vault\}"/);
-  assert.match(up, /local_capture_upload_origin="\$\{QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-\$\{nest_url\}\}"/);
+  assert.match(
+    up,
+    /local_capture_vault_root="\$\{QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-\$\{local_media_root\}\/capture-vault\}"/,
+  );
+  assert.match(
+    up,
+    /local_capture_upload_origin="\$\{QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-\$\{nest_url\}\}"/,
+  );
   assert.equal(
     up.match(/QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=/g)?.length,
     5,
@@ -194,14 +194,45 @@ test("healthy ports cannot hide another worktree", () => {
   assert.match(doctor, /quipsly_local_process_cwd "\$\{nest_listener\}"/);
 });
 
+test("healthy Nest reloads when its exact application or schema source changes", () => {
+  assert.match(stateHelper, /quipsly_local_git_source_revision/);
+  assert.match(stateHelper, /quipsly_local_nest_source_revision/);
+  assert.match(stateHelper, /apps\/quipsly/);
+  assert.match(stateHelper, /prisma\/schema\.prisma/);
+  assert.match(stateHelper, /packages\/quipsly-media-processing/);
+  assert.match(stateHelper, /hash-object "\$\{local_env_file\}"/);
+  assert.match(up, /recorded_nest_source_revision/);
+  assert.match(
+    up,
+    /recorded_nest_source_revision}" == "\$\{local_nest_source_revision/,
+  );
+  assert.match(up, /RELOAD %-23s source/);
+  assert.match(up, /wait_for_port_release 3012/);
+  assert.match(up, /local_nest_source_revision.*source-revision/s);
+  assert.match(doctor, /Runtime source revision/);
+  assert.match(doctor, /quipsly_local_nest_source_revision/);
+});
+
 test("local workers reload when their executable source fingerprint changes", () => {
   assert.match(up, /local_worker_source_revision/);
-  assert.match(up, /git diff --binary HEAD -- "\$\{worker_source_paths\[@\]\}"/);
+  assert.match(
+    up,
+    /quipsly_local_git_source_revision "\$\{repo_root\}" "\$\{worker_source_paths\[@\]\}"/,
+  );
   assert.match(up, /media-worker\.source-revision/);
   assert.match(up, /transcript-worker\.source-revision/);
-  assert.match(up, /recorded_media_source_revision.*local_worker_source_revision/s);
-  assert.match(up, /recorded_transcript_source_revision.*local_worker_source_revision/s);
-  assert.match(up, /QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID=\$\{local_worker_source_revision\}/);
+  assert.match(
+    up,
+    /recorded_media_source_revision.*local_worker_source_revision/s,
+  );
+  assert.match(
+    up,
+    /recorded_transcript_source_revision.*local_worker_source_revision/s,
+  );
+  assert.match(
+    up,
+    /QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID=\$\{local_worker_source_revision\}/,
+  );
   assert.match(down, /media-worker\.source-revision/);
   assert.match(down, /transcript-worker\.source-revision/);
 });
@@ -212,17 +243,26 @@ test("macOS worker startup waits for launchd readiness instead of racing a fixed
   assert.match(up, /for attempt in \$\(seq 1 40\)/);
   assert.match(up, /wait_for_macos_job_absent "\$\{label\}"/);
   assert.match(up, /refusing to race its replacement/);
-  assert.match(up, /wait_for_macos_job_running "\$\{transcript_worker_label\}"/);
+  assert.match(
+    up,
+    /wait_for_macos_job_running "\$\{transcript_worker_label\}"/,
+  );
   assert.match(up, /wait_for_macos_job_running "\$\{media_worker_label\}"/);
-  assert.doesNotMatch(up, /start_macos_job "transcript-worker"[\s\S]{0,150}sleep 1/);
+  assert.doesNotMatch(
+    up,
+    /start_macos_job "transcript-worker"[\s\S]{0,150}sleep 1/,
+  );
   assert.doesNotMatch(up, /start_macos_job "media-worker"[\s\S]{0,150}sleep 1/);
 });
 
 test("the local lane generates the Prisma client before applying migrations", () => {
-  const generateIndex = up.indexOf('pnpm db:generate');
-  const migrateIndex = up.indexOf('pnpm exec prisma migrate deploy');
+  const generateIndex = up.indexOf("pnpm db:generate");
+  const migrateIndex = up.indexOf("pnpm exec prisma migrate deploy");
 
-  assert.ok(generateIndex >= 0, "local startup must generate the Prisma client");
+  assert.ok(
+    generateIndex >= 0,
+    "local startup must generate the Prisma client",
+  );
   assert.ok(migrateIndex >= 0, "local startup must apply committed migrations");
   assert.ok(
     generateIndex < migrateIndex,
@@ -319,18 +359,12 @@ test("generated mobile dogfood is disposable, secret-safe, and current-source", 
     generatedMobileDogfood,
     /QUIPSLY_BUILD_DIST_DIR="\$\{nest_dist_name\}"/,
   );
-  assert.match(
-    generatedMobileDogfood,
-    /apps\/quipsly\/\.next-mobile-dogfood/,
-  );
+  assert.match(generatedMobileDogfood, /apps\/quipsly\/\.next-mobile-dogfood/);
   assert.match(
     generatedMobileDogfood,
     /shlock -p "\$\$" -f "\$\{dogfood_lock_file\}"/,
   );
-  assert.match(
-    generatedMobileDogfood,
-    /unlink "\$\{dogfood_lock_file\}"/,
-  );
+  assert.match(generatedMobileDogfood, /unlink "\$\{dogfood_lock_file\}"/);
   assert.match(generatedMobileDogfood, /--workflow="\$\{mode\}"/);
   assert.match(generatedMobileDogfood, /--runtime-ui-mode="\$\{mode\}"/);
   assert.match(
@@ -371,5 +405,8 @@ test("generated Capture dogfood resets each operated run without losing same-run
     captureAuthManager,
     /saveKeychainItemForUITest\(account: markerAccount, value: runBinding\)/,
   );
-  assert.match(captureRuntimeRunner, /"runtimeSmokeRunID": uuid\.uuid4\(\)\.hex/);
+  assert.match(
+    captureRuntimeRunner,
+    /"runtimeSmokeRunID": uuid\.uuid4\(\)\.hex/,
+  );
 });

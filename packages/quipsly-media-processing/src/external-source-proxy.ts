@@ -103,21 +103,6 @@ function email(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-export function externalSourceProxyIdentity(input: {
-  projectId: string;
-  sourceRevisionId: string;
-  identitySha256: string;
-  profile?: string;
-}) {
-  return [
-    "external-source-proxy-v1",
-    text(input.projectId),
-    text(input.sourceRevisionId),
-    text(input.identitySha256).toLowerCase(),
-    text(input.profile) || EXTERNAL_SOURCE_PROXY_PROFILE,
-  ].join(":");
-}
-
 export function newExternalSourceProxyJob(input: Omit<ExternalSourceProxyJob, "kind" | "version">) {
   return parseExternalSourceProxyJob({
     kind: EXTERNAL_SOURCE_PROXY_JOB_KIND,

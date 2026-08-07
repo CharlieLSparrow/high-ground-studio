@@ -250,12 +250,28 @@ type SourceStoryWorkspace = {
       contentSha256: string | null;
       sizeBytes: string | null;
       sourceState: string;
+      memberRole: "browse-proxy" | "full-original" | null;
       verifiedAt: string | null;
       durationSeconds: number | null;
       widthPixels: number | null;
       heightPixels: number | null;
       framesPerSecond: number | null;
       collaborationProxy: MediaDerivative | null;
+      exactReplica: null | {
+        id: string;
+        contentSha256: string;
+        sizeBytes: string;
+        mimeType: string;
+        createdAt: string;
+      };
+      materializationJob: null | {
+        id: string;
+        status: string;
+        failureCode: string | null;
+        transferredBytes: number | null;
+        totalBytes: number | null;
+        updatedAt: string;
+      };
       proxyJob: null | {
         id: string;
         status: string;
@@ -1273,6 +1289,9 @@ export function SourceStoryClient({
             source.latestSourceRevision?.proxyJob?.status ?? "",
           ) ||
           ["queued", "processing"].includes(
+            source.latestSourceRevision?.materializationJob?.status ?? "",
+          ) ||
+          ["queued", "processing"].includes(
             source.latestSourceRevision?.visualOverviewJob?.status ?? "",
           ) ||
           ["queued", "processing"].includes(
@@ -1780,17 +1799,27 @@ export function SourceStoryClient({
     retryFailed = false,
   ) {
     if (!source.latestSourceRevision) return;
+    const needsDriveMaterialization =
+      source.provider === "google-drive" &&
+      source.latestSourceRevision.memberRole === "browse-proxy" &&
+      !source.latestSourceRevision.exactReplica;
     await mutate(
       {
-        action: "request-external-proxy",
+        action: needsDriveMaterialization
+          ? "prepare-google-drive-source"
+          : "request-external-proxy",
         referenceId: source.id,
         sourceRevisionId: source.latestSourceRevision.id,
         clientRequestId: crypto.randomUUID(),
         retryFailed,
       },
       retryFailed
-        ? `Retrying the verified proxy for ${source.fileName}.`
-        : `Queued a verified proxy for ${source.fileName}.`,
+        ? needsDriveMaterialization
+          ? `Retrying the exact Drive LRV transfer for ${source.fileName}.`
+          : `Retrying the verified proxy for ${source.fileName}.`
+        : needsDriveMaterialization
+          ? "Preparing the exact Drive LRV, then Quipsly will build its lightweight collaboration proxy."
+          : `Queued a verified proxy for ${source.fileName}.`,
     );
   }
 
@@ -2576,6 +2605,8 @@ export function SourceStoryClient({
                           ? chooseExternalSource(item.id)
                           : chooseAsset(item.id);
                     const job = externalSource?.latestSourceRevision?.proxyJob;
+                    const materializationJob =
+                      externalSource?.latestSourceRevision?.materializationJob;
                     const visualRevision =
                       sourceSet?.sourceClockRevision ??
                       externalSource?.latestSourceRevision ??
@@ -2753,8 +2784,41 @@ export function SourceStoryClient({
                         {externalSource &&
                         !externalSource.latestSourceRevision
                           ?.collaborationProxy ? (
-                          job &&
-                          ["queued", "processing"].includes(job.status) ? (
+                          materializationJob &&
+                          ["queued", "processing"].includes(
+                            materializationJob.status,
+                          ) ? (
+                            <p
+                              role="status"
+                              className="mt-2 flex min-h-11 items-center gap-2 rounded-xl border border-cyan-200 bg-white px-2 text-[9px] font-black text-cyan-950"
+                            >
+                              <Loader2
+                                size={13}
+                                className="animate-spin"
+                                aria-hidden="true"
+                              />
+                              {materializationJob.status === "processing"
+                                ? materializationJob.transferredBytes !==
+                                    null && materializationJob.totalBytes
+                                  ? `Verifying LRV · ${Math.min(100, Math.round((materializationJob.transferredBytes / materializationJob.totalBytes) * 100))}%`
+                                  : "Downloading and verifying LRV…"
+                                : "LRV transfer queued…"}
+                            </p>
+                          ) : materializationJob?.status === "failed" ? (
+                            <button
+                              type="button"
+                              disabled={pending || !canWrite}
+                              onClick={() =>
+                                void requestProxy(externalSource, true)
+                              }
+                              className="mt-2 min-h-11 w-full rounded-xl border border-rose-300 bg-white px-2 text-[9px] font-black text-rose-950 disabled:opacity-45"
+                            >
+                              Retry Drive LRV ·{" "}
+                              {materializationJob.failureCode ??
+                                "transfer failure"}
+                            </button>
+                          ) : job &&
+                            ["queued", "processing"].includes(job.status) ? (
                             <p
                               role="status"
                               className="mt-2 flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-white px-2 text-[9px] font-black text-sky-950"
@@ -2780,7 +2844,10 @@ export function SourceStoryClient({
                               Retry proxy ·{" "}
                               {job.failureCode ?? "worker failure"}
                             </button>
-                          ) : externalSource.provider === "local-file-vault" ? (
+                          ) : externalSource.provider === "local-file-vault" ||
+                            (externalSource.provider === "google-drive" &&
+                              externalSource.latestSourceRevision
+                                ?.exactReplica) ? (
                             <button
                               type="button"
                               disabled={
@@ -2791,7 +2858,24 @@ export function SourceStoryClient({
                               onClick={() => void requestProxy(externalSource)}
                               className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-2 text-[9px] font-black text-white disabled:opacity-45"
                             >
-                              Create browse proxy
+                              {externalSource.provider === "google-drive"
+                                ? "Build from verified LRV"
+                                : "Create browse proxy"}
+                            </button>
+                          ) : externalSource.provider === "google-drive" &&
+                            externalSource.latestSourceRevision?.memberRole ===
+                              "browse-proxy" ? (
+                            <button
+                              type="button"
+                              disabled={
+                                pending ||
+                                !canWrite ||
+                                !externalSource.latestSourceRevision
+                              }
+                              onClick={() => void requestProxy(externalSource)}
+                              className="mt-2 min-h-11 w-full rounded-xl bg-cyan-950 px-2 text-[9px] font-black text-white disabled:opacity-45"
+                            >
+                              Prepare 360 browse copy
                             </button>
                           ) : (
                             <p className="mt-2 text-[9px] font-semibold leading-4 text-[#765f40]">
@@ -2799,6 +2883,16 @@ export function SourceStoryClient({
                               approved provider execution.
                             </p>
                           )
+                        ) : null}
+                        {externalSource?.provider === "google-drive" &&
+                        !externalSource.latestSourceRevision
+                          ?.collaborationProxy ? (
+                          <p className="mt-2 text-[8px] font-semibold leading-4 text-[#765f40]">
+                            {externalSource.latestSourceRevision?.memberRole ===
+                            "browse-proxy"
+                              ? "Only this segment's LRV is cached and verified. Full-resolution INSV originals stay in Drive until conform or export."
+                              : "This full-resolution original stays in Drive until conform or export; use its paired LRV to browse and organize the segment."}
+                          </p>
                         ) : null}
                         {visualRevision &&
                         visualInputReady &&

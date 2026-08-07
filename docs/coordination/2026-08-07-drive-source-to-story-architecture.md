@@ -78,6 +78,56 @@ Drive is an origin vault, not Quipsly's CDN or database.
 
 This can materially reduce Quipsly storage, but Drive API quotas and account storage are separate constraints. Current Drive quota policy is metered in quota units and shared-drive uploads have account limits; treat retries, byte ranges, and change reconciliation as normal product states, not edge cases.
 
+## Exact LRV materialization checkpoint
+
+The first provider-owned execution path is now implemented for selected
+Insta360 browsing members. It intentionally does not stream an INSV original
+through the web editor and does not mislabel a copied LRV as a derivative:
+
+1. Source Room queues one deterministic, revision-bound materialization job
+   only for an equirectangular `browse-proxy` member.
+2. The persistent Mac worker re-resolves the user-owned, verified Drive
+   connection and inspects file ID, head revision, MD5, size, and download
+   capability immediately before transfer.
+3. A stable mode-0600 `.partial` file supports HTTP Range resume. Admission
+   checks enforce a reviewed per-file limit and a configurable free-space
+   reserve before more bytes are accepted.
+4. The worker fsyncs and atomically renames the completed file, computes MD5
+   and SHA-256 locally, and inspects Drive again. Provider drift, checksum
+   disagreement, an escaped cache path, or an identity conflict fails closed.
+5. `StudioMediaSourceReplica` retains the exact-copy receipt separately from
+   `StudioMediaDerivative`. Its locator stays server-only. The source revision
+   becomes SHA-256-bound only in the same transaction that retains the exact
+   replica.
+6. That transaction queues the existing collaboration-proxy worker from the
+   verified local bytes. Source Room projects transfer progress and retry state
+   and says plainly that the LRV is cached while INSV stays in Drive until
+   conform/export.
+
+The current admission policy is bounded but is not yet a global LRU cache. A
+later lifecycle slice must add project pinning, total-cache accounting,
+eviction receipts, and a visible storage manager before Quipsly claims fully
+automatic cache management.
+
+### Real hierarchy and retained operation
+
+Read-only inspection of the user-supplied shared folder confirmed the practical
+economics. One complete three-segment batch contains INSV members of roughly
+29–31 GB and LRV companions of roughly 1.8–1.9 GB. Quipsly can therefore make
+one segment quickly browsable without copying roughly 90 GB of originals.
+Other batch folders were empty or incomplete at inspection time, so folder
+health remains a first-class state rather than an assumed success.
+
+The loopback retained operation used a generated valid video as a fake Drive
+provider boundary—no real Drive source bytes were downloaded. It copied and
+verified 3,676,170 exact bytes, checksum-bound the immutable source revision,
+retained an exact replica, automatically queued the existing FFmpeg path, and
+produced a 121,682-byte fast-start collaboration proxy. Independent readback
+proved the provider fixture unchanged and both retained outputs matched their
+SHA-256 receipts. The operation is repeatable through
+`pnpm quipsly:retained:google-drive-materialization` while the background media
+worker is paused so it cannot race the injected provider.
+
 ## Canonical model boundaries
 
 Names are architectural roles; implementation should map them onto existing Quipsly canonical models where appropriate instead of creating duplicates.

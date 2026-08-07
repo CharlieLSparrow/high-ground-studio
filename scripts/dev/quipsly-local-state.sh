@@ -37,6 +37,71 @@ quipsly_local_process_cwd() {
     head -1
 }
 
+# Fingerprint the exact tracked, modified, and untracked source closure used by
+# a long-running local service. A healthy port and the right cwd do not prove
+# that a process has reloaded the current Prisma client or application source.
+quipsly_local_git_source_revision() {
+  local repo_root="$1"
+  shift
+
+  (
+    cd "${repo_root}"
+    {
+      git rev-parse HEAD
+      git diff --binary HEAD -- "$@"
+      while IFS= read -r -d '' untracked_file; do
+        printf '%s\0' "${untracked_file}"
+        git hash-object "${untracked_file}"
+      done < <(git ls-files -z --others --exclude-standard -- "$@")
+    } | git hash-object --stdin
+  )
+}
+
+quipsly_local_nest_source_revision() {
+  local repo_root="$1"
+  local local_env_file="${2:-}"
+  local source_revision
+  local nest_source_paths=(
+    apps/quipsly
+    packages/content-studio-domain
+    packages/quipsly-capture-verification
+    packages/quipsly-document-kernel
+    packages/quipsly-domain
+    packages/quipsly-media-processing
+    packages/studio-domain
+    prisma/schema.prisma
+    prisma/migrations
+    package.json
+    pnpm-lock.yaml
+    pnpm-workspace.yaml
+    prisma.config.ts
+    scripts/dev/quipsly-local-up.sh
+    scripts/dev/quipsly-local-state.sh
+  )
+
+  source_revision="$(
+    quipsly_local_git_source_revision "${repo_root}" "${nest_source_paths[@]}"
+  )"
+
+  # launchd reads the environment file only when the job starts. Bind its
+  # content and resolved path into the runtime fingerprint without recording
+  # any secret values in lifecycle state or logs.
+  if [[ -n "${local_env_file}" ]]; then
+    {
+      printf '%s\n' "${source_revision}"
+      printf '%s\n' "${local_env_file}"
+      if [[ -r "${local_env_file}" ]]; then
+        git -C "${repo_root}" hash-object "${local_env_file}"
+      else
+        printf '%s\n' "unreadable"
+      fi
+    } | git -C "${repo_root}" hash-object --stdin
+    return
+  fi
+
+  printf '%s\n' "${source_revision}"
+}
+
 quipsly_local_positive_integer() {
   local value="$1"
   local label="$2"

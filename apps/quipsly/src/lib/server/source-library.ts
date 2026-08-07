@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { publicSourceAudioNavigationStatus } from "@/lib/server/source-audio-navigation";
+import { publicGoogleDriveSourceMaterializationJob } from "@/lib/server/google-drive-source-materialization";
 import { publicSourceVisualNavigationFrames } from "@/lib/server/source-visual-overview";
 
 const CURSOR_SCHEMA = "quipsly-source-library-cursor-v1" as const;
@@ -130,11 +131,24 @@ const externalSelect = {
       contentSha256: true,
       sizeBytes: true,
       sourceState: true,
+      projectionJson: true,
       verifiedAt: true,
       durationSeconds: true,
       widthPixels: true,
       heightPixels: true,
       framesPerSecond: true,
+      replicas: {
+        where: { storageProvider: "local-cache", status: "ready" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          contentSha256: true,
+          sizeBytes: true,
+          mimeType: true,
+          createdAt: true,
+        },
+      },
       derivatives: {
         where: {
           kind: { in: ["collaboration-proxy", "source-contact-sheet"] },
@@ -497,6 +511,10 @@ export async function readSourceLibraryPage(input: {
               type: "source-audio-navigation",
               source: "source-story.audio-navigation",
             },
+            {
+              type: "google-drive-source-materialization",
+              source: "source-story.google-drive-materialization",
+            },
           ],
         },
         orderBy: { updatedAt: "desc" },
@@ -534,6 +552,10 @@ export async function readSourceLibraryPage(input: {
     string,
     ReturnType<typeof publicSourceAudioNavigationStatus>
   >();
+  const driveMaterializationBySourceRevisionId = new Map<
+    string,
+    ReturnType<typeof publicGoogleDriveSourceMaterializationJob>
+  >();
   for (const job of sourceJobs) {
     const source = jsonRecord(jsonRecord(job.inputJson)?.source);
     const sourceRevisionId =
@@ -549,6 +571,18 @@ export async function readSourceLibraryPage(input: {
       audioNavigationBySourceRevisionId.set(
         sourceRevisionId,
         publicSourceAudioNavigationStatus(job),
+      );
+      continue;
+    }
+    if (job.type === "google-drive-source-materialization") {
+      if (
+        !revisionIds.includes(sourceRevisionId) ||
+        driveMaterializationBySourceRevisionId.has(sourceRevisionId)
+      )
+        continue;
+      driveMaterializationBySourceRevisionId.set(
+        sourceRevisionId,
+        publicGoogleDriveSourceMaterializationJob(job),
       );
       continue;
     }
@@ -619,6 +653,16 @@ export async function readSourceLibraryPage(input: {
         ? {
             ...revisions[0],
             derivatives: undefined,
+            replicas: undefined,
+            projectionJson: undefined,
+            memberRole:
+              jsonRecord(revisions[0].projectionJson)?.memberRole ===
+              "browse-proxy"
+                ? ("browse-proxy" as const)
+                : jsonRecord(revisions[0].projectionJson)?.memberRole ===
+                    "full-original"
+                  ? ("full-original" as const)
+                  : null,
             sizeBytes: revisions[0].sizeBytes?.toString() ?? null,
             verifiedAt: revisions[0].verifiedAt?.toISOString() ?? null,
             collaborationProxy: publicDerivative(
@@ -632,6 +676,18 @@ export async function readSourceLibraryPage(input: {
               ),
             ),
             proxyJob: proxyJobBySourceRevisionId.get(revisions[0].id) ?? null,
+            exactReplica: revisions[0].replicas[0]
+              ? {
+                  id: revisions[0].replicas[0].id,
+                  contentSha256: revisions[0].replicas[0].contentSha256,
+                  sizeBytes: revisions[0].replicas[0].sizeBytes.toString(),
+                  mimeType: revisions[0].replicas[0].mimeType,
+                  createdAt: revisions[0].replicas[0].createdAt.toISOString(),
+                }
+              : null,
+            materializationJob:
+              driveMaterializationBySourceRevisionId.get(revisions[0].id) ??
+              null,
             visualOverviewJob:
               visualJobBySourceRevisionId.get(revisions[0].id) ?? null,
             audioNavigation:

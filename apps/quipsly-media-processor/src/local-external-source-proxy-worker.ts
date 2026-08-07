@@ -198,7 +198,7 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
           SELECT "id", "inputJson", "resultJson"
           FROM "StudioWorkflowJob"
           WHERE "type"=$1 AND "source"=$2
-            AND "inputJson"->'source'->>'provider'='local-file-vault'
+            AND "inputJson"->'source'->>'provider' IN ('local-file-vault','google-drive')
             AND ("status"='queued' OR ("status"='processing' AND "updatedAt" < timezone('UTC', $3::timestamptz)))
           ORDER BY "priority" ASC, "createdAt" ASC
           FOR UPDATE SKIP LOCKED LIMIT 1
@@ -243,9 +243,15 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
       text: `
         SELECT r."projectId", r."id" AS "referenceId", r."provider", r."accessState", r."capabilityState",
                r."providerLocatorJson", s."id" AS "sourceRevisionId", s."revisionKey", s."identitySha256",
-               s."contentSha256", s."sizeBytes"
+               s."contentSha256", s."sizeBytes", replica."locator" AS "replicaLocator"
         FROM "StudioMediaSourceRevision" s
         JOIN "StudioExternalMediaReference" r ON r."id"=s."externalReferenceId"
+        LEFT JOIN LATERAL (
+          SELECT "locator"
+          FROM "StudioMediaSourceReplica"
+          WHERE "sourceRevisionId"=s."id" AND "storageProvider"='local-cache' AND "status"='ready'
+          ORDER BY "createdAt" DESC LIMIT 1
+        ) replica ON TRUE
         WHERE s."id"=$1 AND r."id"=$2 AND s."projectId"=$3
       `,
       values: [job.source.sourceRevisionId, job.source.externalReferenceId, job.projectId],
@@ -254,7 +260,14 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
     if (!row) throw new ExternalProxyTerminalError("external-proxy-source-revision-missing", "The exact source revision no longer exists.");
     const locator = asRecord(row.providerLocatorJson);
     return {
-      path: typeof locator.localPath === "string" ? locator.localPath : "",
+      path:
+        row.provider === "google-drive"
+          ? typeof row.replicaLocator === "string"
+            ? row.replicaLocator
+            : ""
+          : typeof locator.localPath === "string"
+            ? locator.localPath
+            : "",
       projectId: row.projectId,
       referenceId: row.referenceId,
       sourceRevisionId: row.sourceRevisionId,

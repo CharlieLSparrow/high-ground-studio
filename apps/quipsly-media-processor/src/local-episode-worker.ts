@@ -72,6 +72,10 @@ import {
   runOneLocalExternalSourceProxyJob,
 } from "./local-external-source-proxy-worker.js";
 import {
+  newLocalGoogleDriveMaterializationRuntime,
+  runOneLocalGoogleDriveMaterializationJob,
+} from "./local-google-drive-source-materialization-worker.js";
+import {
   newLocalSourceVisualOverviewRuntime,
   runOneLocalSourceVisualOverviewJob,
 } from "./local-source-visual-overview-worker.js";
@@ -699,6 +703,14 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const googleDriveMaterialization =
+    newLocalGoogleDriveMaterializationRuntime({
+      pool,
+      executionId,
+      localMediaRoot,
+      leaseMs: options.leaseMs,
+      buildId: options.buildId,
+    });
   const sourceVisualOverview = newLocalSourceVisualOverviewRuntime({
     pool,
     executionId,
@@ -724,11 +736,20 @@ async function main() {
     await presence.heartbeat(new Date(), true);
     do {
       await presence.heartbeat();
-      const externalProxyResult = await runOneLocalExternalSourceProxyJob(
-        externalSourceProxy.store,
-        externalSourceProxy.transcoder,
-        externalSourceProxy.options,
-      );
+      const driveMaterializationResult =
+        await runOneLocalGoogleDriveMaterializationJob(
+          googleDriveMaterialization.store,
+          googleDriveMaterialization.provider,
+          googleDriveMaterialization.options,
+        );
+      const externalProxyResult =
+        driveMaterializationResult.disposition === "idle"
+          ? await runOneLocalExternalSourceProxyJob(
+              externalSourceProxy.store,
+              externalSourceProxy.transcoder,
+              externalSourceProxy.options,
+            )
+          : driveMaterializationResult;
       const visualOverviewResult =
         externalProxyResult.disposition === "idle"
           ? await runOneLocalSourceVisualOverviewJob(

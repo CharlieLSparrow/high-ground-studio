@@ -164,6 +164,21 @@ else
   failed=1
 fi
 
+recorded_nest_source_revision="$(sed -n '1p' "${state_dir}/source-revision" 2>/dev/null || true)"
+recorded_nest_env_file="$(sed -n '1p' "${state_dir}/nest-env-path" 2>/dev/null || true)"
+current_nest_source_revision="$(
+  quipsly_local_nest_source_revision "${repo_root}" "${recorded_nest_env_file}"
+)"
+if [[ "${recorded_nest_source_revision}" == "${current_nest_source_revision}" ]]; then
+  printf "PASS  %-24s %s\n" "Runtime source revision" "${current_nest_source_revision}"
+else
+  printf "FAIL  %-24s recorded %s, current %s\n" \
+    "Runtime source revision" \
+    "${recorded_nest_source_revision:-none}" \
+    "${current_nest_source_revision}"
+  failed=1
+fi
+
 recorded_repo_root=""
 if [[ -f "${state_dir}/repo-root" ]]; then
   recorded_repo_root="$(sed -n '1p' "${state_dir}/repo-root")"

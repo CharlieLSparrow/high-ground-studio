@@ -142,14 +142,9 @@ worker_source_paths=(
   scripts/dev/quipsly-local-transcript-worker.mjs
   scripts/register-ts-extension-loader.mjs
 )
-local_worker_source_revision="$({
-  git rev-parse HEAD
-  git diff --binary HEAD -- "${worker_source_paths[@]}"
-  while IFS= read -r untracked_worker_file; do
-    printf '%s\n' "${untracked_worker_file}"
-    git hash-object "${untracked_worker_file}"
-  done < <(git ls-files --others --exclude-standard -- "${worker_source_paths[@]}")
-} | git hash-object --stdin)"
+local_worker_source_revision="$(
+  quipsly_local_git_source_revision "${repo_root}" "${worker_source_paths[@]}"
+)"
 umask 077
 mkdir -p "${state_dir}"
 
@@ -171,6 +166,9 @@ elif [[ "$(uname -s)" == "Darwin" ]]; then
   echo "Create apps/quipsly/.env.local or set QUIPSLY_LOCAL_ENV_FILE to an external file." >&2
   exit 1
 fi
+local_nest_source_revision="$(
+  quipsly_local_nest_source_revision "${repo_root}" "${local_env_file}"
+)"
 
 http_status() {
   curl -sS --max-time 3 -o /dev/null -w "%{http_code}" "$1" 2>/dev/null || true
@@ -286,6 +284,9 @@ start_macos_job() {
     if ! wait_for_macos_job_absent "${label}"; then
       echo "launchd did not finish removing ${label}; refusing to race its replacement." >&2
       return 1
+    fi
+    if [[ "${name}" == "nest" ]]; then
+      wait_for_port_release 3012 "${label}"
     fi
   fi
 
@@ -506,7 +507,28 @@ if [[ "${nest_status}" == "200" && "${login_status}" == "200" ]]; then
     echo "Run '$0 --replace' to replace the exact Quipsly launchd jobs with this worktree." >&2
     exit 1
   fi
-  printf "REUSE %-24s %s  source %s\n" "Quipsly Nest" "${nest_url}" "${nest_cwd}"
+  recorded_nest_source_revision="$(sed -n '1p' "${state_dir}/source-revision" 2>/dev/null || true)"
+  if [[ "${recorded_nest_source_revision}" == "${local_nest_source_revision}" ]]; then
+    printf "REUSE %-24s %s  source %s\n" "Quipsly Nest" "${nest_url}" "${nest_cwd}"
+  elif [[ "$(uname -s)" == "Darwin" ]] \
+    && launchctl_job_exists "${nest_label}" \
+    && [[ "$(sed -n '1p' "${state_dir}/nest.label" 2>/dev/null || true)" == "${nest_label}" ]]; then
+    printf "RELOAD %-23s source %s -> %s\n" \
+      "Quipsly Nest" \
+      "${recorded_nest_source_revision:-unknown}" \
+      "${local_nest_source_revision}"
+    start_macos_job "nest" "${nest_label}" "--run-nest"
+    wait_for_http "Nest health" "${nest_url%/}/api/health" "200" "${state_dir}/nest.log"
+    wait_for_http \
+      "Nest signed-out shell" \
+      "${nest_url%/}/login?callbackUrl=%2Fprojects" \
+      "200" \
+      "${state_dir}/nest.log"
+  else
+    echo "A healthy Nest is serving stale source and is not an exact launcher-owned macOS job." >&2
+    echo "Run 'pnpm quipsly:local:down' and then rerun this command to reload it safely." >&2
+    exit 1
+  fi
 else
   nest_listener="$(quipsly_local_port_listener_pid 3012)"
   if [[ -n "${nest_listener}" ]]; then
@@ -552,7 +574,7 @@ wait_for_http \
   "${state_dir}/nest.log"
 
 printf "%s\n" "${repo_root}" >"${state_dir}/repo-root"
-git rev-parse HEAD >"${state_dir}/source-revision"
+printf "%s\n" "${local_nest_source_revision}" >"${state_dir}/source-revision"
 if [[ -n "${local_env_file}" ]]; then
   printf "%s\n" "${local_env_file}" >"${state_dir}/nest-env-path"
 fi

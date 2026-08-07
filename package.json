@@ -127,6 +127,7 @@
     "quipsly:studio-transcript:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-studio-source-transcript.test.mjs",
     "quipsly:retained:studio-transcript": "QUIPSLY_RETAINED_STUDIO_TRANSCRIPT_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-studio-source-transcript-operation.mjs",
     "quipsly:retained:external-media-source": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-external-media-source-operation.mjs",
+    "quipsly:retained:google-drive-materialization": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-google-drive-materialization-operation.mjs",
     "quipsly:retained:insta360-source-story": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-insta360-source-story-operation.mjs",
     "quipsly:retained:story-binder": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-story-binder-operation.mjs",
     "quipsly:retained:source-visual-overview": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-source-visual-overview-operation.mjs",

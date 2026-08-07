@@ -884,6 +884,7 @@ model User {
   mediaProviderConnections          StudioMediaProviderConnection[]             @relation("StudioMediaProviderConnectionUser")
   mediaProviderOperationsAuthored   StudioMediaProviderConnectionOperation[]    @relation("StudioMediaProviderConnectionOperationActor")
   mediaSourceRevisionsCreated       StudioMediaSourceRevision[]                 @relation("StudioMediaSourceRevisionCreatedBy")
+  mediaSourceReplicasCreated        StudioMediaSourceReplica[]                  @relation("StudioMediaSourceReplicaCreatedBy")
   mediaSourceSetsCreated            StudioMediaSourceSet[]                      @relation("StudioMediaSourceSetCreatedBy")
   sourceRangesCreated               StudioSourceRange[]                         @relation("StudioSourceRangeCreatedBy")
   storyCardsCreated                 StudioStoryCard[]                           @relation("StudioStoryCardCreatedBy")
@@ -3918,6 +3919,7 @@ model StudioProject {
   sourceAnnotationUses          StudioSourceAnnotationUse[]
   externalMediaReferences       StudioExternalMediaReference[]
   mediaSourceRevisions          StudioMediaSourceRevision[]
+  mediaSourceReplicas           StudioMediaSourceReplica[]
   mediaSourceSets               StudioMediaSourceSet[]
   sourceRanges                  StudioSourceRange[]
   storyCards                    StudioStoryCard[]
@@ -4950,6 +4952,7 @@ model StudioMediaSourceRevision {
   createdBy          User                          @relation("StudioMediaSourceRevisionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   ranges             StudioSourceRange[]
   derivatives        StudioMediaDerivative[]
+  replicas           StudioMediaSourceReplica[]
   sourceSetMembers   StudioMediaSourceSetMember[]  @relation("StudioMediaSourceSetMemberRevision")
   clockForSourceSets StudioMediaSourceSet[]        @relation("StudioMediaSourceSetClockRevision")
 
@@ -5045,6 +5048,38 @@ model StudioMediaDerivative {
 
   @@unique([sourceRevisionId, kind, profile, generation])
   @@index([projectId, kind, createdAt])
+  @@index([sourceRevisionId, status, createdAt])
+}
+
+// An exact, checksum-verified byte replica of one immutable external source
+// revision. This is intentionally separate from a derivative: an LRV copied
+// from Drive remains the same provider bytes, while a collaboration proxy is a
+// new encoded artifact. Locators are server-only and never projected directly.
+model StudioMediaSourceReplica {
+  id               String   @id
+  projectId        String
+  sourceRevisionId String
+  workflowJobId    String   @unique
+  storageProvider  String
+  locator          String   @db.Text
+  generation       String
+  contentSha256    String
+  checksumMd5      String?
+  sizeBytes        BigInt
+  mimeType         String
+  status           String   @default("ready")
+  verificationJson Json     @default("{}")
+  provenanceJson   Json     @default("{}")
+  createdByUserId  String
+  createdAt        DateTime @default(now())
+
+  project        StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceRevision StudioMediaSourceRevision @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+  workflowJob    StudioWorkflowJob         @relation(fields: [workflowJobId], references: [id], onDelete: Restrict)
+  createdBy      User                      @relation("StudioMediaSourceReplicaCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceRevisionId, storageProvider, generation])
+  @@index([projectId, status, createdAt])
   @@index([sourceRevisionId, status, createdAt])
 }
 
@@ -5921,11 +5956,12 @@ model StudioWorkflowJob {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  project         StudioProject?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  asset           StudioMediaAsset?      @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  productionRoom  StudioProductionRoom?  @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
-  outputPacket    StudioOutputPacket?    @relation(fields: [outputPacketId], references: [id], onDelete: SetNull)
-  mediaDerivative StudioMediaDerivative?
+  project            StudioProject?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  asset              StudioMediaAsset?         @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  productionRoom     StudioProductionRoom?     @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
+  outputPacket       StudioOutputPacket?       @relation(fields: [outputPacketId], references: [id], onDelete: SetNull)
+  mediaDerivative    StudioMediaDerivative?
+  mediaSourceReplica StudioMediaSourceReplica?
 
   @@index([projectId, status, createdAt])
   @@index([assetId, status])

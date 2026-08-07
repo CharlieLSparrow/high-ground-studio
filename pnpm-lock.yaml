@@ -902,6 +902,9 @@ importers:
 
   packages/quipsly-media-processing:
     devDependencies:
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2

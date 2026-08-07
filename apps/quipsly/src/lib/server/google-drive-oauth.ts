@@ -1,13 +1,17 @@
 import "server-only";
 
 import {
-  createCipheriv,
-  createDecipheriv,
   createHash,
   createHmac,
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
+
+import {
+  decryptGoogleDriveRefreshCredential,
+  encryptGoogleDriveRefreshCredential,
+  refreshGoogleDriveWorkerAccessToken,
+} from "@high-ground/quipsly-media-processing/google-drive-provider-credential";
 
 import { resolveCalendarPublicOrigin } from "@/lib/server/calendar-public-origin";
 
@@ -270,34 +274,13 @@ export function googleDriveProviderAccountKey(subject: string) {
   return `google-drive:${createHash("sha256").update(subject).digest("hex")}`;
 }
 
-const TOKEN_AAD = Buffer.from("quipsly-google-drive-refresh-token-v1", "utf8");
-
 export function encryptGoogleDriveRefreshToken(refreshToken: string, key: Buffer) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  cipher.setAAD(TOKEN_AAD);
-  const ciphertext = Buffer.concat([
-    cipher.update(JSON.stringify({ version: 1, refreshToken }), "utf8"),
-    cipher.final(),
-  ]);
-  return ["drive-v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), ciphertext.toString("base64url")].join(".");
+  return encryptGoogleDriveRefreshCredential(refreshToken, key);
 }
 
 export function decryptGoogleDriveRefreshToken(payload: string, key: Buffer) {
-  const [version, iv, tag, ciphertext, ...remainder] = payload.split(".");
-  if (version !== "drive-v1" || !iv || !tag || !ciphertext || remainder.length) {
-    throw new GoogleDriveOAuthError("The saved Google Drive credential could not be read.", "invalid-encrypted-credential", 503);
-  }
   try {
-    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64url"));
-    decipher.setAAD(TOKEN_AAD);
-    decipher.setAuthTag(Buffer.from(tag, "base64url"));
-    const decoded = JSON.parse(Buffer.concat([
-      decipher.update(Buffer.from(ciphertext, "base64url")),
-      decipher.final(),
-    ]).toString("utf8")) as { version?: number; refreshToken?: string };
-    if (decoded.version !== 1 || !decoded.refreshToken) throw new Error("invalid");
-    return decoded.refreshToken;
+    return decryptGoogleDriveRefreshCredential(payload, key);
   } catch {
     throw new GoogleDriveOAuthError("The saved Google Drive credential could not be read.", "invalid-encrypted-credential", 503);
   }
@@ -307,17 +290,23 @@ export async function refreshGoogleDriveAccess(input: {
   refreshToken: string;
   config: GoogleDriveOAuthConfig;
 }) {
-  const token = await googleJson<{ access_token: string; expires_in?: number }>("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      refresh_token: input.refreshToken,
-      client_id: input.config.clientId,
-      client_secret: input.config.clientSecret,
-      grant_type: "refresh_token",
-    }),
-  });
-  return { accessToken: token.access_token, expiresIn: token.expires_in ?? 3_600 };
+  try {
+    return await refreshGoogleDriveWorkerAccessToken({
+      refreshToken: input.refreshToken,
+      clientId: input.config.clientId,
+      clientSecret: input.config.clientSecret,
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "";
+    const invalidGrant = detail.includes("invalid_grant");
+    throw new GoogleDriveOAuthError(
+      invalidGrant
+        ? "Google Drive access expired or was revoked. Connect it again."
+        : "Google Drive could not verify the connection.",
+      invalidGrant ? "invalid_grant" : "drive-token-refresh-failed",
+      invalidGrant ? 409 : 502,
+    );
+  }
 }
 
 export async function revokeGoogleDriveToken(token: string) {

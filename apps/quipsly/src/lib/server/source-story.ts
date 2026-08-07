@@ -50,6 +50,7 @@ import {
   type UpdateStoryBoardSectionInput,
 } from "@/lib/source-story-contract";
 import { publicSourceAudioNavigationStatus } from "@/lib/server/source-audio-navigation";
+import { publicGoogleDriveSourceMaterializationJob } from "@/lib/server/google-drive-source-materialization";
 import { publicSourceVisualNavigationFrames } from "@/lib/server/source-visual-overview";
 
 type Database = PrismaClient | Prisma.TransactionClient;
@@ -3260,6 +3261,7 @@ export async function readSourceStoryWorkspace(
     cards,
     externalSources,
     externalProxyJobs,
+    driveMaterializationJobs,
     sourceVisualJobs,
     sourceSets,
     episodes,
@@ -3460,11 +3462,24 @@ export async function readSourceStoryWorkspace(
             contentSha256: true,
             sizeBytes: true,
             sourceState: true,
+            projectionJson: true,
             verifiedAt: true,
             durationSeconds: true,
             widthPixels: true,
             heightPixels: true,
             framesPerSecond: true,
+            replicas: {
+              where: { storageProvider: "local-cache", status: "ready" },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: {
+                id: true,
+                contentSha256: true,
+                sizeBytes: true,
+                mimeType: true,
+                createdAt: true,
+              },
+            },
             derivatives: {
               where: {
                 kind: { in: ["collaboration-proxy", "source-contact-sheet"] },
@@ -3483,6 +3498,23 @@ export async function readSourceStoryWorkspace(
         projectId,
         type: "external-source-proxy",
         source: "source-story.external-proxy",
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 320,
+      select: {
+        id: true,
+        status: true,
+        inputJson: true,
+        resultJson: true,
+        error: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.studioWorkflowJob.findMany({
+      where: {
+        projectId,
+        type: "google-drive-source-materialization",
+        source: "source-story.google-drive-materialization",
       },
       orderBy: { updatedAt: "desc" },
       take: 320,
@@ -3721,6 +3753,27 @@ export async function readSourceStoryWorkspace(
       updatedAt: job.updatedAt.toISOString(),
     });
   }
+  const driveMaterializationBySourceRevisionId = new Map<
+    string,
+    ReturnType<typeof publicGoogleDriveSourceMaterializationJob>
+  >();
+  for (const job of driveMaterializationJobs) {
+    const manifest = jsonRecord(job.inputJson);
+    const source = jsonRecord(manifest?.source);
+    const sourceRevisionId =
+      typeof source?.sourceRevisionId === "string"
+        ? source.sourceRevisionId
+        : "";
+    if (
+      !sourceRevisionId ||
+      driveMaterializationBySourceRevisionId.has(sourceRevisionId)
+    )
+      continue;
+    driveMaterializationBySourceRevisionId.set(
+      sourceRevisionId,
+      publicGoogleDriveSourceMaterializationJob(job),
+    );
+  }
   const visualJobBySourceRevisionId = new Map<
     string,
     {
@@ -3933,6 +3986,16 @@ export async function readSourceStoryWorkspace(
         ? {
             ...revisions[0],
             derivatives: undefined,
+            replicas: undefined,
+            projectionJson: undefined,
+            memberRole:
+              jsonRecord(revisions[0].projectionJson)?.memberRole ===
+              "browse-proxy"
+                ? ("browse-proxy" as const)
+                : jsonRecord(revisions[0].projectionJson)?.memberRole ===
+                    "full-original"
+                  ? ("full-original" as const)
+                  : null,
             sizeBytes: revisions[0].sizeBytes?.toString() ?? null,
             verifiedAt: revisions[0].verifiedAt?.toISOString() ?? null,
             collaborationProxy: publicDerivative(
@@ -3946,6 +4009,18 @@ export async function readSourceStoryWorkspace(
               ),
             ),
             proxyJob: jobBySourceRevisionId.get(revisions[0].id) ?? null,
+            exactReplica: revisions[0].replicas[0]
+              ? {
+                  id: revisions[0].replicas[0].id,
+                  contentSha256: revisions[0].replicas[0].contentSha256,
+                  sizeBytes: revisions[0].replicas[0].sizeBytes.toString(),
+                  mimeType: revisions[0].replicas[0].mimeType,
+                  createdAt: revisions[0].replicas[0].createdAt.toISOString(),
+                }
+              : null,
+            materializationJob:
+              driveMaterializationBySourceRevisionId.get(revisions[0].id) ??
+              null,
             visualOverviewJob:
               visualJobBySourceRevisionId.get(revisions[0].id) ?? null,
             audioNavigation:

@@ -1,13 +1,16 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
-
 import {
   EXTERNAL_SOURCE_PROXY_PROFILE,
-  externalSourceProxyIdentity,
   newExternalSourceProxyJob,
   parseExternalSourceProxyJob,
 } from "@high-ground/quipsly-media-processing";
+import {
+  buildExternalSourceProxyTargetLocator,
+  externalSourceProxyDerivativeId,
+  externalSourceProxyIdentity,
+  externalSourceProxyJobId,
+} from "@high-ground/quipsly-media-processing/external-source-proxy-identity";
 import type { PrismaClient } from "@prisma/client";
 
 export const EXTERNAL_SOURCE_PROXY_JOB_TYPE = "external-source-proxy";
@@ -34,10 +37,6 @@ function requestId(value: unknown) {
     throw new ExternalSourceProxyRequestError("invalid-request-id", "The request identity must be a UUID.");
   }
   return result;
-}
-
-function deterministicId(prefix: string, identity: string) {
-  return `${prefix}_${createHash("sha256").update(identity).digest("hex").slice(0, 48)}`;
 }
 
 function safeNumber(value: bigint | null) {
@@ -80,6 +79,11 @@ export async function requestExternalSourceProxy(input: {
         orderBy: { createdAt: "desc" },
         take: 1,
       },
+      replicas: {
+        where: { storageProvider: "local-cache", status: "ready" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
     },
   });
   if (!source?.externalReference) {
@@ -98,7 +102,10 @@ export async function requestExternalSourceProxy(input: {
   if (source.derivatives[0]) {
     return { derivative: source.derivatives[0], job: null, replayed: true, state: "ready" as const };
   }
-  if (reference.provider !== "local-file-vault") {
+  if (
+    reference.provider !== "local-file-vault" &&
+    !(reference.provider === "google-drive" && source.replicas[0])
+  ) {
     throw new ExternalSourceProxyRequestError(
       "provider-executor-unavailable",
       "This source is attached, but its verified proxy executor is not active yet. The original and source identity remain safe.",
@@ -111,14 +118,13 @@ export async function requestExternalSourceProxy(input: {
     sourceRevisionId,
     identitySha256: source.identitySha256,
   });
-  const jobId = deterministicId("xspjob", identity);
-  const derivativeId = deterministicId("xspderivative", identity);
-  const locator = [
-    "source-story",
-    source.project.slug,
+  const jobId = externalSourceProxyJobId(identity);
+  const derivativeId = externalSourceProxyDerivativeId(identity);
+  const locator = buildExternalSourceProxyTargetLocator({
+    projectSlug: source.project.slug,
     sourceRevisionId,
-    `${EXTERNAL_SOURCE_PROXY_PROFILE}-${source.identitySha256.slice(0, 20)}.mp4`,
-  ].join("/");
+    identitySha256: source.identitySha256,
+  });
   const manifest = newExternalSourceProxyJob({
     jobId,
     derivativeId,

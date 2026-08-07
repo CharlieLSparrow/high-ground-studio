@@ -26,6 +26,10 @@ import {
   requestExternalSourceProxy,
 } from "@/lib/server/external-source-proxy";
 import {
+  GoogleDriveSourceMaterializationRequestError,
+  requestGoogleDriveSourceMaterialization,
+} from "@/lib/server/google-drive-source-materialization";
+import {
   SourceVisualOverviewRequestError,
   requestSourceVisualOverview,
 } from "@/lib/server/source-visual-overview";
@@ -186,6 +190,12 @@ function errorResponse(error: unknown) {
       { status: error.status },
     );
   }
+  if (error instanceof GoogleDriveSourceMaterializationRequestError) {
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: error.status },
+    );
+  }
   if (error instanceof SourceVisualOverviewRequestError) {
     return NextResponse.json(
       { error: error.message, errorCode: error.code },
@@ -297,6 +307,17 @@ export async function POST(
       });
     } else if (action === "request-external-proxy") {
       operation = await requestExternalSourceProxy({
+        prisma,
+        projectId: actor.projectId,
+        referenceId: text(body.referenceId),
+        sourceRevisionId: text(body.sourceRevisionId),
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        clientRequestId: text(body.clientRequestId),
+        retryFailed: body.retryFailed === true,
+      });
+    } else if (action === "prepare-google-drive-source") {
+      operation = await requestGoogleDriveSourceMaterialization({
         prisma,
         projectId: actor.projectId,
         referenceId: text(body.referenceId),

@@ -8267,3 +8267,37 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   external-media ledger suite pass. Production remains held until the OAuth
   callback, restricted Picker key/app ID, and protected secrets are configured
   and a real user-selected Drive file is operated end to end.
+
+## 2026-08-07 exact Drive LRV materialization checkpoint
+
+- Added a first-class exact-replica model instead of pretending an unchanged
+  Drive LRV is either an original owned by Quipsly or an encoded derivative.
+  The provider locator stays server-only; the safe projection exposes only
+  ready identity, bytes, generation, progress, and failure state.
+- Source Room now prepares only verified equirectangular `browse-proxy`
+  members. The deterministic job is connection-owner scoped, revision/MD5/size
+  bound, idempotent, explicitly retryable, capped at a reviewed file size, and
+  honest that INSV originals remain in Drive until conform/export.
+- The Mac worker refreshes the encrypted user-owned Drive grant only at
+  execution, rechecks provider metadata before and after a resumable Range
+  transfer, fsyncs and atomically renames the result, computes MD5 and SHA-256,
+  and retains the replica/source checksum plus the downstream collaboration
+  proxy job in one transaction. Provider drift and retained-identity conflicts
+  roll back.
+- Read-only inspection of one real three-segment shared-Drive batch found three
+  INSV files around 29–31 GB and three LRV companions around 1.8–1.9 GB. This
+  validates proxy-first economics without claiming the real files were
+  downloaded.
+- A retained loopback operation exercised the real database stores and FFmpeg
+  worker using a valid generated provider fixture: 3,676,170 exact bytes became
+  a SHA-256-bound replica and a 121,682-byte verified fast-start collaboration
+  proxy, with the provider fixture unchanged. Focused worker tests cover resume
+  and provider drift; PostgreSQL coverage proves deterministic request replay,
+  retry history, cross-account denial, INSV hold, and proxy activation only
+  after exact LRV retention.
+- Remaining execution gates are a signed-in user selecting this shared folder
+  through Quipsly's own Drive OAuth/Picker connection, an interrupted real LRV
+  resume, restart recovery, collaborator playback/range marking, and a later
+  original conform/export. Global cache eviction/pinning is also still open;
+  the present worker provides bounded admission rather than claiming a full
+  lifecycle manager.

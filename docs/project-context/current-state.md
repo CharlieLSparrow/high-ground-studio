@@ -2858,6 +2858,19 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - Focused unit and PostgreSQL integration suites pass, including the real
   multi-segment naming topology, empty/in-progress uploads, library-root
   aggregation, project ownership, idempotent attachment, and package grouping.
-  Drive-to-local proxy materialization and exact-source SHA-256 binding remain
-  the next execution slice; attachment does not claim those expensive bytes
-  were copied or rendered.
+  Drive-to-local LRV materialization and exact-source SHA-256 binding are now
+  implemented through a resumable persistent Mac worker. Full INSV originals
+  remain deferred until conform/export; attachment alone still does not claim
+  any source bytes were copied or rendered.
+- One real three-segment folder read back INSV members around 29–31 GB and LRV
+  companions around 1.8–1.9 GB. Source Room prepares only a selected LRV,
+  exposes durable byte progress and retry, and preserves each segment's own
+  source clock.
+- The new exact `StudioMediaSourceReplica` is distinct from an encoded
+  `StudioMediaDerivative`. Completion requires a second provider inspection,
+  exact MD5/size agreement, local SHA-256, atomic retention, and an immutable
+  conflict readback before the existing collaboration-proxy worker is queued.
+- A retained loopback operation copied and verified a 3,676,170-byte valid
+  fake-provider LRV, then produced a 121,682-byte fast-start collaboration
+  proxy. The source fixture remained unchanged. No real Drive original was
+  downloaded in this proof.
