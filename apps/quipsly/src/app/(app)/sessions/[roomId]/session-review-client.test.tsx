@@ -1610,6 +1610,31 @@ describe("Session review goal candidates", () => {
           deviceModel: "iPhone17,3",
           operatingSystem: "iOS 26.2",
           audioRoute: "Shure MV7i · USBAudio",
+          videoFormat: {
+            requestedQuality: "production-4k-24",
+            intentFulfilled: true,
+            systemPressureAtStart: "nominal",
+            configured: {
+              widthPixels: 3840,
+              heightPixels: 2160,
+              frameRate: 24,
+              codec: "hevc",
+              colorSpace: "P3-D65",
+              orientation: "landscape",
+              cameraPosition: "front",
+              rotationDegrees: 0,
+            },
+            recorded: {
+              videoTrackCount: 1,
+              encodedWidthPixels: 3840,
+              encodedHeightPixels: 2160,
+              presentationWidthPixels: 3840,
+              presentationHeightPixels: 2160,
+              frameRate: 24,
+              codec: "hvc1",
+              rotationDegrees: 0,
+            },
+          },
         },
         processingDisposition: "RELEASED",
         transcriptDisposition: "HELD",
@@ -1631,6 +1656,11 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("Quipsly Capture 1.0 (9)")).toBeInTheDocument();
     expect(screen.getByText("iPhone17,3 · iOS 26.2")).toBeInTheDocument();
     expect(screen.getByText("Shure MV7i · USBAudio")).toBeInTheDocument();
+    expect(screen.getByText("Video source truth")).toBeInTheDocument();
+    expect(screen.getByText("Requested 4K · 24 fps · resolved exactly")).toBeInTheDocument();
+    expect(screen.getByText("Configured 3840×2160 · 24 fps · HEVC · P3-D65")).toBeInTheDocument();
+    expect(screen.getByText("Recorded 3840×2160 · 24 fps · HVC1 · 1 video track")).toBeInTheDocument();
+    expect(screen.getByText("Front camera · Landscape · pressure at Start Nominal")).toBeInTheDocument();
     expect(screen.getByText("4,096 bytes · generation 1742")).toBeInTheDocument();
     expect(screen.getByText(/Phone exports and browser claims are never treated as authority/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download Nest receipt" })).toHaveAttribute(

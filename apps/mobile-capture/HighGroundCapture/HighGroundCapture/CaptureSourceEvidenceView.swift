@@ -95,6 +95,24 @@ struct CaptureSourceEvidenceView: View {
             EvidenceRow(label: "Pause timeline", value: nonempty(recording.sourceProfile?.pauseTimelinePolicy) ?? "Not recorded")
             if recording.effectiveMediaKind == .video {
                 EvidenceRow(label: "Camera", value: nonempty(recording.sourceProfile?.cameraPosition)?.capitalized ?? "Not recorded")
+                EvidenceRow(
+                    label: "Requested video",
+                    value: videoQualityLabel(recording.sourceProfile)
+                )
+                EvidenceRow(
+                    label: "Configured video",
+                    value: configuredVideoLabel(recording.sourceProfile)
+                )
+                EvidenceRow(
+                    label: "Quality intent",
+                    value: videoIntentResult(recording.sourceProfile)
+                )
+                EvidenceRow(
+                    label: "Camera pressure at Start",
+                    value: nonempty(
+                        recording.sourceProfile?.videoSystemPressureAtStart
+                    )?.capitalized ?? "Not preserved"
+                )
                 EvidenceRow(label: "Recorded media", value: recording.recordedVideoProfileLabel ?? "Awaiting full decode evidence")
             }
         }
@@ -709,6 +727,50 @@ struct CaptureSourceEvidenceView: View {
         return pieces.isEmpty ? "Not measured by this capture build" : pieces.joined(separator: " · ")
     }
 
+    private func videoQualityLabel(
+        _ profile: LocalRecordingSourceProfile?
+    ) -> String {
+        switch profile?.requestedVideoQuality {
+        case "production-4k-24": "4K · 24 fps"
+        case "production-4k-30": "4K · 30 fps"
+        case "endurance-1080p-24": "1080p · 24 fps endurance"
+        case let value?: humanizedSignalKind(value)
+        case nil: "Not preserved"
+        }
+    }
+
+    private func configuredVideoLabel(
+        _ profile: LocalRecordingSourceProfile?
+    ) -> String {
+        let dimensions: String? = if let width = profile?.width,
+                                     let height = profile?.height {
+            "\(width)×\(height)"
+        } else {
+            nil
+        }
+        let pieces = [
+            dimensions,
+            profile?.nominalFrameRate.map {
+                "\(Int($0.rounded())) fps"
+            },
+            nonempty(profile?.codec)?.uppercased(),
+            nonempty(profile?.colorSpace),
+        ].compactMap { $0 }
+        return pieces.isEmpty
+            ? "Not preserved"
+            : pieces.joined(separator: " · ")
+    }
+
+    private func videoIntentResult(
+        _ profile: LocalRecordingSourceProfile?
+    ) -> String {
+        switch profile?.videoQualityIntentFulfilled {
+        case true: "Resolved exactly"
+        case false: "Intent not fulfilled · compare configured and recorded evidence"
+        case nil: "Not preserved by this capture build"
+        }
+    }
+
     private func signalMetric(
         _ label: String,
         value: String,
@@ -906,6 +968,17 @@ struct CaptureSourceEvidencePreviewView: View {
                     EvidenceRow(label: "Hardware input", value: "48000 Hz · 1 input channel")
                     EvidenceRow(label: "Pipeline", value: "livekit-local-input-pcm")
                     EvidenceRow(label: "Pause timeline", value: "silence-preserves-wall-clock")
+                }
+
+                previewCard(title: "Video source truth", systemImage: "video.fill") {
+                    EvidenceRow(label: "Requested video", value: "4K · 24 fps")
+                    EvidenceRow(label: "Configured video", value: "3840×2160 · 24 fps · HEVC · P3-D65")
+                    EvidenceRow(label: "Quality intent", value: "Resolved exactly")
+                    EvidenceRow(label: "Camera pressure at Start", value: "Nominal")
+                    EvidenceRow(label: "Recorded media", value: "4K · 24 fps · HEVC · video only")
+                    Text("Preview values demonstrate the video-evidence vocabulary only. A real source compares capture intent and configured format with complete decoded movie evidence without exposing a camera hardware identifier.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 previewCard(title: "Audio visibility", systemImage: "waveform.path.ecg") {

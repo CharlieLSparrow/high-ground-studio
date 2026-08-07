@@ -42,6 +42,16 @@ function fixture(): Parameters<typeof buildSessionSourceEvidence>[0] {
           audioInputDataSourceName: "MV7i microphone",
           container: "mov",
           codec: "hevc",
+          width: 3840,
+          height: 2160,
+          nominalFrameRate: 24,
+          colorSpace: "P3-D65",
+          orientation: "landscape",
+          cameraPosition: "front",
+          captureRotationDegrees: 0,
+          requestedVideoQuality: "production-4k-24",
+          videoQualityIntentFulfilled: true,
+          videoSystemPressureAtStart: "nominal",
           audioSampleRate: 48_000,
           audioChannelCount: 1,
           audioHardwareSampleRate: 48_000,
@@ -49,6 +59,14 @@ function fixture(): Parameters<typeof buildSessionSourceEvidence>[0] {
           audioCapturePipeline: "avcapture-session",
           pauseTimelinePolicy: "continuous-source-clock",
           recordedMedia: {
+            videoTrackCount: 1,
+            videoCodec: "hvc1",
+            encodedWidth: 3840,
+            encodedHeight: 2160,
+            presentationWidth: 3840,
+            presentationHeight: 2160,
+            rotationDegrees: 0,
+            nominalFrameRate: 24,
             audioTrackCount: 1,
             audioSampleRate: 48_000,
             audioChannelCount: 1,
@@ -186,6 +204,31 @@ describe("Session source evidence", () => {
             rmsIsNotLufs: true,
           }),
         }),
+        videoFormat: {
+          requestedQuality: "production-4k-24",
+          intentFulfilled: true,
+          systemPressureAtStart: "nominal",
+          configured: {
+            widthPixels: 3840,
+            heightPixels: 2160,
+            frameRate: 24,
+            codec: "hevc",
+            colorSpace: "P3-D65",
+            orientation: "landscape",
+            cameraPosition: "front",
+            rotationDegrees: 0,
+          },
+          recorded: {
+            videoTrackCount: 1,
+            encodedWidthPixels: 3840,
+            encodedHeightPixels: 2160,
+            presentationWidthPixels: 3840,
+            presentationHeightPixels: 2160,
+            frameRate: 24,
+            codec: "hvc1",
+            rotationDegrees: 0,
+          },
+        },
       },
       processingDisposition: "RELEASED",
       transcriptDisposition: "HELD",
@@ -194,6 +237,35 @@ describe("Session source evidence", () => {
     });
     expect(JSON.stringify(result)).not.toContain("cameraDeviceUniqueID");
     expect(JSON.stringify(result)).not.toContain("actor-private-1");
+  });
+
+  it("does not invent video evidence for an audio-only source", () => {
+    const input = fixture();
+    const profile = (input.recordingAssets[0].localManifestJson as any)
+      .reportedSourceProfile;
+    for (const key of [
+      "width",
+      "height",
+      "nominalFrameRate",
+      "colorSpace",
+      "orientation",
+      "cameraPosition",
+      "captureRotationDegrees",
+      "requestedVideoQuality",
+      "videoQualityIntentFulfilled",
+      "videoSystemPressureAtStart",
+    ]) delete profile[key];
+    profile.recordedMedia.videoTrackCount = 0;
+    delete profile.recordedMedia.videoCodec;
+    delete profile.recordedMedia.encodedWidth;
+    delete profile.recordedMedia.encodedHeight;
+    delete profile.recordedMedia.presentationWidth;
+    delete profile.recordedMedia.presentationHeight;
+    delete profile.recordedMedia.rotationDegrees;
+    delete profile.recordedMedia.nominalFrameRate;
+
+    expect(buildSessionSourceEvidence(input).sources[0].captureRuntime)
+      .not.toHaveProperty("videoFormat");
   });
 
   it("fails closed on immutable checksum drift", () => {

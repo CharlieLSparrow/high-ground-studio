@@ -85,6 +85,15 @@ function humanize(value: string | null | undefined) {
   return (value || "not set").toLowerCase().replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function videoQualityLabel(value: string | null | undefined) {
+  switch (value) {
+    case "production-4k-24": return "4K · 24 fps";
+    case "production-4k-30": return "4K · 30 fps";
+    case "endurance-1080p-24": return "1080p · 24 fps endurance";
+    default: return humanize(value);
+  }
+}
+
 function liveRoomReadinessLabel(preparation: SessionPreparation | null) {
   if (!preparation) return "Provider truth unavailable";
   if (preparation.providerCanJoin) return "Browser + iPhone ready";
@@ -805,6 +814,25 @@ function SessionSourceEvidenceCard({
       audioSampleRate ? `${Math.round(audioSampleRate)} Hz` : null,
       audioChannels ? `${audioChannels} ch` : null,
     ].filter(Boolean).join(" · ") || "Audio format not preserved";
+    const video = source.captureRuntime.videoFormat;
+    const configuredVideoLabel = video ? [
+      video.configured.widthPixels && video.configured.heightPixels
+        ? `${video.configured.widthPixels}×${video.configured.heightPixels}`
+        : null,
+      video.configured.frameRate ? `${video.configured.frameRate} fps` : null,
+      video.configured.codec?.toUpperCase(),
+      video.configured.colorSpace,
+    ].filter(Boolean).join(" · ") || "Configured format not preserved" : null;
+    const recordedVideoLabel = video ? [
+      video.recorded.presentationWidthPixels && video.recorded.presentationHeightPixels
+        ? `${video.recorded.presentationWidthPixels}×${video.recorded.presentationHeightPixels}`
+        : null,
+      video.recorded.frameRate ? `${video.recorded.frameRate} fps` : null,
+      video.recorded.codec?.toUpperCase(),
+      video.recorded.videoTrackCount !== null
+        ? `${video.recorded.videoTrackCount} video track${video.recorded.videoTrackCount === 1 ? "" : "s"}`
+        : null,
+    ].filter(Boolean).join(" · ") || "Decoded movie evidence not preserved" : null;
     return <article key={source.recordingAssetId} className={`rounded-xl border bg-white p-4 ${drift ? "border-rose-300" : verified ? "border-emerald-200" : "border-amber-200"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -818,6 +846,7 @@ function SessionSourceEvidenceCard({
       <dl className="mt-4 grid gap-2 sm:grid-cols-2">
         <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Capture runtime</dt><dd className="mt-1 text-xs font-black text-[#3d3122]">{appLabel}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{[source.captureRuntime.deviceModel, source.captureRuntime.operatingSystem].filter(Boolean).join(" · ") || "Device/OS not preserved"}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{source.captureRuntime.audioRoute || "No captured audio route"}{source.captureRuntime.audioInputDataSource ? ` · ${source.captureRuntime.audioInputDataSource}` : ""}</dd><dd className="mt-1 text-[10px] font-black leading-4 text-sky-800">{audioFormatLabel}</dd></div>
         <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Cloud copy</dt><dd className="mt-1 text-xs font-black text-[#3d3122]">{byteSizeLabel(source.cloud.byteSize)} · generation {source.cloud.generation || "absent"}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{source.cloud.verifiedAt ? `Verified ${new Date(source.cloud.verifiedAt).toLocaleString()}` : "No server verification time"}</dd></div>
+        {video ? <div className="rounded-lg border border-violet-200 bg-violet-50/55 p-3 sm:col-span-2"><dt className="text-[10px] font-black uppercase tracking-wide text-violet-800">Video source truth</dt><dd className="mt-1 text-xs font-black text-[#3d3122]">Requested {videoQualityLabel(video.requestedQuality)} · {video.intentFulfilled === true ? "resolved exactly" : video.intentFulfilled === false ? "intent not fulfilled" : "fulfillment not preserved"}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">Configured {configuredVideoLabel}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">Recorded {recordedVideoLabel}</dd><dd className="mt-1 text-[10px] font-black leading-4 text-violet-800">{humanize(video.configured.cameraPosition)} camera · {humanize(video.configured.orientation)} · pressure at Start {humanize(video.systemPressureAtStart)}</dd><dd className="mt-2 text-[10px] font-semibold leading-4 text-violet-900">Requested and configured settings are capture evidence. Recorded values come from complete movie decoding; neither edits the immutable source.</dd></div> : null}
       </dl>
 
       {audio.signal ? <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs font-bold leading-5 text-sky-950"><p className="font-black uppercase tracking-wide">Complete decoded signal scan · {humanize(audio.signal.status)}</p><p className="mt-1">RMS {audio.signal.rmsDbfs.toFixed(1)} dBFS · peak {audio.signal.samplePeakDbfs.toFixed(1)} dBFS · {audio.signal.clippedFrameCount.toLocaleString()} clipped frames · {(audio.signal.nearSilentFrameFraction * 100).toFixed(1)}% near-silent frames</p><p className="mt-1 text-[10px] text-sky-800">RMS is not LUFS. {audio.signal.observations.length} exact-time signal observation{audio.signal.observations.length === 1 ? "" : "s"} require{audio.signal.observations.length === 1 ? "s" : ""} listening in Transcript review.</p></div> : <p className="mt-3 rounded-lg border border-dashed border-sky-200 bg-white p-3 text-xs font-bold leading-5 text-sky-950">No complete decoded signal scan is attached to this source. Nest does not infer audio health from transcript confidence.</p>}

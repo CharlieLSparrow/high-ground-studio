@@ -1965,6 +1965,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(nestPreviewBoundary.exists)
         XCTAssertTrue(nestPreviewBoundary.label.contains("no network request"))
         XCTAssertTrue(app.staticTexts["Audio visibility"].exists)
+        XCTAssertTrue(app.staticTexts["Video source truth"].exists)
+        XCTAssertTrue(app.staticTexts["4K · 24 fps"].exists)
+        XCTAssertTrue(app.staticTexts["3840×2160 · 24 fps · HEVC · P3-D65"].exists)
+        XCTAssertTrue(app.staticTexts["Camera pressure at Start"].exists)
+        XCTAssertTrue(app.staticTexts["Nominal"].exists)
         XCTAssertTrue(app.staticTexts["RMS"].exists)
         XCTAssertTrue(app.staticTexts["−18.4 dBFS · not LUFS"].exists)
         XCTAssertTrue(

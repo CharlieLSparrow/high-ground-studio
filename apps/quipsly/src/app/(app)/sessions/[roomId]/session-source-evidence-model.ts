@@ -96,6 +96,31 @@ export type SessionSourceEvidence = {
         pauseTimelinePolicy: string | null;
         signal: AudioTranscriptEvidence["audio"]["signal"];
       };
+      videoFormat?: {
+        requestedQuality: string | null;
+        intentFulfilled: boolean | null;
+        systemPressureAtStart: string | null;
+        configured: {
+          widthPixels: number | null;
+          heightPixels: number | null;
+          frameRate: number | null;
+          codec: string | null;
+          colorSpace: string | null;
+          orientation: string | null;
+          cameraPosition: string | null;
+          rotationDegrees: number | null;
+        };
+        recorded: {
+          videoTrackCount: number | null;
+          encodedWidthPixels: number | null;
+          encodedHeightPixels: number | null;
+          presentationWidthPixels: number | null;
+          presentationHeightPixels: number | null;
+          frameRate: number | null;
+          codec: string | null;
+          rotationDegrees: number | null;
+        };
+      };
     };
     processingDisposition: string | null;
     transcriptDisposition: string | null;
@@ -142,6 +167,14 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+function finiteScalar(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function boolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function iso(value: unknown): string | null {
   if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString() : null;
   const normalized = text(value);
@@ -166,6 +199,17 @@ function sourceRuntime(manifest: UnknownRecord) {
   const routeName = text(profile.audioRouteName);
   const routeType = text(profile.audioRoutePortType);
   const recorded = object(profile.recordedMedia);
+  const requestedQuality = text(profile.requestedVideoQuality);
+  const configuredWidth = finiteNumber(profile.width);
+  const configuredHeight = finiteNumber(profile.height);
+  const recordedVideoTrackCount = finiteNumber(recorded.videoTrackCount);
+  const hasVideoEvidence = Boolean(
+    requestedQuality
+    || configuredWidth
+    || configuredHeight
+    || text(profile.cameraPosition)
+    || (recordedVideoTrackCount && recordedVideoTrackCount > 0),
+  );
   return {
     appVersion: text(profile.captureAppVersion),
     appBuild: text(profile.captureAppBuild),
@@ -187,6 +231,33 @@ function sourceRuntime(manifest: UnknownRecord) {
       pauseTimelinePolicy: text(profile.pauseTimelinePolicy),
       signal: parseAudioSignalEvidence(profile.audioSignal),
     },
+    ...(hasVideoEvidence ? {
+      videoFormat: {
+        requestedQuality,
+        intentFulfilled: boolean(profile.videoQualityIntentFulfilled),
+        systemPressureAtStart: text(profile.videoSystemPressureAtStart),
+        configured: {
+          widthPixels: configuredWidth,
+          heightPixels: configuredHeight,
+          frameRate: finiteNumber(profile.nominalFrameRate),
+          codec: text(profile.codec),
+          colorSpace: text(profile.colorSpace),
+          orientation: text(profile.orientation),
+          cameraPosition: text(profile.cameraPosition),
+          rotationDegrees: finiteScalar(profile.captureRotationDegrees),
+        },
+        recorded: {
+          videoTrackCount: recordedVideoTrackCount,
+          encodedWidthPixels: finiteNumber(recorded.encodedWidth),
+          encodedHeightPixels: finiteNumber(recorded.encodedHeight),
+          presentationWidthPixels: finiteNumber(recorded.presentationWidth),
+          presentationHeightPixels: finiteNumber(recorded.presentationHeight),
+          frameRate: finiteNumber(recorded.nominalFrameRate),
+          codec: text(recorded.videoCodec),
+          rotationDegrees: finiteScalar(recorded.rotationDegrees),
+        },
+      },
+    } : {}),
   };
 }
 
