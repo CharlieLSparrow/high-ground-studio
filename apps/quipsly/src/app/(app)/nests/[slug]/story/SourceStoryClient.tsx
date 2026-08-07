@@ -27,6 +27,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { storyCardPurposes, storyCardStatuses } from "@/lib/source-story-contract";
 
+import { GoogleDriveSourcePicker } from "./GoogleDriveSourcePicker";
+
 type Asset = {
   id: string;
   filename: string;
@@ -448,6 +450,7 @@ export function SourceStoryClient({
         <aside className="min-h-[420px] rounded-3xl border border-[#ddccb0] bg-[#fffdf8] p-4 shadow-sm" aria-label="Source library">
           <div className="flex items-center gap-2"><FolderOpen size={18} className="text-[#8a653d]" aria-hidden="true" /><h2 className="font-serif text-xl font-black">Source library</h2></div>
           <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Registered project media. Browsing does not copy, proxy, transcribe, or render anything.</p>
+          <GoogleDriveSourcePicker projectSlug={project.slug} canWrite={canWrite} onAttached={refreshWorkspace} />
           <label className="relative mt-4 block"><span className="sr-only">Search source media</span><Search size={16} className="absolute left-3 top-3.5 text-[#927b5b]" aria-hidden="true" /><input value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Search media…" className="min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white pl-9 pr-3 text-sm font-semibold outline-none focus-visible:ring-4 focus-visible:ring-sky-100" /></label>
           <div className="mt-3 max-h-[68vh] space-y-2 overflow-y-auto pr-1">
             {filteredExternalSources.length ? <div className="pb-1"><p className="mb-2 flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#76522c]"><Cloud size={13} aria-hidden="true" />Connected vault</p>{filteredExternalSources.map((source) => { const health = externalSourceHealth(source.accessState, source.capabilityState); return <article key={source.id} className="mb-2 rounded-2xl border border-teal-200 bg-teal-50/60 p-3"><p className="line-clamp-2 text-sm font-black leading-5">{source.fileName}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-teal-900">{source.provider.replaceAll("-", " ")} · reference r{source.revision}</p><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-full border px-2 py-1 text-[10px] font-black ${health.tone}`}>{health.label}</span><span className="rounded-full border border-teal-200 bg-white px-2 py-1 text-[10px] font-bold text-teal-900">{formatBytes(source.sizeBytes)}</span></div><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">{source.latestSourceRevision ? `${sourceStateLabel(source.latestSourceRevision.sourceState)} · ${source.latestSourceRevision.revisionKey}` : "No immutable provider revision retained yet."}</p><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">External originals are not played directly here. Quipsly needs a verified collaboration proxy before range marking.</p></article>; })}</div> : null}

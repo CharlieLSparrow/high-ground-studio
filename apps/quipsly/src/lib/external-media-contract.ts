@@ -42,6 +42,7 @@ export type AttachVerifiedExternalMediaInput = {
   projectId: string;
   actorUserId: string;
   actorEmail: string;
+  connectionId?: string | null;
   clientRequestId: string;
   expectedReferenceRevision?: number | null;
   operation: "attach" | "refresh";
@@ -135,6 +136,7 @@ export function normalizeAttachVerifiedExternalMediaInput(value: AttachVerifiedE
     projectId: opaqueId(value.projectId, "projectId"),
     actorUserId: opaqueId(value.actorUserId, "actorUserId"),
     actorEmail: text(value.actorEmail, "actorEmail", 320, true).toLowerCase(),
+    connectionId: value.connectionId ? opaqueId(value.connectionId, "connectionId") : null,
     clientRequestId: requestId(value.clientRequestId),
     expectedReferenceRevision,
     operation: value.operation,

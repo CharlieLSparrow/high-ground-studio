@@ -881,6 +881,8 @@ model User {
   storyDraftsReviewed               StoryDraft[]                                @relation("StoryDraftReviewedBy")
   externalMediaReferencesImported   StudioExternalMediaReference[]              @relation("StudioExternalMediaReferenceImportedBy")
   externalMediaOperationsAuthored   StudioExternalMediaReferenceOperation[]     @relation("StudioExternalMediaReferenceOperationActor")
+  mediaProviderConnections          StudioMediaProviderConnection[]             @relation("StudioMediaProviderConnectionUser")
+  mediaProviderOperationsAuthored   StudioMediaProviderConnectionOperation[]    @relation("StudioMediaProviderConnectionOperationActor")
   mediaSourceRevisionsCreated       StudioMediaSourceRevision[]                 @relation("StudioMediaSourceRevisionCreatedBy")
   sourceRangesCreated               StudioSourceRange[]                         @relation("StudioSourceRangeCreatedBy")
   storyCardsCreated                 StudioStoryCard[]                           @relation("StudioStoryCardCreatedBy")
@@ -4759,6 +4761,73 @@ model StudioSourceUnit {
   @@index([assetId])
 }
 
+// A creator-owned connection to an external media vault. Provider credentials
+// are isolated in the one-to-one credential row; this projection contains only
+// account identity, granted capability, and health metadata safe for server
+// authorization decisions.
+model StudioMediaProviderConnection {
+  id                 String    @id @default(cuid())
+  userId             String
+  provider           String
+  providerAccountKey String
+  accountLabel       String?
+  connectionKind     String    @default("user-oauth")
+  grantedScopes      String[]  @default([])
+  status             String    @default("pending")
+  revision           Int       @default(1)
+  verifiedAt         DateTime?
+  lastCheckedAt      DateTime?
+  revokedAt          DateTime?
+  metadataJson       Json      @default("{}")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user               User                                     @relation("StudioMediaProviderConnectionUser", fields: [userId], references: [id], onDelete: Cascade)
+  credential         StudioMediaProviderCredential?
+  externalReferences StudioExternalMediaReference[]
+  operations         StudioMediaProviderConnectionOperation[]
+
+  @@unique([provider, providerAccountKey])
+  @@index([userId, provider, status])
+  @@index([status, updatedAt])
+}
+
+model StudioMediaProviderCredential {
+  id                String   @id @default(cuid())
+  connectionId      String   @unique
+  encryptedPayload  String
+  encryptionVersion String   @default("aes-256-gcm-v1")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  connection StudioMediaProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([updatedAt])
+}
+
+// Connection changes are append-only so reconnect, revocation, and scope
+// changes remain explainable without retaining any token in the receipt.
+model StudioMediaProviderConnectionOperation {
+  id               String   @id @default(cuid())
+  connectionId     String
+  revision         Int
+  previousRevision Int
+  operation        String
+  outcome          String
+  actorUserId      String
+  clientRequestId  String
+  requestSha256    String
+  snapshotJson     Json
+  createdAt        DateTime @default(now())
+
+  connection StudioMediaProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  actor      User                          @relation("StudioMediaProviderConnectionOperationActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, revision])
+  @@unique([connectionId, actorUserId, clientRequestId])
+  @@index([actorUserId, createdAt])
+}
+
 // A provider-neutral pointer to media that remains in a creator-controlled
 // vault. Provider locator details are server-only; shared clients receive the
 // capability state and durable Quipsly identity, never a bearer credential.
@@ -4766,6 +4835,7 @@ model StudioExternalMediaReference {
   id                     String    @id @default(cuid())
   projectId              String
   sourceUnitId           String?
+  connectionId           String?
   provider               String
   connectionKey          String?
   externalFileId         String
@@ -4791,6 +4861,7 @@ model StudioExternalMediaReference {
 
   project    StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sourceUnit StudioSourceUnit?           @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
+  connection StudioMediaProviderConnection?          @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   importedBy User                        @relation("StudioExternalMediaReferenceImportedBy", fields: [importedByUserId], references: [id], onDelete: Restrict)
   revisions  StudioMediaSourceRevision[]
   operations StudioExternalMediaReferenceOperation[]
@@ -4799,6 +4870,7 @@ model StudioExternalMediaReference {
   @@unique([projectId, importedByUserId, clientRequestId])
   @@index([projectId, accessState, updatedAt])
   @@index([sourceUnitId])
+  @@index([connectionId])
   @@index([connectionKey, provider])
 }
 

@@ -42,6 +42,7 @@ function safeSnapshot(input: ReturnType<typeof normalizeAttachVerifiedExternalMe
     referenceId,
     revision,
     projectId: input.projectId,
+    connectionId: input.connectionId,
     provider: file.provider,
     connectionKey: file.connectionKey,
     externalFileId: file.externalFileId,
@@ -198,6 +199,7 @@ export async function attachVerifiedExternalMediaSource(input: {
       reference = await tx.studioExternalMediaReference.create({
         data: {
           projectId: value.projectId,
+          connectionId: value.connectionId,
           provider: value.verifiedFile.provider,
           connectionKey: value.verifiedFile.connectionKey,
           externalFileId: value.verifiedFile.externalFileId,
@@ -252,6 +254,7 @@ export async function attachVerifiedExternalMediaSource(input: {
     const updated = await tx.studioExternalMediaReference.updateMany({
       where: { id: reference.id, revision: reference.revision },
       data: {
+        connectionId: value.connectionId,
         connectionKey: value.verifiedFile.connectionKey,
         sharedDriveId: value.verifiedFile.sharedDriveId,
         fileName: value.verifiedFile.fileName,

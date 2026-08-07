@@ -1,0 +1,287 @@
+"use client";
+
+import { Cloud, ExternalLink, Loader2, RefreshCw, Unplug } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
+type DriveConnection = {
+  id: string;
+  accountLabel: string | null;
+  status: string;
+  revision: number;
+  verifiedAt: string | null;
+};
+
+type PickerDocument = {
+  id?: string;
+  resourceKey?: string;
+};
+
+type PickerNamespace = {
+  Action: { PICKED: string; CANCEL: string };
+  Response: { ACTION: string; DOCUMENTS: string };
+  Document: { ID: string; RESOURCE_KEY: string };
+  ViewId: { DOCS: string };
+  Feature: { MULTISELECT_ENABLED: string; SUPPORT_DRIVES: string };
+  DocsView: new (viewId: string) => {
+    setIncludeFolders(value: boolean): unknown;
+    setSelectFolderEnabled(value: boolean): unknown;
+  };
+  PickerBuilder: new () => {
+    addView(view: unknown): unknown;
+    setOAuthToken(token: string): unknown;
+    setDeveloperKey(key: string): unknown;
+    setAppId(appId: string): unknown;
+    enableFeature(feature: string): unknown;
+    setCallback(callback: (data: Record<string, unknown>) => void): unknown;
+    build(): { setVisible(value: boolean): void };
+  };
+};
+
+type PickerWindow = Window & {
+  gapi?: { load(name: string, options: { callback(): void; onerror(): void }): void };
+  google?: { picker?: PickerNamespace };
+};
+
+function pickerWindow() {
+  return window as PickerWindow;
+}
+
+let pickerApiPromise: Promise<PickerNamespace> | null = null;
+
+function loadGooglePicker() {
+  const browser = pickerWindow();
+  if (browser.google?.picker) return Promise.resolve(browser.google.picker);
+  if (pickerApiPromise) return pickerApiPromise;
+  pickerApiPromise = new Promise<PickerNamespace>((resolve, reject) => {
+    const loadModule = () => {
+      if (!browser.gapi) return reject(new Error("Google Picker did not initialize."));
+      browser.gapi.load("picker", {
+        callback: () => browser.google?.picker ? resolve(browser.google.picker) : reject(new Error("Google Picker is unavailable.")),
+        onerror: () => reject(new Error("Google Picker could not load.")),
+      });
+    };
+    const existing = document.querySelector<HTMLScriptElement>('script[data-quipsly-google-picker="true"]');
+    if (existing) {
+      if (browser.gapi) loadModule();
+      else {
+        existing.addEventListener("load", loadModule, { once: true });
+        existing.addEventListener("error", () => reject(new Error("Google Picker could not load.")), { once: true });
+      }
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://apis.google.com/js/api.js";
+    script.async = true;
+    script.defer = true;
+    script.dataset.quipslyGooglePicker = "true";
+    script.addEventListener("load", loadModule, { once: true });
+    script.addEventListener("error", () => reject(new Error("Google Picker could not load.")), { once: true });
+    document.head.append(script);
+  }).catch((error) => {
+    pickerApiPromise = null;
+    throw error;
+  });
+  return pickerApiPromise;
+}
+
+function pickerBuilder(picker: PickerNamespace, input: {
+  accessToken: string;
+  apiKey: string;
+  appId: string;
+  callback(data: Record<string, unknown>): void;
+}) {
+  const view = new picker.DocsView(picker.ViewId.DOCS);
+  view.setIncludeFolders(true);
+  view.setSelectFolderEnabled(false);
+  const builder = new picker.PickerBuilder();
+  builder.addView(view);
+  builder.setOAuthToken(input.accessToken);
+  builder.setDeveloperKey(input.apiKey);
+  builder.setAppId(input.appId);
+  builder.enableFeature(picker.Feature.MULTISELECT_ENABLED);
+  builder.enableFeature(picker.Feature.SUPPORT_DRIVES);
+  builder.setCallback(input.callback);
+  return builder.build();
+}
+
+export function GoogleDriveSourcePicker({
+  projectSlug,
+  canWrite,
+  onAttached,
+}: {
+  projectSlug: string;
+  canWrite: boolean;
+  onAttached(): Promise<unknown>;
+}) {
+  const [connections, setConnections] = useState<DriveConnection[]>([]);
+  const [pickerConfigured, setPickerConfigured] = useState(true);
+  const [loadingConnections, setLoadingConnections] = useState(true);
+  const [selectedConnectionId, setSelectedConnectionId] = useState("");
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const returnTo = `/nests/${encodeURIComponent(projectSlug)}/story`;
+  const connectHref = `/api/media/connections/google-drive/start?returnTo=${encodeURIComponent(returnTo)}`;
+  const verifiedConnections = useMemo(() => connections.filter((connection) => connection.status === "verified"), [connections]);
+
+  async function loadConnections() {
+    setLoadingConnections(true);
+    try {
+      const response = await fetch("/api/media/connections/google-drive", { cache: "no-store" });
+      const payload = await response.json() as {
+        error?: string;
+        pickerConfigured?: boolean;
+        connections?: DriveConnection[];
+      };
+      if (!response.ok) throw new Error(payload.error || "Drive connections could not be loaded.");
+      const next = payload.connections ?? [];
+      setConnections(next);
+      setPickerConfigured(payload.pickerConfigured !== false);
+      setSelectedConnectionId((current) => next.some((connection) => connection.id === current && connection.status === "verified")
+        ? current
+        : next.find((connection) => connection.status === "verified")?.id ?? "");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Drive connections could not be loaded.");
+    } finally {
+      setLoadingConnections(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadConnections();
+  }, []);
+
+  async function attachDocuments(connectionId: string, documents: PickerDocument[]) {
+    let attached = 0;
+    for (const document of documents) {
+      if (!document.id) continue;
+      const response = await fetch(`/api/nests/${encodeURIComponent(projectSlug)}/source-story`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "attach-google-drive-source",
+          connectionId,
+          externalFileId: document.id,
+          resourceKey: document.resourceKey ?? null,
+          clientRequestId: crypto.randomUUID(),
+        }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "A selected Drive file could not be attached.");
+      attached += 1;
+    }
+    if (!attached) throw new Error("Google Picker did not return a file identity.");
+    await onAttached();
+    return attached;
+  }
+
+  async function browseDrive() {
+    if (!selectedConnectionId) return;
+    setPending(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const tokenResponse = await fetch("/api/media/connections/google-drive/picker-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId: selectedConnectionId }),
+      });
+      const token = await tokenResponse.json() as {
+        error?: string;
+        accessToken?: string;
+        apiKey?: string;
+        appId?: string;
+        connectionId?: string;
+      };
+      if (!tokenResponse.ok || !token.accessToken || !token.apiKey || !token.appId || !token.connectionId) {
+        throw new Error(token.error || "Google Drive could not prepare the file browser.");
+      }
+      const picker = await loadGooglePicker();
+      await new Promise<void>((resolve, reject) => {
+        const dialog = pickerBuilder(picker, {
+          accessToken: token.accessToken!,
+          apiKey: token.apiKey!,
+          appId: token.appId!,
+          callback: (data) => {
+            const action = data[picker.Response.ACTION];
+            if (action === picker.Action.CANCEL) {
+              resolve();
+              return;
+            }
+            if (action !== picker.Action.PICKED) return;
+            const rawDocuments = data[picker.Response.DOCUMENTS];
+            const documents = Array.isArray(rawDocuments) ? rawDocuments.map((document) => {
+              const record = document as Record<string, unknown>;
+              return {
+                id: typeof record[picker.Document.ID] === "string" ? String(record[picker.Document.ID]) : undefined,
+                resourceKey: typeof record[picker.Document.RESOURCE_KEY] === "string" ? String(record[picker.Document.RESOURCE_KEY]) : undefined,
+              };
+            }) : [];
+            void attachDocuments(token.connectionId!, documents)
+              .then((count) => {
+                setMessage(`Attached ${count} Drive source${count === 1 ? "" : "s"}. Originals remain in Drive.`);
+                resolve();
+              })
+              .catch(reject);
+          },
+        });
+        dialog.setVisible(true);
+        // The Picker owns this interaction until selection or cancellation.
+        // Release the busy state immediately so canceling never leaves the page stuck.
+        setPending(false);
+      });
+    } catch (browseError) {
+      setError(browseError instanceof Error ? browseError.message : "Google Drive could not open.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function disconnectDrive() {
+    if (!selectedConnectionId || !window.confirm("Disconnect this Google Drive account? Quipsly will revoke the grant, delete its encrypted refresh credential, and hold new proxy or render work for attached Drive sources.")) return;
+    setPending(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/media/connections/google-drive", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId: selectedConnectionId, clientRequestId: crypto.randomUUID() }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Google Drive could not be disconnected.");
+      await Promise.all([loadConnections(), onAttached()]);
+      setMessage("Google Drive disconnected. Existing cards remain, and new exact-source work is held until reconnect.");
+    } catch (disconnectError) {
+      setError(disconnectError instanceof Error ? disconnectError.message : "Google Drive could not be disconnected.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section aria-label="External media vault" className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-teal-900"><Cloud size={13} aria-hidden="true" />Bring your own media</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-[#5f684f]">Choose files without uploading originals. Quipsly verifies the provider identity before it creates a proxy or story range.</p>
+        </div>
+        <button type="button" onClick={() => void loadConnections()} disabled={loadingConnections} aria-label="Refresh Drive connections" className="rounded-lg border border-teal-200 bg-white p-2 text-teal-900 disabled:opacity-50"><RefreshCw size={14} className={loadingConnections ? "animate-spin" : ""} aria-hidden="true" /></button>
+      </div>
+      {loadingConnections ? <p role="status" className="mt-3 flex items-center gap-2 text-xs font-bold text-teal-900"><Loader2 size={14} className="animate-spin" aria-hidden="true" />Checking Drive connection…</p> : null}
+      {!loadingConnections && verifiedConnections.length ? (
+        <div className="mt-3 space-y-2">
+          {verifiedConnections.length > 1 ? <label className="block text-[10px] font-black uppercase tracking-wide text-teal-900">Drive account<select value={selectedConnectionId} onChange={(event) => setSelectedConnectionId(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-teal-200 bg-white px-3 text-sm font-bold normal-case tracking-normal">{verifiedConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.accountLabel || "Google Drive"}</option>)}</select></label> : <p className="text-xs font-bold text-teal-950">{verifiedConnections[0].accountLabel || "Google Drive connected"}</p>}
+          <button type="button" disabled={!canWrite || pending || !pickerConfigured} onClick={() => void browseDrive()} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-teal-900 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">{pending ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Cloud size={16} aria-hidden="true" />}Browse Google Drive</button>
+          <button type="button" disabled={pending} onClick={() => void disconnectDrive()} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-teal-300 bg-white px-3 text-xs font-black text-teal-950 disabled:opacity-50"><Unplug size={14} aria-hidden="true" />Disconnect Drive</button>
+          {!pickerConfigured ? <p className="text-xs font-semibold text-amber-900">The Drive account is connected, but the browser key still needs deployment configuration.</p> : null}
+          {!canWrite ? <p className="text-xs font-semibold text-amber-900">Editor access is required to attach a source.</p> : null}
+        </div>
+      ) : null}
+      {!loadingConnections && !verifiedConnections.length ? <a href={connectHref} className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-teal-900 px-4 text-sm font-black text-white">Connect Google Drive <ExternalLink size={15} aria-hidden="true" /></a> : null}
+      {message ? <p role="status" className="mt-3 rounded-xl border border-emerald-200 bg-white p-2 text-xs font-bold text-emerald-900">{message}</p> : null}
+      {error ? <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-white p-2 text-xs font-bold text-rose-900">{error}</p> : null}
+    </section>
+  );
+}

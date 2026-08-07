@@ -11,6 +11,10 @@ import {
 } from "@/lib/source-story-contract";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
+  attachGoogleDriveFileToNest,
+  googleDriveSourceErrorResponse,
+} from "@/lib/server/google-drive-source";
+import {
   SourceStoryConflictError,
   createSourceStoryCard,
   createStoryBoard,
@@ -86,6 +90,8 @@ function purposeFrom(value: unknown): StoryCardPurpose {
 }
 
 function errorResponse(error: unknown) {
+  const driveError = googleDriveSourceErrorResponse(error);
+  if (driveError) return NextResponse.json(driveError.body, { status: driveError.status });
   if (error instanceof SourceStoryConflictError) {
     return NextResponse.json({ error: error.message, errorCode: error.code, currentRevision: error.currentRevision }, { status: 409 });
   }
@@ -122,7 +128,19 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
     const prisma = getPrismaClient();
     let operation: unknown;
 
-    if (action === "create-board") {
+    if (action === "attach-google-drive-source") {
+      operation = await attachGoogleDriveFileToNest({
+        prisma,
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        connectionId: text(body.connectionId),
+        externalFileId: text(body.externalFileId),
+        resourceKey: text(body.resourceKey) || null,
+        clientRequestId: text(body.clientRequestId),
+        requestUrl: request.url,
+      });
+    } else if (action === "create-board") {
       operation = await createStoryBoard({
         prisma,
         projectId: actor.projectId,

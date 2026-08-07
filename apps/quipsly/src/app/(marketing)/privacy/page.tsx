@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, KeyRound, Mic, Shield, Trash2 } from "lucide-react";
+import { ArrowLeft, CalendarDays, Cloud, KeyRound, Mic, Shield, Trash2 } from "lucide-react";
 
 export default function PrivacyPage() {
   return (
@@ -57,10 +57,25 @@ export default function PrivacyPage() {
             </div>
           </section>
           <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans md:col-span-2">
+            <Cloud className="mb-3 h-6 w-6 text-[#a96735]" />
+            <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Optional Google Drive source connection</h2>
+            <div className="space-y-3 leading-relaxed text-[#7a604c]">
+              <p>
+                Connecting Google Drive is optional and separate from signing in or connecting Calendar. Quipsly requests the selected-file <code>drive.file</code> permission so you choose which files become available to Quipsly; it does not request normal access to browse every file in your Drive.
+              </p>
+              <p>
+                Quipsly stores the selected file identity, revision and checksum evidence Google provides, file metadata, current download capability, encrypted refresh credentials, and audit receipts. Short-lived access tokens are sent only to the signed-in browser for Google Picker and are not stored. Provider locators and resource keys are withheld from shared editor responses.
+              </p>
+              <p>
+                Originals can remain in Google Drive. Quipsly may create a bounded proxy, thumbnail, waveform, transcript, or output only when the user requests that work. Google Drive data is not sold, used for advertising, or used to train general-purpose AI models. Quipsly&apos;s use and transfer of information received from Google APIs follows the Google API Services User Data Policy, including Limited Use requirements.
+              </p>
+            </div>
+          </section>
+          <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans md:col-span-2">
             <KeyRound className="mb-3 h-6 w-6 text-[#a96735]" />
-            <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Calendar control and revocation</h2>
+            <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Google connection control and revocation</h2>
             <p className="leading-relaxed text-[#7a604c]">
-              You can disconnect Google Calendar from Quipsly at any time. Quipsly then asks Google to revoke the credential, deletes the encrypted credential from the active connection, and stops future calendar access. Events already created in your Google Calendar remain under your control. You can also review or revoke Quipsly from your Google Account&apos;s third-party access settings.
+              You can disconnect Google Calendar or Google Drive from Quipsly. Quipsly asks Google to revoke the credential, deletes the encrypted credential from the active connection, and stops future provider access. Existing Calendar events remain under your control. Existing Drive-backed cards retain their source intent but new proxy and exact-source render work is held until you reconnect. You can also review or revoke Quipsly from your Google Account&apos;s third-party access settings.
             </p>
             <a
               href="https://myaccount.google.com/connections"

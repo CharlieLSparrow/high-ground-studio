@@ -8242,3 +8242,28 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   5/5, including replay, request collision, changed revision, stale refresh,
   revocation, malicious revision reuse, and cross-Nest identity isolation.
   Google OAuth, Picker, provider verification, and refresh are still open.
+
+## 2026-08-07 Google Drive source connection checkpoint
+
+- Added a user-owned media-provider connection domain instead of reusing the
+  calendar or publishing credential models. Connection projection, encrypted
+  credential, append-only operations, and attached source references now have
+  explicit ownership and lifecycle boundaries.
+- Implemented Drive OAuth with PKCE, signed/expiring state, account selection,
+  same-origin return validation, offline refresh, and only `openid`, `email`,
+  and `drive.file`. Durable refresh credentials use AES-256-GCM with a
+  Drive-specific authenticated-data boundary; access tokens are not stored.
+- Source to Story can connect an account, open Google Picker with a short-lived
+  scoped token, send only selected file identity back to the server, and attach
+  provider-verified metadata through the existing immutable source ledger.
+  Picker-supplied file metadata is never trusted as source truth.
+- Disconnect revokes Google, deletes the encrypted credential, receipts the
+  state change, and moves attached source projections to
+  `revoked / needs-reauth` while preserving source revisions and story intent.
+- Privacy disclosure now covers the optional selected-file Drive permission,
+  stored evidence, derivative behavior, Limited Use, and revocation behavior.
+- Nine focused OAuth/source/contract tests, two picker UX tests, five local
+  PostgreSQL connection/ownership/revocation tests, and the existing five-case
+  external-media ledger suite pass. Production remains held until the OAuth
+  callback, restricted Picker key/app ID, and protected secrets are configured
+  and a real user-selected Drive file is operated end to end.

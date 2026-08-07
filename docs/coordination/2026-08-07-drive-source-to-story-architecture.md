@@ -237,6 +237,39 @@ Focused coverage proves normalized credential-free contracts, attach replay,
 request collision, changed provider revisions, stale refresh rejection,
 revocation without content rewrite, malicious revision-key reuse, independent
 same-file identities across Nests, and safe client projection. Google OAuth,
-Picker, server-side `files.get` verification, and capability refresh remain the
-next slice; the local-vault adapter is retained dogfood evidence, not a claim
-that Drive authorization is configured.
+Picker, and server-side `files.get` verification were still the next slice at
+that checkpoint; the local-vault adapter remains retained dogfood evidence, not
+a claim that deployed Drive authorization is configured.
+
+## User-owned Google Drive attachment flow
+
+The next production slice is implemented behind deployment configuration:
+
+- `StudioMediaProviderConnection` is a user-owned provider/account projection;
+  encrypted credentials live in a separate one-to-one row and every connect,
+  reconnect, or disconnect has an append-only operation receipt.
+- Google authorization uses signed, expiring state, PKCE, account selection,
+  offline access, `openid email`, and only `drive.file`. Return paths are
+  same-origin relative URLs, and one Google subject cannot be silently captured
+  by two Quipsly identities.
+- AES-256-GCM protects the refresh credential with a Drive-specific
+  authenticated-data boundary. Access tokens remain short-lived and are never
+  written to the database or operation receipts.
+- Source to Story now offers Connect, Browse, and Disconnect controls. The
+  browser receives a bounded Picker token; the selected file ID and optional
+  resource key are sent back to Quipsly, while Picker-supplied name, byte count,
+  revision, and checksum are ignored.
+- The server calls Drive `files.get` for the signed-in connection and records
+  only provider-verified identity, head revision, MD5/size evidence, timestamps,
+  shared-drive identity, and download capability. Restricted files are honest
+  metadata-only sources rather than fake playable assets.
+- Disconnect revokes the Google grant before deleting the encrypted credential,
+  then marks every connected source `revoked / needs-reauth` without deleting
+  cards, source ranges, or immutable source revisions.
+
+Deployment still needs a Google OAuth web client callback for
+`/api/media/connections/google-drive/callback`, a referrer-restricted Picker API
+key, the Google Cloud project number used as Picker app ID, and four protected
+server secrets (`GOOGLE_DRIVE_OAUTH_CLIENT_ID`, client secret, state secret, and
+token encryption key). Until those exist, the UI names the missing setup and
+does not pretend Drive browsing works.
