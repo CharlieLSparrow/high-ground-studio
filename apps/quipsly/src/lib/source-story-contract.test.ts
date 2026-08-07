@@ -1,6 +1,7 @@
 import {
   SourceStoryContractError,
   normalizeArrangeStoryBoardInput,
+  normalizeOpenStoryBoardSectionWritingInput,
   normalizeCreateMediaSourceSetInput,
   normalizeCreateSourceStoryCardInput,
   normalizeRebindSourceStoryCardInput,
@@ -153,6 +154,23 @@ describe("source-story contract", () => {
       clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
       placements: [{ cardId: "card_a" }, { cardId: "card_a", groupKey: "payoff" }],
     })).toThrow("only once");
+  });
+
+  it("normalizes a revisioned board-section writing handoff", () => {
+    expect(normalizeOpenStoryBoardSectionWritingInput({
+      projectId: "project_1",
+      boardId: "board_1",
+      sectionKey: " Episode Open ",
+      expectedRevision: 2,
+      clientRequestId: "7afab8e1-30a7-49f0-b39c-b33ccdaf3273",
+    })).toMatchObject({ sectionKey: "episode-open", expectedRevision: 2 });
+    expect(() => normalizeOpenStoryBoardSectionWritingInput({
+      projectId: "project_1",
+      boardId: "board_1",
+      sectionKey: "Episode Open",
+      expectedRevision: 0,
+      clientRequestId: "7afab8e1-30a7-49f0-b39c-b33ccdaf3273",
+    })).toThrow("current section revision");
   });
 
   it("rejects reversed, tiny, non-finite, and out-of-bound source ranges", () => {

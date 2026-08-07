@@ -103,6 +103,14 @@ export type ArrangeStoryBoardInput = {
   placements: StoryBoardPlacementIntent[];
 };
 
+export type OpenStoryBoardSectionWritingInput = {
+  projectId: string;
+  boardId: string;
+  sectionKey: string;
+  expectedRevision: number;
+  clientRequestId: string;
+};
+
 export type RebindSourceStoryCardInput = {
   projectId: string;
   cardId: string;
@@ -392,6 +400,21 @@ export function normalizeArrangeStoryBoardInput(value: ArrangeStoryBoardInput) {
     expectedRevision,
     clientRequestId: clientRequestId(value.clientRequestId),
     placements,
+  };
+}
+
+export function normalizeOpenStoryBoardSectionWritingInput(value: OpenStoryBoardSectionWritingInput) {
+  const expectedRevision = Number(value.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
+    throw new SourceStoryContractError("invalid-revision", "The current section revision is required.");
+  }
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    projectId: opaqueId(value.projectId, "projectId"),
+    boardId: opaqueId(value.boardId, "boardId"),
+    sectionKey: boardKey(value.sectionKey, "sectionKey", "unassigned"),
+    expectedRevision,
+    clientRequestId: clientRequestId(value.clientRequestId),
   };
 }
 

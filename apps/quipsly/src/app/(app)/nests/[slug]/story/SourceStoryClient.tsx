@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   Loader2,
   Link2,
+  NotebookPen,
   Play,
   Plus,
   Rotate3d,
@@ -97,6 +98,16 @@ type SourceStoryBoard = {
   revision: number;
   episodeProductionId: string | null;
   updatedAt: string;
+  sections: Array<{
+    id: string;
+    key: string;
+    title: string;
+    synopsis: string;
+    sortOrder: number;
+    revision: number;
+    updatedAt: string;
+    document: null | { id: string; stableId: string; title: string; updatedAt: string; blockCount: number };
+  }>;
   placements: Array<{
     id: string;
     cardId: string;
@@ -257,6 +268,7 @@ type ApiPayload = {
   errorCode?: string;
   currentRevision?: number | null;
   workspace?: SourceStoryWorkspace;
+  operation?: { document?: { id?: string } };
 };
 
 type SpatialRenderReadinessReport = {
@@ -441,13 +453,27 @@ export function SourceStoryClient({
   const cardsAvailableForBoard = workspace.cards.filter((card) => !selectedBoardCardIds.has(card.id));
   const boardGroups = useMemo(() => {
     if (!selectedBoard) return [];
-    const groups = new Map<string, SourceStoryBoardPlacement[]>();
+    const groups = new Map(selectedBoard.sections.map((section) => [section.key, { section, placements: [] as SourceStoryBoardPlacement[] }]));
     for (const placement of selectedBoard.placements) {
-      const placements = groups.get(placement.groupKey) ?? [];
-      placements.push(placement);
-      groups.set(placement.groupKey, placements);
+      const group = groups.get(placement.groupKey) ?? {
+        section: {
+          id: `legacy-${placement.groupKey}`,
+          key: placement.groupKey,
+          title: boardGroupLabel(placement.groupKey),
+          synopsis: "",
+          sortOrder: placement.sortOrder,
+          revision: 1,
+          updatedAt: selectedBoard.updatedAt,
+          document: null,
+        },
+        placements: [],
+      };
+      group.placements.push(placement);
+      groups.set(placement.groupKey, group);
     }
-    return [...groups.entries()].map(([groupKey, placements]) => ({ groupKey, placements }));
+    return [...groups.entries()]
+      .map(([groupKey, group]) => ({ groupKey, ...group }))
+      .sort((left, right) => left.section.sortOrder - right.section.sortOrder || left.section.title.localeCompare(right.section.title));
   }, [selectedBoard]);
   const boardGroupKeys = useMemo(() => boardGroups.map((group) => group.groupKey), [boardGroups]);
   const spatialStatus = spatialRenderReadiness.readiness.status;
@@ -763,6 +789,35 @@ export function SourceStoryClient({
     await arrangeBoard(placements, `Filed the source card in ${selectedBoard.title} without copying or changing it.`);
   }
 
+  async function openSectionWriting(section: SourceStoryBoard["sections"][number]) {
+    if (!selectedBoard) return;
+    setPending(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/nests/${encodeURIComponent(project.slug)}/source-story`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "open-section-writing",
+          boardId: selectedBoard.id,
+          sectionKey: section.key,
+          expectedRevision: section.revision,
+          clientRequestId: crypto.randomUUID(),
+        }),
+      });
+      const payload = await response.json() as ApiPayload;
+      if (!response.ok || !payload.workspace) throw new Error(payload.error || "The section writing page could not be opened.");
+      setWorkspace(payload.workspace);
+      const documentId = payload.operation?.document?.id;
+      if (!documentId) throw new Error("The section writing page was saved, but its document identity was not returned.");
+      window.location.assign(`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(documentId)}`);
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : "The section writing page could not be opened.");
+      setPending(false);
+    }
+  }
+
   const canMarkRange = Boolean(selectedViewerSource && /^(video|audio)\//.test(selectedViewerSource.mimeType ?? ""));
   const rangeReady = inPoint !== null && outPoint !== null && outPoint > inPoint && title.trim().length > 0;
 
@@ -918,9 +973,9 @@ export function SourceStoryClient({
               <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">Shared arrangement · r{selectedBoard.revision}</p><h2 className="font-serif text-xl font-black">{selectedBoard.placements.length} placed card{selectedBoard.placements.length === 1 ? "" : "s"} · {boardGroups.length} section{boardGroups.length === 1 ? "" : "s"}</h2></div><div className="flex rounded-xl border border-[#d9c7a5] bg-[#fffaf0] p-1" aria-label="Board view"><button type="button" aria-pressed={boardView === "cards"} onClick={() => setBoardView("cards")} className={`min-h-11 rounded-lg px-3 text-[10px] font-black uppercase tracking-wide ${boardView === "cards" ? "bg-[#3e2f21] text-white" : "text-[#76522c]"}`}>Cards</button><button type="button" aria-pressed={boardView === "outline"} onClick={() => setBoardView("outline")} className={`min-h-11 rounded-lg px-3 text-[10px] font-black uppercase tracking-wide ${boardView === "outline" ? "bg-[#3e2f21] text-white" : "text-[#76522c]"}`}>Outline</button></div></div>
               <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Sections and lanes belong to this board placement. Moving or unfiling a card never changes its writing, exact source range, use on another board, or Episode placement.</p>
               <div className="mt-4 space-y-4">
-                {boardView === "outline" ? boardGroups.map((group) => <section key={group.groupKey} className="rounded-2xl border border-[#d9c7a5] bg-[#fffaf0] p-3"><div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-serif text-lg font-black">{boardGroupLabel(group.groupKey)}</h3><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{group.placements.length} card{group.placements.length === 1 ? "" : "s"} · {formatClock(group.placements.reduce((total, placement) => total + Math.max(0, (placement.card.sourceRange?.endSeconds ?? 0) - (placement.card.sourceRange?.startSeconds ?? 0)), 0))}</p></div><ol className="mt-2 space-y-2">{group.placements.map((placement, groupIndex) => { const index = selectedBoard.placements.findIndex((candidate) => candidate.id === placement.id); return <li key={placement.id} className="rounded-xl border border-[#e2d2b6] bg-white p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">{index + 1}. {boardGroupLabel(placement.laneKey)} · {placement.card.purpose.replaceAll("-", " ")}</p><p className="mt-1 font-black">{placement.card.title}</p>{placement.card.synopsis ? <p className="mt-1 text-xs font-semibold leading-5 text-[#715f48]">{placement.card.synopsis}</p> : null}</div>{canWrite ? <div className="flex shrink-0 gap-1"><button type="button" disabled={pending || groupIndex === 0} onClick={() => void moveCard(placement.cardId, -1)} aria-label={`Move ${placement.card.title} earlier in ${boardGroupLabel(group.groupKey)}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button><button type="button" disabled={pending || groupIndex === group.placements.length - 1} onClick={() => void moveCard(placement.cardId, 1)} aria-label={`Move ${placement.card.title} later in ${boardGroupLabel(group.groupKey)}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button></div> : null}</div></li>; })}</ol></section>) : boardGroups.map((group) => (
+                {boardView === "outline" ? boardGroups.map((group) => <section key={group.groupKey} className="rounded-2xl border border-[#d9c7a5] bg-[#fffaf0] p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-serif text-lg font-black">{group.section.title}</h3><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{group.placements.length} card{group.placements.length === 1 ? "" : "s"} · {formatClock(group.placements.reduce((total, placement) => total + Math.max(0, (placement.card.sourceRange?.endSeconds ?? 0) - (placement.card.sourceRange?.startSeconds ?? 0)), 0))}</p></div>{canWrite ? <SectionWritingControl projectSlug={project.slug} section={group.section} pending={pending} onCreate={() => openSectionWriting(group.section)} /> : null}</div><ol className="mt-2 space-y-2">{group.placements.map((placement, groupIndex) => { const index = selectedBoard.placements.findIndex((candidate) => candidate.id === placement.id); return <li key={placement.id} className="rounded-xl border border-[#e2d2b6] bg-white p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">{index + 1}. {boardGroupLabel(placement.laneKey)} · {placement.card.purpose.replaceAll("-", " ")}</p><p className="mt-1 font-black">{placement.card.title}</p>{placement.card.synopsis ? <p className="mt-1 text-xs font-semibold leading-5 text-[#715f48]">{placement.card.synopsis}</p> : null}</div>{canWrite ? <div className="flex shrink-0 gap-1"><button type="button" disabled={pending || groupIndex === 0} onClick={() => void moveCard(placement.cardId, -1)} aria-label={`Move ${placement.card.title} earlier in ${group.section.title}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button><button type="button" disabled={pending || groupIndex === group.placements.length - 1} onClick={() => void moveCard(placement.cardId, 1)} aria-label={`Move ${placement.card.title} later in ${group.section.title}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button></div> : null}</div></li>; })}</ol></section>) : boardGroups.map((group) => (
                   <section key={group.groupKey} className="rounded-2xl border border-[#d9c7a5] bg-[#fffdf8] p-3" aria-labelledby={`story-section-${group.groupKey}`}>
-                    <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[#eadfc9] pb-2"><h3 id={`story-section-${group.groupKey}`} className="font-serif text-lg font-black">{boardGroupLabel(group.groupKey)}</h3><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{group.placements.length} card{group.placements.length === 1 ? "" : "s"}</p></div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eadfc9] pb-2"><div><h3 id={`story-section-${group.groupKey}`} className="font-serif text-lg font-black">{group.section.title}</h3><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{group.placements.length} card{group.placements.length === 1 ? "" : "s"}</p></div>{canWrite ? <SectionWritingControl projectSlug={project.slug} section={group.section} pending={pending} onCreate={() => openSectionWriting(group.section)} /> : null}</div>
                     <div className="mt-3 space-y-3">{group.placements.map((placement, groupIndex) => { const index = selectedBoard.placements.findIndex((candidate) => candidate.id === placement.id); return (
                       <article key={placement.id} className="rounded-2xl border border-[#e2d2b6] bg-[#fffaf0] p-4">
                         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">{index + 1} · {boardGroupLabel(placement.laneKey)} · {placement.card.purpose.replaceAll("-", " ")}</p><h4 className="mt-1 font-serif text-lg font-black leading-snug">{placement.card.title}</h4></div>{canWrite ? <div className="flex shrink-0 gap-1"><button type="button" disabled={pending || groupIndex === 0} onClick={() => void moveCard(placement.cardId, -1)} aria-label={`Move ${placement.card.title} earlier in ${boardGroupLabel(group.groupKey)}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button><button type="button" disabled={pending || groupIndex === group.placements.length - 1} onClick={() => void moveCard(placement.cardId, 1)} aria-label={`Move ${placement.card.title} later in ${boardGroupLabel(group.groupKey)}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button></div> : null}</div>
@@ -949,6 +1004,31 @@ export function SourceStoryClient({
 }
 
 const storyBoardLanes = ["story", "b-roll", "evidence", "audio", "graphics"] as const;
+
+function SectionWritingControl({
+  projectSlug,
+  section,
+  pending,
+  onCreate,
+}: {
+  projectSlug: string;
+  section: SourceStoryBoard["sections"][number];
+  pending: boolean;
+  onCreate: () => Promise<void>;
+}) {
+  if (section.document) {
+    return (
+      <Link href={`/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(section.document.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-[10px] font-black uppercase tracking-wide text-violet-950">
+        <NotebookPen size={15} aria-hidden="true" /> Open writing · {section.document.blockCount} block{section.document.blockCount === 1 ? "" : "s"}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" disabled={pending} onClick={() => void onCreate()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-[10px] font-black uppercase tracking-wide text-violet-950 disabled:opacity-40">
+      <NotebookPen size={15} aria-hidden="true" /> Start section writing
+    </button>
+  );
+}
 
 function BoardPlacementEditor({
   placement,

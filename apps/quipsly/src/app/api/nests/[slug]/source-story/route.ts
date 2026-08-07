@@ -29,6 +29,7 @@ import {
   createSourceStoryCard,
   createMediaSourceSet,
   createStoryBoard,
+  openStoryBoardSectionWriting,
   readSourceStoryWorkspace,
   promoteSourceStoryCardToEpisode,
   rebindSourceStoryCard,
@@ -318,6 +319,19 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
           expectedRevision: Number(body.expectedRevision),
           clientRequestId: text(body.clientRequestId),
           placements: boardPlacements(body.placements),
+        },
+      });
+    } else if (action === "open-section-writing") {
+      operation = await openStoryBoardSectionWriting({
+        prisma,
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        value: {
+          projectId: actor.projectId,
+          boardId: text(body.boardId),
+          sectionKey: text(body.sectionKey),
+          expectedRevision: Number(body.expectedRevision),
+          clientRequestId: text(body.clientRequestId),
         },
       });
     } else if (action === "promote-card-to-episode") {

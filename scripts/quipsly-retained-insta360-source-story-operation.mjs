@@ -166,19 +166,43 @@ async function verifyArrangementMutationThroughApp({ prisma, project, createdBy,
     const sessionCookie = session.headers.getSetCookie().filter((value) => value.startsWith("session=") && !value.startsWith("session=;")).at(-1);
     cookie = sessionCookie ? sessionCookie.split(";")[0] : null;
     if (session.status !== 200 || sessionBody.success !== true || !cookie) throw new Error("The retained route operator could not establish a first-party session.");
-    const mutate = () => fetch(`${appOrigin}/api/nests/${encodeURIComponent(project.slug)}/source-story`, {
+    const mutate = (body) => fetch(`${appOrigin}/api/nests/${encodeURIComponent(project.slug)}/source-story`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json", "cache-control": "no-cache" },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(body),
     });
-    const first = await mutate();
+    const first = await mutate(requestBody);
     const firstBody = await first.json().catch(() => ({}));
-    const replay = await mutate();
+    const replay = await mutate(requestBody);
     const replayBody = await replay.json().catch(() => ({}));
     const projectedBoard = firstBody?.workspace?.boards?.find((candidate) => candidate?.id === boardId);
     const projectedPlacement = projectedBoard?.placements?.find((candidate) => candidate?.cardId === cardId);
     if (first.status !== 200 || replay.status !== 200 || !projectedPlacement || replayBody?.operation?.replayed !== true) {
       throw new Error(`The authenticated board-arrangement route failed retained replay acceptance (HTTP ${first.status}/${replay.status}).`);
+    }
+    const projectedSection = projectedBoard.sections?.find((candidate) => candidate?.key === projectedPlacement.groupKey);
+    if (!projectedSection) throw new Error("The authenticated board projection lost its durable section identity.");
+    const writingRequestId = deterministicUuid(`${project.id}:${boardId}:${projectedSection.key}:authenticated-section-writing-route-v1`);
+    const existingWritingOperation = await prisma.studioStoryBoardSectionOperation.findUnique({
+      where: { sectionId_actorUserId_clientRequestId: { sectionId: projectedSection.id, actorUserId: user.id, clientRequestId: writingRequestId } },
+    });
+    const writingBody = {
+      action: "open-section-writing",
+      boardId,
+      sectionKey: projectedSection.key,
+      expectedRevision: existingWritingOperation?.previousRevision ?? projectedSection.revision,
+      clientRequestId: writingRequestId,
+    };
+    const writingFirst = await mutate(writingBody);
+    const writingFirstBody = await writingFirst.json().catch(() => ({}));
+    const writingReplay = await mutate(writingBody);
+    const writingReplayBody = await writingReplay.json().catch(() => ({}));
+    const writingDocument = writingFirstBody?.operation?.document;
+    const projectedWritingSection = writingFirstBody?.workspace?.boards
+      ?.find((candidate) => candidate?.id === boardId)
+      ?.sections?.find((candidate) => candidate?.id === projectedSection.id);
+    if (writingFirst.status !== 200 || writingReplay.status !== 200 || !writingDocument?.id || projectedWritingSection?.document?.id !== writingDocument.id) {
+      throw new Error(`The authenticated section-writing route failed retained acceptance (HTTP ${writingFirst.status}/${writingReplay.status}).`);
     }
     return {
       firstStatus: first.status,
@@ -188,6 +212,12 @@ async function verifyArrangementMutationThroughApp({ prisma, project, createdBy,
       revision: replayBody.operation.revision,
       projectedSection: projectedPlacement.groupKey,
       projectedLane: projectedPlacement.laneKey,
+      writingFirstStatus: writingFirst.status,
+      writingFirstReplayed: writingFirstBody.operation?.replayed === true,
+      writingReplayStatus: writingReplay.status,
+      writingReplayed: writingReplayBody.operation?.replayed === true,
+      writingDocumentId: writingDocument.id,
+      writingSectionRevision: projectedWritingSection.revision,
     };
   } finally {
     if (cookie) await fetch(`${appOrigin}/api/auth/session`, { method: "DELETE", headers: { cookie } }).catch(() => undefined);

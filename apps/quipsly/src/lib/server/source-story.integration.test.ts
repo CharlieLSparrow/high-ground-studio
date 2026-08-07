@@ -16,6 +16,7 @@ import {
   createMediaSourceSet,
   createSourceStoryCard,
   createStoryBoard,
+  openStoryBoardSectionWriting,
   readSourceStoryWorkspace,
   promoteSourceStoryCardToEpisode,
   rebindSourceStoryCard,
@@ -663,6 +664,72 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
         expect.objectContaining({ cardId: firstCardId }),
         expect.objectContaining({ cardId: secondCardId }),
       ]),
+    });
+  });
+
+  it("opens one durable board section into shared document-kernel writing without copying its cards", async () => {
+    const sectionBefore = await prisma.studioStoryBoardSection.findUniqueOrThrow({
+      where: { boardId_key: { boardId, key: "cold-open" } },
+      include: { document: true },
+    });
+    const cardBefore = await prisma.studioStoryCard.findUniqueOrThrow({
+      where: { id: firstCardId },
+      select: { id: true, sourceRangeId: true, revision: true, synopsis: true, notes: true },
+    });
+    expect(sectionBefore).toMatchObject({ title: "Cold Open", revision: 1, document: null });
+    const clientRequestId = randomUUID();
+    const value = {
+      projectId,
+      boardId,
+      sectionKey: "Cold Open",
+      expectedRevision: 1,
+      clientRequestId,
+    };
+    const opened = await openStoryBoardSectionWriting({ prisma, actorUserId, actorEmail, value });
+    expect(opened).toMatchObject({ replayed: false, section: { id: sectionBefore.id, revision: 2 }, document: { id: expect.any(String), title: expect.stringContaining("Cold Open") } });
+    await expect(openStoryBoardSectionWriting({ prisma, actorUserId, actorEmail, value })).resolves.toMatchObject({
+      replayed: true,
+      document: { id: opened.document.id },
+    });
+    await expect(openStoryBoardSectionWriting({
+      prisma,
+      actorUserId,
+      actorEmail,
+      value: { ...value, expectedRevision: 2 },
+    })).rejects.toMatchObject({ code: "request-reuse-conflict", currentRevision: 2 });
+    await expect(openStoryBoardSectionWriting({
+      prisma,
+      actorUserId,
+      actorEmail,
+      value: { ...value, projectId: otherProjectId, clientRequestId: randomUUID() },
+    })).rejects.toMatchObject({ code: "section-project-mismatch" });
+
+    const [sectionAfter, document, cardAfter, workspace] = await Promise.all([
+      prisma.studioStoryBoardSection.findUniqueOrThrow({
+        where: { id: sectionBefore.id },
+        include: { operations: true },
+      }),
+      prisma.studioDocument.findUniqueOrThrow({
+        where: { id: opened.document.id },
+        include: { blocks: { orderBy: { order: "asc" } }, documentOperations: true },
+      }),
+      prisma.studioStoryCard.findUniqueOrThrow({
+        where: { id: firstCardId },
+        select: { id: true, sourceRangeId: true, revision: true, synopsis: true, notes: true },
+      }),
+      readSourceStoryWorkspace(prisma, projectId),
+    ]);
+    expect(sectionAfter).toMatchObject({ documentId: document.id, revision: 2 });
+    expect(sectionAfter.operations).toHaveLength(1);
+    expect(sectionAfter.operations[0]).toMatchObject({ operation: "create-writing-document", revision: 2, previousRevision: 1, requestSha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(document).toMatchObject({ projectId, personalOwnerUserId: null, projectionStatus: "draft", isPrivate: true });
+    expect(document.blocks).toEqual([expect.objectContaining({ stableId: `${document.stableId}:draft`, title: "Cold Open", order: 0 })]);
+    expect(document.documentOperations).toEqual([expect.objectContaining({ operationType: "create-from-story-board-section", groupId: clientRequestId, reversible: true })]);
+    expect(cardAfter).toEqual(cardBefore);
+    expect(workspace.boards[0]?.sections.find((section) => section.id === sectionBefore.id)).toMatchObject({
+      key: "cold-open",
+      revision: 2,
+      document: { id: document.id, blockCount: 1 },
     });
   });
 

@@ -60,6 +60,22 @@ The `arrange-board` operation replaces one board's complete placement projection
 
 The web surface exposes both a detailed card view and a compact sectioned outline. Up/down controls remain keyboard-operable and move within a section. Section/lane changes, filing an existing card, and unfiling are explicit controls rather than drag-only interactions. A later drag surface must call the same operation and cannot introduce a second ordering truth.
 
+## Board sections and writing
+
+A section label cannot be the identity of a Scrivener-style binder item. `StudioStoryBoardSection` is therefore the durable board-owned section behind each placement `groupKey`. Its stable ID, board-scoped key, title, synopsis, order, revision, and optional writing document survive even when every card is moved elsewhere.
+
+The ownership boundary is deliberate:
+
+- the section owns one board's beat or scene identity;
+- the placement owns one card's lane and order inside that section;
+- the card owns reusable source-backed story intent;
+- `StudioDocument` and `StudioDocumentBlock` own prose, document revisions, annotations, research, and collaboration;
+- an Episode timeline owns edit playback.
+
+`open-section-writing` creates at most one project-shared draft document for a section. It uses a serializable transaction, optimistic section revision, actor/request idempotency, a deterministic document stable ID, a `StudioDocumentOperation` provenance receipt, and an append-only `StudioStoryBoardSectionOperation`. Opening an existing section document is read-like and never rewrites the board or card.
+
+The web surface links directly from both Cards and Outline views into the canonical writing page. It does not copy card synopsis/notes into prose or create a second editor state. Source cards remain visible evidence and planning material alongside the document rather than being destructively converted into paragraphs.
+
 ## Reviewed master operation
 
 The current macOS path uses the installed Insta360 Studio application as an explicit reviewed handoff because Insta360's documented Desktop MediaSDK runner does not currently provide a supported macOS automation surface.

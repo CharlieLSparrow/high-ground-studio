@@ -19,6 +19,7 @@ import {
   normalizeArrangeStoryBoardInput,
   normalizeCreateMediaSourceSetInput,
   normalizeCreateSourceStoryCardInput,
+  normalizeOpenStoryBoardSectionWritingInput,
   normalizeRebindSourceStoryCardInput,
   normalizePromoteSourceStoryCardInput,
   normalizeStoryReframeRecipe,
@@ -29,6 +30,7 @@ import {
   type CreateSourceStoryCardInput,
   type ArrangeStoryBoardInput,
   type CreateMediaSourceSetInput,
+  type OpenStoryBoardSectionWritingInput,
   type RebindSourceStoryCardInput,
   type PromoteSourceStoryCardInput,
   type WithdrawSourceStoryTimelinePlacementInput,
@@ -344,6 +346,36 @@ function boardSnapshot(input: {
     placements: [...input.placements]
       .sort((left, right) => left.sortOrder - right.sortOrder || left.cardId.localeCompare(right.cardId)),
   };
+}
+
+function storyBoardSectionTitle(key: string) {
+  if (key === "unassigned") return "Unassigned story beat";
+  return key.replaceAll("-", " ").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+async function ensureStoryBoardSections(db: Database, input: {
+  boardId: string;
+  actorUserId: string;
+  groupKeys: string[];
+}) {
+  const firstOrder = new Map<string, number>();
+  for (const [index, groupKey] of input.groupKeys.entries()) {
+    if (!firstOrder.has(groupKey)) firstOrder.set(groupKey, index);
+  }
+  for (const [groupKey, sortOrder] of firstOrder) {
+    await db.studioStoryBoardSection.upsert({
+      where: { boardId_key: { boardId: input.boardId, key: groupKey } },
+      update: { archivedAt: null, sortOrder, updatedByUserId: input.actorUserId },
+      create: {
+        boardId: input.boardId,
+        key: groupKey,
+        title: storyBoardSectionTitle(groupKey),
+        sortOrder,
+        createdByUserId: input.actorUserId,
+        updatedByUserId: input.actorUserId,
+      },
+    });
+  }
 }
 
 async function checkedTagIds(db: Database, projectId: string, tagIds: string[]) {
@@ -774,6 +806,11 @@ export async function createSourceStoryCard(input: {
         throw new SourceStoryConflictError("stale-board", "The board changed while this card was being placed.", board.revision);
       }
       const sortOrder = board.placements.length;
+      await ensureStoryBoardSections(tx, {
+        boardId: board.id,
+        actorUserId,
+        groupKeys: [...board.placements.map((placement) => placement.groupKey), value.groupKey],
+      });
       await tx.studioStoryBoardPlacement.create({
         data: {
           boardId: board.id,
@@ -1184,6 +1221,12 @@ export async function arrangeStoryBoard(input: {
       }
     }
 
+    await ensureStoryBoardSections(tx, {
+      boardId: board.id,
+      actorUserId,
+      groupKeys: value.placements.map((placement) => placement.groupKey),
+    });
+
     const currentByCardId = new Map(board.placements.map((placement) => [placement.cardId, placement]));
     const desiredCardIdSet = new Set(desiredCardIds);
     const removedCardIds = board.placements
@@ -1242,6 +1285,140 @@ export async function arrangeStoryBoard(input: {
       },
     });
     return { revision: nextRevision, replayed: false };
+  }, { isolationLevel: "Serializable" });
+}
+
+export async function openStoryBoardSectionWriting(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  actorEmail: string;
+  value: OpenStoryBoardSectionWritingInput;
+}) {
+  const value = normalizeOpenStoryBoardSectionWritingInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const actorEmail = cleanText(input.actorEmail, "actorEmail", 320, true).toLowerCase();
+  const requestSha256 = sha256(stableSourceStoryJson({ ...value, actorUserId }));
+
+  return input.prisma.$transaction(async (tx) => {
+    const section = await tx.studioStoryBoardSection.findFirst({
+      where: {
+        boardId: value.boardId,
+        key: value.sectionKey,
+        archivedAt: null,
+        board: { projectId: value.projectId, archivedAt: null },
+      },
+      include: {
+        board: { select: { id: true, title: true, projectId: true } },
+        document: { select: { id: true, stableId: true, title: true } },
+      },
+    });
+    if (!section) throw new SourceStoryContractError("section-project-mismatch", "That story section is unavailable in this Nest.");
+
+    const replay = await tx.studioStoryBoardSectionOperation.findUnique({
+      where: {
+        sectionId_actorUserId_clientRequestId: {
+          sectionId: section.id,
+          actorUserId,
+          clientRequestId: value.clientRequestId,
+        },
+      },
+    });
+    if (replay) {
+      if (replay.requestSha256 !== requestSha256) {
+        throw new SourceStoryConflictError("request-reuse-conflict", "That request identity already opened a different writing section.", replay.revision);
+      }
+      const documentId = jsonRecord(replay.snapshotJson)?.documentId;
+      const document = typeof documentId === "string"
+        ? await tx.studioDocument.findFirst({ where: { id: documentId, projectId: value.projectId }, select: { id: true, stableId: true, title: true } })
+        : null;
+      if (!document) throw new SourceStoryConflictError("writing-document-missing", "The saved section writing link needs repair.", replay.revision);
+      return { section: { ...section, revision: replay.revision, document }, document, replayed: true };
+    }
+
+    if (section.document) return { section, document: section.document, replayed: true };
+    if (section.revision !== value.expectedRevision) {
+      throw new SourceStoryConflictError("stale-section", "This story section changed on another surface.", section.revision);
+    }
+
+    const stableId = `story-board-section:${section.id}`;
+    const documentTitle = `${section.board.title} — ${section.title}`.slice(0, 160);
+    const existingDocument = await tx.studioDocument.findUnique({
+      where: { stableId },
+      select: { id: true, projectId: true, stableId: true, title: true },
+    });
+    if (existingDocument && existingDocument.projectId !== value.projectId) {
+      throw new SourceStoryContractError("writing-document-project-mismatch", "The section writing identity belongs to another Nest.");
+    }
+    const documentId = existingDocument?.id ?? randomUUID();
+    const document = existingDocument ?? await tx.studioDocument.create({
+      data: {
+        id: documentId,
+        projectId: value.projectId,
+        stableId,
+        title: documentTitle,
+        sourceLabel: "Story board section",
+        projectionStatus: "draft",
+        isPrivate: true,
+        blocks: {
+          create: {
+            stableId: `${stableId}:draft`,
+            order: 0,
+            title: section.title,
+            body: section.synopsis,
+            sourceLabel: "Story board section",
+            projectionStatus: "draft",
+            isPrivate: true,
+          },
+        },
+      },
+      select: { id: true, stableId: true, title: true },
+    });
+    if (!existingDocument) {
+      await tx.studioDocumentOperation.create({
+        data: {
+          projectId: value.projectId,
+          documentId: document.id,
+          groupId: value.clientRequestId,
+          actorEmail,
+          origin: "human",
+          operationType: "create-from-story-board-section",
+          status: "applied",
+          afterJson: { documentId: document.id, boardId: section.boardId, sectionId: section.id, sectionKey: section.key },
+          payloadJson: { schema: SOURCE_STORY_SCHEMA_VERSION, requestSha256 },
+          reversible: true,
+        },
+      });
+    }
+
+    const nextRevision = section.revision + 1;
+    const updated = await tx.studioStoryBoardSection.updateMany({
+      where: { id: section.id, revision: section.revision, documentId: null },
+      data: { documentId: document.id, revision: nextRevision, updatedByUserId: actorUserId },
+    });
+    if (updated.count !== 1) throw new SourceStoryConflictError("stale-section", "This story section changed on another surface.", section.revision);
+    const snapshot = {
+      schema: SOURCE_STORY_SCHEMA_VERSION,
+      sectionId: section.id,
+      boardId: section.boardId,
+      sectionKey: section.key,
+      sectionTitle: section.title,
+      documentId: document.id,
+      documentStableId: document.stableId,
+      revision: nextRevision,
+    };
+    await tx.studioStoryBoardSectionOperation.create({
+      data: {
+        sectionId: section.id,
+        revision: nextRevision,
+        previousRevision: section.revision,
+        operation: "create-writing-document",
+        actorUserId,
+        clientRequestId: value.clientRequestId,
+        requestSha256,
+        snapshotJson: snapshot,
+      },
+    });
+    return { section: { ...section, revision: nextRevision, document }, document, replayed: false };
   }, { isolationLevel: "Serializable" });
 }
 
@@ -1652,6 +1829,20 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
       where: { projectId, archivedAt: null },
       orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
       include: {
+        sections: {
+          where: { archivedAt: null },
+          orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+          select: {
+            id: true,
+            key: true,
+            title: true,
+            synopsis: true,
+            sortOrder: true,
+            revision: true,
+            updatedAt: true,
+            document: { select: { id: true, stableId: true, title: true, updatedAt: true, _count: { select: { blocks: true } } } },
+          },
+        },
         placements: {
           orderBy: { sortOrder: "asc" },
           include: {
@@ -1984,6 +2175,17 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
       revision: board.revision,
       episodeProductionId: board.episodeProductionId,
       updatedAt: board.updatedAt.toISOString(),
+      sections: board.sections.map((section) => ({
+        ...section,
+        updatedAt: section.updatedAt.toISOString(),
+        document: section.document ? {
+          id: section.document.id,
+          stableId: section.document.stableId,
+          title: section.document.title,
+          updatedAt: section.document.updatedAt.toISOString(),
+          blockCount: section.document._count.blocks,
+        } : null,
+      })),
       placements: board.placements.map((placement) => ({
         id: placement.id,
         cardId: placement.cardId,

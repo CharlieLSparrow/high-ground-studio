@@ -895,6 +895,9 @@ model User {
   storyTimelineOperationsAuthored   StudioStoryTimelinePlacementOperation[]     @relation("StudioStoryTimelinePlacementOperationActor")
   storyBoardsCreated                StudioStoryBoard[]                          @relation("StudioStoryBoardCreatedBy")
   storyBoardsUpdated                StudioStoryBoard[]                          @relation("StudioStoryBoardUpdatedBy")
+  storyBoardSectionsCreated         StudioStoryBoardSection[]                   @relation("StudioStoryBoardSectionCreatedBy")
+  storyBoardSectionsUpdated         StudioStoryBoardSection[]                   @relation("StudioStoryBoardSectionUpdatedBy")
+  storyBoardSectionOperations       StudioStoryBoardSectionOperation[]          @relation("StudioStoryBoardSectionOperationActor")
   storyBoardPlacementsCreated       StudioStoryBoardPlacement[]                 @relation("StudioStoryBoardPlacementCreatedBy")
   storyBoardOperationsAuthored      StudioStoryBoardOperation[]                 @relation("StudioStoryBoardOperationActor")
   mediaDerivativesCreated           StudioMediaDerivative[]                     @relation("StudioMediaDerivativeCreatedBy")
@@ -4004,6 +4007,7 @@ model StudioDocument {
   documentOperations   StudioDocumentOperation[]
   productionRooms      StudioProductionRoom[]
   outputPackets        StudioOutputPacket[]
+  storyBoardSections   StudioStoryBoardSection[]
 
   @@index([projectId, stableId])
   @@index([projectId, projectionStatus])
@@ -5158,6 +5162,7 @@ model StudioStoryBoard {
   createdBy          User                           @relation("StudioStoryBoardCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   updatedBy          User?                          @relation("StudioStoryBoardUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   placements         StudioStoryBoardPlacement[]
+  sections           StudioStoryBoardSection[]
   operations         StudioStoryBoardOperation[]
   timelinePlacements StudioStoryTimelinePlacement[]
 
@@ -5165,6 +5170,59 @@ model StudioStoryBoard {
   @@unique([projectId, createdByUserId, clientRequestId], map: "StudioStoryBoard_project_actor_request_key")
   @@index([projectId, archivedAt, updatedAt])
   @@index([episodeProductionId])
+}
+
+// A section is the durable binder item behind a board beat. Placements refer
+// to it by the board-scoped key, while prose remains in an optional canonical
+// StudioDocument. Empty sections therefore survive card moves and can keep
+// their writing without turning placement metadata into manuscript storage.
+model StudioStoryBoardSection {
+  id              String    @id @default(cuid())
+  boardId         String
+  key             String
+  title           String
+  synopsis        String    @default("") @db.Text
+  sortOrder       Int       @default(0)
+  documentId      String?   @unique
+  revision        Int       @default(1)
+  createdByUserId String
+  updatedByUserId String?
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  board      StudioStoryBoard                   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  document   StudioDocument?                    @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  createdBy  User                               @relation("StudioStoryBoardSectionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy  User?                              @relation("StudioStoryBoardSectionUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  placements StudioStoryBoardPlacement[]
+  operations StudioStoryBoardSectionOperation[]
+
+  @@unique([boardId, key])
+  @@index([boardId, archivedAt, sortOrder])
+  @@index([documentId])
+}
+
+// Section mutations carry their own idempotent history so opening or later
+// renaming a binder item does not manufacture a board-order conflict.
+model StudioStoryBoardSectionOperation {
+  id               String   @id @default(cuid())
+  sectionId        String
+  revision         Int
+  previousRevision Int
+  operation        String
+  actorUserId      String
+  clientRequestId  String
+  requestSha256    String
+  snapshotJson     Json
+  createdAt        DateTime @default(now())
+
+  section StudioStoryBoardSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  actor   User                    @relation("StudioStoryBoardSectionOperationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([sectionId, revision])
+  @@unique([sectionId, actorUserId, clientRequestId])
+  @@index([actorUserId, createdAt])
 }
 
 // Placement owns only composition context. Reordering or grouping a card does
@@ -5181,6 +5239,7 @@ model StudioStoryBoardPlacement {
   updatedAt       DateTime @updatedAt
 
   board              StudioStoryBoard               @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  section            StudioStoryBoardSection        @relation(fields: [boardId, groupKey], references: [boardId, key], onDelete: Restrict, onUpdate: Cascade)
   card               StudioStoryCard                @relation(fields: [cardId], references: [id], onDelete: Cascade)
   createdBy          User                           @relation("StudioStoryBoardPlacementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   timelinePlacements StudioStoryTimelinePlacement[]
