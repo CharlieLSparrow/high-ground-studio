@@ -1,5 +1,6 @@
 import {
   ExternalMediaContractError,
+  externalMediaMemberRole,
   normalizeAttachVerifiedExternalMediaInput,
 } from "./external-media-contract";
 
@@ -32,6 +33,15 @@ function verifiedFile() {
 }
 
 describe("external media contract", () => {
+  it("normalizes legacy and current camera member roles at projection boundaries", () => {
+    expect(externalMediaMemberRole("browse-proxy")).toBe("browse-proxy");
+    expect(externalMediaMemberRole("primary-original")).toBe(
+      "primary-original",
+    );
+    expect(externalMediaMemberRole("full-original")).toBe("primary-original");
+    expect(externalMediaMemberRole("unknown")).toBeNull();
+  });
+
   it("normalizes a verified, provider-owned file snapshot without a credential", () => {
     const result = normalizeAttachVerifiedExternalMediaInput({
       projectId: "project_01",

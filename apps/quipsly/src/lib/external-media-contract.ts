@@ -19,6 +19,25 @@ export const externalMediaCapabilityStates = [
 export type ExternalMediaCapabilityState =
   (typeof externalMediaCapabilityStates)[number];
 
+export const externalMediaMemberRoles = [
+  "browse-proxy",
+  "primary-original",
+  "secondary-original",
+] as const;
+export type ExternalMediaMemberRole = (typeof externalMediaMemberRoles)[number];
+
+export function externalMediaMemberRole(
+  value: unknown,
+): ExternalMediaMemberRole | null {
+  // Early Drive fixtures called the canonical original "full-original".
+  // Normalize it at projection boundaries so persisted history stays readable
+  // while every current camera/package surface speaks the same role language.
+  if (value === "full-original") return "primary-original";
+  return externalMediaMemberRoles.includes(value as ExternalMediaMemberRole)
+    ? (value as ExternalMediaMemberRole)
+    : null;
+}
+
 export type VerifiedExternalMediaFile = {
   provider: string;
   connectionKey: string;

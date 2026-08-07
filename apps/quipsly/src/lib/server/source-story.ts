@@ -16,6 +16,7 @@ import {
   timelineStateFromEpisodeArtifact,
   type EpisodeImportedMediaAsset,
 } from "@/app/(app)/episode-production/episodeArtifact";
+import { externalMediaMemberRole } from "@/lib/external-media-contract";
 
 import {
   SOURCE_STORY_SCHEMA_VERSION,
@@ -3988,14 +3989,9 @@ export async function readSourceStoryWorkspace(
             derivatives: undefined,
             replicas: undefined,
             projectionJson: undefined,
-            memberRole:
-              jsonRecord(revisions[0].projectionJson)?.memberRole ===
-              "browse-proxy"
-                ? ("browse-proxy" as const)
-                : jsonRecord(revisions[0].projectionJson)?.memberRole ===
-                    "full-original"
-                  ? ("full-original" as const)
-                  : null,
+            memberRole: externalMediaMemberRole(
+              jsonRecord(revisions[0].projectionJson)?.memberRole,
+            ),
             sizeBytes: revisions[0].sizeBytes?.toString() ?? null,
             verifiedAt: revisions[0].verifiedAt?.toISOString() ?? null,
             collaborationProxy: publicDerivative(

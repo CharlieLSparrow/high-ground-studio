@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 
+import { externalMediaMemberRole } from "@/lib/external-media-contract";
 import { publicSourceAudioNavigationStatus } from "@/lib/server/source-audio-navigation";
 import { publicGoogleDriveSourceMaterializationJob } from "@/lib/server/google-drive-source-materialization";
 import { publicSourceVisualNavigationFrames } from "@/lib/server/source-visual-overview";
@@ -655,14 +656,9 @@ export async function readSourceLibraryPage(input: {
             derivatives: undefined,
             replicas: undefined,
             projectionJson: undefined,
-            memberRole:
-              jsonRecord(revisions[0].projectionJson)?.memberRole ===
-              "browse-proxy"
-                ? ("browse-proxy" as const)
-                : jsonRecord(revisions[0].projectionJson)?.memberRole ===
-                    "full-original"
-                  ? ("full-original" as const)
-                  : null,
+            memberRole: externalMediaMemberRole(
+              jsonRecord(revisions[0].projectionJson)?.memberRole,
+            ),
             sizeBytes: revisions[0].sizeBytes?.toString() ?? null,
             verifiedAt: revisions[0].verifiedAt?.toISOString() ?? null,
             collaborationProxy: publicDerivative(

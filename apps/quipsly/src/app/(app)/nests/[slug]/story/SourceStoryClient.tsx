@@ -231,6 +231,13 @@ type SourceStoryWorkspace = {
   sourceSets: MediaSourceSet[];
   externalSources: Array<{
     id: string;
+    sourceUnit?: null | {
+      id: string;
+      kind: string;
+      title: string;
+      capturedAt: string | Date | null;
+      metadataJson: unknown;
+    };
     provider: string;
     fileName: string;
     mimeType: string | null;
@@ -250,7 +257,11 @@ type SourceStoryWorkspace = {
       contentSha256: string | null;
       sizeBytes: string | null;
       sourceState: string;
-      memberRole: "browse-proxy" | "full-original" | null;
+      memberRole:
+        | "browse-proxy"
+        | "primary-original"
+        | "secondary-original"
+        | null;
       verifiedAt: string | null;
       durationSeconds: number | null;
       widthPixels: number | null;
@@ -2580,6 +2591,13 @@ export function SourceStoryClient({
                             (candidate) => candidate.id === item.id,
                           ) ?? null)
                         : null;
+                    const externalPackageMembers = externalSource?.sourceUnit
+                      ? workspace.externalSources.filter(
+                          (candidate) =>
+                            candidate.sourceUnit?.id ===
+                            externalSource.sourceUnit?.id,
+                        )
+                      : [];
                     const asset =
                       item.kind === "asset"
                         ? (sourceAssets.find(
@@ -2732,6 +2750,53 @@ export function SourceStoryClient({
                             </ul>
                             <p className="mt-2 font-mono text-[8px] text-[#806a4d]">
                               Package {sourceSet.identitySha256.slice(0, 16)}…
+                            </p>
+                          </details>
+                        ) : null}
+                        {externalSource &&
+                        selected &&
+                        externalPackageMembers.length > 1 ? (
+                          <details className="mt-2 rounded-xl border border-cyan-200 bg-white/75 px-2 py-2 text-[9px]">
+                            <summary className="cursor-pointer min-h-11 py-3 font-black uppercase tracking-wide text-cyan-950">
+                              Camera segment · {externalPackageMembers.length}{" "}
+                              Drive files
+                            </summary>
+                            <ul className="space-y-2 text-[#765f40]">
+                              {externalPackageMembers.map((member) => {
+                                const role =
+                                  member.latestSourceRevision?.memberRole;
+                                return (
+                                  <li
+                                    key={member.id}
+                                    className="rounded-lg border border-cyan-100 bg-cyan-50/60 p-2"
+                                  >
+                                    <span className="block font-black text-cyan-950">
+                                      {role === "browse-proxy"
+                                        ? "LRV browse companion"
+                                        : role === "secondary-original"
+                                          ? "Secondary INSV original"
+                                          : "INSV original"}
+                                    </span>
+                                    <span className="mt-1 block break-all">
+                                      {member.fileName}
+                                    </span>
+                                    <span className="mt-1 block font-mono text-[8px]">
+                                      {formatBytes(member.sizeBytes)} ·{" "}
+                                      {member.accessState === "available"
+                                        ? role === "browse-proxy" &&
+                                          member.latestSourceRevision
+                                            ?.exactReplica
+                                          ? "verified local browse copy"
+                                          : "verified in Drive"
+                                        : "access needs repair"}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                            <p className="mt-2 font-semibold leading-4 text-cyan-950">
+                              Quipsly works from the LRV here. INSV originals
+                              stay in Drive until final conform or export.
                             </p>
                           </details>
                         ) : null}
