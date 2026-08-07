@@ -1,4 +1,5 @@
 import { parseAudioSignalEvidence, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+import { verifyCaptureRecoveryLineage } from "@/lib/episode-production/capture-recovery-lineage";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -65,8 +66,8 @@ export type SessionSourceEvidence = {
     uploadSessionId: string | null;
     startBoundary: { receiptId: string; occurredAt: string } | null;
     stopBoundary: { receiptId: string; occurredAt: string } | null;
-    sourceOrigin: "CAPTURE" | "NEST_EXTERNAL_IMPORT";
-    boundaryAuthority?: "CAPTURE_RECEIPTS" | "STAFF_REVIEWED_EXTERNAL_IMPORT" | null;
+    sourceOrigin: "CAPTURE" | "NEST_EXTERNAL_IMPORT" | "NEST_RECOVERY_REPLICA";
+    boundaryAuthority?: "CAPTURE_RECEIPTS" | "STAFF_REVIEWED_EXTERNAL_IMPORT" | "AUDITED_RECOVERY_REPLICA" | null;
     cloud: {
       sha256: string | null;
       byteSize: string | null;
@@ -129,6 +130,16 @@ export type SessionSourceEvidence = {
       reason: string;
       transcriptReleasedAt: string | null;
       transcriptReason: string | null;
+    } | null;
+    recoveryAudit?: {
+      requestId: string;
+      originalRecordingAssetId: string;
+      expectationId: string;
+      decidedAt: string;
+      reason: string;
+      importedSourceGeneration: string;
+      durableReplicaGeneration: string;
+      originalSourceMediaUnchanged: true;
     } | null;
     issues: string[];
   }>;
@@ -323,6 +334,20 @@ export function buildSessionSourceEvidence(input: {
     .map((recording) => {
       const manifest = object(recording.localManifestJson);
       const finalization = latestFinalization(input.finalizationReceipts, recording.id);
+      const recoveryLineage = verifyCaptureRecoveryLineage({
+        roomId: input.roomId,
+        recordingAsset: recording,
+        finalization: finalization ? {
+          uploadSessionId: finalization.uploadSessionId,
+          captureId: finalization.captureId,
+          roomId: finalization.roomId,
+          actorUserId: finalization.actorUserId,
+          processingDisposition: finalization.processingDisposition,
+          releaseReason: finalization.releaseReason,
+          releasedAt: finalization.releasedAt,
+          metadataJson: finalization.metadataJson,
+        } : null,
+      });
       const binding = object(object(finalization?.metadataJson).immutableUploadBinding);
       const evidence = object(object(finalization?.metadataJson).evidence);
       const captureId = text(finalization?.captureId) ?? text(manifest.captureId);
@@ -382,17 +407,17 @@ export function buildSessionSourceEvidence(input: {
       const missing: string[] = [];
       if (!finalization) missing.push("No finalization receipt is bound to this RecordingAsset.");
       if (!uploadSessionId || !bindingUploadSessionId) missing.push("The upload-session binding is incomplete.");
-      if (!captureId || !bindingCaptureId) missing.push("The capture identity is incomplete.");
+      if (!recoveryLineage && (!captureId || !bindingCaptureId)) missing.push("The capture identity is incomplete.");
       if (!bindingRoomId) missing.push("The immutable room binding is absent.");
       if (!bindingHash || !assetHash) missing.push("A valid server SHA-256 is absent.");
       if (!bindingSize || !assetSize) missing.push("The exact byte-size comparison is absent.");
       if (!bindingBucket || !recording.storageBucket) missing.push("The storage-bucket comparison is absent.");
       if (!bindingObjectPath || !recording.storageObjectPath) missing.push("The storage-path comparison is absent.");
-      if (!bindingGeneration || !manifestGeneration) missing.push("The object-generation comparison is absent.");
-      if (!durableStaffRelease && (!bindingStartReceiptId || !finalizationStartReceiptId || !start)) {
+      if (!recoveryLineage && (!bindingGeneration || !manifestGeneration)) missing.push("The object-generation comparison is absent.");
+      if (!recoveryLineage && !durableStaffRelease && (!bindingStartReceiptId || !finalizationStartReceiptId || !start)) {
         missing.push("The applied START boundary is incomplete.");
       }
-      if (!durableStaffRelease && !stop) missing.push("The applied STOP boundary is incomplete.");
+      if (!recoveryLineage && !durableStaffRelease && !stop) missing.push("The applied STOP boundary is incomplete.");
       if (manifest.exactBytesVerified !== true) missing.push("The RecordingAsset manifest does not claim exact-byte verification.");
       if (
         !["VERIFIED", "HELD"].includes(String(recording.status))
@@ -401,12 +426,20 @@ export function buildSessionSourceEvidence(input: {
       ) {
         missing.push("The RecordingAsset is not server-verified.");
       }
+      if (recoveryLineage) {
+        issues.push(...recoveryLineage.issues);
+        missing.push(...recoveryLineage.missing);
+      }
 
       const processingDisposition = text(finalization?.processingDisposition);
       const transcriptDisposition = text(finalization?.transcriptDisposition);
-      const boundaryAuthority = start && stop
-        ? "CAPTURE_RECEIPTS" as const
-        : durableStaffRelease
+      const boundaryAuthority = recoveryLineage
+        ? recoveryLineage.valid
+          ? "AUDITED_RECOVERY_REPLICA" as const
+          : null
+        : start && stop
+          ? "CAPTURE_RECEIPTS" as const
+          : durableStaffRelease
           ? "STAFF_REVIEWED_EXTERNAL_IMPORT" as const
           : null;
       const status: SessionSourceEvidenceStatus = issues.length
@@ -432,9 +465,11 @@ export function buildSessionSourceEvidence(input: {
         stopBoundary: stop
           ? { receiptId: stop.row.receiptId, occurredAt: stop.occurredAt }
           : null,
-        sourceOrigin: externalImport
-          ? "NEST_EXTERNAL_IMPORT" as const
-          : "CAPTURE" as const,
+        sourceOrigin: recoveryLineage
+          ? "NEST_RECOVERY_REPLICA" as const
+          : externalImport
+            ? "NEST_EXTERNAL_IMPORT" as const
+            : "CAPTURE" as const,
         boundaryAuthority,
         cloud: {
           sha256: bindingHash ?? assetHash,
@@ -453,6 +488,25 @@ export function buildSessionSourceEvidence(input: {
               reason: releaseReason,
               transcriptReleasedAt,
               transcriptReason: transcriptReleaseReason,
+            }
+          : null,
+        recoveryAudit: recoveryLineage?.valid
+          && recoveryLineage.authority.requestId
+          && recoveryLineage.authority.originalRecordingAssetId
+          && recoveryLineage.authority.expectationId
+          && recoveryLineage.authority.decidedAt
+          && recoveryLineage.authority.reason
+          && recoveryLineage.authority.importedSourceGeneration
+          && recoveryLineage.authority.durableReplicaGeneration
+          ? {
+              requestId: recoveryLineage.authority.requestId,
+              originalRecordingAssetId: recoveryLineage.authority.originalRecordingAssetId,
+              expectationId: recoveryLineage.authority.expectationId,
+              decidedAt: recoveryLineage.authority.decidedAt,
+              reason: recoveryLineage.authority.reason,
+              importedSourceGeneration: recoveryLineage.authority.importedSourceGeneration,
+              durableReplicaGeneration: recoveryLineage.authority.durableReplicaGeneration,
+              originalSourceMediaUnchanged: true as const,
             }
           : null,
         issues: [...issues, ...missing],

@@ -1,6 +1,6 @@
 # Quipsly Audio Flight Deck
 
-Status: first production slice implemented on 2026-08-06
+Status: Flight Deck and audited recovery-lineage slices implemented on 2026-08-06
 
 ## Product outcome
 
@@ -45,6 +45,7 @@ The implementation is a projection over existing canonical evidence:
 
 - `SessionExpectedSource` and `SessionReadinessTopology` own intent, source roles, and missing-device visibility.
 - `SessionSourceEvidence` owns independent comparison of finalization receipts, `RecordingAsset`, immutable cloud identity, Capture boundaries, runtime format, and complete decoded signal evidence.
+- `verifyCaptureRecoveryLineage` owns the separate recovery-replica authority. It verifies the request hash, immutable original, plan expectation, imported source, durable replica, decision, and release receipt without borrowing the original's Capture boundaries.
 - finalization dispositions keep media processing separate from transcription consent.
 - the Source Journey continues to own historical plan → capture → retain → transcript → editor reconstruction.
 
@@ -64,13 +65,15 @@ Every non-ready source includes one evidence-specific next action. Desktop and 3
 
 ## Retained-data finding
 
-The first read-only operation against the retained Capture-to-editor fixture exposed a real lineage gap instead of hiding it:
+The first read-only operation against the retained Capture-to-editor fixture exposed a reader/authority gap instead of hiding it:
 
 - two historical browser originals have independently verified exact bytes but are not bound to the current source plan;
-- two editor-selected recovery-slot assets are bound to the plan and released for processing/transcription, but their own independent exact-byte and decoded-signal evidence is absent;
-- the Flight Deck therefore reports `BLOCKED`, while preserving the green release facts and the historical originals.
+- two editor-selected recovery-slot assets are bound to the plan and released for processing/transcription, but the general evidence readers initially required native Capture boundaries they were never meant to own;
+- the Flight Deck therefore initially reported `BLOCKED`, while preserving the green release facts and the historical originals.
 
-This is not evidence that the originals are lost. It means editor materialization currently does not carry a sufficiently explicit, independently verifiable lineage projection from recovery slot back to immutable original. The correct repair is to model and verify that lineage, not to relabel the recovery slots as exact originals.
+The recovery route already persisted sufficient lineage. A shared verifier now recognizes it as a third explicit authority: `AUDITED_RECOVERY_REPLICA`. It independently compares the recovery request, request SHA-256, immutable original, expected-source identity, imported-source hash and generation, durable-replica hash, bytes, bucket, path and generation, decision reason/time, authority confirmation, and finalization release. It exposes no actor identity or private source locator.
+
+After that repair, all four retained assets independently verify. Both selected recovery journeys are complete, and their Capture checkpoint is correctly **not applicable** rather than forged from the original. The Flight Deck now reports `REVIEW`: the historical originals remain visibly unplanned, while the selected replicas remain `UNKNOWN` at decode/signal because those measurements have not yet been projected onto the recovery replicas.
 
 ## Verification contract
 
@@ -85,9 +88,8 @@ The current slice is covered by:
 
 ## Next mature slices
 
-1. **Verified recovery lineage** — bind derived/editor recovery assets to immutable source ancestors with explicit transformation receipts and independently checkable identity.
-2. **Automatic decode coverage** — enqueue complete decode, waveform, broad-band frequency, and signal evidence immediately after exact-byte retention, with retry and failure visibility.
-3. **Flight Deck listening navigator** — route every signal observation to the exact source clock, A/B treatment preview, and explicit reviewer disposition.
-4. **Qualified treatment proposals** — de-click, de-plosive, de-noise, de-reverb, level, and loudness proposals must show the detected problem, selected range, parameters, before/after preview, and reversible decision receipt.
-5. **Transcript evidence depth** — expose vocabulary/keyterm coverage, diarization uncertainty, source-clock alignment, and correction provenance without treating provider confidence as truth.
-6. **Delivery conformance** — connect proof-listened masters to platform-specific loudness, peak, codec, channel, and publication packet checks without changing the immutable source.
+1. **Automatic decode coverage** — enqueue complete decode, waveform, broad-band frequency, and signal evidence immediately after exact-byte retention or audited recovery, with retry and failure visibility.
+2. **Flight Deck listening navigator** — route every signal observation to the exact source clock, A/B treatment preview, and explicit reviewer disposition.
+3. **Qualified treatment proposals** — de-click, de-plosive, de-noise, de-reverb, level, and loudness proposals must show the detected problem, selected range, parameters, before/after preview, and reversible decision receipt.
+4. **Transcript evidence depth** — expose vocabulary/keyterm coverage, diarization uncertainty, source-clock alignment, and correction provenance without treating provider confidence as truth.
+5. **Delivery conformance** — connect proof-listened masters to platform-specific loudness, peak, codec, channel, and publication packet checks without changing the immutable source.

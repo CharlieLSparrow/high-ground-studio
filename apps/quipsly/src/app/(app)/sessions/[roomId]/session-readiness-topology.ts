@@ -1,3 +1,5 @@
+import { verifyCaptureRecoveryLineage } from "@/lib/episode-production/capture-recovery-lineage";
+
 export type SessionTopologyParticipantInput = {
   id: string;
   userId?: string | null;
@@ -23,6 +25,7 @@ export type SessionTopologyGrantInput = {
 
 export type SessionTopologyRecordingInput = {
   id: string;
+  roomId?: string | null;
   participantId?: string | null;
   kind: string;
   status: string;
@@ -55,6 +58,8 @@ export type SessionTopologyFinalizationInput = {
   recordingAssetId?: string | null;
   processingDisposition: string;
   transcriptDisposition: string;
+  releaseReason?: string | null;
+  releasedAt?: Date | string | null;
   metadataJson?: unknown;
   updatedAt: Date | string;
 };
@@ -448,7 +453,7 @@ function recordingSource(
   const bindingByteSize = scalar(immutableBinding.sizeBytes);
   const manifestCaptureId = text(manifest.captureId).toLowerCase();
   const receiptCaptureId = text(finalization?.captureId).toLowerCase();
-  const exactReceiptMatchesAsset = Boolean(finalization)
+  const nativeReceiptMatchesAsset = Boolean(finalization)
     && text(immutableBinding.uploadSessionId) === text(finalization?.uploadSessionId)
     && Boolean(receiptCaptureId)
     && text(immutableBinding.captureId).toLowerCase() === receiptCaptureId
@@ -460,6 +465,30 @@ function recordingSource(
     && text(immutableBinding.bucketName) === text(recording.storageBucket)
     && text(immutableBinding.objectName) === text(recording.storageObjectPath)
     && text(immutableBinding.generation) === storageGeneration;
+  const recoveryLineage = verifyCaptureRecoveryLineage({
+    roomId: text(recording.roomId) || text(finalization?.roomId) || "",
+    recordingAsset: {
+      id: recording.id,
+      status: recording.status,
+      byteSize: recording.byteSize,
+      storageBucket: recording.storageBucket,
+      storageObjectPath: recording.storageObjectPath,
+      checksum: recording.checksum,
+      verifiedAt: recording.verifiedAt,
+      localManifestJson: recording.localManifestJson,
+    },
+    finalization: finalization ? {
+      uploadSessionId: finalization.uploadSessionId,
+      captureId: finalization.captureId,
+      roomId: finalization.roomId,
+      actorUserId: finalization.actorUserId,
+      processingDisposition: finalization.processingDisposition,
+      releaseReason: finalization.releaseReason,
+      releasedAt: finalization.releasedAt,
+      metadataJson: finalization.metadataJson,
+    } : null,
+  });
+  const exactReceiptMatchesAsset = recoveryLineage ? recoveryLineage.valid : nativeReceiptMatchesAsset;
   const exactBytesVerified = assetExactBytesVerified && exactReceiptMatchesAsset;
   const processingDisposition = finalization ? text(finalization.processingDisposition).toUpperCase() : null;
   const transcriptDisposition = finalization ? text(finalization.transcriptDisposition).toUpperCase() : null;

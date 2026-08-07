@@ -722,4 +722,101 @@ describe("Session readiness topology", () => {
     expect(topology.summary.currentPreflightCount).toBe(1);
     expect(topology.summary.attentionCount).toBe(0);
   });
+
+  it("treats a verified audited recovery replica as server-safe without borrowing phone boundaries", () => {
+    const decidedAt = "2026-08-06T20:00:00.000Z";
+    const reason = "The original decoded near silence; adopt the independently verified backup.";
+    const requestId = "66666666-6666-4666-8666-666666666666";
+    const requestSha256 = "b".repeat(64);
+    const recoveryCaptureId = "77777777-7777-4777-8777-777777777777";
+    const recoveryUploadSessionId = "88888888-8888-4888-8888-888888888888";
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      captures: [],
+      recordings: [{
+        id: "recovery-asset",
+        roomId: "room-1",
+        ...exactStorage,
+        participantId: participant.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        fileName: "verified-backup.wav",
+        verifiedAt: decidedAt,
+        localManifestJson: {
+          schema: "quipsly-capture-source-recovery-manifest-v1",
+          captureId: recoveryCaptureId,
+          exactBytesVerified: true,
+          storageGeneration: "1785990000000",
+          captureSourceRecovery: {
+            requestId,
+            requestSha256,
+            originalRecordingAssetId: "original-asset",
+            expectationId: "expected-recovery",
+            reason,
+            authorityConfirmed: true,
+            actorUserId: "user-scott",
+            decidedAt,
+            sourceLocator: "gs://private/backup.wav#4",
+            sourceGeneration: "4",
+            sourceSha256: "a".repeat(64),
+            durableStorage: { bucketName: exactStorage.storageBucket, objectName: exactStorage.storageObjectPath, generation: "1785990000000" },
+            originalSourceMediaUnchanged: true,
+          },
+          storageVerification: { schema: "quipsly-capture-recovery-storage-verification-v1", verifiedAt: decidedAt, sizeBytes: 1024, sha256: "a".repeat(64), generation: "1785990000000" },
+        },
+      }],
+      finalizations: [{
+        uploadSessionId: recoveryUploadSessionId,
+        captureId: recoveryCaptureId,
+        roomId: "room-1",
+        actorUserId: "user-scott",
+        recordingAssetId: "recovery-asset",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        releaseReason: reason,
+        releasedAt: decidedAt,
+        updatedAt: decidedAt,
+        metadataJson: {
+          schema: "quipsly-capture-source-recovery-finalization-v1",
+          immutableUploadBinding: { uploadSessionId: recoveryUploadSessionId, roomId: "room-1", sha256: "a".repeat(64), sizeBytes: 1024, bucketName: exactStorage.storageBucket, objectName: exactStorage.storageObjectPath },
+          recoveryAuthority: {
+            requestId,
+            requestSha256,
+            originalRecordingAssetId: "original-asset",
+            expectationId: "expected-recovery",
+            reason,
+            actorUserId: "user-scott",
+            authorityConfirmed: true,
+            decidedAt,
+            importedSource: { locator: "gs://private/backup.wav#4", generation: "4", sha256: "a".repeat(64) },
+            durableCaptureReplica: { bucketName: exactStorage.storageBucket, objectName: exactStorage.storageObjectPath, generation: "1785990000000" },
+          },
+        },
+      }],
+      expectedSources: [{
+        id: "expected-recovery",
+        participantId: participant.id,
+        label: "Scott recovered microphone master",
+        sourceKind: "AUDIO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "ACTIVE",
+        expectedClientKind: "external",
+        recordingAssetId: "recovery-asset",
+        captureId: recoveryCaptureId,
+        revision: 3,
+        createdAt: "2026-08-06T19:00:00.000Z",
+        updatedAt: decidedAt,
+      }],
+    });
+
+    expect(topology.people[0].sources[0]).toMatchObject({
+      id: "recovery-asset",
+      verified: true,
+      serverRetention: { state: "SERVER_COPY_VERIFIED_RELEASED", exactBytesVerified: true },
+    });
+    expect(topology.expectedSources[0]).toMatchObject({ fulfillment: "fulfilled", blocking: false });
+    expect(topology.exitReadiness.safeForServerObservedSources).toBe(true);
+  });
 });

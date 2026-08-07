@@ -260,6 +260,34 @@ describe("Session source journey projection", () => {
     ]));
   });
 
+  it("does not borrow the original Capture boundaries for an audited recovery replica", () => {
+    const projection = buildSessionSourceJourneyProjection({
+      topology: topology(),
+      sourceEvidence: sourceEvidence({
+        sourceOrigin: "NEST_RECOVERY_REPLICA",
+        boundaryAuthority: "AUDITED_RECOVERY_REPLICA",
+        startBoundary: null,
+        stopBoundary: null,
+        recoveryAudit: {
+          requestId: "request-1",
+          originalRecordingAssetId: "original-asset",
+          expectationId: "expected-1",
+          decidedAt: "2026-08-06T02:00:00.000Z",
+          reason: "The original decoded near silence; adopt the verified backup.",
+          importedSourceGeneration: "4",
+          durableReplicaGeneration: "9",
+          originalSourceMediaUnchanged: true,
+        },
+      }),
+      finishingEvidence: finishingEvidence(),
+    });
+
+    expect(projection.journeys[0]!.checkpoints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "capture", state: "NOT_APPLICABLE", detail: expect.stringContaining("recovery decision") }),
+      expect.objectContaining({ id: "retention", state: "COMPLETE" }),
+    ]));
+  });
+
   it("does not put a historical source on the editor timeline merely because it shares the Capture group", () => {
     const historical = { ...retainedSource(), id: "asset-historical", label: "Earlier browser witness.webm", captureId: "capture-historical" };
     const inputTopology = topology();

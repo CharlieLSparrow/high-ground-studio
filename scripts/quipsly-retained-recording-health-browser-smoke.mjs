@@ -50,10 +50,17 @@ async function main() {
     const gateCount = await flightDeck.locator("li[data-recording-health-gate]").count();
     assert.equal(gateCount, sourceCount * 6, "A rendered retained source lost an independently inspectable health gate.");
     assert.ok(await flightDeck.getByRole("link", { name: /Open source plan|Inspect source evidence|Open transcript evidence/ }).count() >= 1, "No evidence-specific next action is reachable from the Flight Deck.");
+    const recoveryBoundaries = page.getByText("Audited recovery-replica boundary", { exact: true });
+    await recoveryBoundaries.first().waitFor();
+    assert.equal(await recoveryBoundaries.count(), 2, "The retained source ledger did not render both audited recovery-replica boundaries.");
+    assert.equal(await page.getByText(/Immutable original preserved · replica independently verified/).count(), 2, "The retained source ledger lost the recovery lineage outcome.");
     await assertNoHorizontalOverflow(flightDeck, "desktop Audio Flight Deck");
 
     await page.setViewportSize({ width: 390, height: 844 });
     await assertNoHorizontalOverflow(flightDeck, "phone-width Audio Flight Deck");
+    for (let index = 0; index < await recoveryBoundaries.count(); index += 1) {
+      await assertNoHorizontalOverflow(recoveryBoundaries.nth(index).locator(".."), `phone-width recovery lineage ${index + 1}`);
+    }
     if (screenshotPath) {
       await flightDeck.scrollIntoViewIfNeeded();
       await page.screenshot({ path: screenshotPath, fullPage: false });
@@ -71,6 +78,7 @@ async function main() {
       projectedState,
       retainedSourceCards: sourceCount,
       independentlyRenderedGates: gateCount,
+      auditedRecoveryBoundaries: 2,
       desktopOverflow: false,
       phoneWidthOverflow: false,
       viewport: "390x844",

@@ -162,6 +162,66 @@ function markAsNestExternalImport(input: ReturnType<typeof fixture>) {
   };
 }
 
+function markAsAuditedRecoveryReplica(input: ReturnType<typeof fixture>) {
+  const decidedAt = "2026-08-02T20:00:00.000Z";
+  const reason = "The original decoded near silence; adopt the independently verified backup.";
+  const requestId = "66666666-6666-4666-8666-666666666666";
+  const requestSha256 = "b".repeat(64);
+  const originalRecordingAssetId = "original-asset-1";
+  const expectationId = "expected-source-1";
+  input.recordingAssets[0].localManifestJson = {
+    schema: "quipsly-capture-source-recovery-manifest-v1",
+    captureId,
+    captureGroupId: "55555555-5555-4555-8555-555555555555",
+    exactBytesVerified: true,
+    storageGeneration: "1742",
+    storageVerification: { schema: "quipsly-capture-recovery-storage-verification-v1", verifiedAt: decidedAt, sizeBytes: 4096, sha256, generation: "1742" },
+    captureSourceRecovery: {
+      requestId,
+      requestSha256,
+      originalRecordingAssetId,
+      expectationId,
+      reason,
+      authorityConfirmed: true,
+      actorUserId: "actor-private-1",
+      actorEmail: "private@example.test",
+      decidedAt,
+      sourceLocator: "gs://private-import/backup.wav#88",
+      sourceGeneration: "88",
+      sourceSha256: sha256,
+      durableStorage: { bucketName: "quipsly-private-media", objectName: "mobile/room-1/homer-camera.mov", generation: "1742" },
+      originalSourceMediaUnchanged: true,
+    },
+  };
+  input.finalizationReceipts[0].releaseReason = reason;
+  input.finalizationReceipts[0].releasedAt = decidedAt;
+  input.finalizationReceipts[0].metadataJson = {
+    schema: "quipsly-capture-source-recovery-finalization-v1",
+    immutableUploadBinding: {
+      uploadSessionId,
+      roomId,
+      sha256,
+      bucketName: "quipsly-private-media",
+      objectName: "mobile/room-1/homer-camera.mov",
+      sizeBytes: 4096,
+    },
+    recoveryAuthority: {
+      requestId,
+      requestSha256,
+      originalRecordingAssetId,
+      expectationId,
+      reason,
+      actorUserId: "actor-private-1",
+      actorEmail: "private@example.test",
+      authorityConfirmed: true,
+      decidedAt,
+      importedSource: { locator: "gs://private-import/backup.wav#88", generation: "88", sha256 },
+      durableCaptureReplica: { bucketName: "quipsly-private-media", objectName: "mobile/room-1/homer-camera.mov", generation: "1742" },
+    },
+  };
+  input.stateReceipts = [];
+}
+
 describe("Session source evidence", () => {
   it("reports an exact source match while keeping transcript disposition separate", () => {
     const result = buildSessionSourceEvidence(fixture());
@@ -383,6 +443,46 @@ describe("Session source evidence", () => {
         "The applied START boundary is incomplete.",
         "The applied STOP boundary is incomplete.",
       ]),
+    });
+  });
+
+  it("verifies an audited recovery replica without inventing native Capture boundaries", () => {
+    const input = fixture();
+    markAsAuditedRecoveryReplica(input);
+
+    const result = buildSessionSourceEvidence(input);
+
+    expect(result.sources[0]).toMatchObject({
+      status: "VERIFIED_MATCH",
+      sourceOrigin: "NEST_RECOVERY_REPLICA",
+      boundaryAuthority: "AUDITED_RECOVERY_REPLICA",
+      startBoundary: null,
+      stopBoundary: null,
+      recoveryAudit: {
+        originalRecordingAssetId: "original-asset-1",
+        expectationId: "expected-source-1",
+        importedSourceGeneration: "88",
+        durableReplicaGeneration: "1742",
+        originalSourceMediaUnchanged: true,
+      },
+      issues: [],
+    });
+    expect(JSON.stringify(result)).not.toContain("actor-private-1");
+    expect(JSON.stringify(result)).not.toContain("private@example.test");
+    expect(JSON.stringify(result)).not.toContain("gs://private-import");
+  });
+
+  it("fails closed when an audited recovery replica drifts from durable storage", () => {
+    const input = fixture();
+    markAsAuditedRecoveryReplica(input);
+    ((input.finalizationReceipts[0].metadataJson as any).recoveryAuthority.durableCaptureReplica as any).generation = "1743";
+
+    expect(buildSessionSourceEvidence(input).sources[0]).toMatchObject({
+      status: "DRIFT",
+      sourceOrigin: "NEST_RECOVERY_REPLICA",
+      boundaryAuthority: null,
+      recoveryAudit: null,
+      issues: expect.arrayContaining(["Receipt durable generation does not match the audited recovery receipt."]),
     });
   });
 

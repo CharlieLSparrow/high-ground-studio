@@ -172,10 +172,14 @@ try {
   assert(selectedEditorCheckpoints.every((checkpoint) => checkpoint?.state !== "HELD") || assembly.state === "BLOCKED", "A selected Editor checkpoint was held without a canonical assembly blocker.");
   assert(selectedEditorCheckpoints.every((checkpoint) => checkpoint?.state !== "CURRENT") || assembly.state === "READY_TO_MATERIALIZE", "A selected Editor checkpoint was current without a conflict-safe materialization path.");
   assert(historicalJourneys.every((journey) => journey.checkpoints.find((checkpoint) => checkpoint.id === "assembly")?.state === "NOT_APPLICABLE"), "A historical source was falsely projected onto the selected editor take.");
+  assert(selectedJourneys.every((journey) => journey.state === "COMPLETE"), `An audited selected recovery journey did not become complete after independent lineage verification: ${JSON.stringify({ journeys: selectedJourneys.map((journey) => ({ recordingAssetId: journey.recordingAssetId, state: journey.state, checkpoints: journey.checkpoints })), evidence: sourceEvidence.sources.filter((source) => selectedIds.has(source.recordingAssetId)).map((source) => ({ recordingAssetId: source.recordingAssetId, status: source.status, issues: source.issues })) })}`);
+  assert(selectedJourneys.every((journey) => journey.checkpoints.find((checkpoint) => checkpoint.id === "capture")?.state === "NOT_APPLICABLE"), "A recovery replica borrowed native Capture boundaries from its immutable original.");
+  assert(sourceEvidence.sources.every((source) => source.status === "VERIFIED_MATCH"), "At least one retained original or audited recovery replica failed independent source verification.");
   assert(recordingHealth.sources.length >= 4, `Expected recording-health evidence for retained current and historical sources, observed ${recordingHealth.sources.length}.`);
   assert(recordingHealth.sources.every((source) => source.gates.length === 6), "A retained source lost one or more independently inspectable Audio Flight Deck gates.");
   assert(recordingHealth.sources.every((source) => source.state !== "READY" || source.gates.every((gate) => gate.state === "READY")), "The Audio Flight Deck called a retained source ready while one of its gates was not ready.");
   assert(recordingHealth.boundaries.noUniversalQualityScore, "The retained operation lost the no-universal-quality-score boundary.");
+  assert(recordingHealth.counts.BLOCKED === 0, "A retained source remained blocked after audited recovery-lineage verification.");
 
   console.log(JSON.stringify({
     ok: true,
@@ -208,6 +212,14 @@ try {
       })),
       universalQualityScoreEmitted: false,
     },
+    sourceEvidence: sourceEvidence.sources.map((source) => ({
+      recordingAssetId: source.recordingAssetId,
+      status: source.status,
+      cloudIdentityComplete: Boolean(source.cloud.sha256 && source.cloud.byteSize && source.cloud.generation && source.cloud.verifiedAt),
+      processingDisposition: source.processingDisposition,
+      transcriptDisposition: source.transcriptDisposition,
+      issues: source.issues,
+    })),
     sourceStateMutated: false,
     publicationStarted: false,
     secretsPrinted: false,

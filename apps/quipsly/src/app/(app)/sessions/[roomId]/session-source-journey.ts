@@ -115,6 +115,15 @@ function planCheckpoint(expectation: SessionReadinessExpectedSource | null): Ses
 }
 
 function captureCheckpoint(source: SessionReadinessSource | null, evidence: EvidenceSource | null): SessionSourceJourneyCheckpoint {
+  if (evidence?.sourceOrigin === "NEST_RECOVERY_REPLICA") return {
+    id: "capture",
+    label: "Capture",
+    state: evidence.boundaryAuthority === "AUDITED_RECOVERY_REPLICA" ? "NOT_APPLICABLE" : "HELD",
+    detail: evidence.boundaryAuthority === "AUDITED_RECOVERY_REPLICA"
+      ? "Created through an audited exact-byte recovery decision; native Capture start and stop boundaries are not claimed for this replica."
+      : "Recovery lineage is incomplete; Quipsly will not substitute the original source's Capture boundaries for this replica.",
+    at: evidence.recoveryAudit?.decidedAt ?? evidence.cloud.verifiedAt,
+  };
   if (evidence?.sourceOrigin === "NEST_EXTERNAL_IMPORT") return {
     id: "capture",
     label: "Capture",
@@ -168,7 +177,7 @@ function retentionCheckpoint(source: SessionReadinessSource | null, evidence: Ev
     label: "Retain",
     state: "COMPLETE",
     detail: "Server bytes, checksum, size, storage generation, capture identity, and release receipt agree.",
-    at: evidence.releaseAudit?.releasedAt ?? retention.updatedAt ?? evidence.cloud.verifiedAt,
+    at: evidence.recoveryAudit?.decidedAt ?? evidence.releaseAudit?.releasedAt ?? retention.updatedAt ?? evidence.cloud.verifiedAt,
   };
   if (retention.state === "SERVER_COPY_VERIFIED_HELD" || evidence?.status === "HELD" || evidence?.status === "DRIFT") return {
     id: "retention",
