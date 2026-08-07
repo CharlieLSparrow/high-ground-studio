@@ -21,9 +21,14 @@ Date: 2026-08-07
   continues loading provider secrets only inside durable child processes. The
   source JSON is never copied into Git or lifecycle state and is deliberately
   not deleted for the operator.
-- Installer tests pass 3/3, local lifecycle tests pass 16/16, shell syntax and
-  diff checks pass. Real installation remains pending the downloaded Web
-  application credential; no OAuth client or secret version was invented.
+- The authenticated connection projection now reports OAuth and Picker
+  readiness without exposing configuration values. Source Story does not offer
+  a live Connect or Browse action when that action would fail; it explains that
+  provider setup is being finished and explicitly preserves existing sources.
+- Installer tests pass 3/3, OAuth tests pass 4/4, local lifecycle tests pass
+  16/16, Quipsly TypeScript, the production build, shell syntax, and diff checks
+  pass. Real installation remains pending the downloaded Web application
+  credential; no OAuth client or secret version was invented.
 
 ## Checksum-bound source visual overview checkpoint
 

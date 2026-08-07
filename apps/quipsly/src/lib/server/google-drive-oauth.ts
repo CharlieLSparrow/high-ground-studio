@@ -120,6 +120,32 @@ export function getGoogleDrivePickerPublicConfig(environment: NodeJS.ProcessEnv 
   };
 }
 
+export function getGoogleDriveProviderReadiness(
+  requestUrl: string,
+  environment: NodeJS.ProcessEnv = process.env,
+) {
+  let oauthConfigured = true;
+  let pickerConfigured = true;
+  try {
+    getGoogleDriveOAuthConfig(requestUrl, environment);
+  } catch (error) {
+    if (!(error instanceof GoogleDriveOAuthError)) throw error;
+    oauthConfigured = false;
+  }
+  try {
+    getGoogleDrivePickerPublicConfig(environment);
+  } catch (error) {
+    if (!(error instanceof GoogleDriveOAuthError)) throw error;
+    pickerConfigured = false;
+  }
+  return {
+    schema: "quipsly-google-drive-provider-readiness-v1" as const,
+    oauthConfigured,
+    pickerConfigured,
+    ready: oauthConfigured && pickerConfigured,
+  };
+}
+
 function sign(value: string, secret: string) {
   return createHmac("sha256", secret).update(value).digest("base64url");
 }

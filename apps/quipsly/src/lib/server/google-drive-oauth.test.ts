@@ -5,6 +5,7 @@ import {
   decryptGoogleDriveRefreshToken,
   encryptGoogleDriveRefreshToken,
   GOOGLE_DRIVE_FILE_SCOPE,
+  getGoogleDriveProviderReadiness,
   normalizeGoogleDriveReturnTo,
   validateGoogleDriveOAuthCallback,
 } from "./google-drive-oauth";
@@ -17,9 +18,34 @@ const environment: NodeJS.ProcessEnv = {
   GOOGLE_DRIVE_OAUTH_CLIENT_SECRET: "drive-secret",
   GOOGLE_DRIVE_OAUTH_STATE_SECRET: "s".repeat(48),
   GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+  GOOGLE_DRIVE_PICKER_API_KEY: "picker-key",
+  GOOGLE_DRIVE_PICKER_APP_ID: "123456789",
 };
 
 describe("Google Drive user OAuth", () => {
+  it("reports OAuth and Picker readiness without exposing configuration values", () => {
+    expect(
+      getGoogleDriveProviderReadiness("http://127.0.0.1:3012", environment),
+    ).toEqual({
+      schema: "quipsly-google-drive-provider-readiness-v1",
+      oauthConfigured: true,
+      pickerConfigured: true,
+      ready: true,
+    });
+    const missingOAuth = { ...environment };
+    delete missingOAuth.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET;
+    expect(
+      getGoogleDriveProviderReadiness(
+        "http://127.0.0.1:3012",
+        missingOAuth,
+      ),
+    ).toMatchObject({
+      oauthConfigured: false,
+      pickerConfigured: true,
+      ready: false,
+    });
+  });
+
   it("uses PKCE, selected-file scope, and a same-origin return path", () => {
     const started = beginGoogleDriveOAuth({
       userId: "user_01",

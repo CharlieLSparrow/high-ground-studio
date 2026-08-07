@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { disconnectGoogleDriveConnection, listGoogleDriveConnections } from "@/lib/server/google-drive-connection";
-import { getGoogleDrivePickerPublicConfig, GoogleDriveOAuthError } from "@/lib/server/google-drive-oauth";
+import {
+  getGoogleDriveProviderReadiness,
+  GoogleDriveOAuthError,
+} from "@/lib/server/google-drive-oauth";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 export const dynamic = "force-dynamic";
@@ -11,17 +14,13 @@ export async function GET(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user?.id) return NextResponse.json({ error: "Sign in to manage media connections." }, { status: 401 });
   const connections = await listGoogleDriveConnections(getPrismaClient(), session.user.id);
-  let pickerConfigured = true;
-  try {
-    getGoogleDrivePickerPublicConfig();
-  } catch (error) {
-    if (!(error instanceof GoogleDriveOAuthError)) throw error;
-    pickerConfigured = false;
-  }
+  const readiness = getGoogleDriveProviderReadiness(request.url);
   return NextResponse.json({
     ok: true,
     provider: "google-drive",
-    pickerConfigured,
+    readiness,
+    oauthConfigured: readiness.oauthConfigured,
+    pickerConfigured: readiness.pickerConfigured,
     connections: connections.map((connection) => ({
       ...connection,
       verifiedAt: connection.verifiedAt?.toISOString() ?? null,

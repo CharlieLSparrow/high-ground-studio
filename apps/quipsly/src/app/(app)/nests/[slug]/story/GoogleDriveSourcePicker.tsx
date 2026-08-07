@@ -187,6 +187,7 @@ export function GoogleDriveSourcePicker({
   onAttached(): Promise<unknown>;
 }) {
   const [connections, setConnections] = useState<DriveConnection[]>([]);
+  const [oauthConfigured, setOauthConfigured] = useState(true);
   const [pickerConfigured, setPickerConfigured] = useState(true);
   const [loadingConnections, setLoadingConnections] = useState(true);
   const [selectedConnectionId, setSelectedConnectionId] = useState("");
@@ -213,6 +214,7 @@ export function GoogleDriveSourcePicker({
       });
       const payload = (await response.json()) as {
         error?: string;
+        oauthConfigured?: boolean;
         pickerConfigured?: boolean;
         connections?: DriveConnection[];
       };
@@ -222,6 +224,7 @@ export function GoogleDriveSourcePicker({
         );
       const next = payload.connections ?? [];
       setConnections(next);
+      setOauthConfigured(payload.oauthConfigured !== false);
       setPickerConfigured(payload.pickerConfigured !== false);
       setSelectedConnectionId((current) =>
         next.some(
@@ -618,7 +621,9 @@ export function GoogleDriveSourcePicker({
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
             <button
               type="button"
-              disabled={!canWrite || pending || !pickerConfigured}
+              disabled={
+                !canWrite || pending || !oauthConfigured || !pickerConfigured
+              }
               onClick={() => void browseDrive("folder")}
               className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-teal-900 px-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -635,7 +640,9 @@ export function GoogleDriveSourcePicker({
             </button>
             <button
               type="button"
-              disabled={!canWrite || pending || !pickerConfigured}
+              disabled={
+                !canWrite || pending || !oauthConfigured || !pickerConfigured
+              }
               onClick={() => void browseDrive("360-files")}
               className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-teal-300 bg-white px-3 text-sm font-black text-teal-950 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -644,7 +651,9 @@ export function GoogleDriveSourcePicker({
             </button>
             <button
               type="button"
-              disabled={!canWrite || pending || !pickerConfigured}
+              disabled={
+                !canWrite || pending || !oauthConfigured || !pickerConfigured
+              }
               onClick={() => void browseDrive("files")}
               className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-teal-200 bg-white/70 px-3 text-xs font-black text-teal-900 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2 xl:col-span-1 2xl:col-span-2"
             >
@@ -749,6 +758,13 @@ export function GoogleDriveSourcePicker({
               deployment configuration.
             </p>
           ) : null}
+          {!oauthConfigured ? (
+            <p className="text-xs font-semibold text-amber-900">
+              This Drive connection is safe, but Quipsly cannot refresh it
+              until provider setup is complete. Existing sources remain
+              unchanged.
+            </p>
+          ) : null}
           {!canWrite ? (
             <p className="text-xs font-semibold text-amber-900">
               Editor access is required to attach a source.
@@ -756,13 +772,29 @@ export function GoogleDriveSourcePicker({
           ) : null}
         </div>
       ) : null}
-      {!loadingConnections && !verifiedConnections.length ? (
+      {!loadingConnections &&
+      !verifiedConnections.length &&
+      oauthConfigured ? (
         <a
           href={connectHref}
           className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-teal-900 px-4 text-sm font-black text-white"
         >
           Connect Google Drive <ExternalLink size={15} aria-hidden="true" />
         </a>
+      ) : null}
+      {!loadingConnections &&
+      !verifiedConnections.length &&
+      !oauthConfigured ? (
+        <div
+          role="status"
+          className="mt-3 rounded-xl border border-amber-200 bg-white p-3 text-xs font-semibold leading-5 text-amber-950"
+        >
+          <p className="font-black">Google Drive setup is being finished</p>
+          <p className="mt-1">
+            Quipsly will enable connection here when its private Google client
+            is ready. Nothing has been uploaded or changed in Drive.
+          </p>
+        </div>
       ) : null}
       {message ? (
         <p
