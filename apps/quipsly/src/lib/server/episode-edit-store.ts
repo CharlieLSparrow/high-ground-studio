@@ -11,8 +11,19 @@ import {
   type ProgramEditSource,
   type ProgramEditState,
   type EpisodeWatchDerivative,
+  type EpisodeEditMediaChoice,
   sourceIDsForDecision,
 } from "@/lib/editor/program-edit-contract";
+import { canonicalEpisodeImportedMedia } from "@/lib/episode-production/imported-media";
+import {
+  episodeEditExecutionInspection,
+  projectEpisodeEditProcessingJob,
+  projectEpisodeEditTranscript,
+} from "@/lib/editor/episode-edit-inspection";
+import {
+  loadEpisodeEditSignalEvidence,
+  type EpisodeEditSignalEvidenceResolution,
+} from "@/lib/server/episode-edit-signal-evidence";
 
 export type EditActor = {
   userId?: string;
@@ -239,6 +250,45 @@ function findAudioUrl(productionJson: unknown): string | undefined {
   return webUrl(root.listenAudioUrl, root.masterAudioUrl, root.audioSpineUrl, audio.proxyUrl, audio.url);
 }
 
+export function normalizeEpisodeEditMediaChoices(
+  productionJson: unknown,
+  timelineJson: unknown,
+): EpisodeEditMediaChoice[] {
+  const seen = new Set<string>();
+  return canonicalEpisodeImportedMedia(productionJson, timelineJson).flatMap((value, index) => {
+    const item = record(value);
+    const metadata = record(item.metadata);
+    const metadataRecording = record(metadata.recordingSync);
+    const sync = record(item.sync);
+    const syncRecording = record(sync.recordingSync);
+    const recordingAssetId = textValue(
+      item.recordingAssetId,
+      metadataRecording.recordingAssetId,
+      sync.recordingAssetId,
+      syncRecording.recordingAssetId,
+    ) ?? null;
+    const sourceId = textValue(item.sourceId) ?? null;
+    const id = recordingAssetId ?? textValue(item.id, item.assetId, sourceId) ?? null;
+    if (!id || seen.has(id)) return [];
+    seen.add(id);
+    const declaredKind = textValue(item.kind)?.toLowerCase();
+    const contentType = textValue(item.contentType, item.mimeType)?.toLowerCase() ?? "";
+    const kind: EpisodeEditMediaChoice["kind"] = declaredKind === "audio" || contentType.startsWith("audio/")
+      ? "audio"
+      : declaredKind === "video" || contentType.startsWith("video/")
+        ? "video"
+        : "unknown";
+    return [{
+      id,
+      label: textValue(item.originalName, item.name, item.filename, `Episode source ${index + 1}`) ?? `Episode source ${index + 1}`,
+      kind,
+      role: textValue(item.importRole, sync.suggestedRole, metadata.role) ?? null,
+      sourceId,
+      recordingAssetId,
+    }];
+  });
+}
+
 function initialState(episode: { timelineJson: unknown; productionJson: unknown; updatedAt: Date }): ProgramEditState {
   const timeline = record(episode.timelineJson);
   const sequence = Array.isArray(timeline.sequences) ? record(timeline.sequences[0]) : timeline;
@@ -375,12 +425,16 @@ export async function loadEpisodeEditDesk(
   projectSlug: string,
   episodeSlug: string | undefined,
   canEdit: boolean,
+  options: { includeInspection?: boolean; selectedMediaAssetId?: string | null } = {},
 ): Promise<EpisodeEditDeskPayload> {
   const prisma = getPrismaClient();
+  const includeInspection = options.includeInspection !== false;
   const episodes = await episodeRows(projectSlug);
   const selected = episodes.find((episode) => episode.slug === episodeSlug) ?? episodes[0] ?? null;
   if (!selected) {
     return {
+      inspectionFresh: includeInspection,
+      projectId: null,
       projectSlug,
       episodes: [],
       selectedEpisode: null,
@@ -389,15 +443,80 @@ export async function loadEpisodeEditDesk(
       state: { version: PROGRAM_EDIT_VERSION, durationSeconds: 0, sources: [], programDecisions: [] },
       watchDerivatives: [],
       annotations: [],
-      transcript: null,
+      transcript: projectEpisodeEditTranscript(null),
+      mediaChoices: [],
+      selectedMediaAssetId: null,
+      signalInspection: {
+        status: "unavailable",
+        reason: "Choose an Episode before inspecting audio evidence.",
+        evidence: null,
+        candidateCount: 0,
+      },
+      executionInspection: episodeEditExecutionInspection([]),
       document: null,
       canEdit,
     };
   }
-  const baseline = await prisma.studioEditBaseline.findFirst({
-    where: { episodeProductionId: selected.id, stableKey: "source-sync-baseline" },
-    orderBy: { version: "desc" },
-  });
+  const [baseline, signalInspection, processingJobs, workflowJobs] = await Promise.all([
+    prisma.studioEditBaseline.findFirst({
+      where: { episodeProductionId: selected.id, stableKey: "source-sync-baseline" },
+      orderBy: { version: "desc" },
+    }),
+    includeInspection ? loadEpisodeEditSignalEvidence({
+      prisma,
+      projectId: selected.projectId,
+      projectSlug,
+      episodeSlug: selected.slug,
+      selectedMediaAssetId: options.selectedMediaAssetId,
+    }).catch((): EpisodeEditSignalEvidenceResolution => ({
+      status: "held",
+      reason: "Audio evidence inspection could not complete. The editor left source selection unchanged.",
+      evidence: null,
+      candidateCount: 0,
+    })) : Promise.resolve(null),
+    includeInspection ? prisma.studioAssetProcessingJob.findMany({
+      where: {
+        projectId: selected.projectId,
+        OR: [
+          { inputJson: { path: ["episodeProductionId"], equals: selected.id } },
+          { inputJson: { path: ["source", "episodeProductionId"], equals: selected.id } },
+        ],
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 8,
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        inputJson: true,
+        resultJson: true,
+        error: true,
+        updatedAt: true,
+        completedAt: true,
+      },
+    }) : Promise.resolve([]),
+    includeInspection ? prisma.studioWorkflowJob.findMany({
+      where: {
+        projectId: selected.projectId,
+        OR: [
+          { inputJson: { path: ["episodeProductionId"], equals: selected.id } },
+          { inputJson: { path: ["source", "episodeProductionId"], equals: selected.id } },
+        ],
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 8,
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        inputJson: true,
+        resultJson: true,
+        error: true,
+        updatedAt: true,
+        completedAt: true,
+      },
+    }) : Promise.resolve([]),
+  ]);
   const branch = baseline
     ? await prisma.studioEditBranch.findUnique({
         where: { baselineId_slug: { baselineId: baseline.id, slug: "shared-editor-cut" } },
@@ -410,6 +529,8 @@ export async function loadEpisodeEditDesk(
       })
     : [];
   return {
+    inspectionFresh: includeInspection,
+    projectId: selected.projectId,
     projectSlug,
     episodes: episodes.map((episode) => ({
       id: episode.id,
@@ -458,7 +579,21 @@ export async function loadEpisodeEditDesk(
       createdByActorType: annotation.createdByActorType,
       createdAt: annotation.createdAt.toISOString(),
     })),
-    transcript: selected.transcriptJson,
+    transcript: projectEpisodeEditTranscript(selected.transcriptJson),
+    mediaChoices: normalizeEpisodeEditMediaChoices(selected.productionJson, selected.timelineJson),
+    selectedMediaAssetId: options.selectedMediaAssetId ?? null,
+    signalInspection: signalInspection ?? {
+      status: "unavailable",
+      reason: "Inspection was intentionally preserved from the open workspace during this fast edit save.",
+      evidence: null,
+      candidateCount: 0,
+    },
+    executionInspection: episodeEditExecutionInspection(
+      [...processingJobs, ...workflowJobs]
+        .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime() || right.id.localeCompare(left.id))
+        .slice(0, 12)
+        .map(projectEpisodeEditProcessingJob),
+    ),
     document: selected.document,
     canEdit,
   };

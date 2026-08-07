@@ -132,7 +132,9 @@ describe("EpisodeRoomPage access failures", () => {
       searchParams: Promise.resolve({ mode: "edit" }),
     }));
 
-    expect(loadEpisodeEditDesk).toHaveBeenCalledWith("high-ground", "episode-4", true);
+    expect(loadEpisodeEditDesk).toHaveBeenCalledWith("high-ground", "episode-4", true, {
+      selectedMediaAssetId: undefined,
+    });
     expect(ensureEpisodeEditBranch).not.toHaveBeenCalled();
     expect(screen.getByText("Canonical editor · High Ground · room-4")).toBeInTheDocument();
   });

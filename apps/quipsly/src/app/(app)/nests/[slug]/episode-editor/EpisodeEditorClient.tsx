@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { AudioEvidenceMap } from "@/components/audio/AudioEvidenceMap";
+import { StudioTranscriptReviewDesk } from "@/app/(app)/editor/StudioTranscriptReviewDesk";
 import {
   DECISION_SHORTCUTS,
   decisionAt,
@@ -80,6 +84,7 @@ export default function EpisodeEditorClient({
   canonicalWorkspace?: boolean;
   recordingRoomId?: string | null;
 }) {
+  const router = useRouter();
   const [payload, setPayload] = useState(initialPayload);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -114,6 +119,33 @@ export default function EpisodeEditorClient({
     () => decisionAt(state.programDecisions, playhead),
     [state.programDecisions, playhead],
   );
+  const activeTranscriptSegment = useMemo(() => (
+    payload.transcript.segments.find((segment) => (
+      !segment.deactivated
+      && playhead >= segment.startSeconds
+      && playhead < segment.endSeconds
+    )) ?? null
+  ), [payload.transcript.segments, playhead]);
+  const visibleTranscriptSegments = useMemo(() => {
+    const active = payload.transcript.segments.filter((segment) => !segment.deactivated);
+    const nearby = active.filter((segment) => (
+      segment.startSeconds <= playhead + 35
+      && segment.endSeconds >= playhead - 15
+    ));
+    if (nearby.length) return nearby.slice(0, 18);
+    const next = active.findIndex((segment) => segment.startSeconds >= playhead);
+    const center = next < 0 ? active.length - 1 : next;
+    return active.slice(Math.max(0, center - 3), center + 5);
+  }, [payload.transcript.segments, playhead]);
+  const transcriptEndSeconds = payload.transcript.segments.reduce(
+    (maximum, segment) => Math.max(maximum, segment.endSeconds),
+    0,
+  ) || null;
+  const signalEvidence = payload.signalInspection.evidence;
+  const studioReviewEvidence = signalEvidence?.mediaAssetKind === "studio-media"
+    && signalEvidence.protectedPlayback
+    ? signalEvidence
+    : null;
 
   const syncMedia = useCallback((time: number, shouldPlay = false) => {
     for (const source of state.sources) {
@@ -273,6 +305,7 @@ export default function EpisodeEditorClient({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             episodeSlug: episode.slug,
+            selectedMediaAssetId: payload.selectedMediaAssetId,
             clientRequestId: crypto.randomUUID(),
             ...body,
           }),
@@ -280,12 +313,24 @@ export default function EpisodeEditorClient({
       );
       const result = await response.json();
       if (response.status === 409 && result.payload) {
-        setPayload(result.payload);
+        setPayload((current) => result.payload.inspectionFresh
+          ? result.payload
+          : {
+              ...result.payload,
+              signalInspection: current.signalInspection,
+              executionInspection: current.executionInspection,
+            });
         setMessage(result.error);
         return;
       }
       if (!response.ok) throw new Error(result.error ?? "The edit could not be saved.");
-      setPayload(result);
+      setPayload((current) => result.inspectionFresh
+        ? result
+        : {
+            ...result,
+            signalInspection: current.signalInspection,
+            executionInspection: current.executionInspection,
+          });
       setMessage(`Saved revision ${result.branch?.headRevision ?? 0}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The edit could not be saved.");
@@ -340,7 +385,7 @@ export default function EpisodeEditorClient({
     const selected = payload.episodes.find((item) => item.slug === episodeSlug);
     if (!selected) return;
     if (canonicalWorkspace) {
-      window.location.assign(`/nests/${encodeURIComponent(payload.projectSlug)}/episodes/${encodeURIComponent(selected.slug)}?mode=edit`);
+      router.push(`/nests/${encodeURIComponent(payload.projectSlug)}/episodes/${encodeURIComponent(selected.slug)}?mode=edit`);
       return;
     }
     setSaving(true);
@@ -449,13 +494,15 @@ export default function EpisodeEditorClient({
               </div>
               <div className="font-mono text-lg text-[#d9e5dc]">{formatEditClock(playhead)}</div>
             </div>
-            <canvas
-              ref={canvasRef}
-              width={1280}
-              height={720}
-              onClick={() => togglePlayback(playMode)}
-              className="aspect-video w-full cursor-pointer bg-black"
-            />
+            <div className="flex justify-center bg-black">
+              <canvas
+                ref={canvasRef}
+                width={1280}
+                height={720}
+                onClick={() => togglePlayback(playMode)}
+                className="aspect-video max-h-[52vh] w-auto max-w-full cursor-pointer bg-black"
+              />
+            </div>
           </div>
 
           <div className="rounded-3xl border border-[#2d4638] bg-[#0d1712] p-4">
@@ -592,6 +639,126 @@ export default function EpisodeEditorClient({
             </div>
           </div>
 
+          <section className="rounded-3xl border border-[#2d4638] bg-[#0d1712] p-4" aria-labelledby="episode-transcript-heading">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#d8ad56]">Transcript edit map</p>
+                <h2 id="episode-transcript-heading" className="mt-1 font-serif text-2xl">Read, listen, and cut on one clock</h2>
+                <p className="mt-1 max-w-3xl text-sm text-[#8fa094]">Provider words remain immutable. Clicking a line moves the shared edit playhead; reviewed corrections remain source-bound overlays.</p>
+              </div>
+              <div className="flex gap-2 text-center text-xs">
+                <div className="rounded-xl bg-[#14231b] px-3 py-2"><strong className="block text-lg">{payload.transcript.segmentCount}</strong>timed</div>
+                <div className="rounded-xl bg-[#14231b] px-3 py-2"><strong className="block text-lg">{payload.transcript.reviewedSegmentCount}</strong>reviewed</div>
+              </div>
+            </div>
+            {payload.transcript.status === "available" ? (
+              <>
+                <div className="mt-4 rounded-2xl border border-[#405a49] bg-[#08110d] p-4" aria-live="polite">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-mono text-xs text-[#d8ad56]">{formatEditClock(activeTranscriptSegment?.startSeconds ?? playhead)}</span>
+                    <span className="rounded-full bg-[#1c3427] px-2 py-1 text-[10px] font-black uppercase text-[#9ac9a8]">
+                      {activeTranscriptSegment?.reviewStatus ?? "between segments"}
+                    </span>
+                  </div>
+                  <p className="mt-2 font-serif text-xl leading-relaxed text-[#f2ead8]">
+                    {activeTranscriptSegment?.text ?? "Move the playhead or choose a transcript line to inspect the source clock."}
+                  </p>
+                  {activeTranscriptSegment?.speakerLabel ? <p className="mt-2 text-xs font-black uppercase tracking-wide text-[#8fa094]">{activeTranscriptSegment.speakerLabel}</p> : null}
+                </div>
+                <div className="mt-3 max-h-80 space-y-1 overflow-y-auto pr-1" aria-label="Nearby transcript segments">
+                  {visibleTranscriptSegments.map((segment) => (
+                    <button
+                      key={segment.id}
+                      type="button"
+                      onClick={() => seek(segment.startSeconds)}
+                      aria-current={segment.id === activeTranscriptSegment?.id ? "true" : undefined}
+                      className={`grid w-full grid-cols-[76px_minmax(0,1fr)] gap-3 rounded-xl px-3 py-2.5 text-left transition ${segment.id === activeTranscriptSegment?.id ? "bg-[#274635] ring-1 ring-[#d8ad56]" : "bg-[#14231b] hover:bg-[#1b3024]"}`}
+                    >
+                      <span className="font-mono text-xs text-[#d8ad56]">{formatEditClock(segment.startSeconds).slice(0, 8)}</span>
+                      <span>
+                        <span className="block text-sm leading-5 text-[#edf1eb]">{segment.text}</span>
+                        <span className="mt-1 block text-[10px] font-bold uppercase tracking-wide text-[#7f9787]">
+                          {[segment.speakerLabel, segment.reviewStatus, segment.deactivated ? "held from edit" : null].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-[#405a49] bg-[#08110d] p-4 text-sm text-[#b7c4b8]">
+                <strong className="block text-[#f2ead8]">Timed transcript unavailable</strong>
+                <span className="mt-1 block">{payload.transcript.reason}</span>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-3xl border border-[#2d4638] bg-[#0d1712] p-4" aria-labelledby="episode-audio-evidence-heading">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#d8ad56]">Audio evidence</p>
+                <h2 id="episode-audio-evidence-heading" className="mt-1 font-serif text-2xl">See the recording before changing it</h2>
+                <p className="mt-1 max-w-3xl text-sm text-[#8fa094]">Complete-decode level and frequency evidence stays bound to one immutable source. Quipsly will not guess when several sources could own the waveform.</p>
+              </div>
+              <span className={`rounded-full px-3 py-2 text-xs font-black uppercase ${payload.signalInspection.status === "available" ? "bg-[#244b34] text-[#b8e0c4]" : payload.signalInspection.status === "held" || payload.signalInspection.status === "ambiguous" ? "bg-amber-900/50 text-amber-100" : "bg-[#26342c] text-[#a7b6ab]"}`}>
+                {payload.signalInspection.status}
+              </span>
+            </div>
+            <p className="mt-3 rounded-xl bg-[#14231b] px-3 py-2 text-xs font-semibold text-[#b7c4b8]">{payload.signalInspection.reason}</p>
+            {payload.mediaChoices.length > 1 && episode ? (
+              <label className="mt-3 grid gap-2 rounded-xl border border-[#405a49] bg-[#101b15] p-3 text-xs font-black uppercase tracking-wide text-[#b7c4b8]">
+                Exact transcript / audio source
+                <select
+                  aria-label="Exact transcript and audio source"
+                  value={payload.selectedMediaAssetId ?? ""}
+                  onChange={(event) => {
+                    const source = event.target.value;
+                    const base = `/nests/${encodeURIComponent(payload.projectSlug)}/episodes/${encodeURIComponent(episode.slug)}?mode=edit`;
+                    router.push(source ? `${base}&source=${encodeURIComponent(source)}` : base);
+                  }}
+                  className="rounded-xl border border-[#587160] bg-[#07110d] px-3 py-3 text-sm font-semibold normal-case tracking-normal text-[#f2ead8]"
+                >
+                  <option value="">Choose one source (Quipsly will not guess)</option>
+                  {payload.mediaChoices.map((choice) => (
+                    <option key={choice.id} value={choice.id}>{choice.label} · {choice.kind}{choice.role ? ` · ${choice.role}` : ""}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {signalEvidence ? (
+              <AudioEvidenceMap
+                signal={signalEvidence.signal}
+                timelineEvents={[]}
+                transcriptEndSeconds={transcriptEndSeconds}
+                playbackReady={false}
+                selectedSeconds={playhead}
+                onSelect={(seconds) => seek(seconds)}
+                transcriptScopeLabel={`${payload.transcript.segmentCount} timed Episode segments`}
+              />
+            ) : (
+              <div className="mt-3 rounded-xl border border-dashed border-[#405a49] p-4 text-sm text-[#8fa094]">
+                {payload.signalInspection.status === "ambiguous"
+                  ? `${payload.signalInspection.candidateCount} released signal sources are attached. Source selection is required before waveform inspection.`
+                  : "Use Audio to decode, diagnose, and release source-bound evidence; this editor will pick it up without copying the source."}
+              </div>
+            )}
+            {studioReviewEvidence && episode ? (
+              <div className="mt-4 border-t border-[#30483a] pt-4">
+                <StudioTranscriptReviewDesk
+                  projectId={payload.projectId ?? undefined}
+                  projectSlug={payload.projectSlug}
+                  episodeSlug={episode.slug}
+                  assetId={studioReviewEvidence.mediaAssetId}
+                  sourceId={studioReviewEvidence.protectedPlayback!.sourceId}
+                  audioSignal={studioReviewEvidence.signal}
+                  audioSignalStatus="completed"
+                />
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-[#7f9787]">Playback-correction controls appear here only when one exact protected Studio source owns both transcript and signal evidence. Capture review remains in the source Session until that binding is materialized.</p>
+            )}
+          </section>
+
           {noteOpen ? (
             <div className="rounded-3xl border border-[#7b6842] bg-[#151d16] p-5">
               <div className="flex items-center justify-between">
@@ -652,6 +819,35 @@ export default function EpisodeEditorClient({
               </div>
             </article>
           ))}
+
+          <div className="rounded-2xl border border-[#2d4638] bg-[#0d1712] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#d8ad56]">Compute and delivery</p>
+              <span className="rounded-full bg-[#244b34] px-2 py-1 text-[10px] font-black uppercase text-[#b8e0c4]">browser ready</span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-[#b7c4b8]">{payload.executionInspection.browser.detail}</p>
+            <div className="mt-3 rounded-xl border border-[#405a49] bg-[#14231b] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <strong className="text-sm">Advanced Studio</strong>
+                <span className="rounded-full bg-[#26342c] px-2 py-1 text-[9px] font-black uppercase text-[#a7b6ab]">heartbeat unobserved</span>
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[#8fa094]">{payload.executionInspection.native.detail}</p>
+              {episode ? <Link href={`/editor?project=${encodeURIComponent(payload.projectSlug)}&episode=${encodeURIComponent(episode.slug)}`} className="mt-2 inline-flex min-h-9 items-center rounded-lg border border-[#587160] px-3 text-xs font-black text-[#e7c97d] hover:border-[#d8ad56]">Open Advanced Studio</Link> : null}
+            </div>
+            <div className="mt-3 space-y-2">
+              {payload.executionInspection.jobs.map((job) => (
+                <div key={job.id} className="rounded-xl bg-[#14231b] p-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <strong className="truncate">{job.type.replaceAll("-", " ")}</strong>
+                    <span className="shrink-0 rounded-full bg-[#26342c] px-2 py-1 text-[9px] font-black uppercase text-[#b7c4b8]">{job.status}</span>
+                  </div>
+                  <p className="mt-1 text-[#8fa094]">{job.lane.replaceAll("-", " ")}{job.provider ? ` · ${job.provider}` : " · provider not recorded"}</p>
+                  {job.error ? <p className="mt-1 line-clamp-3 text-rose-200">{job.error}</p> : null}
+                </div>
+              ))}
+              {!payload.executionInspection.jobs.length ? <p className="rounded-xl border border-dashed border-[#405a49] p-3 text-xs text-[#8fa094]">No render, proxy, mastery, or delivery job is queued for this Episode. Browser edits are still saved normally.</p> : null}
+            </div>
+          </div>
 
           <div className="rounded-2xl border border-[#2d4638] bg-[#0d1712] p-4">
             <div className="flex items-center justify-between">

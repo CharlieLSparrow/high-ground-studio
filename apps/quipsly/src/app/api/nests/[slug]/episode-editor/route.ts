@@ -35,7 +35,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
   const { slug } = await context.params;
   await requireProjectAccess(slug, "read");
   const episode = request.nextUrl.searchParams.get("episode") ?? undefined;
-  const payload = await loadEpisodeEditDesk(slug, episode, await canWrite(slug));
+  const sourceMediaAssetId = request.nextUrl.searchParams.get("source");
+  const payload = await loadEpisodeEditDesk(slug, episode, await canWrite(slug), {
+    selectedMediaAssetId: sourceMediaAssetId,
+  });
   return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -46,6 +49,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
   const body = await request.json() as Record<string, unknown>;
   const action = String(body.action ?? "");
   const episodeSlug = String(body.episodeSlug ?? "");
+  const selectedMediaAssetId = typeof body.selectedMediaAssetId === "string"
+    ? body.selectedMediaAssetId
+    : null;
   if (!episodeSlug) return NextResponse.json({ error: "Choose an episode first." }, { status: 400 });
 
   try {
@@ -80,7 +86,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
     } else {
       return NextResponse.json({ error: "Unknown editor action." }, { status: 400 });
     }
-    return NextResponse.json(await loadEpisodeEditDesk(slug, episodeSlug, true), {
+    return NextResponse.json(await loadEpisodeEditDesk(slug, episodeSlug, true, {
+      includeInspection: action === "open-episode",
+      selectedMediaAssetId,
+    }), {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
@@ -88,7 +97,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
       return NextResponse.json({
         error: "Another editor saved a newer change. The shared edit has been refreshed.",
         currentRevision: error.currentRevision,
-        payload: await loadEpisodeEditDesk(slug, episodeSlug, true),
+        payload: await loadEpisodeEditDesk(slug, episodeSlug, true, {
+          includeInspection: false,
+          selectedMediaAssetId,
+        }),
       }, { status: 409 });
     }
     throw error;

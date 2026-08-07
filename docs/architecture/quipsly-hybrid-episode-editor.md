@@ -16,6 +16,22 @@ The first consolidation slice is live in the product source:
 
 This is intentionally a product-boundary migration, not a visual rebrand. Existing `ProgramEditState`, protected sync baselines, optimistic revisions, actor provenance, and editor APIs remain authoritative.
 
+## Delivered inspection slice · 2026-08-07
+
+The canonical Episode Edit mode now projects and operates retained production evidence instead of acting as a cut-decision island:
+
+- historical Episode transcript shapes project into one bounded source-clock segment model without invented timing or changed provider words;
+- transcript lines, the decision timeline, Shared Watch derivatives, and audio evidence share the same playhead;
+- the existing complete-decode audio level and broad-frequency evidence map is embedded directly in the Episode workspace;
+- source-bound transcript correction opens only when one exact protected Studio source owns the playback, transcript, and signal evidence;
+- ambiguous multi-source Episodes expose an exact attached-source picker and pass that immutable media identity back through the server resolver rather than guessing;
+- actual proxy, transcript, mix, mastery, and delivery jobs are shown with only their explicitly recorded provider and execution lane;
+- Advanced Studio is presented as the local heavy-render executor, while the UI truthfully says its live heartbeat is not connected yet;
+- the program preview is viewport-capped so transport and timeline controls remain reachable on an ordinary desktop display;
+- fast decision and note saves preserve the last verified inspection projection instead of re-reading immutable media evidence and worker history on every keystroke. A full page open, Episode change, or exact-source change performs a fresh inspection.
+
+The retained Episode 4 dogfood exposed a real materialization boundary: completed per-source transcript jobs do not become an Episode-level paper edit until a source/alignment selection is materialized. The workspace now explains that state and offers exact source selection; it does not merge independent source clocks heuristically.
+
 ## Decision
 
 The Episode collaboration space is the primary editing product. Recording, transcript editing, media review, timeline work, comments, finishing decisions, and publishing preparation must feel like one workspace at one stable Episode URL.

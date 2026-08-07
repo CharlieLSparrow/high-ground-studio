@@ -1,3 +1,5 @@
+import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+
 export const PROGRAM_EDIT_VERSION = "quipsly-program-edit.v1" as const;
 
 export const PROGRAM_DECISION_KINDS = [
@@ -98,7 +100,83 @@ export type EpisodeWatchDerivative = {
   recordingStartedAt?: string;
 };
 
+export type EpisodeEditTranscriptSegment = {
+  id: string;
+  startSeconds: number;
+  endSeconds: number;
+  text: string;
+  speakerLabel: string | null;
+  reviewStatus: "provider" | "human-reviewed" | "unknown";
+  sourceTranscriptJobId: string | null;
+  sourceSegmentId: string | null;
+  deactivated: boolean;
+};
+
+export type EpisodeEditTranscriptProjection = {
+  status: "available" | "unavailable";
+  reason: string;
+  sourceFormat: string | null;
+  segmentCount: number;
+  reviewedSegmentCount: number;
+  segments: EpisodeEditTranscriptSegment[];
+};
+
+export type EpisodeEditSignalInspection = {
+  status: "available" | "unavailable" | "ambiguous" | "held";
+  reason: string;
+  candidateCount: number;
+  evidence: null | {
+    mediaAssetKind: "capture-recording" | "studio-media";
+    mediaAssetId: string;
+    sourceSha256: string;
+    storageGeneration: string | null;
+    signalProfileSha256: string;
+    signal: NonNullable<AudioTranscriptEvidence["audio"]["signal"]>;
+    protectedPlayback: {
+      sourceId: string;
+      url: string;
+      kind: "audio" | "video";
+      label: string;
+      durationSeconds: number | null;
+    } | null;
+  };
+};
+
+export type EpisodeEditProcessingJob = {
+  id: string;
+  type: string;
+  status: string;
+  lane: "local-worker" | "cloud-worker" | "device" | "unassigned";
+  provider: string | null;
+  updatedAt: string;
+  completedAt: string | null;
+  error: string | null;
+};
+
+export type EpisodeEditMediaChoice = {
+  id: string;
+  label: string;
+  kind: "audio" | "video" | "unknown";
+  role: string | null;
+  sourceId: string | null;
+  recordingAssetId: string | null;
+};
+
+export type EpisodeEditExecutionInspection = {
+  browser: {
+    status: "ready";
+    detail: string;
+  };
+  native: {
+    status: "available-unobserved";
+    detail: string;
+  };
+  jobs: EpisodeEditProcessingJob[];
+};
+
 export type EpisodeEditDeskPayload = {
+  inspectionFresh: boolean;
+  projectId: string | null;
   projectSlug: string;
   episodes: EpisodeDeskEpisode[];
   selectedEpisode: EpisodeDeskEpisode | null;
@@ -121,7 +199,11 @@ export type EpisodeEditDeskPayload = {
   state: ProgramEditState;
   watchDerivatives: EpisodeWatchDerivative[];
   annotations: EpisodeDeskAnnotation[];
-  transcript: unknown;
+  transcript: EpisodeEditTranscriptProjection;
+  mediaChoices: EpisodeEditMediaChoice[];
+  selectedMediaAssetId: string | null;
+  signalInspection: EpisodeEditSignalInspection;
+  executionInspection: EpisodeEditExecutionInspection;
   document: { id: string; title: string } | null;
   canEdit: boolean;
 };

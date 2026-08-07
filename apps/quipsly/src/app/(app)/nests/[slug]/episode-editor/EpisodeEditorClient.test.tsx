@@ -1,10 +1,16 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import type { EpisodeEditDeskPayload } from "@/lib/editor/program-edit-contract";
 
 import EpisodeEditorClient from "./EpisodeEditorClient";
 
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
+
 const payload: EpisodeEditDeskPayload = {
+  inspectionFresh: true,
+  projectId: "project-1",
   projectSlug: "high-ground-odyssey",
   episodes: [{
     id: "episode-1",
@@ -59,7 +65,27 @@ const payload: EpisodeEditDeskPayload = {
     recordingRoomId: "call-room-1",
   }],
   annotations: [],
-  transcript: null,
+  transcript: {
+    status: "unavailable",
+    reason: "This Episode does not contain a timed transcript projection yet.",
+    sourceFormat: null,
+    segmentCount: 0,
+    reviewedSegmentCount: 0,
+    segments: [],
+  },
+  mediaChoices: [],
+  selectedMediaAssetId: null,
+  signalInspection: {
+    status: "unavailable",
+    reason: "No episode media is attached for edit evidence.",
+    evidence: null,
+    candidateCount: 0,
+  },
+  executionInspection: {
+    browser: { status: "ready", detail: "Browser editing is ready." },
+    native: { status: "available-unobserved", detail: "Native heartbeat is not connected." },
+    jobs: [],
+  },
   document: {
     id: "document-1",
     title: "Episode 4 Part 2 manuscript",
@@ -69,6 +95,7 @@ const payload: EpisodeEditDeskPayload = {
 
 describe("EpisodeEditorClient Shared Watch lane", () => {
   beforeEach(() => {
+    mockPush.mockReset();
     jest.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
   });
 
@@ -110,6 +137,23 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
     );
   });
 
+  it("uses client routing when another Episode is chosen in the canonical workspace", async () => {
+    const user = userEvent.setup();
+    render(<EpisodeEditorClient
+      initialPayload={{
+        ...payload,
+        episodes: [
+          ...payload.episodes,
+          { id: "episode-2", slug: "episode-9", title: "Episode 9", status: "draft", updatedAt: "2026-08-07T08:00:00.000Z" },
+        ],
+      }}
+      canonicalWorkspace
+    />);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Episode" }), "episode-9");
+    expect(mockPush).toHaveBeenCalledWith("/nests/high-ground-odyssey/episodes/episode-9?mode=edit");
+  });
+
   it("holds a derivative that crosses the protected baseline", () => {
     render(<EpisodeEditorClient initialPayload={{
       ...payload,
@@ -127,5 +171,83 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
     expect(screen.queryByRole("button", {
       name: "Watched · reference clip at 00:00:58:00",
     })).not.toBeInTheDocument();
+  });
+
+  it("moves the shared playhead from retained transcript evidence", () => {
+    render(<EpisodeEditorClient initialPayload={{
+      ...payload,
+      transcript: {
+        status: "available",
+        reason: "One source-clock segment is available.",
+        sourceFormat: "transcript",
+        segmentCount: 1,
+        reviewedSegmentCount: 1,
+        segments: [{
+          id: "segment-1",
+          startSeconds: 2.25,
+          endSeconds: 4.5,
+          text: "The source clock owns this line.",
+          speakerLabel: "Charlie",
+          reviewStatus: "human-reviewed",
+          sourceTranscriptJobId: "transcript-1",
+          sourceSegmentId: "provider-segment-1",
+          deactivated: false,
+        }],
+      },
+    }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /The source clock owns this line/i }));
+    expect(screen.getByRole("slider", { name: "Episode playhead" })).toHaveValue("2.25");
+    expect(screen.getByText("human-reviewed")).toBeInTheDocument();
+  });
+
+  it("shows the real execution lane and does not invent queued rendering", () => {
+    const { rerender } = render(<EpisodeEditorClient initialPayload={payload} />);
+    expect(screen.getByText("No render, proxy, mastery, or delivery job is queued for this Episode. Browser edits are still saved normally.")).toBeInTheDocument();
+
+    rerender(<EpisodeEditorClient key="with-jobs" initialPayload={{
+      ...payload,
+      executionInspection: {
+        ...payload.executionInspection,
+        jobs: [{
+          id: "job-1",
+          type: "episode-program-delivery",
+          status: "completed",
+          lane: "local-worker",
+          provider: "local",
+          updatedAt: "2026-08-07T08:00:00.000Z",
+          completedAt: "2026-08-07T08:01:00.000Z",
+          error: null,
+        }],
+      },
+    }} />);
+    expect(screen.getByText("episode program delivery")).toBeInTheDocument();
+    expect(screen.getByText("local worker · local")).toBeInTheDocument();
+    expect(screen.queryByText(/No render, proxy/)).not.toBeInTheDocument();
+  });
+
+  it("makes ambiguous audio evidence actionable through exact source selection", async () => {
+    const user = userEvent.setup();
+    render(<EpisodeEditorClient initialPayload={{
+      ...payload,
+      mediaChoices: [
+        { id: "recording-charlie", label: "Charlie MV7i.wav", kind: "audio", role: "primary audio", sourceId: "source-charlie", recordingAssetId: "recording-charlie" },
+        { id: "recording-homer", label: "Homer iPhone.mov", kind: "video", role: "secondary camera", sourceId: "source-homer", recordingAssetId: "recording-homer" },
+      ],
+      signalInspection: {
+        status: "ambiguous",
+        reason: "Multiple sources are attached.",
+        evidence: null,
+        candidateCount: 2,
+      },
+    }} canonicalWorkspace />);
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Exact transcript and audio source" }),
+      "recording-charlie",
+    );
+    expect(mockPush).toHaveBeenCalledWith(
+      "/nests/high-ground-odyssey/episodes/episode-4-part-2?mode=edit&source=recording-charlie",
+    );
   });
 });

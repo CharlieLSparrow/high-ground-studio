@@ -16,10 +16,11 @@ export default async function EpisodeRoomPage({
   searchParams,
 }: {
   params: Promise<{ slug: string; episodeSlug: string }>;
-  searchParams?: Promise<{ mode?: string }>;
+  searchParams?: Promise<{ mode?: string; source?: string }>;
 }) {
   const { slug, episodeSlug } = await params;
-  const requestedMode = (await searchParams)?.mode;
+  const query = await searchParams;
+  const requestedMode = query?.mode;
   const mode = requestedMode === "edit"
     ? "edit"
     : requestedMode === "record"
@@ -76,7 +77,9 @@ export default async function EpisodeRoomPage({
   }
 
   if (mode === "edit") {
-    let editPayload = await loadEpisodeEditDesk(slug, episodeSlug, canEdit);
+    let editPayload = await loadEpisodeEditDesk(slug, episodeSlug, canEdit, {
+      selectedMediaAssetId: query?.source,
+    });
     if (canEdit && editPayload.selectedEpisode && !editPayload.branch) {
       const actor: EditActor = {
         userId: session?.user.id,
@@ -85,7 +88,9 @@ export default async function EpisodeRoomPage({
         type: "human",
       };
       await ensureEpisodeEditBranch(slug, editPayload.selectedEpisode.slug, actor);
-      editPayload = await loadEpisodeEditDesk(slug, editPayload.selectedEpisode.slug, canEdit);
+      editPayload = await loadEpisodeEditDesk(slug, editPayload.selectedEpisode.slug, canEdit, {
+        selectedMediaAssetId: query?.source,
+      });
     }
 
     const recordingRoomId = payload.room.session?.recordingRoomId

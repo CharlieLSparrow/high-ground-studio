@@ -4,7 +4,7 @@ jest.mock("@/lib/prisma", () => ({
   getPrismaClient: jest.fn(() => ({})),
 }));
 
-import { normalizeWatchDerivatives } from "./episode-edit-store";
+import { normalizeEpisodeEditMediaChoices, normalizeWatchDerivatives } from "./episode-edit-store";
 
 describe("Episode editor Shared Watch derivatives", () => {
   it("loads only complete receipt-backed Episode Room timeline spans", () => {
@@ -70,5 +70,31 @@ describe("Episode editor Shared Watch derivatives", () => {
       recordingRoomId: "call-room-1",
       recordingStartedAt: "2026-07-27T18:59:00.000Z",
     }]);
+  });
+});
+
+describe("Episode editor exact source choices", () => {
+  it("prefers Capture recording identity and preserves Studio source identity", () => {
+    expect(normalizeEpisodeEditMediaChoices({
+      importedMedia: [
+        {
+          id: "capture-media-1",
+          sourceId: "capture-source-1",
+          originalName: "Charlie MV7i.wav",
+          kind: "audio",
+          importRole: "primary audio",
+          metadata: { recordingSync: { recordingAssetId: "recording-charlie" } },
+        },
+        {
+          id: "studio-media-1",
+          sourceId: "studio-source-1",
+          originalName: "Homer iPhone.mov",
+          contentType: "video/quicktime",
+        },
+      ],
+    }, null)).toEqual([
+      expect.objectContaining({ id: "recording-charlie", recordingAssetId: "recording-charlie", sourceId: "capture-source-1", kind: "audio" }),
+      expect.objectContaining({ id: "studio-media-1", recordingAssetId: null, sourceId: "studio-source-1", kind: "video" }),
+    ]);
   });
 });
