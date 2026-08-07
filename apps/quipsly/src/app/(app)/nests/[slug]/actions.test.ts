@@ -344,6 +344,142 @@ describe("project quick Task and Goal capture", () => {
     });
   });
 
+  it("creates one canonical Work task with an exact source-card evidence receipt", async () => {
+    const sourceCard = {
+      id: "card-1",
+      stableId: "source-card:lake-reveal",
+      title: "Lake reveal",
+      revision: 3,
+      tags: [{ tag: { id: "tag-episode" } }],
+      sourceRange: {
+        id: "range-1",
+        startSeconds: 12.25,
+        endSeconds: 24.5,
+        selectorSha256: "a".repeat(64),
+        sourceRevision: { id: "revision-1", identitySha256: "b".repeat(64) },
+        sourceSet: { id: "set-1", captureKey: "VID_004", displayName: "Episode 5 segment 4", identitySha256: "c".repeat(64) },
+      },
+      placements: [{
+        board: { id: "board-1", slug: "insta360-selects", title: "Insta360 selects", revision: 11 },
+        groupKey: "episode-open",
+        laneKey: "b-roll",
+      }],
+    };
+    const tx = {
+      studioStoryCard: { findFirst: jest.fn().mockResolvedValue(sourceCard) },
+      actionItem: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: `project-task-${requestId}` }),
+      },
+      actionItemEvidenceReceipt: { create: jest.fn().mockResolvedValue({ id: `source-card-action-${requestId}` }) },
+      actionItemTagLink: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+
+    const result = await createNestQuickWorkAction({
+      projectSlug: "project",
+      entityKind: "TASK",
+      title: "Review the lake reveal",
+      body: "Confirm the reframing before the Episode edit.",
+      clientRequestId: requestId,
+      tagIds: ["tag-episode"],
+      sourceCardId: "card-1",
+      sourceBoardId: "board-1",
+    });
+
+    expect(result).toMatchObject({ ok: true, entityKind: "TASK", externalSideEffects: false });
+    expect(tx.studioStoryCard.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: "card-1", projectId: "project-1", archivedAt: null }),
+    }));
+    expect(tx.actionItem.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      id: `project-task-${requestId}`,
+      projectId: "project-1",
+      assignedUserId: "user-1",
+      sourceJson: expect.objectContaining({
+        sourceCardAnchor: expect.objectContaining({
+          schema: "quipsly-source-card-action-anchor-v1",
+          storyCardId: "card-1",
+          storyCardRevision: 3,
+          sourceRangeId: "range-1",
+          sourceSetId: "set-1",
+          boardId: "board-1",
+          boardSection: "episode-open",
+          immutableSourceRange: true,
+          externalSideEffects: false,
+        }),
+      }),
+    }) });
+    expect(tx.actionItemEvidenceReceipt.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      id: `source-card-action-${requestId}`,
+      actionItemId: `project-task-${requestId}`,
+      actorUserId: "user-1",
+      kind: "SOURCE_CARD_ANCHOR",
+      evidenceJson: expect.objectContaining({ selectorSha256: "a".repeat(64), sourceRevisionIdentitySha256: "b".repeat(64) }),
+    }) });
+  });
+
+  it("refuses a missing or cross-project source card before creating Work", async () => {
+    const tx = {
+      studioStoryCard: { findFirst: jest.fn().mockResolvedValue(null) },
+      actionItem: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      actionItemEvidenceReceipt: { create: jest.fn() },
+      actionItemTagLink: { createMany: jest.fn() },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+
+    await expect(createNestQuickWorkAction({
+      projectSlug: "project",
+      entityKind: "TASK",
+      title: "Invented source task",
+      clientRequestId: requestId,
+      sourceCardId: "invented-card",
+    })).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(tx.actionItem.create).not.toHaveBeenCalled();
+    expect(resolveQuickEntryTags).not.toHaveBeenCalled();
+  });
+
+  it("refuses stale card tags instead of silently creating differently tagged Work", async () => {
+    const tx = {
+      studioStoryCard: { findFirst: jest.fn().mockResolvedValue({
+        id: "card-1",
+        stableId: "source-card:lake-reveal",
+        title: "Lake reveal",
+        revision: 4,
+        tags: [{ tag: { id: "tag-current" } }],
+        sourceRange: {
+          id: "range-1",
+          startSeconds: 1,
+          endSeconds: 2,
+          selectorSha256: "a".repeat(64),
+          sourceRevision: { id: "revision-1", identitySha256: "b".repeat(64) },
+          sourceSet: null,
+        },
+        placements: [],
+      }) },
+      actionItem: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      actionItemEvidenceReceipt: { create: jest.fn() },
+      actionItemTagLink: { createMany: jest.fn() },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+
+    await expect(createNestQuickWorkAction({
+      projectSlug: "project",
+      entityKind: "TASK",
+      title: "Stale-tag source task",
+      clientRequestId: requestId,
+      tagIds: ["tag-episode"],
+      sourceCardId: "card-1",
+    })).resolves.toMatchObject({ ok: false, code: "CONFLICT", error: expect.stringContaining("tags changed") });
+    expect(resolveQuickEntryTags).not.toHaveBeenCalled();
+    expect(tx.actionItem.create).not.toHaveBeenCalled();
+  });
+
   it("replays the exact Goal identity without resolving or creating tags again", async () => {
     const inputHash = createHash("sha256").update(JSON.stringify({
       actorUserId: "user-1",
@@ -353,6 +489,8 @@ describe("project quick Task and Goal capture", () => {
       body: "Finish the proof listen.",
       tagIds: ["tag-episode"],
       newTagLabels: [],
+      sourceCardId: "",
+      sourceBoardId: "",
     })).digest("hex");
     const existing = {
       id: `project-goal-${requestId}`,

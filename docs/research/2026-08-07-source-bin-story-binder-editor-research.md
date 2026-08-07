@@ -172,9 +172,10 @@ reconciliation; they are useful browsing evidence but unsafe cursor identity.
 3. Add a freeform exploratory board that can deliberately commit an order to a
    durable binder, preserving both arrangements and their receipts.
 4. Source-card discussion now uses the existing Nest collaboration kernel and
-   retains exact card/range/revision provenance. Next, create a deliberate
-   canonical Work action from that discussion or card without introducing a
-   Story-only task model; section-scoped discussion should reuse the same
+   retains exact card/range/revision provenance. A deliberate follow-through
+   action creates canonical Work, inherits visible card tags, appends exact
+   source evidence, and links back to the select without introducing a
+   Story-only task model. Section-scoped discussion should reuse the same
    pattern.
 5. Add collection rename, archive, and explicit reordering on the same
    revisioned operation ledger; do not turn filing order into binder order.
@@ -242,6 +243,9 @@ purpose-built lens:
 - **Card discussion** is a scoped view of canonical Nest chat, not a new comment
   store. Its messages retain the card, source range, and card revision that
   framed the conversation even if the card is revised later.
+- **Follow-through tasks** remain canonical Work items. Creating one from a
+  card is an explicit human operation that snapshots immutable source evidence
+  and visible tags; later task edits never rewrite the card or source range.
 - **Boards and binders** organize the same cards spatially or sequentially.
   Exploration remains reversible; committing an arrangement creates an
   explicit revision rather than silently replacing another person's order.

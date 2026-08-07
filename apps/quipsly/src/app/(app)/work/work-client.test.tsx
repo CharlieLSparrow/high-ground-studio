@@ -112,6 +112,46 @@ describe("Work Queue interactions", () => {
     ))).toBeInTheDocument();
   });
 
+  it("returns a source-backed task to the exact card, source set, and board", () => {
+    render(<WorkClient initialSnapshot={{
+      ...snapshot,
+      tasks: [{
+        ...snapshot.tasks[0],
+        provenance: "Source-backed story action",
+        sourceAnchor: null,
+        project: { id: "project-1", name: "High Ground", slug: "high-ground" },
+        sourceCardAnchor: {
+          schema: "quipsly-source-card-action-anchor-v1",
+          projectSlug: "high-ground",
+          storyCardId: "card-1",
+          storyCardStableId: "source-card:lake-reveal",
+          storyCardTitle: "Lake reveal",
+          storyCardRevision: 3,
+          sourceRangeId: "range-1",
+          startSeconds: 12.25,
+          endSeconds: 24.5,
+          selectorSha256: "a".repeat(64),
+          sourceRevisionId: "revision-1",
+          sourceRevisionIdentitySha256: "b".repeat(64),
+          sourceSetId: "set-1",
+          captureKey: "VID_004",
+          sourceDisplayName: "Episode 5 segment 4",
+          boardId: "board-1",
+          boardTitle: "Insta360 selects",
+          boardSection: "episode-open",
+          boardLane: "b-roll",
+        },
+      }],
+    }} />);
+
+    expect(screen.getByText("Exact source-card evidence")).toBeInTheDocument();
+    expect(screen.getByText(/Card revision 3.*Episode 5 segment 4.*0:12–0:24/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open exact source select" })).toHaveAttribute(
+      "href",
+      "/nests/high-ground/story?set=set-1&board=board-1#story-card-card-1",
+    );
+  });
+
   it("moves canonical reminder intent without claiming device delivery", async () => {
     const user = userEvent.setup();
     jest.mocked(setWorkTaskReminder).mockResolvedValue({

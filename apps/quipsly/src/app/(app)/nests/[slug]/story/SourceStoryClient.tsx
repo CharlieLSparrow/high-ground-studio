@@ -37,7 +37,7 @@ import {
   Tags,
   Undo2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type {
   SpatialExecutorProbe,
   SpatialExecutorReadiness,
@@ -59,6 +59,7 @@ import {
   type SourceLibrarySortMode,
 } from "@/lib/source-library-projection";
 import { CollaborationThread } from "@/components/session-thread";
+import { createNestQuickWorkAction } from "../actions";
 
 import { GoogleDriveSourcePicker } from "./GoogleDriveSourcePicker";
 import {
@@ -1032,6 +1033,127 @@ function StoryCardDiscussionButton({
       <MessageCircle size={14} aria-hidden="true" />
       {active ? "Close discussion" : "Discuss this select"}
     </button>
+  );
+}
+
+export function SourceCardTaskCapture({
+  projectSlug,
+  boardId,
+  card,
+}: {
+  projectSlug: string;
+  boardId: string | null;
+  card: SourceStoryCard;
+}) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState(`Follow through on ${card.title}`);
+  const [detail, setDetail] = useState("");
+  const [clientRequestId, setClientRequestId] = useState(() =>
+    globalThis.crypto.randomUUID(),
+  );
+  const [saved, setSaved] = useState<null | {
+    href: string;
+    tags: string[];
+  }>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function resetForAnother() {
+    setTitle(`Follow through on ${card.title}`);
+    setDetail("");
+    setClientRequestId(globalThis.crypto.randomUUID());
+    setSaved(null);
+    setError(null);
+  }
+
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const result = await createNestQuickWorkAction({
+        projectSlug,
+        entityKind: "TASK",
+        title,
+        body: detail,
+        clientRequestId,
+        tagIds: card.tags.map((tag) => tag.id),
+        newTagLabels: [],
+        sourceCardId: card.id,
+        ...(boardId ? { sourceBoardId: boardId } : {}),
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setSaved({
+        href: result.href,
+        tags: result.tags.map((tag) => tag.label),
+      });
+    });
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black text-amber-950"
+      >
+        <ListPlus size={15} aria-hidden="true" />Create follow-through task
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-800">
+        Canonical Work action
+      </p>
+      <p className="mt-1 text-xs font-semibold leading-5 text-amber-950">
+        The task stays independently editable while retaining this card revision,
+        immutable range, source receipt, board position, and visible card tags.
+      </p>
+      {saved ? (
+        <div className="mt-3 rounded-xl border border-emerald-200 bg-white p-3">
+          <p role="status" className="text-xs font-black text-emerald-900">
+            Task saved in Work{saved.tags.length ? ` with ${saved.tags.map((tag) => `#${tag}`).join(", ")}` : ""}.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Link href={saved.href} className="inline-flex min-h-11 items-center rounded-full bg-emerald-800 px-4 py-2 text-xs font-black text-white">
+              Open task
+            </Link>
+            <button type="button" onClick={resetForAnother} className="min-h-11 rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-black text-emerald-900">
+              Create another
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="mt-3 space-y-3">
+          <label className="block text-xs font-black text-amber-950">
+            Task title
+            <input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={500} className="mt-1 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-semibold" />
+          </label>
+          <label className="block text-xs font-black text-amber-950">
+            What does done look like? <span className="font-semibold">Optional</span>
+            <textarea value={detail} onChange={(event) => setDetail(event.target.value)} maxLength={5000} rows={3} className="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-semibold" />
+          </label>
+          {card.tags.length ? (
+            <p className="text-[11px] font-semibold text-amber-900">
+              Carries {card.tags.map((tag) => `#${tag.label}`).join(", ")} into Work.
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" disabled={pending || !title.trim()} className="min-h-11 rounded-full bg-amber-900 px-4 py-2 text-xs font-black text-white disabled:opacity-50">
+              {pending ? "Creating…" : "Create Work task"}
+            </button>
+            <button type="button" disabled={pending} onClick={() => setOpen(false)} className="min-h-11 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black text-amber-950 disabled:opacity-50">
+              Cancel
+            </button>
+          </div>
+          {error ? <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-900">{error}</p> : null}
+        </form>
+      )}
+    </div>
   );
 }
 
@@ -4291,6 +4413,7 @@ export function SourceStoryClient({
                             return (
                               <li
                                 key={placement.id}
+                                id={`story-card-${placement.card.id}`}
                                 className="rounded-xl border border-[#e2d2b6] bg-white p-3"
                               >
                                 <div className="flex items-start justify-between gap-3">
@@ -4421,6 +4544,7 @@ export function SourceStoryClient({
                             return (
                               <article
                                 key={placement.id}
+                                id={`story-card-${placement.card.id}`}
                                 className="rounded-2xl border border-[#e2d2b6] bg-[#fffaf0] p-4"
                               >
                                 <div className="flex items-start justify-between gap-3">
@@ -4623,7 +4747,7 @@ export function SourceStoryClient({
           ) : null}
 
           {discussionCard ? (
-            <div className="rounded-[2rem] border border-violet-200 bg-violet-50/60 p-2 shadow-sm">
+            <div className="space-y-2 rounded-[2rem] border border-violet-200 bg-violet-50/60 p-2 shadow-sm">
               <CollaborationThread
                 projectSlug={project.slug}
                 threadKey={`story-card:${discussionCard.id}`}
@@ -4636,6 +4760,14 @@ export function SourceStoryClient({
                 scopeLabel="This source-backed card"
                 scopeDescription="Coordinate the story purpose, edit decision, camera treatment, research, or follow-through here. The card and immutable source range remain the evidence anchor; reviewed tasks stay canonical in Work."
               />
+              {canWrite ? (
+                <SourceCardTaskCapture
+                  key={discussionCard.id}
+                  projectSlug={project.slug}
+                  boardId={selectedBoard?.id ?? null}
+                  card={discussionCard}
+                />
+              ) : null}
             </div>
           ) : null}
 

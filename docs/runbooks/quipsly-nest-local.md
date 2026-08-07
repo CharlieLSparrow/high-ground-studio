@@ -240,6 +240,22 @@ Before treating a change as useful, operate the visible app:
 
 A passing build without this readback is not equivalent to a working product.
 
+### Source card to canonical Work
+
+With the local stack database running, prove that a Story decision creates one
+real task rather than a parallel checklist:
+
+```bash
+pnpm quipsly:smoke:source-card-work
+```
+
+The smoke creates a disposable project, exact source revision/set/range, card,
+board placement, and tag. It creates the task through the same authenticated
+Nest server action used by the UI, retries the same request identity, requires
+one task, one tag link, and one `SOURCE_CARD_ANCHOR` evidence receipt, then
+removes every QA record. It is loopback PostgreSQL proof, not production or
+physical-device evidence.
+
 ### Operated iPhone Simulator edit journeys
 
 The generated mobile dogfood commands run current local Nest source, use a

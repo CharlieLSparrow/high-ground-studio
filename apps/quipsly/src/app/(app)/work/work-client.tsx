@@ -703,6 +703,12 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
   const [pending, startTransition] = useTransition();
   const [recurrencePending, startRecurrenceTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const sourceCardHref = task.sourceCardAnchor && task.project
+    ? `/nests/${encodeURIComponent(task.project.slug)}/story?${new URLSearchParams({
+        ...(task.sourceCardAnchor.sourceSetId ? { set: task.sourceCardAnchor.sourceSetId } : {}),
+        ...(task.sourceCardAnchor.boardId ? { board: task.sourceCardAnchor.boardId } : {}),
+      }).toString()}#story-card-${encodeURIComponent(task.sourceCardAnchor.storyCardId)}`
+    : null;
 
   function decide(nextStatus: WorkTaskStatus) {
     const missedOccurrence = nextStatus === "CANCELED" && task.isOverdue && Boolean(task.recurrence);
@@ -769,6 +775,18 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
           <TaskReminderEditor task={task} onRefresh={onConflict} />
           {task.detail && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">{task.detail}</p>}
           <TagEditor entityKind="task" entityId={task.id} project={projectOptions.find((project) => project.id === task.project?.id) ?? null} tags={task.tags} updatedAt={task.updatedAt} canManage={task.canManageTags} onRefresh={onConflict} />
+          {task.sourceCardAnchor && sourceCardHref && (
+            <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+              <p className="text-[10px] font-black uppercase tracking-wide text-violet-800">Exact source-card evidence</p>
+              <p className="mt-1 text-xs font-black text-violet-950">{task.sourceCardAnchor.storyCardTitle}</p>
+              <p className="mt-1 text-[11px] font-semibold leading-5 text-violet-800">
+                Card revision {task.sourceCardAnchor.storyCardRevision} · {task.sourceCardAnchor.sourceDisplayName || task.sourceCardAnchor.captureKey || "verified source"} · immutable range {formatMediaTime(task.sourceCardAnchor.startSeconds)}–{formatMediaTime(task.sourceCardAnchor.endSeconds)}
+              </p>
+              <Link href={sourceCardHref} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-3 py-2 text-xs font-black text-violet-900 hover:underline">
+                <Play size={14} aria-hidden="true" />Open exact source select
+              </Link>
+            </div>
+          )}
           {task.sourceAnchor && task.roomId && (
             <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
               <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Reviewed transcript source</p>

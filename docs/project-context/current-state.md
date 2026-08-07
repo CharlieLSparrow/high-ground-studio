@@ -2952,3 +2952,15 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   projected the same source card, and the proof message, newly created thread,
   session, access grant, Auth user, and database user were removed afterward.
   No retained editorial discussion or test identity was left behind.
+- The same source-card surface now creates a canonical Work task rather than a
+  Story-local checkbox. The server revalidates project/card/board ownership,
+  assigns the task to the acting Editor, carries the card's visible canonical
+  tags, and records card revision, immutable range, source revision/set
+  identities, and board placement in both task provenance and an append-only
+  `SOURCE_CARD_ANCHOR` evidence receipt. Work shows that receipt and returns to
+  the exact source set, board, and card.
+- A local PostgreSQL operation created one tagged source-card task and one
+  evidence receipt, replayed the same request without duplication, read the
+  exact 12.25–24.5 second selector and source identities back, and removed all
+  QA records. Focused server-action, model, component, and Work UI suites pass;
+  no schema migration or parallel task database was introduced.

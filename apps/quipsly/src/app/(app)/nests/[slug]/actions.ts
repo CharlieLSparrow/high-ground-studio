@@ -82,6 +82,7 @@ const DOCUMENT_PRESETS: Record<CreateNestDocumentKind, {
 const HGO_SOURCE_ROOT_ENV = "QUIPSLY_HGO_PODCAST_YEAR_ONE_SOURCE_ROOT";
 const DEFAULT_HGO_SOURCE_ROOT = path.join(process.cwd(), "data", "hgo-podcast-year-1");
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const STORY_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
 
 const HGO_SOURCE_CATALOG = [
   { key: "episode-1", label: "Episode 1 Source", relativePath: "1 - March 25 - Pilot/1.md" },
@@ -460,6 +461,8 @@ export async function createNestQuickWorkAction(input: {
   clientRequestId: string;
   tagIds?: string[];
   newTagLabels?: string[];
+  sourceCardId?: string;
+  sourceBoardId?: string;
 }): Promise<CreateNestQuickWorkResult> {
   const session = await auth();
   const actorUserId = session?.user?.id;
@@ -473,9 +476,14 @@ export async function createNestQuickWorkAction(input: {
   const title = cleanQuickNoteText(input?.title, 500).replace(/\s+/g, " ");
   const body = cleanQuickNoteText(input?.body, 5_000).replace(/\s+/g, " ");
   const clientRequestId = cleanQuickNoteText(input?.clientRequestId, 80).toLowerCase();
+  const sourceCardId = cleanQuickNoteText(input?.sourceCardId, 128).toLowerCase();
+  const sourceBoardId = cleanQuickNoteText(input?.sourceBoardId, 128).toLowerCase();
   const tagInput = cleanQuickCaptureTagInput(input ?? {});
   if (!projectSlug || !["TASK", "GOAL"].includes(entityKind) || !title
-      || !UUID_PATTERN.test(clientRequestId) || !tagInput) {
+      || !UUID_PATTERN.test(clientRequestId) || !tagInput
+      || (sourceCardId && (!STORY_ID_PATTERN.test(sourceCardId) || entityKind !== "TASK"))
+      || (sourceCardId && tagInput?.newTagLabels.length)
+      || (sourceBoardId && (!sourceCardId || !STORY_ID_PATTERN.test(sourceBoardId)))) {
     return {
       ok: false,
       code: "INVALID_INPUT",
@@ -491,6 +499,8 @@ export async function createNestQuickWorkAction(input: {
     body,
     tagIds: tagInput.tagIds,
     newTagLabels: tagInput.newTagLabels,
+    sourceCardId,
+    sourceBoardId,
   })).digest("hex");
   const entityId = `project-${entityKind.toLowerCase()}-${clientRequestId}`;
   const receiptId = `project-capture-${clientRequestId}`;
@@ -563,6 +573,59 @@ export async function createNestQuickWorkAction(input: {
         return { kind: "saved" as const, tags: existing.tags, idempotentReplay: true };
       }
 
+      const sourceCard = sourceCardId
+        ? await tx.studioStoryCard.findFirst({
+            where: {
+              id: sourceCardId,
+              projectId: access.projectId,
+              archivedAt: null,
+              ...(sourceBoardId ? {
+                placements: {
+                  some: {
+                    boardId: sourceBoardId,
+                    board: { projectId: access.projectId, archivedAt: null },
+                  },
+                },
+              } : {}),
+            },
+            select: {
+              id: true,
+              stableId: true,
+              title: true,
+              revision: true,
+              tags: { select: { tag: { select: { id: true } } }, orderBy: { tagId: "asc" } },
+              sourceRange: {
+                select: {
+                  id: true,
+                  startSeconds: true,
+                  endSeconds: true,
+                  selectorSha256: true,
+                  sourceRevision: { select: { id: true, identitySha256: true } },
+                  sourceSet: { select: { id: true, captureKey: true, displayName: true, identitySha256: true } },
+                },
+              },
+              placements: {
+                where: sourceBoardId ? { boardId: sourceBoardId } : { id: "__no-board-context__" },
+                take: 1,
+                select: {
+                  board: { select: { id: true, slug: true, title: true, revision: true } },
+                  groupKey: true,
+                  laneKey: true,
+                },
+              },
+            },
+          })
+        : null;
+      if (sourceCardId && (!sourceCard || !sourceCard.sourceRange)) {
+        return { kind: "source-card-unavailable" as const };
+      }
+      if (sourceCard) {
+        const currentCardTagIds = sourceCard.tags.map((link) => link.tag.id).sort();
+        if (currentCardTagIds.join("\n") !== tagInput.tagIds.join("\n")) {
+          return { kind: "source-card-tags-stale" as const };
+        }
+      }
+
       const tagResolution = await resolveQuickEntryTags({
         tx,
         projectId: access.projectId,
@@ -573,6 +636,37 @@ export async function createNestQuickWorkAction(input: {
       if (tagResolution.kind !== "resolved") return tagResolution;
 
       const now = new Date();
+      const sourcePlacement = sourceCard?.placements[0] ?? null;
+      const sourceCardAnchor = sourceCard?.sourceRange ? {
+        schema: "quipsly-source-card-action-anchor-v1",
+        projectSlug,
+        storyCardId: sourceCard.id,
+        storyCardStableId: sourceCard.stableId,
+        storyCardTitle: sourceCard.title,
+        storyCardRevision: sourceCard.revision,
+        sourceRangeId: sourceCard.sourceRange.id,
+        startSeconds: sourceCard.sourceRange.startSeconds,
+        endSeconds: sourceCard.sourceRange.endSeconds,
+        selectorSha256: sourceCard.sourceRange.selectorSha256,
+        sourceRevisionId: sourceCard.sourceRange.sourceRevision.id,
+        sourceRevisionIdentitySha256: sourceCard.sourceRange.sourceRevision.identitySha256,
+        sourceSetId: sourceCard.sourceRange.sourceSet?.id ?? null,
+        sourceSetIdentitySha256: sourceCard.sourceRange.sourceSet?.identitySha256 ?? null,
+        captureKey: sourceCard.sourceRange.sourceSet?.captureKey ?? null,
+        sourceDisplayName: sourceCard.sourceRange.sourceSet?.displayName ?? null,
+        boardId: sourcePlacement?.board.id ?? null,
+        boardSlug: sourcePlacement?.board.slug ?? null,
+        boardTitle: sourcePlacement?.board.title ?? null,
+        boardRevision: sourcePlacement?.board.revision ?? null,
+        boardSection: sourcePlacement?.groupKey ?? null,
+        boardLane: sourcePlacement?.laneKey ?? null,
+        capturedAt: now.toISOString(),
+        immutableSourceRange: true,
+        externalSideEffects: false,
+      } : null;
+      const sourceCardEvidenceReceiptId = sourceCardAnchor
+        ? `source-card-action-${clientRequestId}`
+        : null;
       const creationReceipt = {
         id: receiptId,
         kind: entityKind === "TASK" ? "quipsly-project-task-capture-v1" : "quipsly-project-goal-capture-v1",
@@ -592,11 +686,13 @@ export async function createNestQuickWorkAction(input: {
         messageSent: false,
         calendarMutated: false,
         published: false,
+        ...(sourceCardEvidenceReceiptId ? { sourceCardEvidenceReceiptId } : {}),
       };
       const sourceJson = {
         source: "quipsly-project-quick-capture-v1",
         surface: "nest-project",
         creationReceipt,
+        ...(sourceCardAnchor ? { sourceCardAnchor } : {}),
       };
       const linkSourceJson = {
         schema: "quipsly-record-tag-link-v1",
@@ -617,6 +713,19 @@ export async function createNestQuickWorkAction(input: {
             sourceJson,
           },
         });
+        if (sourceCardAnchor && sourceCardEvidenceReceiptId) {
+          await tx.actionItemEvidenceReceipt.create({
+            data: {
+              id: sourceCardEvidenceReceiptId,
+              actionItemId: entityId,
+              actorUserId,
+              kind: "SOURCE_CARD_ANCHOR",
+              note: `Task created from source card: ${sourceCardAnchor.storyCardTitle}`,
+              evidenceJson: sourceCardAnchor,
+              occurredAt: now,
+            },
+          });
+        }
         if (tagResolution.tags.length > 0) {
           await tx.actionItemTagLink.createMany({
             data: tagResolution.tags.map((tag) => ({
@@ -664,6 +773,20 @@ export async function createNestQuickWorkAction(input: {
         ok: false,
         code: "CONFLICT",
         error: "This capture identity already belongs to different project work. Nothing was overwritten.",
+      };
+    }
+    if (result.kind === "source-card-unavailable") {
+      return {
+        ok: false,
+        code: "CONFLICT",
+        error: "That source card or board placement is no longer available. Nothing was created.",
+      };
+    }
+    if (result.kind === "source-card-tags-stale") {
+      return {
+        ok: false,
+        code: "CONFLICT",
+        error: "That source card's tags changed before the task was saved. Refresh the card and try again; nothing was created.",
       };
     }
     if (result.kind !== "saved") return quickCaptureTagFailure(result);

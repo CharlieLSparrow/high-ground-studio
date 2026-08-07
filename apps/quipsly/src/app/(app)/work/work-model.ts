@@ -23,6 +23,27 @@ export type WorkTaskStatus = "OPEN" | "DONE" | "CANCELED";
 export type WorkGoalStatus = "ACTIVE" | "PAUSED" | "ACHIEVED" | "ARCHIVED";
 
 export type WorkProject = { id: string; name: string; slug: string };
+export type SourceCardTaskAnchor = {
+  schema: "quipsly-source-card-action-anchor-v1";
+  projectSlug: string;
+  storyCardId: string;
+  storyCardStableId: string;
+  storyCardTitle: string;
+  storyCardRevision: number;
+  sourceRangeId: string;
+  startSeconds: number;
+  endSeconds: number;
+  selectorSha256: string;
+  sourceRevisionId: string;
+  sourceRevisionIdentitySha256: string;
+  sourceSetId: string | null;
+  captureKey: string | null;
+  sourceDisplayName: string | null;
+  boardId: string | null;
+  boardTitle: string | null;
+  boardSection: string | null;
+  boardLane: string | null;
+};
 export type WorkTag = {
   id: string;
   label: string;
@@ -191,6 +212,7 @@ export type WorkTask = {
   canManageReminder?: boolean;
   bookingStart: string | null;
   sourceAnchor: TranscriptDerivedTaskSourceAnchor | null;
+  sourceCardAnchor?: SourceCardTaskAnchor | null;
   lastMergedTranscriptEvidence: TranscriptMergedTaskSource | null;
   recurrence?: {
     seriesId: string;
@@ -284,12 +306,68 @@ function clean(value: unknown) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 }
 
+function nullableClean(value: unknown) {
+  return clean(value) || null;
+}
+
+export function readSourceCardTaskAnchor(sourceValue: unknown): SourceCardTaskAnchor | null {
+  const source = safeRecord(sourceValue);
+  const anchor = safeRecord(source.sourceCardAnchor);
+  const storyCardRevision = Number(anchor.storyCardRevision);
+  const startSeconds = Number(anchor.startSeconds);
+  const endSeconds = Number(anchor.endSeconds);
+  const selectorSha256 = clean(anchor.selectorSha256).toLowerCase();
+  const sourceRevisionIdentitySha256 = clean(anchor.sourceRevisionIdentitySha256).toLowerCase();
+  if (
+    anchor.schema !== "quipsly-source-card-action-anchor-v1"
+    || !clean(anchor.projectSlug)
+    || !clean(anchor.storyCardId)
+    || !clean(anchor.storyCardStableId)
+    || !clean(anchor.storyCardTitle)
+    || !Number.isInteger(storyCardRevision)
+    || storyCardRevision < 1
+    || !clean(anchor.sourceRangeId)
+    || !Number.isFinite(startSeconds)
+    || !Number.isFinite(endSeconds)
+    || startSeconds < 0
+    || endSeconds <= startSeconds
+    || !/^[a-f0-9]{64}$/.test(selectorSha256)
+    || !clean(anchor.sourceRevisionId)
+    || !/^[a-f0-9]{64}$/.test(sourceRevisionIdentitySha256)
+    || anchor.immutableSourceRange !== true
+  ) return null;
+  return {
+    schema: "quipsly-source-card-action-anchor-v1",
+    projectSlug: clean(anchor.projectSlug),
+    storyCardId: clean(anchor.storyCardId),
+    storyCardStableId: clean(anchor.storyCardStableId),
+    storyCardTitle: clean(anchor.storyCardTitle),
+    storyCardRevision,
+    sourceRangeId: clean(anchor.sourceRangeId),
+    startSeconds,
+    endSeconds,
+    selectorSha256,
+    sourceRevisionId: clean(anchor.sourceRevisionId),
+    sourceRevisionIdentitySha256,
+    sourceSetId: nullableClean(anchor.sourceSetId),
+    captureKey: nullableClean(anchor.captureKey),
+    sourceDisplayName: nullableClean(anchor.sourceDisplayName),
+    boardId: nullableClean(anchor.boardId),
+    boardTitle: nullableClean(anchor.boardTitle),
+    boardSection: nullableClean(anchor.boardSection),
+    boardLane: nullableClean(anchor.boardLane),
+  };
+}
+
 function personLabel(person: { name?: string | null; primaryEmail?: string | null } | null | undefined) {
   return clean(person?.name) || clean(person?.primaryEmail) || null;
 }
 
 export function taskProvenance(sourceValue: unknown) {
   const source = safeRecord(sourceValue);
+  if (readSourceCardTaskAnchor(sourceValue)) {
+    return "Source-backed story action";
+  }
   if (source.source === "quipsly-task-recurrence-v1") {
     return "Recurring task";
   }
@@ -345,6 +423,10 @@ export function buildWorkSnapshot(input: {
       const room = task.room || task.booking?.callRoom || null;
       const parsedSourceAnchor = readTranscriptDerivedTaskSource(task.sourceJson);
       const sourceAnchor = parsedSourceAnchor?.roomId === room?.id ? parsedSourceAnchor : null;
+      const parsedSourceCardAnchor = readSourceCardTaskAnchor(task.sourceJson);
+      const sourceCardAnchor = parsedSourceCardAnchor?.projectSlug === task.project?.slug
+        ? parsedSourceCardAnchor
+        : null;
       const lastMergedTranscriptEvidence = readTranscriptMergedTaskSource(task.evidenceReceipts?.[0]?.evidenceJson);
       const provenance = taskProvenance(task.sourceJson);
       const historicalLocked = Object.keys(safeRecord(safeRecord(task.sourceJson).supersessionReceipt)).length > 0;
@@ -409,6 +491,7 @@ export function buildWorkSnapshot(input: {
           && !recurrence,
         bookingStart: iso(task.booking?.scheduledStart),
         sourceAnchor,
+        sourceCardAnchor,
         lastMergedTranscriptEvidence,
         recurrence,
       };

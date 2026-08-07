@@ -1,4 +1,4 @@
-import { buildWorkSnapshot, isActiveSessionGoal, sharedWorkRoomIds, taskProvenance } from "./work-model";
+import { buildWorkSnapshot, isActiveSessionGoal, readSourceCardTaskAnchor, sharedWorkRoomIds, taskProvenance } from "./work-model";
 
 const now = "2026-07-18T18:00:00.000Z";
 
@@ -71,6 +71,56 @@ describe("Work Queue model", () => {
     });
     const mismatch = buildWorkSnapshot({ now, tasks: [task({ sourceJson: { ...sourceJson, roomId: "other-room" } })], goals: [], commitments: [] });
     expect(mismatch.tasks[0].sourceAnchor).toBeNull();
+  });
+
+  it("projects an immutable source-card task anchor only while the project remains visible", () => {
+    const sourceCardAnchor = {
+      schema: "quipsly-source-card-action-anchor-v1",
+      projectSlug: "high-ground",
+      storyCardId: "card-1",
+      storyCardStableId: "source-card:lake-reveal",
+      storyCardTitle: "Lake reveal",
+      storyCardRevision: 3,
+      sourceRangeId: "range-1",
+      startSeconds: 12.25,
+      endSeconds: 24.5,
+      selectorSha256: "a".repeat(64),
+      sourceRevisionId: "revision-1",
+      sourceRevisionIdentitySha256: "b".repeat(64),
+      sourceSetId: "set-1",
+      captureKey: "VID_004",
+      sourceDisplayName: "Episode 5 segment 4",
+      boardId: "board-1",
+      boardTitle: "Insta360 selects",
+      boardSection: "episode-open",
+      boardLane: "b-roll",
+      immutableSourceRange: true,
+      externalSideEffects: false,
+    };
+    const snapshot = buildWorkSnapshot({
+      now,
+      tasks: [task({ sourceJson: { sourceCardAnchor }, project: { id: "project-1", name: "High Ground", slug: "high-ground" } })],
+      goals: [],
+      commitments: [],
+    });
+    expect(snapshot.tasks[0]).toMatchObject({
+      provenance: "Source-backed story action",
+      sourceCardAnchor: {
+        storyCardId: "card-1",
+        sourceRangeId: "range-1",
+        startSeconds: 12.25,
+        boardId: "board-1",
+      },
+    });
+    expect(readSourceCardTaskAnchor({ sourceCardAnchor: { ...sourceCardAnchor, endSeconds: 1 } })).toBeNull();
+
+    const hiddenProject = buildWorkSnapshot({
+      now,
+      tasks: [task({ sourceJson: { sourceCardAnchor }, project: null })],
+      goals: [],
+      commitments: [],
+    });
+    expect(hiddenProject.tasks[0].sourceCardAnchor).toBeNull();
   });
 
   it("derives attention from deadlines and recent reviewed transcript work without an unread ledger", () => {

@@ -88,9 +88,14 @@ This keeps conversation and notification behavior shared across Episodes,
 Sessions, coaching engagements, and Story while making the evidence anchor
 explicit. Revising a card does not rewrite earlier messages, and discussion
 does not mutate a range, board arrangement, writing document, or timeline.
-Tasks remain canonical Work actions; a later create-action operation must
-reference this same card/range provenance rather than creating a Story-only
-task table.
+Tasks remain canonical Work actions. An Editor can now deliberately create one
+from the card discussion surface. The server re-resolves the active card and
+selected board inside the authorized project, snapshots the card revision,
+immutable range, source revision/set identities, and board placement into
+`ActionItem.sourceJson`, and appends a `SOURCE_CARD_ANCHOR`
+`ActionItemEvidenceReceipt` in the same serializable transaction. Visible card
+tags use the existing Work tag-link kernel. Retry identity is stable, task text
+can evolve independently, and Work links back to the exact source select.
 
 The binder is now a first-class editing surface rather than a projection that
 appears only after cards exist. An Editor can create an empty section, revise
