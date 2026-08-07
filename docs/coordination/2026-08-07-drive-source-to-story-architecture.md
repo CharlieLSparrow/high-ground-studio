@@ -512,6 +512,14 @@ was promoted into the draft Episode artifact
 `episode-5-insta360-segment-4-source-handoff-20260807`; publication remains
 unstarted and final rendering must resolve the exact source-set identity.
 
+The same exact source revision now has retained navigation evidence. A 4x2
+contact sheet samples source seconds 5.11, 15.33, 25.55, 35.77, 45.99, 56.21,
+66.43, and 76.65. A complete audio decode projects 273 bounded waveform windows
+and six broad frequency bands; measured RMS is -27.774455 dBFS and sample peak
+is -5.736753 dBFS. These are navigation and transparency evidence, not an
+automatic mastering decision. Both operations select the stable capture key
+instead of relying on creation order.
+
 ## Canonical Episode promotion
 
 The next product slice now uses the existing

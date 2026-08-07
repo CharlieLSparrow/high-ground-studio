@@ -32,6 +32,14 @@ const projectSlug =
   process.env.QUIPSLY_EXTERNAL_MEDIA_PROJECT ||
   "high-ground-odyssey-manuscript";
 const actorEmail = "source-story-retained-route@quipsly.test";
+const sourceSetIdArgument = argumentValue("--source-set");
+const captureKeyArgument =
+  argumentValue("--capture-key") ||
+  process.env.QUIPSLY_SOURCE_CAPTURE_KEY ||
+  "VID_20250711_222639_037";
+if (sourceSetIdArgument && argumentValue("--capture-key")) {
+  throw new Error("Choose either --source-set or --capture-key, not both.");
+}
 
 try {
   const [project, actor] = await Promise.all([
@@ -50,8 +58,13 @@ try {
       "The retained Source Story project or operator is unavailable.",
     );
   const sourceSet = await prisma.studioMediaSourceSet.findFirst({
-    where: { projectId: project.id, kind: "insta360-360" },
-    orderBy: { createdAt: "desc" },
+    where: {
+      projectId: project.id,
+      kind: "insta360-360",
+      ...(sourceSetIdArgument
+        ? { id: sourceSetIdArgument }
+        : { captureKey: captureKeyArgument }),
+    },
     select: {
       id: true,
       displayName: true,
@@ -186,6 +199,9 @@ try {
           id: sourceSet.id,
           displayName: sourceSet.displayName,
           sourceRevisionId: sourceSet.sourceClockRevision.id,
+          selection: sourceSetIdArgument
+            ? { sourceSetId: sourceSetIdArgument }
+            : { captureKey: captureKeyArgument },
         },
         input: {
           derivativeId: proxy.id,
@@ -236,4 +252,14 @@ async function inspectFile(candidate) {
     stream.on("end", resolve);
   });
   return { sha256: hash.digest("hex"), sizeBytes: details.size };
+}
+
+function argumentValue(name) {
+  const index = process.argv.indexOf(name);
+  if (index < 0) return "";
+  const value = String(process.argv[index + 1] || "").trim();
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${name} requires a value.`);
+  }
+  return value;
 }

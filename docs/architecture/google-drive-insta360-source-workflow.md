@@ -300,3 +300,20 @@ Insta360 operation proves all of the following:
 The current loop-back trigger is successful Google Cloud reauthentication for
 the project-owning account, followed by OAuth client creation/configuration for
 the local and production callback URLs.
+
+## Retained local source-navigation operation
+
+While provider OAuth is pending, local product work stays source-addressed and
+replayable rather than depending on a “latest source” heuristic:
+
+```bash
+pnpm quipsly:retained:episode5-source-visual-overview
+pnpm quipsly:retained:episode5-source-audio-navigation
+pnpm quipsly:retained:episode5-insta360-source-story
+```
+
+The first two commands target the stable Episode 5 capture key. Their generic
+forms accept either `--capture-key` or `--source-set`, never both. This keeps a
+new import, another collaborator, or a replay from silently moving expensive
+analysis to a different take. The final command proves those derivatives at
+the authenticated product boundary without publishing or mutating originals.

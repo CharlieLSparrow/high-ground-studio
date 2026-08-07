@@ -352,6 +352,9 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
     const episodeBody = await episodeReadback.json().catch(() => ({}));
     const rangeBytes = new Uint8Array(await range.arrayBuffer());
     const tailBytes = new Uint8Array(await rangeTail.arrayBuffer());
+    const projectedSourceSet = Array.isArray(sourceStoryBody?.workspace?.sourceSets)
+      ? sourceStoryBody.workspace.sourceSets.find((candidate) => candidate?.id === sourceSetId)
+      : null;
     const missingPageEvidence = [
       ["source set", displayName],
       ["board", "Insta360 story selects"],
@@ -361,6 +364,18 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       ["spatial render status", "Exact-source 360 render"],
       ["spatial render handoff", "Quipsly can reframe automatically after one reviewed Insta360 Studio master export."],
       ["spatial master state", "A reviewed 5.7K stitch master is required."],
+      ...(projectedSourceSet?.sourceClockRevision?.mediaProjection === "dual-fisheye"
+        ? [["honest unstitched preview", "360° camera preview · unstitched"]]
+        : []),
+      ...(projectedSourceSet?.sourceClockRevision?.visualOverview
+        ? [["visual source navigation", "Visual filmstrip"]]
+        : []),
+      ...(projectedSourceSet?.sourceClockRevision?.audioNavigation?.status === "output-ready"
+        ? [
+            ["complete-decode waveform", "Complete-decode waveform"],
+            ["measured audio shape", "Audio shape · measured, not an EQ decision"],
+          ]
+        : []),
     ].filter(([, evidence]) => !html.includes(evidence)).map(([label]) => label);
     if (page.status !== 200 || missingPageEvidence.length > 0) {
       const pageKind = html.includes("Sign in") || html.includes("Welcome back")
@@ -390,6 +405,23 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
     const projectedBoardPlacement = Array.isArray(projectedBoard?.placements)
       ? projectedBoard.placements.find((candidate) => candidate?.card?.title === profile.cardTitle)
       : null;
+    if (
+      profileName === "episode5-segment4" &&
+      (!projectedSourceSet?.sourceClockRevision?.visualOverview ||
+        projectedSourceSet.sourceClockRevision.audioNavigation?.status !== "output-ready")
+    ) {
+      throw new Error("The real Episode 5 source did not project its retained visual and audio navigation evidence.");
+    }
+    if (profileName === "episode5-segment4") {
+      const navigationFrames = projectedSourceSet.sourceClockRevision.visualOverview.navigationFrames;
+      const audioEvidence = projectedSourceSet.sourceClockRevision.audioNavigation.evidence;
+      if (navigationFrames?.sampleTimesSeconds?.length !== 8) {
+        throw new Error("The real Episode 5 visual overview did not project all eight retained source-time samples.");
+      }
+      if (!audioEvidence?.waveform?.length || !audioEvidence?.frequencyBands?.length) {
+        throw new Error("The real Episode 5 audio navigation did not project its measured waveform and frequency bands.");
+      }
+    }
     if (sourceStoryReadback.status !== 200 || !projectedPlacement || !projectedEpisode || !projectedBoardPlacement) {
       throw new Error(`The authenticated Source Story API did not project the retained Episode placement (HTTP ${sourceStoryReadback.status}).`);
     }

@@ -2,6 +2,29 @@
 
 Date: 2026-08-07
 
+## Real Episode 5 source-navigation checkpoint
+
+- The retained Episode 5 segment-4 source story now addresses its source by
+  stable capture key (`VID_20260402_080506_004`) instead of whichever Insta360
+  package happened to be created most recently. The generic visual and audio
+  operations also accept an exact source-set id and reject conflicting
+  selectors.
+- The complete 81.76-second collaboration proxy produced an eight-sample 4x2
+  visual overview and a complete-decode audio map with 273 public waveform
+  windows and six measured frequency bands. The visual receipt identifies
+  derivative `svoderivative_6330e151796e4cc862768b6301800f6233200a12c1ca45cc`;
+  its 53,369-byte JPEG is 1140x328 and has SHA-256
+  `c4da484fe4fa730221add93f76cca67516392889742e508fa4f9bf4aab7c8b9b`.
+- Human inspection confirms the overview honestly shows the unstitched dual
+  fisheye camera pixels and Homer beside the lake at dusk. Quipsly does not
+  present that image as an equirectangular look-around or invent a camera
+  direction before a reviewed stitched master exists.
+- Retained authenticated replay proves the Source Room, writing context,
+  canonical Episode handoff, eight visual sample times, waveform and frequency
+  projections, protected prefix and suffix byte ranges, invalid-range refusal,
+  outsider denial, exact source hashes, and idempotent placement. The app proof
+  checks structured counts rather than concatenated React server-rendered text.
+
 ## Google Drive OAuth installation boundary checkpoint
 
 - Google user-data OAuth client creation remains an explicit Google Auth
