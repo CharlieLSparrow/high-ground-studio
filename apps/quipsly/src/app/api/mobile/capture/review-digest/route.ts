@@ -107,8 +107,94 @@ function digestSession(session: any) {
   };
 }
 
+function finishAction(session: ReturnType<typeof digestSession>) {
+  if (!text(session.callRoomId) || Number(session.recordingCount || 0) <= 0) return null;
+  const capabilities = session.actionPacket?.capabilities || {};
+  const hasCanonicalMedia = Boolean(session.latestRecordingMediaAssetId);
+  const transcriptStatus = text(session.latestTranscriptStatus).toUpperCase();
+
+  if (!hasCanonicalMedia && capabilities.canPromoteRecordingToMedia === true) {
+    return {
+      callRoomId: session.callRoomId,
+      title: session.title,
+      purpose: session.purpose,
+      stage: session.stage,
+      kind: "promote-recording",
+      label: "Move the verified recording into Studio",
+      detail: "The retained source is verified and eligible for explicit promotion into the canonical media inventory.",
+      priority: 10,
+    };
+  }
+  if (!hasCanonicalMedia && session.blockers.length > 0) {
+    return {
+      callRoomId: session.callRoomId,
+      title: session.title,
+      purpose: session.purpose,
+      stage: session.stage,
+      kind: "resolve-media-hold",
+      label: "Resolve the retained-media hold",
+      detail: session.nextAction || `Review ${session.blockers[0]} before deriving or promoting this source.`,
+      priority: 15,
+    };
+  }
+  if (capabilities.canRunTranscript === true && transcriptStatus !== "COMPLETED") {
+    return {
+      callRoomId: session.callRoomId,
+      title: session.title,
+      purpose: session.purpose,
+      stage: session.stage,
+      kind: "run-transcript",
+      label: "Create the timed transcript",
+      detail: "Transcription is authorized and available for the retained Session source; starting it remains an explicit action.",
+      priority: 20,
+    };
+  }
+  if (capabilities.canReviewPacket === true || session.coachingPacketStatus === "READY_FOR_REVIEW") {
+    return {
+      callRoomId: session.callRoomId,
+      title: session.title,
+      purpose: session.purpose,
+      stage: session.stage,
+      kind: "review-packet",
+      label: session.purpose === "COACHING" ? "Review coaching notes and actions" : "Review Session proposals",
+      detail: "A source-bound packet is ready for human review. Nothing becomes canonical until an explicit reviewed action.",
+      priority: 40,
+    };
+  }
+  if (capabilities.canBuildPacket === true) {
+    return {
+      callRoomId: session.callRoomId,
+      title: session.title,
+      purpose: session.purpose,
+      stage: session.stage,
+      kind: "build-review-packet",
+      label: session.purpose === "COACHING" ? "Build the coaching review packet" : "Build the Session review packet",
+      detail: "The timed transcript is ready. Quipsly can prepare cited proposals without creating canonical notes, tasks, goals, or edits.",
+      priority: 30,
+    };
+  }
+  if (session.blockers.length > 0 || session.attentionChecks.length > 0) {
+    return {
+      callRoomId: session.callRoomId,
+      title: session.title,
+      purpose: session.purpose,
+      stage: session.stage,
+      kind: "resolve-review-attention",
+      label: "Resolve Session finishing attention",
+      detail: session.nextAction || session.attentionChecks[0]?.meaning || `Review ${session.blockers[0]} before continuing.`,
+      priority: 50,
+    };
+  }
+  return null;
+}
+
 function buildDigest(sessions: any[]) {
   const sessionDigests = sessions.map(digestSession);
+  const allFinishActions = sessionDigests
+    .map(finishAction)
+    .filter(Boolean)
+    .sort((left: any, right: any) => left.priority - right.priority || text(left.title).localeCompare(text(right.title)));
+  const finishActions = allFinishActions.slice(0, 8);
   const blockers = new Map<string, number>();
   for (const session of sessionDigests) {
     for (const blocker of session.blockers) {
@@ -138,6 +224,8 @@ function buildDigest(sessions: any[]) {
     transcriptNeeded: countWhere(sessions, (session) => sessionStage(session) === "transcription-needed" || session.coachingPacketStatus === "NOT_READY"),
     packetReady: countWhere(sessions, (session) => session.coachingPacketStatus === "READY_FOR_REVIEW"),
     reviewReady: countWhere(sessions, (session) => session.lifecycle?.readyForReview === true),
+    needsFinish: allFinishActions.length,
+    finishActions,
     actionPackets: sessionDigests
       .map((session) => session.actionPacket)
       .filter(Boolean),

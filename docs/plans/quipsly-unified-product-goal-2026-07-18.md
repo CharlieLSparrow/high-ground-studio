@@ -8042,3 +8042,32 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   PostgreSQL, and both workers. The in-app browser still blocks localhost under
   its URL policy, so this is component and local-service proof rather than a
   newly operated rendered-browser claim.
+
+## 2026-08-06 iPhone-to-Nest finishing-queue checkpoint
+
+- Audited the post-capture handoff instead of adding a detached workflow. Nest
+  already owned a side-effect-free, account-scoped review digest, but the
+  shipping iPhone client never loaded it and its decoder lagged the server.
+- The digest now ranks one explicit next step per retained Session: promote a
+  verified recording into Studio, resolve a media hold, run transcription,
+  build a review packet, review a ready packet, or resolve review attention.
+  Ranking does not perform any of those actions.
+- Today now exposes a compact **Finish queue** over that canonical projection.
+  Opening an item selects the exact Session by `callRoomId` and moves to its
+  recorder/workspace; it does not promote media, start transcription, accept a
+  packet, join a provider, start recording, charge, message, or publish.
+- Native loading captures a stable account snapshot before the request,
+  rejects the response if identity changes in flight, and clears the digest
+  immediately when account ownership changes. Preview fixtures now mirror the
+  production `callRoomId` contract after the first operated simulator journey
+  caught an ID-versus-room-ID mismatch.
+- Focused server tests pass 5/5; Quipsly typecheck passes; the mobile source
+  contract passes 102/102; the App Store/static UX proof passes 1,064/1,064;
+  and the focused iPhone 17 Pro simulator journey passes Today -> ranked action
+  -> exact Session while preserving the no-mutation boundary.
+- The local Nest, Firebase Auth emulator, PostgreSQL, transcript worker, and
+  media worker are healthy. The disposable real-Firebase/local-PostgreSQL
+  journey is presently held before fixture creation because both selected
+  Google user credentials and ADC require browser reauthentication. Physical
+  iPhone, TestFlight, production-preview, and production-deployment proof
+  remain explicitly open.

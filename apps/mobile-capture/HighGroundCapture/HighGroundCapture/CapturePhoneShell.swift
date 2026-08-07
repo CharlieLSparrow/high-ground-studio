@@ -137,7 +137,11 @@ struct CapturePhoneShell: View {
             // Today is a projection over work that can be created from Record,
             // Work, or a Session review. Refresh on entry so a successful
             // cross-surface mutation is visible without manual pull-to-refresh.
-            Task { await model.todayClient.load() }
+            Task {
+                async let todayLoad: Void = model.todayClient.load()
+                async let finishLoad: Void = model.reviewDigestClient.load()
+                _ = await (todayLoad, finishLoad)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active,
@@ -314,6 +318,19 @@ private struct CaptureTodayView: View {
                     }
                 )
 
+                CaptureFinishQueueCard(
+                    client: model.reviewDigestClient,
+                    previewOnly: model.usesPreviewData,
+                    onOpenSession: { roomID in
+                        guard let session = model.sessions.first(where: { $0.callRoomId == roomID }) else {
+                            model.message = "Refresh Sessions to open this exact finishing action. The review digest performed no mutation."
+                            return
+                        }
+                        model.select(session)
+                        visibleTab = .record
+                    }
+                )
+
                 if model.uploadManager.recoverableUploadCount > 0 {
                     CaptureAttentionCard(
                         systemImage: "icloud.and.arrow.up",
@@ -434,6 +451,167 @@ private struct CaptureTodayView: View {
             .first
             .map(String.init)
         return firstName.map { "\(salutation), \($0)" } ?? salutation
+    }
+}
+
+private struct CaptureFinishQueueCard: View {
+    @ObservedObject var client: CaptureReviewDigestClient
+    let previewOnly: Bool
+    let onOpenSession: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "checklist.checked")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.purple)
+                    .frame(width: 36, height: 36)
+                    .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Finish queue")
+                        .font(.headline)
+                    Text("Nest ranks the next explicit step after capture. Opening an item changes nothing by itself.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    Task { await client.load() }
+                } label: {
+                    if client.isLoading {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .disabled(previewOnly || client.isLoading)
+                .accessibilityLabel("Refresh finish queue")
+            }
+
+            if let digest = client.response?.digest {
+                HStack(spacing: 8) {
+                    finishMetric(
+                        value: digest.needsFinish ?? 0,
+                        label: "Need a step",
+                        tint: .purple
+                    )
+                    finishMetric(
+                        value: digest.recordingPromotedToMedia ?? 0,
+                        label: "In Studio",
+                        tint: .blue
+                    )
+                    finishMetric(
+                        value: digest.packetReady ?? 0,
+                        label: "Packets",
+                        tint: .orange
+                    )
+                    finishMetric(
+                        value: digest.reviewReady ?? 0,
+                        label: "Review ready",
+                        tint: .green
+                    )
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureFinishQueueMetrics")
+
+                if let actions = digest.finishActions, !actions.isEmpty {
+                    VStack(alignment: .leading, spacing: 9) {
+                        ForEach(actions.prefix(4)) { action in
+                            Button {
+                                onOpenSession(action.callRoomId)
+                            } label: {
+                                HStack(alignment: .center, spacing: 11) {
+                                    Image(systemName: finishActionIcon(action.kind))
+                                        .font(.subheadline.weight(.bold))
+                                        .foregroundStyle(.purple)
+                                        .frame(width: 30, height: 30)
+                                        .background(Color.purple.opacity(0.1), in: Circle())
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(action.titleLabel)
+                                            .font(.subheadline.weight(.bold))
+                                            .foregroundStyle(.primary)
+                                        Text(action.label)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.purple)
+                                        Text(action.detail)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(3)
+                                    }
+                                    Spacer(minLength: 4)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("CaptureFinishAction_\(action.callRoomId)_\(action.kind)")
+                            .accessibilityHint("Opens the exact Session. It does not perform the finishing action.")
+                        }
+                    }
+                } else {
+                    Label(
+                        "No retained Session currently has a server-ranked finishing action. This is not a proof-listen claim.",
+                        systemImage: "checkmark.circle"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                }
+
+                if let boundary = client.response?.boundaries {
+                    Label(boundary.safetyLine, systemImage: "shield.lefthalf.filled")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureFinishQueueBoundary")
+                }
+            } else if let error = client.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("CaptureFinishQueueError")
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text(client.status)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.purple.opacity(0.18), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureFinishQueueCard")
+    }
+
+    private func finishMetric(value: Int, label: String, tint: Color) -> some View {
+        VStack(spacing: 2) {
+            Text("\(value)")
+                .font(.headline.monospacedDigit())
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .foregroundStyle(tint)
+        .frame(maxWidth: .infinity, minHeight: 50)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+    }
+
+    private func finishActionIcon(_ kind: String) -> String {
+        switch kind {
+        case "promote-recording": "arrow.up.doc"
+        case "run-transcript": "captions.bubble"
+        case "build-review-packet": "doc.badge.gearshape"
+        case "review-packet": "checkmark.bubble"
+        default: "exclamationmark.magnifyingglass"
+        }
     }
 }
 

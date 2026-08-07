@@ -2837,16 +2837,45 @@ struct MobileCaptureReviewDigest: Codable {
     let recordingEvidence: Int?
     let capturePlumbingEvidence: Int?
     let substantialRecordingEvidence: Int?
+    let recordingPromotionReady: Int?
+    let recordingPromotedToMedia: Int?
+    let joinableProviderRooms: Int?
+    let locallyRecordableRooms: Int?
+    let transcriptRunnableRooms: Int?
+    let packetBuildableRooms: Int?
     let transcriptNeeded: Int?
     let packetReady: Int?
     let reviewReady: Int?
+    let needsFinish: Int?
     let blockers: [MobileCaptureReviewDigestBlocker]?
     let nextActions: [MobileCaptureReviewDigestNextAction]?
+    let finishActions: [MobileCaptureReviewDigestFinishAction]?
     let sessions: [MobileCaptureReviewDigestSession]?
     let actionPackets: [MobileCaptureActionPacket]?
 
     var hasVisibleWork: Bool {
         (sessionCount ?? 0) > 0
+    }
+}
+
+struct MobileCaptureReviewDigestFinishAction: Codable, Identifiable, Hashable {
+    let callRoomId: String
+    let title: String?
+    let purpose: String?
+    let stage: String?
+    let kind: String
+    let label: String
+    let detail: String
+    let priority: Int
+
+    var id: String { "\(callRoomId)-\(kind)" }
+
+    var titleLabel: String {
+        guard let title = title?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !title.isEmpty else {
+            return "Capture Session"
+        }
+        return title
     }
 }
 
@@ -2894,7 +2923,11 @@ struct MobileCaptureReviewDigestSession: Codable, Identifiable {
     let paymentStatus: String?
     let bookingStatus: String?
     let recordingCount: Int?
+    let contentReadiness: MobileCaptureContentReadiness?
     let latestRecordingAssetStatus: String?
+    let latestRecordingPromotionStatus: String?
+    let latestRecordingMediaAssetId: String?
+    let latestRecordingPlaybackUrl: String?
     let latestTranscriptStatus: String?
     let latestTranscriptSegmentCount: Int?
     let coachingPacketStatus: String?
@@ -2983,9 +3016,85 @@ final class CaptureReviewDigestClient: ObservableObject {
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
 
+    func clear() {
+        response = nil
+        status = "Review digest not loaded"
+        errorMessage = nil
+        isLoading = false
+    }
+
+    func loadPreview() {
+        response = MobileCaptureReviewDigestResponse(
+            ok: true,
+            error: nil,
+            packetKind: "quipsly-mobile-capture-review-digest-v1",
+            generatedAt: ISO8601DateFormatter().string(from: Date()),
+            user: nil,
+            boundaries: MobileCaptureReviewDigestBoundaries(
+                sideEffectFree: true,
+                noRecordingStarted: true,
+                noExternalMeetingJoined: true,
+                noPaymentMutation: true,
+                sourceOfTruth: "Nest owns operational capture truth. Preview data performs no action."
+            ),
+            links: nil,
+            digest: MobileCaptureReviewDigest(
+                sessionCount: 2,
+                readyToCapture: 1,
+                needsConsent: 0,
+                paymentHold: 0,
+                providerJoinReady: 1,
+                localFallbackReady: 1,
+                recordingEvidence: 2,
+                capturePlumbingEvidence: 2,
+                substantialRecordingEvidence: 2,
+                recordingPromotionReady: 1,
+                recordingPromotedToMedia: 1,
+                joinableProviderRooms: 1,
+                locallyRecordableRooms: 1,
+                transcriptRunnableRooms: 1,
+                packetBuildableRooms: 1,
+                transcriptNeeded: 1,
+                packetReady: 1,
+                reviewReady: 1,
+                needsFinish: 2,
+                blockers: [],
+                nextActions: [],
+                finishActions: [
+                    MobileCaptureReviewDigestFinishAction(
+                        callRoomId: "room-preview-studio-group-ready",
+                        title: "Studio group ready",
+                        purpose: "PODCAST",
+                        stage: "recorded",
+                        kind: "promote-recording",
+                        label: "Move the verified recording into Studio",
+                        detail: "The retained source is verified and eligible for explicit promotion.",
+                        priority: 10
+                    ),
+                    MobileCaptureReviewDigestFinishAction(
+                        callRoomId: "room-preview-coaching-ready",
+                        title: "Leadership coaching session",
+                        purpose: "COACHING",
+                        stage: "review",
+                        kind: "review-packet",
+                        label: "Review coaching notes and actions",
+                        detail: "A source-bound packet is ready for explicit human review.",
+                        priority: 40
+                    ),
+                ],
+                sessions: [],
+                actionPackets: []
+            )
+        )
+        status = "2 sessions summarized"
+        errorMessage = nil
+        isLoading = false
+    }
+
     func load() async {
         guard !isLoading else { return }
-        guard AuthManager.currentStoredOwnerID() != nil else {
+        guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
+            clear()
             status = "Needs sign in"
             errorMessage = "Sign in before loading the Quipsly review digest."
             return
@@ -3009,6 +3118,13 @@ final class CaptureReviewDigestClient: ObservableObject {
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(MobileCaptureReviewDigestResponse.self, from: data)
 
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+                clear()
+                status = "Account changed"
+                errorMessage = "The Quipsly account changed while the finish queue was loading. Refresh it for the current account."
+                return
+            }
+
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
                     domain: "CaptureReviewDigest",
@@ -3021,6 +3137,11 @@ final class CaptureReviewDigestClient: ObservableObject {
             let count = payload.digest?.sessionCount ?? 0
             status = count == 0 ? "No visible sessions" : "\(count) session\(count == 1 ? "" : "s") summarized"
         } catch {
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+                clear()
+                status = "Account changed"
+                return
+            }
             status = "Needs attention"
             errorMessage = error.localizedDescription
         }

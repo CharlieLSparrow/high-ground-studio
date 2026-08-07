@@ -1135,6 +1135,32 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testTodayFinishQueueOpensExactSessionWithoutPerformingAction() {
+        let card = app.descendants(matching: .any)["CaptureFinishQueueCard"]
+        reveal(card)
+        XCTAssertTrue(
+            card.waitForExistence(timeout: 5),
+            "Today should expose the account-scoped Nest finishing queue without adding another primary tab."
+        )
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureFinishQueueMetrics"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureFinishQueueBoundary"].exists)
+
+        let action = app.buttons[
+            "CaptureFinishAction_room-preview-studio-group-ready_promote-recording"
+        ]
+        reveal(action)
+        XCTAssertTrue(action.exists)
+        XCTAssertTrue(action.label.contains("Move the verified recording into Studio"))
+
+        action.tap()
+
+        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts["Studio group ready"].exists,
+            "Opening a finishing action should select its exact Session rather than perform promotion, transcription, or review."
+        )
+    }
+
     func testTodayWeeklyPlanEditorKeepsReflectionHonestAndOfflineSafe() {
         let plan = app.descendants(matching: .any)["CaptureTodayWeeklyPlan"].firstMatch
         reveal(plan)

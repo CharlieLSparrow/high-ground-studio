@@ -282,6 +282,7 @@ final class CaptureExperienceModel: ObservableObject {
     let sourceInboxClient = CaptureSourceInboxClient()
     let providerRoom = ProviderRoomController()
     let readinessClient = CaptureReadinessClient()
+    let reviewDigestClient = CaptureReviewDigestClient()
     let uploadManager = UploadManager.shared
     let receiptStore = CaptureRoomReceiptStore.shared
     let endpointQueueOutbox = CaptureEndpointQueueOutbox.shared
@@ -334,6 +335,10 @@ final class CaptureExperienceModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         readinessClient.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        reviewDigestClient.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -524,6 +529,7 @@ final class CaptureExperienceModel: ObservableObject {
             workClient.loadPreview()
             calendarSubscriptionClient.loadPreview()
             sourceInboxClient.loadPreview()
+            reviewDigestClient.loadPreview()
             sessionClient.status = "Preview ready"
             selectedSessionID = selectedSessionID ?? sessionClient.sessions.first?.id
             return
@@ -547,7 +553,8 @@ final class CaptureExperienceModel: ObservableObject {
         async let calendarLoad: Void = calendarSubscriptionClient.load()
         async let sourceInboxLoad: Void = sourceInboxClient.load()
         async let readinessLoad: Void = readinessClient.load()
-        _ = await (sessionLoad, todayLoad, workLoad, calendarLoad, sourceInboxLoad, readinessLoad)
+        async let reviewDigestLoad: Void = reviewDigestClient.load()
+        _ = await (sessionLoad, todayLoad, workLoad, calendarLoad, sourceInboxLoad, readinessLoad, reviewDigestLoad)
         sourcePlanOutbox.resume(client: sessionClient)
         await taskReminderScheduler.reconcile(
             drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
@@ -2299,6 +2306,7 @@ final class CaptureExperienceModel: ObservableObject {
         observedReceiptOwnerAccountID = ownerAccountID
         taskReminderScheduler.activateOwner(ownerAccountID)
         sessionNoteEditOutbox.activateOwner(ownerAccountID)
+        reviewDigestClient.clear()
 
         receiptFlushTask?.cancel()
         receiptFlushTask = nil

@@ -774,8 +774,8 @@ function checkTranscriptPacketContractSources() {
       && transcriptProcessingText.includes("Recording asset does not have a durable storage object path.")
       && transcriptProcessingText.includes("getMobileCaptureObjectEvidence")
       && transcriptProcessingText.includes("newCaptureTranscriptManifest")
-      && transcriptProcessingText.includes("diarize: true")
-      && transcriptProcessingText.includes('diarizeModel: "v2"')
+      && transcriptProcessingText.includes('const diarize = input.topology.kind !== "participant-isolated"')
+      && transcriptProcessingText.includes('diarizeModel: diarize ? "v2" : null')
       && transcriptProcessingText.includes("multichannel: false")
       && transcriptProviderText.includes('query.set("diarize_model", request.diarizeModel)')
       && transcriptProviderText.includes('query.set("diarize", String(request.diarize))')
@@ -926,10 +926,16 @@ function checkReviewDigestContractSources() {
       && digestRouteText.includes("transcriptNeeded")
       && digestRouteText.includes("packetReady")
       && digestRouteText.includes("reviewReady")
+      && digestRouteText.includes("needsFinish")
+      && digestRouteText.includes("finishActions")
+      && digestRouteText.includes("promote-recording")
+      && digestRouteText.includes("run-transcript")
+      && digestRouteText.includes("build-review-packet")
+      && digestRouteText.includes("review-packet")
       && digestRouteText.includes("blockers")
       && digestRouteText.includes("nextActions"),
     "mobileCaptureReviewDigestShape",
-    "Mobile capture review digest separates capture-pipeline proof from substantial non-simulator content while summarizing readiness, blockers, and next actions.",
+    "Mobile capture review digest separates capture-pipeline proof from substantial non-simulator content while ranking explicit post-capture finishing steps.",
   );
   expect(
     bridgeText.includes("struct MobileCaptureReviewDigestResponse")
@@ -961,11 +967,27 @@ function checkReviewDigestContractSources() {
       && bridgeText.includes("let actionPacket: MobileCaptureActionPacket?")
       && bridgeText.includes("let actionPackets: [MobileCaptureActionPacket]?")
       && bridgeText.includes("lifecycleSafeActions")
+      && bridgeText.includes("struct MobileCaptureReviewDigestFinishAction")
+      && bridgeText.includes("let finishActions: [MobileCaptureReviewDigestFinishAction]?")
       && bridgeText.includes("final class CaptureReviewDigestClient")
+      && bridgeText.includes("stableOwnerSnapshot()")
+      && bridgeText.includes("guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot)")
       && bridgeText.includes("/api/mobile/capture/review-digest")
       && bridgeText.includes("Review only: no recording, meeting, payment, or publish side effects."),
     "nativeReviewDigestDecodesPacket",
-    "Native capture decodes the authenticated review digest, per-session action packets, shared lifecycle safe actions, and side-effect-free boundary in app language.",
+    "Native capture decodes the authenticated review digest, rejects stale account responses, and preserves its side-effect-free boundary in app language.",
+  );
+  expect(
+    capturePhoneShellText.includes("CaptureFinishQueueCard")
+      && capturePhoneShellText.includes("Finish queue")
+      && capturePhoneShellText.includes("Opening an item changes nothing by itself.")
+      && capturePhoneShellText.includes("CaptureFinishQueueMetrics")
+      && capturePhoneShellText.includes("CaptureFinishQueueBoundary")
+      && capturePhoneShellText.includes("CaptureFinishAction_\\(action.callRoomId)_\\(action.kind)")
+      && capturePhoneShellText.includes("model.sessions.first(where: { $0.callRoomId == roomID })")
+      && capturePhoneShellText.includes("visibleTab = .record"),
+    "nativeFinishQueueVisible",
+    "Today exposes a ranked post-capture finishing queue that opens the exact Session without executing its promotion, transcription, packet, or review action.",
   );
   expect(
     capturePhoneShellText.includes("CaptureSessionTruthPanel")
@@ -2336,6 +2358,43 @@ async function checkProtectedRoutes() {
         `${check.name} returns JSON and avoids 5xx for a safe minimal authenticated request.`,
         { status: authenticated.status, body: authenticated.json || authenticated.raw.slice(0, 240) },
       );
+      if (check.name === "reviewDigest" && authenticated.status === 200) {
+        const payload = authenticated.json;
+        const actions = payload?.digest?.finishActions;
+        expect(
+          payload?.packetKind === "quipsly-mobile-capture-review-digest-v1"
+            && payload?.boundaries?.sideEffectFree === true
+            && payload?.boundaries?.noRecordingStarted === true
+            && payload?.boundaries?.noExternalMeetingJoined === true
+            && payload?.boundaries?.noPaymentMutation === true
+            && Number.isInteger(payload?.digest?.needsFinish)
+            && Array.isArray(actions),
+          "reviewDigestFinishQueueShape",
+          "Authenticated review digest returns an integer finishing count, ranked action list, and explicit non-mutation boundary.",
+          {
+            status: authenticated.status,
+            packetKind: payload?.packetKind || null,
+            needsFinish: payload?.digest?.needsFinish ?? null,
+            actionCount: Array.isArray(actions) ? actions.length : null,
+            sideEffectFree: payload?.boundaries?.sideEffectFree ?? null,
+          },
+        );
+        expect(
+          Array.isArray(actions)
+            && actions.every((action) =>
+              isObject(action)
+              && text(action.callRoomId)
+              && text(action.kind)
+              && text(action.label)
+              && text(action.detail)
+              && Number.isInteger(action.priority)
+            )
+            && actions.every((action, index) => index === 0 || actions[index - 1].priority <= action.priority),
+          "reviewDigestFinishQueueRanking",
+          "Every returned finishing action is session-addressable, explicit, and sorted by server priority.",
+          { actionCount: Array.isArray(actions) ? actions.length : null },
+        );
+      }
     }
   }
 }
