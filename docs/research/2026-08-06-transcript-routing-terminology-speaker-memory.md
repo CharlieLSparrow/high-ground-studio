@@ -34,10 +34,19 @@ Quipsly already has more foundation than the UI currently exposes:
 - Apple SpeechAnalyzer/SpeechTranscriber capture-side transcription; and
 - reviewed speaker attribution and source-clock correction workflows.
 
-The principal gap is that production Capture currently chooses one Deepgram
-configuration for every source. It always requests diarization even when a track
-belongs to one known participant, and it does not yet compile the project's
-terminology snapshot into the provider request.
+The production Capture worker previously chose one Deepgram configuration for
+every source: it always requested diarization even when a track belonged to one
+known participant, and it did not compile the project's terminology snapshot
+into the provider request. The worker now derives isolated versus mixed topology
+from canonical `RecordingAsset` ownership, disables diarization for a known
+participant track, freezes the current project vocabulary, and submits each
+validated keyterm as its own provider parameter.
+
+The hosted Nova model revision is still requested as explicit `version=latest`
+because the repository has no measured, verified standard-model revision to pin
+yet. That moving request is now visible in the immutable manifest rather than
+implicit provider behavior. The retained corpus must select a fixed version
+before Quipsly can claim model-revision reproducibility.
 
 The native audit also found a correctness mismatch: Capture used Apple's plain
 `.transcription` preset while its receipt claimed `audio-time-range`. Apple's
@@ -147,11 +156,13 @@ when a glossary changes.
 2. **Completed now:** add and test the pure topology-first routing contract.
 3. **Completed now:** compile strict Deepgram Nova-3 keyterm projections from
    canonical terms and aliases, retaining the snapshot, included variants,
-   token budget, and provider-use boundaries. The production worker still must
-   persist and submit this projection before the capability is operational.
-4. Evolve the Capture transcript manifest so `diarize` is topology-driven rather
-   than structurally forced to `true`; retain backwards parsing for old jobs.
-5. Persist routing plans beside new attempts and expose the explanation in the
+   token budget, and provider-use boundaries; persist and submit that projection
+   from the production Capture worker.
+4. **Completed now:** evolve the Capture transcript manifest so `diarize` is
+   topology-driven rather than structurally forced to `true`, while historical
+   jobs still parse and replay their original provider request.
+5. Persist the complete routing plan beside new attempts and expose its
+   explanation in the
    Transcript Quality Lab.
 6. Build a retained two-person HGO and coaching reference corpus with clean,
    overlap, names, acronyms, noisy/mobile, and external-mic windows.

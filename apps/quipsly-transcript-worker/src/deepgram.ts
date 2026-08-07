@@ -57,15 +57,22 @@ export class DeepgramTranscriptProvider implements TranscriptProvider {
       utterances: String(request.utterances),
       paragraphs: String(request.paragraphs),
     });
-    if (request.diarizeModel) {
+    if (request.version) query.set("version", request.version);
+    if (request.diarize && request.diarizeModel) {
       query.set("diarize_model", request.diarizeModel);
-    } else {
+    } else if (request.diarize) {
       // Immutable v1 manifests created before diarizer versioning continue to
       // replay with their original request instead of changing provider truth.
       query.set("diarize", String(request.diarize));
     }
     if (request.multichannel) query.set("multichannel", "true");
     if (request.language) query.set("language", request.language);
+    for (const keyterm of request.terminology?.keyterms || []) {
+      // Deepgram requires one repeated parameter per term. URLSearchParams
+      // preserves that structure and encodes punctuation as data rather than
+      // joining a comma-delimited pseudo-list.
+      query.append("keyterm", keyterm);
+    }
 
     let response: Response;
     try {

@@ -1,6 +1,10 @@
 /** @jest-environment node */
 
-import { localCaptureTranscriptWorkerEnabled } from "./capture-transcript-processing";
+import {
+  captureTranscriptSourceTopology,
+  captureTranscriptProviderRequest,
+  localCaptureTranscriptWorkerEnabled,
+} from "./capture-transcript-processing";
 
 describe("local Capture transcript worker availability", () => {
   const originalNodeEnv = process.env.NODE_ENV;
@@ -41,5 +45,55 @@ describe("local Capture transcript worker availability", () => {
     process.env.DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/quipsly";
     process.env.QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE = "1";
     expect(localCaptureTranscriptWorkerEnabled()).toBe(false);
+  });
+
+  it("derives speaker authority from canonical recording ownership", () => {
+    expect(captureTranscriptSourceTopology({
+      kind: "LOCAL_AUDIO",
+      participantId: "participant-001",
+      participant: { displayName: "Scott Sparrow", email: "shomers@icloud.com" },
+    })).toEqual({
+      kind: "participant-isolated",
+      participantId: "participant-001",
+      participantLabel: "Scott Sparrow",
+    });
+    expect(captureTranscriptSourceTopology({ kind: "SERVER_MIX" })).toEqual({
+      kind: "mixed-room",
+      expectedSpeakerCount: null,
+    });
+    expect(captureTranscriptSourceTopology({ kind: "LOCAL_AUDIO" })).toEqual({
+      kind: "unknown",
+    });
+  });
+
+  it("turns source topology into the exact provider policy", () => {
+    const isolated = captureTranscriptProviderRequest({
+      topology: {
+        kind: "participant-isolated",
+        participantId: "participant-001",
+        participantLabel: "Scott Sparrow",
+      },
+      model: "nova-3",
+      version: "latest",
+      language: "en-US",
+      terminology: null,
+    });
+    expect(isolated).toMatchObject({
+      version: "latest",
+      diarize: false,
+      diarizeModel: null,
+    });
+
+    const mixed = captureTranscriptProviderRequest({
+      topology: { kind: "mixed-room", expectedSpeakerCount: 2 },
+      model: "nova-3",
+      version: "latest",
+      language: "en-US",
+      terminology: null,
+    });
+    expect(mixed).toMatchObject({
+      diarize: true,
+      diarizeModel: "v2",
+    });
   });
 });

@@ -239,10 +239,79 @@ export function parseStudioTranscriptTerminologyTermSnapshot(value: unknown): St
 function normalized(value: string) { return value.normalize("NFKC").trim().toLocaleLowerCase("en-US"); }
 function deepgramKeytermText(value: string) {
   const result = value.normalize("NFKC").trim().replace(/\s+/gu, " ");
-  if (!result || result.length > 120 || /[,;\u0000-\u001f\u007f]/u.test(result)) {
-    throw new Error("Deepgram keyterm contains an unsupported delimiter or control character.");
+  if (!result || result.length > 120 || /[;\u0000-\u001f\u007f]/u.test(result)) {
+    throw new Error("Deepgram keyterm contains an unsupported control character.");
   }
   return result;
+}
+
+export function parseDeepgramTerminologyProjection(
+  value: unknown,
+): DeepgramTerminologyProjection {
+  const row = record(value);
+  const boundaries = record(row.boundaries);
+  const keytermRows = array(row.keyterms);
+  if (keytermRows.length > 650) throw new Error("Deepgram terminology projection has too many keyterms.");
+  const keyterms = keytermRows.map((value, index) =>
+    deepgramKeytermText(text(value, `keyterms[${index}]`)));
+  const includedRows = array(row.included);
+  if (includedRows.length > 650) throw new Error("Deepgram terminology projection has too many variants.");
+  const included = includedRows.map((value, index) => {
+    const item = record(value);
+    if (item.variant !== "canonical" && item.variant !== "alias") {
+      throw new Error("Deepgram terminology projection variant is invalid.");
+    }
+    const variant: "canonical" | "alias" = item.variant;
+    const itemText = deepgramKeytermText(text(item.text, `included[${index}].text`));
+    const tokenCount = positiveInteger(item.tokenCount, `included[${index}].tokenCount`);
+    if (tokenCount !== deepgramKeytermTokenCount(itemText)) {
+      throw new Error("Deepgram terminology projection variant is invalid.");
+    }
+    return {
+      termId: id(item.termId, `included[${index}].termId`),
+      variant,
+      text: itemText,
+      tokenCount,
+    };
+  });
+  const omittedRows = array(row.omittedTermIds);
+  if (omittedRows.length > STUDIO_TRANSCRIPT_TERMINOLOGY_MAX_TERMS) {
+    throw new Error("Deepgram terminology projection omits too many terms.");
+  }
+  const omittedTermIds = omittedRows
+    .map((value, index) => id(value, `omittedTermIds[${index}]`));
+  const totalTokenCount = positiveInteger(row.totalTokenCount, "totalTokenCount");
+  if (
+    row.provider !== "deepgram"
+    || row.mode !== "nova-3-keyterm-repeated-parameter"
+    || row.maxTokens !== DEEPGRAM_KEYTERM_MAX_TOKENS
+    || !SHA256.test(text(row.snapshotSha256, "snapshotSha256").toLowerCase())
+    || keyterms.length !== included.length
+    || keyterms.some((keyterm, index) => keyterm !== included[index]?.text)
+    || new Set(keyterms.map(normalized)).size !== keyterms.length
+    || included.reduce((sum, item) => sum + item.tokenCount, 0) !== totalTokenCount
+    || totalTokenCount > DEEPGRAM_KEYTERM_MAX_TOKENS
+    || boundaries.valuesRequireIndependentQueryParameters !== true
+    || boundaries.noWeightsApplied !== true
+    || boundaries.providerContextIsNotTranscriptTruth !== true
+  ) {
+    throw new Error("Deepgram terminology projection is invalid.");
+  }
+  return {
+    provider: "deepgram",
+    mode: "nova-3-keyterm-repeated-parameter",
+    snapshotSha256: text(row.snapshotSha256, "snapshotSha256").toLowerCase(),
+    keyterms,
+    included,
+    omittedTermIds,
+    totalTokenCount,
+    maxTokens: DEEPGRAM_KEYTERM_MAX_TOKENS,
+    boundaries: {
+      valuesRequireIndependentQueryParameters: true,
+      noWeightsApplied: true,
+      providerContextIsNotTranscriptTruth: true,
+    },
+  };
 }
 function deepgramKeytermTokenCount(value: string) {
   const tokens = value.match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu) ?? [];

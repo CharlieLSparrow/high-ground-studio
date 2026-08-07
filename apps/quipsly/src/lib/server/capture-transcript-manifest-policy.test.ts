@@ -11,6 +11,7 @@ function manifest(input: {
   model?: string;
   diarizeModel?: "latest" | "v1" | "v2" | null;
   sourceSha256?: string;
+  topology?: { kind: "participant-isolated"; participantId: string; participantLabel: string };
 }) {
   return newCaptureTranscriptManifest({
     jobId: "transcript-job-1234",
@@ -25,6 +26,7 @@ function manifest(input: {
       contentType: "audio/mp4",
       roomId: "capture-room-1234",
       recordingAssetId: "recording-asset-1234",
+      ...(input.topology ? { topology: input.topology } : {}),
     },
     provider: {
       name: "deepgram",
@@ -68,5 +70,19 @@ describe("capture transcript manifest provider policy", () => {
       desired: manifest({ sourceSha256: "a".repeat(64), diarizeModel: "v2" }),
       created: false,
     })).toThrow(CaptureTranscriptOutboxError);
+  });
+
+  it("preserves historical unknown topology when a replay can now infer ownership", () => {
+    expect(() => assertCaptureTranscriptManifestBinding({
+      stored: manifest({}),
+      desired: manifest({
+        topology: {
+          kind: "participant-isolated",
+          participantId: "participant-1234",
+          participantLabel: "Scott Sparrow",
+        },
+      }),
+      created: false,
+    })).not.toThrow();
   });
 });

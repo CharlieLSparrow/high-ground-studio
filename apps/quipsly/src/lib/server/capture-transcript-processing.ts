@@ -7,11 +7,15 @@ import {
   buildCaptureTranscriptManifestObjectName,
   buildCaptureTranscriptQueueObjectName,
   buildCaptureTranscriptResultObjectName,
+  compileDeepgramTerminologyKeyterms,
   newCaptureTranscriptManifest,
   parseCaptureTranscriptManifest,
   parseCaptureTranscriptQueueReceipt,
   type CaptureTranscriptManifest,
+  type CaptureTranscriptProviderRequest,
   type CaptureTranscriptQueueReceipt,
+  type DeepgramTerminologyProjection,
+  type TranscriptSourceTopology,
 } from "@high-ground/quipsly-media-processing";
 
 import { getMediaBucket } from "@/lib/server/gcs";
@@ -21,6 +25,7 @@ import {
 } from "@/lib/server/capture-transcript-manifest-policy";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { getMobileCaptureObjectEvidence } from "@/lib/server/mobile-capture-resumable-store";
+import { compileStudioTranscriptTerminologySnapshot } from "@/lib/server/studio-transcript-terminology";
 
 export type CaptureTranscriptQueueStatus = {
   status:
@@ -52,7 +57,8 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
   const job = await input.prisma.transcriptJob.findUnique({
     where: { id: input.transcriptJobId },
     include: {
-      asset: true,
+      asset: { include: { participant: true } },
+      room: { select: { projectId: true } },
       segments: { select: { id: true }, take: 1 },
       words: { select: { id: true }, take: 1 },
     },
@@ -170,6 +176,18 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
   const queueObjectName = buildCaptureTranscriptQueueObjectName(job.id);
   const resultObjectName = buildCaptureTranscriptResultObjectName(job.id);
   const queuedAt = new Date().toISOString();
+  const topology = captureTranscriptSourceTopology(job.asset);
+  const providerModel = process.env.DEEPGRAM_MODEL?.trim() || "nova-3";
+  const terminologySnapshot = job.room?.projectId
+    ? await compileStudioTranscriptTerminologySnapshot({
+        prisma: input.prisma,
+        projectId: job.room.projectId,
+        compiledAt: new Date(queuedAt),
+      })
+    : null;
+  const terminology = terminologySnapshot && providerModel.startsWith("nova-3")
+    ? compileDeepgramTerminologyKeyterms(terminologySnapshot)
+    : null;
   const desiredManifest = newCaptureTranscriptManifest({
     jobId: job.id,
     actorUserId: requiredText(input.actorUserId, "actor user"),
@@ -183,21 +201,18 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
       contentType,
       roomId: job.roomId,
       recordingAssetId: job.asset.id,
+      topology,
     },
-    provider: {
-      name: "deepgram",
-      model: process.env.DEEPGRAM_MODEL?.trim() || "nova-3",
+    provider: captureTranscriptProviderRequest({
+      topology,
+      model: providerModel,
+      // `latest` is made explicit until a measured standard-model revision is
+      // selected from retained Quipsly reference windows. The raw response is
+      // still retained for resolved model evidence and exact replay diagnosis.
+      version: process.env.DEEPGRAM_MODEL_VERSION?.trim() || "latest",
       language: normalizedLanguage(job.language),
-      smartFormat: true,
-      punctuate: true,
-      diarize: true,
-      // Pin new jobs to a measured diarizer revision. Existing manifests keep
-      // their original request verbatim, including legacy `latest` or v1.
-      diarizeModel: "v2",
-      multichannel: false,
-      utterances: true,
-      paragraphs: true,
-    },
+      terminology,
+    }),
     queuedAt,
     updatedAt: queuedAt,
   });
@@ -341,6 +356,52 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
     manifestObjectName,
     resultObjectName,
     executionRequested: true,
+  };
+}
+
+export function captureTranscriptSourceTopology(asset: any) {
+  if (
+    ["LOCAL_AUDIO", "LOCAL_VIDEO"].includes(String(asset?.kind))
+    && asset?.participantId
+  ) {
+    const label = (text(asset.participant?.displayName)
+      || text(asset.participant?.email)
+      || String(asset.participantId)).slice(0, 160);
+    return {
+      kind: "participant-isolated" as const,
+      participantId: String(asset.participantId),
+      participantLabel: label,
+    };
+  }
+  if (String(asset?.kind) === "SERVER_MIX") {
+    return { kind: "mixed-room" as const, expectedSpeakerCount: null };
+  }
+  return { kind: "unknown" as const };
+}
+
+export function captureTranscriptProviderRequest(input: {
+  topology: TranscriptSourceTopology;
+  model: string;
+  version: string;
+  language: string | null;
+  terminology: DeepgramTerminologyProjection | null;
+}): CaptureTranscriptProviderRequest {
+  const diarize = input.topology.kind !== "participant-isolated";
+  return {
+    name: "deepgram",
+    model: input.model,
+    version: input.version,
+    language: input.language,
+    smartFormat: true,
+    punctuate: true,
+    diarize,
+    // Pin new mixed/unknown jobs to a measured diarizer revision. Existing
+    // manifests retain their original request verbatim.
+    diarizeModel: diarize ? "v2" : null,
+    multichannel: false,
+    utterances: true,
+    paragraphs: true,
+    terminology: input.model.startsWith("nova-3") ? input.terminology : null,
   };
 }
 

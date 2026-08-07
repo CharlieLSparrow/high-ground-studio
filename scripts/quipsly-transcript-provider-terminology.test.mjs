@@ -7,6 +7,7 @@ import {
   STUDIO_TRANSCRIPT_TERMINOLOGY_SNAPSHOT_KIND,
   compileDeepgramTerminologyKeyterms,
   compileWhisperTerminologyPrompt,
+  parseDeepgramTerminologyProjection,
   parseStudioTranscriptTerminologySnapshot,
 } from "../packages/quipsly-media-processing/src/transcript-terminology.ts";
 
@@ -53,6 +54,7 @@ test("projects canonical terms and aliases into separate auditable keyterms", ()
   assert.deepEqual(result.omittedTermIds, []);
   assert.equal(result.boundaries.valuesRequireIndependentQueryParameters, true);
   assert.equal(result.boundaries.providerContextIsNotTranscriptTruth, true);
+  assert.deepEqual(parseDeepgramTerminologyProjection(result), result);
 });
 
 test("deduplicates aliases without losing the canonical term receipt", () => {
@@ -65,10 +67,9 @@ test("deduplicates aliases without losing the canonical term receipt", () => {
   assert.equal(result.included[0].variant, "canonical");
 });
 
-test("rejects comma-delimited pseudo lists instead of risking a silent no-op", () => {
-  const malformed = [{ ...terms[0], canonicalText: "Quipsly, Homer" }];
-  assert.throws(
-    () => compileDeepgramTerminologyKeyterms(snapshot(malformed)),
-    /unsupported delimiter/,
-  );
+test("keeps punctuation inside one repeated parameter instead of joining a pseudo list", () => {
+  const punctuated = [{ ...terms[0], canonicalText: "Quipsly, Inc." }];
+  const result = compileDeepgramTerminologyKeyterms(snapshot(punctuated));
+  assert.deepEqual(result.keyterms, ["Quipsly, Inc.", "Quip-sly"]);
+  assert.equal(result.boundaries.valuesRequireIndependentQueryParameters, true);
 });

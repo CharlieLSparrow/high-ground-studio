@@ -1,3 +1,12 @@
+import {
+  parseDeepgramTerminologyProjection,
+  type DeepgramTerminologyProjection,
+} from "./transcript-terminology.js";
+import {
+  parseTranscriptSourceTopology,
+  type TranscriptSourceTopology,
+} from "./transcript-routing.js";
+
 export const CAPTURE_TRANSCRIPT_CONTRACT_VERSION = 1 as const;
 export const CAPTURE_TRANSCRIPT_MANIFEST_KIND =
   "quipsly-capture-transcript-manifest-v1" as const;
@@ -46,19 +55,24 @@ export type CaptureTranscriptSourceBinding = {
   contentType: string;
   roomId: string;
   recordingAssetId: string;
+  /** Missing on historical v1 manifests; parsers materialize `unknown`. */
+  topology?: TranscriptSourceTopology;
 };
 
 export type CaptureTranscriptProviderRequest = {
   name: "deepgram";
   model: string;
+  /** Exact request value. Historical manifests omitted it and used provider default. */
+  version?: string | null;
   language: string | null;
   smartFormat: true;
   punctuate: true;
-  diarize: true;
+  diarize: boolean;
   diarizeModel: "latest" | "v1" | "v2" | null;
   multichannel: boolean;
   utterances: true;
   paragraphs: true;
+  terminology?: DeepgramTerminologyProjection | null;
 };
 
 export type CaptureTranscriptManifest = {
@@ -461,6 +475,7 @@ function parseSource(value: unknown): CaptureTranscriptSourceBinding {
     contentType: normalizedText(row.contentType).toLowerCase(),
     roomId: normalizedText(row.roomId),
     recordingAssetId: normalizedText(row.recordingAssetId),
+    topology: parseTranscriptSourceTopology(row.topology),
   };
   if (
     !SAFE_BUCKET.test(result.bucketName)
@@ -482,6 +497,8 @@ function parseSource(value: unknown): CaptureTranscriptSourceBinding {
 function parseProviderRequest(value: unknown): CaptureTranscriptProviderRequest {
   const row = record(value);
   const language = row.language == null ? null : normalizedText(row.language);
+  const version = row.version == null ? null : normalizedText(row.version);
+  const diarize = row.diarize == null ? true : row.diarize === true;
   const diarizeModel = row.diarizeModel == null
     ? null
     : normalizedText(row.diarizeModel) as CaptureTranscriptProviderRequest["diarizeModel"];
@@ -489,23 +506,29 @@ function parseProviderRequest(value: unknown): CaptureTranscriptProviderRequest 
   const result: CaptureTranscriptProviderRequest = {
     name: "deepgram",
     model: normalizedText(row.model),
+    version,
     language,
     smartFormat: true,
     punctuate: true,
-    diarize: true,
+    diarize,
     diarizeModel,
     multichannel: multichannel === true,
     utterances: true,
     paragraphs: true,
+    terminology: row.terminology == null
+      ? null
+      : parseDeepgramTerminologyProjection(row.terminology),
   };
   if (
     row.name !== result.name
     || !result.model
     || result.model.length > 128
+    || (version !== null && (!version || version.length > 128 || !/^[A-Za-z0-9._-]+$/.test(version)))
     || (language !== null && !LANGUAGE.test(language))
     || row.smartFormat !== true
     || row.punctuate !== true
-    || row.diarize !== true
+    || (row.diarize != null && typeof row.diarize !== "boolean")
+    || (!diarize && diarizeModel !== null)
     || (diarizeModel !== null && !["latest", "v1", "v2"].includes(diarizeModel))
     || (row.multichannel != null && typeof row.multichannel !== "boolean")
     || row.utterances !== true
@@ -637,7 +660,9 @@ function sameSource(
     && left.sha256 === right.sha256
     && left.contentType === right.contentType
     && left.roomId === right.roomId
-    && left.recordingAssetId === right.recordingAssetId;
+    && left.recordingAssetId === right.recordingAssetId
+    && JSON.stringify(left.topology || { kind: "unknown" })
+      === JSON.stringify(right.topology || { kind: "unknown" });
 }
 
 function assertActiveLease(

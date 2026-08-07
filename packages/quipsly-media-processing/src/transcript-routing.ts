@@ -180,6 +180,43 @@ export function planTranscriptRouting(
   };
 }
 
+export function parseTranscriptSourceTopology(
+  value: unknown,
+): TranscriptSourceTopology {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { kind: "unknown" };
+  }
+  const row = value as Record<string, unknown>;
+  if (row.kind === "participant-isolated") {
+    const participantId = typeof row.participantId === "string"
+      ? row.participantId.trim()
+      : "";
+    const participantLabel = typeof row.participantLabel === "string"
+      ? row.participantLabel.trim()
+      : "";
+    if (!SAFE_ID.test(participantId) || !participantLabel || participantLabel.length > 160) {
+      throw new Error("Participant-isolated transcript topology is invalid.");
+    }
+    return { kind: "participant-isolated", participantId, participantLabel };
+  }
+  if (row.kind === "mixed-room") {
+    const expectedSpeakerCount = row.expectedSpeakerCount == null
+      ? null
+      : Number(row.expectedSpeakerCount);
+    if (
+      expectedSpeakerCount !== null
+      && (!Number.isSafeInteger(expectedSpeakerCount)
+        || expectedSpeakerCount < 1
+        || expectedSpeakerCount > 32)
+    ) {
+      throw new Error("Mixed-room expectedSpeakerCount is invalid.");
+    }
+    return { kind: "mixed-room", expectedSpeakerCount };
+  }
+  if (row.kind === "unknown" || row.kind == null) return { kind: "unknown" };
+  throw new Error("Transcript source topology is invalid.");
+}
+
 function appleAttempt(
   input: TranscriptRoutingInput,
   role: TranscriptRoutingAttempt["role"],
@@ -298,7 +335,7 @@ function validateInput(input: TranscriptRoutingInput): TranscriptRoutingInput {
   ) {
     throw new Error("Transcript terminology snapshot is invalid.");
   }
-  const topology = input.source.topology;
+  const topology = parseTranscriptSourceTopology(input.source.topology);
   if (topology.kind === "participant-isolated") {
     if (!SAFE_ID.test(topology.participantId) || !topology.participantLabel.trim()) {
       throw new Error("Participant-isolated transcript topology is invalid.");
@@ -315,5 +352,8 @@ function validateInput(input: TranscriptRoutingInput): TranscriptRoutingInput {
   } else if (topology.kind !== "unknown") {
     throw new Error("Transcript source topology is invalid.");
   }
-  return input;
+  return {
+    ...input,
+    source: { ...input.source, topology },
+  };
 }

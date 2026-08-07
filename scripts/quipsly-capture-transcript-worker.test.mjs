@@ -254,6 +254,16 @@ test("normalizes stable word anchors and speaker-aware playback segments", () =>
   );
 });
 
+test("non-diarized provider words remain source-bindable without invented labels", () => {
+  const payload = deepgramPayload();
+  for (const word of payload.results.channels[0].alternatives[0].words) {
+    delete word.speaker;
+  }
+  const normalized = normalizeDeepgramResponse(payload);
+  assert.deepEqual(normalized.words.map((word) => word.speakerLabel), [null, null, null]);
+  assert.deepEqual(normalized.segments.map((segment) => segment.speakerLabel), [null, null]);
+});
+
 test("new batch requests use the versioned diarizer without the deprecated boolean", async () => {
   let requestedUrl = "";
   const provider = new DeepgramTranscriptProvider("test-key", async (url) => {
@@ -268,6 +278,47 @@ test("new batch requests use the versioned diarizer without the deprecated boole
   assert.equal(query.get("diarize_model"), "v2");
   assert.equal(query.has("diarize"), false);
   assert.equal(query.has("multichannel"), false);
+});
+
+test("isolated requests skip diarization and submit each frozen keyterm separately", async () => {
+  let requestedUrl = "";
+  const provider = new DeepgramTranscriptProvider("test-key", async (url) => {
+    requestedUrl = String(url);
+    return new Response(JSON.stringify(deepgramPayload()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  const request = {
+    ...fixture().manifest.provider,
+    version: "2026-05-01.0",
+    diarize: false,
+    diarizeModel: null,
+    terminology: {
+      provider: "deepgram",
+      mode: "nova-3-keyterm-repeated-parameter",
+      snapshotSha256: "b".repeat(64),
+      keyterms: ["Quipsly", "High Ground Odyssey"],
+      included: [
+        { termId: "term_quipsly_001", variant: "canonical", text: "Quipsly", tokenCount: 1 },
+        { termId: "term_hgo_0000001", variant: "canonical", text: "High Ground Odyssey", tokenCount: 3 },
+      ],
+      omittedTermIds: [],
+      totalTokenCount: 4,
+      maxTokens: 500,
+      boundaries: {
+        valuesRequireIndependentQueryParameters: true,
+        noWeightsApplied: true,
+        providerContextIsNotTranscriptTruth: true,
+      },
+    },
+  };
+  await provider.transcribe("https://storage.example/source", request);
+  const query = new URL(requestedUrl).searchParams;
+  assert.equal(query.get("version"), "2026-05-01.0");
+  assert.equal(query.has("diarize"), false);
+  assert.equal(query.has("diarize_model"), false);
+  assert.deepEqual(query.getAll("keyterm"), ["Quipsly", "High Ground Odyssey"]);
 });
 
 test("legacy manifests preserve the deprecated request for exact replay", async () => {
