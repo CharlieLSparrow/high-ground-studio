@@ -1342,7 +1342,7 @@ function CorrectionEditor({
       )}
 
       {(segment.downstreamImpacts?.length ?? 0) > 0 && (
-        <details className="mt-4 rounded-xl border border-fuchsia-200 bg-fuchsia-50/60 p-4">
+        <details id={`transcript-impact-${segment.id}`} open={segment.downstreamImpacts?.some((impact) => impact.state === "needs-review")} className="mt-4 scroll-mt-28 rounded-xl border border-fuchsia-200 bg-fuchsia-50/60 p-4">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-fuchsia-900">
             Downstream evidence · {segment.downstreamImpacts?.length} linked item{segment.downstreamImpacts?.length === 1 ? "" : "s"}
           </summary>

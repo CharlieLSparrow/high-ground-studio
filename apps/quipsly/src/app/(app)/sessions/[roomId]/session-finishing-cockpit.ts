@@ -19,6 +19,19 @@ export type SessionFinishingEvidence = {
   }>;
   analyzedSourceCount: number;
   sourceClockAttention?: { total: number; high: number; review: number };
+  transcriptImpact?: {
+    available: boolean;
+    held: boolean;
+    needsReview: number;
+    snapshotUnavailable: number;
+    current: number;
+    affectedArtifacts: number;
+    ownerResolvable: number;
+    textChanged: number;
+    speakerChanged: number;
+    receiptOnly: number;
+    firstReviewHref: string | null;
+  };
   assembly?: SessionEpisodeAssemblyEvidence;
   versionedOutput?: {
     sources: number;
@@ -170,6 +183,17 @@ export function buildSessionFinishingCockpit(input: {
     title: `${finishingEvidence.sourceClockAttention!.total} exact source range${finishingEvidence.sourceClockAttention!.total === 1 ? "" : "s"} need${finishingEvidence.sourceClockAttention!.total === 1 ? "s" : ""} a listen or decision`,
     detail: `${finishingEvidence.sourceClockAttention!.high} high · ${finishingEvidence.sourceClockAttention!.review} review. Transcript, detector, repair, mastering, and edit evidence keep separate authority boundaries.`,
     consequence: "Unresolved exact-clock evidence can mislead transcript, repair, assembly, or delivery decisions if it is flattened into a generic confidence score.",
+  });
+  const transcriptImpact = finishingEvidence.transcriptImpact;
+  if ((transcriptImpact?.needsReview ?? 0) > 0) attention.push({
+    id: "transcript-downstream-impact",
+    severity: transcriptImpact!.textChanged > 0 || transcriptImpact!.speakerChanged > 0 ? "HIGH" : "REVIEW",
+    lane: "transcript",
+    title: `${transcriptImpact!.needsReview} linked work item${transcriptImpact!.needsReview === 1 ? " needs" : "s need"} review after transcript correction`,
+    detail: `${transcriptImpact!.textChanged} wording change${transcriptImpact!.textChanged === 1 ? "" : "s"} · ${transcriptImpact!.speakerChanged} speaker change${transcriptImpact!.speakerChanged === 1 ? "" : "s"} · ${transcriptImpact!.receiptOnly} receipt-only change${transcriptImpact!.receiptOnly === 1 ? "" : "s"} · ${transcriptImpact!.ownerResolvable} resolvable by you.`,
+    consequence: "A note, task, goal, or follow-up may still carry the earlier wording even though the reviewed transcript changed. Quipsly preserves the item until its owner compares and resolves it.",
+    href: transcriptImpact!.firstReviewHref ?? undefined,
+    actionLabel: "Review affected work",
   });
 
   const assembly = finishingEvidence.assembly;
@@ -343,8 +367,12 @@ export function buildSessionFinishingCockpit(input: {
       id: "understand",
       label: "Understand",
       state: completedTranscripts.length ? "IN_PROGRESS" : "NOT_OBSERVED",
-      summary: completedTranscripts.length ? "Source-bound transcript evidence is available for human review." : "No completed source-bound transcript is observed.",
-      evidence: `${completedTranscripts.length} completed transcript source${completedTranscripts.length === 1 ? "" : "s"} · ${completedTranscripts.reduce((total, job) => total + job.segmentCount, 0)} segments`,
+      summary: completedTranscripts.length
+        ? transcriptImpact?.needsReview
+          ? "Transcript evidence is available, but linked work still reflects earlier reviewed wording."
+          : "Source-bound transcript evidence is available for human review."
+        : "No completed source-bound transcript is observed.",
+      evidence: `${completedTranscripts.length} completed transcript source${completedTranscripts.length === 1 ? "" : "s"} · ${completedTranscripts.reduce((total, job) => total + job.segmentCount, 0)} segments · ${transcriptImpact?.needsReview ?? 0} linked work reviews`,
       lane: "transcript",
     },
     {

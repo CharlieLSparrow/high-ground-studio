@@ -14,6 +14,7 @@ import {
   confirmTranscriptSegmentAsIs,
   createTranscriptCorrection,
   readTranscriptCorrectionDesk,
+  readTranscriptCorrectionImpactSummary,
   TRANSCRIPT_CORRECTION_SCHEMA,
   TRANSCRIPT_CORRECTION_IMPACT_REVIEW_SCHEMA,
   TRANSCRIPT_SPEAKER_ATTRIBUTION_SCHEMA,
@@ -252,6 +253,90 @@ function impactReviewHarness(options: { artifactUpdatedAt?: Date; artifact?: any
 }
 
 describe("transcript correction desk", () => {
+  it("projects bounded downstream correction impact for the Session finishing cockpit", async () => {
+    const accepted = {
+      id: "correction-current",
+      correctedText: "We should ship the proof watch on Thursday.",
+      correctedSpeakerLabel: providerSpeakerLabel,
+    };
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => ({
+          id: "room-1",
+          notes: [{
+            id: "note-1",
+            title: "Delivery plan",
+            kind: "DECISION",
+            visibility: "SESSION_SHARED",
+            authorUserId: actor.id,
+            updatedAt: new Date("2026-08-06T18:00:00.000Z"),
+            sourceJson: {
+              transcriptJobId: "job-1",
+              segmentId: "segment-1",
+              acceptedCorrectionId: null,
+              effectiveTextSnapshot: providerText,
+              effectiveSpeakerLabelSnapshot: providerSpeakerLabel,
+            },
+            revisions: [],
+          }],
+          actionItems: [],
+          goals: [],
+          outputs: [],
+          transcriptJobs: [{
+            id: "job-1",
+            status: "COMPLETED",
+            asset: recordingAsset(),
+            speakerAttributions: [],
+            segments: [{
+              id: "segment-1",
+              speakerLabel: providerSpeakerLabel,
+              startSeconds: 12,
+              endSeconds: 18,
+              text: providerText,
+              corrections: [accepted],
+            }],
+          }],
+        })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+
+    const result = await readTranscriptCorrectionImpactSummary({ prisma, roomId: "room-1", actor });
+
+    expect(result).toMatchObject({
+      available: true,
+      held: false,
+      transcriptJobId: "job-1",
+      counts: {
+        needsReview: 1,
+        affectedArtifacts: 1,
+        ownerResolvable: 1,
+        textChanged: 1,
+        speakerChanged: 0,
+        receiptOnly: 0,
+      },
+      items: [{
+        segmentId: "segment-1",
+        artifactKind: "note",
+        artifactId: "note-1",
+        canAcknowledge: true,
+        textChanged: true,
+        segmentHref: "/sessions/room-1?mode=transcript#transcript-impact-segment-1",
+      }],
+    });
+    expect(prisma.callRoom.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        notes: expect.objectContaining({
+          where: { OR: [{ authorUserId: actor.id }, { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } }] },
+        }),
+        outputs: expect.objectContaining({
+          where: { OR: [{ createdByUserId: actor.id }, { recipientUserId: actor.id }] },
+        }),
+      }),
+    }));
+  });
+
   it("appends an owner-only keep-as-written receipt after exact correction comparison", async () => {
     const { prisma, tx, receiptCreate, artifactUpdatedAt } = impactReviewHarness();
     const result = await acknowledgeTranscriptCorrectionImpact({

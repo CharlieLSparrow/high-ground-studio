@@ -98,6 +98,46 @@ describe("Session finishing cockpit", () => {
     });
   });
 
+  it("ranks corrected transcript consequences as linked-work review instead of another listening signal", () => {
+    const cockpit = buildSessionFinishingCockpit({
+      topology: topology(),
+      sourceEvidence: sourceEvidence(),
+      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
+      finishingEvidence: {
+        ...finishingEvidence,
+        analyzedSourceCount: 2,
+        sourceClockAttention: { total: 0, high: 0, review: 0 },
+        transcriptImpact: {
+          available: true,
+          held: false,
+          needsReview: 2,
+          snapshotUnavailable: 1,
+          current: 3,
+          affectedArtifacts: 5,
+          ownerResolvable: 1,
+          textChanged: 1,
+          speakerChanged: 0,
+          receiptOnly: 1,
+          firstReviewHref: "/sessions/room-1?mode=transcript#transcript-impact-segment-1",
+        },
+      },
+    });
+
+    expect(cockpit.attention).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: "transcript-downstream-impact",
+      severity: "HIGH",
+      title: "2 linked work items need review after transcript correction",
+      href: "/sessions/room-1?mode=transcript#transcript-impact-segment-1",
+      actionLabel: "Review affected work",
+    })]));
+    expect(cockpit.attention.some((item) => item.id === "source-clock-review")).toBe(false);
+    expect(cockpit.stages.find((stage) => stage.id === "understand")).toMatchObject({
+      summary: expect.stringContaining("linked work still reflects earlier"),
+      evidence: expect.stringContaining("2 linked work reviews"),
+    });
+  });
+
   it("projects podcast package depth separately from coaching or Session delivery", () => {
     const cockpit = buildSessionFinishingCockpit({
       topology: topology(),

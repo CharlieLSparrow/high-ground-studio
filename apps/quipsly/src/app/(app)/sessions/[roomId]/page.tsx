@@ -11,6 +11,7 @@ import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { sessionAccessWhere, sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { sessionRelationMatchesProject } from "@/lib/server/session-episode-binding";
 import { loadSessionContinuityState } from "@/lib/server/session-continuity";
+import { readTranscriptCorrectionImpactSummary } from "@/lib/server/transcript-corrections";
 import {
   canUseProjectTeamNotes,
   sessionNoteVisibilityWhere,
@@ -708,6 +709,15 @@ export default async function SessionReviewPage({
         };
       }),
     } : null;
+    const transcriptImpactSummary = room.transcriptJobs.length ? await readTranscriptCorrectionImpactSummary({
+      prisma,
+      roomId: room.id,
+      actor: {
+        id: session.user.id,
+        email: actorEmail,
+        isStaff: session.user.isStaff === true,
+      },
+    }) : null;
     const finishingEvidence = {
       transcriptJobs: room.transcriptJobs.map((job: any) => ({
         id: job.id,
@@ -729,6 +739,12 @@ export default async function SessionReviewPage({
         high: sourceClockAttention.counts.high,
         review: sourceClockAttention.counts.review,
       } : { total: 0, high: 0, review: 0 },
+      transcriptImpact: transcriptImpactSummary ? {
+        available: transcriptImpactSummary.available,
+        held: transcriptImpactSummary.held,
+        ...transcriptImpactSummary.counts,
+        firstReviewHref: transcriptImpactSummary.items[0]?.segmentHref ?? null,
+      } : undefined,
       assembly: episodeAssemblyEvidence ?? undefined,
       versionedOutput: versionedOutputGraph ? {
         ...versionedOutputGraph.counts,
