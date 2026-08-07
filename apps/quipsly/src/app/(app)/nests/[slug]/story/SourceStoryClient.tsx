@@ -9,13 +9,15 @@ import {
   ArrowRight,
   Check,
   CircleAlert,
-  Cloud,
   Clapperboard,
   Clock3,
+  Eye,
   FileVideo2,
   Film,
   FolderOpen,
+  Grid2X2,
   LayoutGrid,
+  List,
   ListPlus,
   Loader2,
   Link2,
@@ -27,6 +29,7 @@ import {
   Video,
   Save,
   Search,
+  SlidersHorizontal,
   Tags,
   Undo2,
 } from "lucide-react";
@@ -34,6 +37,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { SpatialExecutorProbe, SpatialExecutorReadiness } from "@high-ground/quipsly-media-processing";
 
 import { storyCardPurposes, storyCardStatuses, type StoryReframeKeyframe } from "@/lib/source-story-contract";
+import {
+  buildSourceLibraryItems,
+  filterSourceLibraryItems,
+  groupSourceLibraryItems,
+  sourceLibraryStats,
+  type SourceLibraryCollection,
+  type SourceLibraryGroupMode,
+  type SourceLibraryMediaFilter,
+  type SourceLibrarySortMode,
+} from "@/lib/source-library-projection";
 
 import { GoogleDriveSourcePicker } from "./GoogleDriveSourcePicker";
 import { EquirectangularVideoViewer, type SpatialView } from "./EquirectangularVideoViewer";
@@ -125,6 +138,12 @@ type SourceStoryBoardPlacement = SourceStoryBoard["placements"][number];
 
 type SourceStoryWorkspace = {
   schema: "quipsly-source-story-v1";
+  sourceInventoryWindow: {
+    externalSources: { loaded: number; total: number };
+    sourceSets: { loaded: number; total: number };
+    windowLimit: number;
+    complete: boolean;
+  };
   episodes: Array<{
     id: string;
     slug: string;
@@ -177,6 +196,7 @@ type SourceStoryWorkspace = {
     headRevisionKey: string | null;
     providerCreatedAt: string | null;
     providerModifiedAt: string | null;
+    createdAt: string;
     accessState: string;
     capabilityState: string;
     lastVerifiedAt: string | null;
@@ -309,13 +329,6 @@ function sourceStateLabel(value: string) {
   return value.replaceAll("-", " ");
 }
 
-function externalSourceHealth(accessState: string, capabilityState: string) {
-  if (accessState === "available" && capabilityState === "downloadable") return { label: "Source access verified", tone: "border-emerald-200 bg-emerald-50 text-emerald-950" };
-  if (capabilityState === "metadata-only") return { label: "Metadata only · proxy and render held", tone: "border-amber-200 bg-amber-50 text-amber-950" };
-  if (capabilityState === "needs-reauth" || accessState === "revoked") return { label: "Reconnect source access", tone: "border-rose-200 bg-rose-50 text-rose-950" };
-  return { label: `${accessState.replaceAll("-", " ")} · ${capabilityState.replaceAll("-", " ")}`, tone: "border-zinc-200 bg-zinc-50 text-zinc-800" };
-}
-
 function boardGroupLabel(value: string) {
   if (value === "unassigned") return "Unassigned story beat";
   return value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -341,6 +354,7 @@ export function SourceStoryClient({
   tags,
   episodes,
   initialWorkspace,
+  initialAssetTotal,
   spatialRenderReadiness,
   initialAssetId,
   initialExternalReferenceId,
@@ -353,6 +367,7 @@ export function SourceStoryClient({
   tags: Tag[];
   episodes: Episode[];
   initialWorkspace: SourceStoryWorkspace;
+  initialAssetTotal: number;
   spatialRenderReadiness: SpatialRenderReadinessReport;
   initialAssetId: string | null;
   initialExternalReferenceId: string | null;
@@ -368,6 +383,12 @@ export function SourceStoryClient({
   const [selectedSourceSetId, setSelectedSourceSetId] = useState<string | null>(initialSourceSetId);
   const [selectedBoardId, setSelectedBoardId] = useState(initialBoardId);
   const [sourceQuery, setSourceQuery] = useState("");
+  const [sourceCollection, setSourceCollection] = useState<SourceLibraryCollection>("all");
+  const [sourceMediaFilter, setSourceMediaFilter] = useState<SourceLibraryMediaFilter>("all");
+  const [sourceGroupMode, setSourceGroupMode] = useState<SourceLibraryGroupMode>("capture-day");
+  const [sourceSortMode, setSourceSortMode] = useState<SourceLibrarySortMode>("newest");
+  const [sourceViewMode, setSourceViewMode] = useState<"grid" | "list">("grid");
+  const [sourceVisibleLimit, setSourceVisibleLimit] = useState(60);
   const [inPoint, setInPoint] = useState<number | null>(null);
   const [outPoint, setOutPoint] = useState<number | null>(null);
   const [title, setTitle] = useState("");
@@ -432,28 +453,28 @@ export function SourceStoryClient({
     is360: false,
   } : null;
   const selectedBoard = workspace.boards.find((board) => board.id === selectedBoardId) ?? workspace.boards[0] ?? null;
-  const filteredAssets = useMemo(() => {
-    const query = sourceQuery.trim().toLowerCase();
-    return query
-      ? initialAssets.filter((asset) => `${asset.filename} ${asset.mimeType ?? ""} ${asset.resolution ?? ""}`.toLowerCase().includes(query))
-      : initialAssets;
-  }, [initialAssets, sourceQuery]);
-  const packagedRevisionIds = useMemo(() => new Set(
-    workspace.sourceSets.flatMap((sourceSet) => sourceSet.members.map((member) => member.sourceRevision.id)),
-  ), [workspace.sourceSets]);
-  const filteredExternalSources = useMemo(() => {
-    const query = sourceQuery.trim().toLowerCase();
-    const standaloneSources = workspace.externalSources.filter((source) => !source.latestSourceRevision || !packagedRevisionIds.has(source.latestSourceRevision.id));
-    return query
-      ? standaloneSources.filter((source) => `${source.fileName} ${source.provider} ${source.mimeType ?? ""}`.toLowerCase().includes(query))
-      : standaloneSources;
-  }, [packagedRevisionIds, sourceQuery, workspace.externalSources]);
-  const filteredSourceSets = useMemo(() => {
-    const query = sourceQuery.trim().toLowerCase();
-    return query
-      ? workspace.sourceSets.filter((sourceSet) => `${sourceSet.displayName} ${sourceSet.captureKey} ${sourceSet.kind} ${sourceSet.members.map((member) => member.sourceRevision.externalReference?.fileName ?? "").join(" ")}`.toLowerCase().includes(query))
-      : workspace.sourceSets;
-  }, [sourceQuery, workspace.sourceSets]);
+  const sourceLibraryItems = useMemo(() => buildSourceLibraryItems({
+    assets: initialAssets,
+    externalSources: workspace.externalSources,
+    sourceSets: workspace.sourceSets,
+    cards: workspace.cards,
+    boards: workspace.boards,
+  }), [initialAssets, workspace.boards, workspace.cards, workspace.externalSources, workspace.sourceSets]);
+  const sourceStats = useMemo(() => sourceLibraryStats(sourceLibraryItems), [sourceLibraryItems]);
+  const filteredSourceLibraryItems = useMemo(() => filterSourceLibraryItems(sourceLibraryItems, {
+    collection: sourceCollection,
+    mediaFilter: sourceMediaFilter,
+    query: sourceQuery,
+    sort: sourceSortMode,
+  }), [sourceCollection, sourceLibraryItems, sourceMediaFilter, sourceQuery, sourceSortMode]);
+  const visibleSourceLibraryItems = useMemo(
+    () => filteredSourceLibraryItems.slice(0, sourceVisibleLimit),
+    [filteredSourceLibraryItems, sourceVisibleLimit],
+  );
+  const sourceLibraryGroups = useMemo(
+    () => groupSourceLibraryItems(visibleSourceLibraryItems, sourceGroupMode),
+    [sourceGroupMode, visibleSourceLibraryItems],
+  );
   const selectedBoardCardIds = useMemo(() => new Set(selectedBoard?.placements.map((placement) => placement.cardId) ?? []), [selectedBoard]);
   const cardsAvailableForBoard = workspace.cards.filter((card) => !selectedBoardCardIds.has(card.id));
   const boardGroups = useMemo(() => {
@@ -486,6 +507,10 @@ export function SourceStoryClient({
   useEffect(() => {
     if (!selectedBoardId && workspace.boards[0]) setSelectedBoardId(workspace.boards[0].id);
   }, [selectedBoardId, workspace.boards]);
+
+  useEffect(() => {
+    setSourceVisibleLimit(60);
+  }, [sourceCollection, sourceGroupMode, sourceMediaFilter, sourceQuery, sourceSortMode]);
 
   useEffect(() => {
     const pendingPlayback = pendingPlaybackRef.current;
@@ -945,30 +970,82 @@ export function SourceStoryClient({
         </div>
       ) : null}
 
-      <div className="mx-auto grid max-w-[1800px] gap-4 p-3 md:p-5 xl:grid-cols-[300px_minmax(480px,1fr)_440px]">
-        <aside className="min-h-[420px] rounded-3xl border border-[#ddccb0] bg-[#fffdf8] p-4 shadow-sm" aria-label="Source library">
-          <div className="flex items-center gap-2"><FolderOpen size={18} className="text-[#8a653d]" aria-hidden="true" /><h2 className="font-serif text-xl font-black">Source library</h2></div>
-          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Registered project media. Browsing does not copy, proxy, transcribe, or render anything.</p>
+      <div className="mx-auto grid max-w-[1880px] gap-4 p-3 md:p-5 xl:grid-cols-[380px_minmax(480px,1fr)_440px]">
+        <aside className="min-h-[420px] rounded-3xl border border-[#ddccb0] bg-[#fffdf8] p-4 shadow-sm" aria-label="Source bin">
+          <div className="flex items-start justify-between gap-3">
+            <div><div className="flex items-center gap-2"><FolderOpen size={18} className="text-[#8a653d]" aria-hidden="true" /><h2 className="font-serif text-xl font-black">Source bin</h2></div><p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">Browse packages, find exact moments, and organize them without moving or changing originals.</p></div>
+            <div className="flex shrink-0 rounded-xl border border-[#d9c7a5] bg-white p-1" aria-label="Source bin view">
+              <button type="button" aria-label="Thumbnail view" aria-pressed={sourceViewMode === "grid"} onClick={() => setSourceViewMode("grid")} className={`grid min-h-11 min-w-11 place-items-center rounded-lg ${sourceViewMode === "grid" ? "bg-[#3e2f21] text-white" : "text-[#76522c]"}`}><Grid2X2 size={16} aria-hidden="true" /></button>
+              <button type="button" aria-label="List view" aria-pressed={sourceViewMode === "list"} onClick={() => setSourceViewMode("list")} className={`grid min-h-11 min-w-11 place-items-center rounded-lg ${sourceViewMode === "list" ? "bg-[#3e2f21] text-white" : "text-[#76522c]"}`}><List size={17} aria-hidden="true" /></button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-1 rounded-2xl border border-[#d9c7a5] bg-[#f7f2e9] p-1" aria-label="Source collections">
+            {([
+              ["working", "Working", sourceStats.working],
+              ["all", "All", sourceStats.total],
+              ["attention", "Attention", sourceStats.attention],
+            ] as const).map(([value, label, count]) => <button key={value} type="button" aria-pressed={sourceCollection === value} onClick={() => setSourceCollection(value)} className={`min-h-12 rounded-xl px-2 text-[10px] font-black uppercase tracking-wide ${sourceCollection === value ? "bg-white text-[#3e2f21] shadow-sm" : "text-[#765f40]"}`}><span className="block text-sm">{count}</span>{label}</button>)}
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2 rounded-2xl border border-[#e2d2b6] bg-white p-3 text-center">
+            <div><p className="text-lg font-black text-emerald-800">{sourceStats.browseReady}</p><p className="text-[9px] font-black uppercase tracking-wide text-[#806a4d]">Browse ready</p></div>
+            <div><p className="text-lg font-black text-violet-800">{sourceStats.renderReady}</p><p className="text-[9px] font-black uppercase tracking-wide text-[#806a4d]">Render ready</p></div>
+            <div><p className="text-lg font-black text-sky-800">{sourceStats.selects}</p><p className="text-[9px] font-black uppercase tracking-wide text-[#806a4d]">Exact selects</p></div>
+          </div>
+
           <GoogleDriveSourcePicker projectSlug={project.slug} canWrite={canWrite} onAttached={refreshWorkspace} />
-          <label className="relative mt-4 block"><span className="sr-only">Search source media</span><Search size={16} className="absolute left-3 top-3.5 text-[#927b5b]" aria-hidden="true" /><input value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Search media…" className="min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white pl-9 pr-3 text-sm font-semibold outline-none focus-visible:ring-4 focus-visible:ring-sky-100" /></label>
-          <div className="mt-3 max-h-[68vh] space-y-2 overflow-y-auto pr-1">
-            {filteredSourceSets.length ? <div className="pb-1"><p className="mb-2 flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-900"><Rotate3d size={13} aria-hidden="true" />360° camera sets</p>{filteredSourceSets.map((sourceSet) => { const selected = sourceSet.id === selectedSourceSet?.id; const proxy = sourceSet.sourceClockRevision.collaborationProxy; const stitchMaster = sourceSet.sourceClockRevision.spatialStitchMaster; const originalCount = sourceSet.members.filter((member) => member.role.includes("original")).length; return <article key={sourceSet.id} className={`mb-2 rounded-2xl border p-3 ${selected ? "border-fuchsia-800 bg-fuchsia-100" : "border-fuchsia-200 bg-fuchsia-50/60"}`}><button type="button" disabled={!proxy} onClick={() => chooseSourceSet(sourceSet.id)} aria-pressed={selected} className="w-full text-left disabled:cursor-not-allowed"><p className="line-clamp-2 text-sm font-black leading-5">{sourceSet.displayName}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-fuchsia-900">{sourceSet.kind.replaceAll("-", " ")} · {sourceSet.completeness}</p><div className="mt-2 flex flex-wrap gap-1"><span className="rounded-full border border-fuchsia-200 bg-white px-2 py-1 text-[10px] font-black text-fuchsia-950">{originalCount} exact original{originalCount === 1 ? "" : "s"}</span><span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-950">{proxy ? `Spatial browse ready · ${formatClock(proxy.durationSeconds)}` : "Browse proxy required"}</span><span className={`rounded-full border px-2 py-1 text-[10px] font-black ${stitchMaster ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>{stitchMaster ? `5.7K render master verified · ${formatClock(stitchMaster.durationSeconds)}` : "5.7K render master not registered"}</span></div><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">Set {sourceSet.identitySha256.slice(0, 10)}… · clocked by {sourceSet.sourceClockRevision.externalReference?.fileName ?? "retained source"}</p></button><details className="mt-2 rounded-xl border border-fuchsia-200 bg-white/70 px-3 py-2 text-[10px]"><summary className="cursor-pointer font-black uppercase tracking-wide text-fuchsia-950">Package contents · {sourceSet.members.length}</summary><ul className="mt-2 space-y-1 text-[#765f40]">{sourceSet.members.map((member) => <li key={member.id} className="break-all"><span className="font-black text-fuchsia-950">{member.role.replaceAll("-", " ")}</span> · {member.sourceRevision.externalReference?.fileName ?? member.sourceRevision.id}{member.requiredForRender ? " · render required" : " · browse only"}</li>)}</ul></details>{proxy ? <button type="button" onClick={() => chooseSourceSet(sourceSet.id)} className="mt-2 min-h-11 w-full rounded-xl bg-fuchsia-900 px-3 text-xs font-black text-white">Look around and mark selects</button> : null}</article>; })}</div> : null}
-            {filteredExternalSources.length ? <div className="pb-1"><p className="mb-2 flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#76522c]"><Cloud size={13} aria-hidden="true" />Connected vault</p>{filteredExternalSources.map((source) => { const health = externalSourceHealth(source.accessState, source.capabilityState); const revision = source.latestSourceRevision; const proxy = revision?.collaborationProxy; const job = revision?.proxyJob; const selected = source.id === selectedExternalSource?.id; return <article key={source.id} className={`mb-2 rounded-2xl border p-3 ${selected ? "border-teal-800 bg-teal-100" : "border-teal-200 bg-teal-50/60"}`}><button type="button" onClick={() => chooseExternalSource(source.id)} aria-pressed={selected} className="w-full text-left"><p className="line-clamp-2 text-sm font-black leading-5">{source.fileName}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-teal-900">{source.provider.replaceAll("-", " ")} · reference r{source.revision}</p><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-full border px-2 py-1 text-[10px] font-black ${health.tone}`}>{health.label}</span><span className="rounded-full border border-teal-200 bg-white px-2 py-1 text-[10px] font-bold text-teal-900">{formatBytes(source.sizeBytes)}</span>{proxy ? <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-950">Proxy ready · {formatClock(proxy.durationSeconds)}</span> : null}</div><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">{revision ? `${sourceStateLabel(revision.sourceState)} · ${revision.revisionKey}` : "No immutable provider revision retained yet."}</p></button>{proxy ? <button type="button" onClick={() => chooseExternalSource(source.id)} className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-3 text-xs font-black text-white">Open verified proxy</button> : job && ["queued", "processing"].includes(job.status) ? <p role="status" className="mt-2 flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-white px-3 text-xs font-black text-sky-950"><Loader2 size={14} className="animate-spin" aria-hidden="true" />{job.status === "processing" ? "Generating verified proxy…" : "Proxy queued on this Mac…"}</p> : job?.status === "failed" ? <button type="button" disabled={pending || !canWrite} onClick={() => void requestProxy(source, true)} className="mt-2 min-h-11 w-full rounded-xl border border-rose-300 bg-white px-3 text-xs font-black text-rose-950 disabled:opacity-45">Retry proxy · {job.failureCode ?? "worker failure"}</button> : source.provider === "local-file-vault" ? <button type="button" disabled={pending || !canWrite || !revision} onClick={() => void requestProxy(source)} className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-3 text-xs font-black text-white disabled:opacity-45">Create lightweight proxy</button> : <p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">The source is attached. Drive proxy execution activates with the approved cloud connection; Quipsly will not pull the original before then.</p>}</article>; })}</div> : null}
-            {filteredAssets.map((asset) => {
-              const selected = asset.id === selectedAsset?.id;
-              return (
-                <button key={asset.id} type="button" onClick={() => chooseAsset(asset.id)} aria-pressed={selected} className={`w-full rounded-2xl border p-3 text-left outline-none transition focus-visible:ring-4 focus-visible:ring-sky-100 ${selected ? "border-[#60492f] bg-[#f2e4cb]" : "border-[#e6d9c2] bg-white hover:border-[#bd9d68]"}`}>
-                  <span className="flex gap-3">
-                    <span className="grid h-14 w-20 shrink-0 place-items-center overflow-hidden rounded-xl bg-[#e9dfcf] text-[#795a35]">
-                      {asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : <FileVideo2 size={22} aria-hidden="true" />}
-                    </span>
-                    <span className="min-w-0"><span className="line-clamp-2 block text-sm font-black leading-5">{asset.filename}</span><span className="mt-1 block text-[10px] font-bold uppercase tracking-wide text-[#806a4d]">{asset.isProxy ? "Proxy" : "Registered source"} · {formatClock(asset.duration)}</span></span>
-                  </span>
-                  <span className="mt-2 flex flex-wrap gap-1 text-[10px] font-bold text-[#806a4d]"><span>{formatBytes(asset.sizeBytes)}</span>{asset.resolution ? <span>· {asset.resolution}</span> : null}{asset.fps ? <span>· {asset.fps.toFixed(2)} fps</span> : null}</span>
-                </button>
-              );
-            })}
-            {!filteredAssets.length && !filteredExternalSources.length && !filteredSourceSets.length ? <p className="rounded-2xl border border-dashed border-[#d9c7a5] p-5 text-sm font-semibold text-[#765f40]">No attached source matches this search.</p> : null}
+          <label className="relative mt-4 block"><span className="sr-only">Search source media</span><Search size={16} className="absolute left-3 top-3.5 text-[#927b5b]" aria-hidden="true" /><input value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Search cameras, files, tags…" className="min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white pl-9 pr-3 text-sm font-semibold outline-none focus-visible:ring-4 focus-visible:ring-sky-100" /></label>
+          <details className="mt-2 rounded-xl border border-[#e2d2b6] bg-white px-3 py-2">
+            <summary className="flex min-h-11 cursor-pointer items-center gap-2 py-2 text-[10px] font-black uppercase tracking-wide text-[#76522c]"><SlidersHorizontal size={14} aria-hidden="true" />Group, filter, and sort</summary>
+            <div className="grid gap-3 pb-2 pt-1 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+              <label className="text-[9px] font-black uppercase tracking-wide text-[#806a4d]">Media<select value={sourceMediaFilter} onChange={(event) => setSourceMediaFilter(event.target.value as SourceLibraryMediaFilter)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-2 text-xs font-bold text-[#3e2f21]"><option value="all">All media</option><option value="360">360° packages</option><option value="video">Video</option><option value="audio">Audio</option><option value="image">Images</option><option value="browse-ready">Browse ready</option><option value="render-ready">Render ready</option></select></label>
+              <label className="text-[9px] font-black uppercase tracking-wide text-[#806a4d]">Group<select value={sourceGroupMode} onChange={(event) => setSourceGroupMode(event.target.value as SourceLibraryGroupMode)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-2 text-xs font-bold text-[#3e2f21]"><option value="capture-day">Capture day</option><option value="source-type">Source type</option><option value="provider">Location</option></select></label>
+              <label className="text-[9px] font-black uppercase tracking-wide text-[#806a4d]">Sort<select value={sourceSortMode} onChange={(event) => setSourceSortMode(event.target.value as SourceLibrarySortMode)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-2 text-xs font-bold text-[#3e2f21]"><option value="newest">Newest</option><option value="name">Name</option><option value="selects">Most selects</option></select></label>
+            </div>
+          </details>
+
+          <p className="mt-3 text-[10px] font-bold text-[#806a4d]">Showing {visibleSourceLibraryItems.length.toLocaleString()} of {filteredSourceLibraryItems.length.toLocaleString()} matching sources. A camera package stays one item even when final rendering needs several files.</p>
+          {(!workspace.sourceInventoryWindow.complete || initialAssetTotal > initialAssets.length) ? <p role="status" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] font-bold leading-4 text-amber-950">This first browsing window contains {workspace.sourceInventoryWindow.sourceSets.loaded.toLocaleString()} of {workspace.sourceInventoryWindow.sourceSets.total.toLocaleString()} camera packages, {workspace.sourceInventoryWindow.externalSources.loaded.toLocaleString()} of {workspace.sourceInventoryWindow.externalSources.total.toLocaleString()} connected files, and {initialAssets.length.toLocaleString()} of {initialAssetTotal.toLocaleString()} Quipsly assets. Nothing is deleted or hidden silently; server-cursor paging is required before this Nest exceeds the window.</p> : null}
+          <div className="mt-3 max-h-[72vh] space-y-4 overflow-y-auto pr-1">
+            {sourceLibraryGroups.map((group) => (
+              <section key={group.key} aria-labelledby={`source-group-${group.key}`}>
+                <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[#e2d2b6] bg-[#fffdf8]/95 py-2 backdrop-blur"><h3 id={`source-group-${group.key}`} className="text-[10px] font-black uppercase tracking-[0.16em] text-[#76522c]">{group.label}</h3><span className="rounded-full bg-[#efe4d2] px-2 py-1 text-[9px] font-black text-[#76522c]">{group.items.length}</span></div>
+                <div className={sourceViewMode === "grid" ? "mt-2 grid grid-cols-2 gap-2" : "mt-2 space-y-2"}>
+                  {group.items.map((item) => {
+                    const sourceSet = item.kind === "source-set" ? workspace.sourceSets.find((candidate) => candidate.id === item.id) ?? null : null;
+                    const externalSource = item.kind === "external" ? workspace.externalSources.find((candidate) => candidate.id === item.id) ?? null : null;
+                    const asset = item.kind === "asset" ? initialAssets.find((candidate) => candidate.id === item.id) ?? null : null;
+                    const selected = item.kind === "source-set" ? item.id === selectedSourceSet?.id : item.kind === "external" ? item.id === selectedExternalSource?.id : item.id === selectedAsset?.id;
+                    const healthTone = item.health === "render-ready" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : item.health === "browse-ready" ? "border-sky-200 bg-sky-50 text-sky-950" : "border-amber-200 bg-amber-50 text-amber-950";
+                    const open = () => item.kind === "source-set" ? chooseSourceSet(item.id) : item.kind === "external" ? chooseExternalSource(item.id) : chooseAsset(item.id);
+                    const job = externalSource?.latestSourceRevision?.proxyJob;
+                    return (
+                      <article key={item.key} style={{ contentVisibility: "auto", containIntrinsicSize: sourceViewMode === "grid" ? "220px" : "150px" }} className={`min-w-0 rounded-2xl border p-2 transition ${selected ? "border-[#60492f] bg-[#f2e4cb] shadow-sm" : "border-[#e6d9c2] bg-white hover:border-[#bd9d68]"}`}>
+                        <button type="button" onClick={open} aria-pressed={selected} className="w-full text-left outline-none focus-visible:ring-4 focus-visible:ring-sky-100">
+                          <span className={`relative grid w-full place-items-center overflow-hidden rounded-xl bg-[#e9dfcf] text-[#795a35] ${sourceViewMode === "grid" ? "aspect-video" : "h-16"}`}>
+                            {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : item.mimeFamily === "360" ? <Rotate3d size={sourceViewMode === "grid" ? 30 : 23} aria-hidden="true" /> : item.mimeFamily === "audio" ? <Film size={sourceViewMode === "grid" ? 30 : 23} aria-hidden="true" /> : <FileVideo2 size={sourceViewMode === "grid" ? 30 : 23} aria-hidden="true" />}
+                            {item.mimeFamily === "360" ? <span className="absolute left-2 top-2 rounded-full bg-fuchsia-950/90 px-2 py-1 text-[8px] font-black uppercase tracking-wide text-white">360° package</span> : null}
+                            {item.isWorking ? <span className="absolute bottom-2 right-2 rounded-full bg-sky-950/90 px-2 py-1 text-[8px] font-black uppercase tracking-wide text-white">Working</span> : null}
+                          </span>
+                          <span className="mt-2 line-clamp-2 block text-xs font-black leading-4">{item.name}</span>
+                          <span className="mt-1 block text-[9px] font-bold uppercase tracking-wide text-[#806a4d]">{item.provider.replaceAll("-", " ")} · {formatClock(item.durationSeconds)}</span>
+                          <span className={`mt-2 block rounded-lg border px-2 py-1.5 text-[9px] font-black leading-4 ${healthTone}`}>{item.healthLabel}</span>
+                          {item.selectCount ? <span className="mt-2 flex flex-wrap gap-1 text-[9px] font-black text-[#76522c]"><span className="rounded-full bg-sky-50 px-2 py-1">{item.selectCount} select{item.selectCount === 1 ? "" : "s"}</span><span className="rounded-full bg-violet-50 px-2 py-1">{item.boardCount} board{item.boardCount === 1 ? "" : "s"}</span>{item.selectedCount ? <span className="rounded-full bg-emerald-50 px-2 py-1">{item.selectedCount} chosen</span> : null}</span> : null}
+                          {sourceViewMode === "list" ? <span className="mt-2 block text-[9px] font-semibold text-[#806a4d]">{formatBytes(item.sizeBytes)} · {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(item.timestamp))}</span> : null}
+                        </button>
+                        {sourceSet && selected ? <details className="mt-2 rounded-xl border border-fuchsia-200 bg-white/70 px-2 py-2 text-[9px]"><summary className="cursor-pointer min-h-11 py-3 font-black uppercase tracking-wide text-fuchsia-950">Package health · {sourceSet.members.length} files</summary><ul className="space-y-1 text-[#765f40]">{sourceSet.members.map((member) => <li key={member.id} className="break-all"><span className="font-black text-fuchsia-950">{member.role.replaceAll("-", " ")}</span> · {member.sourceRevision.externalReference?.fileName ?? member.sourceRevision.id}{member.requiredForRender ? " · final required" : " · browse"}</li>)}</ul><p className="mt-2 font-mono text-[8px] text-[#806a4d]">Package {sourceSet.identitySha256.slice(0, 16)}…</p></details> : null}
+                        {sourceSet?.sourceClockRevision.collaborationProxy ? <button type="button" onClick={open} className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-fuchsia-900 px-2 text-[10px] font-black text-white"><Eye size={14} aria-hidden="true" />Look around</button> : null}
+                        {externalSource && !externalSource.latestSourceRevision?.collaborationProxy ? job && ["queued", "processing"].includes(job.status) ? <p role="status" className="mt-2 flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-white px-2 text-[9px] font-black text-sky-950"><Loader2 size={13} className="animate-spin" aria-hidden="true" />{job.status === "processing" ? "Building proxy…" : "Proxy queued…"}</p> : job?.status === "failed" ? <button type="button" disabled={pending || !canWrite} onClick={() => void requestProxy(externalSource, true)} className="mt-2 min-h-11 w-full rounded-xl border border-rose-300 bg-white px-2 text-[9px] font-black text-rose-950 disabled:opacity-45">Retry proxy · {job.failureCode ?? "worker failure"}</button> : externalSource.provider === "local-file-vault" ? <button type="button" disabled={pending || !canWrite || !externalSource.latestSourceRevision} onClick={() => void requestProxy(externalSource)} className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-2 text-[9px] font-black text-white disabled:opacity-45">Create browse proxy</button> : <p className="mt-2 text-[9px] font-semibold leading-4 text-[#765f40]">Attached without copying. Proxy work waits for approved provider execution.</p> : null}
+                        {asset && sourceViewMode === "list" ? <p className="mt-2 text-[9px] font-semibold text-[#765f40]">{asset.resolution ?? "Resolution not retained"}{asset.fps ? ` · ${asset.fps.toFixed(2)} fps` : ""}</p> : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+            {!filteredSourceLibraryItems.length ? <p className="rounded-2xl border border-dashed border-[#d9c7a5] p-5 text-sm font-semibold text-[#765f40]">Nothing matches this collection and filter. Try All sources or clear the search.</p> : null}
+            {visibleSourceLibraryItems.length < filteredSourceLibraryItems.length ? <button type="button" onClick={() => setSourceVisibleLimit((current) => current + 60)} className="min-h-12 w-full rounded-xl border border-[#9f794c] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#60492f]">Show 60 more</button> : null}
           </div>
         </aside>
 

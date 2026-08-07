@@ -2230,7 +2230,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
     framesPerSecond: true,
     createdAt: true,
   } as const;
-  const [boards, cards, externalSources, externalProxyJobs, sourceSets, episodes, timelinePlacements, spatialRenderJobs] = await Promise.all([
+  const [boards, cards, externalSources, externalProxyJobs, sourceSets, episodes, timelinePlacements, spatialRenderJobs, externalSourceTotal, sourceSetTotal] = await Promise.all([
     prisma.studioStoryBoard.findMany({
       where: { projectId, archivedAt: null },
       orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
@@ -2309,6 +2309,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
         capabilityState: true,
         lastVerifiedAt: true,
         revision: true,
+        createdAt: true,
         revisions: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -2417,6 +2418,8 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
       take: 1_000,
       select: { id: true, status: true, inputJson: true, error: true, requestedByEmail: true, createdAt: true, updatedAt: true, mediaDerivative: { select: derivativeSelect } },
     }),
+    prisma.studioExternalMediaReference.count({ where: { projectId } }),
+    prisma.studioMediaSourceSet.count({ where: { projectId } }),
   ]);
   const publicDerivative = (derivative: {
     id: string;
@@ -2494,6 +2497,12 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
   const cardById = new Map(cards.map((card) => [card.id, card]));
   return {
     schema: SOURCE_STORY_SCHEMA_VERSION,
+    sourceInventoryWindow: {
+      externalSources: { loaded: externalSources.length, total: externalSourceTotal },
+      sourceSets: { loaded: sourceSets.length, total: sourceSetTotal },
+      windowLimit: 500,
+      complete: externalSources.length === externalSourceTotal && sourceSets.length === sourceSetTotal,
+    },
     episodes: episodes.map((episode) => {
       const timeline = timelineStateFromEpisodeArtifact(episode.timelineJson);
       return {
@@ -2561,6 +2570,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
       providerCreatedAt: source.providerCreatedAt?.toISOString() ?? null,
       providerModifiedAt: source.providerModifiedAt?.toISOString() ?? null,
       lastVerifiedAt: source.lastVerifiedAt?.toISOString() ?? null,
+      createdAt: source.createdAt.toISOString(),
       latestSourceRevision: revisions[0] ? {
         ...revisions[0],
         derivatives: undefined,

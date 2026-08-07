@@ -1,0 +1,177 @@
+# Source bin, story binder, and editor research · 2026-08-07
+
+Status: implemented first production slice; licensed spatial execution remains a separate activation decision.
+
+## Product question
+
+Homer needs to browse large Insta360 libraries, choose exact useful moments,
+attach notes, arrange those moments into a story, write against them, and later
+edit the same decisions without copying originals or learning several Quipsly
+data models. The intended experience overlaps Insta360 Studio, StudioBinder,
+Scrivener, Riverside, and Descript, but Quipsly should not reproduce their
+product boundaries.
+
+## Primary-source findings
+
+### Insta360
+
+Insta360 Studio separates rough single-footage work from multi-media project
+editing. Its Project page exposes Project Media, General Media, and Temporary
+Media; Temporary Media carries most viewing edits into the deeper editor. The
+footage panel supports list and thumbnail modes plus favorites. A 5.7K 360 take
+may require two original files in the same folder with unchanged names, and
+Studio automatically finds the companion member.
+
+Sources:
+
+- [Insta360 Studio Project page](https://onlinemanual.insta360.com/studio/en-us/operation-guide/page-introduction/project-page-introduction)
+- [Insta360 Studio import footage](https://onlinemanual.insta360.com/oner/en-us/studio/import/importfootage)
+- [Insta360 X5 editing](https://onlinemanual.insta360.com/x5/en-us/camera/appuse/editing)
+
+Quipsly implication: the browsing object is a complete logical camera package,
+not a loose INSV file or a flattened proxy. Vault, project, and working
+collections should be projections over the same immutable package identity.
+
+### Scrivener
+
+Scrivener uses one Binder hierarchy across manuscript material and supporting
+content. Its Corkboard and Outliner are alternate views of the same items;
+index cards carry title and synopsis, and labels, status, keywords, custom
+metadata, and collections provide cross-cutting organization. Its freeform
+corkboard can remain exploratory until the writer deliberately commits that
+arrangement to the outline.
+
+Sources:
+
+- [Scrivener overview](https://www.literatureandlatte.com/scrivener/overview)
+- [Scrivener manual](https://www.literatureandlatte.com/docs/Scrivener_Manual-Mac.pdf)
+
+Quipsly implication: free exploration, binder order, and Episode timeline order
+must not be the same mutation. Cards can be reused; board placement owns one
+arrangement; a durable binder section owns the writing handoff; the timeline
+owns edit playback.
+
+### StudioBinder
+
+StudioBinder connects script scenes to storyboard panels and shot lists. It
+supports visual and list layouts, groups by scene/shoot day/location/project
+phase, shot specs, images and annotations, comments, tasks, color, archival,
+and view-only or editable collaboration. Its shot-list interface keeps the
+script visible beside production decisions.
+
+Sources:
+
+- [StudioBinder storyboarding tools](https://www.studiobinder.com/storyboarding-tool/)
+- [StudioBinder shot-list software](https://www.studiobinder.com/shot-list-storyboard/)
+- [StudioBinder customizable shot lists](https://www.studiobinder.com/blog/shot-lists-complete-customization-intuitive-interface/)
+
+Quipsly implication: one source-backed card needs both visual-story and
+production-detail projections. Notes, purpose, lane, tags, comments, tasks, and
+technical camera recipes should remain attached to stable identities rather
+than copied into a storyboard export.
+
+### Descript and Riverside
+
+Descript projects contain reusable project files, non-destructive compositions,
+and sequences for multi-track media. Riverside distinguishes participant or
+uploaded recording transcription from Media Board or screen-share playback;
+media played during a session is not automatically equivalent to a canonical
+participant source.
+
+Sources:
+
+- [Descript projects and compositions](https://help.descript.com/hc/en-us/articles/13535123897485-Projects-and-compositions-overview)
+- [Riverside transcription boundaries](https://support.riverside.fm/hc/en-us/articles/11419817842973-Does-Riverside-transcribe-media-I-add-to-the-Editor-media-board-files-or-audio-from-screen-shares)
+
+Quipsly implication: external clips, participant tracks, call mix, and source
+packages need explicit roles. A clip watched during recording is a synchronized
+reference event, not silently a participant recording or transcript authority.
+
+## Quipsly architecture
+
+```text
+creator-owned vault / camera / Capture
+                |
+                v
+immutable source revision or camera package
+                |
+                +--> lightweight browse derivative
+                |
+                v
+exact source-time range + reversible 360 recipe
+                |
+                v
+reusable story card (title, synopsis, notes, purpose, tags)
+                |
+        +-------+----------------+
+        |                        |
+ exploratory collections   board placement
+                                 |
+                                 v
+                         durable binder section
+                                 |
+                    +------------+------------+
+                    |                         |
+              shared writing             Episode timeline
+                                              |
+                                              v
+                               local/cloud verified render
+```
+
+This is one source-to-story graph with several views, not separate storyboard,
+notes, writing, and editor databases.
+
+## Implemented source-bin slice
+
+The Source Story workspace now provides:
+
+- one displayed item per logical camera package, even when final rendering
+  needs multiple exact files;
+- live Working, All, and Attention collections derived from retained cards,
+  board usage, and source health;
+- distinct browse-ready and final-render-ready health;
+- media/readiness filters, source-date/type/location grouping, name/newest/
+  select-count sorting, search, and thumbnail/list views;
+- exact select, chosen-select, and board-use counts per source;
+- an initial 60-item render window with incremental reveal and CSS rendering
+  containment, avoiding an unbounded media-card DOM;
+- explicit loaded-versus-retained capacity evidence at the current 500-row
+  database read boundary so a large library cannot be silently truncated.
+
+The Working collection is intentionally derived rather than a second manual
+folder: a source enters it when a stable select exists or one of its cards is
+used on a board. A future personal Favorite should be a small explicit filing
+or collection relation, not a mutation of the original or a duplicate tag
+taxonomy.
+
+## Next production slices
+
+1. Replace the 500-row initial inventory window with cursor-paged, server-side
+   search over packages, external references, and Quipsly assets.
+2. Generate checksum-bound thumbnails and contact sheets as derivatives,
+   including sampled spherical views for 360 packages.
+3. Add personal Favorites and named collections using explicit target joins;
+   retain project tags for shared meaning rather than overloading them as UI
+   folders.
+4. Add waveform/filmstrip navigation and keyboard range marking to the viewer.
+5. Add a freeform exploratory board that can deliberately commit an order to a
+   durable binder, preserving both arrangements and their receipts.
+6. Add comments/tasks beside a card and section through the existing Nest
+   collaboration and work kernels.
+7. Activate a licensed Insta360 MediaSDK stitch executor only after approval of
+   its provider, cost, retention, and minimum-capacity proposal. The executor
+   must emit the existing exact-source stitch-master receipt.
+
+## UX acceptance
+
+The next retained-media operation should prove that Homer can:
+
+1. find a camera package by date or name;
+2. see whether every final-render member is available;
+3. open its lightweight spatial proxy without fetching the originals;
+4. mark a precise range and optional view recipe;
+5. find that source immediately in Working;
+6. arrange the card into a section;
+7. open the section's shared writing with the source card beside it; and
+8. promote the same immutable decision into an Episode timeline without
+   changing the source, card, or prose.

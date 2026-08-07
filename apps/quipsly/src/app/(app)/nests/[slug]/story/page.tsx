@@ -39,7 +39,7 @@ export default async function SourceStoryPage({
   const canWrite = Boolean(access.role && roleAllowsAction(access.role, "write"));
 
   try {
-    const [assets, tags, episodes, workspace, spatialRenderReadiness] = await Promise.all([
+    const [assets, assetTotal, tags, episodes, workspace, spatialRenderReadiness] = await Promise.all([
       prisma.studioMediaAsset.findMany({
         where: {
           OR: [
@@ -63,6 +63,15 @@ export default async function SourceStoryPage({
           isProxy: true,
           updatedAt: true,
           _count: { select: { clips: true, variants: true } },
+        },
+      }),
+      prisma.studioMediaAsset.count({
+        where: {
+          OR: [
+            { projects: { some: { id: project.id } } },
+            { mediaBin: { projectId: project.id } },
+            { assetAttachments: { some: { projectId: project.id } } },
+          ],
         },
       }),
       prisma.studioTag.findMany({
@@ -109,6 +118,7 @@ export default async function SourceStoryPage({
         tags={tags}
         episodes={episodes}
         initialWorkspace={workspace}
+        initialAssetTotal={assetTotal}
         spatialRenderReadiness={spatialRenderReadiness}
         initialAssetId={selectedAssetId}
         initialExternalReferenceId={selectedExternalReferenceId}
