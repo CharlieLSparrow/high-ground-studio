@@ -216,6 +216,8 @@ type SourceStoryWorkspace = {
       framesPerSecond: number | null;
       collaborationProxy: MediaDerivative | null;
       proxyJob: null | { id: string; status: string; failureCode: string | null; updatedAt: string };
+      visualOverview: MediaDerivative | null;
+      visualOverviewJob: null | { id: string; status: string; failureCode: string | null; updatedAt: string };
     };
   }>;
   cards: SourceStoryCard[];
@@ -276,6 +278,8 @@ type MediaSourceSet = {
     externalReference: null | { id: string; fileName: string; provider: string };
     collaborationProxy: MediaDerivative | null;
     spatialStitchMaster: MediaDerivative | null;
+    visualOverview: MediaDerivative | null;
+    visualOverviewJob: null | { id: string; status: string; failureCode: string | null; updatedAt: string };
   };
   members: Array<{
     id: string;
@@ -485,7 +489,7 @@ export function SourceStoryClient({
     url: selectedSourceSetProxy.playbackUrl,
     mimeType: selectedSourceSetProxy.mimeType,
     duration: selectedSourceSetProxy.durationSeconds ?? selectedSourceSet.sourceClockRevision.durationSeconds,
-    thumbnailUrl: null,
+    thumbnailUrl: selectedSourceSet.sourceClockRevision.visualOverview?.playbackUrl ?? null,
     is360: selectedSourceSet.kind === "insta360-360",
     sourceRevisionId: selectedSourceSet.sourceClockRevision.id,
     externalReferenceId: selectedSourceSet.sourceClockRevision.externalReference.id,
@@ -498,7 +502,7 @@ export function SourceStoryClient({
     url: selectedExternalProxy.playbackUrl,
     mimeType: selectedExternalProxy.mimeType,
     duration: selectedExternalProxy.durationSeconds,
-    thumbnailUrl: null,
+    thumbnailUrl: selectedExternalSource.latestSourceRevision?.visualOverview?.playbackUrl ?? null,
     is360: false,
     sourceRevisionId: selectedExternalSource.latestSourceRevision?.id,
     externalReferenceId: selectedExternalSource.id,
@@ -640,7 +644,10 @@ export function SourceStoryClient({
   }, [selectedViewerSource?.key]);
 
   useEffect(() => {
-    const waiting = workspace.externalSources.some((source) => ["queued", "processing"].includes(source.latestSourceRevision?.proxyJob?.status ?? ""));
+    const waiting = workspace.externalSources.some((source) => (
+      ["queued", "processing"].includes(source.latestSourceRevision?.proxyJob?.status ?? "")
+      || ["queued", "processing"].includes(source.latestSourceRevision?.visualOverviewJob?.status ?? "")
+    )) || workspace.sourceSets.some((sourceSet) => ["queued", "processing"].includes(sourceSet.sourceClockRevision.visualOverviewJob?.status ?? ""));
     if (!waiting) return;
     const timer = window.setInterval(() => { void refreshWorkspace().catch(() => undefined); }, 2_000);
     return () => window.clearInterval(timer);
@@ -928,6 +935,15 @@ export function SourceStoryClient({
     }, retryFailed ? `Retrying the verified proxy for ${source.fileName}.` : `Queued a verified proxy for ${source.fileName}.`);
   }
 
+  async function requestVisualOverview(sourceRevisionId: string, label: string, retryFailed = false) {
+    await mutate({
+      action: "request-source-visual-overview",
+      sourceRevisionId,
+      clientRequestId: crypto.randomUUID(),
+      retryFailed,
+    }, retryFailed ? `Retrying the checksum-bound contact sheet for ${label}.` : `Queued a checksum-bound contact sheet for ${label}.`);
+  }
+
   async function moveCard(cardId: string, direction: -1 | 1) {
     if (!selectedBoard) return;
     const current = selectedBoard.placements.map(({ cardId: currentCardId, groupKey: currentGroupKey, laneKey }) => ({ cardId: currentCardId, groupKey: currentGroupKey, laneKey }));
@@ -1192,6 +1208,10 @@ export function SourceStoryClient({
                     const healthTone = item.health === "render-ready" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : item.health === "browse-ready" ? "border-sky-200 bg-sky-50 text-sky-950" : "border-amber-200 bg-amber-50 text-amber-950";
                     const open = () => item.kind === "source-set" ? chooseSourceSet(item.id) : item.kind === "external" ? chooseExternalSource(item.id) : chooseAsset(item.id);
                     const job = externalSource?.latestSourceRevision?.proxyJob;
+                    const visualRevision = sourceSet?.sourceClockRevision ?? externalSource?.latestSourceRevision ?? null;
+                    const visualOverview = visualRevision?.visualOverview ?? null;
+                    const visualJob = visualRevision?.visualOverviewJob ?? null;
+                    const visualInputReady = Boolean(visualRevision?.collaborationProxy);
                     return (
                       <article key={item.key} style={{ contentVisibility: "auto", containIntrinsicSize: sourceViewMode === "grid" ? "220px" : "150px" }} className={`min-w-0 rounded-2xl border p-2 transition ${selected ? "border-[#60492f] bg-[#f2e4cb] shadow-sm" : "border-[#e6d9c2] bg-white hover:border-[#bd9d68]"}`}>
                         <button type="button" onClick={open} aria-pressed={selected} className="w-full text-left outline-none focus-visible:ring-4 focus-visible:ring-sky-100">
@@ -1213,6 +1233,8 @@ export function SourceStoryClient({
                           return <button key={collection.id} type="button" disabled={pending || !canWrite || !collection.canEdit} onClick={() => void toggleSourceCollection(collection, item)} className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 text-left text-[10px] font-black disabled:opacity-45 ${filed ? "border-violet-300 bg-violet-50 text-violet-950" : "border-[#dfd0b7] bg-white text-[#684f32]"}`}><span>{collection.title}</span><span>{filed ? "Filed" : "Add"}</span></button>;
                         })}</div></details> : null}
                         {externalSource && !externalSource.latestSourceRevision?.collaborationProxy ? job && ["queued", "processing"].includes(job.status) ? <p role="status" className="mt-2 flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-white px-2 text-[9px] font-black text-sky-950"><Loader2 size={13} className="animate-spin" aria-hidden="true" />{job.status === "processing" ? "Building proxy…" : "Proxy queued…"}</p> : job?.status === "failed" ? <button type="button" disabled={pending || !canWrite} onClick={() => void requestProxy(externalSource, true)} className="mt-2 min-h-11 w-full rounded-xl border border-rose-300 bg-white px-2 text-[9px] font-black text-rose-950 disabled:opacity-45">Retry proxy · {job.failureCode ?? "worker failure"}</button> : externalSource.provider === "local-file-vault" ? <button type="button" disabled={pending || !canWrite || !externalSource.latestSourceRevision} onClick={() => void requestProxy(externalSource)} className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-2 text-[9px] font-black text-white disabled:opacity-45">Create browse proxy</button> : <p className="mt-2 text-[9px] font-semibold leading-4 text-[#765f40]">Attached without copying. Proxy work waits for approved provider execution.</p> : null}
+                        {visualRevision && visualInputReady && !visualOverview ? visualJob && ["queued", "processing"].includes(visualJob.status) ? <p role="status" className="mt-2 flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 bg-white px-2 text-[9px] font-black text-violet-950"><Loader2 size={13} className="animate-spin" aria-hidden="true" />{visualJob.status === "processing" ? "Building visual map…" : "Visual map queued…"}</p> : visualJob?.status === "failed" ? <button type="button" disabled={pending || !canWrite} onClick={() => void requestVisualOverview(visualRevision.id, item.name, true)} className="mt-2 min-h-11 w-full rounded-xl border border-rose-300 bg-white px-2 text-[9px] font-black text-rose-950 disabled:opacity-45">Retry visual map · {visualJob.failureCode ?? "worker failure"}</button> : <button type="button" disabled={pending || !canWrite} onClick={() => void requestVisualOverview(visualRevision.id, item.name)} className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-2 text-[9px] font-black text-violet-950 disabled:opacity-45"><Grid2X2 size={13} aria-hidden="true" />Build 8-frame visual map</button> : null}
+                        {visualOverview ? <p className="mt-2 flex min-h-8 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[8px] font-black uppercase tracking-wide text-violet-950"><Check size={12} aria-hidden="true" />Checksum-bound 8-frame map</p> : null}
                         {asset && sourceViewMode === "list" ? <p className="mt-2 text-[9px] font-semibold text-[#765f40]">{asset.resolution ?? "Resolution not retained"}{asset.fps ? ` · ${asset.fps.toFixed(2)} fps` : ""}</p> : null}
                       </article>
                     );

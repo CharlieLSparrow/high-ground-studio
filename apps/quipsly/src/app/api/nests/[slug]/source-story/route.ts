@@ -24,6 +24,10 @@ import {
   requestExternalSourceProxy,
 } from "@/lib/server/external-source-proxy";
 import {
+  SourceVisualOverviewRequestError,
+  requestSourceVisualOverview,
+} from "@/lib/server/source-visual-overview";
+import {
   SourceStoryConflictError,
   arrangeStoryBoard,
   arrangeStoryBoardSections,
@@ -129,6 +133,9 @@ function errorResponse(error: unknown) {
   if (error instanceof ExternalSourceProxyRequestError) {
     return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
   }
+  if (error instanceof SourceVisualOverviewRequestError) {
+    return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+  }
   if (error instanceof SpatialRenderQueueError) {
     return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
   }
@@ -183,6 +190,16 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         prisma,
         projectId: actor.projectId,
         referenceId: text(body.referenceId),
+        sourceRevisionId: text(body.sourceRevisionId),
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        clientRequestId: text(body.clientRequestId),
+        retryFailed: body.retryFailed === true,
+      });
+    } else if (action === "request-source-visual-overview") {
+      operation = await requestSourceVisualOverview({
+        prisma,
+        projectId: actor.projectId,
         sourceRevisionId: text(body.sourceRevisionId),
         actorUserId: actor.userId,
         actorEmail: actor.email,

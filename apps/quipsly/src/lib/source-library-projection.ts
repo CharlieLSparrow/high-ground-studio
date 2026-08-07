@@ -29,6 +29,7 @@ export type SourceLibraryExternal = {
     id: string;
     durationSeconds: number | null;
     collaborationProxy: null | { id: string };
+    visualOverview?: null | { id: string; playbackUrl: string };
   };
 };
 
@@ -45,6 +46,7 @@ export type SourceLibrarySet = {
     externalReference: null | { id: string; fileName: string; provider: string };
     collaborationProxy: null | { id: string };
     spatialStitchMaster: null | { id: string };
+    visualOverview?: null | { id: string; playbackUrl: string };
   };
   members: Array<{
     requiredForRender: boolean;
@@ -201,7 +203,7 @@ export function buildSourceLibraryItems(input: {
       timestamp: safeTimestamp(cameraTimestamp(sourceSet.captureKey), cameraTimestamp(sourceSet.displayName), sourceSet.createdAt),
       durationSeconds: sourceSet.sourceClockRevision.durationSeconds,
       sizeBytes,
-      thumbnailUrl: null,
+      thumbnailUrl: sourceSet.sourceClockRevision.visualOverview?.playbackUrl ?? null,
       health,
       healthLabel: renderReady
         ? "Browse and final render ready"
@@ -233,7 +235,7 @@ export function buildSourceLibraryItems(input: {
       timestamp: safeTimestamp(source.providerCreatedAt, cameraTimestamp(source.fileName), source.providerModifiedAt, source.createdAt),
       durationSeconds: source.latestSourceRevision?.durationSeconds ?? null,
       sizeBytes: source.sizeBytes,
-      thumbnailUrl: null,
+      thumbnailUrl: source.latestSourceRevision?.visualOverview?.playbackUrl ?? null,
       health,
       healthLabel: accessReady && proxyReady
         ? "Browse and original access ready"

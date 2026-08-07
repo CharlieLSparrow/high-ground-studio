@@ -2230,7 +2230,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
     framesPerSecond: true,
     createdAt: true,
   } as const;
-  const [boards, cards, externalSources, externalProxyJobs, sourceSets, episodes, timelinePlacements, spatialRenderJobs, externalSourceTotal, sourceSetTotal] = await Promise.all([
+  const [boards, cards, externalSources, externalProxyJobs, sourceVisualJobs, sourceSets, episodes, timelinePlacements, spatialRenderJobs, externalSourceTotal, sourceSetTotal] = await Promise.all([
     prisma.studioStoryBoard.findMany({
       where: { projectId, archivedAt: null },
       orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
@@ -2325,13 +2325,19 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
             widthPixels: true,
             heightPixels: true,
             framesPerSecond: true,
-            derivatives: { where: { kind: "collaboration-proxy", status: "ready" }, orderBy: { createdAt: "desc" }, take: 1, select: derivativeSelect },
+            derivatives: { where: { kind: { in: ["collaboration-proxy", "source-contact-sheet"] }, status: "ready" }, orderBy: { createdAt: "desc" }, take: 4, select: derivativeSelect },
           },
         },
       },
     }),
     prisma.studioWorkflowJob.findMany({
       where: { projectId, type: "external-source-proxy", source: "source-story.external-proxy" },
+      orderBy: { updatedAt: "desc" },
+      take: 320,
+      select: { id: true, status: true, inputJson: true, resultJson: true, error: true, updatedAt: true },
+    }),
+    prisma.studioWorkflowJob.findMany({
+      where: { projectId, type: "source-visual-overview", source: "source-story.visual-overview" },
       orderBy: { updatedAt: "desc" },
       take: 320,
       select: { id: true, status: true, inputJson: true, resultJson: true, error: true, updatedAt: true },
@@ -2356,7 +2362,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
             heightPixels: true,
             framesPerSecond: true,
             externalReference: { select: { id: true, fileName: true, provider: true } },
-            derivatives: { where: { kind: { in: ["collaboration-proxy", "spatial-stitch-master"] }, status: "ready" }, orderBy: { createdAt: "desc" }, take: 4, select: derivativeSelect },
+            derivatives: { where: { kind: { in: ["collaboration-proxy", "spatial-stitch-master", "source-contact-sheet"] }, status: "ready" }, orderBy: { createdAt: "desc" }, take: 6, select: derivativeSelect },
           },
         },
         members: {
@@ -2447,6 +2453,21 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
     const result = jsonRecord(job.resultJson);
     const failure = jsonRecord(result?.failure);
     jobBySourceRevisionId.set(sourceRevisionId, {
+      id: job.id,
+      status: job.status,
+      failureCode: typeof failure?.code === "string" ? failure.code : null,
+      updatedAt: job.updatedAt.toISOString(),
+    });
+  }
+  const visualJobBySourceRevisionId = new Map<string, { id: string; status: string; failureCode: string | null; updatedAt: string }>();
+  for (const job of sourceVisualJobs) {
+    const manifest = jsonRecord(job.inputJson);
+    const source = jsonRecord(manifest?.source);
+    const sourceRevisionId = typeof source?.sourceRevisionId === "string" ? source.sourceRevisionId : "";
+    if (!sourceRevisionId || visualJobBySourceRevisionId.has(sourceRevisionId)) continue;
+    const result = jsonRecord(job.resultJson);
+    const failure = jsonRecord(result?.failure);
+    visualJobBySourceRevisionId.set(sourceRevisionId, {
       id: job.id,
       status: job.status,
       failureCode: typeof failure?.code === "string" ? failure.code : null,
@@ -2555,6 +2576,8 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
         externalReference: sourceSet.sourceClockRevision.externalReference,
         collaborationProxy: publicDerivative(sourceSet.sourceClockRevision.derivatives.find((derivative) => derivative.kind === "collaboration-proxy")),
         spatialStitchMaster: publicDerivative(sourceSet.sourceClockRevision.derivatives.find((derivative) => derivative.kind === "spatial-stitch-master")),
+        visualOverview: publicDerivative(sourceSet.sourceClockRevision.derivatives.find((derivative) => derivative.kind === "source-contact-sheet")),
+        visualOverviewJob: visualJobBySourceRevisionId.get(sourceSet.sourceClockRevision.id) ?? null,
       },
       members: sourceSet.members.map((member) => ({
         ...member,
@@ -2576,8 +2599,10 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
         derivatives: undefined,
         sizeBytes: revisions[0].sizeBytes?.toString() ?? null,
         verifiedAt: revisions[0].verifiedAt?.toISOString() ?? null,
-        collaborationProxy: publicDerivative(revisions[0].derivatives[0]),
+        collaborationProxy: publicDerivative(revisions[0].derivatives.find((derivative) => derivative.kind === "collaboration-proxy")),
+        visualOverview: publicDerivative(revisions[0].derivatives.find((derivative) => derivative.kind === "source-contact-sheet")),
         proxyJob: jobBySourceRevisionId.get(revisions[0].id) ?? null,
+        visualOverviewJob: visualJobBySourceRevisionId.get(revisions[0].id) ?? null,
       } : null,
     })),
     cards: cards.map(projectCard),

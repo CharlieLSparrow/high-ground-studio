@@ -78,6 +78,10 @@ import {
   newLocalExternalSourceProxyRuntime,
   runOneLocalExternalSourceProxyJob,
 } from "./local-external-source-proxy-worker.js";
+import {
+  newLocalSourceVisualOverviewRuntime,
+  runOneLocalSourceVisualOverviewJob,
+} from "./local-source-visual-overview-worker.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -597,6 +601,13 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const sourceVisualOverview = newLocalSourceVisualOverviewRuntime({
+    pool,
+    executionId,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   let stopping = false;
   process.once("SIGTERM", () => { stopping = true; });
   process.once("SIGINT", () => { stopping = true; });
@@ -609,9 +620,16 @@ async function main() {
         externalSourceProxy.transcoder,
         externalSourceProxy.options,
       );
-      const proxyResult = externalProxyResult.disposition === "idle"
-        ? await runOneLocalEpisodeProxyJob(store, transcoder, options)
+      const visualOverviewResult = externalProxyResult.disposition === "idle"
+        ? await runOneLocalSourceVisualOverviewJob(
+          sourceVisualOverview.store,
+          sourceVisualOverview.renderer,
+          sourceVisualOverview.options,
+        )
         : externalProxyResult;
+      const proxyResult = visualOverviewResult.disposition === "idle"
+        ? await runOneLocalEpisodeProxyJob(store, transcoder, options)
+        : visualOverviewResult;
       const masteryResult = proxyResult.disposition === "idle"
         ? await runOneLocalAudioMasteryJob(audioMastery.store, audioMastery.engine, audioMastery.options)
         : proxyResult;

@@ -8,6 +8,7 @@ export * from "./episode-program-delivery.js";
 export * from "./episode-render-proof.js";
 export * from "./spatial-render.js";
 export * from "./external-source-proxy.js";
+export * from "./source-visual-overview.js";
 export * from "./audio-diagnosis-evaluation.js";
 export * from "./audio-signal-diagnosis.js";
 export * from "./audio-signal-profile.js";

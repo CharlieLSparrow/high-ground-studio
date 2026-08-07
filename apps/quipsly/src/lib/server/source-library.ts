@@ -45,9 +45,9 @@ const sourceSetSelect = {
       framesPerSecond: true,
       externalReference: { select: { id: true, fileName: true, provider: true } },
       derivatives: {
-        where: { kind: { in: ["collaboration-proxy", "spatial-stitch-master"] }, status: "ready" },
+        where: { kind: { in: ["collaboration-proxy", "spatial-stitch-master", "source-contact-sheet"] }, status: "ready" },
         orderBy: { createdAt: "desc" },
-        take: 4,
+        take: 6,
         select: derivativeSelect,
       },
     },
@@ -104,9 +104,9 @@ const externalSelect = {
       heightPixels: true,
       framesPerSecond: true,
       derivatives: {
-        where: { kind: "collaboration-proxy", status: "ready" },
+        where: { kind: { in: ["collaboration-proxy", "source-contact-sheet"] }, status: "ready" },
         orderBy: { createdAt: "desc" },
-        take: 1,
+        take: 4,
         select: derivativeSelect,
       },
     },
@@ -312,20 +312,31 @@ export async function readSourceLibraryPage(input: {
   const emittedSets = sourceSets.filter((row) => emittedKeys.has(`source-set:${row.id}`));
   const emittedExternal = externalSources.filter((row) => emittedKeys.has(`external:${row.id}`));
   const emittedAssets = assets.filter((row) => emittedKeys.has(`asset:${row.id}`));
-  const revisionIds = emittedExternal.flatMap((source) => source.revisions[0]?.id ? [source.revisions[0].id] : []);
-  const proxyJobs = revisionIds.length ? await input.prisma.studioWorkflowJob.findMany({
-    where: { projectId: input.projectId, type: "external-source-proxy", source: "source-story.external-proxy" },
+  const revisionIds = [
+    ...emittedSets.map((sourceSet) => sourceSet.sourceClockRevision.id),
+    ...emittedExternal.flatMap((source) => source.revisions[0]?.id ? [source.revisions[0].id] : []),
+  ];
+  const sourceJobs = revisionIds.length ? await input.prisma.studioWorkflowJob.findMany({
+    where: {
+      projectId: input.projectId,
+      OR: [
+        { type: "external-source-proxy", source: "source-story.external-proxy" },
+        { type: "source-visual-overview", source: "source-story.visual-overview" },
+      ],
+    },
     orderBy: { updatedAt: "desc" },
-    take: Math.min(500, Math.max(50, revisionIds.length * 4)),
-    select: { id: true, status: true, inputJson: true, resultJson: true, updatedAt: true },
+    take: Math.min(500, Math.max(50, revisionIds.length * 8)),
+    select: { id: true, type: true, status: true, inputJson: true, resultJson: true, updatedAt: true },
   }) : [];
-  const jobBySourceRevisionId = new Map<string, { id: string; status: string; failureCode: string | null; updatedAt: string }>();
-  for (const job of proxyJobs) {
+  const proxyJobBySourceRevisionId = new Map<string, { id: string; status: string; failureCode: string | null; updatedAt: string }>();
+  const visualJobBySourceRevisionId = new Map<string, { id: string; status: string; failureCode: string | null; updatedAt: string }>();
+  for (const job of sourceJobs) {
     const source = jsonRecord(jsonRecord(job.inputJson)?.source);
     const sourceRevisionId = typeof source?.sourceRevisionId === "string" ? source.sourceRevisionId : "";
-    if (!revisionIds.includes(sourceRevisionId) || jobBySourceRevisionId.has(sourceRevisionId)) continue;
+    const target = job.type === "source-visual-overview" ? visualJobBySourceRevisionId : proxyJobBySourceRevisionId;
+    if (!revisionIds.includes(sourceRevisionId) || target.has(sourceRevisionId)) continue;
     const failure = jsonRecord(jsonRecord(job.resultJson)?.failure);
-    jobBySourceRevisionId.set(sourceRevisionId, {
+    target.set(sourceRevisionId, {
       id: job.id,
       status: job.status,
       failureCode: typeof failure?.code === "string" ? failure.code : null,
@@ -344,6 +355,8 @@ export async function readSourceLibraryPage(input: {
         ...sourceSet.sourceClockRevision,
         collaborationProxy: publicDerivative(sourceSet.sourceClockRevision.derivatives.find((derivative) => derivative.kind === "collaboration-proxy")),
         spatialStitchMaster: publicDerivative(sourceSet.sourceClockRevision.derivatives.find((derivative) => derivative.kind === "spatial-stitch-master")),
+        visualOverview: publicDerivative(sourceSet.sourceClockRevision.derivatives.find((derivative) => derivative.kind === "source-contact-sheet")),
+        visualOverviewJob: visualJobBySourceRevisionId.get(sourceSet.sourceClockRevision.id) ?? null,
         derivatives: undefined,
       },
       members: sourceSet.members.map((member) => ({
@@ -363,8 +376,10 @@ export async function readSourceLibraryPage(input: {
         derivatives: undefined,
         sizeBytes: revisions[0].sizeBytes?.toString() ?? null,
         verifiedAt: revisions[0].verifiedAt?.toISOString() ?? null,
-        collaborationProxy: publicDerivative(revisions[0].derivatives[0]),
-        proxyJob: jobBySourceRevisionId.get(revisions[0].id) ?? null,
+        collaborationProxy: publicDerivative(revisions[0].derivatives.find((derivative) => derivative.kind === "collaboration-proxy")),
+        visualOverview: publicDerivative(revisions[0].derivatives.find((derivative) => derivative.kind === "source-contact-sheet")),
+        proxyJob: proxyJobBySourceRevisionId.get(revisions[0].id) ?? null,
+        visualOverviewJob: visualJobBySourceRevisionId.get(revisions[0].id) ?? null,
       } : null,
     })),
     assets: emittedAssets.map((asset) => ({
