@@ -74,14 +74,20 @@ retained room `cmsfpfwrt000db9xld8ppuon4`, it proved:
 - two declared recovered masters;
 - four retained source journeys;
 - exactly two selected RecordingAsset IDs in the canonical editor plan;
-- both selected sources have complete Editor checkpoints;
+- both selected sources have Editor checkpoints derived from the canonical
+  assembly state rather than a cached success claim;
 - both historical sources remain visible with Editor marked not applicable;
 - no source state was mutated and publication was not started.
 
-The honest reconstructed state is not all green. One recovered source currently
-has no transcript attempt, while imported recovery sources cannot claim native
-Capture start/stop receipts. Those are useful next-work signals, not reasons to
-fabricate completion.
+The first read exposed one recovered source with no transcript attempt. After an
+explicit, separately operated source-bound transcript completed, the same
+read-only journey automatically changed both recovered Transcript checkpoints
+to complete and both Editor checkpoints to current. The canonical assembly is
+now `READY_TO_MATERIALIZE`: the new immutable transcript evidence makes the old
+materialized result stale, while a remaining speaker/camera review warning
+prevents the UI from claiming that a new edit already exists. Imported recovery
+sources also cannot claim native Capture start/stop receipts. These are useful
+next-work signals, not reasons to fabricate completion.
 
 ## Verification
 
@@ -117,7 +123,8 @@ Then verify the Source Journey section at desktop and narrow viewport widths:
 
 - its heading and checkpoint lists are reachable by accessible names;
 - all four retained journeys render;
-- only the two recovered masters show Editor complete;
+- only the two recovered masters show an Editor state consistent with the
+  canonical assembly (`complete`, `current`, or `held`);
 - the two historical sources show Editor not part of this path;
 - expanding Evidence identities exposes exact plan, capture, and RecordingAsset
   IDs without leaking secrets;

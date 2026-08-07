@@ -2,6 +2,24 @@
 
 Date: 2026-08-06
 
+## Matched-source retained transcription checkpoint
+
+- An explicitly authorized local QA operation started transcription for the
+  retained 18.4-second DJI backup master, followed its durable job through the
+  existing launcher-owned Whisper worker, and read the result back through the
+  exact-source Session API. The completed job contains four immutable segments
+  and 47 timed words. No cloud transcription provider was invoked.
+- A deterministic comparison against the independently captured microphone
+  transcript measured one word edit across 47 reference words (2.1277% WER).
+  This is evidence of matched-source consistency, not a human accuracy score:
+  the microphone transcript heard `Quipsley` while the backup transcript heard
+  `Quipsly`, and neither was silently corrected or declared ground truth.
+- The operation created no Note, Task, Goal, correction overlay, or publication
+  state. The source journey now shows both recovered transcripts complete and
+  both Editor checkpoints current because the canonical assembly is
+  `READY_TO_MATERIALIZE`, with its speaker/camera review warning preserved. See
+  `docs/coordination/2026-08-06-matched-source-retained-transcript-operation.md`.
+
 ## Session source-journey flight recorder checkpoint
 
 - The Episode and Session Finishing Cockpit now reconstructs one readable

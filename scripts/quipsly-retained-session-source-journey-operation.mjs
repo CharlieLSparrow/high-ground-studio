@@ -160,9 +160,15 @@ try {
   const selectedIds = new Set(assembly.selectedRecordingAssetIds);
   const selectedJourneys = projection.journeys.filter((journey) => journey.recordingAssetId && selectedIds.has(journey.recordingAssetId));
   const historicalJourneys = projection.journeys.filter((journey) => journey.recordingAssetId && !selectedIds.has(journey.recordingAssetId));
+  const selectedEditorCheckpoints = selectedJourneys.map((journey) => journey.checkpoints.find((checkpoint) => checkpoint.id === "assembly"));
   assert(selectedJourneys.length === 2, `Expected two selected source journeys, observed ${selectedJourneys.length}.`);
   assert(historicalJourneys.length >= 2, `Expected preserved historical journeys, observed ${historicalJourneys.length}.`);
-  assert(selectedJourneys.every((journey) => journey.checkpoints.find((checkpoint) => checkpoint.id === "assembly")?.state === "COMPLETE"), "A selected recovered source was not projected into canonical editor evidence.");
+  assert(
+    selectedEditorCheckpoints.every((checkpoint) => checkpoint && ["COMPLETE", "CURRENT", "HELD"].includes(checkpoint.state)),
+    `A selected recovered source was not projected into canonical editor evidence: ${JSON.stringify({ assemblyState: assembly.state, checkpoints: selectedEditorCheckpoints })}`,
+  );
+  assert(selectedEditorCheckpoints.every((checkpoint) => checkpoint?.state !== "HELD") || assembly.state === "BLOCKED", "A selected Editor checkpoint was held without a canonical assembly blocker.");
+  assert(selectedEditorCheckpoints.every((checkpoint) => checkpoint?.state !== "CURRENT") || assembly.state === "READY_TO_MATERIALIZE", "A selected Editor checkpoint was current without a conflict-safe materialization path.");
   assert(historicalJourneys.every((journey) => journey.checkpoints.find((checkpoint) => checkpoint.id === "assembly")?.state === "NOT_APPLICABLE"), "A historical source was falsely projected onto the selected editor take.");
 
   console.log(JSON.stringify({
@@ -181,6 +187,8 @@ try {
       checkpoints: Object.fromEntries(journey.checkpoints.map((checkpoint) => [checkpoint.id, checkpoint.state])),
     })),
     selectedRecordingAssetIds: [...selectedIds],
+    assemblyState: assembly.state,
+    assemblyNextAction: assembly.nextAction,
     historicalSourcesPreservedOutsideTake: historicalJourneys.length,
     sourceStateMutated: false,
     publicationStarted: false,
