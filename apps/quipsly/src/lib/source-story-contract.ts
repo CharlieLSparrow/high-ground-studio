@@ -111,6 +111,42 @@ export type OpenStoryBoardSectionWritingInput = {
   clientRequestId: string;
 };
 
+export type CreateStoryBoardSectionInput = {
+  projectId: string;
+  boardId: string;
+  expectedBoardRevision: number;
+  clientRequestId: string;
+  title: string;
+  synopsis?: string;
+};
+
+export type UpdateStoryBoardSectionInput = {
+  projectId: string;
+  boardId: string;
+  sectionId: string;
+  expectedRevision: number;
+  clientRequestId: string;
+  title: string;
+  synopsis?: string;
+};
+
+export type ArrangeStoryBoardSectionsInput = {
+  projectId: string;
+  boardId: string;
+  expectedBoardRevision: number;
+  clientRequestId: string;
+  orderedSectionIds: string[];
+};
+
+export type ArchiveStoryBoardSectionInput = {
+  projectId: string;
+  boardId: string;
+  sectionId: string;
+  expectedBoardRevision: number;
+  expectedSectionRevision: number;
+  clientRequestId: string;
+};
+
 export type RebindSourceStoryCardInput = {
   projectId: string;
   cardId: string;
@@ -414,6 +450,71 @@ export function normalizeOpenStoryBoardSectionWritingInput(value: OpenStoryBoard
     boardId: opaqueId(value.boardId, "boardId"),
     sectionKey: boardKey(value.sectionKey, "sectionKey", "unassigned"),
     expectedRevision,
+    clientRequestId: clientRequestId(value.clientRequestId),
+  };
+}
+
+function positiveRevision(value: unknown, message: string) {
+  const revision = Number(value);
+  if (!Number.isInteger(revision) || revision < 1) {
+    throw new SourceStoryContractError("invalid-revision", message);
+  }
+  return revision;
+}
+
+export function normalizeCreateStoryBoardSectionInput(value: CreateStoryBoardSectionInput) {
+  const title = boundedText(value.title, "Section title", 200, true);
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    projectId: opaqueId(value.projectId, "projectId"),
+    boardId: opaqueId(value.boardId, "boardId"),
+    expectedBoardRevision: positiveRevision(value.expectedBoardRevision, "The current board revision is required."),
+    clientRequestId: clientRequestId(value.clientRequestId),
+    key: boardKey(title, "Section title", "section"),
+    title,
+    synopsis: boundedText(value.synopsis ?? "", "Section synopsis", 10_000),
+  };
+}
+
+export function normalizeUpdateStoryBoardSectionInput(value: UpdateStoryBoardSectionInput) {
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    projectId: opaqueId(value.projectId, "projectId"),
+    boardId: opaqueId(value.boardId, "boardId"),
+    sectionId: opaqueId(value.sectionId, "sectionId"),
+    expectedRevision: positiveRevision(value.expectedRevision, "The current section revision is required."),
+    clientRequestId: clientRequestId(value.clientRequestId),
+    title: boundedText(value.title, "Section title", 200, true),
+    synopsis: boundedText(value.synopsis ?? "", "Section synopsis", 10_000),
+  };
+}
+
+export function normalizeArrangeStoryBoardSectionsInput(value: ArrangeStoryBoardSectionsInput) {
+  if (!Array.isArray(value.orderedSectionIds) || value.orderedSectionIds.length > 500) {
+    throw new SourceStoryContractError("invalid-section-arrangement", "The section arrangement is malformed.");
+  }
+  const orderedSectionIds = value.orderedSectionIds.map((sectionId) => opaqueId(sectionId, "sectionId"));
+  if (new Set(orderedSectionIds).size !== orderedSectionIds.length) {
+    throw new SourceStoryContractError("duplicate-section", "A section may appear only once in the binder.");
+  }
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    projectId: opaqueId(value.projectId, "projectId"),
+    boardId: opaqueId(value.boardId, "boardId"),
+    expectedBoardRevision: positiveRevision(value.expectedBoardRevision, "The current board revision is required."),
+    clientRequestId: clientRequestId(value.clientRequestId),
+    orderedSectionIds,
+  };
+}
+
+export function normalizeArchiveStoryBoardSectionInput(value: ArchiveStoryBoardSectionInput) {
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    projectId: opaqueId(value.projectId, "projectId"),
+    boardId: opaqueId(value.boardId, "boardId"),
+    sectionId: opaqueId(value.sectionId, "sectionId"),
+    expectedBoardRevision: positiveRevision(value.expectedBoardRevision, "The current board revision is required."),
+    expectedSectionRevision: positiveRevision(value.expectedSectionRevision, "The current section revision is required."),
     clientRequestId: clientRequestId(value.clientRequestId),
   };
 }

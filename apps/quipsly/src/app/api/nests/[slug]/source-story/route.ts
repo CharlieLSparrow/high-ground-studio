@@ -26,15 +26,19 @@ import {
 import {
   SourceStoryConflictError,
   arrangeStoryBoard,
+  arrangeStoryBoardSections,
+  archiveStoryBoardSection,
   createSourceStoryCard,
   createMediaSourceSet,
   createStoryBoard,
+  createStoryBoardSection,
   openStoryBoardSectionWriting,
   readSourceStoryWorkspace,
   promoteSourceStoryCardToEpisode,
   rebindSourceStoryCard,
   reorderStoryBoard,
   updateSourceStoryCard,
+  updateStoryBoardSection,
   withdrawSourceStoryTimelinePlacement,
 } from "@/lib/server/source-story";
 import { SpatialRenderQueueError, queueSpatialReframe, registerSpatialReframeResult } from "@/lib/server/spatial-render-job";
@@ -319,6 +323,58 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
           expectedRevision: Number(body.expectedRevision),
           clientRequestId: text(body.clientRequestId),
           placements: boardPlacements(body.placements),
+        },
+      });
+    } else if (action === "create-board-section") {
+      operation = await createStoryBoardSection({
+        prisma,
+        actorUserId: actor.userId,
+        value: {
+          projectId: actor.projectId,
+          boardId: text(body.boardId),
+          expectedBoardRevision: Number(body.expectedBoardRevision),
+          clientRequestId: text(body.clientRequestId),
+          title: text(body.title),
+          synopsis: text(body.synopsis),
+        },
+      });
+    } else if (action === "update-board-section") {
+      operation = await updateStoryBoardSection({
+        prisma,
+        actorUserId: actor.userId,
+        value: {
+          projectId: actor.projectId,
+          boardId: text(body.boardId),
+          sectionId: text(body.sectionId),
+          expectedRevision: Number(body.expectedRevision),
+          clientRequestId: text(body.clientRequestId),
+          title: text(body.title),
+          synopsis: text(body.synopsis),
+        },
+      });
+    } else if (action === "arrange-board-sections") {
+      operation = await arrangeStoryBoardSections({
+        prisma,
+        actorUserId: actor.userId,
+        value: {
+          projectId: actor.projectId,
+          boardId: text(body.boardId),
+          expectedBoardRevision: Number(body.expectedBoardRevision),
+          clientRequestId: text(body.clientRequestId),
+          orderedSectionIds: stringArray(body.orderedSectionIds),
+        },
+      });
+    } else if (action === "archive-board-section") {
+      operation = await archiveStoryBoardSection({
+        prisma,
+        actorUserId: actor.userId,
+        value: {
+          projectId: actor.projectId,
+          boardId: text(body.boardId),
+          sectionId: text(body.sectionId),
+          expectedBoardRevision: Number(body.expectedBoardRevision),
+          expectedSectionRevision: Number(body.expectedSectionRevision),
+          clientRequestId: text(body.clientRequestId),
         },
       });
     } else if (action === "open-section-writing") {

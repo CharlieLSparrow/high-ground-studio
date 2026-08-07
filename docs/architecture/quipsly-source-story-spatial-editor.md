@@ -76,6 +76,27 @@ The ownership boundary is deliberate:
 
 The web surface links directly from both Cards and Outline views into the canonical writing page. It does not copy card synopsis/notes into prose or create a second editor state. Source cards remain visible evidence and planning material alongside the document rather than being destructively converted into paragraphs.
 
+The binder is now a first-class editing surface rather than a projection that
+appears only after cards exist. An Editor can create an empty section, revise
+its visible title and editorial brief, move it earlier or later, start or open
+its shared writing, and archive it once every card has been deliberately moved
+or unfiled. These operations divide authority deliberately:
+
+- section creation and archive advance the board revision because they change
+  binder membership;
+- section reordering advances the board revision and records the complete
+  previous and resulting active-section order;
+- title and synopsis changes advance only the section revision;
+- card arrangement never recalculates or silently overrides section order;
+- an archived section keeps its document, immutable operation receipts, and
+  stable identity, and cannot be implicitly reactivated by typing its old key
+  into a card-placement control.
+
+The SQL boundary independently constrains section operation kinds and requires
+strictly contiguous revisions, including the `create-section` revision-zero to
+revision-one receipt. Every write is actor/request idempotent and protected by
+the relevant board or section optimistic revision.
+
 The writing URL carries the board and section identities as view context, not authority. The server rechecks that the requested section belongs to the same Nest and is linked to the exact open document before projecting any cards. The Writing Desk then shows a collapsible source rail with lane, purpose, notes, tags, exact source clock, and links back to the protected source view. It caps the inline rail at 100 cards for predictable rendering and routes larger browsing back to the full board.
 
 ## Reviewed master operation
@@ -129,7 +150,7 @@ The slice is covered at four boundaries:
 - contract tests reject LRV input, weakened review receipts, mismatched recipe digests, and wrong output profiles;
 - verifier tests require complete decode and detect INSV drift during review verification;
 - worker tests prove a successful proof render and fail closed with output removal when source bytes drift;
-- local PostgreSQL integration proves master registration, idempotent replay, Episode-placement job creation, output registration, safe playback URLs, and no local locator exposure.
+- local PostgreSQL integration proves master registration, idempotent replay, Episode-placement job creation, output registration, safe playback URLs, no local locator exposure, and the complete create/revise/reorder/archive binder lifecycle without disturbing card source identity or retained writing.
 
 The retained High Ground Odyssey operation additionally proves the real source package remains unchanged, the authenticated Story page and API project the source set, and the unauthenticated derivative boundary returns not found.
 

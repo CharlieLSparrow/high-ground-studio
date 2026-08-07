@@ -13,15 +13,19 @@ import { normalizeEpisodeArtifact, timelineStateFromEpisodeArtifact } from "@/ap
 import {
   SourceStoryConflictError,
   arrangeStoryBoard,
+  arrangeStoryBoardSections,
+  archiveStoryBoardSection,
   createMediaSourceSet,
   createSourceStoryCard,
   createStoryBoard,
+  createStoryBoardSection,
   openStoryBoardSectionWriting,
   readSourceStoryWorkspace,
   promoteSourceStoryCardToEpisode,
   rebindSourceStoryCard,
   reorderStoryBoard,
   updateSourceStoryCard,
+  updateStoryBoardSection,
   withdrawSourceStoryTimelinePlacement,
 } from "./source-story";
 import { registerReviewedSpatialStitchMaster } from "./spatial-stitch-master";
@@ -707,7 +711,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     const [sectionAfter, document, cardAfter, workspace] = await Promise.all([
       prisma.studioStoryBoardSection.findUniqueOrThrow({
         where: { id: sectionBefore.id },
-        include: { operations: true },
+        include: { operations: { orderBy: { revision: "asc" } } },
       }),
       prisma.studioDocument.findUniqueOrThrow({
         where: { id: opened.document.id },
@@ -720,8 +724,11 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       readSourceStoryWorkspace(prisma, projectId),
     ]);
     expect(sectionAfter).toMatchObject({ documentId: document.id, revision: 2 });
-    expect(sectionAfter.operations).toHaveLength(1);
-    expect(sectionAfter.operations[0]).toMatchObject({ operation: "create-writing-document", revision: 2, previousRevision: 1, requestSha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(sectionAfter.operations).toHaveLength(2);
+    expect(sectionAfter.operations).toEqual([
+      expect.objectContaining({ operation: "create-section", revision: 1, previousRevision: 0, requestSha256: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+      expect.objectContaining({ operation: "create-writing-document", revision: 2, previousRevision: 1, requestSha256: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+    ]);
     expect(document).toMatchObject({ projectId, personalOwnerUserId: null, projectionStatus: "draft", isPrivate: true });
     expect(document.blocks).toEqual([expect.objectContaining({ stableId: `${document.stableId}:draft`, title: "Cold Open", order: 0 })]);
     expect(document.documentOperations).toEqual([expect.objectContaining({ operationType: "create-from-story-board-section", groupId: clientRequestId, reversible: true })]);
@@ -1014,5 +1021,85 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     await expect(registerSpatialReframeResult({ prisma, projectId, jobId: job.jobId, authorizedRoot: spatialVaultRoot })).resolves.toMatchObject({ replayed: false, derivative: { kind: "spatial-reframe-proof", widthPixels: 1280, heightPixels: 720 }, binding: { timelinePlacementId: promoted.placement.id, recipeSha256: job.recipeSha256 } });
     await expect(registerSpatialReframeResult({ prisma, projectId, jobId: job.jobId, authorizedRoot: spatialVaultRoot })).resolves.toMatchObject({ replayed: true });
     await expect(prisma.studioMediaDerivative.count({ where: { workflowJobId: job.jobId } })).resolves.toBe(1);
+  });
+
+  it("operates a durable binder independently from card order and retains archived section writing", async () => {
+    const createRequestId = randomUUID();
+    const createValue = {
+      projectId,
+      boardId,
+      expectedBoardRevision: 5,
+      clientRequestId: createRequestId,
+      title: "Payoff and next question",
+      synopsis: "Resolve the opening promise, then preserve the next investigation.",
+    };
+    const created = await createStoryBoardSection({ prisma, actorUserId, value: createValue });
+    expect(created).toMatchObject({ boardRevision: 6, replayed: false, section: { key: "payoff-and-next-question", revision: 1, sortOrder: expect.any(Number) } });
+    await expect(createStoryBoardSection({ prisma, actorUserId, value: createValue })).resolves.toMatchObject({ boardRevision: 6, replayed: true, section: { id: created.section.id } });
+    await expect(createStoryBoardSection({ prisma, actorUserId, value: { ...createValue, title: "Different section" } })).rejects.toMatchObject({ code: "request-reuse-conflict", currentRevision: 6 });
+
+    const updateRequestId = randomUUID();
+    const updateValue = {
+      projectId,
+      boardId,
+      sectionId: created.section.id,
+      expectedRevision: 1,
+      clientRequestId: updateRequestId,
+      title: "Payoff, then the next question",
+      synopsis: "Land the promise without pretending the investigation is finished.",
+    };
+    await expect(updateStoryBoardSection({ prisma, actorUserId, value: updateValue })).resolves.toMatchObject({ replayed: false, section: { revision: 2, title: updateValue.title } });
+    await expect(updateStoryBoardSection({ prisma, actorUserId, value: updateValue })).resolves.toMatchObject({ replayed: true, section: { revision: 2 } });
+    const writing = await openStoryBoardSectionWriting({ prisma, actorUserId, actorEmail, value: { projectId, boardId, sectionKey: created.section.key, expectedRevision: 2, clientRequestId: randomUUID() } });
+    expect(writing).toMatchObject({ replayed: false, section: { revision: 3 }, document: { id: expect.any(String) } });
+
+    const beforeOrder = (await readSourceStoryWorkspace(prisma, projectId)).boards.find((board) => board.id === boardId)!;
+    const orderedSectionIds = [...beforeOrder.sections].reverse().map((section) => section.id);
+    const arrangeRequestId = randomUUID();
+    const arrangeValue = { projectId, boardId, expectedBoardRevision: 6, clientRequestId: arrangeRequestId, orderedSectionIds };
+    await expect(arrangeStoryBoardSections({ prisma, actorUserId, value: arrangeValue })).resolves.toEqual({ revision: 7, replayed: false });
+    await expect(arrangeStoryBoardSections({ prisma, actorUserId, value: arrangeValue })).resolves.toEqual({ revision: 7, replayed: true });
+    await expect(arrangeStoryBoardSections({ prisma, actorUserId, value: { ...arrangeValue, orderedSectionIds: [...orderedSectionIds].reverse() } })).rejects.toMatchObject({ code: "request-reuse-conflict", currentRevision: 7 });
+
+    const boardAfterSectionOrder = (await readSourceStoryWorkspace(prisma, projectId)).boards.find((board) => board.id === boardId)!;
+    await arrangeStoryBoard({
+      prisma,
+      actorUserId,
+      value: {
+        projectId,
+        boardId,
+        expectedRevision: 7,
+        clientRequestId: randomUUID(),
+        placements: boardAfterSectionOrder.placements.map((placement) => ({ cardId: placement.cardId, groupKey: placement.groupKey, laneKey: placement.laneKey })),
+      },
+    });
+    const afterCardArrangement = (await readSourceStoryWorkspace(prisma, projectId)).boards.find((board) => board.id === boardId)!;
+    expect(afterCardArrangement.sections.map((section) => section.id)).toEqual(orderedSectionIds);
+
+    const occupied = afterCardArrangement.sections.find((section) => section.key === "cold-open")!;
+    await expect(archiveStoryBoardSection({
+      prisma,
+      actorUserId,
+      value: { projectId, boardId, sectionId: occupied.id, expectedBoardRevision: 8, expectedSectionRevision: occupied.revision, clientRequestId: randomUUID() },
+    })).rejects.toMatchObject({ code: "section-not-empty" });
+
+    const archiveRequestId = randomUUID();
+    const archiveValue = { projectId, boardId, sectionId: created.section.id, expectedBoardRevision: 8, expectedSectionRevision: 3, clientRequestId: archiveRequestId };
+    await expect(archiveStoryBoardSection({ prisma, actorUserId, value: archiveValue })).resolves.toMatchObject({ boardRevision: 9, sectionRevision: 4, replayed: false });
+    await expect(archiveStoryBoardSection({ prisma, actorUserId, value: archiveValue })).resolves.toMatchObject({ boardRevision: 9, replayed: true });
+    const [archived, retainedDocument, finalBoard] = await Promise.all([
+      prisma.studioStoryBoardSection.findUniqueOrThrow({ where: { id: created.section.id }, include: { operations: { orderBy: { revision: "asc" } } } }),
+      prisma.studioDocument.findUnique({ where: { id: writing.document.id } }),
+      readSourceStoryWorkspace(prisma, projectId),
+    ]);
+    expect(archived).toMatchObject({ archivedAt: expect.any(Date), documentId: writing.document.id, revision: 4 });
+    expect(archived.operations.map(({ operation, revision }) => ({ operation, revision }))).toEqual([
+      { operation: "create-section", revision: 1 },
+      { operation: "update-section", revision: 2 },
+      { operation: "create-writing-document", revision: 3 },
+      { operation: "archive-section", revision: 4 },
+    ]);
+    expect(retainedDocument).not.toBeNull();
+    expect(finalBoard.boards.find((board) => board.id === boardId)?.sections.some((section) => section.id === created.section.id)).toBe(false);
   });
 });

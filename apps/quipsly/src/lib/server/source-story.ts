@@ -17,18 +17,25 @@ import {
   SOURCE_STORY_SCHEMA_VERSION,
   SourceStoryContractError,
   normalizeArrangeStoryBoardInput,
+  normalizeArrangeStoryBoardSectionsInput,
+  normalizeArchiveStoryBoardSectionInput,
+  normalizeCreateStoryBoardSectionInput,
   normalizeCreateMediaSourceSetInput,
   normalizeCreateSourceStoryCardInput,
   normalizeOpenStoryBoardSectionWritingInput,
   normalizeRebindSourceStoryCardInput,
   normalizePromoteSourceStoryCardInput,
   normalizeStoryReframeRecipe,
+  normalizeUpdateStoryBoardSectionInput,
   normalizeWithdrawSourceStoryTimelinePlacementInput,
   stableSourceStoryJson,
   storyCardPurposes,
   storyCardStatuses,
   type CreateSourceStoryCardInput,
   type ArrangeStoryBoardInput,
+  type ArrangeStoryBoardSectionsInput,
+  type ArchiveStoryBoardSectionInput,
+  type CreateStoryBoardSectionInput,
   type CreateMediaSourceSetInput,
   type OpenStoryBoardSectionWritingInput,
   type RebindSourceStoryCardInput,
@@ -36,6 +43,7 @@ import {
   type WithdrawSourceStoryTimelinePlacementInput,
   type StoryCardPurpose,
   type StoryCardStatus,
+  type UpdateStoryBoardSectionInput,
 } from "@/lib/source-story-contract";
 
 type Database = PrismaClient | Prisma.TransactionClient;
@@ -353,28 +361,98 @@ function storyBoardSectionTitle(key: string) {
   return key.replaceAll("-", " ").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function storyBoardSectionSnapshot(input: {
+  id: string;
+  boardId: string;
+  key: string;
+  title: string;
+  synopsis: string;
+  sortOrder: number;
+  documentId: string | null;
+  revision: number;
+  archivedAt: Date | null;
+}) {
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    id: input.id,
+    boardId: input.boardId,
+    key: input.key,
+    title: input.title,
+    synopsis: input.synopsis,
+    sortOrder: input.sortOrder,
+    documentId: input.documentId,
+    revision: input.revision,
+    archivedAt: input.archivedAt?.toISOString() ?? null,
+  };
+}
+
 async function ensureStoryBoardSections(db: Database, input: {
   boardId: string;
   actorUserId: string;
+  clientRequestId: string;
   groupKeys: string[];
 }) {
-  const firstOrder = new Map<string, number>();
-  for (const [index, groupKey] of input.groupKeys.entries()) {
-    if (!firstOrder.has(groupKey)) firstOrder.set(groupKey, index);
-  }
-  for (const [groupKey, sortOrder] of firstOrder) {
-    await db.studioStoryBoardSection.upsert({
-      where: { boardId_key: { boardId: input.boardId, key: groupKey } },
-      update: { archivedAt: null, sortOrder, updatedByUserId: input.actorUserId },
-      create: {
+  const groupKeys = [...new Set(input.groupKeys)];
+  if (!groupKeys.length) return;
+  const existing = await db.studioStoryBoardSection.findMany({
+    where: { boardId: input.boardId },
+    select: { key: true, sortOrder: true, archivedAt: true },
+  });
+  const existingByKey = new Map(existing.map((section) => [section.key, section]));
+  let nextSortOrder = existing.reduce((maximum, section) => Math.max(maximum, section.sortOrder), -1) + 1;
+  for (const groupKey of groupKeys) {
+    const section = existingByKey.get(groupKey);
+    if (section) {
+      if (section.archivedAt) {
+        throw new SourceStoryContractError("section-archived", "That binder section is archived. Choose an active section or restore it deliberately before filing cards there.");
+      }
+      continue;
+    }
+    const sectionId = randomUUID();
+    const title = storyBoardSectionTitle(groupKey);
+    const requestSha256 = sha256(stableSourceStoryJson({
+      schema: SOURCE_STORY_SCHEMA_VERSION,
+      source: "card-placement",
+      boardId: input.boardId,
+      sectionId,
+      key: groupKey,
+      title,
+      sortOrder: nextSortOrder,
+      actorUserId: input.actorUserId,
+    }));
+    await db.studioStoryBoardSection.create({
+      data: {
+        id: sectionId,
         boardId: input.boardId,
         key: groupKey,
-        title: storyBoardSectionTitle(groupKey),
-        sortOrder,
+        title,
+        sortOrder: nextSortOrder,
         createdByUserId: input.actorUserId,
         updatedByUserId: input.actorUserId,
+        operations: {
+          create: {
+            revision: 1,
+            previousRevision: 0,
+            operation: "create-section",
+            actorUserId: input.actorUserId,
+            clientRequestId: input.clientRequestId,
+            requestSha256,
+            snapshotJson: storyBoardSectionSnapshot({
+              id: sectionId,
+              boardId: input.boardId,
+              key: groupKey,
+              title,
+              synopsis: "",
+              sortOrder: nextSortOrder,
+              documentId: null,
+              revision: 1,
+              archivedAt: null,
+            }),
+          },
+        },
       },
     });
+    nextSortOrder += 1;
   }
 }
 
@@ -809,6 +887,7 @@ export async function createSourceStoryCard(input: {
       await ensureStoryBoardSections(tx, {
         boardId: board.id,
         actorUserId,
+        clientRequestId: value.clientRequestId,
         groupKeys: [...board.placements.map((placement) => placement.groupKey), value.groupKey],
       });
       await tx.studioStoryBoardPlacement.create({
@@ -1224,6 +1303,7 @@ export async function arrangeStoryBoard(input: {
     await ensureStoryBoardSections(tx, {
       boardId: board.id,
       actorUserId,
+      clientRequestId: value.clientRequestId,
       groupKeys: value.placements.map((placement) => placement.groupKey),
     });
 
@@ -1285,6 +1365,332 @@ export async function arrangeStoryBoard(input: {
       },
     });
     return { revision: nextRevision, replayed: false };
+  }, { isolationLevel: "Serializable" });
+}
+
+export async function createStoryBoardSection(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  value: CreateStoryBoardSectionInput;
+}) {
+  const value = normalizeCreateStoryBoardSectionInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const requestSha256 = sha256(stableSourceStoryJson({ ...value, actorUserId }));
+
+  return input.prisma.$transaction(async (tx) => {
+    const replay = await tx.studioStoryBoardOperation.findUnique({
+      where: {
+        boardId_actorUserId_clientRequestId: {
+          boardId: value.boardId,
+          actorUserId,
+          clientRequestId: value.clientRequestId,
+        },
+      },
+      include: { board: { select: { projectId: true } } },
+    });
+    if (replay) {
+      if (replay.board.projectId !== value.projectId) {
+        throw new SourceStoryContractError("board-project-mismatch", "The board is unavailable in this Nest.");
+      }
+      if (storedRequestSha256(replay.snapshotJson) !== requestSha256) {
+        throw new SourceStoryConflictError("request-reuse-conflict", "That request identity already created a different section.", replay.revision);
+      }
+      const snapshot = jsonRecord(replay.snapshotJson);
+      const sectionId = typeof snapshot?.sectionId === "string" ? snapshot.sectionId : null;
+      const section = sectionId ? await tx.studioStoryBoardSection.findUnique({ where: { id: sectionId } }) : null;
+      if (!section) throw new SourceStoryConflictError("section-receipt-missing", "The saved section receipt needs repair.", replay.revision);
+      return { boardRevision: replay.revision, section, replayed: true };
+    }
+
+    const board = await tx.studioStoryBoard.findFirst({
+      where: { id: value.boardId, projectId: value.projectId, archivedAt: null },
+      include: {
+        placements: { orderBy: { sortOrder: "asc" } },
+        sections: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }] },
+      },
+    });
+    if (!board) throw new SourceStoryContractError("board-project-mismatch", "The board is unavailable in this Nest.");
+    if (board.revision !== value.expectedBoardRevision) {
+      throw new SourceStoryConflictError("stale-board", "The board changed on another surface.", board.revision);
+    }
+    if (board.sections.some((section) => section.key === value.key)) {
+      throw new SourceStoryConflictError("section-key-conflict", "That section name already has a durable identity on this board.", board.revision);
+    }
+
+    const sectionId = randomUUID();
+    const sortOrder = board.sections.reduce((maximum, section) => Math.max(maximum, section.sortOrder), -1) + 1;
+    const section = await tx.studioStoryBoardSection.create({
+      data: {
+        id: sectionId,
+        boardId: board.id,
+        key: value.key,
+        title: value.title,
+        synopsis: value.synopsis,
+        sortOrder,
+        revision: 1,
+        createdByUserId: actorUserId,
+        updatedByUserId: actorUserId,
+        operations: {
+          create: {
+            revision: 1,
+            previousRevision: 0,
+            operation: "create-section",
+            actorUserId,
+            clientRequestId: value.clientRequestId,
+            requestSha256,
+            snapshotJson: storyBoardSectionSnapshot({
+              id: sectionId,
+              boardId: board.id,
+              key: value.key,
+              title: value.title,
+              synopsis: value.synopsis,
+              sortOrder,
+              documentId: null,
+              revision: 1,
+              archivedAt: null,
+            }),
+          },
+        },
+      },
+    });
+    const boardRevision = board.revision + 1;
+    const updated = await tx.studioStoryBoard.updateMany({
+      where: { id: board.id, revision: board.revision },
+      data: { revision: boardRevision, updatedByUserId: actorUserId },
+    });
+    if (updated.count !== 1) throw new SourceStoryConflictError("stale-board", "The board changed on another surface.");
+    await tx.studioStoryBoardOperation.create({
+      data: {
+        boardId: board.id,
+        revision: boardRevision,
+        previousRevision: board.revision,
+        operation: "create-section",
+        actorUserId,
+        clientRequestId: value.clientRequestId,
+        snapshotJson: {
+          ...boardSnapshot({ ...board, revision: boardRevision }),
+          requestSha256,
+          sectionId,
+          sectionOrder: [...board.sections.filter((candidate) => !candidate.archivedAt).map((candidate) => candidate.id), sectionId],
+        },
+      },
+    });
+    return { boardRevision, section, replayed: false };
+  }, { isolationLevel: "Serializable" });
+}
+
+export async function updateStoryBoardSection(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  value: UpdateStoryBoardSectionInput;
+}) {
+  const value = normalizeUpdateStoryBoardSectionInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const requestSha256 = sha256(stableSourceStoryJson({ ...value, actorUserId }));
+
+  return input.prisma.$transaction(async (tx) => {
+    const replay = await tx.studioStoryBoardSectionOperation.findUnique({
+      where: {
+        sectionId_actorUserId_clientRequestId: {
+          sectionId: value.sectionId,
+          actorUserId,
+          clientRequestId: value.clientRequestId,
+        },
+      },
+      include: { section: { include: { board: { select: { projectId: true } } } } },
+    });
+    if (replay) {
+      if (replay.section.boardId !== value.boardId || replay.section.board.projectId !== value.projectId) {
+        throw new SourceStoryContractError("section-project-mismatch", "That story section is unavailable in this Nest.");
+      }
+      if (replay.requestSha256 !== requestSha256) {
+        throw new SourceStoryConflictError("request-reuse-conflict", "That request identity already revised this section differently.", replay.revision);
+      }
+      return { section: replay.section, replayed: true };
+    }
+
+    const section = await tx.studioStoryBoardSection.findFirst({
+      where: {
+        id: value.sectionId,
+        boardId: value.boardId,
+        archivedAt: null,
+        board: { projectId: value.projectId, archivedAt: null },
+      },
+    });
+    if (!section) throw new SourceStoryContractError("section-project-mismatch", "That story section is unavailable in this Nest.");
+    if (section.revision !== value.expectedRevision) {
+      throw new SourceStoryConflictError("stale-section", "This story section changed on another surface.", section.revision);
+    }
+    const nextRevision = section.revision + 1;
+    const updated = await tx.studioStoryBoardSection.updateMany({
+      where: { id: section.id, revision: section.revision, archivedAt: null },
+      data: {
+        title: value.title,
+        synopsis: value.synopsis,
+        revision: nextRevision,
+        updatedByUserId: actorUserId,
+      },
+    });
+    if (updated.count !== 1) throw new SourceStoryConflictError("stale-section", "This story section changed on another surface.");
+    const snapshot = storyBoardSectionSnapshot({ ...section, title: value.title, synopsis: value.synopsis, revision: nextRevision });
+    await tx.studioStoryBoardSectionOperation.create({
+      data: {
+        sectionId: section.id,
+        revision: nextRevision,
+        previousRevision: section.revision,
+        operation: "update-section",
+        actorUserId,
+        clientRequestId: value.clientRequestId,
+        requestSha256,
+        snapshotJson: snapshot,
+      },
+    });
+    return { section: { ...section, title: value.title, synopsis: value.synopsis, revision: nextRevision }, replayed: false };
+  }, { isolationLevel: "Serializable" });
+}
+
+export async function arrangeStoryBoardSections(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  value: ArrangeStoryBoardSectionsInput;
+}) {
+  const value = normalizeArrangeStoryBoardSectionsInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const requestSha256 = sha256(stableSourceStoryJson({ ...value, actorUserId }));
+
+  return input.prisma.$transaction(async (tx) => {
+    const replay = await tx.studioStoryBoardOperation.findUnique({
+      where: { boardId_actorUserId_clientRequestId: { boardId: value.boardId, actorUserId, clientRequestId: value.clientRequestId } },
+      include: { board: { select: { projectId: true } } },
+    });
+    if (replay) {
+      if (replay.board.projectId !== value.projectId) throw new SourceStoryContractError("board-project-mismatch", "The board is unavailable in this Nest.");
+      if (storedRequestSha256(replay.snapshotJson) !== requestSha256) {
+        throw new SourceStoryConflictError("request-reuse-conflict", "That request identity already saved a different section order.", replay.revision);
+      }
+      return { revision: replay.revision, replayed: true };
+    }
+    const board = await tx.studioStoryBoard.findFirst({
+      where: { id: value.boardId, projectId: value.projectId, archivedAt: null },
+      include: {
+        sections: { where: { archivedAt: null }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] },
+        placements: { orderBy: { sortOrder: "asc" } },
+      },
+    });
+    if (!board) throw new SourceStoryContractError("board-project-mismatch", "The board is unavailable in this Nest.");
+    if (board.revision !== value.expectedBoardRevision) throw new SourceStoryConflictError("stale-board", "The board changed on another surface.", board.revision);
+    const currentIds = board.sections.map((section) => section.id).sort();
+    if (stableSourceStoryJson([...value.orderedSectionIds].sort()) !== stableSourceStoryJson(currentIds)) {
+      throw new SourceStoryConflictError("section-order-set-mismatch", "The requested order does not contain the binder's exact active section set.", board.revision);
+    }
+    for (const [sortOrder, sectionId] of value.orderedSectionIds.entries()) {
+      await tx.studioStoryBoardSection.updateMany({ where: { id: sectionId, boardId: board.id, archivedAt: null }, data: { sortOrder, updatedByUserId: actorUserId } });
+    }
+    const nextRevision = board.revision + 1;
+    const updated = await tx.studioStoryBoard.updateMany({
+      where: { id: board.id, revision: board.revision },
+      data: { revision: nextRevision, updatedByUserId: actorUserId },
+    });
+    if (updated.count !== 1) throw new SourceStoryConflictError("stale-board", "The board changed on another surface.");
+    await tx.studioStoryBoardOperation.create({
+      data: {
+        boardId: board.id,
+        revision: nextRevision,
+        previousRevision: board.revision,
+        operation: "arrange-sections",
+        actorUserId,
+        clientRequestId: value.clientRequestId,
+        snapshotJson: {
+          ...boardSnapshot({ ...board, revision: nextRevision }),
+          requestSha256,
+          sectionOrder: value.orderedSectionIds,
+          previousSectionOrder: board.sections.map((section) => section.id),
+        },
+      },
+    });
+    return { revision: nextRevision, replayed: false };
+  }, { isolationLevel: "Serializable" });
+}
+
+export async function archiveStoryBoardSection(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  value: ArchiveStoryBoardSectionInput;
+}) {
+  const value = normalizeArchiveStoryBoardSectionInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const requestSha256 = sha256(stableSourceStoryJson({ ...value, actorUserId }));
+
+  return input.prisma.$transaction(async (tx) => {
+    const replay = await tx.studioStoryBoardOperation.findUnique({
+      where: { boardId_actorUserId_clientRequestId: { boardId: value.boardId, actorUserId, clientRequestId: value.clientRequestId } },
+      include: { board: { select: { projectId: true } } },
+    });
+    if (replay) {
+      if (replay.board.projectId !== value.projectId) throw new SourceStoryContractError("board-project-mismatch", "The board is unavailable in this Nest.");
+      if (storedRequestSha256(replay.snapshotJson) !== requestSha256) {
+        throw new SourceStoryConflictError("request-reuse-conflict", "That request identity already archived a different section.", replay.revision);
+      }
+      return { boardRevision: replay.revision, replayed: true };
+    }
+    const board = await tx.studioStoryBoard.findFirst({
+      where: { id: value.boardId, projectId: value.projectId, archivedAt: null },
+      include: {
+        sections: { where: { archivedAt: null }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] },
+        placements: { orderBy: { sortOrder: "asc" } },
+      },
+    });
+    if (!board) throw new SourceStoryContractError("board-project-mismatch", "The board is unavailable in this Nest.");
+    if (board.revision !== value.expectedBoardRevision) throw new SourceStoryConflictError("stale-board", "The board changed on another surface.", board.revision);
+    const section = board.sections.find((candidate) => candidate.id === value.sectionId);
+    if (!section) throw new SourceStoryContractError("section-project-mismatch", "That story section is unavailable in this Nest.");
+    if (section.revision !== value.expectedSectionRevision) throw new SourceStoryConflictError("stale-section", "This story section changed on another surface.", section.revision);
+    if (board.placements.some((placement) => placement.groupKey === section.key)) {
+      throw new SourceStoryContractError("section-not-empty", "Move or unfile every card before archiving this section.");
+    }
+    const archivedAt = new Date();
+    const sectionRevision = section.revision + 1;
+    const sectionUpdated = await tx.studioStoryBoardSection.updateMany({
+      where: { id: section.id, revision: section.revision, archivedAt: null },
+      data: { archivedAt, revision: sectionRevision, updatedByUserId: actorUserId },
+    });
+    if (sectionUpdated.count !== 1) throw new SourceStoryConflictError("stale-section", "This story section changed on another surface.");
+    await tx.studioStoryBoardSectionOperation.create({
+      data: {
+        sectionId: section.id,
+        revision: sectionRevision,
+        previousRevision: section.revision,
+        operation: "archive-section",
+        actorUserId,
+        clientRequestId: value.clientRequestId,
+        requestSha256,
+        snapshotJson: storyBoardSectionSnapshot({ ...section, revision: sectionRevision, archivedAt }),
+      },
+    });
+    const boardRevision = board.revision + 1;
+    const boardUpdated = await tx.studioStoryBoard.updateMany({
+      where: { id: board.id, revision: board.revision },
+      data: { revision: boardRevision, updatedByUserId: actorUserId },
+    });
+    if (boardUpdated.count !== 1) throw new SourceStoryConflictError("stale-board", "The board changed on another surface.");
+    await tx.studioStoryBoardOperation.create({
+      data: {
+        boardId: board.id,
+        revision: boardRevision,
+        previousRevision: board.revision,
+        operation: "archive-section",
+        actorUserId,
+        clientRequestId: value.clientRequestId,
+        snapshotJson: {
+          ...boardSnapshot({ ...board, revision: boardRevision }),
+          requestSha256,
+          sectionId: section.id,
+          sectionOrder: board.sections.filter((candidate) => candidate.id !== section.id).map((candidate) => candidate.id),
+          archivedSection: storyBoardSectionSnapshot({ ...section, revision: sectionRevision, archivedAt }),
+        },
+      },
+    });
+    return { boardRevision, sectionRevision, replayed: false };
   }, { isolationLevel: "Serializable" });
 }
 

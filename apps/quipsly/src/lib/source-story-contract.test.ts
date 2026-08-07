@@ -1,10 +1,14 @@
 import {
   SourceStoryContractError,
+  normalizeArchiveStoryBoardSectionInput,
   normalizeArrangeStoryBoardInput,
+  normalizeArrangeStoryBoardSectionsInput,
+  normalizeCreateStoryBoardSectionInput,
   normalizeOpenStoryBoardSectionWritingInput,
   normalizeCreateMediaSourceSetInput,
   normalizeCreateSourceStoryCardInput,
   normalizeRebindSourceStoryCardInput,
+  normalizeUpdateStoryBoardSectionInput,
   stableSourceStoryJson,
 } from "./source-story-contract";
 
@@ -171,6 +175,54 @@ describe("source-story contract", () => {
       expectedRevision: 0,
       clientRequestId: "7afab8e1-30a7-49f0-b39c-b33ccdaf3273",
     })).toThrow("current section revision");
+  });
+
+  it("normalizes explicit binder-section creation, revision, ordering, and archive authority", () => {
+    const clientRequestId = "7afab8e1-30a7-49f0-b39c-b33ccdaf3273";
+    expect(normalizeCreateStoryBoardSectionInput({
+      projectId: "project_1",
+      boardId: "board_1",
+      expectedBoardRevision: 8,
+      clientRequestId,
+      title: "  Act Two / The Turn  ",
+      synopsis: "  Evidence changes the working theory.  ",
+    })).toMatchObject({
+      expectedBoardRevision: 8,
+      key: "act-two-the-turn",
+      title: "Act Two / The Turn",
+      synopsis: "Evidence changes the working theory.",
+    });
+    expect(normalizeUpdateStoryBoardSectionInput({
+      projectId: "project_1",
+      boardId: "board_1",
+      sectionId: "section_1",
+      expectedRevision: 3,
+      clientRequestId,
+      title: "The Turn",
+      synopsis: "Keep the contradiction visible.",
+    })).toMatchObject({ sectionId: "section_1", expectedRevision: 3, title: "The Turn" });
+    expect(normalizeArrangeStoryBoardSectionsInput({
+      projectId: "project_1",
+      boardId: "board_1",
+      expectedBoardRevision: 9,
+      clientRequestId,
+      orderedSectionIds: ["section_2", "section_1"],
+    })).toMatchObject({ expectedBoardRevision: 9, orderedSectionIds: ["section_2", "section_1"] });
+    expect(normalizeArchiveStoryBoardSectionInput({
+      projectId: "project_1",
+      boardId: "board_1",
+      sectionId: "section_1",
+      expectedBoardRevision: 10,
+      expectedSectionRevision: 4,
+      clientRequestId,
+    })).toMatchObject({ expectedBoardRevision: 10, expectedSectionRevision: 4 });
+    expect(() => normalizeArrangeStoryBoardSectionsInput({
+      projectId: "project_1",
+      boardId: "board_1",
+      expectedBoardRevision: 9,
+      clientRequestId,
+      orderedSectionIds: ["section_1", "section_1"],
+    })).toThrow("only once");
   });
 
   it("rejects reversed, tiny, non-finite, and out-of-bound source ranges", () => {

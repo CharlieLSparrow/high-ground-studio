@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  Archive,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
@@ -15,11 +16,13 @@ import {
   Film,
   FolderOpen,
   LayoutGrid,
+  ListPlus,
   Loader2,
   Link2,
   NotebookPen,
   Play,
   Plus,
+  Pencil,
   Rotate3d,
   Video,
   Save,
@@ -380,6 +383,8 @@ export function SourceStoryClient({
   const [boardTitle, setBoardTitle] = useState("Main story");
   const [boardDescription, setBoardDescription] = useState("");
   const [boardEpisodeId, setBoardEpisodeId] = useState("");
+  const [sectionTitle, setSectionTitle] = useState("");
+  const [sectionSynopsis, setSectionSynopsis] = useState("");
   const [boardView, setBoardView] = useState<"cards" | "outline">("cards");
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -764,6 +769,63 @@ export function SourceStoryClient({
     }, successMessage);
   }
 
+  async function createSection() {
+    if (!selectedBoard || !sectionTitle.trim()) return;
+    const next = await mutate({
+      action: "create-board-section",
+      boardId: selectedBoard.id,
+      expectedBoardRevision: selectedBoard.revision,
+      clientRequestId: crypto.randomUUID(),
+      title: sectionTitle,
+      synopsis: sectionSynopsis,
+    }, `Added ${sectionTitle.trim()} to the shared binder without changing any source media.`);
+    if (next) {
+      setSectionTitle("");
+      setSectionSynopsis("");
+    }
+  }
+
+  async function updateSection(section: SourceStoryBoard["sections"][number], next: { title: string; synopsis: string }) {
+    if (!selectedBoard) return;
+    await mutate({
+      action: "update-board-section",
+      boardId: selectedBoard.id,
+      sectionId: section.id,
+      expectedRevision: section.revision,
+      clientRequestId: crypto.randomUUID(),
+      title: next.title,
+      synopsis: next.synopsis,
+    }, `Updated ${next.title.trim()} while preserving its cards, writing, and durable binder identity.`);
+  }
+
+  async function moveSection(sectionId: string, direction: -1 | 1) {
+    if (!selectedBoard) return;
+    const orderedSectionIds = boardGroups.map((group) => group.section.id);
+    const index = orderedSectionIds.indexOf(sectionId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= orderedSectionIds.length) return;
+    [orderedSectionIds[index], orderedSectionIds[target]] = [orderedSectionIds[target], orderedSectionIds[index]];
+    await mutate({
+      action: "arrange-board-sections",
+      boardId: selectedBoard.id,
+      expectedBoardRevision: selectedBoard.revision,
+      clientRequestId: crypto.randomUUID(),
+      orderedSectionIds,
+    }, "Saved the shared binder order. Card order inside every section stayed intact.");
+  }
+
+  async function archiveSection(section: SourceStoryBoard["sections"][number]) {
+    if (!selectedBoard) return;
+    await mutate({
+      action: "archive-board-section",
+      boardId: selectedBoard.id,
+      sectionId: section.id,
+      expectedBoardRevision: selectedBoard.revision,
+      expectedSectionRevision: section.revision,
+      clientRequestId: crypto.randomUUID(),
+    }, `Archived ${section.title}. Its writing, receipts, and history remain retained.`);
+  }
+
   async function changeCardPlacement(cardId: string, next: { groupKey: string; laneKey: string }) {
     if (!selectedBoard) return;
     const placements = selectedBoard.placements.map((placement) => placement.cardId === cardId
@@ -972,10 +1034,11 @@ export function SourceStoryClient({
             <section className="rounded-3xl border border-[#ddccb0] bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">Shared arrangement · r{selectedBoard.revision}</p><h2 className="font-serif text-xl font-black">{selectedBoard.placements.length} placed card{selectedBoard.placements.length === 1 ? "" : "s"} · {boardGroups.length} section{boardGroups.length === 1 ? "" : "s"}</h2></div><div className="flex rounded-xl border border-[#d9c7a5] bg-[#fffaf0] p-1" aria-label="Board view"><button type="button" aria-pressed={boardView === "cards"} onClick={() => setBoardView("cards")} className={`min-h-11 rounded-lg px-3 text-[10px] font-black uppercase tracking-wide ${boardView === "cards" ? "bg-[#3e2f21] text-white" : "text-[#76522c]"}`}>Cards</button><button type="button" aria-pressed={boardView === "outline"} onClick={() => setBoardView("outline")} className={`min-h-11 rounded-lg px-3 text-[10px] font-black uppercase tracking-wide ${boardView === "outline" ? "bg-[#3e2f21] text-white" : "text-[#76522c]"}`}>Outline</button></div></div>
               <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Sections and lanes belong to this board placement. Moving or unfiling a card never changes its writing, exact source range, use on another board, or Episode placement.</p>
+              {canWrite ? <details className="mt-3 rounded-2xl border border-dashed border-[#cdb993] bg-[#fffaf0] p-3"><summary className="cursor-pointer min-h-11 py-3 text-xs font-black uppercase tracking-wide text-[#76522c]"><ListPlus size={15} className="mr-1 inline" aria-hidden="true" />Add an empty section or story beat</summary><div className="grid gap-3"><label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Section title<input value={sectionTitle} onChange={(event) => setSectionTitle(event.target.value)} maxLength={200} placeholder="Cold open, discovery, payoff…" className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-sm font-bold" /></label><label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">What this section needs to do<textarea value={sectionSynopsis} onChange={(event) => setSectionSynopsis(event.target.value)} maxLength={10000} rows={3} placeholder="A concise editorial brief that stays beside the cards and writing." className="mt-1 w-full rounded-xl border border-[#d9c7a5] bg-white p-3 text-sm font-semibold leading-6" /></label><button type="button" disabled={pending || !sectionTitle.trim()} onClick={() => void createSection()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#3e2f21] px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"><Plus size={15} aria-hidden="true" />Add durable section</button></div></details> : null}
               <div className="mt-4 space-y-4">
-                {boardView === "outline" ? boardGroups.map((group) => <section key={group.groupKey} className="rounded-2xl border border-[#d9c7a5] bg-[#fffaf0] p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-serif text-lg font-black">{group.section.title}</h3><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{group.placements.length} card{group.placements.length === 1 ? "" : "s"} · {formatClock(group.placements.reduce((total, placement) => total + Math.max(0, (placement.card.sourceRange?.endSeconds ?? 0) - (placement.card.sourceRange?.startSeconds ?? 0)), 0))}</p></div>{canWrite ? <SectionWritingControl projectSlug={project.slug} boardId={selectedBoard.id} section={group.section} pending={pending} onCreate={() => openSectionWriting(group.section)} /> : null}</div><ol className="mt-2 space-y-2">{group.placements.map((placement, groupIndex) => { const index = selectedBoard.placements.findIndex((candidate) => candidate.id === placement.id); return <li key={placement.id} className="rounded-xl border border-[#e2d2b6] bg-white p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">{index + 1}. {boardGroupLabel(placement.laneKey)} · {placement.card.purpose.replaceAll("-", " ")}</p><p className="mt-1 font-black">{placement.card.title}</p>{placement.card.synopsis ? <p className="mt-1 text-xs font-semibold leading-5 text-[#715f48]">{placement.card.synopsis}</p> : null}</div>{canWrite ? <div className="flex shrink-0 gap-1"><button type="button" disabled={pending || groupIndex === 0} onClick={() => void moveCard(placement.cardId, -1)} aria-label={`Move ${placement.card.title} earlier in ${group.section.title}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button><button type="button" disabled={pending || groupIndex === group.placements.length - 1} onClick={() => void moveCard(placement.cardId, 1)} aria-label={`Move ${placement.card.title} later in ${group.section.title}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button></div> : null}</div></li>; })}</ol></section>) : boardGroups.map((group) => (
+                {boardView === "outline" ? boardGroups.map((group, sectionIndex) => <section key={group.groupKey} className="rounded-2xl border border-[#d9c7a5] bg-[#fffaf0] p-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-serif text-lg font-black">{group.section.title}</h3><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{group.placements.length} card{group.placements.length === 1 ? "" : "s"} · {formatClock(group.placements.reduce((total, placement) => total + Math.max(0, (placement.card.sourceRange?.endSeconds ?? 0) - (placement.card.sourceRange?.startSeconds ?? 0)), 0))}</p>{group.section.synopsis ? <p className="mt-2 max-w-xl text-xs font-semibold leading-5 text-[#715f48]">{group.section.synopsis}</p> : null}</div>{canWrite ? <SectionBinderControls projectSlug={project.slug} boardId={selectedBoard.id} section={group.section} sectionIndex={sectionIndex} sectionCount={boardGroups.length} cardCount={group.placements.length} pending={pending} onOpenWriting={() => openSectionWriting(group.section)} onMove={(direction) => moveSection(group.section.id, direction)} onUpdate={(next) => updateSection(group.section, next)} onArchive={() => archiveSection(group.section)} /> : null}</div><ol className="mt-2 space-y-2">{group.placements.map((placement, groupIndex) => { const index = selectedBoard.placements.findIndex((candidate) => candidate.id === placement.id); return <li key={placement.id} className="rounded-xl border border-[#e2d2b6] bg-white p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">{index + 1}. {boardGroupLabel(placement.laneKey)} · {placement.card.purpose.replaceAll("-", " ")}</p><p className="mt-1 font-black">{placement.card.title}</p>{placement.card.synopsis ? <p className="mt-1 text-xs font-semibold leading-5 text-[#715f48]">{placement.card.synopsis}</p> : null}</div>{canWrite ? <div className="flex shrink-0 gap-1"><button type="button" disabled={pending || groupIndex === 0} onClick={() => void moveCard(placement.cardId, -1)} aria-label={`Move ${placement.card.title} earlier in ${group.section.title}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button><button type="button" disabled={pending || groupIndex === group.placements.length - 1} onClick={() => void moveCard(placement.cardId, 1)} aria-label={`Move ${placement.card.title} later in ${group.section.title}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button></div> : null}</div></li>; })}</ol></section>) : boardGroups.map((group, sectionIndex) => (
                   <section key={group.groupKey} className="rounded-2xl border border-[#d9c7a5] bg-[#fffdf8] p-3" aria-labelledby={`story-section-${group.groupKey}`}>
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eadfc9] pb-2"><div><h3 id={`story-section-${group.groupKey}`} className="font-serif text-lg font-black">{group.section.title}</h3><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{group.placements.length} card{group.placements.length === 1 ? "" : "s"}</p></div>{canWrite ? <SectionWritingControl projectSlug={project.slug} boardId={selectedBoard.id} section={group.section} pending={pending} onCreate={() => openSectionWriting(group.section)} /> : null}</div>
+                    <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#eadfc9] pb-2"><div><h3 id={`story-section-${group.groupKey}`} className="font-serif text-lg font-black">{group.section.title}</h3><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{group.placements.length} card{group.placements.length === 1 ? "" : "s"}</p>{group.section.synopsis ? <p className="mt-2 max-w-xl text-xs font-semibold leading-5 text-[#715f48]">{group.section.synopsis}</p> : null}</div>{canWrite ? <SectionBinderControls projectSlug={project.slug} boardId={selectedBoard.id} section={group.section} sectionIndex={sectionIndex} sectionCount={boardGroups.length} cardCount={group.placements.length} pending={pending} onOpenWriting={() => openSectionWriting(group.section)} onMove={(direction) => moveSection(group.section.id, direction)} onUpdate={(next) => updateSection(group.section, next)} onArchive={() => archiveSection(group.section)} /> : null}</div>
                     <div className="mt-3 space-y-3">{group.placements.map((placement, groupIndex) => { const index = selectedBoard.placements.findIndex((candidate) => candidate.id === placement.id); return (
                       <article key={placement.id} className="rounded-2xl border border-[#e2d2b6] bg-[#fffaf0] p-4">
                         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">{index + 1} · {boardGroupLabel(placement.laneKey)} · {placement.card.purpose.replaceAll("-", " ")}</p><h4 className="mt-1 font-serif text-lg font-black leading-snug">{placement.card.title}</h4></div>{canWrite ? <div className="flex shrink-0 gap-1"><button type="button" disabled={pending || groupIndex === 0} onClick={() => void moveCard(placement.cardId, -1)} aria-label={`Move ${placement.card.title} earlier in ${boardGroupLabel(group.groupKey)}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button><button type="button" disabled={pending || groupIndex === group.placements.length - 1} onClick={() => void moveCard(placement.cardId, 1)} aria-label={`Move ${placement.card.title} later in ${boardGroupLabel(group.groupKey)}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button></div> : null}</div>
@@ -1034,6 +1097,63 @@ function SectionWritingControl({
     <button type="button" disabled={pending} onClick={() => void onCreate()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-[10px] font-black uppercase tracking-wide text-violet-950 disabled:opacity-40">
       <NotebookPen size={15} aria-hidden="true" /> Start section writing
     </button>
+  );
+}
+
+function SectionBinderControls({
+  projectSlug,
+  boardId,
+  section,
+  sectionIndex,
+  sectionCount,
+  cardCount,
+  pending,
+  onOpenWriting,
+  onMove,
+  onUpdate,
+  onArchive,
+}: {
+  projectSlug: string;
+  boardId: string;
+  section: SourceStoryBoard["sections"][number];
+  sectionIndex: number;
+  sectionCount: number;
+  cardCount: number;
+  pending: boolean;
+  onOpenWriting: () => Promise<void>;
+  onMove: (direction: -1 | 1) => Promise<void>;
+  onUpdate: (next: { title: string; synopsis: string }) => Promise<void>;
+  onArchive: () => Promise<void>;
+}) {
+  const [title, setTitle] = useState(section.title);
+  const [synopsis, setSynopsis] = useState(section.synopsis);
+  useEffect(() => {
+    setTitle(section.title);
+    setSynopsis(section.synopsis);
+  }, [section.revision, section.synopsis, section.title]);
+  const dirty = title.trim() !== section.title || synopsis.trim() !== section.synopsis;
+
+  return (
+    <div className="flex max-w-full flex-wrap items-start justify-end gap-2">
+      <SectionWritingControl projectSlug={projectSlug} boardId={boardId} section={section} pending={pending} onCreate={onOpenWriting} />
+      <div className="flex gap-1" aria-label={`Order ${section.title}`}>
+        <button type="button" disabled={pending || sectionIndex === 0} onClick={() => void onMove(-1)} aria-label={`Move ${section.title} earlier in the binder`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button>
+        <button type="button" disabled={pending || sectionIndex === sectionCount - 1} onClick={() => void onMove(1)} aria-label={`Move ${section.title} later in the binder`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button>
+      </div>
+      <details className="w-full rounded-xl border border-[#ded0b7] bg-white p-3 sm:max-w-md">
+        <summary className="cursor-pointer min-h-11 py-3 text-[10px] font-black uppercase tracking-wide text-[#76522c]"><Pencil size={14} className="mr-1 inline" aria-hidden="true" />Section details and lifecycle</summary>
+        <div className="grid gap-3">
+          <p className="text-xs font-semibold leading-5 text-[#765f40]">The durable section owns its editorial brief and writing link. Its stable key stays unchanged so cards and document context never break when the visible title changes.</p>
+          <label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Title<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] px-3 text-sm font-bold" /></label>
+          <label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Editorial brief<textarea value={synopsis} onChange={(event) => setSynopsis(event.target.value)} maxLength={10000} rows={3} className="mt-1 w-full rounded-xl border border-[#d9c7a5] p-3 text-sm font-semibold leading-6" /></label>
+          <button type="button" disabled={pending || !dirty || !title.trim()} onClick={() => void onUpdate({ title, synopsis })} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#3e2f21] px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"><Save size={15} aria-hidden="true" />Save section details</button>
+          <div className="border-t border-[#eadfc9] pt-3">
+            <button type="button" disabled={pending || cardCount > 0} onClick={() => void onArchive()} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-black uppercase tracking-wide text-rose-950 disabled:cursor-not-allowed disabled:opacity-40"><Archive size={15} aria-hidden="true" />Archive empty section</button>
+            <p className="mt-2 text-[10px] font-bold leading-4 text-[#806a4d]">{cardCount > 0 ? `Move or unfile ${cardCount} card${cardCount === 1 ? "" : "s"} first.` : section.document ? "The linked writing document and its revision history remain retained." : "Archiving removes the section from this binder view but retains its operation history."}</p>
+          </div>
+        </div>
+      </details>
+    </div>
   );
 }
 

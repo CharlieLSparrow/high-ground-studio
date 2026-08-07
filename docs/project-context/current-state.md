@@ -2,6 +2,23 @@
 
 Date: 2026-08-07
 
+## Source Story binder checkpoint
+
+- Source Story now has first-class durable binder controls: create an empty
+  section, name and summarize it, move it through the outline, open its shared
+  writing, and archive it after its cards are moved or unfiled.
+- Board revision owns section membership and ordering; section revision owns
+  title, synopsis, writing link, and lifecycle. Card arrangement no longer
+  derives or resets binder order, so filing a new clip cannot silently reorder
+  a writer's outline.
+- Every new section begins with an append-only creation receipt. PostgreSQL
+  independently restricts operation kinds and contiguous revision transitions.
+  Archived sections retain their document and history and cannot be implicitly
+  revived by a card-placement write.
+- Contract and real PostgreSQL integration coverage exercises idempotent replay,
+  request collisions, stale authority, exact-section order, occupied-section
+  archive refusal, writing retention, and card-order independence.
+
 ## Source Story to Episode timeline checkpoint
 
 - A source-backed Story card can now enter the existing canonical Episode
