@@ -143,6 +143,8 @@ test("machine-wide services use machine-wide ownership state", () => {
 });
 
 test("optional Drive dogfood secrets are fetched inside durable children without entering launcher state", () => {
+  assert.match(up, /state_dir}\/google-drive-secret-project/);
+  assert.match(up, /configured_google_drive_secret_project/);
   assert.match(up, /load_google_drive_local_secrets\(\)/);
   assert.match(
     up,

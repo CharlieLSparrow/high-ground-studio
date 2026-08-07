@@ -61,6 +61,8 @@
     "quipsly:cloudrun:logs": "bash scripts/release/quipsly-logs.sh studio",
     "quipsly:cloud:cost-audit": "node scripts/release/quipsly-cloud-cost-audit.mjs",
     "quipsly:cloud:cost-audit:test": "node --test scripts/release/quipsly-cloud-cost-audit.test.mjs scripts/release/quipsly-canonical-deploy-entrypoints.test.mjs scripts/release/quipsly-artifact-cleanup-dry-run.test.mjs scripts/release/quipsly-artifact-cleanup-activate.test.mjs scripts/release/quipsly-cloud-build-source-retention.test.mjs",
+    "quipsly:drive:oauth:install": "node scripts/release/quipsly-google-drive-oauth-install.mjs",
+    "quipsly:drive:oauth:install:test": "node --test scripts/release/quipsly-google-drive-oauth-install.test.mjs",
     "quipsly:xcode-cloud:audit": "node scripts/release/quipsly-xcode-cloud-workflow-audit.mjs",
     "quipsly:xcode-cloud:audit:test": "node --test scripts/release/quipsly-xcode-cloud-workflow-audit.test.mjs",
     "quipsly:capture:ui-test-plan": "node scripts/release/quipsly-capture-ui-test-plan.mjs",

@@ -92,6 +92,7 @@ Derived from source usage:
 - `ENABLE_EPISODES_FUMADOCS`
 - `QUIPSLY_LOCAL_MEDIA_UPLOADS`
 - `QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT`
+- `QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT`
 
 Notes:
 - use the checked-in `.env.example` as the starting point
@@ -140,6 +141,22 @@ pnpm quipsly:local:google-calendar-push-dogfood
   `QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT` escapes the operating-system temporary
   directory. Keep both variables false/unset in shared, preview, and
   production environments.
+- Drive/Picker dogfood keeps all six provider values in Google Secret Manager.
+  After the checked installer succeeds, the non-secret project selection is
+  retained in the machine-wide Quipsly lifecycle directory, so ordinary
+  `pnpm quipsly:local:up` restarts retrieve the values inside the durable Nest
+  and media-worker children without placing secrets in Git, the environment
+  file, lifecycle metadata, or launchd's submitted environment. Use:
+
+```bash
+pnpm quipsly:drive:oauth:install -- \
+  --credentials /absolute/path/to/client_secret.json \
+  --dry-run
+pnpm quipsly:drive:oauth:install -- \
+  --credentials /absolute/path/to/client_secret.json
+pnpm quipsly:local:up
+```
+
 - `apps/web/src/lib/server/sms.ts` reads Twilio env vars if called, but SMS/Twilio is not wired into the active coaching request flow and those vars are not required for local development today
 
 ## Install

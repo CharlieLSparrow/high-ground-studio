@@ -203,6 +203,35 @@ QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT=high-ground-odyssey \
   pnpm quipsly:local:up
 ```
 
+After an administrator creates the Google Auth Platform **Web application**
+client, install the downloaded JSON through the repository boundary:
+
+```bash
+pnpm quipsly:drive:oauth:install -- \
+  --credentials /absolute/path/to/client_secret.json \
+  --dry-run
+
+pnpm quipsly:drive:oauth:install -- \
+  --credentials /absolute/path/to/client_secret.json
+
+pnpm quipsly:local:up
+```
+
+The installer requires the exact production/local JavaScript-origin and
+callback sets before it will write anything. It checks the four existing
+Picker/state/encryption prerequisites, creates or rotates only the client ID
+and client-secret versions, and records only a SHA-256 client fingerprint plus
+the non-secret project selection in the machine-wide lifecycle directory. An
+exact replay adds no new Secret Manager version. The downloaded source file is
+never copied into the repository and is not deleted automatically.
+
+Google's IAM OAuth-client CLI is not a substitute for this client: that API is
+for Google Cloud/IAM scopes. Google user-data OAuth clients such as
+`drive.file` still require explicit creation in Google Auth Platform. See
+[Google OAuth best practices](https://developers.google.com/identity/protocols/oauth2/resources/best-practices)
+and the
+[Google Workspace credential guide](https://developers.google.com/workspace/guides/create-credentials).
+
 The preview deployment requires
 `ENABLE_GOOGLE_DRIVE_OAUTH=1`. The release script fails closed unless all six
 secret versions exist and pass private shape validation.

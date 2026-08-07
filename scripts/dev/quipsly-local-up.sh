@@ -186,7 +186,11 @@ local_worker_source_revision="$(
   quipsly_local_git_source_revision "${repo_root}" "${worker_source_paths[@]}"
 )"
 local_transcript_worker_build_id="${QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID:-${local_worker_source_revision}}"
-local_google_drive_secret_project="${QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT:-}"
+configured_google_drive_secret_project=""
+if [[ -f "${state_dir}/google-drive-secret-project" ]]; then
+  configured_google_drive_secret_project="$(sed -n '1p' "${state_dir}/google-drive-secret-project")"
+fi
+local_google_drive_secret_project="${QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT:-${configured_google_drive_secret_project}}"
 local_gcloud_bin="${QUIPSLY_LOCAL_GCLOUD_BIN:-$(command -v gcloud 2>/dev/null || true)}"
 if [[ -n "${local_google_drive_secret_project}" ]]; then
   if [[ ! "${local_google_drive_secret_project}" =~ ^[a-z][a-z0-9-]{4,62}$ ]]; then

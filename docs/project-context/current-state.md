@@ -2,6 +2,29 @@
 
 Date: 2026-08-07
 
+## Google Drive OAuth installation boundary checkpoint
+
+- Google user-data OAuth client creation remains an explicit Google Auth
+  Platform console action; the similarly named IAM OAuth-client CLI cannot
+  request Drive `drive.file` access and is not used as a false automation
+  substitute.
+- Once the administrator downloads the Web application credential, the new
+  `quipsly:drive:oauth:install` boundary validates both production/local
+  JavaScript origins and callbacks before any cloud write. It refuses installed
+  or iOS client JSON and malformed or oversized credential files.
+- The installer proves the existing Picker/state/encryption prerequisites,
+  creates or rotates only the client ID and client secret in Secret Manager,
+  never prints either value, and retains only a SHA-256 client fingerprint and
+  non-secret project choice locally. Exact replay is idempotent and adds no
+  secret version.
+- The ordinary local launcher now reads that machine-wide non-secret choice and
+  continues loading provider secrets only inside durable child processes. The
+  source JSON is never copied into Git or lifecycle state and is deliberately
+  not deleted for the operator.
+- Installer tests pass 3/3, local lifecycle tests pass 16/16, shell syntax and
+  diff checks pass. Real installation remains pending the downloaded Web
+  application credential; no OAuth client or secret version was invented.
+
 ## Checksum-bound source visual overview checkpoint
 
 - Source Story can now request a durable 4x2 JPEG contact sheet for a video
