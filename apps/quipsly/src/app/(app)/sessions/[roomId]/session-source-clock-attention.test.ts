@@ -9,6 +9,7 @@ const source: SessionSourceClockSource = {
   sourceId: "source-1",
   sourceUrl: "/api/ingest/media/source-1",
   sourceKind: "audio",
+  durationSeconds: 120,
   label: "Homer local track",
 };
 
@@ -44,6 +45,13 @@ describe("buildSessionSourceClockAttention", () => {
     expect(result.counts).toMatchObject({ total: 5, high: 3, review: 2 });
     expect(result.items.find((item) => item.authority === "TRANSCRIPT_ATTEMPT")?.confidenceLabel).toContain("not measured accuracy");
     expect(result.items.find((item) => item.authority === "AUDIBLE_EVENT_DETECTOR")?.confidenceLabel).toContain("not audibility");
+    expect(result.items.find((item) => item.authority === "AUDIBLE_EVENT_DETECTOR")?.decisionTarget).toEqual({
+      kind: "AUDIBLE_EVENT_REVIEW",
+      analysisId: "analysis-1",
+      eventId: "event-1",
+      contextStartSeconds: 2,
+      contextEndSeconds: 4.2,
+    });
     expect(result.items.find((item) => item.authority === "EDIT_PROPOSAL")?.confidenceLabel).toContain("not a probability");
     expect(result.boundaries).toEqual(expect.objectContaining({ authorityScoresAreNotMerged: true, projectionCreatesNoWorkflowState: true }));
   });
@@ -69,6 +77,24 @@ describe("buildSessionSourceClockAttention", () => {
     const input = evidence();
     input.dialogueRepairs[0]!.endSeconds = input.dialogueRepairs[0]!.startSeconds;
     expect(buildSessionSourceClockAttention(input).items.some((item) => item.authority === "DIALOGUE_REPAIR")).toBe(false);
+  });
+
+  it("fails closed when an evidence range exceeds the protected source duration", () => {
+    const input = evidence();
+    input.audibleEvents[0]!.source = { ...source, durationSeconds: 3.1 };
+    expect(buildSessionSourceClockAttention(input).items.some((item) => item.authority === "AUDIBLE_EVENT_DETECTOR")).toBe(false);
+  });
+
+  it("clamps review and decision context to the exact protected source duration", () => {
+    const input = evidence();
+    input.transcript = [];
+    input.dialogueRepairs = [];
+    input.mastery = [];
+    input.edits = [];
+    input.audibleEvents = [{ ...input.audibleEvents[0]!, source: { ...source, durationSeconds: 4 }, startSeconds: 3.7, endSeconds: 3.9 }];
+    const result = buildSessionSourceClockAttention(input);
+    expect(result.moments[0]).toMatchObject({ endSeconds: 4 });
+    expect(result.items[0]?.decisionTarget).toEqual(expect.objectContaining({ contextStartSeconds: 2.7, contextEndSeconds: 4 }));
   });
 
   it("does not route a coaching source into an unrelated episode Audio Studio", () => {

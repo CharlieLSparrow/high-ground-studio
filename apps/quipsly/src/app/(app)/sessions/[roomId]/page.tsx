@@ -492,6 +492,7 @@ export default async function SessionReviewPage({
         sourceId: source.sourceId,
         sourceUrl: source.sourceUrl,
         sourceKind: source.sourceKind,
+        durationSeconds: source.durationSeconds,
         label: source.label,
       })),
     }) : null;

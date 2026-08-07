@@ -14,7 +14,16 @@ export type SessionSourceClockSource = {
   sourceId: string;
   sourceUrl: string;
   sourceKind: "audio" | "video";
+  durationSeconds: number;
   label: string;
+};
+
+export type SessionSourceClockDecisionTarget = {
+  kind: "AUDIBLE_EVENT_REVIEW";
+  analysisId: string;
+  eventId: string;
+  contextStartSeconds: number;
+  contextEndSeconds: number;
 };
 
 type RangeEvidence = {
@@ -78,6 +87,7 @@ export type SessionSourceClockAttentionItem = {
   boundary: string;
   rankReason: string;
   confidenceLabel: string | null;
+  decisionTarget: SessionSourceClockDecisionTarget | null;
   transcriptHref: string | null;
   audioStudioHref: string | null;
   editorHref: string | null;
@@ -150,8 +160,11 @@ const NEARBY_SIGNAL_GAP_SECONDS = 1.5;
 function validRange(item: RangeEvidence) {
   return Number.isFinite(item.startSeconds)
     && Number.isFinite(item.endSeconds)
+    && Number.isFinite(item.source.durationSeconds)
+    && item.source.durationSeconds > 0
     && item.startSeconds >= 0
     && item.endSeconds > item.startSeconds
+    && item.endSeconds <= item.source.durationSeconds + 0.001
     && item.endSeconds <= 86_400;
 }
 
@@ -193,6 +206,7 @@ function itemBase(item: RangeEvidence, authority: SessionSourceClockAuthority) {
     source: item.source,
     startSeconds: item.startSeconds,
     endSeconds: item.endSeconds,
+    decisionTarget: null,
     audioStudioHref: audioStudioHref(item),
   };
 }
@@ -205,7 +219,7 @@ function paddedRange(item: SessionSourceClockAttentionItem) {
   const startSeconds = Math.max(0, item.startSeconds - REVIEW_CONTEXT_SECONDS);
   return {
     startSeconds,
-    endSeconds: Math.min(86_400, item.endSeconds + REVIEW_CONTEXT_SECONDS, startSeconds + MAX_REVIEW_MOMENT_SECONDS),
+    endSeconds: Math.min(item.source.durationSeconds, 86_400, item.endSeconds + REVIEW_CONTEXT_SECONDS, startSeconds + MAX_REVIEW_MOMENT_SECONDS),
   };
 }
 
@@ -304,6 +318,13 @@ export function buildSessionSourceClockAttention(input: SessionSourceClockAttent
       boundary: "The Apple classifier can prioritize listening only. It does not prove audibility and cannot authorize repair, a cut, or mastering.",
       rankReason: severe ? "The candidate may indicate capture integrity risk or still needs a source comparison." : "A detector suggestion remains unresolved by human listening.",
       confidenceLabel: `${Math.round(event.detectorConfidence * 100)}% detector score · not audibility`,
+      decisionTarget: {
+        kind: "AUDIBLE_EVENT_REVIEW",
+        analysisId: event.analysisId,
+        eventId: event.eventId,
+        contextStartSeconds: Math.max(0, event.startSeconds - 1),
+        contextEndSeconds: Math.min(event.source.durationSeconds, event.endSeconds + 1),
+      },
       transcriptHref: null,
       editorHref: event.source.episodeSlug ? editorHref(event) : null,
     });

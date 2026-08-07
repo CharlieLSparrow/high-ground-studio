@@ -32,6 +32,7 @@ type LoadInput = {
     sourceId: string;
     sourceUrl: string;
     sourceKind: "audio" | "video";
+    durationSeconds: number;
     label: string;
   }>;
 };
@@ -50,6 +51,7 @@ function sourceMap(input: LoadInput) {
     sourceId: source.sourceId,
     sourceUrl: source.sourceUrl,
     sourceKind: source.sourceKind,
+    durationSeconds: source.durationSeconds,
     label: source.label,
   } satisfies SessionSourceClockSource]));
 }

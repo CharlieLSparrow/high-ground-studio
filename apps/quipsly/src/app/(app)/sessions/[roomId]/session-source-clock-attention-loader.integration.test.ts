@@ -75,6 +75,7 @@ runLocalDatabaseSmoke("retained Session source-clock attention", () => {
         sourceId,
         sourceUrl: playbackUrl,
         sourceKind: String(recording.contentType || "").startsWith("video/") ? "video" as const : "audio" as const,
+        durationSeconds,
         label: recording.fileName || "Session recording",
       }];
     });

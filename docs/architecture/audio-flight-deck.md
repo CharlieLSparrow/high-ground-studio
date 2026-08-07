@@ -78,6 +78,14 @@ The navigator never exposes the private storage locator. Changing source selecti
 
 The existing shared-clock attention navigator is also rendered in **Recordings**, not only **Transcript**. This makes transcript uncertainty, detector suggestions, repair candidates, mastering observations, and edit proposals discoverable beside source health while preserving their separate authorities.
 
+### Listening decisions in shared context
+
+The shared-clock navigator can now close one mature authority directly: an audible-event detector suggestion. The creator listens once through the clustered protected-source context, while the client records only contiguous source-clock second bins. A detector conclusion remains disabled until the exact server-required one-second pre-roll, event range, and one-second post-roll have all traversed the player.
+
+Saving **audible event confirmed**, **detector false positive**, or **needs source comparison** calls the existing authorized review route. The server reloads the current immutable source and current detector receipt, rejects stale analysis or incomplete playback context, and appends an idempotent review receipt. False-positive and comparison decisions require a note. The Session refreshes from canonical state after the receipt is accepted.
+
+This deliberately does not create a universal “reviewed” button. Transcript verification, dialogue-repair review, mastery approval, and edit proof-watch/listen continue to use their own evidence and authority contracts. A detector receipt authorizes no repair, edit, promotion, or publication, and browser playback tracking is disclosed as support for the person’s explicit conclusion rather than independent proof of audibility.
+
 ## Retained-data finding
 
 The first read-only operation against the retained Capture-to-editor fixture exposed a reader/authority gap instead of hiding it:
@@ -117,7 +125,7 @@ The current slice is covered by:
 ## Next mature slices
 
 1. **Automatic decode coverage for every retention path** — recovery already queues complete decode; native Capture finalization and external-import release must prove the same durable, retry-visible behavior.
-2. **Listening decisions** — attach explicit playback-reviewed dispositions to attention ranges without treating client navigation as proof that someone heard or understood them.
+2. **Listening decisions across remaining authorities** — detector dispositions now work in shared context; transcript verification, repair comparison, mastery judgment, and edit review should become equally calm without erasing their distinct contracts.
 3. **Qualified treatment proposals** — de-click, de-plosive, de-noise, de-reverb, level, and loudness proposals must show the detected problem, selected range, parameters, before/after preview, and reversible decision receipt.
 4. **Transcript evidence depth** — expose vocabulary/keyterm coverage, diarization uncertainty, source-clock alignment, and correction provenance without treating provider confidence as truth.
 5. **Delivery conformance** — connect proof-listened masters to platform-specific loudness, peak, codec, channel, and publication packet checks without changing the immutable source.

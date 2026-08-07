@@ -124,7 +124,11 @@ advantage is making those layers visible on one evidence clock.
 Current proof advanced today: the retained Episode mix now has canonical
 derivative attachments and a synchronized two-lane complete-decode signal view
 with automation ranges, review checkpoints, playhead seeking, and bit-exact
-profile reuse. It does not substitute decorative waveform bars.
+profile reuse. The Session shared-clock queue can also append exact-source
+audible-event detector decisions only after the complete required context has
+traversed protected playback; the server re-verifies immutable source and
+detector identity, and the receipt authorizes no treatment or edit. It does not
+substitute decorative waveform bars or collapse distinct review authorities.
 
 ### 3. Transcript Truth and Terminology Memory
 
