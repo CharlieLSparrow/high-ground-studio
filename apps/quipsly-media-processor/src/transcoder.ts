@@ -33,16 +33,31 @@ export interface CaptureProxyTranscoder {
   inspect?(outputPath: string): Promise<TranscodedProxy>;
 }
 
+export type FfmpegCaptureProxyOptions = {
+  maxDimension?: number;
+  crf?: number;
+  audioBitrate?: string;
+};
+
 export class FfmpegCaptureProxyTranscoder implements CaptureProxyTranscoder {
   private readonly ffmpegPath: string;
   private readonly ffprobePath: string;
+  private readonly maxDimension: number;
+  private readonly crf: number;
+  private readonly audioBitrate: string;
 
   constructor(
     ffmpegPath = process.env.QUIPSLY_FFMPEG_PATH?.trim() || "ffmpeg",
     ffprobePath = process.env.QUIPSLY_FFPROBE_PATH?.trim() || "ffprobe",
+    options: FfmpegCaptureProxyOptions = {},
   ) {
     this.ffmpegPath = ffmpegPath;
     this.ffprobePath = ffprobePath;
+    this.maxDimension = positiveInteger(options.maxDimension, 1920);
+    this.crf = boundedInteger(options.crf, 22, 0, 51);
+    this.audioBitrate = /^\d+k$/.test(options.audioBitrate || "")
+      ? options.audioBitrate as string
+      : "160k";
   }
 
   async transcode(inputPath: string, outputPath: string) {
@@ -59,13 +74,13 @@ export class FfmpegCaptureProxyTranscoder implements CaptureProxyTranscoder {
       "-sn",
       "-dn",
       "-vf",
-      "scale=w='if(gte(iw,ih),min(1920,iw),-2)':h='if(gte(iw,ih),-2,min(1920,ih))':force_divisible_by=2",
+      `scale=w='if(gte(iw,ih),min(${this.maxDimension},iw),-2)':h='if(gte(iw,ih),-2,min(${this.maxDimension},ih))':force_divisible_by=2`,
       "-c:v",
       "libx264",
       "-preset",
       "veryfast",
       "-crf",
-      "22",
+      String(this.crf),
       "-pix_fmt",
       "yuv420p",
       "-profile:v",
@@ -79,7 +94,7 @@ export class FfmpegCaptureProxyTranscoder implements CaptureProxyTranscoder {
       "-c:a",
       "aac",
       "-b:a",
-      "160k",
+      this.audioBitrate,
       "-ar",
       "48000",
       "-movflags",
@@ -93,6 +108,17 @@ export class FfmpegCaptureProxyTranscoder implements CaptureProxyTranscoder {
   async inspect(outputPath: string) {
     return inspectTranscodedProxy(outputPath, this.ffprobePath);
   }
+}
+
+function positiveInteger(value: number | undefined, fallback: number) {
+  return Number.isInteger(value) && Number(value) > 0 ? Number(value) : fallback;
+}
+
+function boundedInteger(value: number | undefined, fallback: number, minimum: number, maximum: number) {
+  const candidate = Number(value);
+  return Number.isInteger(candidate) && candidate >= minimum && candidate <= maximum
+    ? candidate
+    : fallback;
 }
 
 export async function inspectTranscodedProxy(

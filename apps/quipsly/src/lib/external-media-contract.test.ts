@@ -61,4 +61,44 @@ describe("external media contract", () => {
       projectId: "project_01", actorUserId: "user_01", actorEmail: "a@example.test", clientRequestId: crypto.randomUUID(), operation: "attach", verifiedFile: { ...verifiedFile(), checksumMd5: "not-a-checksum" },
     })).toThrow("checksumMd5 is malformed");
   });
+
+  it("retains local execution locators only for the trusted local vault adapter", () => {
+    const local = normalizeAttachVerifiedExternalMediaInput({
+      projectId: "project_01",
+      actorUserId: "user_01",
+      actorEmail: "a@example.test",
+      clientRequestId: crypto.randomUUID(),
+      operation: "attach",
+      verifiedFile: {
+        ...verifiedFile(),
+        provider: "local-file-vault",
+        connectionKey: "local-vault:charlie",
+        externalFileId: "sha256:source_01",
+        localPath: "/private/tmp/quipsly-media-ingest/source_01.mp4",
+      },
+    });
+    expect(local.verifiedFile.localPath).toBe("/private/tmp/quipsly-media-ingest/source_01.mp4");
+    expect(() => normalizeAttachVerifiedExternalMediaInput({
+      projectId: "project_01",
+      actorUserId: "user_01",
+      actorEmail: "a@example.test",
+      clientRequestId: crypto.randomUUID(),
+      operation: "attach",
+      verifiedFile: { ...verifiedFile(), localPath: "/private/tmp/provider-secret.mp4" },
+    })).toThrow("trusted local-file-vault");
+    expect(() => normalizeAttachVerifiedExternalMediaInput({
+      projectId: "project_01",
+      actorUserId: "user_01",
+      actorEmail: "a@example.test",
+      clientRequestId: crypto.randomUUID(),
+      operation: "attach",
+      verifiedFile: {
+        ...verifiedFile(),
+        provider: "local-file-vault",
+        connectionKey: "local-vault:charlie",
+        externalFileId: "sha256:source_01",
+        localPath: "../../source_01.mp4",
+      },
+    })).toThrow("trusted local-file-vault");
+  });
 });

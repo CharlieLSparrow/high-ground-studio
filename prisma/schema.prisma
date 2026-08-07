@@ -893,6 +893,7 @@ model User {
   storyBoardsUpdated                StudioStoryBoard[]                          @relation("StudioStoryBoardUpdatedBy")
   storyBoardPlacementsCreated       StudioStoryBoardPlacement[]                 @relation("StudioStoryBoardPlacementCreatedBy")
   storyBoardOperationsAuthored      StudioStoryBoardOperation[]                 @relation("StudioStoryBoardOperationActor")
+  mediaDerivativesCreated           StudioMediaDerivative[]                     @relation("StudioMediaDerivativeCreatedBy")
 
   membershipsGranted           Membership[]           @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
@@ -3908,6 +3909,7 @@ model StudioProject {
   sourceRanges              StudioSourceRange[]
   storyCards                StudioStoryCard[]
   storyBoards               StudioStoryBoard[]
+  mediaDerivatives          StudioMediaDerivative[]
   documentOperations        StudioDocumentOperation[]
   productionRooms           StudioProductionRoom[]
   outputPackets             StudioOutputPacket[]
@@ -4891,7 +4893,7 @@ model StudioExternalMediaReferenceOperation {
   reference StudioExternalMediaReference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
   actor     User                         @relation("StudioExternalMediaReferenceOperationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
 
-  @@unique([referenceId, revision])
+  @@index([referenceId, revision])
   @@unique([referenceId, actorUserId, clientRequestId])
   @@index([actorUserId, createdAt])
 }
@@ -4927,12 +4929,48 @@ model StudioMediaSourceRevision {
   sourceUnit        StudioSourceUnit?             @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
   createdBy         User                          @relation("StudioMediaSourceRevisionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   ranges            StudioSourceRange[]
+  derivatives       StudioMediaDerivative[]
 
   @@unique([projectId, identitySha256])
   @@unique([externalReferenceId, revisionKey])
   @@index([projectId, sourceState, createdAt])
   @@index([mediaAssetId, createdAt])
   @@index([sourceUnitId])
+}
+
+// A retained derivative is append-only evidence produced from one exact source
+// revision. It is never the original and never replaces the source identity.
+model StudioMediaDerivative {
+  id               String   @id
+  projectId        String
+  sourceRevisionId String
+  workflowJobId    String   @unique
+  kind             String
+  profile          String
+  storageProvider  String
+  locator          String   @db.Text
+  generation       String
+  contentSha256    String
+  sizeBytes        BigInt
+  mimeType         String
+  durationSeconds  Float?
+  widthPixels      Int?
+  heightPixels     Int?
+  framesPerSecond  Float?
+  status           String   @default("ready")
+  verificationJson Json     @default("{}")
+  provenanceJson   Json     @default("{}")
+  createdByUserId  String
+  createdAt        DateTime @default(now())
+
+  project        StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceRevision StudioMediaSourceRevision @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+  workflowJob    StudioWorkflowJob         @relation(fields: [workflowJobId], references: [id], onDelete: Restrict)
+  createdBy      User                      @relation("StudioMediaDerivativeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceRevisionId, kind, profile, generation])
+  @@index([projectId, kind, createdAt])
+  @@index([sourceRevisionId, status, createdAt])
 }
 
 // A stable, immutable selection of one exact source revision. Reframing is a
@@ -5593,6 +5631,7 @@ model StudioWorkflowJob {
   asset          StudioMediaAsset?     @relation(fields: [assetId], references: [id], onDelete: SetNull)
   productionRoom StudioProductionRoom? @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
   outputPacket   StudioOutputPacket?   @relation(fields: [outputPacketId], references: [id], onDelete: SetNull)
+  mediaDerivative StudioMediaDerivative?
 
   @@index([projectId, status, createdAt])
   @@index([assetId, status])

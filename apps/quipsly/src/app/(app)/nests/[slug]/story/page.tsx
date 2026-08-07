@@ -25,7 +25,7 @@ export default async function SourceStoryPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ asset?: string | string[]; board?: string | string[] }>;
+  searchParams: Promise<{ asset?: string | string[]; external?: string | string[]; board?: string | string[] }>;
 }) {
   const [{ slug }, query, session] = await Promise.all([params, searchParams, getQuipslySession()]);
   if (!session?.user.id) redirect(`/login?callbackUrl=${encodeURIComponent(`/nests/${slug}/story`)}`);
@@ -79,8 +79,12 @@ export default async function SourceStoryPage({
       readSourceStoryWorkspace(prisma, project.id),
     ]);
     const requestedAssetId = typeof query.asset === "string" ? query.asset : null;
+    const requestedExternalReferenceId = typeof query.external === "string" ? query.external : null;
+    const selectedExternalReferenceId = workspace.externalSources.some((source) => source.id === requestedExternalReferenceId)
+      ? requestedExternalReferenceId
+      : null;
     const requestedBoardId = typeof query.board === "string" ? query.board : null;
-    const selectedAssetId = assets.some((asset) => asset.id === requestedAssetId)
+    const selectedAssetId = selectedExternalReferenceId ? null : assets.some((asset) => asset.id === requestedAssetId)
       ? requestedAssetId
       : assets[0]?.id ?? null;
     const selectedBoardId = workspace.boards.some((board) => board.id === requestedBoardId)
@@ -100,6 +104,7 @@ export default async function SourceStoryPage({
         episodes={episodes}
         initialWorkspace={workspace}
         initialAssetId={selectedAssetId}
+        initialExternalReferenceId={selectedExternalReferenceId}
         initialBoardId={selectedBoardId}
       />
     );

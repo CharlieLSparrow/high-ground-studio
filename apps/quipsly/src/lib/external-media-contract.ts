@@ -22,6 +22,7 @@ export type VerifiedExternalMediaFile = {
   externalFileId: string;
   sharedDriveId?: string | null;
   resourceKey?: string | null;
+  localPath?: string | null;
   fileName: string;
   mimeType?: string | null;
   sizeBytes?: string | number | bigint | null;
@@ -131,6 +132,16 @@ export function normalizeAttachVerifiedExternalMediaInput(value: AttachVerifiedE
   if (file.capabilityState === "downloadable" && (!file.canDownload || file.accessState !== "available")) {
     throw new ExternalMediaContractError("capability-contradiction", "Downloadable media must have available access and download capability.");
   }
+  const provider = opaqueId(file.provider.toLowerCase(), "provider");
+  const localPath = text(file.localPath, "localPath", 4_096) || null;
+  if (localPath && (
+    provider !== "local-file-vault"
+    || !localPath.startsWith("/")
+    || localPath.includes("\0")
+    || localPath.split("/").includes("..")
+  )) {
+    throw new ExternalMediaContractError("invalid-local-locator", "Only the trusted local-file-vault adapter may retain an absolute local source path.");
+  }
   return {
     schema: EXTERNAL_MEDIA_SCHEMA_VERSION,
     projectId: opaqueId(value.projectId, "projectId"),
@@ -141,11 +152,12 @@ export function normalizeAttachVerifiedExternalMediaInput(value: AttachVerifiedE
     expectedReferenceRevision,
     operation: value.operation,
     verifiedFile: {
-      provider: opaqueId(file.provider.toLowerCase(), "provider"),
+      provider,
       connectionKey: opaqueId(file.connectionKey, "connectionKey"),
       externalFileId: opaqueId(file.externalFileId, "externalFileId"),
       sharedDriveId: file.sharedDriveId ? opaqueId(file.sharedDriveId, "sharedDriveId") : null,
       resourceKey: file.resourceKey ? opaqueId(file.resourceKey, "resourceKey") : null,
+      localPath,
       fileName: text(file.fileName, "fileName", 1_024, true),
       mimeType: text(file.mimeType, "mimeType", 255) || null,
       sizeBytes: byteCount(file.sizeBytes),

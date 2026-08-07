@@ -229,9 +229,12 @@ Ground Odyssey as reference `cmsiwjuvc0000lsxlp616yx6q` with immutable source
 revision `cmsiwjuvl0001lsxltsbf5kxx`. The source is checksum-bound and
 downloadable. A second provider inspection advanced the capability projection
 to revision 2 while correctly reusing the same immutable source revision. No
-original was copied, no source was modified, and the signed-in
-browser rendered it as **Ready for verified proxy/execution** while explicitly
-withholding range marking until a collaboration proxy exists.
+bucket/library original was created and no source was modified. The retained
+local adapter did create a checksum-addressed, read-only APFS execution clone
+under its dedicated worker root so the background worker did not depend on the
+operator's Downloads permission. The signed-in browser rendered the source as
+**Source access verified** while explicitly withholding range marking until a
+collaboration proxy exists.
 
 Focused coverage proves normalized credential-free contracts, attach replay,
 request collision, changed provider revisions, stale refresh rejection,
@@ -273,3 +276,66 @@ key, the Google Cloud project number used as Picker app ID, and four protected
 server secrets (`GOOGLE_DRIVE_OAUTH_CLIENT_ID`, client secret, state secret, and
 token encryption key). Until those exist, the UI names the missing setup and
 does not pretend Drive browsing works.
+
+## Exact-revision collaboration proxy and external story cards
+
+The local-vault execution slice now crosses the complete source-to-story
+boundary rather than stopping at provider metadata:
+
+- one deterministic `external-source-proxy` workflow job freezes project,
+  external reference, exact source revision, revision/checksum/byte identity,
+  target profile, actor, and request evidence;
+- the persistent Mac worker re-resolves that identity from PostgreSQL, hashes
+  the source immediately before and after FFmpeg, writes through a private
+  partial file plus atomic rename, and retains a verified
+  `StudioMediaDerivative` receipt;
+- the collaboration profile is `collaboration-efficient-960w-h264-aac-v1`
+  (H.264, AAC, fast-start, maximum dimension 960, CRF 30, 80 kbps audio). It is
+  explicitly a browsing derivative; render/export still resolves the original;
+- a newer ready profile marks older ready proxies `superseded` without deleting
+  their immutable derivative rows or files;
+- an authenticated, project-authorized, local-development-only media route
+  serves the derivative with HEAD, ordinary GET, suffix ranges, and bounded byte
+  ranges. It resolves the real path under the configured worker root and never
+  exposes that path to the browser projection;
+- a Story Card created while viewing an external proxy cites the original
+  `StudioMediaSourceRevision` and immutable source-clock range—not the proxy
+  bytes—so proxy replacement cannot move the select;
+- Google Drive references fail honestly at `provider-executor-unavailable`
+  until the approved Drive executor configuration is active. No original is
+  downloaded merely because it was attached or browsed.
+
+The retained `Ted Lasso Be Curious.mp4` operation proves 19,100,059 original
+bytes remained at SHA-256
+`acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3`.
+The current proxy is 8,223,151 bytes (43.05% of the original), 960x478,
+23.976 fps, and 254.63 seconds. Authenticated page readback found the selected
+source and card; a protected `bytes=0-1023` request returned HTTP 206 and exactly
+1,024 bytes. Card `Be Curious · external vault proxy select` remains bound to
+source revision `cmsiwjuvl0001lsxltsbf5kxx` at `1.107004–4.263378`.
+
+Operating the worker found two production defects that synthetic fixtures did
+not reveal:
+
+1. macOS privacy suspended a launchd-owned worker while it opened an original
+   under Downloads. The local-vault adapter now creates a checksum-addressed,
+   read-only APFS clone in the dedicated ingest root, rehashes that execution
+   cache, and keeps the user's original as provider truth.
+2. PostgreSQL `timestamp without time zone` lease comparisons interpreted a JS
+   date six hours away from the Mac's Mountain time. Both local job claimers now
+   convert timestamptz parameters explicitly to UTC for claim, start, update,
+   completion, and retry timestamps.
+
+Focused coverage now includes contract isolation for server-only local paths,
+deterministic queue replay, retained failure history on explicit retry, Drive
+execution hold, stale provider-binding refusal, original-byte preservation,
+verified derivative evidence, source-story persistence, build/type checks, and
+the real authenticated playback operation above.
+
+Repeated provider verification now converges without state-revision churn. An
+unchanged inspection writes an append-only `observe` receipt whose previous and
+current revision are equal, updates verification freshness, and leaves the
+reference revision untouched. The retained local operation proved the first
+observation stayed at r4 and an exact retry replayed it instead of creating
+another receipt. Changed provider capability or byte/revision evidence still
+advances the reference and must satisfy optimistic revision authority.

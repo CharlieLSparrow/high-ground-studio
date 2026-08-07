@@ -76,6 +76,7 @@ type SourceStoryCard = {
       verifiedAt: string | null;
       mediaAsset: null | { id: string; filename: string; url: string; mimeType: string | null; duration: number | null; thumbnailUrl: string | null };
       externalReference: null | { id: string; provider: string; fileName: string; mimeType: string | null; accessState: string; capabilityState: string; lastVerifiedAt: string | null };
+      collaborationProxy: MediaDerivative | null;
     };
   };
 };
@@ -123,10 +124,41 @@ type SourceStoryWorkspace = {
       sizeBytes: string | null;
       sourceState: string;
       verifiedAt: string | null;
+      durationSeconds: number | null;
+      widthPixels: number | null;
+      heightPixels: number | null;
+      framesPerSecond: number | null;
+      collaborationProxy: MediaDerivative | null;
+      proxyJob: null | { id: string; status: string; failureCode: string | null; updatedAt: string };
     };
   }>;
   cards: SourceStoryCard[];
   boards: SourceStoryBoard[];
+};
+
+type MediaDerivative = {
+  id: string;
+  kind: string;
+  profile: string;
+  sizeBytes: string;
+  mimeType: string;
+  durationSeconds: number | null;
+  widthPixels: number | null;
+  heightPixels: number | null;
+  framesPerSecond: number | null;
+  createdAt: string;
+  playbackUrl: string;
+};
+
+type ViewerSource = {
+  key: string;
+  kind: "asset" | "external";
+  id: string;
+  filename: string;
+  url: string;
+  mimeType: string | null;
+  duration: number | null;
+  thumbnailUrl: string | null;
 };
 
 type ApiPayload = {
@@ -162,7 +194,7 @@ function sourceStateLabel(value: string) {
 }
 
 function externalSourceHealth(accessState: string, capabilityState: string) {
-  if (accessState === "available" && capabilityState === "downloadable") return { label: "Ready for verified proxy/execution", tone: "border-emerald-200 bg-emerald-50 text-emerald-950" };
+  if (accessState === "available" && capabilityState === "downloadable") return { label: "Source access verified", tone: "border-emerald-200 bg-emerald-50 text-emerald-950" };
   if (capabilityState === "metadata-only") return { label: "Metadata only · proxy and render held", tone: "border-amber-200 bg-amber-50 text-amber-950" };
   if (capabilityState === "needs-reauth" || accessState === "revoked") return { label: "Reconnect source access", tone: "border-rose-200 bg-rose-50 text-rose-950" };
   return { label: `${accessState.replaceAll("-", " ")} · ${capabilityState.replaceAll("-", " ")}`, tone: "border-zinc-200 bg-zinc-50 text-zinc-800" };
@@ -173,8 +205,10 @@ function boardGroupLabel(value: string) {
   return value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function sourceHref(projectSlug: string, assetId: string, boardId: string | null) {
-  const params = new URLSearchParams({ asset: assetId });
+function sourceHref(projectSlug: string, source: { kind: "asset" | "external"; id: string } | null, boardId: string | null) {
+  const params = new URLSearchParams();
+  if (source?.kind === "asset") params.set("asset", source.id);
+  if (source?.kind === "external") params.set("external", source.id);
   if (boardId) params.set("board", boardId);
   return `/nests/${encodeURIComponent(projectSlug)}/story?${params.toString()}`;
 }
@@ -187,6 +221,7 @@ export function SourceStoryClient({
   episodes,
   initialWorkspace,
   initialAssetId,
+  initialExternalReferenceId,
   initialBoardId,
 }: {
   project: { id: string; slug: string; name: string };
@@ -196,13 +231,15 @@ export function SourceStoryClient({
   episodes: Episode[];
   initialWorkspace: SourceStoryWorkspace;
   initialAssetId: string | null;
+  initialExternalReferenceId: string | null;
   initialBoardId: string | null;
 }) {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
-  const pendingPlaybackRef = useRef<{ assetId: string; startSeconds: number; endSeconds: number } | null>(null);
+  const pendingPlaybackRef = useRef<{ sourceKey: string; startSeconds: number; endSeconds: number } | null>(null);
   const playbackBoundaryRef = useRef<number | null>(null);
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [selectedAssetId, setSelectedAssetId] = useState(initialAssetId);
+  const [selectedExternalReferenceId, setSelectedExternalReferenceId] = useState<string | null>(initialExternalReferenceId);
   const [selectedBoardId, setSelectedBoardId] = useState(initialBoardId);
   const [sourceQuery, setSourceQuery] = useState("");
   const [inPoint, setInPoint] = useState<number | null>(null);
@@ -222,6 +259,27 @@ export function SourceStoryClient({
   const [error, setError] = useState<string | null>(null);
 
   const selectedAsset = initialAssets.find((asset) => asset.id === selectedAssetId) ?? null;
+  const selectedExternalSource = workspace.externalSources.find((source) => source.id === selectedExternalReferenceId) ?? null;
+  const selectedExternalProxy = selectedExternalSource?.latestSourceRevision?.collaborationProxy ?? null;
+  const selectedViewerSource: ViewerSource | null = selectedExternalSource && selectedExternalProxy ? {
+    key: `external:${selectedExternalSource.id}`,
+    kind: "external",
+    id: selectedExternalSource.id,
+    filename: selectedExternalSource.fileName,
+    url: selectedExternalProxy.playbackUrl,
+    mimeType: selectedExternalProxy.mimeType,
+    duration: selectedExternalProxy.durationSeconds,
+    thumbnailUrl: null,
+  } : selectedAsset ? {
+    key: `asset:${selectedAsset.id}`,
+    kind: "asset",
+    id: selectedAsset.id,
+    filename: selectedAsset.filename,
+    url: selectedAsset.url,
+    mimeType: selectedAsset.mimeType,
+    duration: selectedAsset.duration,
+    thumbnailUrl: selectedAsset.thumbnailUrl,
+  } : null;
   const selectedBoard = workspace.boards.find((board) => board.id === selectedBoardId) ?? workspace.boards[0] ?? null;
   const filteredAssets = useMemo(() => {
     const query = sourceQuery.trim().toLowerCase();
@@ -245,7 +303,7 @@ export function SourceStoryClient({
   useEffect(() => {
     const pendingPlayback = pendingPlaybackRef.current;
     const media = mediaRef.current;
-    if (!pendingPlayback || pendingPlayback.assetId !== selectedAssetId || !media) return;
+    if (!pendingPlayback || pendingPlayback.sourceKey !== selectedViewerSource?.key || !media) return;
     pendingPlaybackRef.current = null;
     let cancelled = false;
     const begin = () => {
@@ -262,7 +320,14 @@ export function SourceStoryClient({
       cancelled = true;
       media.removeEventListener("loadedmetadata", begin);
     };
-  }, [selectedAssetId]);
+  }, [selectedViewerSource?.key]);
+
+  useEffect(() => {
+    const waiting = workspace.externalSources.some((source) => ["queued", "processing"].includes(source.latestSourceRevision?.proxyJob?.status ?? ""));
+    if (!waiting) return;
+    const timer = window.setInterval(() => { void refreshWorkspace().catch(() => undefined); }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [workspace.externalSources]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -316,23 +381,44 @@ export function SourceStoryClient({
 
   function chooseAsset(
     assetId: string,
-    pendingPlayback: { assetId: string; startSeconds: number; endSeconds: number } | null = null,
+    pendingPlayback: { sourceKey: string; startSeconds: number; endSeconds: number } | null = null,
   ) {
     pendingPlaybackRef.current = pendingPlayback;
     playbackBoundaryRef.current = null;
     mediaRef.current?.pause();
     setSelectedAssetId(assetId);
+    setSelectedExternalReferenceId(null);
     setInPoint(null);
     setOutPoint(null);
     setMessage(null);
     setError(null);
-    window.history.replaceState(null, "", sourceHref(project.slug, assetId, selectedBoard?.id ?? null));
+    window.history.replaceState(null, "", sourceHref(project.slug, { kind: "asset", id: assetId }, selectedBoard?.id ?? null));
   }
 
-  function playSourceRange(assetId: string, startSeconds: number, endSeconds: number) {
-    const playback = { assetId, startSeconds, endSeconds };
-    if (selectedAssetId !== assetId || !mediaRef.current) {
-      chooseAsset(assetId, playback);
+  function chooseExternalSource(
+    referenceId: string,
+    pendingPlayback: { sourceKey: string; startSeconds: number; endSeconds: number } | null = null,
+  ) {
+    pendingPlaybackRef.current = pendingPlayback;
+    playbackBoundaryRef.current = null;
+    mediaRef.current?.pause();
+    setSelectedAssetId(null);
+    setSelectedExternalReferenceId(referenceId);
+    setInPoint(null);
+    setOutPoint(null);
+    setMessage(null);
+    setError(null);
+    window.history.replaceState(null, "", sourceHref(project.slug, { kind: "external", id: referenceId }, selectedBoard?.id ?? null));
+  }
+
+  function playSourceRange(source: { kind: "asset" | "external"; id: string }, startSeconds: number, endSeconds: number) {
+    const sourceKey = `${source.kind}:${source.id}`;
+    const playback = { sourceKey, startSeconds, endSeconds };
+    if (selectedViewerSource?.key !== sourceKey || !mediaRef.current) {
+      if (source.kind === "asset") chooseAsset(source.id, playback);
+      else {
+        chooseExternalSource(source.id, playback);
+      }
       return;
     }
     playbackBoundaryRef.current = endSeconds;
@@ -363,12 +449,14 @@ export function SourceStoryClient({
   }
 
   async function createCard() {
-    if (!selectedAsset || inPoint === null || outPoint === null) return;
+    if (!selectedViewerSource || inPoint === null || outPoint === null) return;
     const board = workspace.boards.find((candidate) => candidate.id === selectedBoardId) ?? null;
     const next = await mutate({
       action: "create-card",
       clientRequestId: crypto.randomUUID(),
-      mediaAssetId: selectedAsset.id,
+      mediaAssetId: selectedViewerSource.kind === "asset" ? selectedViewerSource.id : null,
+      sourceRevisionId: selectedViewerSource.kind === "external" ? selectedExternalSource?.latestSourceRevision?.id ?? null : null,
+      externalReferenceId: selectedViewerSource.kind === "external" ? selectedExternalSource?.id ?? null : null,
       boardId: board?.id ?? null,
       expectedBoardRevision: board?.revision ?? null,
       title,
@@ -400,6 +488,17 @@ export function SourceStoryClient({
     }
   }
 
+  async function requestProxy(source: SourceStoryWorkspace["externalSources"][number], retryFailed = false) {
+    if (!source.latestSourceRevision) return;
+    await mutate({
+      action: "request-external-proxy",
+      referenceId: source.id,
+      sourceRevisionId: source.latestSourceRevision.id,
+      clientRequestId: crypto.randomUUID(),
+      retryFailed,
+    }, retryFailed ? `Retrying the verified proxy for ${source.fileName}.` : `Queued a verified proxy for ${source.fileName}.`);
+  }
+
   async function moveCard(cardId: string, direction: -1 | 1) {
     if (!selectedBoard) return;
     const current = selectedBoard.placements.map((placement) => placement.cardId);
@@ -416,8 +515,18 @@ export function SourceStoryClient({
     }, "Saved the shared board order.");
   }
 
-  const canMarkRange = Boolean(selectedAsset && /^(video|audio)\//.test(selectedAsset.mimeType ?? ""));
+  const canMarkRange = Boolean(selectedViewerSource && /^(video|audio)\//.test(selectedViewerSource.mimeType ?? ""));
   const rangeReady = inPoint !== null && outPoint !== null && outPoint > inPoint && title.trim().length > 0;
+
+  function cardPlayback(card: SourceStoryCard) {
+    const range = card.sourceRange;
+    if (!range) return null;
+    if (range.sourceRevision.mediaAsset) return { kind: "asset" as const, id: range.sourceRevision.mediaAsset.id };
+    if (range.sourceRevision.externalReference && range.sourceRevision.collaborationProxy) {
+      return { kind: "external" as const, id: range.sourceRevision.externalReference.id };
+    }
+    return null;
+  }
 
   return (
     <main className="min-h-screen bg-[#f7f2e9] text-[#352a20]">
@@ -453,7 +562,7 @@ export function SourceStoryClient({
           <GoogleDriveSourcePicker projectSlug={project.slug} canWrite={canWrite} onAttached={refreshWorkspace} />
           <label className="relative mt-4 block"><span className="sr-only">Search source media</span><Search size={16} className="absolute left-3 top-3.5 text-[#927b5b]" aria-hidden="true" /><input value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Search media…" className="min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white pl-9 pr-3 text-sm font-semibold outline-none focus-visible:ring-4 focus-visible:ring-sky-100" /></label>
           <div className="mt-3 max-h-[68vh] space-y-2 overflow-y-auto pr-1">
-            {filteredExternalSources.length ? <div className="pb-1"><p className="mb-2 flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#76522c]"><Cloud size={13} aria-hidden="true" />Connected vault</p>{filteredExternalSources.map((source) => { const health = externalSourceHealth(source.accessState, source.capabilityState); return <article key={source.id} className="mb-2 rounded-2xl border border-teal-200 bg-teal-50/60 p-3"><p className="line-clamp-2 text-sm font-black leading-5">{source.fileName}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-teal-900">{source.provider.replaceAll("-", " ")} · reference r{source.revision}</p><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-full border px-2 py-1 text-[10px] font-black ${health.tone}`}>{health.label}</span><span className="rounded-full border border-teal-200 bg-white px-2 py-1 text-[10px] font-bold text-teal-900">{formatBytes(source.sizeBytes)}</span></div><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">{source.latestSourceRevision ? `${sourceStateLabel(source.latestSourceRevision.sourceState)} · ${source.latestSourceRevision.revisionKey}` : "No immutable provider revision retained yet."}</p><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">External originals are not played directly here. Quipsly needs a verified collaboration proxy before range marking.</p></article>; })}</div> : null}
+            {filteredExternalSources.length ? <div className="pb-1"><p className="mb-2 flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#76522c]"><Cloud size={13} aria-hidden="true" />Connected vault</p>{filteredExternalSources.map((source) => { const health = externalSourceHealth(source.accessState, source.capabilityState); const revision = source.latestSourceRevision; const proxy = revision?.collaborationProxy; const job = revision?.proxyJob; const selected = source.id === selectedExternalSource?.id; return <article key={source.id} className={`mb-2 rounded-2xl border p-3 ${selected ? "border-teal-800 bg-teal-100" : "border-teal-200 bg-teal-50/60"}`}><button type="button" onClick={() => chooseExternalSource(source.id)} aria-pressed={selected} className="w-full text-left"><p className="line-clamp-2 text-sm font-black leading-5">{source.fileName}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-teal-900">{source.provider.replaceAll("-", " ")} · reference r{source.revision}</p><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-full border px-2 py-1 text-[10px] font-black ${health.tone}`}>{health.label}</span><span className="rounded-full border border-teal-200 bg-white px-2 py-1 text-[10px] font-bold text-teal-900">{formatBytes(source.sizeBytes)}</span>{proxy ? <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-950">Proxy ready · {formatClock(proxy.durationSeconds)}</span> : null}</div><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">{revision ? `${sourceStateLabel(revision.sourceState)} · ${revision.revisionKey}` : "No immutable provider revision retained yet."}</p></button>{proxy ? <button type="button" onClick={() => chooseExternalSource(source.id)} className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-3 text-xs font-black text-white">Open verified proxy</button> : job && ["queued", "processing"].includes(job.status) ? <p role="status" className="mt-2 flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-white px-3 text-xs font-black text-sky-950"><Loader2 size={14} className="animate-spin" aria-hidden="true" />{job.status === "processing" ? "Generating verified proxy…" : "Proxy queued on this Mac…"}</p> : job?.status === "failed" ? <button type="button" disabled={pending || !canWrite} onClick={() => void requestProxy(source, true)} className="mt-2 min-h-11 w-full rounded-xl border border-rose-300 bg-white px-3 text-xs font-black text-rose-950 disabled:opacity-45">Retry proxy · {job.failureCode ?? "worker failure"}</button> : source.provider === "local-file-vault" ? <button type="button" disabled={pending || !canWrite || !revision} onClick={() => void requestProxy(source)} className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-3 text-xs font-black text-white disabled:opacity-45">Create lightweight proxy</button> : <p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">The source is attached. Drive proxy execution activates with the approved cloud connection; Quipsly will not pull the original before then.</p>}</article>; })}</div> : null}
             {filteredAssets.map((asset) => {
               const selected = asset.id === selectedAsset?.id;
               return (
@@ -475,16 +584,16 @@ export function SourceStoryClient({
         <section className="min-w-0 space-y-4" aria-label="Source viewer">
           <div className="overflow-hidden rounded-3xl border border-[#29231d] bg-[#171513] shadow-lg">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3 text-white">
-              <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d8bd91]">Viewer</p><h2 className="truncate font-serif text-xl font-black">{selectedAsset?.filename ?? "Choose a source"}</h2></div>
-              {selectedAsset ? <span className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-[10px] font-bold uppercase tracking-wide">{selectedAsset.mimeType ?? "Unknown media"}</span> : null}
+              <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d8bd91]">Viewer</p><h2 className="truncate font-serif text-xl font-black">{selectedViewerSource?.filename ?? selectedExternalSource?.fileName ?? "Choose a source"}</h2></div>
+              {(selectedViewerSource || selectedExternalSource) ? <span className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-[10px] font-bold uppercase tracking-wide">{selectedViewerSource?.mimeType ?? selectedExternalSource?.mimeType ?? "Unknown media"}</span> : null}
             </div>
             <div className="grid min-h-[360px] place-items-center bg-black md:min-h-[500px]">
-              {!selectedAsset ? <p className="px-6 text-center font-semibold text-zinc-400">Attach or choose project media to begin.</p> : selectedAsset.mimeType?.startsWith("video/") ? (
-                <video key={selectedAsset.id} ref={(node) => { mediaRef.current = node; }} src={selectedAsset.url} poster={selectedAsset.thumbnailUrl ?? undefined} controls preload="metadata" onTimeUpdate={stopAtSourceRangeBoundary} onEnded={() => { playbackBoundaryRef.current = null; }} className="max-h-[70vh] w-full" />
-              ) : selectedAsset.mimeType?.startsWith("audio/") ? (
-                <div className="w-full max-w-3xl px-6"><div className="mb-8 grid place-items-center"><Film size={64} className="text-[#d8bd91]" aria-hidden="true" /></div><audio key={selectedAsset.id} ref={(node) => { mediaRef.current = node; }} src={selectedAsset.url} controls preload="metadata" onTimeUpdate={stopAtSourceRangeBoundary} onEnded={() => { playbackBoundaryRef.current = null; }} className="w-full" /></div>
-              ) : selectedAsset.mimeType?.startsWith("image/") ? (
-                <img src={selectedAsset.url} alt={selectedAsset.filename} className="max-h-[70vh] max-w-full object-contain" />
+              {!selectedViewerSource ? <p className="px-6 text-center font-semibold text-zinc-400">{selectedExternalSource ? "This source is safely attached. Create its lightweight collaboration proxy to scrub and mark ranges without editing the original." : "Attach or choose project media to begin."}</p> : selectedViewerSource.mimeType?.startsWith("video/") ? (
+                <video key={selectedViewerSource.key} ref={(node) => { mediaRef.current = node; }} src={selectedViewerSource.url} poster={selectedViewerSource.thumbnailUrl ?? undefined} controls preload="metadata" onTimeUpdate={stopAtSourceRangeBoundary} onEnded={() => { playbackBoundaryRef.current = null; }} className="max-h-[70vh] w-full" />
+              ) : selectedViewerSource.mimeType?.startsWith("audio/") ? (
+                <div className="w-full max-w-3xl px-6"><div className="mb-8 grid place-items-center"><Film size={64} className="text-[#d8bd91]" aria-hidden="true" /></div><audio key={selectedViewerSource.key} ref={(node) => { mediaRef.current = node; }} src={selectedViewerSource.url} controls preload="metadata" onTimeUpdate={stopAtSourceRangeBoundary} onEnded={() => { playbackBoundaryRef.current = null; }} className="w-full" /></div>
+              ) : selectedViewerSource.mimeType?.startsWith("image/") ? (
+                <img src={selectedViewerSource.url} alt={selectedViewerSource.filename} className="max-h-[70vh] max-w-full object-contain" />
               ) : <p className="px-6 text-center font-semibold text-zinc-400">This source can be organized, but range playback is not available for its media type.</p>}
             </div>
           </div>
@@ -515,7 +624,7 @@ export function SourceStoryClient({
                 <label><span className="text-xs font-black uppercase tracking-wide text-[#76522c]">Working notes</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={50000} rows={3} placeholder="Writing, edit, camera, research, or collaboration notes…" className="mt-1 w-full rounded-xl border border-[#d9c7a5] p-3 text-sm font-semibold leading-6" /></label>
                 {tags.length ? <fieldset><legend className="flex items-center gap-1 text-xs font-black uppercase tracking-wide text-[#76522c]"><Tags size={14} aria-hidden="true" />Project tags</legend><div className="mt-2 flex flex-wrap gap-2">{tags.map((tag) => { const active = selectedTagIds.includes(tag.id); return <button key={tag.id} type="button" aria-pressed={active} onClick={() => setSelectedTagIds((current) => active ? current.filter((id) => id !== tag.id) : [...current, tag.id])} className={`min-h-11 rounded-full border px-3 text-xs font-black ${active ? "border-sky-700 bg-sky-700 text-white" : "border-sky-200 bg-sky-50 text-sky-950"}`}>#{tag.label}</button>; })}</div></fieldset> : null}
                 <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-3"><input type="checkbox" checked={preserve360} onChange={(event) => setPreserve360(event.target.checked)} className="h-5 w-5" /><Rotate3d size={18} className="text-violet-800" aria-hidden="true" /><span><span className="block text-sm font-black text-violet-950">This range uses 360° source intent</span><span className="block text-xs font-semibold text-violet-900">Preserve the full sphere and an empty, non-destructive reframe recipe. View keyframes come later; this does not claim a reframed render exists.</span></span></label>
-                <button type="button" disabled={!rangeReady || pending || !selectedAsset} onClick={() => void createCard()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#3e2f21] px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45">{pending ? <Loader2 className="animate-spin" size={18} aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}Save source-backed card</button>
+                <button type="button" disabled={!rangeReady || pending || !selectedViewerSource} onClick={() => void createCard()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#3e2f21] px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45">{pending ? <Loader2 className="animate-spin" size={18} aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}Save source-backed card</button>
               </div>
             )}
           </div>
@@ -524,7 +633,7 @@ export function SourceStoryClient({
         <aside className="min-w-0 space-y-4" aria-label="Story board">
           <section className="rounded-3xl border border-[#ddccb0] bg-[#fffdf8] p-4 shadow-sm">
             <div className="flex items-center gap-2"><LayoutGrid size={19} className="text-[#8a653d]" aria-hidden="true" /><h2 className="font-serif text-2xl font-black">Story board</h2></div>
-            {workspace.boards.length ? <div className="mt-3"><label className="text-xs font-black uppercase tracking-wide text-[#76522c]">Active board<select value={selectedBoard?.id ?? ""} onChange={(event) => { setSelectedBoardId(event.target.value); if (selectedAsset) window.history.replaceState(null, "", sourceHref(project.slug, selectedAsset.id, event.target.value)); }} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-sm font-bold">{workspace.boards.map((board) => <option key={board.id} value={board.id}>{board.title} · revision {board.revision}</option>)}</select></label>{selectedBoard?.description ? <p className="mt-3 text-sm font-semibold leading-6 text-[#765f40]">{selectedBoard.description}</p> : null}</div> : null}
+            {workspace.boards.length ? <div className="mt-3"><label className="text-xs font-black uppercase tracking-wide text-[#76522c]">Active board<select value={selectedBoard?.id ?? ""} onChange={(event) => { setSelectedBoardId(event.target.value); const source = selectedViewerSource ? { kind: selectedViewerSource.kind, id: selectedViewerSource.id } : null; window.history.replaceState(null, "", sourceHref(project.slug, source, event.target.value)); }} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-sm font-bold">{workspace.boards.map((board) => <option key={board.id} value={board.id}>{board.title} · revision {board.revision}</option>)}</select></label>{selectedBoard?.description ? <p className="mt-3 text-sm font-semibold leading-6 text-[#765f40]">{selectedBoard.description}</p> : null}</div> : null}
             {canWrite ? <details className="mt-3 rounded-2xl border border-dashed border-[#cdb993] bg-white p-3" open={!workspace.boards.length}><summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#76522c]"><Plus size={14} className="mr-1 inline" aria-hidden="true" />Create a board deliberately</summary><div className="mt-3 grid gap-3"><input value={boardTitle} onChange={(event) => setBoardTitle(event.target.value)} maxLength={200} placeholder="Board title" className="min-h-11 rounded-xl border border-[#d9c7a5] px-3 text-sm font-semibold" /><textarea value={boardDescription} onChange={(event) => setBoardDescription(event.target.value)} maxLength={10000} rows={2} placeholder="What story or output is this board shaping?" className="rounded-xl border border-[#d9c7a5] p-3 text-sm font-semibold" /><select value={boardEpisodeId} onChange={(event) => setBoardEpisodeId(event.target.value)} className="min-h-11 rounded-xl border border-[#d9c7a5] bg-white px-3 text-sm font-semibold"><option value="">General project board</option>{episodes.map((episode) => <option key={episode.id} value={episode.id}>{episode.title} · {episode.status}</option>)}</select><button type="button" disabled={pending || !boardTitle.trim()} onClick={() => void createBoard()} className="min-h-11 rounded-xl bg-[#3e2f21] px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-45">Create revisioned board</button></div></details> : null}
           </section>
 
@@ -536,7 +645,7 @@ export function SourceStoryClient({
                   <article key={placement.id} className="rounded-2xl border border-[#e2d2b6] bg-[#fffaf0] p-4">
                     <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">{boardGroupLabel(placement.groupKey)} · {placement.card.purpose.replaceAll("-", " ")}</p><h3 className="mt-1 font-serif text-lg font-black leading-snug">{placement.card.title}</h3></div>{canWrite ? <div className="flex shrink-0 gap-1"><button type="button" disabled={pending || index === 0} onClick={() => void moveCard(placement.cardId, -1)} aria-label={`Move ${placement.card.title} earlier`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button><button type="button" disabled={pending || index === selectedBoard.placements.length - 1} onClick={() => void moveCard(placement.cardId, 1)} aria-label={`Move ${placement.card.title} later`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button></div> : null}</div>
                     {placement.card.synopsis ? <p className="mt-2 text-sm font-semibold leading-6 text-[#715f48]">{placement.card.synopsis}</p> : null}
-                    {placement.card.sourceRange ? <button type="button" onClick={() => { const range = placement.card.sourceRange; const asset = range?.sourceRevision.mediaAsset; if (asset && range) playSourceRange(asset.id, range.startSeconds, range.endSeconds); }} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-950"><Play size={14} aria-hidden="true" />{formatClock(placement.card.sourceRange.startSeconds)}–{formatClock(placement.card.sourceRange.endSeconds)}</button> : null}
+                    {placement.card.sourceRange ? <button type="button" disabled={!cardPlayback(placement.card)} onClick={() => { const range = placement.card.sourceRange; const source = cardPlayback(placement.card); if (source && range) playSourceRange(source, range.startSeconds, range.endSeconds); }} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-950 disabled:cursor-not-allowed disabled:opacity-45"><Play size={14} aria-hidden="true" />{formatClock(placement.card.sourceRange.startSeconds)}–{formatClock(placement.card.sourceRange.endSeconds)}</button> : null}
                     <div className="mt-3 flex flex-wrap gap-1">{placement.card.tags.map((tag) => <span key={tag.id} className="rounded-full border border-sky-200 bg-white px-2 py-1 text-[10px] font-bold text-sky-900">#{tag.label}</span>)}<span className="rounded-full border border-[#ded0b7] bg-white px-2 py-1 text-[10px] font-bold text-[#765f40]">{placement.card.status.replaceAll("-", " ")}</span>{placement.card.sourceRange?.reframeRecipe ? <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-900">360 recipe</span> : null}</div>
                     {placement.card.sourceRange ? <p className="mt-3 text-[10px] font-bold leading-4 text-[#806a4d]">{sourceStateLabel(placement.card.sourceRange.sourceRevision.sourceState)} · selector {placement.card.sourceRange.selectorSha256.slice(0, 10)}…</p> : null}
                     {canWrite ? <SourceRepairEditor card={placement.card} assets={initialAssets} selectedAsset={selectedAsset} viewerInPoint={inPoint} viewerOutPoint={outPoint} pending={pending} mutate={mutate} /> : null}
@@ -548,7 +657,7 @@ export function SourceStoryClient({
             </section>
           ) : null}
 
-          {unplacedCards.length ? <section className="rounded-3xl border border-[#ddccb0] bg-white p-4 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">Unfiled source cards</p><div className="mt-3 space-y-2">{unplacedCards.map((card) => <article key={card.id} className="rounded-xl border border-[#e2d2b6] p-3"><p className="font-black">{card.title}</p>{card.sourceRange ? <button type="button" onClick={() => { const range = card.sourceRange; const asset = range?.sourceRevision.mediaAsset; if (asset && range) playSourceRange(asset.id, range.startSeconds, range.endSeconds); }} className="mt-2 inline-flex min-h-11 items-center gap-2 text-xs font-black text-sky-900"><Clock3 size={14} aria-hidden="true" />{formatClock(card.sourceRange.startSeconds)}–{formatClock(card.sourceRange.endSeconds)}</button> : null}</article>)}</div></section> : null}
+          {unplacedCards.length ? <section className="rounded-3xl border border-[#ddccb0] bg-white p-4 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">Unfiled source cards</p><div className="mt-3 space-y-2">{unplacedCards.map((card) => <article key={card.id} className="rounded-xl border border-[#e2d2b6] p-3"><p className="font-black">{card.title}</p>{card.sourceRange ? <button type="button" disabled={!cardPlayback(card)} onClick={() => { const range = card.sourceRange; const source = cardPlayback(card); if (source && range) playSourceRange(source, range.startSeconds, range.endSeconds); }} className="mt-2 inline-flex min-h-11 items-center gap-2 text-xs font-black text-sky-900 disabled:opacity-45"><Clock3 size={14} aria-hidden="true" />{formatClock(card.sourceRange.startSeconds)}–{formatClock(card.sourceRange.endSeconds)}</button> : null}</article>)}</div></section> : null}
         </aside>
       </div>
     </main>

@@ -105,6 +105,30 @@ runDatabaseSmoke("external media attach and capability history", () => {
     expect(operation).toMatchObject({ revision: 1, previousRevision: 0, operation: "attach" });
   });
 
+  it("records a repeated provider observation without manufacturing a new state revision", async () => {
+    const observed = await attachVerifiedExternalMediaSource({
+      prisma,
+      value: {
+        projectId,
+        actorUserId,
+        actorEmail,
+        clientRequestId: randomUUID(),
+        operation: "refresh",
+        expectedReferenceRevision: 1,
+        verifiedFile: file(),
+      },
+    });
+    expect(observed).toMatchObject({ replayed: false, reference: { id: referenceId, revision: 1 } });
+    await expect(prisma.studioExternalMediaReferenceOperation.findMany({
+      where: { referenceId },
+      orderBy: { createdAt: "asc" },
+      select: { revision: true, previousRevision: true, operation: true },
+    })).resolves.toEqual([
+      { revision: 1, previousRevision: 0, operation: "attach" },
+      { revision: 1, previousRevision: 1, operation: "observe" },
+    ]);
+  });
+
   it("creates a new immutable revision on provider change and refuses stale refresh", async () => {
     const refreshed = await attachVerifiedExternalMediaSource({
       prisma,
@@ -170,6 +194,7 @@ runDatabaseSmoke("external media attach and capability history", () => {
       where: { referenceId }, orderBy: { revision: "asc" }, select: { revision: true, previousRevision: true, operation: true },
     })).resolves.toEqual([
       { revision: 1, previousRevision: 0, operation: "attach" },
+      { revision: 1, previousRevision: 1, operation: "observe" },
       { revision: 2, previousRevision: 1, operation: "refresh" },
       { revision: 3, previousRevision: 2, operation: "refresh" },
     ]);
@@ -195,7 +220,7 @@ runDatabaseSmoke("external media attach and capability history", () => {
     })).rejects.toMatchObject({ code: "provider-revision-conflict" });
     await expect(prisma.studioExternalMediaReference.findUnique({ where: { id: referenceId }, select: { revision: true, accessState: true } }))
       .resolves.toEqual({ revision: 3, accessState: "revoked" });
-    await expect(prisma.studioExternalMediaReferenceOperation.count({ where: { referenceId } })).resolves.toBe(3);
+    await expect(prisma.studioExternalMediaReferenceOperation.count({ where: { referenceId } })).resolves.toBe(4);
   });
 
   it("keeps an identical external file identity isolated between Nests", async () => {

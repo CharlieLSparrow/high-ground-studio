@@ -70,6 +70,10 @@ import {
   runOneLocalEpisodeRenderProofJob,
 } from "./local-episode-render-proof-worker.js";
 import { LocalExecutionPresence } from "./local-execution-presence.js";
+import {
+  newLocalExternalSourceProxyRuntime,
+  runOneLocalExternalSourceProxyJob,
+} from "./local-external-source-proxy-worker.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -267,7 +271,7 @@ export class PostgresLocalEpisodeProxyStore implements LocalEpisodeProxyStore {
             AND "inputJson"->'source'->>'provider' = 'local'
             AND (
               "status" = 'queued'
-              OR ("status" = 'processing' AND "updatedAt" < $3)
+              OR ("status" = 'processing' AND "updatedAt" < timezone('UTC', $3::timestamptz))
             )
           ORDER BY "priority" ASC, "createdAt" ASC
           FOR UPDATE SKIP LOCKED
@@ -293,8 +297,8 @@ export class PostgresLocalEpisodeProxyStore implements LocalEpisodeProxyStore {
         text: `
           UPDATE "StudioWorkflowJob"
           SET "status" = 'processing',
-              "startedAt" = COALESCE("startedAt", $2),
-              "updatedAt" = $2,
+              "startedAt" = COALESCE("startedAt", timezone('UTC', $2::timestamptz)),
+              "updatedAt" = timezone('UTC', $2::timestamptz),
               "error" = NULL,
               "resultJson" = $3::jsonb
           WHERE "id" = $1
@@ -322,7 +326,7 @@ export class PostgresLocalEpisodeProxyStore implements LocalEpisodeProxyStore {
       text: `
         UPDATE "StudioWorkflowJob"
         SET "status" = 'output-ready',
-            "updatedAt" = $3,
+            "updatedAt" = timezone('UTC', $3::timestamptz),
             "error" = NULL,
             "resultJson" = $4::jsonb
         WHERE "id" = $1
@@ -355,8 +359,8 @@ export class PostgresLocalEpisodeProxyStore implements LocalEpisodeProxyStore {
       text: `
         UPDATE "StudioWorkflowJob"
         SET "status" = $3,
-            "updatedAt" = $4::timestamp(3),
-            "completedAt" = CASE WHEN $3 = 'failed' THEN $4::timestamp(3) ELSE NULL END,
+            "updatedAt" = timezone('UTC', $4::timestamptz),
+            "completedAt" = CASE WHEN $3 = 'failed' THEN timezone('UTC', $4::timestamptz) ELSE NULL END,
             "error" = $5,
             "resultJson" = $6::jsonb
         WHERE "id" = $1
@@ -573,6 +577,13 @@ async function main() {
     executionId,
     buildId: options.buildId,
   });
+  const externalSourceProxy = newLocalExternalSourceProxyRuntime({
+    pool,
+    executionId,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   let stopping = false;
   process.once("SIGTERM", () => { stopping = true; });
   process.once("SIGINT", () => { stopping = true; });
@@ -580,7 +591,14 @@ async function main() {
     await presence.heartbeat(new Date(), true);
     do {
       await presence.heartbeat();
-      const proxyResult = await runOneLocalEpisodeProxyJob(store, transcoder, options);
+      const externalProxyResult = await runOneLocalExternalSourceProxyJob(
+        externalSourceProxy.store,
+        externalSourceProxy.transcoder,
+        externalSourceProxy.options,
+      );
+      const proxyResult = externalProxyResult.disposition === "idle"
+        ? await runOneLocalEpisodeProxyJob(store, transcoder, options)
+        : externalProxyResult;
       const masteryResult = proxyResult.disposition === "idle"
         ? await runOneLocalAudioMasteryJob(audioMastery.store, audioMastery.engine, audioMastery.options)
         : proxyResult;

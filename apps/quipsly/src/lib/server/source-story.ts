@@ -478,12 +478,45 @@ export async function createSourceStoryCard(input: {
     // sequential so a validation failure cannot roll back while another query
     // is still trying to use the closed transaction.
     const tags = await checkedTagIds(tx, value.projectId, value.tagIds);
-    const source = await ensureAssetRevision({
-      db: tx,
-      projectId: value.projectId,
-      mediaAssetId: value.mediaAssetId,
-      actorUserId,
-    });
+    const source = value.mediaAssetId
+      ? await ensureAssetRevision({
+        db: tx,
+        projectId: value.projectId,
+        mediaAssetId: value.mediaAssetId,
+        actorUserId,
+      })
+      : await (async () => {
+        const revision = await tx.studioMediaSourceRevision.findFirst({
+          where: {
+            id: value.sourceRevisionId!,
+            projectId: value.projectId,
+            externalReferenceId: value.externalReferenceId!,
+          },
+          include: {
+            externalReference: { select: { id: true } },
+            derivatives: {
+              where: { kind: "collaboration-proxy", status: "ready" },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { id: true, durationSeconds: true },
+            },
+          },
+        });
+        if (!revision?.externalReference) {
+          throw new SourceStoryContractError("external-source-mismatch", "That external source revision is unavailable in this Nest.");
+        }
+        if (!revision.derivatives[0]) {
+          throw new SourceStoryContractError("external-proxy-required", "A verified collaboration proxy is required before marking source-clock ranges.");
+        }
+        const derivativeDuration = revision.derivatives[0].durationSeconds;
+        return {
+          asset: null,
+          revision: {
+            ...revision,
+            durationSeconds: revision.durationSeconds ?? derivativeDuration,
+          },
+        };
+      })();
     if (source.revision.durationSeconds !== null && value.endSeconds > source.revision.durationSeconds + 0.001) {
       throw new SourceStoryContractError("range-past-source", "The out point is beyond the registered source duration.");
     }
@@ -938,7 +971,19 @@ export async function reorderStoryBoard(input: {
 }
 
 export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: string) {
-  const [boards, cards, externalSources] = await Promise.all([
+  const derivativeSelect = {
+    id: true,
+    kind: true,
+    profile: true,
+    sizeBytes: true,
+    mimeType: true,
+    durationSeconds: true,
+    widthPixels: true,
+    heightPixels: true,
+    framesPerSecond: true,
+    createdAt: true,
+  } as const;
+  const [boards, cards, externalSources, externalProxyJobs] = await Promise.all([
     prisma.studioStoryBoard.findMany({
       where: { projectId, archivedAt: null },
       orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
@@ -955,6 +1000,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
                       include: {
                         mediaAsset: { select: { id: true, filename: true, url: true, mimeType: true, duration: true, thumbnailUrl: true } },
                         externalReference: { select: { id: true, provider: true, fileName: true, mimeType: true, accessState: true, capabilityState: true, lastVerifiedAt: true } },
+                        derivatives: { where: { kind: "collaboration-proxy", status: "ready" }, orderBy: { createdAt: "desc" }, take: 1, select: derivativeSelect },
                       },
                     },
                   },
@@ -976,6 +1022,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
               include: {
                 mediaAsset: { select: { id: true, filename: true, url: true, mimeType: true, duration: true, thumbnailUrl: true } },
                 externalReference: { select: { id: true, provider: true, fileName: true, mimeType: true, accessState: true, capabilityState: true, lastVerifiedAt: true } },
+                derivatives: { where: { kind: "collaboration-proxy", status: "ready" }, orderBy: { createdAt: "desc" }, take: 1, select: derivativeSelect },
               },
             },
           },
@@ -1010,11 +1057,54 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
             sizeBytes: true,
             sourceState: true,
             verifiedAt: true,
+            durationSeconds: true,
+            widthPixels: true,
+            heightPixels: true,
+            framesPerSecond: true,
+            derivatives: { where: { kind: "collaboration-proxy", status: "ready" }, orderBy: { createdAt: "desc" }, take: 1, select: derivativeSelect },
           },
         },
       },
     }),
+    prisma.studioWorkflowJob.findMany({
+      where: { projectId, type: "external-source-proxy", source: "source-story.external-proxy" },
+      orderBy: { updatedAt: "desc" },
+      take: 500,
+      select: { id: true, status: true, inputJson: true, resultJson: true, error: true, updatedAt: true },
+    }),
   ]);
+  const publicDerivative = (derivative: {
+    id: string;
+    kind: string;
+    profile: string;
+    sizeBytes: bigint;
+    mimeType: string;
+    durationSeconds: number | null;
+    widthPixels: number | null;
+    heightPixels: number | null;
+    framesPerSecond: number | null;
+    createdAt: Date;
+  } | undefined) => derivative ? {
+    ...derivative,
+    sizeBytes: derivative.sizeBytes.toString(),
+    createdAt: derivative.createdAt.toISOString(),
+    playbackUrl: `/api/media/derivatives/${encodeURIComponent(derivative.id)}`,
+  } : null;
+  const jobBySourceRevisionId = new Map<string, { id: string; status: string; failureCode: string | null; updatedAt: string }>();
+  for (const job of externalProxyJobs) {
+    const manifest = jsonRecord(job.inputJson);
+    const source = jsonRecord(manifest?.source);
+    const sourceRevisionId = typeof source?.sourceRevisionId === "string" ? source.sourceRevisionId : "";
+    if (!sourceRevisionId || jobBySourceRevisionId.has(sourceRevisionId)) continue;
+    const result = jsonRecord(job.resultJson);
+    const failure = jsonRecord(result?.failure);
+    jobBySourceRevisionId.set(sourceRevisionId, {
+      id: job.id,
+      status: job.status,
+      failureCode: typeof failure?.code === "string" ? failure.code : null,
+      updatedAt: job.updatedAt.toISOString(),
+    });
+  }
   const projectCard = (card: (typeof cards)[number]) => ({
     id: card.id,
     stableId: card.stableId,
@@ -1050,6 +1140,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
           ...card.sourceRange.sourceRevision.externalReference,
           lastVerifiedAt: card.sourceRange.sourceRevision.externalReference.lastVerifiedAt?.toISOString() ?? null,
         } : null,
+        collaborationProxy: publicDerivative(card.sourceRange.sourceRevision.derivatives[0]),
       },
     } : null,
   });
@@ -1065,8 +1156,11 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
       lastVerifiedAt: source.lastVerifiedAt?.toISOString() ?? null,
       latestSourceRevision: revisions[0] ? {
         ...revisions[0],
+        derivatives: undefined,
         sizeBytes: revisions[0].sizeBytes?.toString() ?? null,
         verifiedAt: revisions[0].verifiedAt?.toISOString() ?? null,
+        collaborationProxy: publicDerivative(revisions[0].derivatives[0]),
+        proxyJob: jobBySourceRevisionId.get(revisions[0].id) ?? null,
       } : null,
     })),
     cards: cards.map(projectCard),

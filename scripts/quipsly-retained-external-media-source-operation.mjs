@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { constants, createReadStream } from "node:fs";
+import { chmod, copyFile, mkdir, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { PrismaClient } from "@prisma/client";
@@ -47,6 +48,20 @@ try {
   if (!actor) throw new Error(`Retained actor not found: ${actorEmail}`);
   if (!project) throw new Error(`Retained Nest not found: ${projectSlug}`);
 
+  // A background launchd worker cannot safely inherit Terminal/Codex access to
+  // Downloads. Materialize one checksum-addressed, copy-on-write execution
+  // cache under its dedicated root. The original remains the provider truth;
+  // the cache is bounded, rebuildable, and independently verified.
+  const cacheDirectory = path.join(tmpdir(), "quipsly-media-ingest", "external-source-cache");
+  const cachePath = path.join(cacheDirectory, `${checksumSha256}.mp4`);
+  await mkdir(cacheDirectory, { recursive: true, mode: 0o700 });
+  const cached = await stat(cachePath).catch(() => null);
+  if (!cached || cached.size !== sourceStat.size || await sha256File(cachePath) !== checksumSha256) {
+    await copyFile(sourcePath, cachePath, constants.COPYFILE_FICLONE);
+    await chmod(cachePath, 0o400);
+  }
+  if ((await sha256File(cachePath)) !== checksumSha256) throw new Error("The local executor cache failed checksum verification.");
+
   const externalFileId = `local-file:${createHash("sha256").update(sourcePath).digest("hex")}`;
   const headRevisionKey = `sha256:${checksumSha256}`;
   const existing = await prisma.studioExternalMediaReference.findUnique({
@@ -76,6 +91,7 @@ try {
         sizeBytes: sourceStat.size,
         headRevisionKey,
         checksumSha256,
+        localPath: cachePath,
         providerCreatedAt: sourceStat.birthtime,
         providerModifiedAt: sourceStat.mtime,
         accessState: "available",
@@ -107,7 +123,14 @@ try {
     capabilityState: projected.capabilityState,
     providerLocatorExposed: false,
     sourceMutated: false,
-    copiedToQuipsly: false,
+    executionCache: {
+      policy: "checksum-addressed-apfs-clone",
+      sizeBytes: sourceStat.size,
+      checksumSha256,
+      rebuildable: true,
+    },
+    originalCopiedToQuipslyStorage: false,
+    localExecutionCacheCreated: true,
   }, null, 2));
 } finally {
   await prisma.$disconnect();

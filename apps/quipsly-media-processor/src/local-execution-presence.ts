@@ -29,6 +29,7 @@ export class LocalExecutionPresence {
       buildId: this.input.buildId,
       jobTypes: [
         "asset-proxy",
+        "external-source-proxy",
         "audio-mastery",
         "audio-delivery",
         "episode-program-delivery",

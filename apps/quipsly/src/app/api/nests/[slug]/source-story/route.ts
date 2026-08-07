@@ -15,6 +15,10 @@ import {
   googleDriveSourceErrorResponse,
 } from "@/lib/server/google-drive-source";
 import {
+  ExternalSourceProxyRequestError,
+  requestExternalSourceProxy,
+} from "@/lib/server/external-source-proxy";
+import {
   SourceStoryConflictError,
   createSourceStoryCard,
   createStoryBoard,
@@ -98,6 +102,9 @@ function errorResponse(error: unknown) {
   if (error instanceof SourceStoryContractError) {
     return NextResponse.json({ error: error.message, errorCode: error.code }, { status: 400 });
   }
+  if (error instanceof ExternalSourceProxyRequestError) {
+    return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+  }
   const status = typeof (error as { status?: unknown })?.status === "number"
     ? Number((error as { status: number }).status)
     : 500;
@@ -140,6 +147,17 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         clientRequestId: text(body.clientRequestId),
         requestUrl: request.url,
       });
+    } else if (action === "request-external-proxy") {
+      operation = await requestExternalSourceProxy({
+        prisma,
+        projectId: actor.projectId,
+        referenceId: text(body.referenceId),
+        sourceRevisionId: text(body.sourceRevisionId),
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        clientRequestId: text(body.clientRequestId),
+        retryFailed: body.retryFailed === true,
+      });
     } else if (action === "create-board") {
       operation = await createStoryBoard({
         prisma,
@@ -159,7 +177,9 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         actorEmail: actor.email,
         value: {
           projectId: actor.projectId,
-          mediaAssetId: text(body.mediaAssetId),
+          mediaAssetId: text(body.mediaAssetId) || null,
+          sourceRevisionId: text(body.sourceRevisionId) || null,
+          externalReferenceId: text(body.externalReferenceId) || null,
           boardId: text(body.boardId) || null,
           expectedBoardRevision: body.expectedBoardRevision === null || body.expectedBoardRevision === undefined
             ? null

@@ -44,7 +44,9 @@ export type StoryReframeRecipe = {
 
 export type CreateSourceStoryCardInput = {
   projectId: string;
-  mediaAssetId: string;
+  mediaAssetId?: string | null;
+  sourceRevisionId?: string | null;
+  externalReferenceId?: string | null;
   boardId?: string | null;
   expectedBoardRevision?: number | null;
   clientRequestId: string;
@@ -222,10 +224,24 @@ export function normalizeCreateSourceStoryCardInput(value: CreateSourceStoryCard
   if (!boardId && expectedBoardRevision !== null) {
     throw new SourceStoryContractError("orphan-board-revision", "A board revision cannot be supplied without a board.");
   }
+  const mediaAssetId = value.mediaAssetId ? opaqueId(value.mediaAssetId, "mediaAssetId") : null;
+  const sourceRevisionId = value.sourceRevisionId ? opaqueId(value.sourceRevisionId, "sourceRevisionId") : null;
+  const externalReferenceId = value.externalReferenceId ? opaqueId(value.externalReferenceId, "externalReferenceId") : null;
+  if (Boolean(mediaAssetId) === Boolean(sourceRevisionId)) {
+    throw new SourceStoryContractError("invalid-source-binding", "Choose exactly one registered asset or external source revision.");
+  }
+  if (sourceRevisionId && !externalReferenceId) {
+    throw new SourceStoryContractError("missing-external-reference", "An external source revision requires its retained vault reference.");
+  }
+  if (mediaAssetId && externalReferenceId) {
+    throw new SourceStoryContractError("unexpected-external-reference", "A registered asset cannot claim an external vault reference.");
+  }
   return {
     schema: SOURCE_STORY_SCHEMA_VERSION,
     projectId: opaqueId(value.projectId, "projectId"),
-    mediaAssetId: opaqueId(value.mediaAssetId, "mediaAssetId"),
+    mediaAssetId,
+    sourceRevisionId,
+    externalReferenceId,
     boardId,
     expectedBoardRevision,
     clientRequestId: clientRequestId(value.clientRequestId),

@@ -65,6 +65,57 @@ function safeSnapshot(input: ReturnType<typeof normalizeAttachVerifiedExternalMe
   };
 }
 
+function providerProjection(input: ReturnType<typeof normalizeAttachVerifiedExternalMediaInput>) {
+  const file = input.verifiedFile;
+  return {
+    connectionId: input.connectionId,
+    connectionKey: file.connectionKey,
+    sharedDriveId: file.sharedDriveId,
+    fileName: file.fileName,
+    mimeType: file.mimeType,
+    sizeBytes: file.sizeBytes,
+    headRevisionKey: file.headRevisionKey,
+    checksumSha256: file.checksumSha256,
+    providerCreatedAt: file.providerCreatedAt,
+    providerModifiedAt: file.providerModifiedAt,
+    accessState: file.accessState,
+    capabilityState: file.capabilityState,
+    providerLocatorJson: {
+      schema: "quipsly-provider-locator-v1",
+      externalFileId: file.externalFileId,
+      sharedDriveId: file.sharedDriveId,
+      resourceKey: file.resourceKey,
+      localPath: file.localPath,
+    },
+    capabilitySnapshotJson: {
+      schema: "quipsly-provider-capability-v1",
+      canDownload: file.canDownload,
+      canReadRevisions: file.canReadRevisions,
+      canCopy: file.canCopy,
+      downloadRestrictionReason: file.downloadRestrictionReason,
+    },
+  };
+}
+
+function retainedProviderProjection(reference: Prisma.StudioExternalMediaReferenceGetPayload<Record<string, never>>) {
+  return {
+    connectionId: reference.connectionId,
+    connectionKey: reference.connectionKey,
+    sharedDriveId: reference.sharedDriveId,
+    fileName: reference.fileName,
+    mimeType: reference.mimeType,
+    sizeBytes: reference.sizeBytes,
+    headRevisionKey: reference.headRevisionKey,
+    checksumSha256: reference.checksumSha256,
+    providerCreatedAt: reference.providerCreatedAt,
+    providerModifiedAt: reference.providerModifiedAt,
+    accessState: reference.accessState,
+    capabilityState: reference.capabilityState,
+    providerLocatorJson: reference.providerLocatorJson,
+    capabilitySnapshotJson: reference.capabilitySnapshotJson,
+  };
+}
+
 async function ensureProviderRevision(
   tx: Prisma.TransactionClient,
   input: ReturnType<typeof normalizeAttachVerifiedExternalMediaInput>,
@@ -218,6 +269,7 @@ export async function attachVerifiedExternalMediaSource(input: {
             externalFileId: value.verifiedFile.externalFileId,
             sharedDriveId: value.verifiedFile.sharedDriveId,
             resourceKey: value.verifiedFile.resourceKey,
+            localPath: value.verifiedFile.localPath,
           },
           capabilitySnapshotJson: {
             schema: "quipsly-provider-capability-v1",
@@ -250,6 +302,27 @@ export async function attachVerifiedExternalMediaSource(input: {
     }
 
     const sourceRevision = await ensureProviderRevision(tx, value, reference.id);
+    if (stableJson(retainedProviderProjection(reference)) === stableJson(providerProjection(value))) {
+      const observed = await tx.studioExternalMediaReference.updateMany({
+        where: { id: reference.id, revision: reference.revision },
+        data: { lastVerifiedAt: new Date() },
+      });
+      if (observed.count !== 1) throw new ExternalMediaConflictError("stale-reference", "This external source changed on another surface.");
+      await tx.studioExternalMediaReferenceOperation.create({
+        data: {
+          referenceId: reference.id,
+          revision: reference.revision,
+          previousRevision: reference.revision,
+          operation: "observe",
+          actorUserId: value.actorUserId,
+          clientRequestId: value.clientRequestId,
+          requestSha256,
+          snapshotJson: safeSnapshot(value, reference.id, reference.revision, sourceRevision.id),
+        },
+      });
+      reference = await tx.studioExternalMediaReference.findUniqueOrThrow({ where: { id: reference.id } });
+      return { reference, sourceRevisionId: sourceRevision.id, replayed: false };
+    }
     const nextRevision = reference.revision + 1;
     const updated = await tx.studioExternalMediaReference.updateMany({
       where: { id: reference.id, revision: reference.revision },
@@ -271,6 +344,7 @@ export async function attachVerifiedExternalMediaSource(input: {
           externalFileId: value.verifiedFile.externalFileId,
           sharedDriveId: value.verifiedFile.sharedDriveId,
           resourceKey: value.verifiedFile.resourceKey,
+          localPath: value.verifiedFile.localPath,
         },
         capabilitySnapshotJson: {
           schema: "quipsly-provider-capability-v1",
