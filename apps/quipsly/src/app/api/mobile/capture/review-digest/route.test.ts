@@ -277,6 +277,16 @@ describe("mobile Capture review digest", () => {
           endpointQueueCount: 1,
           drainedEndpointCount: 0,
           safeToLeaveAllEndpoints: false,
+          missingPlannedSources: [],
+          sourceHolds: [],
+          endpointQueues: [{
+            clientInstanceId: "ios-installation",
+            deviceLabel: "Quipsly Capture · iPhone",
+            queueRevision: "2",
+            queueState: "NOT_EMPTY",
+            pendingSourceCount: 1,
+            failedSourceCount: 0,
+          }],
         },
       }],
       sessions: [{

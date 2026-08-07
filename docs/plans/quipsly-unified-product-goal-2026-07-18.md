@@ -8105,3 +8105,29 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   retained identities and their owner-only credential files were removed.
   Physical iPhone, TestFlight, real-Firebase reauthentication, production
   preview, and production deployment remain open gates.
+
+## 2026-08-06 iPhone source-recovery resolution checkpoint
+
+- Closed the warning-without-resolution gap in the iPhone Finish journey. The
+  selected Session now renders compact detail from the same canonical topology:
+  blocking planned masters, required sources whose server retention is held,
+  and the latest durable receipt for each browser, Mac, or iPhone installation.
+- The recovery card shows exact revisions and pending/held/local counts, offers
+  explicit **Check again**, **Open Library**, and **Open the full source plan in
+  Nest** paths, and exposes no button that can merely mark evidence safe. A
+  server copy still cannot stand in for an installation queue receipt.
+- Simulator operation caught an accessibility-identity defect: applying one
+  identifier to the outer SwiftUI card propagated it to every child. The marker
+  now belongs to one headline while combined device rows retain distinct IDs,
+  improving UI automation, Voice Control targeting, and diagnostic clarity.
+- The compiled iPhone journey passes Today -> recovery action -> exact Session
+  -> Homer iPhone revision 12 with one pending source. The retained local coach
+  operation independently wrote browser revisions 9/10, observed one blocking
+  planned master in both states, and proved that draining the browser changes
+  the detail to 1/1 endpoints without falsely clearing the missing-master hold.
+- Focused server/topology coverage passes 21 tests, strict TypeScript passes,
+  the mobile source contract passes 104/104, App Store/static coverage passes
+  1,064/1,064, and the isolated production build generates all 189 routes. All
+  disposable retained Firebase identities, owner-only credential packets,
+  summaries, simulator DerivedData, and isolated web output were removed after
+  readback. Physical-device and production gates remain open.

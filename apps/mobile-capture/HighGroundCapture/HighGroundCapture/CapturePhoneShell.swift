@@ -624,6 +624,179 @@ private struct CaptureFinishQueueCard: View {
     }
 }
 
+private struct CaptureSourceRecoveryCard: View {
+    let session: MobileCaptureSession
+    let readiness: MobileCaptureSourceExitReadiness
+    @ObservedObject var client: CaptureReviewDigestClient
+    let previewOnly: Bool
+    let onOpenLibrary: () -> Void
+
+    private var tint: Color {
+        readiness.safeToLeaveAllEndpoints ? .green : .orange
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: readiness.safeToLeaveAllEndpoints ? "checkmark.shield.fill" : "externaldrive.badge.exclamationmark")
+                    .font(.title3)
+                    .foregroundStyle(tint)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(readiness.safeToLeaveAllEndpoints ? "Every recording endpoint is clear" : readiness.label)
+                        .font(.headline)
+                        .accessibilityIdentifier("CaptureSourceRecoveryCard")
+                    Text(readiness.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Text(readiness.evidenceLine)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(tint)
+                .accessibilityIdentifier("CaptureSourceRecoveryEvidence")
+
+            if let missing = readiness.missingPlannedSources, !missing.isEmpty {
+                recoverySection("Missing planned masters", systemImage: "list.clipboard.fill") {
+                    ForEach(missing) { source in
+                        recoveryRow(
+                            id: "CaptureMissingPlannedSource_\(source.id)",
+                            icon: "exclamationmark.triangle.fill",
+                            title: source.label,
+                            detail: [source.participantLabel, source.expectedDeviceLabel, source.fulfillment.replacingOccurrences(of: "-", with: " ")]
+                                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).nonempty }
+                                .joined(separator: " · "),
+                            tone: .orange
+                        )
+                    }
+                }
+            }
+
+            if let holds = readiness.sourceHolds, !holds.isEmpty {
+                recoverySection("Server-copy holds", systemImage: "icloud.slash.fill") {
+                    ForEach(holds) { source in
+                        recoveryRow(
+                            id: "CaptureSourceHold_\(source.id)",
+                            icon: "waveform.badge.exclamationmark",
+                            title: source.label,
+                            detail: "\(source.deviceLabel) · \(sourceRetentionLabel(source.serverRetentionState))",
+                            tone: .orange
+                        )
+                    }
+                }
+            }
+
+            if let queues = readiness.endpointQueues, !queues.isEmpty {
+                recoverySection("Recording devices", systemImage: "iphone.and.arrow.forward") {
+                    ForEach(queues) { queue in
+                        recoveryRow(
+                            id: "CaptureEndpointQueue_\(queue.clientInstanceId)",
+                            icon: queue.clientKind == "ios" ? "iphone" : "laptopcomputer",
+                            title: queue.deviceLabel,
+                            detail: queue.evidenceLine,
+                            tone: queue.isDrained ? .green : .orange
+                        )
+                    }
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    Task { await client.load() }
+                } label: {
+                    Label(client.isLoading ? "Checking…" : "Check again", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(previewOnly || client.isLoading)
+                .accessibilityIdentifier("CaptureSourceRecoveryRefresh")
+
+                Button(action: onOpenLibrary) {
+                    Label("Open Library", systemImage: "externaldrive.fill")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureSourceRecoveryOpenLibrary")
+            }
+
+            if let url = nestSessionURL {
+                Link(destination: url) {
+                    Label("Open the full source plan in Nest", systemImage: "arrow.up.right.square")
+                        .font(.caption.weight(.semibold))
+                }
+                .accessibilityIdentifier("CaptureSourceRecoveryOpenNest")
+            }
+
+            Text("A verified server copy does not prove that every browser, Mac, or iPhone has drained its protected local queue.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .captureCard()
+    }
+
+    @ViewBuilder
+    private func recoverySection<Content: View>(
+        _ title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    private func recoveryRow(
+        id: String,
+        icon: String,
+        title: String,
+        detail: String,
+        tone: Color
+    ) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: icon)
+                .foregroundStyle(tone)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(id)
+    }
+
+    private func sourceRetentionLabel(_ state: String) -> String {
+        switch state {
+        case "CAPTURE_AWAITING_MEDIA": "capture is waiting for media"
+        case "SERVER_COPY_PENDING": "server copy is still pending"
+        case "SERVER_COPY_VERIFIED_HELD": "verified copy is held for review"
+        case "FINALIZATION_RECEIPT_MISSING": "finalization receipt is missing"
+        default: state.replacingOccurrences(of: "_", with: " ").lowercased()
+        }
+    }
+
+    private var nestSessionURL: URL? {
+        let base = normalizedNestBaseURL(
+            Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+                ?? "https://nest.quipsly.com"
+        )
+        guard let root = URL(string: base),
+              ["http", "https"].contains(root.scheme?.lowercased() ?? ""),
+              root.host != nil else { return nil }
+        return root
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(session.callRoomId, isDirectory: false)
+    }
+}
+
 private struct CaptureTranscriptSourceDestination: Hashable {
     let roomID: String
     let sessionTitle: String
@@ -6101,6 +6274,17 @@ private struct CaptureRecorderView: View {
                         }
                     }
                     .captureCard()
+
+                    if session.recordingCount > 0,
+                       let sourceExit = model.selectedSessionSourceExitReadiness {
+                        CaptureSourceRecoveryCard(
+                            session: session,
+                            readiness: sourceExit,
+                            client: model.reviewDigestClient,
+                            previewOnly: model.usesPreviewData,
+                            onOpenLibrary: { visibleTab = .library }
+                        )
+                    }
 
                     CaptureSessionGuardianCard(
                         audioCapture: audioCapture,

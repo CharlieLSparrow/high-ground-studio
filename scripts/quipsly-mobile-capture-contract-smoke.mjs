@@ -893,6 +893,7 @@ function checkReviewDigestContractSources() {
   const componentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const contentViewText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ContentView.swift");
   const capturePhoneShellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
+  const captureExperienceModelText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureExperienceModel.swift");
   const sessionReadinessTopologyText = sourceText("apps/quipsly/src/lib/server/session-readiness-topology.ts");
   const sessionReadinessTopologyCompatibilityText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-readiness-topology.ts");
   const workTagsText = sourceText("apps/quipsly/src/lib/server/work-tags.ts");
@@ -1008,6 +1009,23 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("visibleTab = .record"),
     "nativeFinishQueueVisible",
     "Today exposes a ranked post-capture finishing queue that opens the exact Session without executing its promotion, transcription, packet, or review action.",
+  );
+  expect(
+    digestRouteText.includes("missingPlannedSources")
+      && digestRouteText.includes("sourceHolds")
+      && digestRouteText.includes("endpointQueues")
+      && bridgeText.includes("struct MobileCaptureMissingPlannedSource")
+      && bridgeText.includes("struct MobileCaptureSourceHold")
+      && bridgeText.includes("struct MobileCaptureEndpointQueueEvidence")
+      && captureExperienceModelText.includes("selectedSessionSourceExitReadiness")
+      && capturePhoneShellText.includes("CaptureSourceRecoveryCard")
+      && capturePhoneShellText.includes("Missing planned masters")
+      && capturePhoneShellText.includes("Server-copy holds")
+      && capturePhoneShellText.includes("Recording devices")
+      && capturePhoneShellText.includes("Open the full source plan in Nest")
+      && capturePhoneShellText.includes("CaptureSourceRecoveryOpenLibrary"),
+    "nativeSourceRecoveryResolutionVisible",
+    "Opening an iPhone finishing action resolves to exact planned-master, server-copy, and per-installation queue evidence with explicit Library, refresh, and Nest paths.",
   );
   expect(
     capturePhoneShellText.includes("CaptureSessionTruthPanel")

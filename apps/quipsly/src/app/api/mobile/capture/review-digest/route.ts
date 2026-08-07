@@ -14,6 +14,37 @@ const PACKET_KIND = "quipsly-mobile-capture-review-digest-v1";
 
 type SourceExitReadiness = SessionReadinessTopology["exitReadiness"] & {
   attentionAt?: string | null;
+  missingPlannedSources?: Array<{
+    id: string;
+    label: string;
+    participantLabel: string | null;
+    sourceKind: string;
+    expectedClientKind: string | null;
+    expectedDeviceLabel: string | null;
+    fulfillment: string;
+  }>;
+  sourceHolds?: Array<{
+    id: string;
+    label: string;
+    sourceKind: string;
+    clientKind: string;
+    deviceLabel: string;
+    captureId: string | null;
+    status: string;
+    serverRetentionState: string;
+  }>;
+  endpointQueues?: Array<{
+    id: string;
+    clientInstanceId: string;
+    clientKind: string;
+    deviceLabel: string;
+    queueRevision: string;
+    queueState: string;
+    localSourceCount: number;
+    pendingSourceCount: number;
+    failedSourceCount: number;
+    reconciledAt: string;
+  }>;
 };
 
 function asArray(value: unknown): unknown[] {
@@ -366,6 +397,46 @@ function sourceExitReadinessForRoom(
   return {
     ...topology.exitReadiness,
     attentionAt: Number.isFinite(attentionAt) ? new Date(attentionAt).toISOString() : null,
+    missingPlannedSources: topology.expectedSources
+      .filter((source) => source.blocking)
+      .map((source) => ({
+        id: source.id,
+        label: source.label,
+        participantLabel: source.participantLabel,
+        sourceKind: source.sourceKind,
+        expectedClientKind: source.expectedClientKind,
+        expectedDeviceLabel: source.expectedDeviceLabel,
+        fulfillment: source.fulfillment,
+      })),
+    sourceHolds: topology.people
+      .flatMap((person) => person.sources)
+      .concat(topology.unassignedSources)
+      .filter((source) => (
+        source.sourceKind !== "provider"
+        && source.serverRetention.state !== "SERVER_COPY_VERIFIED_RELEASED"
+      ))
+      .map((source) => ({
+        id: source.id,
+        label: source.label,
+        sourceKind: source.sourceKind,
+        clientKind: source.clientKind,
+        deviceLabel: source.deviceLabel,
+        captureId: source.captureId,
+        status: source.status,
+        serverRetentionState: source.serverRetention.state,
+      })),
+    endpointQueues: topology.people.flatMap((person) => person.endpointQueues.map((queue) => ({
+      id: queue.id,
+      clientInstanceId: queue.clientInstanceId,
+      clientKind: queue.clientKind,
+      deviceLabel: queue.deviceLabel,
+      queueRevision: queue.queueRevision,
+      queueState: queue.queueState,
+      localSourceCount: queue.localSourceCount,
+      pendingSourceCount: queue.pendingSourceCount,
+      failedSourceCount: queue.failedSourceCount,
+      reconciledAt: queue.reconciledAt,
+    }))),
   };
 }
 

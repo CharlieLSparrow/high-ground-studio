@@ -426,6 +426,18 @@ final class CaptureExperienceModel: ObservableObject {
         return sessions.first
     }
 
+    var selectedSessionSourceExitReadiness: MobileCaptureSourceExitReadiness? {
+        guard let roomID = selectedSession?.callRoomId else { return nil }
+        if let readiness = reviewDigestClient.response?.digest?.sessions?
+            .first(where: { $0.callRoomId == roomID })?
+            .sourceExitReadiness {
+            return readiness
+        }
+        return reviewDigestClient.response?.digest?.finishActions?
+            .first(where: { $0.callRoomId == roomID })?
+            .sourceExitReadiness
+    }
+
     var nextSession: MobileCaptureSession? {
         let activeSessions = sessions.filter {
             !["ENDED", "CANCELED", "FAILED"].contains(($0.status ?? "").uppercased())

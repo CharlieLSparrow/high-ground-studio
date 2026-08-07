@@ -1160,6 +1160,14 @@ final class CaptureExperienceUITests: XCTestCase {
             app.staticTexts["Studio group ready"].exists,
             "Opening a finishing action should select its exact Session rather than perform promotion, transcription, or review."
         )
+        let recovery = app.descendants(matching: .any)["CaptureSourceRecoveryCard"].firstMatch
+        reveal(recovery)
+        XCTAssertTrue(recovery.exists)
+        XCTAssertTrue(app.staticTexts["CaptureSourceRecoveryEvidence"].label.contains("2/2 server-safe masters"))
+        let iphoneQueue = app.descendants(matching: .any)["CaptureEndpointQueue_preview-iphone-installation"]
+        reveal(iphoneQueue)
+        XCTAssertTrue(iphoneQueue.label.contains("Homer's iPhone"))
+        XCTAssertTrue(iphoneQueue.label.contains("1 pending"))
     }
 
     func testTodayWeeklyPlanEditorKeepsReflectionHonestAndOfflineSafe() {

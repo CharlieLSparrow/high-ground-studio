@@ -2860,6 +2860,49 @@ struct MobileCaptureReviewDigest: Codable {
     }
 }
 
+struct MobileCaptureMissingPlannedSource: Codable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let participantLabel: String?
+    let sourceKind: String
+    let expectedClientKind: String?
+    let expectedDeviceLabel: String?
+    let fulfillment: String
+}
+
+struct MobileCaptureSourceHold: Codable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let sourceKind: String
+    let clientKind: String
+    let deviceLabel: String
+    let captureId: String?
+    let status: String
+    let serverRetentionState: String
+}
+
+struct MobileCaptureEndpointQueueEvidence: Codable, Identifiable, Hashable {
+    let id: String
+    let clientInstanceId: String
+    let clientKind: String
+    let deviceLabel: String
+    let queueRevision: String
+    let queueState: String
+    let localSourceCount: Int
+    let pendingSourceCount: Int
+    let failedSourceCount: Int
+    let reconciledAt: String
+
+    var isDrained: Bool { queueState == "DRAINED" }
+
+    var evidenceLine: String {
+        if isDrained {
+            return "Revision \(queueRevision) · \(localSourceCount) local source\(localSourceCount == 1 ? "" : "s") · drained"
+        }
+        return "Revision \(queueRevision) · \(pendingSourceCount) pending · \(failedSourceCount) held"
+    }
+}
+
 struct MobileCaptureSourceExitReadiness: Codable, Hashable {
     let state: String
     let label: String
@@ -2875,6 +2918,10 @@ struct MobileCaptureSourceExitReadiness: Codable, Hashable {
     let safeForPlannedSources: Bool
     let safeForServerObservedSources: Bool
     let safeToLeaveAllEndpoints: Bool
+    var attentionAt: String? = nil
+    var missingPlannedSources: [MobileCaptureMissingPlannedSource]? = nil
+    var sourceHolds: [MobileCaptureSourceHold]? = nil
+    var endpointQueues: [MobileCaptureEndpointQueueEvidence]? = nil
 
     var evidenceLine: String {
         "\(serverSafeRequiredSourceCount)/\(requiredSourceCount) server-safe masters · \(drainedEndpointCount)/\(endpointQueueCount) endpoint queues drained"
@@ -3063,7 +3110,36 @@ final class CaptureReviewDigestClient: ObservableObject {
             fulfilledRequiredPlannedSourceCount: 2,
             safeForPlannedSources: true,
             safeForServerObservedSources: true,
-            safeToLeaveAllEndpoints: false
+            safeToLeaveAllEndpoints: false,
+            attentionAt: "2026-08-06T18:00:00.000Z",
+            missingPlannedSources: [],
+            sourceHolds: [],
+            endpointQueues: [
+                MobileCaptureEndpointQueueEvidence(
+                    id: "preview-iphone-queue",
+                    clientInstanceId: "preview-iphone-installation",
+                    clientKind: "ios",
+                    deviceLabel: "Quipsly Capture · Homer's iPhone",
+                    queueRevision: "12",
+                    queueState: "NOT_EMPTY",
+                    localSourceCount: 2,
+                    pendingSourceCount: 1,
+                    failedSourceCount: 0,
+                    reconciledAt: "2026-08-06T18:00:00.000Z"
+                ),
+                MobileCaptureEndpointQueueEvidence(
+                    id: "preview-browser-queue",
+                    clientInstanceId: "preview-browser-installation",
+                    clientKind: "web",
+                    deviceLabel: "Quipsly Web · Charlie's Mac",
+                    queueRevision: "8",
+                    queueState: "DRAINED",
+                    localSourceCount: 1,
+                    pendingSourceCount: 0,
+                    failedSourceCount: 0,
+                    reconciledAt: "2026-08-06T17:58:00.000Z"
+                ),
+            ]
         )
         response = MobileCaptureReviewDigestResponse(
             ok: true,

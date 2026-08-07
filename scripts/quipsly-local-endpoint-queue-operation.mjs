@@ -137,6 +137,9 @@ async function main() {
       "The iPhone Finish queue did not prioritize retained endpoint recovery.",
     );
     assert(recoveringSession.sourceExitReadiness.drainedEndpointCount === 0, "The iPhone digest did not preserve the NOT_EMPTY endpoint evidence.");
+    const recoveringEndpoint = recoveringSession.sourceExitReadiness.endpointQueues?.find((queue) => queue.clientInstanceId === clientInstanceId);
+    assert(recoveringEndpoint?.queueState === "NOT_EMPTY" && recoveringEndpoint.pendingSourceCount === 1, "The iPhone recovery detail did not identify the retained browser queue and its pending source.");
+    assert(recoveringSession.sourceExitReadiness.missingPlannedSources?.length > 0, "The iPhone recovery detail hid the retained Session's blocking planned master.");
     const drained = await post({
       ...shared,
       queueRevision: String(revision++),
@@ -157,6 +160,9 @@ async function main() {
     assert(safeSession?.sourceExitReadiness?.drainedEndpointCount === 1, "The iPhone digest did not project the retained endpoint as drained.");
     assert(safeSession.sourceExitReadiness.safeToLeaveAllEndpoints === false, "The iPhone digest falsely declared a Session with an incomplete retained-source plan safe to leave.");
     assert(drainedRecoveryAction?.kind === "protect-recording-sources", "The iPhone Finish queue did not preserve the separate missing-master recovery action.");
+    const drainedEndpoint = safeSession.sourceExitReadiness.endpointQueues?.find((queue) => queue.clientInstanceId === clientInstanceId);
+    assert(drainedEndpoint?.queueState === "DRAINED" && drainedEndpoint.pendingSourceCount === 0, "The iPhone recovery detail did not replace the browser queue with its latest drained revision.");
+    assert(safeSession.sourceExitReadiness.missingPlannedSources?.length > 0, "Draining one endpoint incorrectly erased the separate blocking planned master.");
     console.log(JSON.stringify({
       ok: true,
       localOnly: true,
@@ -169,6 +175,8 @@ async function main() {
       recoveryState: recoveringSession.sourceExitReadiness.state,
       drainedState: safeSession.sourceExitReadiness.state,
       drainedEndpointCount: safeSession.sourceExitReadiness.drainedEndpointCount,
+      missingPlannedSourceCount: safeSession.sourceExitReadiness.missingPlannedSources.length,
+      drainedEndpointRevision: drainedEndpoint.queueRevision,
       safeToLeaveAfterDrain: safeSession.sourceExitReadiness.safeToLeaveAllEndpoints,
       secretsPrinted: false,
     }, null, 2));
