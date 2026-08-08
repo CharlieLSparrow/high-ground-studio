@@ -120,8 +120,13 @@ test("machine-wide services use machine-wide ownership state", () => {
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON/);
   assert.match(
     up,
-    /local_worker_media_root="\$\{local_worker_media_root:-\$\{local_media_root\}\}"/,
+    /local_worker_media_root="\$\{local_active_media_workspace_root:-\$\{local_media_root\}\}"/,
     "temporary ingest remains the fallback only when there is no activated durable workspace",
+  );
+  assert.match(
+    up,
+    /"QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT=\$\{local_active_media_workspace_root\}"/,
+    "child observability must not report the compatibility fallback as an activated workspace",
   );
   assert.match(
     up,

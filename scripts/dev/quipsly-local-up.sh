@@ -157,18 +157,18 @@ compose_project="${QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio}"
 local_database_url="${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
 local_media_root="${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-$(node -p 'require("node:path").join(require("node:os").tmpdir(), "quipsly-media-ingest")')}"
 local_media_workspace_config="${QUIPSLY_LOCAL_MEDIA_WORKSPACE_CONFIG:-$(node -p 'require("node:path").join(require("node:os").homedir(), "Library", "Application Support", "Quipsly", "local-media-workspace.json")')}"
-local_worker_media_root="${QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT:-}"
+local_active_media_workspace_root="${QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT:-}"
 local_media_legacy_roots_json="${QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON:-}"
 resolved_spatial_vault_root=""
-if [[ -z "${local_worker_media_root}" ]]; then
-  local_worker_media_root="$(node scripts/dev/quipsly-local-media-workspace.mjs resolve --config "${local_media_workspace_config}" --field workerMediaRoot)"
+if [[ -z "${local_active_media_workspace_root}" ]]; then
+  local_active_media_workspace_root="$(node scripts/dev/quipsly-local-media-workspace.mjs resolve --config "${local_media_workspace_config}" --field workerMediaRoot)"
   resolved_spatial_vault_root="$(node scripts/dev/quipsly-local-media-workspace.mjs resolve --config "${local_media_workspace_config}" --field spatialVaultRoot)"
   if [[ -z "${local_media_legacy_roots_json}" ]]; then
     local_media_legacy_roots_json="$(node scripts/dev/quipsly-local-media-workspace.mjs resolve --config "${local_media_workspace_config}" --field legacyReadRootsJson)"
   fi
 fi
 mkdir -p "${local_media_root}"
-local_worker_media_root="${local_worker_media_root:-${local_media_root}}"
+local_worker_media_root="${local_active_media_workspace_root:-${local_media_root}}"
 local_media_legacy_roots_json="${local_media_legacy_roots_json:-[]}"
 node -e 'const value=JSON.parse(process.argv[1]); if (!Array.isArray(value) || value.length > 8 || value.some((item) => typeof item !== "string" || !require("node:path").isAbsolute(item))) process.exit(1)' "${local_media_legacy_roots_json}" || {
   echo "QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON must contain at most eight absolute paths." >&2
@@ -438,7 +438,7 @@ start_macos_job() {
       "QUIPSLY_LOCAL_ENV_FILE=${local_env_file}" \
       "QUIPSLY_LOCAL_DATABASE_URL=${local_database_url}" \
       "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${local_media_root}" \
-      "QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT=${local_worker_media_root}" \
+      "QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT=${local_active_media_workspace_root}" \
       "QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON=${local_media_legacy_roots_json}" \
       "QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=${local_capture_vault_root}" \
       "QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN=${local_capture_upload_origin}" \
@@ -556,7 +556,7 @@ if [[ -n "${local_whisper_executable}" && -x "${local_whisper_executable}" ]]; t
       nohup env \
         DATABASE_URL="${local_database_url}" \
         QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${local_media_root}" \
-        QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${local_worker_media_root}" \
+        QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${local_active_media_workspace_root}" \
         QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${local_capture_vault_root}" \
         QUIPSLY_LOCAL_WHISPER_EXECUTABLE="${local_whisper_executable}" \
         QUIPSLY_LOCAL_WHISPER_MODEL="${local_whisper_model}" \
@@ -607,7 +607,7 @@ else
     nohup env \
       DATABASE_URL="${local_database_url}" \
       QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${local_media_root}" \
-      QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${local_worker_media_root}" \
+      QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${local_active_media_workspace_root}" \
       node --experimental-transform-types \
         --import "${repo_root}/scripts/register-ts-extension-loader.mjs" \
         "${repo_root}/apps/quipsly-media-processor/src/local-episode-worker.ts" \
@@ -713,7 +713,7 @@ else
         QUIPSLY_OWNER_OVERRIDE=false \
         QUIPSLY_LOCAL_MEDIA_UPLOADS=true \
         QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${local_media_root}" \
-        QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${local_worker_media_root}" \
+        QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${local_active_media_workspace_root}" \
         QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON="${local_media_legacy_roots_json}" \
         QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${local_capture_vault_root}" \
         QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN="${local_capture_upload_origin}" \
