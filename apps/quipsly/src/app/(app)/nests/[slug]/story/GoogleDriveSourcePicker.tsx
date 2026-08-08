@@ -44,6 +44,24 @@ type ExternalMediaLibrary = {
   connectedByCurrentUser: boolean;
   connectionId?: string | null;
   discoveryMode?: "folder-scan" | "selected-files";
+  navigationHealth?: {
+    eligibleSourceCount: number;
+    retainedBrowseCount: number;
+    proxyReadyCount: number;
+    visualReadyCount: number;
+    audioReadyCount: number;
+    browseReadyCount: number;
+    remainingCount: number;
+    nextBatchCount: number;
+    pendingTransferBytes: string;
+    inventoryTruncated: boolean;
+    captureDays: Array<{
+      date: string | null;
+      eligibleSourceCount: number;
+      browseReadyCount: number;
+      pendingTransferBytes: string;
+    }>;
+  };
 };
 
 type PickerDocument = {
@@ -203,12 +221,26 @@ function formatBytes(value: string) {
   return `${Math.max(0, Math.round(bytes / 1024)).toLocaleString()} KB`;
 }
 
+function formatCaptureDay(value: string | null) {
+  if (!value) return "Capture date unavailable";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00.000Z`));
+}
+
+function formatCountDelta(current: number, previous: number) {
+  const delta = current - previous;
+  return delta === 0 ? "no change" : `${delta > 0 ? "+" : ""}${delta}`;
+}
+
 function FollowedDriveLibraries({
   libraries,
   canWrite,
   pending,
   onRefresh,
   onPrepare,
+  onCheck,
   onAdd,
 }: {
   libraries?: ExternalMediaLibrary[];
@@ -216,6 +248,7 @@ function FollowedDriveLibraries({
   pending: boolean;
   onRefresh(library: ExternalMediaLibrary): void;
   onPrepare(library: ExternalMediaLibrary): void;
+  onCheck(library: ExternalMediaLibrary): void;
   onAdd(library: ExternalMediaLibrary): void;
 }) {
   if (!libraries?.length) return null;
@@ -334,7 +367,158 @@ function FollowedDriveLibraries({
               ) : null}
             </div>
           ) : null}
-          {library.connectedByCurrentUser && library.readySegmentCount > 0 ? (
+          {library.navigationHealth?.eligibleSourceCount ? (
+            <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-wide text-sky-950">
+                    Browse readiness
+                  </p>
+                  <p className="mt-1 text-xs font-black text-sky-950">
+                    {library.navigationHealth.browseReadyCount} of{" "}
+                    {library.navigationHealth.eligibleSourceCount} camera
+                    segments ready to scan
+                  </p>
+                </div>
+                <span className="rounded-full bg-white px-2 py-1 text-[9px] font-black text-sky-950">
+                  {Math.round(
+                    (library.navigationHealth.browseReadyCount /
+                      library.navigationHealth.eligibleSourceCount) *
+                      100,
+                  )}
+                  %
+                </span>
+              </div>
+              <div
+                role="progressbar"
+                aria-label={`${library.name} browse readiness`}
+                aria-valuemin={0}
+                aria-valuemax={library.navigationHealth.eligibleSourceCount}
+                aria-valuenow={library.navigationHealth.browseReadyCount}
+                className="mt-2 h-2 overflow-hidden rounded-full bg-sky-100"
+              >
+                <span
+                  className="block h-full rounded-full bg-sky-700 transition-[width]"
+                  style={{
+                    width: `${(library.navigationHealth.browseReadyCount / library.navigationHealth.eligibleSourceCount) * 100}%`,
+                  }}
+                />
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-1 text-[8px] sm:grid-cols-5 xl:grid-cols-2 2xl:grid-cols-5">
+                {[
+                  [
+                    "LRV retained",
+                    library.navigationHealth.retainedBrowseCount,
+                  ],
+                  ["Proxy", library.navigationHealth.proxyReadyCount],
+                  ["Visual map", library.navigationHealth.visualReadyCount],
+                  ["Waveform", library.navigationHealth.audioReadyCount],
+                  ["Complete", library.navigationHealth.browseReadyCount],
+                ].map(([label, value]) => (
+                  <div
+                    key={String(label)}
+                    className="rounded-lg border border-sky-100 bg-white p-2"
+                  >
+                    <dt className="font-bold text-sky-700">{label}</dt>
+                    <dd className="mt-1 text-[11px] font-black text-sky-950">
+                      {value} / {library.navigationHealth!.eligibleSourceCount}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              {library.navigationHealth.captureDays.length ? (
+                <details className="mt-2 rounded-xl border border-sky-200 bg-white px-2">
+                  <summary className="cursor-pointer min-h-11 py-3 text-[9px] font-black uppercase tracking-wide text-sky-950">
+                    Camera days · {library.navigationHealth.captureDays.length}
+                  </summary>
+                  <div className="space-y-2 pb-2">
+                    {library.navigationHealth.captureDays.map((day) => (
+                      <div
+                        key={day.date ?? "capture-date-unavailable"}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-sky-100 bg-sky-50/60 p-2"
+                      >
+                        <div>
+                          <p className="text-[10px] font-black text-sky-950">
+                            {formatCaptureDay(day.date)}
+                          </p>
+                          <p className="mt-1 text-[8px] font-bold text-sky-700">
+                            {day.browseReadyCount} of {day.eligibleSourceCount}{" "}
+                            ready to scan
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[8px] font-black text-sky-950">
+                          {day.pendingTransferBytes === "0"
+                            ? "LRV retained"
+                            : `${formatBytes(day.pendingTransferBytes)} left`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+              {library.navigationHealth.remainingCount > 0 ? (
+                <p className="mt-2 text-[9px] font-semibold leading-4 text-sky-900">
+                  Next resumable pass: {library.navigationHealth.nextBatchCount}{" "}
+                  segment
+                  {library.navigationHealth.nextBatchCount === 1 ? "" : "s"} ·
+                  up to{" "}
+                  {formatBytes(library.navigationHealth.pendingTransferBytes)}{" "}
+                  of LRV companions remain to retain locally. INSV originals
+                  stay in Drive.
+                </p>
+              ) : (
+                <p className="mt-2 rounded-lg bg-emerald-100 p-2 text-[9px] font-black text-emerald-950">
+                  Every attached camera segment has a proxy, visual map, and
+                  measured waveform.
+                </p>
+              )}
+              {library.navigationHealth.inventoryTruncated ? (
+                <p className="mt-2 text-[9px] font-bold leading-4 text-amber-900">
+                  This progress view is bounded to the first 500 observed files.
+                  Split this root into smaller working libraries before bulk
+                  preparation.
+                </p>
+              ) : null}
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => onCheck(library)}
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-sky-300 bg-white px-3 text-[10px] font-black text-sky-950 disabled:opacity-50"
+                >
+                  <RefreshCw
+                    size={13}
+                    className={pending ? "animate-spin" : ""}
+                    aria-hidden="true"
+                  />
+                  Check progress
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !canWrite ||
+                    pending ||
+                    !library.canRefresh ||
+                    library.navigationHealth.remainingCount === 0
+                  }
+                  onClick={() => onPrepare(library)}
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sky-950 px-3 text-[10px] font-black text-white disabled:opacity-50"
+                >
+                  {pending ? (
+                    <Loader2
+                      size={13}
+                      className="animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <FileVideo2 size={13} aria-hidden="true" />
+                  )}
+                  Prepare next {library.navigationHealth.nextBatchCount}
+                </button>
+              </div>
+            </div>
+          ) : library.connectedByCurrentUser &&
+            library.readySegmentCount > 0 ? (
             <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
               <p className="text-[9px] font-black uppercase tracking-wide text-sky-950">
                 Local browse preparation
@@ -595,7 +779,8 @@ export function GoogleDriveSourcePicker({
     mode: "files" | "folder" | "360-files",
     targetLibrary?: ExternalMediaLibrary | null,
   ) {
-    const pickerConnectionId = targetLibrary?.connectionId ?? selectedConnectionId;
+    const pickerConnectionId =
+      targetLibrary?.connectionId ?? selectedConnectionId;
     if (!pickerConnectionId) return;
     setPending(true);
     setError(null);
@@ -793,7 +978,7 @@ export function GoogleDriveSourcePicker({
       const refreshed = payload.operation?.library;
       setMessage(
         refreshed
-          ? `Refreshed ${refreshed.name}: ${refreshed.totalFileCount} files, ${refreshed.readySegmentCount} ready, ${refreshed.heldSegmentCount} held. No source history was deleted.`
+          ? `Refreshed ${refreshed.name}: ${refreshed.totalFileCount} files (${formatCountDelta(refreshed.totalFileCount, library.totalFileCount)}), ${refreshed.readySegmentCount} ready (${formatCountDelta(refreshed.readySegmentCount, library.readySegmentCount)}), ${refreshed.heldSegmentCount} held (${formatCountDelta(refreshed.heldSegmentCount, library.heldSegmentCount)}). No source history was deleted.`
           : `Refreshed ${library.name}. No source history was deleted.`,
       );
     } catch (refreshError) {
@@ -865,6 +1050,26 @@ export function GoogleDriveSourcePicker({
         prepareError instanceof Error
           ? prepareError.message
           : "That Drive library could not be prepared.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function checkLibraryProgress(library: ExternalMediaLibrary) {
+    setPending(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await onAttached();
+      setMessage(
+        `Updated ${library.name} browse readiness from the current retained jobs without rescanning Drive.`,
+      );
+    } catch (progressError) {
+      setError(
+        progressError instanceof Error
+          ? progressError.message
+          : "Browse readiness could not be refreshed.",
       );
     } finally {
       setPending(false);
@@ -957,6 +1162,7 @@ export function GoogleDriveSourcePicker({
           pending={pending}
           onRefresh={(library) => void refreshLibrary(library)}
           onPrepare={(library) => void prepareLibraryNavigation(library)}
+          onCheck={(library) => void checkLibraryProgress(library)}
           onAdd={(library) => void browseDrive("360-files", library)}
         />
       ) : null}

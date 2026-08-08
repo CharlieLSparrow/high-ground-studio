@@ -3,7 +3,10 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { sourceAudioNavigationIdentity } from "@high-ground/quipsly-media-processing";
+import { sourceAudioNavigationJobId } from "@high-ground/quipsly-media-processing/source-navigation-identity";
 
+import { externalMediaMemberRole } from "@/lib/external-media-contract";
 import type { GoogleDriveMediaLibraryPlan } from "@/lib/google-drive-media-package";
 
 type LibraryAttachment = {
@@ -28,6 +31,52 @@ type PublicHeldSegment = {
   status: string;
   reasons: string[];
   observedMemberCount: number;
+};
+
+type PublicLibraryNavigationHealth = {
+  eligibleSourceCount: number;
+  retainedBrowseCount: number;
+  proxyReadyCount: number;
+  visualReadyCount: number;
+  audioReadyCount: number;
+  browseReadyCount: number;
+  remainingCount: number;
+  nextBatchCount: number;
+  pendingTransferBytes: string;
+  inventoryTruncated: boolean;
+  captureDays: Array<{
+    date: string | null;
+    eligibleSourceCount: number;
+    browseReadyCount: number;
+    pendingTransferBytes: string;
+  }>;
+};
+
+type LibraryNavigationRevision = {
+  id: string;
+  identitySha256: string;
+  sizeBytes: bigint | null;
+  projectionJson: unknown;
+  replicas: Array<{ id: string }>;
+  derivatives: Array<{
+    kind: string;
+    generation: string;
+    provenanceJson: unknown;
+  }>;
+};
+
+const EMPTY_LIBRARY_NAVIGATION_HEALTH: PublicLibraryNavigationHealth = {
+  eligibleSourceCount: 0,
+  retainedBrowseCount: 0,
+  proxyReadyCount: 0,
+  visualReadyCount: 0,
+  audioReadyCount: 0,
+  browseReadyCount: 0,
+  remainingCount: 0,
+  nextBatchCount: 0,
+  pendingTransferBytes: "0",
+  inventoryTruncated: false,
+  captureDays: [],
 };
 
 export class ExternalMediaLibraryError extends Error {
@@ -226,11 +275,15 @@ function publicLibrary(
     healthJson: unknown;
     connection: { userId: string; status: string } | null;
     items?: Array<{ state: string }>;
+    _count?: { items: number };
   },
   actorUserId: string,
+  navigationHealth: PublicLibraryNavigationHealth = EMPTY_LIBRARY_NAVIGATION_HEALTH,
 ) {
   const notObservedCount =
-    library.items?.filter((item) => item.state === "not-observed").length ?? 0;
+    library._count?.items ??
+    library.items?.filter((item) => item.state === "not-observed").length ??
+    0;
   const locator =
     library.providerLocatorJson &&
     typeof library.providerLocatorJson === "object" &&
@@ -266,7 +319,14 @@ function publicLibrary(
       locator.mode === "selection-manifest"
         ? ("selected-files" as const)
         : ("folder-scan" as const),
+    navigationHealth,
   };
+}
+
+function jsonRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 export async function listExternalMediaLibraries(input: {
@@ -279,10 +339,217 @@ export async function listExternalMediaLibraries(input: {
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
     include: {
       connection: { select: { userId: true, status: true } },
-      items: { select: { state: true } },
+      _count: {
+        select: { items: { where: { state: "not-observed" } } },
+      },
+      items: {
+        where: { state: "present", externalReferenceId: { not: null } },
+        orderBy: [{ lastObservedAt: "asc" }, { id: "asc" }],
+        take: 500,
+        select: {
+          state: true,
+          sourceUnit: { select: { capturedAt: true } },
+          externalReference: {
+            select: {
+              connectionId: true,
+              revisions: {
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: {
+                  id: true,
+                  identitySha256: true,
+                  sizeBytes: true,
+                  projectionJson: true,
+                  replicas: {
+                    where: {
+                      storageProvider: "local-cache",
+                      status: "ready",
+                    },
+                    take: 1,
+                    select: { id: true },
+                  },
+                  derivatives: {
+                    where: {
+                      status: "ready",
+                      kind: {
+                        in: ["collaboration-proxy", "source-contact-sheet"],
+                      },
+                    },
+                    orderBy: { createdAt: "desc" },
+                    take: 8,
+                    select: {
+                      kind: true,
+                      generation: true,
+                      provenanceJson: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
-  return libraries.map((library) => publicLibrary(library, input.actorUserId));
+  const candidatesByLibrary = new Map<
+    string,
+    Array<{
+      revision: LibraryNavigationRevision;
+      proxy: {
+        kind: string;
+        generation: string;
+        provenanceJson: unknown;
+      } | null;
+      capturedAt: Date | null;
+    }>
+  >();
+  const expectedAudioJobs = new Map<string, string>();
+  for (const library of libraries) {
+    const seenRevisionIds = new Set<string>();
+    const candidates = library.items.flatMap((item) => {
+      const reference = item.externalReference;
+      const revision = reference?.revisions[0];
+      if (
+        !reference ||
+        !revision ||
+        reference.connectionId !== library.connectionId ||
+        seenRevisionIds.has(revision.id) ||
+        externalMediaMemberRole(
+          jsonRecord(revision.projectionJson).memberRole,
+        ) !== "browse-proxy"
+      ) {
+        return [];
+      }
+      seenRevisionIds.add(revision.id);
+      const proxy =
+        revision.derivatives.find(
+          (derivative) => derivative.kind === "collaboration-proxy",
+        ) ?? null;
+      if (proxy) {
+        const jobId = sourceAudioNavigationJobId(
+          sourceAudioNavigationIdentity({
+            projectId: input.projectId,
+            sourceRevisionId: revision.id,
+            sourceIdentitySha256: revision.identitySha256,
+            inputGeneration: proxy.generation,
+          }),
+        );
+        expectedAudioJobs.set(revision.id, jobId);
+      }
+      return [
+        { revision, proxy, capturedAt: item.sourceUnit?.capturedAt ?? null },
+      ];
+    });
+    candidatesByLibrary.set(library.id, candidates);
+  }
+  const expectedAudioJobIds = [...expectedAudioJobs.values()];
+  const readyAudioJobIds = new Set(
+    expectedAudioJobIds.length
+      ? (
+          await input.prisma.studioWorkflowJob.findMany({
+            where: {
+              projectId: input.projectId,
+              id: { in: expectedAudioJobIds },
+              status: { in: ["output-ready", "completed"] },
+            },
+            select: { id: true },
+          })
+        ).map((job) => job.id)
+      : [],
+  );
+  return libraries.map((library) => {
+    const candidates = candidatesByLibrary.get(library.id) ?? [];
+    const states = candidates.map(({ revision, proxy, capturedAt }) => {
+      const retained = revision.replicas.length > 0;
+      const visualReady = proxy
+        ? revision.derivatives.some(
+            (derivative) =>
+              derivative.kind === "source-contact-sheet" &&
+              jsonRecord(derivative.provenanceJson).inputGeneration ===
+                proxy.generation,
+          )
+        : false;
+      const audioJobId = expectedAudioJobs.get(revision.id);
+      const audioReady = Boolean(
+        audioJobId && readyAudioJobIds.has(audioJobId),
+      );
+      return {
+        revision,
+        capturedAt,
+        retained,
+        proxyReady: Boolean(proxy),
+        visualReady,
+        audioReady,
+        browseReady: Boolean(proxy && visualReady && audioReady),
+      };
+    });
+    const retainedBrowseCount = states.filter((state) => state.retained).length;
+    const proxyReadyCount = states.filter((state) => state.proxyReady).length;
+    const visualReadyCount = states.filter((state) => state.visualReady).length;
+    const audioReadyCount = states.filter((state) => state.audioReady).length;
+    const browseReadyCount = states.filter((state) => state.browseReady).length;
+    const remainingCount = Math.max(0, candidates.length - browseReadyCount);
+    const navigationHealth: PublicLibraryNavigationHealth = {
+      eligibleSourceCount: candidates.length,
+      retainedBrowseCount,
+      proxyReadyCount,
+      visualReadyCount,
+      audioReadyCount,
+      browseReadyCount,
+      remainingCount,
+      nextBatchCount: Math.min(12, remainingCount),
+      pendingTransferBytes: states
+        .filter((state) => !state.retained)
+        .reduce((total, state) => total + (state.revision.sizeBytes ?? 0n), 0n)
+        .toString(),
+      inventoryTruncated: library.totalFileCount > 500,
+      captureDays: [
+        ...states
+          .reduce(
+            (days, state) => {
+              const date = state.capturedAt
+                ? state.capturedAt.toISOString().slice(0, 10)
+                : null;
+              const key = date ?? "unknown";
+              const day = days.get(key) ?? {
+                date,
+                eligibleSourceCount: 0,
+                browseReadyCount: 0,
+                pendingTransferBytes: 0n,
+              };
+              day.eligibleSourceCount += 1;
+              if (state.browseReady) day.browseReadyCount += 1;
+              if (!state.retained)
+                day.pendingTransferBytes += state.revision.sizeBytes ?? 0n;
+              days.set(key, day);
+              return days;
+            },
+            new Map<
+              string,
+              {
+                date: string | null;
+                eligibleSourceCount: number;
+                browseReadyCount: number;
+                pendingTransferBytes: bigint;
+              }
+            >(),
+          )
+          .values(),
+      ]
+        .sort((left, right) =>
+          left.date === null
+            ? 1
+            : right.date === null
+              ? -1
+              : right.date.localeCompare(left.date),
+        )
+        .map((day) => ({
+          ...day,
+          pendingTransferBytes: day.pendingTransferBytes.toString(),
+        })),
+    };
+    return publicLibrary(library, input.actorUserId, navigationHealth);
+  });
 }
 
 export async function recordGoogleDriveLibraryObservation(input: {

@@ -2960,6 +2960,19 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   companions around 1.8–1.9 GB. Source Room prepares only a selected LRV,
   exposes durable byte progress and retry, and preserves each segment's own
   source clock.
+- Followed libraries now project persistent browse readiness from the exact LRV
+  replica, current proxy generation, generation-bound visual map, and
+  deterministic audio-navigation job. The Story surface shows each stage,
+  overall ready/eligible progress, the next resumable 12-segment pass, remaining
+  LRV transfer bytes, and per-capture-day readiness. Missing camera dates remain
+  visibly unknown; no date is inferred from a filename. The projection exposes
+  no provider identifiers, resource locators, local paths, or credentials.
+- Drive refresh now reports signed file, ready-package, and held-package deltas;
+  local job progress can be checked without spending a provider rescan.
+- The progress query bounds detailed preparation evidence to 500 present items,
+  computes not-observed history independently, and labels bounded inventories
+  instead of claiming false completion. Focused UI tests and real PostgreSQL
+  integration prove both dated and unavailable-date projections.
 - The new exact `StudioMediaSourceReplica` is distinct from an encoded
   `StudioMediaDerivative`. Completion requires a second provider inspection,
   exact MD5/size agreement, local SHA-256, atomic retention, and an immutable

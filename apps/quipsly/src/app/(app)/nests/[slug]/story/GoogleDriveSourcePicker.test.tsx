@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { GoogleDriveSourcePicker } from "./GoogleDriveSourcePicker";
 
@@ -164,37 +164,68 @@ describe("Google Drive source picker entry", () => {
       jsonResponse({
         ok: true,
         pickerConfigured: true,
-        connections: [{
-          id: "drive-connection-1",
-          accountLabel: "homer@example.test",
-          status: "verified",
-          revision: 1,
-          verifiedAt: "2026-08-08T20:00:00.000Z",
-        }],
+        connections: [
+          {
+            id: "drive-connection-1",
+            accountLabel: "homer@example.test",
+            status: "verified",
+            revision: 1,
+            verifiedAt: "2026-08-08T20:00:00.000Z",
+          },
+        ],
       }),
     ) as unknown as typeof fetch;
+    const onAttached = jest.fn(async () => undefined);
     render(
       <GoogleDriveSourcePicker
         projectSlug="high-ground-odyssey"
         canWrite
-        libraries={[{
-          id: "library-1",
-          name: "Insta360",
-          status: "ready",
-          revision: 3,
-          totalFileCount: 6,
-          totalSizeBytes: "77181151118",
-          readySegmentCount: 3,
-          heldSegmentCount: 0,
-          notObservedCount: 0,
-          lastCheckedAt: "2026-08-08T20:00:00.000Z",
-          canRefresh: true,
-          connectionState: "verified",
-          connectedByCurrentUser: true,
-          connectionId: "drive-connection-1",
-          discoveryMode: "selected-files",
-        }]}
-        onAttached={async () => undefined}
+        libraries={[
+          {
+            id: "library-1",
+            name: "Insta360",
+            status: "ready",
+            revision: 3,
+            totalFileCount: 6,
+            totalSizeBytes: "77181151118",
+            readySegmentCount: 3,
+            heldSegmentCount: 0,
+            notObservedCount: 0,
+            lastCheckedAt: "2026-08-08T20:00:00.000Z",
+            canRefresh: true,
+            connectionState: "verified",
+            connectedByCurrentUser: true,
+            connectionId: "drive-connection-1",
+            discoveryMode: "selected-files",
+            navigationHealth: {
+              eligibleSourceCount: 3,
+              retainedBrowseCount: 2,
+              proxyReadyCount: 2,
+              visualReadyCount: 1,
+              audioReadyCount: 1,
+              browseReadyCount: 1,
+              remainingCount: 2,
+              nextBatchCount: 2,
+              pendingTransferBytes: "1900000000",
+              inventoryTruncated: false,
+              captureDays: [
+                {
+                  date: "2026-05-07",
+                  eligibleSourceCount: 2,
+                  browseReadyCount: 1,
+                  pendingTransferBytes: "1900000000",
+                },
+                {
+                  date: null,
+                  eligibleSourceCount: 1,
+                  browseReadyCount: 0,
+                  pendingTransferBytes: "0",
+                },
+              ],
+            },
+          },
+        ]}
+        onAttached={onAttached}
       />,
     );
 
@@ -202,6 +233,112 @@ describe("Google Drive source picker entry", () => {
     expect(
       screen.getByRole("button", { name: /add another camera batch/i }),
     ).toBeEnabled();
-    expect(screen.getByText(/does not scan unrelated drive content/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/does not scan unrelated drive content/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: /insta360 browse readiness/i }),
+    ).toHaveAttribute("aria-valuenow", "1");
+    expect(
+      screen.getByText(/1 of 3 camera segments ready to scan/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /prepare next 2/i }),
+    ).toBeEnabled();
+    expect(
+      screen.getByText(/1\.8 GB of LRV companions remain/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/camera days · 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/May 7, 2026/i)).toBeInTheDocument();
+    expect(screen.getByText(/capture date unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 2 ready to scan/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/LRV retained/i)).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: /check progress/i }));
+    await waitFor(() => expect(onAttached).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText(/updated insta360 browse readiness/i),
+    ).toBeInTheDocument();
+  });
+
+  it("reports exact file and package deltas after a library refresh", async () => {
+    const fetchMock = jest.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/media/connections/google-drive") {
+          return jsonResponse({
+            ok: true,
+            pickerConfigured: true,
+            connections: [
+              {
+                id: "drive-connection-1",
+                accountLabel: "homer@example.test",
+                status: "verified",
+                revision: 1,
+                verifiedAt: "2026-08-08T20:00:00.000Z",
+              },
+            ],
+          });
+        }
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          action: "refresh-google-drive-library",
+          libraryId: "library-1",
+        });
+        return jsonResponse({
+          operation: {
+            library: {
+              id: "library-1",
+              name: "Insta360",
+              status: "attention",
+              revision: 4,
+              totalFileCount: 32,
+              totalSizeBytes: "435214857419",
+              readySegmentCount: 14,
+              heldSegmentCount: 10,
+              notObservedCount: 0,
+              lastCheckedAt: "2026-08-08T21:00:00.000Z",
+              canRefresh: true,
+              connectionState: "verified",
+              connectedByCurrentUser: true,
+            },
+          },
+        });
+      },
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const onAttached = jest.fn(async () => undefined);
+    render(
+      <GoogleDriveSourcePicker
+        projectSlug="high-ground-odyssey"
+        canWrite
+        libraries={[
+          {
+            id: "library-1",
+            name: "Insta360",
+            status: "attention",
+            revision: 3,
+            totalFileCount: 30,
+            totalSizeBytes: "435214857419",
+            readySegmentCount: 13,
+            heldSegmentCount: 11,
+            notObservedCount: 0,
+            lastCheckedAt: "2026-08-08T20:00:00.000Z",
+            canRefresh: true,
+            connectionState: "verified",
+            connectedByCurrentUser: true,
+            connectionId: "drive-connection-1",
+          },
+        ]}
+        onAttached={onAttached}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /^refresh$/i }));
+    expect(
+      await screen.findByText(
+        /32 files \(\+2\), 14 ready \(\+1\), 10 held \(-1\)/i,
+      ),
+    ).toBeInTheDocument();
+    expect(onAttached).toHaveBeenCalledTimes(1);
   });
 });

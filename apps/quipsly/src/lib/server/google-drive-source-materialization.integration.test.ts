@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 
 import { attachVerifiedExternalMediaSource } from "./external-media-source";
 import { requestExternalSourceProxy } from "./external-source-proxy";
+import { listExternalMediaLibraries } from "./external-media-library";
 import {
   GoogleDriveLibraryNavigationError,
   prepareGoogleDriveLibraryNavigation,
@@ -307,6 +308,35 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
         originalsRemainInDrive: true,
         finalConformNotStarted: true,
         deterministicReplay: true,
+      },
+    });
+    const projectedLibrary = (
+      await listExternalMediaLibraries({
+        prisma,
+        projectId,
+        actorUserId,
+      })
+    ).find((candidate) => candidate.id === library.id);
+    expect(projectedLibrary).toMatchObject({
+      navigationHealth: {
+        eligibleSourceCount: 1,
+        retainedBrowseCount: 0,
+        proxyReadyCount: 0,
+        visualReadyCount: 0,
+        audioReadyCount: 0,
+        browseReadyCount: 0,
+        remainingCount: 1,
+        nextBatchCount: 1,
+        pendingTransferBytes: "2048",
+        inventoryTruncated: false,
+        captureDays: [
+          {
+            date: null,
+            eligibleSourceCount: 1,
+            browseReadyCount: 0,
+            pendingTransferBytes: "2048",
+          },
+        ],
       },
     });
     await expect(

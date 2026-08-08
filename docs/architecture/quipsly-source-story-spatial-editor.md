@@ -17,6 +17,32 @@ samples, measured audio evidence, exact source-clock seeking, and reviewed
 range creation. Incomplete Drive packages do not receive invented maps: they
 remain held until a real collaboration proxy and its derivative exist.
 
+## Followed-library browse readiness
+
+The followed Drive library projects preparation health from canonical media
+evidence rather than maintaining a second progress counter. An eligible LRV
+segment is complete only when its exact revision has a verified local replica,
+a collaboration proxy, a contact sheet whose provenance names the current
+proxy generation, and a completed checksum-bound audio-navigation job.
+
+The projection exposes only aggregate counts and byte totals. It never returns
+provider file IDs, Drive locators, local paths, source-revision IDs, derivative
+resource keys, or bearer credentials. The UI groups readiness by the source
+unit's UTC capture date, keeps missing capture metadata visibly unknown, and
+shows the next bounded 12-segment preparation pass. Pending transfer bytes count
+only LRV companions that still need local retention; INSV originals remain in
+Drive until an explicit conform or final-render operation requires them.
+
+The item projection is bounded to 500 present library members for predictable
+read latency. Missing-observation counts are queried independently and remain
+exact. A bounded inventory reports that limitation and asks the user to split a
+very large root into smaller working libraries rather than presenting a false
+whole-library completion percentage.
+
+A provider refresh reports signed file, ready-package, and held-package deltas
+against the library state the user refreshed. Checking local preparation is a
+separate read path: it reloads canonical jobs without rescanning Drive.
+
 ## Product decision
 
 Quipsly treats a 360 camera take as one immutable source package, not as a loose pile of files and not as a pre-flattened video. The browser uses a lightweight equirectangular proxy for looking around, marking ranges, writing cards, and saving reversible camera moves. A final-quality flat render resolves the exact INSV package through an approved stitch master and applies the saved view recipe only when an Episode placement needs pixels.
