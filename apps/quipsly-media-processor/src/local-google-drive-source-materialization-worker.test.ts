@@ -27,6 +27,9 @@ import {
   type ResolvedGoogleDriveMaterialization,
 } from "./local-google-drive-source-materialization-worker.js";
 
+const CUSTODIAN_NODE_ID = "execution_worker_12345678";
+const STORAGE_SCOPE_ID = "storage_scope_12345678";
+
 function digest(algorithm: "md5" | "sha256", bytes: Uint8Array) {
   return createHash(algorithm).update(bytes).digest("hex");
 }
@@ -63,6 +66,8 @@ function fixture(bytes: Buffer, options: { original?: boolean } = {}) {
       profile: original
         ? "exact-provider-original-replica-v1"
         : "exact-provider-replica-v1",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
     },
   });
   const claim: LocalGoogleDriveMaterializationClaim = {
@@ -145,6 +150,8 @@ test("Drive materializer resumes a partial LRV, verifies exact bytes, and retain
       provider,
       {
         executionId: claim.executionId,
+        custodianNodeId: CUSTODIAN_NODE_ID,
+        storageScopeId: STORAGE_SCOPE_ID,
         buildId: "build-1",
         leaseMs: 60_000,
         localMediaRoot: root,
@@ -219,6 +226,8 @@ test("Drive materializer retains an exact INSV original without promising a coll
       provider,
       {
         executionId: claim.executionId,
+        custodianNodeId: CUSTODIAN_NODE_ID,
+        storageScopeId: STORAGE_SCOPE_ID,
         buildId: "build-1",
         leaseMs: 60_000,
         localMediaRoot: root,
@@ -281,6 +290,8 @@ test("Drive materializer preserves partial bytes and releases its lease when shu
       provider,
       {
         executionId: claim.executionId,
+        custodianNodeId: CUSTODIAN_NODE_ID,
+        storageScopeId: STORAGE_SCOPE_ID,
         buildId: "build-1",
         leaseMs: 60_000,
         localMediaRoot: root,
@@ -353,6 +364,8 @@ test("Drive materializer rejects provider drift and does not retain changed outp
       provider,
       {
         executionId: claim.executionId,
+        custodianNodeId: CUSTODIAN_NODE_ID,
+        storageScopeId: STORAGE_SCOPE_ID,
         buildId: "build-1",
         leaseMs: 60_000,
         localMediaRoot: root,
@@ -403,7 +416,13 @@ test("Drive materialization receipts cannot rewrite their queued provider revisi
       downloadedBytes: bytes.length,
       providerRequestCount: 1,
     },
-    worker: { executionId: "worker_12345678", buildId: "build-1", attempt: 1 },
+    worker: {
+      executionId: "worker_12345678",
+      buildId: "build-1",
+      attempt: 1,
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
+    },
   });
   expectBoundReceipt(receipt, job);
 

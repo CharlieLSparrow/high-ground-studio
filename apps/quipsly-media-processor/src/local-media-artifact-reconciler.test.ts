@@ -12,7 +12,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { inspectLocalMediaArtifact } from "./local-media-artifact-reconciler.js";
+import {
+  inspectLocalMediaArtifact,
+  LocalMediaArtifactReconciler,
+} from "./local-media-artifact-reconciler.js";
 
 const checkedAt = new Date("2026-08-08T18:45:00.000Z");
 
@@ -160,4 +163,29 @@ test("detects same-size byte corruption", async () => {
     assert.equal(result.state, "invalid");
     assert.equal(result.reason, "checksum-mismatch");
   });
+});
+
+test("reconciliation selects replicas only from its own executor storage scope", async () => {
+  const queries: Array<{ text: string; values?: unknown[] }> = [];
+  const pool = {
+    query: async (query: { text: string; values?: unknown[] }) => {
+      queries.push(query);
+      return { rows: [] };
+    },
+  };
+  const reconciler = new LocalMediaArtifactReconciler(pool as never, {
+    localMediaRoot: "/tmp/quipsly-reconciler-scope-test",
+    custodianNodeId: "execution_worker_12345678",
+    storageScopeId: "storage_scope_12345678",
+  });
+
+  await reconciler.maybeRun(true);
+
+  assert.match(queries[0]?.text ?? "", /"custodianNodeId"=\$2/);
+  assert.match(queries[0]?.text ?? "", /"storageScopeId"=\$3/);
+  assert.deepEqual(queries[0]?.values, [
+    50,
+    "execution_worker_12345678",
+    "storage_scope_12345678",
+  ]);
 });

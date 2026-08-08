@@ -97,6 +97,8 @@ export interface GoogleDriveMaterializationProvider {
 export interface LocalGoogleDriveMaterializationStore {
   claim(input: {
     executionId: string;
+    custodianNodeId: string;
+    storageScopeId: string;
     leaseMs: number;
     now: Date;
   }): Promise<LocalGoogleDriveMaterializationClaim | null>;
@@ -132,6 +134,8 @@ export interface LocalGoogleDriveMaterializationStore {
 
 export type LocalGoogleDriveMaterializationOptions = {
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   buildId: string;
   leaseMs: number;
   localMediaRoot: string;
@@ -180,6 +184,8 @@ export async function runOneLocalGoogleDriveMaterializationJob(
 ): Promise<LocalGoogleDriveMaterializationWorkerResult> {
   const claim = await store.claim({
     executionId: options.executionId,
+    custodianNodeId: options.custodianNodeId,
+    storageScopeId: options.storageScopeId,
     leaseMs: options.leaseMs,
     now: options.now(),
   });
@@ -335,6 +341,8 @@ export async function runOneLocalGoogleDriveMaterializationJob(
         executionId: claim.executionId,
         buildId: options.buildId,
         attempt: claim.attempt,
+        custodianNodeId: options.custodianNodeId,
+        storageScopeId: options.storageScopeId,
       },
     });
     const committed = await store.complete({
@@ -386,7 +394,13 @@ export async function runOneLocalGoogleDriveMaterializationJob(
 export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogleDriveMaterializationStore {
   constructor(private readonly pool: Pool) {}
 
-  async claim(input: { executionId: string; leaseMs: number; now: Date }) {
+  async claim(input: {
+    executionId: string;
+    custodianNodeId: string;
+    storageScopeId: string;
+    leaseMs: number;
+    now: Date;
+  }) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -396,11 +410,19 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
           SELECT "id", "inputJson", "resultJson"
           FROM "StudioWorkflowJob"
           WHERE "type"=$1 AND "source"=$2
+            AND "inputJson"->'target'->>'custodianNodeId'=$4
+            AND "inputJson"->'target'->>'storageScopeId'=$5
             AND ("status"='queued' OR ("status"='processing' AND "updatedAt" < timezone('UTC',$3::timestamptz)))
           ORDER BY "priority" ASC, "createdAt" ASC
           FOR UPDATE SKIP LOCKED LIMIT 1
         `,
-        values: [JOB_TYPE, JOB_SOURCE, staleBefore],
+        values: [
+          JOB_TYPE,
+          JOB_SOURCE,
+          staleBefore,
+          input.custodianNodeId,
+          input.storageScopeId,
+        ],
       });
       const row = selected.rows[0];
       if (!row) {
@@ -571,10 +593,10 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
       await client.query({
         text: `
           INSERT INTO "StudioMediaSourceReplica" (
-            "id","projectId","sourceRevisionId","workflowJobId","storageProvider","locator","generation",
+            "id","projectId","sourceRevisionId","workflowJobId","storageProvider","custodianNodeId","storageScopeId","locator","generation",
             "contentSha256","checksumMd5","sizeBytes","mimeType","status","verificationJson","provenanceJson",
             "availabilityCheckedAt","contentVerifiedAt","unavailableAt","createdByUserId","createdAt"
-          ) VALUES ($1,$2,$3,$4,'local-cache',$5,$6,$7,$8,$9,$10,'ready',$11::jsonb,$12::jsonb,$14,$14,NULL,$13,$14)
+          ) VALUES ($1,$2,$3,$4,'local-cache',$5,$6,$7,$8,$9,$10,$11,$12,'ready',$13::jsonb,$14::jsonb,$16,$16,NULL,$15,$16)
           ON CONFLICT ("id") DO UPDATE SET
             "status"='ready',
             "availabilityCheckedAt"=EXCLUDED."availabilityCheckedAt",
@@ -586,6 +608,8 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
             AND "StudioMediaSourceReplica"."sourceRevisionId"=EXCLUDED."sourceRevisionId"
             AND "StudioMediaSourceReplica"."workflowJobId"=EXCLUDED."workflowJobId"
             AND "StudioMediaSourceReplica"."storageProvider"=EXCLUDED."storageProvider"
+            AND "StudioMediaSourceReplica"."custodianNodeId"=EXCLUDED."custodianNodeId"
+            AND "StudioMediaSourceReplica"."storageScopeId"=EXCLUDED."storageScopeId"
             AND "StudioMediaSourceReplica"."locator"=EXCLUDED."locator"
             AND "StudioMediaSourceReplica"."generation"=EXCLUDED."generation"
             AND "StudioMediaSourceReplica"."contentSha256"=EXCLUDED."contentSha256"
@@ -596,6 +620,8 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
           input.job.projectId,
           input.job.source.sourceRevisionId,
           input.job.jobId,
+          input.job.target.custodianNodeId,
+          input.job.target.storageScopeId,
           input.receipt.output.locator,
           input.receipt.output.generation,
           input.receipt.output.sha256,
@@ -607,6 +633,8 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
             source: input.receipt.source,
             output: input.receipt.output,
             transfer: input.receipt.transfer,
+            custodianNodeId: input.receipt.worker.custodianNodeId,
+            storageScopeId: input.receipt.worker.storageScopeId,
             originalRemainsInDrive: true,
           }),
           JSON.stringify({
@@ -621,7 +649,7 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
       const retainedReplica = await client.query({
         text: `
           SELECT "projectId","sourceRevisionId","workflowJobId","storageProvider","locator","generation",
-                 "contentSha256","checksumMd5","sizeBytes","mimeType","status","createdByUserId"
+                 "custodianNodeId","storageScopeId","contentSha256","checksumMd5","sizeBytes","mimeType","status","createdByUserId"
           FROM "StudioMediaSourceReplica" WHERE "id"=$1
         `,
         values: [input.job.replicaId],
@@ -633,6 +661,8 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
         replicaRow.sourceRevisionId !== input.job.source.sourceRevisionId ||
         replicaRow.workflowJobId !== input.job.jobId ||
         replicaRow.storageProvider !== "local-cache" ||
+        replicaRow.custodianNodeId !== input.job.target.custodianNodeId ||
+        replicaRow.storageScopeId !== input.job.target.storageScopeId ||
         replicaRow.locator !== input.receipt.output.locator ||
         replicaRow.generation !== input.receipt.output.generation ||
         replicaRow.contentSha256 !== input.receipt.output.sha256 ||
@@ -721,6 +751,10 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
             JSON.stringify(proxyManifest),
             JSON.stringify({
               state: "queued",
+              executionTarget: {
+                custodianNodeId: input.job.target.custodianNodeId,
+                storageScopeId: input.job.target.storageScopeId,
+              },
               requestedBy: {
                 actorUserId: input.job.actorUserId,
                 actorEmail: input.job.actorEmail,
@@ -996,6 +1030,8 @@ export class GoogleDriveApiMaterializationProvider implements GoogleDriveMateria
 export function newLocalGoogleDriveMaterializationRuntime(input: {
   pool: Pool;
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   localMediaRoot: string;
   leaseMs: number;
   buildId: string;
@@ -1013,6 +1049,8 @@ export function newLocalGoogleDriveMaterializationRuntime(input: {
       input.provider ?? new GoogleDriveApiMaterializationProvider(environment),
     options: {
       executionId: input.executionId,
+      custodianNodeId: input.custodianNodeId,
+      storageScopeId: input.storageScopeId,
       buildId: input.buildId,
       leaseMs: input.leaseMs,
       localMediaRoot: input.localMediaRoot,

@@ -19,6 +19,9 @@ import {
 } from "./local-external-source-proxy-worker.js";
 import { sha256File } from "./transcoder.js";
 
+const CUSTODIAN_NODE_ID = "execution_worker_12345678";
+const STORAGE_SCOPE_ID = "storage_scope_12345678";
+
 test("local external proxy worker preserves exact source bytes and returns a verified derivative receipt", async () => {
   const root = await mkdtemp(
     path.join(tmpdir(), "quipsly-external-proxy-worker-"),
@@ -60,6 +63,8 @@ test("local external proxy worker preserves exact source bytes and returns a ver
       inputJson: job,
       attempt: 1,
       executionId: "execution_00000001",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
     }),
     resolve: async () => ({
       path: sourcePath,
@@ -103,6 +108,8 @@ test("local external proxy worker preserves exact source bytes and returns a ver
   };
   const result = await runOneLocalExternalSourceProxyJob(store, transcoder, {
     executionId: "execution_00000001",
+    custodianNodeId: CUSTODIAN_NODE_ID,
+    storageScopeId: STORAGE_SCOPE_ID,
     buildId: "build_00000001",
     leaseMs: 60_000,
     localMediaRoot: outputRoot,
@@ -176,6 +183,8 @@ test("local external proxy worker fails closed when the provider projection no l
       inputJson: job,
       attempt: 1,
       executionId: "execution_00000002",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
     }),
     resolve: async () => ({
       path: "/missing",
@@ -206,6 +215,8 @@ test("local external proxy worker fails closed when the provider projection no l
     },
     {
       executionId: "execution_00000002",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
       buildId: "build_00000002",
       leaseMs: 60_000,
       localMediaRoot: path.join(tmpdir(), "never-used"),
@@ -255,6 +266,8 @@ test("local external proxy worker refuses to retain a browsing derivative larger
       inputJson: job,
       attempt: 1,
       executionId: "execution_00000003",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
     }),
     resolve: async () => ({
       path: sourcePath,
@@ -302,6 +315,8 @@ test("local external proxy worker refuses to retain a browsing derivative larger
     },
     {
       executionId: "execution_00000003",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
       buildId: "build_00000003",
       leaseMs: 60_000,
       localMediaRoot: path.join(root, "outputs"),
@@ -354,6 +369,8 @@ test("local external proxy worker resolves a device-folder replica only beneath 
       inputJson: job,
       attempt: 1,
       executionId: "execution_device0001",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
     }),
     resolve: async () => ({
       path: relativeSource,
@@ -397,6 +414,8 @@ test("local external proxy worker resolves a device-folder replica only beneath 
     },
     {
       executionId: "execution_device0001",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
       buildId: "build_device0001",
       leaseMs: 60_000,
       localMediaRoot: root,

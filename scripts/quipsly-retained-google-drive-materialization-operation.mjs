@@ -21,6 +21,7 @@ import {
   newLocalGoogleDriveMaterializationRuntime,
   runOneLocalGoogleDriveMaterializationJob,
 } from "../apps/quipsly-media-processor/src/local-google-drive-source-materialization-worker.ts";
+import { resolveLocalExecutionIdentity } from "../apps/quipsly-media-processor/src/local-execution-presence.ts";
 
 const execFileAsync = promisify(execFile);
 const databaseUrl =
@@ -33,7 +34,10 @@ if (!["127.0.0.1", "localhost", "::1"].includes(parsedDatabase.hostname)) {
     `Refusing retained Drive materialization against non-loopback database ${parsedDatabase.hostname}.`,
   );
 }
-const runKey = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+const runKey = new Date()
+  .toISOString()
+  .replace(/[-:.TZ]/g, "")
+  .slice(0, 14);
 const actorEmail = "drive-materialization-dogfood@quipsly.test";
 const workspaceSlug = "quipsly-retained-drive-360-lab";
 const projectSlug = "quipsly-retained-drive-360-source-room";
@@ -46,7 +50,11 @@ const providerFixture = path.join(
 );
 
 function deterministicUuid(value) {
-  const hex = createHash("sha256").update(value).digest("hex").slice(0, 32).split("");
+  const hex = createHash("sha256")
+    .update(value)
+    .digest("hex")
+    .slice(0, 32)
+    .split("");
   hex[12] = "4";
   hex[16] = ["8", "9", "a", "b"][Number.parseInt(hex[16], 16) % 4];
   const joined = hex.join("");
@@ -100,6 +108,46 @@ const prisma = new PrismaClient({
 const pool = new pg.Pool({ connectionString: databaseUrl });
 
 try {
+  const executionIdentity = await resolveLocalExecutionIdentity(mediaRoot);
+  const executorStorage = {
+    status: "measured",
+    safeAvailableBytes: String(1024 ** 4),
+    availableBytes: String(1024 ** 4),
+    reserveBytes: "0",
+    measuredAt: new Date().toISOString(),
+    workspaceMode: "temporary",
+    localPathWithheld: true,
+  };
+  await prisma.agentNode.upsert({
+    where: { hostName: executionIdentity.hostName },
+    update: {
+      status: "online",
+      capabilities: {
+        executorKind: "local-mac",
+        storage: {
+          schema: "quipsly-local-media-storage-v1",
+          ...executorStorage,
+          scopeId: executionIdentity.storageScopeId,
+        },
+      },
+      lastHeartbeatAt: new Date(),
+    },
+    create: {
+      id: executionIdentity.nodeId,
+      hostName: executionIdentity.hostName,
+      ipAddress: "loopback",
+      status: "online",
+      capabilities: {
+        executorKind: "local-mac",
+        storage: {
+          schema: "quipsly-local-media-storage-v1",
+          ...executorStorage,
+          scopeId: executionIdentity.storageScopeId,
+        },
+      },
+      lastHeartbeatAt: new Date(),
+    },
+  });
   const actor = await prisma.user.upsert({
     where: { primaryEmail: actorEmail },
     update: { name: "Drive materialization dogfood" },
@@ -175,8 +223,13 @@ try {
     actorUserId: actor.id,
     actorEmail,
     clientRequestId: deterministicUuid(`retained-drive-materialize:${runKey}`),
+    executorTarget: {
+      ...executionIdentity,
+      storage: executorStorage,
+    },
   });
-  if (!request.job) throw new Error("Retained Drive request did not queue a job.");
+  if (!request.job)
+    throw new Error("Retained Drive request did not queue a job.");
   await prisma.studioWorkflowJob.update({
     where: { id: request.job.id },
     data: { priority: 1 },
@@ -191,10 +244,14 @@ try {
       canDownload: true,
     }),
     download: async ({ destinationPath, resumeFromBytes, onProgress }) => {
-      await writeFile(destinationPath, providerBytes.subarray(resumeFromBytes), {
-        flag: resumeFromBytes ? "a" : "w",
-        mode: 0o600,
-      });
+      await writeFile(
+        destinationPath,
+        providerBytes.subarray(resumeFromBytes),
+        {
+          flag: resumeFromBytes ? "a" : "w",
+          mode: 0o600,
+        },
+      );
       await onProgress(providerBytes.length);
       return {
         resumedFromBytes: resumeFromBytes,
@@ -206,6 +263,8 @@ try {
   const materializer = newLocalGoogleDriveMaterializationRuntime({
     pool,
     executionId: `retained-drive-materializer-${runKey}`,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
     localMediaRoot: mediaRoot,
     leaseMs: 60_000,
     buildId: `retained-drive-${runKey}`,
@@ -236,22 +295,34 @@ try {
   if (
     !replica ||
     replica.contentSha256 !== providerSha256Before ||
+    replica.custodianNodeId !== executionIdentity.nodeId ||
+    replica.storageScopeId !== executionIdentity.storageScopeId ||
     sourceAfter?.contentSha256 !== providerSha256Before
   ) {
-    throw new Error("Exact replica and source revision were not checksum-bound together.");
+    throw new Error(
+      "Exact replica and source revision were not checksum-bound together.",
+    );
   }
-  if (digest("sha256", await readFile(replica.locator)) !== providerSha256Before) {
-    throw new Error("Retained local replica does not match the provider fixture bytes.");
+  if (
+    digest("sha256", await readFile(replica.locator)) !== providerSha256Before
+  ) {
+    throw new Error(
+      "Retained local replica does not match the provider fixture bytes.",
+    );
   }
 
   const proxyJob = await prisma.studioWorkflowJob.findFirst({
     where: {
       projectId: project.id,
       type: "external-source-proxy",
-      inputJson: { path: ["source", "sourceRevisionId"], equals: attached.sourceRevisionId },
+      inputJson: {
+        path: ["source", "sourceRevisionId"],
+        equals: attached.sourceRevisionId,
+      },
     },
   });
-  if (!proxyJob) throw new Error("Verified replica did not queue a collaboration proxy.");
+  if (!proxyJob)
+    throw new Error("Verified replica did not queue a collaboration proxy.");
   await prisma.studioWorkflowJob.update({
     where: { id: proxyJob.id },
     data: { priority: 1 },
@@ -259,6 +330,8 @@ try {
   const proxyRuntime = newLocalExternalSourceProxyRuntime({
     pool,
     executionId: `retained-drive-proxy-${runKey}`,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
     localMediaRoot: mediaRoot,
     leaseMs: 60_000,
     buildId: `retained-drive-${runKey}`,
@@ -282,8 +355,12 @@ try {
   if (Number(derivative.sizeBytes) >= providerBytes.length) {
     throw new Error("Retained collaboration proxy is not storage-efficient.");
   }
-  if (digest("sha256", await readFile(providerFixture)) !== providerSha256Before) {
-    throw new Error("The provider fixture changed during exact-copy and proxy work.");
+  if (
+    digest("sha256", await readFile(providerFixture)) !== providerSha256Before
+  ) {
+    throw new Error(
+      "The provider fixture changed during exact-copy and proxy work.",
+    );
   }
 
   process.stdout.write(
@@ -309,6 +386,7 @@ try {
           providerFixtureUnchanged: true,
           exactReplicaVerified: true,
           collaborationProxyVerified: true,
+          executorCustodyVerified: true,
           realDriveOriginalsDownloaded: false,
         },
       },

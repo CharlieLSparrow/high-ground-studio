@@ -14,7 +14,8 @@ import type { PrismaClient } from "@prisma/client";
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
 import {
   localExecutorStorageShortfall,
-  readLocalExecutorStorage,
+  readLocalExecutorTarget,
+  type LocalExecutorTarget,
 } from "@/lib/server/local-executor-storage";
 
 export const GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_TYPE =
@@ -131,6 +132,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
   clientRequestId: string;
   retryFailed?: boolean;
   purpose?: GoogleDriveSourceMaterializationPurpose;
+  executorTarget?: LocalExecutorTarget;
   environment?: NodeJS.ProcessEnv;
 }) {
   const projectId = cleanId(input.projectId, "projectId");
@@ -140,6 +142,15 @@ export async function requestGoogleDriveSourceMaterialization(input: {
   const clientRequestId = requestId(input.clientRequestId);
   const actorEmail = input.actorEmail.trim().toLowerCase();
   const purpose = input.purpose ?? "browse";
+  const executorTarget =
+    input.executorTarget ?? (await readLocalExecutorTarget(input.prisma));
+  if (!executorTarget) {
+    throw new GoogleDriveSourceMaterializationRequestError(
+      "local-executor-unavailable",
+      "Start a Quipsly local media worker before preparing this Drive source.",
+      409,
+    );
+  }
   const source = await input.prisma.studioMediaSourceRevision.findFirst({
     where: {
       id: sourceRevisionId,
@@ -156,7 +167,11 @@ export async function requestGoogleDriveSourceMaterialization(input: {
         },
       },
       replicas: {
-        where: { storageProvider: "local-cache" },
+        where: {
+          storageProvider: "local-cache",
+          custodianNodeId: executorTarget.nodeId,
+          storageScopeId: executorTarget.storageScopeId,
+        },
         orderBy: { createdAt: "desc" },
         take: 1,
       },
@@ -284,6 +299,8 @@ export async function requestGoogleDriveSourceMaterialization(input: {
     projectId,
     sourceRevisionId,
     identitySha256: source.identitySha256,
+    custodianNodeId: executorTarget.nodeId,
+    storageScopeId: executorTarget.storageScopeId,
     profile,
   });
   const jobId = deterministicId("gdmjob", identity);
@@ -321,6 +338,8 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       provider: "local-cache",
       locator: targetLocator,
       profile,
+      custodianNodeId: executorTarget.nodeId,
+      storageScopeId: executorTarget.storageScopeId,
     },
   });
   const existing = await input.prisma.studioWorkflowJob.findUnique({
@@ -363,7 +382,10 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       retainedManifest.source.memberRole !== manifest.source.memberRole ||
       retainedManifest.target.provider !== manifest.target.provider ||
       retainedManifest.target.locator !== manifest.target.locator ||
-      retainedManifest.target.profile !== manifest.target.profile
+      retainedManifest.target.profile !== manifest.target.profile ||
+      retainedManifest.target.custodianNodeId !==
+        manifest.target.custodianNodeId ||
+      retainedManifest.target.storageScopeId !== manifest.target.storageScopeId
     ) {
       throw new GoogleDriveSourceMaterializationRequestError(
         "job-identity-conflict",
@@ -372,7 +394,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       );
     }
     if (existing.status === "failed" && input.retryFailed) {
-      await assertLocalExecutorCapacity(input.prisma, BigInt(sizeBytes));
+      assertLocalExecutorCapacity(executorTarget, BigInt(sizeBytes));
       const prior = object(existing.resultJson);
       const failureHistory = Array.isArray(prior.failureHistory)
         ? prior.failureHistory
@@ -403,7 +425,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       };
     }
     if (["output-ready", "completed"].includes(existing.status)) {
-      await assertLocalExecutorCapacity(input.prisma, BigInt(sizeBytes));
+      assertLocalExecutorCapacity(executorTarget, BigInt(sizeBytes));
       const prior = object(existing.resultJson);
       const recoveryHistory = Array.isArray(prior.recoveryHistory)
         ? prior.recoveryHistory.slice(-9)
@@ -445,7 +467,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       state: existing.status,
     };
   }
-  await assertLocalExecutorCapacity(input.prisma, BigInt(sizeBytes));
+  assertLocalExecutorCapacity(executorTarget, BigInt(sizeBytes));
   const job = await input.prisma.studioWorkflowJob.create({
     data: {
       id: jobId,
@@ -472,12 +494,14 @@ export async function requestGoogleDriveSourceMaterialization(input: {
   };
 }
 
-async function assertLocalExecutorCapacity(
-  prisma: PrismaClient,
+function assertLocalExecutorCapacity(
+  target: LocalExecutorTarget,
   requiredBytes: bigint,
 ) {
-  const storage = await readLocalExecutorStorage(prisma);
-  const shortfall = localExecutorStorageShortfall(storage, requiredBytes);
+  const shortfall = localExecutorStorageShortfall(
+    target.storage,
+    requiredBytes,
+  );
   if (shortfall === null || shortfall === 0n) return;
   throw new GoogleDriveSourceMaterializationRequestError(
     "executor-storage-pressure",

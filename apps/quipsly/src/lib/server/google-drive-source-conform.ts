@@ -17,7 +17,11 @@ import {
   publicGoogleDriveSourceMaterializationJob,
   requestGoogleDriveSourceMaterialization,
 } from "@/lib/server/google-drive-source-materialization";
-import { readLocalExecutorStorage } from "@/lib/server/local-executor-storage";
+import {
+  readLocalExecutorStorage,
+  readLocalExecutorTarget,
+  type LocalExecutorTarget,
+} from "@/lib/server/local-executor-storage";
 import { createMediaSourceSet } from "@/lib/server/source-story";
 
 export const GOOGLE_DRIVE_SOURCE_CONFORM_PLAN_SCHEMA =
@@ -133,6 +137,7 @@ async function loadConformState(input: {
   prisma: PrismaClient;
   projectId: string;
   sourceUnitId: string;
+  executorTarget: LocalExecutorTarget | null;
 }) {
   const sourceUnit = await input.prisma.studioSourceUnit.findFirst({
     where: {
@@ -151,7 +156,15 @@ async function loadConformState(input: {
             orderBy: { createdAt: "desc" },
             include: {
               replicas: {
-                where: { storageProvider: "local-cache", status: "ready" },
+                where: {
+                  storageProvider: "local-cache",
+                  status: "ready",
+                  custodianNodeId:
+                    input.executorTarget?.nodeId ?? "no_active_executor",
+                  storageScopeId:
+                    input.executorTarget?.storageScopeId ??
+                    "no_active_storage_scope",
+                },
                 select: { id: true },
                 take: 1,
               },
@@ -216,10 +229,12 @@ export async function planGoogleDriveSourceUnitConform(input: {
   const actorUserId = input.actorUserId
     ? cleanId(input.actorUserId, "actorUserId")
     : null;
+  const executorTarget = await readLocalExecutorTarget(input.prisma);
   const { sourceUnit, members } = await loadConformState({
     prisma: input.prisma,
     projectId,
     sourceUnitId,
+    executorTarget,
   });
   const metadata = captureMetadata(sourceUnit.metadataJson);
   const browse = members.filter((member) => member.role === "browse-proxy");
@@ -227,6 +242,10 @@ export async function planGoogleDriveSourceUnitConform(input: {
   const holds = [...metadata.reasons];
   if (!metadata.captureKey)
     holds.push("The camera package has no capture key.");
+  if (!executorTarget)
+    holds.push(
+      "Start a Quipsly local media worker before preparing originals.",
+    );
   if (browse.length !== 1)
     holds.push("Final conform requires exactly one browsing clock member.");
   if (!originals.some((member) => member.role === "primary-original"))
@@ -251,22 +270,26 @@ export async function planGoogleDriveSourceUnitConform(input: {
   // The materializer identity includes the real project. Rebuild its IDs here
   // instead of exposing any provider locator or local path.
   const memberJobIds = new Map(
-    members.map((member) => {
-      const profile =
-        member.role === "browse-proxy"
-          ? GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE
-          : GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE;
-      const identity = googleDriveSourceMaterializationIdentity({
-        projectId,
-        sourceRevisionId: member.sourceRevisionId,
-        identitySha256: member.identitySha256,
-        profile,
-      });
-      return [
-        member.sourceRevisionId,
-        `gdmjob_${createHash("sha256").update(identity).digest("hex").slice(0, 48)}`,
-      ];
-    }),
+    executorTarget
+      ? members.map((member) => {
+          const profile =
+            member.role === "browse-proxy"
+              ? GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE
+              : GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE;
+          const identity = googleDriveSourceMaterializationIdentity({
+            projectId,
+            sourceRevisionId: member.sourceRevisionId,
+            identitySha256: member.identitySha256,
+            custodianNodeId: executorTarget.nodeId,
+            storageScopeId: executorTarget.storageScopeId,
+            profile,
+          });
+          return [
+            member.sourceRevisionId,
+            `gdmjob_${createHash("sha256").update(identity).digest("hex").slice(0, 48)}`,
+          ];
+        })
+      : [],
   );
   const [jobs, executorStorage] = await Promise.all([
     input.prisma.studioWorkflowJob.findMany({
@@ -279,7 +302,9 @@ export async function planGoogleDriveSourceUnitConform(input: {
         updatedAt: true,
       },
     }),
-    readLocalExecutorStorage(input.prisma),
+    executorTarget
+      ? Promise.resolve(executorTarget.storage)
+      : readLocalExecutorStorage(input.prisma),
   ]);
   const jobById = new Map(jobs.map((job) => [job.id, job]));
   const totalBytes = members.reduce(
@@ -352,6 +377,16 @@ export async function planGoogleDriveSourceUnitConform(input: {
       remainingBytes: String(remainingBytes),
       shortfallBytes: String(storageShortfallBytes),
       executor: executorStorage,
+      executorTarget: executorTarget
+        ? {
+            nodeId: executorTarget.nodeId,
+            storageScopeId: executorTarget.storageScopeId,
+            label: executorTarget.hostName.replace(
+              /^quipsly-media-worker:/,
+              "",
+            ),
+          }
+        : null,
     },
     members: members.map((member) => {
       const job = jobById.get(memberJobIds.get(member.sourceRevisionId) ?? "");
@@ -407,6 +442,19 @@ export async function requestGoogleDriveSourceUnitConform(input: {
     );
   }
   if (initial.status === "render-ready") return initial;
+  const executorTarget = await readLocalExecutorTarget(input.prisma);
+  if (
+    !executorTarget ||
+    executorTarget.nodeId !== initial.storage.executorTarget?.nodeId ||
+    executorTarget.storageScopeId !==
+      initial.storage.executorTarget?.storageScopeId
+  ) {
+    throw new GoogleDriveSourceConformError(
+      "stale-executor-plan",
+      "The active local media workspace changed after this conform plan was measured. Review the refreshed storage plan before continuing.",
+      409,
+    );
+  }
   const structuralHolds = initial.holds.filter(
     (hold) =>
       hold !==
@@ -434,6 +482,7 @@ export async function requestGoogleDriveSourceUnitConform(input: {
       ),
       retryFailed: input.retryFailed,
       purpose: member.role === "browse-proxy" ? "browse" : "conform",
+      executorTarget,
       environment: input.environment,
     });
   }

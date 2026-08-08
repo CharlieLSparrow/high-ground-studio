@@ -49,6 +49,13 @@ function plan(input: {
             workspaceMode: "unknown",
             localPathWithheld: true,
           },
+      executorTarget: input.safeAvailableBytes
+        ? {
+            nodeId: "execution_worker_12345678",
+            storageScopeId: "storage_scope_12345678",
+            label: "Retained Mac",
+          }
+        : null,
     },
     members: [
       {

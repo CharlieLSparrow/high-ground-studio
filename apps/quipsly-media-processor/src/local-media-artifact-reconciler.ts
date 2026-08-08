@@ -53,6 +53,8 @@ export type LocalMediaReconciliationResult = {
 
 export type LocalMediaReconcilerOptions = {
   localMediaRoot: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   authorizedRoots?: string[];
   batchSize?: number;
   intervalMs?: number;
@@ -238,7 +240,10 @@ export class LocalMediaArtifactReconciler {
           SELECT "id", 'replica'::text AS "artifactKind", "locator", "contentSha256",
             "sizeBytes", "status", "availabilityCheckedAt", "contentVerifiedAt", "createdAt"
           FROM "StudioMediaSourceReplica"
-          WHERE "storageProvider"='local-cache' AND "status" IN ('ready','missing','invalid')
+          WHERE "storageProvider"='local-cache'
+            AND "custodianNodeId"=$2
+            AND "storageScopeId"=$3
+            AND "status" IN ('ready','missing','invalid')
           UNION ALL
           SELECT "id", 'derivative'::text AS "artifactKind", "locator", "contentSha256",
             "sizeBytes", "status", "availabilityCheckedAt", "contentVerifiedAt", "createdAt"
@@ -251,7 +256,11 @@ export class LocalMediaArtifactReconciler {
           "createdAt" ASC
         LIMIT $1
       `,
-      values: [limit],
+      values: [
+        limit,
+        this.options.custodianNodeId,
+        this.options.storageScopeId,
+      ],
     });
     return response.rows;
   }

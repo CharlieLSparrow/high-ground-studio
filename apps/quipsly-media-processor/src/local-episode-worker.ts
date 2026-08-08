@@ -66,7 +66,10 @@ import {
   newLocalSpatialReframeRuntime,
   runOneLocalSpatialReframeJob,
 } from "./local-spatial-reframe-worker.js";
-import { LocalExecutionPresence } from "./local-execution-presence.js";
+import {
+  LocalExecutionPresence,
+  resolveLocalExecutionIdentity,
+} from "./local-execution-presence.js";
 import {
   newLocalExternalSourceProxyRuntime,
   runOneLocalExternalSourceProxyJob,
@@ -601,6 +604,7 @@ async function main() {
   const store = new PostgresLocalEpisodeProxyStore(pool);
   const transcoder = new FfmpegCaptureProxyTranscoder();
   const executionId = randomUUID();
+  const executionIdentity = await resolveLocalExecutionIdentity(localMediaRoot);
   const options: LocalEpisodeProxyWorkerOptions = {
     executionId,
     buildId:
@@ -698,6 +702,8 @@ async function main() {
   });
   const localMediaReconciler = new LocalMediaArtifactReconciler(pool, {
     localMediaRoot,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
     authorizedRoots: [spatialVaultRoot],
     intervalMs:
       Number(process.env.QUIPSLY_LOCAL_MEDIA_RECONCILE_INTERVAL_MS) ||
@@ -711,6 +717,7 @@ async function main() {
     executionId,
     buildId: options.buildId,
     localMediaRoot,
+    identity: executionIdentity,
     workspaceMode: durableLocalMediaRoot ? "durable" : "temporary",
     storageReserveBytes:
       Number(process.env.QUIPSLY_DRIVE_CACHE_MIN_FREE_BYTES) || undefined,
@@ -718,6 +725,8 @@ async function main() {
   const externalSourceProxy = newLocalExternalSourceProxyRuntime({
     pool,
     executionId,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
     localMediaRoot,
     leaseMs: options.leaseMs,
     buildId: options.buildId,
@@ -727,6 +736,8 @@ async function main() {
     pool,
     executionId,
     localMediaRoot,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
     leaseMs: options.leaseMs,
     buildId: options.buildId,
     signal: shutdown.signal,

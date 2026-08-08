@@ -48,6 +48,8 @@ export type LocalExternalSourceProxyClaim = {
   inputJson: unknown;
   attempt: number;
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
 };
 
 export type ResolvedExternalSource = {
@@ -67,6 +69,8 @@ export type ResolvedExternalSource = {
 export interface LocalExternalSourceProxyStore {
   claim(input: {
     executionId: string;
+    custodianNodeId: string;
+    storageScopeId: string;
     leaseMs: number;
     now: Date;
   }): Promise<LocalExternalSourceProxyClaim | null>;
@@ -96,6 +100,8 @@ export interface LocalExternalSourceProxyStore {
 
 export type LocalExternalSourceProxyOptions = {
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   buildId: string;
   leaseMs: number;
   localMediaRoot: string;
@@ -199,6 +205,8 @@ export async function runOneLocalExternalSourceProxyJob(
 ): Promise<LocalExternalSourceProxyWorkerResult> {
   const claim = await store.claim({
     executionId: options.executionId,
+    custodianNodeId: options.custodianNodeId,
+    storageScopeId: options.storageScopeId,
     leaseMs: options.leaseMs,
     now: options.now(),
   });
@@ -358,7 +366,13 @@ export async function runOneLocalExternalSourceProxyJob(
 export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourceProxyStore {
   constructor(private readonly pool: Pool) {}
 
-  async claim(input: { executionId: string; leaseMs: number; now: Date }) {
+  async claim(input: {
+    executionId: string;
+    custodianNodeId: string;
+    storageScopeId: string;
+    leaseMs: number;
+    now: Date;
+  }) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -369,11 +383,24 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
           FROM "StudioWorkflowJob"
           WHERE "type"=$1 AND "source"=$2
             AND "inputJson"->'source'->>'provider' IN ('local-file-vault','google-drive','quipsly-device-folder')
+            AND (
+              "inputJson"->'source'->>'provider'<>'google-drive'
+              OR (
+                "resultJson"->'executionTarget'->>'custodianNodeId'=$4
+                AND "resultJson"->'executionTarget'->>'storageScopeId'=$5
+              )
+            )
             AND ("status"='queued' OR ("status"='processing' AND "updatedAt" < timezone('UTC', $3::timestamptz)))
           ORDER BY "priority" ASC, "createdAt" ASC
           FOR UPDATE SKIP LOCKED LIMIT 1
         `,
-        values: [JOB_TYPE, JOB_SOURCE, staleBefore],
+        values: [
+          JOB_TYPE,
+          JOB_SOURCE,
+          staleBefore,
+          input.custodianNodeId,
+          input.storageScopeId,
+        ],
       });
       const row = selected.rows[0];
       if (!row) {
@@ -406,6 +433,8 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
         inputJson: updated.rows[0].inputJson,
         attempt,
         executionId: input.executionId,
+        custodianNodeId: input.custodianNodeId,
+        storageScopeId: input.storageScopeId,
       };
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -429,7 +458,11 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
         LEFT JOIN LATERAL (
           SELECT "locator"
           FROM "StudioMediaSourceReplica"
-          WHERE "sourceRevisionId"=s."id" AND "storageProvider"='local-cache' AND "status"='ready'
+          WHERE "sourceRevisionId"=s."id"
+            AND "storageProvider"='local-cache'
+            AND "custodianNodeId"=$4
+            AND "storageScopeId"=$5
+            AND "status"='ready'
           ORDER BY "createdAt" DESC LIMIT 1
         ) replica ON TRUE
         WHERE s."id"=$1 AND r."id"=$2 AND s."projectId"=$3
@@ -438,6 +471,8 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
         job.source.sourceRevisionId,
         job.source.externalReferenceId,
         job.projectId,
+        _claim.custodianNodeId,
+        _claim.storageScopeId,
       ],
     });
     const row = result.rows[0];
@@ -755,6 +790,8 @@ function assertRetainedNavigationMatches(
 export function newLocalExternalSourceProxyRuntime(input: {
   pool: Pool;
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   localMediaRoot: string;
   leaseMs: number;
   buildId: string;
@@ -768,6 +805,8 @@ export function newLocalExternalSourceProxyRuntime(input: {
     }),
     options: {
       executionId: input.executionId,
+      custodianNodeId: input.custodianNodeId,
+      storageScopeId: input.storageScopeId,
       buildId: input.buildId,
       leaseMs: input.leaseMs,
       localMediaRoot: input.localMediaRoot,

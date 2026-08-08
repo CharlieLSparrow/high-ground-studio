@@ -554,6 +554,11 @@ type GoogleDriveConformPlan = {
       workspaceMode: "durable" | "temporary" | "unknown";
       localPathWithheld: true;
     };
+    executorTarget: {
+      nodeId: string;
+      storageScopeId: string;
+      label: string;
+    } | null;
   };
   members: Array<{
     referenceId: string;
@@ -3463,7 +3468,9 @@ export function SourceStoryClient({
                                   </div>
                                   <div className="rounded-lg bg-white p-2">
                                     <dt className="font-bold text-violet-700">
-                                      Exact on this Mac
+                                      Exact on{" "}
+                                      {driveConformPlan.storage.executorTarget
+                                        ?.label ?? "this Mac"}
                                     </dt>
                                     <dd className="mt-1 text-xs font-black">
                                       {formatBytes(
@@ -3478,7 +3485,10 @@ export function SourceStoryClient({
                                     ? `${formatBytes(
                                         driveConformPlan.storage.executor
                                           .safeAvailableBytes,
-                                      )} safely available on the active Mac after its ${formatBytes(
+                                      )} safely available on ${
+                                        driveConformPlan.storage.executorTarget
+                                          ?.label ?? "the active Mac"
+                                      } after its ${formatBytes(
                                         driveConformPlan.storage.executor
                                           .reserveBytes,
                                       )} reserve.`

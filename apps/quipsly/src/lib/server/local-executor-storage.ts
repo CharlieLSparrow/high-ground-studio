@@ -5,6 +5,12 @@ import type { PrismaClient } from "@prisma/client";
 import type { LocalExecutorStorageProjection } from "@/lib/external-media-library-contract";
 
 export type PublicLocalExecutorStorage = LocalExecutorStorageProjection;
+export type LocalExecutorTarget = {
+  nodeId: string;
+  hostName: string;
+  storageScopeId: string;
+  storage: PublicLocalExecutorStorage;
+};
 
 const UNAVAILABLE_LOCAL_EXECUTOR_STORAGE: PublicLocalExecutorStorage = {
   status: "unavailable",
@@ -24,6 +30,11 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function safeId(value: unknown) {
+  const result = text(value);
+  return /^[A-Za-z0-9:_-]{8,200}$/.test(result) ? result : null;
 }
 
 function safeNonNegativeInteger(value: unknown) {
@@ -69,19 +80,54 @@ export function publicLocalExecutorStorage(input: {
 export async function readLocalExecutorStorage(
   prisma: PrismaClient,
 ): Promise<PublicLocalExecutorStorage> {
+  return (
+    (await readLocalExecutorTarget(prisma))?.storage ?? {
+      ...UNAVAILABLE_LOCAL_EXECUTOR_STORAGE,
+    }
+  );
+}
+
+export async function readLocalExecutorTarget(
+  prisma: PrismaClient,
+): Promise<LocalExecutorTarget | null> {
   const nodes = await prisma.agentNode.findMany({
     where: {
       status: "online",
       lastHeartbeatAt: { gte: new Date(Date.now() - 30_000) },
     },
-    select: { capabilities: true, lastHeartbeatAt: true },
+    select: {
+      id: true,
+      hostName: true,
+      capabilities: true,
+      lastHeartbeatAt: true,
+    },
     orderBy: { lastHeartbeatAt: "desc" },
   });
+  const targets: LocalExecutorTarget[] = [];
   for (const node of nodes) {
     const storage = publicLocalExecutorStorage(node);
-    if (storage) return storage;
+    const capabilities = record(node.capabilities);
+    const storageCapability = record(capabilities.storage);
+    const storageScopeId = safeId(storageCapability.scopeId);
+    if (storage && storageScopeId) {
+      targets.push({
+        nodeId: node.id,
+        hostName: node.hostName,
+        storageScopeId,
+        storage,
+      });
+    }
   }
-  return { ...UNAVAILABLE_LOCAL_EXECUTOR_STORAGE };
+  return (
+    targets.find(
+      (target) =>
+        target.storage.status === "measured" &&
+        target.storage.workspaceMode === "durable",
+    ) ??
+    targets.find((target) => target.storage.status === "measured") ??
+    targets[0] ??
+    null
+  );
 }
 
 export function localExecutorStorageShortfall(

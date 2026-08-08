@@ -6516,7 +6516,7 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   includes these milestones while excluding private work blocks, manuscript,
   thread, transcript, recording, participant-address, and provider data.
 - Operated the real local High Ground Odyssey Episode 4 Part 2 room. `Homer
-  source upload verified` blocked `Rough cut ready for review` until complete;
+source upload verified` blocked `Rough cut ready for review` until complete;
   both were then started and completed through the rendered product. Calendar
   showed both in America/Denver, and a real private feed returned exactly two
   transparent events with stable UIDs and one-hour refresh hints.
@@ -8478,3 +8478,29 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   media custody. No original or LRV was changed.
 - Detailed evidence and the next conform/source-set boundary are recorded in
   `docs/coordination/2026-08-08-device-media-preparation-queue.md`.
+
+# 2026-08-08 checkpoint: exact local executor custody
+
+- Replaced the false global meaning of `local-cache` with an explicit Mac
+  custodian plus opaque storage-scope identity. New Drive replicas are ready
+  only on the executor that can actually open their verified bytes.
+- Upgraded the Drive materialization job/result contract to v2. Stable job and
+  replica identities now include executor custody; only the addressed worker
+  can claim the transfer, and the completion transaction verifies the same
+  custody before retaining it.
+- Routed the collaboration proxy spawned from a Drive LRV to the same executor
+  and scope. Another Mac can no longer steal a proxy job whose source path is
+  meaningful only on the first Mac.
+- Scoped local replica reconciliation to its owning executor. One worker can
+  no longer mark another machine's healthy path missing, and final conform
+  counts only exact replicas available on the selected render Mac.
+- Existing local replicas remain deliberately unscoped until reverified; the
+  migration never guesses ownership from a path. The UI now names the active
+  execution Mac while continuing to withhold its local root.
+- Filesystem/contract tests, focused web tests, strict TypeScript, PostgreSQL
+  integration, migration deployment, retained exact-copy/proxy dogfood, local
+  service restart, and doctor all pass. The active temporary cache remains
+  under its 5 GiB safety reserve, so real shared-Drive downloads are correctly
+  held until a roomy durable SSD is active.
+- Detailed contract and evidence:
+  `docs/coordination/2026-08-08-local-media-executor-custody.md`.

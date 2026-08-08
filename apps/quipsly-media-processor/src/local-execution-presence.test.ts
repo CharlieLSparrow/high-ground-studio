@@ -6,7 +6,10 @@ import test from "node:test";
 
 import pg from "pg";
 
-import { LocalExecutionPresence } from "./local-execution-presence.js";
+import {
+  LocalExecutionPresence,
+  resolveLocalExecutionIdentity,
+} from "./local-execution-presence.js";
 
 test("local execution presence publishes safe storage capacity without its path", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "quipsly-presence-"));
@@ -23,10 +26,12 @@ test("local execution presence publishes safe storage capacity without its path"
         return { rowCount: 1 };
       },
     } as unknown as InstanceType<typeof pg.Pool>;
+    const identity = await resolveLocalExecutionIdentity(root);
     const presence = new LocalExecutionPresence(pool, {
       executionId: "execution_12345678",
       buildId: "build-1",
       localMediaRoot: root,
+      identity,
       workspaceMode: "temporary",
       storageReserveBytes: 0,
     });
@@ -37,6 +42,8 @@ test("local execution presence publishes safe storage capacity without its path"
     assert.equal(storage.status, "measured");
     assert.equal(storage.pathWithheld, true);
     assert.equal(storage.workspaceMode, "temporary");
+    assert.equal(storage.scopeId, identity.storageScopeId);
+    assert.match(identity.storageScopeId, /^storage_scope_[0-9a-f]{40}$/);
     assert.equal(typeof storage.safeAvailableBytes, "number");
     assert.equal(JSON.stringify(capabilities).includes(root), false);
     assert.ok(
@@ -46,5 +53,27 @@ test("local execution presence publishes safe storage capacity without its path"
     );
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("execution identity is stable for one workspace and distinct across workspaces", async () => {
+  const firstRoot = await mkdtemp(path.join(tmpdir(), "quipsly-scope-a-"));
+  const secondRoot = await mkdtemp(path.join(tmpdir(), "quipsly-scope-b-"));
+  try {
+    const [first, repeated, second] = await Promise.all([
+      resolveLocalExecutionIdentity(firstRoot),
+      resolveLocalExecutionIdentity(firstRoot),
+      resolveLocalExecutionIdentity(secondRoot),
+    ]);
+    assert.deepEqual(first, repeated);
+    assert.equal(first.nodeId, second.nodeId);
+    assert.notEqual(first.storageScopeId, second.storageScopeId);
+    assert.equal(JSON.stringify(first).includes(firstRoot), false);
+    assert.equal(JSON.stringify(second).includes(secondRoot), false);
+  } finally {
+    await Promise.all([
+      rm(firstRoot, { recursive: true, force: true }),
+      rm(secondRoot, { recursive: true, force: true }),
+    ]);
   }
 });

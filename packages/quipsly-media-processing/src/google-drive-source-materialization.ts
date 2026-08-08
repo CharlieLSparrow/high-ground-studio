@@ -1,7 +1,7 @@
 export const GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_KIND =
-  "quipsly-google-drive-source-materialization-job-v1" as const;
+  "quipsly-google-drive-source-materialization-job-v2" as const;
 export const GOOGLE_DRIVE_SOURCE_MATERIALIZATION_RESULT_KIND =
-  "quipsly-google-drive-source-materialization-result-v1" as const;
+  "quipsly-google-drive-source-materialization-result-v2" as const;
 export const GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE =
   "exact-provider-replica-v1" as const;
 export const GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE =
@@ -22,7 +22,7 @@ const MD5 = /^[0-9a-f]{32}$/;
 
 export type GoogleDriveSourceMaterializationJob = {
   kind: typeof GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_KIND;
-  version: 1;
+  version: 2;
   jobId: string;
   replicaId: string;
   projectId: string;
@@ -48,12 +48,14 @@ export type GoogleDriveSourceMaterializationJob = {
     provider: "local-cache";
     locator: string;
     profile: GoogleDriveSourceMaterializationProfile;
+    custodianNodeId: string;
+    storageScopeId: string;
   };
 };
 
 export type GoogleDriveSourceMaterializationResult = {
   kind: typeof GOOGLE_DRIVE_SOURCE_MATERIALIZATION_RESULT_KIND;
-  version: 1;
+  version: 2;
   jobId: string;
   replicaId: string;
   completedAt: string;
@@ -82,6 +84,8 @@ export type GoogleDriveSourceMaterializationResult = {
     executionId: string;
     buildId: string;
     attempt: number;
+    custodianNodeId: string;
+    storageScopeId: string;
   };
   boundaries: {
     originalRemainsInDrive: true;
@@ -139,13 +143,17 @@ export function googleDriveSourceMaterializationIdentity(input: {
   projectId: string;
   sourceRevisionId: string;
   identitySha256: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   profile?: GoogleDriveSourceMaterializationProfile;
 }) {
   return [
-    "google-drive-source-materialization-v1",
+    "google-drive-source-materialization-v2",
     text(input.projectId),
     text(input.sourceRevisionId),
     text(input.identitySha256).toLowerCase(),
+    text(input.custodianNodeId),
+    text(input.storageScopeId),
     input.profile ?? GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE,
   ].join(":");
 }
@@ -155,7 +163,7 @@ export function newGoogleDriveSourceMaterializationJob(
 ) {
   return parseGoogleDriveSourceMaterializationJob({
     kind: GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_KIND,
-    version: 1,
+    version: 2,
     ...input,
   });
 }
@@ -188,10 +196,12 @@ export function parseGoogleDriveSourceMaterializationJob(
     provider: text(targetRow.provider) as "local-cache",
     locator: text(targetRow.locator),
     profile: text(targetRow.profile) as GoogleDriveSourceMaterializationProfile,
+    custodianNodeId: text(targetRow.custodianNodeId),
+    storageScopeId: text(targetRow.storageScopeId),
   };
   const job: GoogleDriveSourceMaterializationJob = {
     kind: row.kind as typeof GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_KIND,
-    version: Number(row.version) as 1,
+    version: Number(row.version) as 2,
     jobId: text(row.jobId),
     replicaId: text(row.replicaId),
     projectId: text(row.projectId),
@@ -204,7 +214,7 @@ export function parseGoogleDriveSourceMaterializationJob(
   };
   if (
     job.kind !== GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_KIND ||
-    job.version !== 1 ||
+    job.version !== 2 ||
     !SAFE_ID.test(job.jobId) ||
     (expectedJobId && job.jobId !== expectedJobId) ||
     !SAFE_ID.test(job.replicaId) ||
@@ -230,6 +240,8 @@ export function parseGoogleDriveSourceMaterializationJob(
     ) ||
     target.provider !== "local-cache" ||
     !safeRelativeLocator(target.locator) ||
+    !SAFE_ID.test(target.custodianNodeId) ||
+    !SAFE_ID.test(target.storageScopeId) ||
     ![
       GOOGLE_DRIVE_SOURCE_MATERIALIZATION_PROFILE,
       GOOGLE_DRIVE_SOURCE_ORIGINAL_MATERIALIZATION_PROFILE,
@@ -255,7 +267,7 @@ export function newGoogleDriveSourceMaterializationResult(
 ) {
   return parseGoogleDriveSourceMaterializationResult({
     kind: GOOGLE_DRIVE_SOURCE_MATERIALIZATION_RESULT_KIND,
-    version: 1,
+    version: 2,
     ...input,
     boundaries: {
       originalRemainsInDrive: true,
@@ -279,7 +291,7 @@ export function parseGoogleDriveSourceMaterializationResult(
   const baseJob = parseGoogleDriveSourceMaterializationJob(
     {
       kind: GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_KIND,
-      version: 1,
+      version: 2,
       jobId: row.jobId,
       replicaId: row.replicaId,
       projectId: expectedJob?.projectId ?? "project_result_placeholder",
@@ -297,13 +309,17 @@ export function parseGoogleDriveSourceMaterializationResult(
             ? "source-cache/result-placeholder.insv"
             : "source-cache/result-placeholder.lrv"),
         profile: outputRow.profile,
+        custodianNodeId:
+          expectedJob?.target.custodianNodeId ?? "executor_result_placeholder",
+        storageScopeId:
+          expectedJob?.target.storageScopeId ?? "storage_result_placeholder",
       },
     },
     expectedJob?.jobId,
   );
   const result: GoogleDriveSourceMaterializationResult = {
     kind: row.kind as typeof GOOGLE_DRIVE_SOURCE_MATERIALIZATION_RESULT_KIND,
-    version: Number(row.version) as 1,
+    version: Number(row.version) as 2,
     jobId: text(row.jobId),
     replicaId: text(row.replicaId),
     completedAt: text(row.completedAt),
@@ -337,6 +353,8 @@ export function parseGoogleDriveSourceMaterializationResult(
       executionId: text(workerRow.executionId),
       buildId: text(workerRow.buildId),
       attempt: positiveSafeInteger(workerRow.attempt),
+      custodianNodeId: text(workerRow.custodianNodeId),
+      storageScopeId: text(workerRow.storageScopeId),
     },
     boundaries: {
       originalRemainsInDrive: boundariesRow.originalRemainsInDrive as true,
@@ -349,7 +367,7 @@ export function parseGoogleDriveSourceMaterializationResult(
   const source = result.source;
   if (
     result.kind !== GOOGLE_DRIVE_SOURCE_MATERIALIZATION_RESULT_KIND ||
-    result.version !== 1 ||
+    result.version !== 2 ||
     !isIsoDate(result.completedAt) ||
     source.observedHeadRevisionKey !== source.headRevisionKey ||
     source.observedMd5 !== source.expectedMd5 ||
@@ -372,6 +390,8 @@ export function parseGoogleDriveSourceMaterializationResult(
     !result.worker.executionId ||
     !result.worker.buildId ||
     result.worker.attempt <= 0 ||
+    !SAFE_ID.test(result.worker.custodianNodeId) ||
+    !SAFE_ID.test(result.worker.storageScopeId) ||
     result.boundaries.originalRemainsInDrive !== true ||
     result.boundaries.replicaMatchesProviderRevision !== true ||
     result.boundaries.collaborationProxyQueuedFromVerifiedBytes !==
@@ -391,6 +411,8 @@ export function parseGoogleDriveSourceMaterializationResult(
         source.contentType !== expectedJob.source.contentType ||
         source.memberRole !== expectedJob.source.memberRole ||
         result.output.profile !== expectedJob.target.profile ||
+        result.worker.custodianNodeId !== expectedJob.target.custodianNodeId ||
+        result.worker.storageScopeId !== expectedJob.target.storageScopeId ||
         !result.output.locator.endsWith(`/${expectedJob.target.locator}`)))
   ) {
     throw new Error("Google Drive source materialization result is invalid.");

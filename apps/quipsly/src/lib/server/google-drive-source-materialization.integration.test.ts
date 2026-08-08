@@ -47,8 +47,33 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
   let workspaceId = "";
   let projectId = "";
   let connectionId = "";
+  const executorNodeId = `test_executor_${nonce}`;
+  const executorScopeId = `storage_scope_${nonce}_integration`;
 
   beforeAll(async () => {
+    await prisma.agentNode.create({
+      data: {
+        id: executorNodeId,
+        hostName: `quipsly-media-worker:Integration-${nonce}`,
+        ipAddress: "loopback",
+        status: "online",
+        capabilities: {
+          executorKind: "local-mac",
+          storage: {
+            schema: "quipsly-local-media-storage-v1",
+            status: "measured",
+            availableBytes: 1_000_000_000,
+            reserveBytes: 100_000_000,
+            safeAvailableBytes: 900_000_000,
+            measuredAt: new Date().toISOString(),
+            workspaceMode: "durable",
+            scopeId: executorScopeId,
+            pathWithheld: true,
+          },
+        },
+        lastHeartbeatAt: new Date(),
+      },
+    });
     const [actor, other] = await Promise.all([
       prisma.user.create({
         data: { primaryEmail: actorEmail, name: "Drive materializer" },
@@ -109,6 +134,7 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
       await prisma.user.deleteMany({
         where: { id: { in: [actorUserId, otherUserId].filter(Boolean) } },
       });
+      await prisma.agentNode.deleteMany({ where: { id: executorNodeId } });
     } finally {
       await prisma.$disconnect();
     }
@@ -677,6 +703,7 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
       storage: { remainingBytes: "10240" },
       sourceSet: { id: attachedSet.sourceSet.id, completeness: "complete" },
     });
+    expect(initial.storage.executorTarget).not.toBeNull();
     const queued = await requestGoogleDriveSourceUnitConform({
       prisma,
       projectId,
@@ -733,6 +760,8 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
             sourceRevisionId: revision.id,
             workflowJobId: job.id,
             storageProvider: "local-cache",
+            custodianNodeId: initial.storage.executorTarget!.nodeId,
+            storageScopeId: initial.storage.executorTarget!.storageScopeId,
             locator: `/private/tmp/quipsly-drive-materialization/${revision.id}`,
             generation: `sha256:${exactSha256}`,
             contentSha256: exactSha256,

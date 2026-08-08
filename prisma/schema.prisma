@@ -5166,6 +5166,8 @@ model StudioMediaSourceReplica {
   projectId             String
   sourceRevisionId      String
   workflowJobId         String    @unique
+  custodianNodeId       String?
+  storageScopeId        String?
   storageProvider       String
   locator               String    @db.Text
   generation            String
@@ -5186,10 +5188,12 @@ model StudioMediaSourceReplica {
   sourceRevision StudioMediaSourceRevision @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
   workflowJob    StudioWorkflowJob         @relation(fields: [workflowJobId], references: [id], onDelete: Restrict)
   createdBy      User                      @relation("StudioMediaSourceReplicaCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  custodianNode  AgentNode?                @relation("StudioMediaSourceReplicaCustodian", fields: [custodianNodeId], references: [id], onDelete: SetNull)
 
-  @@unique([sourceRevisionId, storageProvider, generation])
+  @@unique([sourceRevisionId, storageProvider, storageScopeId, generation])
   @@index([projectId, status, createdAt])
   @@index([sourceRevisionId, status, createdAt])
+  @@index([custodianNodeId, storageScopeId, status])
   @@index([status, availabilityCheckedAt])
 }
 
@@ -6995,15 +6999,16 @@ model MediaClip {
 
 // Agent Control Center
 model AgentNode {
-  id              String      @id @default(cuid())
-  hostName        String      @unique
-  ipAddress       String
-  status          String      @default("offline")
-  capabilities    Json
-  lastHeartbeatAt DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  agentTasks      AgentTask[]
+  id                  String                     @id @default(cuid())
+  hostName            String                     @unique
+  ipAddress           String
+  status              String                     @default("offline")
+  capabilities        Json
+  lastHeartbeatAt     DateTime?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  agentTasks          AgentTask[]
+  mediaSourceReplicas StudioMediaSourceReplica[] @relation("StudioMediaSourceReplicaCustodian")
 }
 
 model QuipslyAgent {

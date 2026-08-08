@@ -50,6 +50,8 @@ describe("Google Drive source materialization capacity preflight", () => {
       agentNode: {
         findMany: jest.fn(async () => [
           {
+            id: "execution_worker_12345678",
+            hostName: "quipsly-media-worker:Retained-Mac",
             capabilities: {
               executorKind: "local-mac",
               storage: {
@@ -60,6 +62,7 @@ describe("Google Drive source materialization capacity preflight", () => {
                 safeAvailableBytes: 1_402_000_000,
                 measuredAt: "2026-08-08T20:00:00.000Z",
                 workspaceMode: "temporary",
+                scopeId: "storage_scope_12345678",
                 pathWithheld: true,
               },
             },

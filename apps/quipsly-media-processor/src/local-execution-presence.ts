@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
+import { mkdir, realpath, stat, statfs } from "node:fs/promises";
 import { hostname } from "node:os";
-import { statfs } from "node:fs/promises";
+import path from "node:path";
 
 import pg from "pg";
 
@@ -7,6 +9,32 @@ const { Pool } = pg;
 
 export const LOCAL_EXECUTION_WORKER_CAPABILITY_SCHEMA =
   "quipsly-execution-worker-capabilities-v1" as const;
+
+export type LocalExecutionIdentity = {
+  nodeId: string;
+  hostName: string;
+  storageScopeId: string;
+};
+
+export async function resolveLocalExecutionIdentity(
+  localMediaRoot: string,
+): Promise<LocalExecutionIdentity> {
+  const resolved = path.resolve(localMediaRoot);
+  await mkdir(resolved, { recursive: true, mode: 0o700 });
+  const [canonicalRoot, details] = await Promise.all([
+    realpath(resolved),
+    stat(resolved),
+  ]);
+  const hostName = `quipsly-media-worker:${hostname()}`.slice(0, 220);
+  return {
+    nodeId: `execution_worker_${stableHostId(hostName)}`,
+    hostName,
+    storageScopeId: `storage_scope_${createHash("sha256")
+      .update(`${hostName}\0${canonicalRoot}\0${details.dev}\0${details.ino}`)
+      .digest("hex")
+      .slice(0, 40)}`,
+  };
+}
 
 export class LocalExecutionPresence {
   private lastWrittenAt = 0;
@@ -17,6 +45,7 @@ export class LocalExecutionPresence {
       executionId: string;
       buildId: string;
       localMediaRoot: string;
+      identity: LocalExecutionIdentity;
       workspaceMode: "durable" | "temporary";
       storageReserveBytes?: number;
       heartbeatIntervalMs?: number;
@@ -26,7 +55,6 @@ export class LocalExecutionPresence {
   async heartbeat(now = new Date(), force = false) {
     const interval = this.input.heartbeatIntervalMs ?? 10_000;
     if (!force && now.getTime() - this.lastWrittenAt < interval) return false;
-    const hostName = `quipsly-media-worker:${hostname()}`.slice(0, 220);
     const storage = await this.storageSnapshot(now);
     const capabilities = {
       schema: LOCAL_EXECUTION_WORKER_CAPABILITY_SCHEMA,
@@ -72,8 +100,8 @@ export class LocalExecutionPresence {
           "updatedAt"=EXCLUDED."updatedAt"
       `,
       values: [
-        `execution_worker_${stableHostId(hostName)}`,
-        hostName,
+        this.input.identity.nodeId,
+        this.input.identity.hostName,
         "loopback",
         JSON.stringify(capabilities),
       ],
@@ -83,10 +111,9 @@ export class LocalExecutionPresence {
   }
 
   async offline() {
-    const hostName = `quipsly-media-worker:${hostname()}`.slice(0, 220);
     await this.pool.query({
       text: `UPDATE "AgentNode" SET "status"='offline',"updatedAt"=timezone('UTC', now()) WHERE "hostName"=$1`,
-      values: [hostName],
+      values: [this.input.identity.hostName],
     });
   }
 
@@ -106,6 +133,7 @@ export class LocalExecutionPresence {
         safeAvailableBytes: Math.max(0, availableBytes - reserveBytes),
         measuredAt: now.toISOString(),
         workspaceMode: this.input.workspaceMode,
+        scopeId: this.input.identity.storageScopeId,
         pathWithheld: true,
       };
     } catch {
@@ -117,6 +145,7 @@ export class LocalExecutionPresence {
         safeAvailableBytes: null,
         measuredAt: now.toISOString(),
         workspaceMode: this.input.workspaceMode,
+        scopeId: this.input.identity.storageScopeId,
         pathWithheld: true,
       };
     }

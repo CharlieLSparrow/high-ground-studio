@@ -3,6 +3,7 @@
 import {
   localExecutorStorageShortfall,
   publicLocalExecutorStorage,
+  readLocalExecutorTarget,
 } from "./local-executor-storage";
 
 describe("local executor storage projection", () => {
@@ -38,6 +39,41 @@ describe("local executor storage projection", () => {
     expect(localExecutorStorageShortfall(storage!, 1_900_000_000n)).toBe(
       498_000_000n,
     );
+  });
+
+  it("selects one exact executor and opaque storage scope", async () => {
+    const target = await readLocalExecutorTarget({
+      agentNode: {
+        findMany: jest.fn(async () => [
+          {
+            id: "execution_worker_12345678",
+            hostName: "quipsly-media-worker:Wall-E",
+            lastHeartbeatAt: new Date("2026-08-08T20:00:00.000Z"),
+            capabilities: {
+              executorKind: "local-mac",
+              storage: {
+                schema: "quipsly-local-media-storage-v1",
+                status: "measured",
+                availableBytes: 20_000,
+                reserveBytes: 5_000,
+                safeAvailableBytes: 15_000,
+                measuredAt: "2026-08-08T20:00:00.000Z",
+                workspaceMode: "durable",
+                scopeId: "storage_scope_12345678",
+              },
+            },
+          },
+        ]),
+      },
+    } as never);
+
+    expect(target).toMatchObject({
+      nodeId: "execution_worker_12345678",
+      hostName: "quipsly-media-worker:Wall-E",
+      storageScopeId: "storage_scope_12345678",
+      storage: { safeAvailableBytes: "15000", workspaceMode: "durable" },
+    });
+    expect(JSON.stringify(target)).not.toContain("/Volumes/");
   });
 
   it("treats legacy heartbeats as unknown rather than claiming durability", () => {
