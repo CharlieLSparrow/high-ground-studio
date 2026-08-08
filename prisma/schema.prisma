@@ -5121,27 +5121,30 @@ model StudioMediaSourceSetMember {
 // A retained derivative is append-only evidence produced from one exact source
 // revision. It is never the original and never replaces the source identity.
 model StudioMediaDerivative {
-  id               String   @id
-  projectId        String
-  sourceRevisionId String
-  workflowJobId    String   @unique
-  kind             String
-  profile          String
-  storageProvider  String
-  locator          String   @db.Text
-  generation       String
-  contentSha256    String
-  sizeBytes        BigInt
-  mimeType         String
-  durationSeconds  Float?
-  widthPixels      Int?
-  heightPixels     Int?
-  framesPerSecond  Float?
-  status           String   @default("ready")
-  verificationJson Json     @default("{}")
-  provenanceJson   Json     @default("{}")
-  createdByUserId  String
-  createdAt        DateTime @default(now())
+  id                    String    @id
+  projectId             String
+  sourceRevisionId      String
+  workflowJobId         String    @unique
+  kind                  String
+  profile               String
+  storageProvider       String
+  locator               String    @db.Text
+  generation            String
+  contentSha256         String
+  sizeBytes             BigInt
+  mimeType              String
+  durationSeconds       Float?
+  widthPixels           Int?
+  heightPixels          Int?
+  framesPerSecond       Float?
+  status                String    @default("ready")
+  availabilityCheckedAt DateTime?
+  contentVerifiedAt     DateTime?
+  unavailableAt         DateTime?
+  verificationJson      Json      @default("{}")
+  provenanceJson        Json      @default("{}")
+  createdByUserId       String
+  createdAt             DateTime  @default(now())
 
   project        StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sourceRevision StudioMediaSourceRevision @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
@@ -5151,6 +5154,7 @@ model StudioMediaDerivative {
   @@unique([sourceRevisionId, kind, profile, generation])
   @@index([projectId, kind, createdAt])
   @@index([sourceRevisionId, status, createdAt])
+  @@index([status, availabilityCheckedAt])
 }
 
 // An exact, checksum-verified byte replica of one immutable external source
@@ -5158,22 +5162,25 @@ model StudioMediaDerivative {
 // from Drive remains the same provider bytes, while a collaboration proxy is a
 // new encoded artifact. Locators are server-only and never projected directly.
 model StudioMediaSourceReplica {
-  id               String   @id
-  projectId        String
-  sourceRevisionId String
-  workflowJobId    String   @unique
-  storageProvider  String
-  locator          String   @db.Text
-  generation       String
-  contentSha256    String
-  checksumMd5      String?
-  sizeBytes        BigInt
-  mimeType         String
-  status           String   @default("ready")
-  verificationJson Json     @default("{}")
-  provenanceJson   Json     @default("{}")
-  createdByUserId  String
-  createdAt        DateTime @default(now())
+  id                    String    @id
+  projectId             String
+  sourceRevisionId      String
+  workflowJobId         String    @unique
+  storageProvider       String
+  locator               String    @db.Text
+  generation            String
+  contentSha256         String
+  checksumMd5           String?
+  sizeBytes             BigInt
+  mimeType              String
+  status                String    @default("ready")
+  availabilityCheckedAt DateTime?
+  contentVerifiedAt     DateTime?
+  unavailableAt         DateTime?
+  verificationJson      Json      @default("{}")
+  provenanceJson        Json      @default("{}")
+  createdByUserId       String
+  createdAt             DateTime  @default(now())
 
   project        StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sourceRevision StudioMediaSourceRevision @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
@@ -5183,6 +5190,7 @@ model StudioMediaSourceReplica {
   @@unique([sourceRevisionId, storageProvider, generation])
   @@index([projectId, status, createdAt])
   @@index([sourceRevisionId, status, createdAt])
+  @@index([status, availabilityCheckedAt])
 }
 
 // A stable, immutable selection of one exact source revision. Reframing is a

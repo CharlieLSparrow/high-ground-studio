@@ -496,9 +496,22 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
           INSERT INTO "StudioMediaDerivative" (
             "id","projectId","sourceRevisionId","workflowJobId","kind","profile","storageProvider","locator","generation",
             "contentSha256","sizeBytes","mimeType","durationSeconds","widthPixels","heightPixels","framesPerSecond",
-            "status","verificationJson","provenanceJson","createdByUserId","createdAt"
-          ) VALUES ($1,$2,$3,$4,'collaboration-proxy',$5,'local',$6,$7,$8,$9,'video/mp4',$10,$11,$12,$13,'ready',$14::jsonb,$15::jsonb,$16,$17)
-          ON CONFLICT ("id") DO NOTHING
+            "status","verificationJson","provenanceJson","availabilityCheckedAt","contentVerifiedAt","unavailableAt","createdByUserId","createdAt"
+          ) VALUES ($1,$2,$3,$4,'collaboration-proxy',$5,'local',$6,$7,$8,$9,'video/mp4',$10,$11,$12,$13,'ready',$14::jsonb,$15::jsonb,$17,$17,NULL,$16,$17)
+          ON CONFLICT ("id") DO UPDATE SET
+            "status"='ready',
+            "availabilityCheckedAt"=EXCLUDED."availabilityCheckedAt",
+            "contentVerifiedAt"=EXCLUDED."contentVerifiedAt",
+            "unavailableAt"=NULL,
+            "verificationJson"=EXCLUDED."verificationJson",
+            "provenanceJson"=EXCLUDED."provenanceJson"
+          WHERE "StudioMediaDerivative"."projectId"=EXCLUDED."projectId"
+            AND "StudioMediaDerivative"."sourceRevisionId"=EXCLUDED."sourceRevisionId"
+            AND "StudioMediaDerivative"."workflowJobId"=EXCLUDED."workflowJobId"
+            AND "StudioMediaDerivative"."locator"=EXCLUDED."locator"
+            AND "StudioMediaDerivative"."generation"=EXCLUDED."generation"
+            AND "StudioMediaDerivative"."contentSha256"=EXCLUDED."contentSha256"
+            AND "StudioMediaDerivative"."sizeBytes"=EXCLUDED."sizeBytes"
         `,
         values: [
           input.job.derivativeId,

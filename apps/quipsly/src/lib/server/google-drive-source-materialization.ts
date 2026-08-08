@@ -156,7 +156,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
         },
       },
       replicas: {
-        where: { storageProvider: "local-cache", status: "ready" },
+        where: { storageProvider: "local-cache" },
         orderBy: { createdAt: "desc" },
         take: 1,
       },
@@ -169,7 +169,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       404,
     );
   }
-  if (source.replicas[0]) {
+  if (source.replicas[0]?.status === "ready") {
     return {
       replica: source.replicas[0],
       job: null,
@@ -398,6 +398,42 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       return {
         replica: null,
         job: retried,
+        replayed: false,
+        state: "queued" as const,
+      };
+    }
+    if (["output-ready", "completed"].includes(existing.status)) {
+      await assertLocalExecutorCapacity(input.prisma, BigInt(sizeBytes));
+      const prior = object(existing.resultJson);
+      const recoveryHistory = Array.isArray(prior.recoveryHistory)
+        ? prior.recoveryHistory.slice(-9)
+        : [];
+      const recovered = await input.prisma.studioWorkflowJob.update({
+        where: { id: jobId },
+        data: {
+          status: "queued",
+          error: null,
+          completedAt: null,
+          resultJson: {
+            state: "queued",
+            requestedBy: { actorUserId, actorEmail, clientRequestId },
+            recoveryReason: "local-replica-unavailable",
+            recoveryHistory: [
+              ...recoveryHistory,
+              {
+                priorStatus: existing.status,
+                priorResult: prior,
+                requestedAt: new Date().toISOString(),
+              },
+            ],
+            originalRemainsInDrive: true,
+            purpose,
+          },
+        },
+      });
+      return {
+        replica: null,
+        job: recovered,
         replayed: false,
         state: "queued" as const,
       };

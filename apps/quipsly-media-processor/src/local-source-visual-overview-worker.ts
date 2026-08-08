@@ -511,9 +511,23 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
         text: `
           INSERT INTO "StudioMediaDerivative" (
             "id","projectId","sourceRevisionId","workflowJobId","kind","profile","storageProvider","locator","generation",
-            "contentSha256","sizeBytes","mimeType","widthPixels","heightPixels","status","verificationJson","provenanceJson","createdByUserId","createdAt"
-          ) VALUES ($1,$2,$3,$4,$5,$6,'local',$7,$8,$9,$10,'image/jpeg',$11,$12,'ready',$13::jsonb,$14::jsonb,$15,$16)
-          ON CONFLICT ("id") DO NOTHING
+            "contentSha256","sizeBytes","mimeType","widthPixels","heightPixels","status","verificationJson","provenanceJson",
+            "createdByUserId","createdAt","availabilityCheckedAt","contentVerifiedAt","unavailableAt"
+          ) VALUES ($1,$2,$3,$4,$5,$6,'local',$7,$8,$9,$10,'image/jpeg',$11,$12,'ready',$13::jsonb,$14::jsonb,$15,$16,$16,$16,NULL)
+          ON CONFLICT ("id") DO UPDATE SET
+            "status"='ready',
+            "availabilityCheckedAt"=EXCLUDED."availabilityCheckedAt",
+            "contentVerifiedAt"=EXCLUDED."contentVerifiedAt",
+            "unavailableAt"=NULL,
+            "verificationJson"=EXCLUDED."verificationJson",
+            "provenanceJson"=EXCLUDED."provenanceJson"
+          WHERE "StudioMediaDerivative"."projectId"=EXCLUDED."projectId"
+            AND "StudioMediaDerivative"."sourceRevisionId"=EXCLUDED."sourceRevisionId"
+            AND "StudioMediaDerivative"."workflowJobId"=EXCLUDED."workflowJobId"
+            AND "StudioMediaDerivative"."locator"=EXCLUDED."locator"
+            AND "StudioMediaDerivative"."generation"=EXCLUDED."generation"
+            AND "StudioMediaDerivative"."contentSha256"=EXCLUDED."contentSha256"
+            AND "StudioMediaDerivative"."sizeBytes"=EXCLUDED."sizeBytes"
         `,
         values: [
           input.job.derivativeId,

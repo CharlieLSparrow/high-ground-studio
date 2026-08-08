@@ -230,6 +230,66 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
       originalRemainsInDrive: true,
     });
 
+    const missingReplicaId = `missing_replica_${randomUUID().replaceAll("-", "")}`;
+    await prisma.$transaction([
+      prisma.studioWorkflowJob.update({
+        where: { id: queued.job!.id },
+        data: {
+          status: "output-ready",
+          resultJson: { state: "output-ready", receipt: "prior receipt" },
+        },
+      }),
+      prisma.studioMediaSourceReplica.create({
+        data: {
+          id: missingReplicaId,
+          projectId,
+          sourceRevisionId: attached.sourceRevisionId,
+          workflowJobId: queued.job!.id,
+          storageProvider: "local-cache",
+          locator: `/private/tmp/quipsly-reclaimed/${nonce}.lrv`,
+          generation: `sha256:${"c".repeat(64)}`,
+          contentSha256: "c".repeat(64),
+          checksumMd5: "a".repeat(32),
+          sizeBytes: BigInt(2048),
+          mimeType: "video/mp4",
+          status: "missing",
+          availabilityCheckedAt: new Date(),
+          unavailableAt: new Date(),
+          verificationJson: {
+            localAvailability: {
+              schema: "quipsly-local-media-availability-v1",
+              state: "missing",
+              pathWithheld: true,
+            },
+          },
+          provenanceJson: { schema: "test-reclaimed-replica-v1" },
+          createdByUserId: actorUserId,
+        },
+      }),
+    ]);
+    const recovered = await requestGoogleDriveSourceMaterialization({
+      ...input,
+      clientRequestId: randomUUID(),
+    });
+    expect(recovered).toMatchObject({
+      replayed: false,
+      state: "queued",
+      job: { id: queued.job?.id, status: "queued" },
+    });
+    expect(recovered.job?.resultJson).toMatchObject({
+      recoveryReason: "local-replica-unavailable",
+      recoveryHistory: [
+        {
+          priorStatus: "output-ready",
+          priorResult: { state: "output-ready", receipt: "prior receipt" },
+        },
+      ],
+      originalRemainsInDrive: true,
+    });
+    await prisma.studioMediaSourceReplica.delete({
+      where: { id: missingReplicaId },
+    });
+
     await expect(
       requestGoogleDriveSourceMaterialization({
         ...input,

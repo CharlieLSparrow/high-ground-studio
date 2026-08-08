@@ -3281,7 +3281,9 @@ export async function repositionSourceStoryTimelinePlacement(input: {
   actorUserId: string;
   value: RepositionSourceStoryTimelinePlacementInput;
 }) {
-  const value = normalizeRepositionSourceStoryTimelinePlacementInput(input.value);
+  const value = normalizeRepositionSourceStoryTimelinePlacementInput(
+    input.value,
+  );
   const actorUserId = cleanId(input.actorUserId, "actorUserId");
   const requestSha256 = sha256(stableSourceStoryJson(value));
 
@@ -3692,14 +3694,18 @@ export async function readSourceStoryWorkspace(
             heightPixels: true,
             framesPerSecond: true,
             replicas: {
-              where: { storageProvider: "local-cache", status: "ready" },
+              where: { storageProvider: "local-cache" },
               orderBy: { createdAt: "desc" },
               take: 1,
               select: {
                 id: true,
+                status: true,
                 contentSha256: true,
                 sizeBytes: true,
                 mimeType: true,
+                availabilityCheckedAt: true,
+                contentVerifiedAt: true,
+                unavailableAt: true,
                 createdAt: true,
               },
             },
@@ -3805,6 +3811,18 @@ export async function readSourceStoryWorkspace(
               orderBy: { createdAt: "desc" },
               take: 6,
               select: derivativeSelect,
+            },
+            replicas: {
+              where: { storageProvider: "local-cache" },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: {
+                id: true,
+                status: true,
+                availabilityCheckedAt: true,
+                contentVerifiedAt: true,
+                unavailableAt: true,
+              },
             },
           },
         },
@@ -4193,6 +4211,23 @@ export async function readSourceStoryWorkspace(
             (derivative) => derivative.kind === "source-contact-sheet",
           ),
         ),
+        localReplicaAvailability: sourceSet.sourceClockRevision.replicas[0]
+          ? {
+              id: sourceSet.sourceClockRevision.replicas[0].id,
+              status: sourceSet.sourceClockRevision.replicas[0].status,
+              availabilityCheckedAt:
+                sourceSet.sourceClockRevision.replicas[0].availabilityCheckedAt?.toISOString() ??
+                null,
+              contentVerifiedAt:
+                sourceSet.sourceClockRevision.replicas[0].contentVerifiedAt?.toISOString() ??
+                null,
+              unavailableAt:
+                sourceSet.sourceClockRevision.replicas[0].unavailableAt?.toISOString() ??
+                null,
+              pathWithheld: true as const,
+            }
+          : null,
+        replicas: undefined,
         visualOverviewJob:
           visualJobBySourceRevisionId.get(sourceSet.sourceClockRevision.id) ??
           null,
@@ -4238,13 +4273,31 @@ export async function readSourceStoryWorkspace(
               ),
             ),
             proxyJob: jobBySourceRevisionId.get(revisions[0].id) ?? null,
-            exactReplica: revisions[0].replicas[0]
+            exactReplica:
+              revisions[0].replicas[0]?.status === "ready"
+                ? {
+                    id: revisions[0].replicas[0].id,
+                    contentSha256: revisions[0].replicas[0].contentSha256,
+                    sizeBytes: revisions[0].replicas[0].sizeBytes.toString(),
+                    mimeType: revisions[0].replicas[0].mimeType,
+                    createdAt: revisions[0].replicas[0].createdAt.toISOString(),
+                  }
+                : null,
+            localReplicaAvailability: revisions[0].replicas[0]
               ? {
                   id: revisions[0].replicas[0].id,
-                  contentSha256: revisions[0].replicas[0].contentSha256,
+                  status: revisions[0].replicas[0].status,
                   sizeBytes: revisions[0].replicas[0].sizeBytes.toString(),
-                  mimeType: revisions[0].replicas[0].mimeType,
-                  createdAt: revisions[0].replicas[0].createdAt.toISOString(),
+                  availabilityCheckedAt:
+                    revisions[0].replicas[0].availabilityCheckedAt?.toISOString() ??
+                    null,
+                  contentVerifiedAt:
+                    revisions[0].replicas[0].contentVerifiedAt?.toISOString() ??
+                    null,
+                  unavailableAt:
+                    revisions[0].replicas[0].unavailableAt?.toISOString() ??
+                    null,
+                  pathWithheld: true as const,
                 }
               : null,
             materializationJob:

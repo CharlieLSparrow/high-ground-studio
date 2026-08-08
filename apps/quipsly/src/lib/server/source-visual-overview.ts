@@ -299,6 +299,46 @@ export async function requestSourceVisualOverview(input: {
         state: "queued" as const,
       };
     }
+    if (["output-ready", "completed"].includes(existingJob.status)) {
+      const previous =
+        existingJob.resultJson &&
+        typeof existingJob.resultJson === "object" &&
+        !Array.isArray(existingJob.resultJson)
+          ? (existingJob.resultJson as Record<string, unknown>)
+          : {};
+      const recoveryHistory = Array.isArray(previous.recoveryHistory)
+        ? previous.recoveryHistory.slice(-9)
+        : [];
+      const recovered = await input.prisma.studioWorkflowJob.update({
+        where: { id: jobId },
+        data: {
+          status: "queued",
+          error: null,
+          completedAt: null,
+          resultJson: {
+            state: "queued",
+            requestedBy: { actorUserId, actorEmail, clientRequestId },
+            recoveryReason: "local-derivative-unavailable",
+            recoveryHistory: [
+              ...recoveryHistory,
+              {
+                priorStatus: existingJob.status,
+                priorResult: previous,
+                requestedAt: new Date().toISOString(),
+              },
+            ],
+            originalRemainsSourceTruth: true,
+            inputDerivativeRemainsUnchanged: true,
+          },
+        },
+      });
+      return {
+        derivative: null,
+        job: recovered,
+        replayed: false,
+        state: "queued" as const,
+      };
+    }
     return {
       derivative: null,
       job: existingJob,

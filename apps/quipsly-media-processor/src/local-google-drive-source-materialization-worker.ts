@@ -573,9 +573,23 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
           INSERT INTO "StudioMediaSourceReplica" (
             "id","projectId","sourceRevisionId","workflowJobId","storageProvider","locator","generation",
             "contentSha256","checksumMd5","sizeBytes","mimeType","status","verificationJson","provenanceJson",
-            "createdByUserId","createdAt"
-          ) VALUES ($1,$2,$3,$4,'local-cache',$5,$6,$7,$8,$9,$10,'ready',$11::jsonb,$12::jsonb,$13,$14)
-          ON CONFLICT ("id") DO NOTHING
+            "availabilityCheckedAt","contentVerifiedAt","unavailableAt","createdByUserId","createdAt"
+          ) VALUES ($1,$2,$3,$4,'local-cache',$5,$6,$7,$8,$9,$10,'ready',$11::jsonb,$12::jsonb,$14,$14,NULL,$13,$14)
+          ON CONFLICT ("id") DO UPDATE SET
+            "status"='ready',
+            "availabilityCheckedAt"=EXCLUDED."availabilityCheckedAt",
+            "contentVerifiedAt"=EXCLUDED."contentVerifiedAt",
+            "unavailableAt"=NULL,
+            "verificationJson"=EXCLUDED."verificationJson",
+            "provenanceJson"=EXCLUDED."provenanceJson"
+          WHERE "StudioMediaSourceReplica"."projectId"=EXCLUDED."projectId"
+            AND "StudioMediaSourceReplica"."sourceRevisionId"=EXCLUDED."sourceRevisionId"
+            AND "StudioMediaSourceReplica"."workflowJobId"=EXCLUDED."workflowJobId"
+            AND "StudioMediaSourceReplica"."storageProvider"=EXCLUDED."storageProvider"
+            AND "StudioMediaSourceReplica"."locator"=EXCLUDED."locator"
+            AND "StudioMediaSourceReplica"."generation"=EXCLUDED."generation"
+            AND "StudioMediaSourceReplica"."contentSha256"=EXCLUDED."contentSha256"
+            AND "StudioMediaSourceReplica"."sizeBytes"=EXCLUDED."sizeBytes"
         `,
         values: [
           input.job.replicaId,

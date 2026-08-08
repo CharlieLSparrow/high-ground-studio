@@ -184,6 +184,26 @@ describe("source library projection", () => {
     });
   });
 
+  it("keeps a usable proxy visible while surfacing a reclaimed LRV cache", () => {
+    const items = buildSourceLibraryItems({
+      assets: [],
+      externalSources,
+      sourceSets: sourceSets.map((sourceSet) => ({
+        ...sourceSet,
+        sourceClockRevision: {
+          ...sourceSet.sourceClockRevision,
+          localReplicaAvailability: { status: "missing" },
+        },
+      })),
+      cards: [],
+      boards: [],
+    });
+    expect(items[0]).toMatchObject({
+      health: "browse-ready",
+      healthLabel: "Browse ready · LRV cache needs recovery",
+    });
+  });
+
   it("filters by collection, readiness, media family, and source text without mutating order", () => {
     const items = buildSourceLibraryItems({
       assets,

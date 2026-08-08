@@ -43,6 +43,7 @@ export type SourceLibraryExternal = {
     id: string;
     durationSeconds: number | null;
     collaborationProxy: null | { id: string };
+    localReplicaAvailability?: null | { status: string };
     visualOverview?: SourceLibraryVisualOverview | null;
   };
 };
@@ -64,6 +65,7 @@ export type SourceLibrarySet = {
     };
     collaborationProxy: null | { id: string };
     spatialStitchMaster: null | { id: string };
+    localReplicaAvailability?: null | { status: string };
     visualOverview?: SourceLibraryVisualOverview | null;
   };
   members: Array<{
@@ -285,6 +287,9 @@ export function buildSourceLibraryItems(input: {
     const browseReady = Boolean(
       sourceSet.sourceClockRevision.collaborationProxy,
     );
+    const localReplicaNeedsRecovery = ["missing", "invalid"].includes(
+      sourceSet.sourceClockRevision.localReplicaAvailability?.status ?? "",
+    );
     const renderReady =
       sourceSet.completeness === "complete" &&
       !unavailableMember &&
@@ -334,7 +339,9 @@ export function buildSourceLibraryItems(input: {
       healthLabel: renderReady
         ? "Browse and final render ready"
         : browseReady
-          ? "Browse ready · final master pending"
+          ? localReplicaNeedsRecovery
+            ? "Browse ready · LRV cache needs recovery"
+            : "Browse ready · final master pending"
           : unavailableMember
             ? "Original package access needs repair"
             : sourceSet.completeness !== "complete"
@@ -375,6 +382,10 @@ export function buildSourceLibraryItems(input: {
     const proxyReady = Boolean(
       representative.latestSourceRevision?.collaborationProxy,
     );
+    const localReplicaNeedsRecovery = ["missing", "invalid"].includes(
+      representative.latestSourceRevision?.localReplicaAvailability?.status ??
+        "",
+    );
     const accessReady = sources.every(
       (source) =>
         source.accessState === "available" &&
@@ -410,7 +421,9 @@ export function buildSourceLibraryItems(input: {
         representative.latestSourceRevision?.visualOverview ?? null,
       health: proxyReady ? "browse-ready" : "needs-attention",
       healthLabel: proxyReady
-        ? "Browse ready · originals remain in Drive"
+        ? localReplicaNeedsRecovery
+          ? "Browse ready · LRV cache needs recovery"
+          : "Browse ready · originals remain in Drive"
         : !accessReady
           ? "Camera package access needs repair"
           : packageStatus !== "ready-to-attach"
@@ -431,6 +444,9 @@ export function buildSourceLibraryItems(input: {
       continue;
     const key = `external:${source.id}`;
     const proxyReady = Boolean(source.latestSourceRevision?.collaborationProxy);
+    const localReplicaNeedsRecovery = ["missing", "invalid"].includes(
+      source.latestSourceRevision?.localReplicaAvailability?.status ?? "",
+    );
     const accessReady =
       source.accessState === "available" &&
       source.capabilityState === "downloadable";
@@ -462,7 +478,9 @@ export function buildSourceLibraryItems(input: {
       health,
       healthLabel:
         accessReady && proxyReady
-          ? "Browse and original access ready"
+          ? localReplicaNeedsRecovery
+            ? "Browse ready · local cache needs recovery"
+            : "Browse and original access ready"
           : proxyReady
             ? "Browse ready · original access needs repair"
             : source.capabilityState === "needs-reauth" ||

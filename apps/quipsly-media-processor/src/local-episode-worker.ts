@@ -83,6 +83,7 @@ import {
   newLocalSourceAudioNavigationRuntime,
   runOneLocalSourceAudioNavigationJob,
 } from "./local-source-audio-navigation-worker.js";
+import { LocalMediaArtifactReconciler } from "./local-media-artifact-reconciler.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -695,6 +696,17 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const localMediaReconciler = new LocalMediaArtifactReconciler(pool, {
+    localMediaRoot,
+    authorizedRoots: [spatialVaultRoot],
+    intervalMs:
+      Number(process.env.QUIPSLY_LOCAL_MEDIA_RECONCILE_INTERVAL_MS) ||
+      undefined,
+    batchSize:
+      Number(process.env.QUIPSLY_LOCAL_MEDIA_RECONCILE_BATCH_SIZE) || undefined,
+    maxContentHashesPerRun:
+      Number(process.env.QUIPSLY_LOCAL_MEDIA_RECONCILE_HASH_LIMIT) || undefined,
+  });
   const presence = new LocalExecutionPresence(pool, {
     executionId,
     buildId: options.buildId,
@@ -870,7 +882,7 @@ async function main() {
               episodeRenderProof.options,
             )
           : mixResult;
-      const result =
+      const workResult =
         episodeProofResult.disposition === "idle"
           ? await runOneLocalSpatialReframeJob(
               spatialReframe.store,
@@ -878,6 +890,10 @@ async function main() {
               spatialReframe.options,
             )
           : episodeProofResult;
+      const result =
+        workResult.disposition === "idle"
+          ? await localMediaReconciler.maybeRun(once)
+          : workResult;
       if (result.disposition !== "idle") {
         process.stdout.write(
           `${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`,

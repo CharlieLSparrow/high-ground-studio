@@ -288,6 +288,15 @@ type SourceStoryWorkspace = {
         mimeType: string;
         createdAt: string;
       };
+      localReplicaAvailability: null | {
+        id: string;
+        status: string;
+        sizeBytes: string;
+        availabilityCheckedAt: string | null;
+        contentVerifiedAt: string | null;
+        unavailableAt: string | null;
+        pathWithheld: true;
+      };
       materializationJob: null | {
         id: string;
         status: string;
@@ -390,6 +399,14 @@ type MediaSourceSet = {
     collaborationProxy: MediaDerivative | null;
     spatialStitchMaster: MediaDerivative | null;
     visualOverview: MediaDerivative | null;
+    localReplicaAvailability: null | {
+      id: string;
+      status: string;
+      availabilityCheckedAt: string | null;
+      contentVerifiedAt: string | null;
+      unavailableAt: string | null;
+      pathWithheld: true;
+    };
     visualOverviewJob: null | {
       id: string;
       status: string;
@@ -3220,6 +3237,13 @@ export function SourceStoryClient({
                     const job = packageSource?.latestSourceRevision?.proxyJob;
                     const materializationJob =
                       packageSource?.latestSourceRevision?.materializationJob;
+                    const localReplicaUnavailable = [
+                      "missing",
+                      "invalid",
+                    ].includes(
+                      packageSource?.latestSourceRevision
+                        ?.localReplicaAvailability?.status ?? "",
+                    );
                     const driveBrowseShortfallBytes = packageSource
                       ? driveBrowsePreparationShortfall(
                           packageSource.latestSourceRevision?.sizeBytes ?? null,
@@ -3661,6 +3685,28 @@ export function SourceStoryClient({
                               })}
                             </div>
                           </details>
+                        ) : null}
+                        {packageSource?.provider === "google-drive" &&
+                        packageSource.latestSourceRevision
+                          ?.collaborationProxy &&
+                        localReplicaUnavailable ? (
+                          <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-2 text-[9px] font-semibold leading-4 text-amber-950">
+                            <p role="status">
+                              The browse proxy is still usable, but this Mac no
+                              longer has the checksum-bound LRV cache. The Drive
+                              original is untouched.
+                            </p>
+                            <button
+                              type="button"
+                              disabled={
+                                pending || !canWrite || driveBrowseStorageHeld
+                              }
+                              onClick={() => void requestProxy(packageSource)}
+                              className="mt-2 min-h-11 w-full rounded-lg bg-amber-950 px-3 font-black text-white disabled:opacity-45"
+                            >
+                              Recover verified Drive LRV
+                            </button>
+                          </div>
                         ) : null}
                         {packageSource &&
                         !packageSource.latestSourceRevision

@@ -186,5 +186,59 @@ runDatabaseSmoke("source visual overview durable request", () => {
       originalRemainsSourceTruth: true,
       inputDerivativeRemainsUnchanged: true,
     });
+
+    const missingDerivativeId = `missing_visual_${randomUUID().replaceAll("-", "")}`;
+    await prisma.$transaction([
+      prisma.studioWorkflowJob.update({
+        where: { id: queued.job!.id },
+        data: {
+          status: "output-ready",
+          resultJson: { state: "output-ready", receipt: "prior visual map" },
+        },
+      }),
+      prisma.studioMediaDerivative.create({
+        data: {
+          id: missingDerivativeId,
+          projectId,
+          sourceRevisionId,
+          workflowJobId: queued.job!.id,
+          kind: "source-contact-sheet",
+          profile: SOURCE_VISUAL_OVERVIEW_PROFILE,
+          storageProvider: "local",
+          locator: `/private/tmp/quipsly-reclaimed/${nonce}.jpg`,
+          generation: `sha256:${"e".repeat(64)}`,
+          contentSha256: "e".repeat(64),
+          sizeBytes: 2048n,
+          mimeType: "image/jpeg",
+          status: "missing",
+          unavailableAt: new Date(),
+          provenanceJson: {
+            inputGeneration: `sha256:${"c".repeat(64)}`,
+          },
+          createdByUserId: actorUserId,
+        },
+      }),
+    ]);
+    const recovered = await requestSourceVisualOverview({
+      ...input,
+      clientRequestId: randomUUID(),
+    });
+    expect(recovered).toMatchObject({
+      replayed: false,
+      state: "queued",
+      job: { id: queued.job?.id, status: "queued" },
+    });
+    expect(recovered.job?.resultJson).toMatchObject({
+      recoveryReason: "local-derivative-unavailable",
+      recoveryHistory: [
+        {
+          priorStatus: "output-ready",
+          priorResult: { receipt: "prior visual map" },
+        },
+      ],
+    });
+    await prisma.studioMediaDerivative.delete({
+      where: { id: missingDerivativeId },
+    });
   });
 });
