@@ -24,6 +24,14 @@ swift run QuipslyMac
 - Cloud Sync: durable vault/offload status.
 - Settings: Nest URL, local engine URL, and experimental module visibility.
 
+## Media workspace
+
+Settings can plan the same durable media workspace used by Nest's local media
+worker. Planning is deliberately non-destructive and does not activate or move
+canonical media. See
+[`docs/operations/quipsly-local-media-workspace.md`](../../docs/operations/quipsly-local-media-workspace.md)
+for the exact-byte migration and recovery workflow.
+
 ## Product rule
 
 Nest stays the collaborative cloud workspace. Quipsly Mac stays the local power

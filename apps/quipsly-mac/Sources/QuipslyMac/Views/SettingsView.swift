@@ -5,6 +5,7 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var engine: LocalEngineClient
     @EnvironmentObject private var mediaAccess: MediaAccessStore
+    @State private var workspaceMessage = "Choose a dedicated folder; Quipsly will plan it without moving existing media."
 
     var body: some View {
         Form {
@@ -71,6 +72,9 @@ struct SettingsView: View {
                 LabeledContent("Available") {
                     Text(QuipslyMediaWorkspace.availableLabel(at: appState.mediaWorkspaceURL))
                 }
+                LabeledContent("Durable worker state") {
+                    Text(QuipslyMediaWorkspace.sharedWorkspaceStatus(rootPath: appState.mediaWorkspacePath))
+                }
                 LabeledContent("Playback cache") {
                     Text(QuipslyMediaWorkspace.playbackCacheRootURL(rootPath: appState.mediaWorkspacePath).path)
                         .textSelection(.enabled)
@@ -92,10 +96,6 @@ struct SettingsView: View {
                     Button("Choose workspace") {
                         chooseMediaWorkspace()
                     }
-                    Button("Use My Passport") {
-                        usePreferredExternalWorkspace()
-                    }
-                    .disabled(!QuipslyMediaWorkspace.preferredExternalRootIsAvailable)
                     Button("Reveal workspace") {
                         revealMediaWorkspace()
                     }
@@ -104,7 +104,14 @@ struct SettingsView: View {
                     }
                 }
 
-                Text("This is where Quipsly Mac should put heavy local bytes. Source originals can be huge and belong on durable storage. Proxy cache should stay lightweight and is what the editor should use for everyday playback. Nest still owns project truth; the workspace owns local media bytes.")
+                Text(QuipslyMediaWorkspace.capacityGuidance(at: appState.mediaWorkspaceURL))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(workspaceMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text("Quipsly Mac can use the selected folder immediately for editing caches and renders. Durable workers switch only after Quipsly copies and verifies canonical media, rebinds local locators transactionally, and preserves the old bytes as a legacy read root. Nest still owns project truth; the workspace owns local media bytes.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -134,24 +141,20 @@ struct SettingsView: View {
         panel.directoryURL = appState.mediaWorkspaceURL
 
         if panel.runModal() == .OK, let url = panel.url {
-            appState.mediaWorkspacePath = url.path
-        }
-    }
-
-    private func usePreferredExternalWorkspace() {
-        do {
-            let url = QuipslyMediaWorkspace.preferredExternalRootURL
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-            appState.mediaWorkspacePath = url.path
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        } catch {
-            NSSound.beep()
+            do {
+                workspaceMessage = try QuipslyMediaWorkspace.planSharedWorkspace(rootPath: url.path)
+                appState.mediaWorkspacePath = url.path
+            } catch {
+                workspaceMessage = "Quipsly could not plan that workspace: \(error.localizedDescription)"
+                NSSound.beep()
+            }
         }
     }
 
     private func revealMediaWorkspace() {
         do {
             let url = try QuipslyMediaWorkspace.ensureRoot(rootPath: appState.mediaWorkspacePath)
+            appState.mediaWorkspacePath = url.path
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } catch {
             NSWorkspace.shared.open(appState.mediaWorkspaceURL.deletingLastPathComponent())

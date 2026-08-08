@@ -18,17 +18,44 @@ function configuredPaths(envName: string) {
     .filter(Boolean);
 }
 
+function configuredJsonPaths(envName: string) {
+  const value = String(process.env[envName] || "");
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed) || parsed.length > 8) return [];
+    return parsed
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function pathIsInside(root: string, candidate: string) {
   const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 export function configuredLocalStudioMediaRoots(extraEnvNames: string[] = []) {
   return [
     ...DEFAULT_LOCAL_STUDIO_MEDIA_ROOTS,
     ...configuredPaths("QUIPSLY_LOCAL_MEDIA_ROOTS"),
+    ...configuredJsonPaths("QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON"),
     ...extraEnvNames.flatMap(configuredPaths),
-  ].map((item) => path.resolve(item));
+  ]
+    .filter((item) => path.isAbsolute(item))
+    .map((item) => path.resolve(item))
+    .filter(
+      (item) =>
+        item !== path.parse(item).root &&
+        item !== "/Volumes" &&
+        item !== "/Users",
+    );
 }
 
 /**
@@ -50,7 +77,9 @@ export async function resolveAllowedLocalStudioMediaPath(
   }
 
   for (const configuredRoot of configuredLocalStudioMediaRoots(extraEnvNames)) {
-    const realRoot = await fs.realpath(configuredRoot).catch(() => configuredRoot);
+    const realRoot = await fs
+      .realpath(configuredRoot)
+      .catch(() => configuredRoot);
     if (pathIsInside(realRoot, realCandidate)) return realCandidate;
   }
   return null;
@@ -59,7 +88,12 @@ export async function resolveAllowedLocalStudioMediaPath(
 export type AuthorizedMediaVaultLocation =
   | { kind: "not-gcs" }
   | { kind: "rejected-gcs"; error: string }
-  | { kind: "gcs"; bucketName: string; objectName: string; generation: string | null };
+  | {
+      kind: "gcs";
+      bucketName: string;
+      objectName: string;
+      generation: string | null;
+    };
 
 /**
  * Service-account reads are confined to Quipsly's configured private media

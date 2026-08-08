@@ -14,6 +14,10 @@ let package = Package(
         .executableTarget(
             name: "QuipslyMac",
             resources: [.process("Resources")]
-        )
+        ),
+        .testTarget(
+            name: "QuipslyMacTests",
+            dependencies: ["QuipslyMac"]
+        ),
     ]
 )

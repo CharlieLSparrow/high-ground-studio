@@ -589,7 +589,8 @@ async function main() {
     String(process.env.DATABASE_URL || ""),
   );
   const localMediaRoot = path.resolve(
-    process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT ||
+    process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT ||
+      process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT ||
       path.join(tmpdir(), "quipsly-media-ingest"),
   );
   const once = process.argv.includes("--once");

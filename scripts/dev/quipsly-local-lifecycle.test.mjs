@@ -116,6 +116,18 @@ test("machine-wide services use machine-wide ownership state", () => {
   assert.match(up, /local-episode-worker\.ts/);
   assert.match(up, /quipsly-local-transcript-worker\.mjs/);
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT/);
+  assert.match(up, /QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT/);
+  assert.match(up, /QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON/);
+  assert.match(
+    up,
+    /local_worker_media_root="\$\{local_worker_media_root:-\$\{local_media_root\}\}"/,
+    "temporary ingest remains the fallback only when there is no activated durable workspace",
+  );
+  assert.match(
+    up,
+    /Reconnect its volume instead of falling back to the system disk/,
+    "an unavailable active workspace must fail closed",
+  );
   assert.match(
     up,
     /local_capture_vault_root="\$\{QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-\$\{local_media_root\}\/capture-vault\}"/,

@@ -553,8 +553,9 @@ async function failClaimedJob(prisma, jobId, error) {
 async function runWorker() {
   const databaseURL = requireLocalDatabase(process.env.DATABASE_URL || "");
   const mediaRoot = path.resolve(
-    process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT
-      || path.join(os.tmpdir(), "quipsly-media-ingest"),
+    process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT ||
+      process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT ||
+      path.join(os.tmpdir(), "quipsly-media-ingest"),
   );
   const captureVaultRoot = path.resolve(
     process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT
