@@ -288,20 +288,19 @@ export async function GET(
       sourceCollections,
       externalMediaLibraries,
       spatialRenderReadiness,
-    ] =
-      await Promise.all([
-        readSourceStoryWorkspace(getPrismaClient(), actor.projectId),
-        readSourceCollections(getPrismaClient(), {
-          projectId: actor.projectId,
-          actorUserId: actor.userId,
-        }),
-        listExternalMediaLibraries({
-          prisma: getPrismaClient(),
-          projectId: actor.projectId,
-          actorUserId: actor.userId,
-        }),
-        readSpatialRenderReadiness(),
-      ]);
+    ] = await Promise.all([
+      readSourceStoryWorkspace(getPrismaClient(), actor.projectId),
+      readSourceCollections(getPrismaClient(), {
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+      }),
+      listExternalMediaLibraries({
+        prisma: getPrismaClient(),
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+      }),
+      readSpatialRenderReadiness(),
+    ]);
     return NextResponse.json(
       jsonSafe({
         ok: true,
@@ -351,6 +350,9 @@ export async function POST(
         actorEmail: actor.email,
         connectionId: text(body.connectionId),
         selections: googleDriveSelections(body.selections),
+        libraryRootId: text(body.libraryRootId) || null,
+        libraryRootName: text(body.libraryRootName) || null,
+        libraryRootResourceKey: text(body.libraryRootResourceKey) || null,
         clientRequestId: text(body.clientRequestId),
         requestUrl: request.url,
       });

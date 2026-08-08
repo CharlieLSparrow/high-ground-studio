@@ -237,6 +237,71 @@ test("Drive materializer retains an exact INSV original without promising a coll
   }
 });
 
+test("Drive materializer preserves partial bytes and releases its lease when shutdown aborts a transfer", async () => {
+  const root = await mkdtemp(
+    path.join(tmpdir(), "quipsly-drive-materialize-stop-"),
+  );
+  try {
+    const bytes = Buffer.from(
+      "partial bytes retained across a cooperative worker restart",
+    );
+    const { job, claim, resolved } = fixture(bytes);
+    const outputPath = path.join(await realpath(root), job.target.locator);
+    const partialPath = `${outputPath}.partial`;
+    const controller = new AbortController();
+    let retryCode = "";
+    const store: LocalGoogleDriveMaterializationStore = {
+      claim: async () => claim,
+      resolve: async () => resolved,
+      progress: async () => true,
+      complete: async () => assert.fail("aborted transfer must not complete"),
+      retry: async (input) => {
+        retryCode = input.code;
+        return true;
+      },
+      fail: async () =>
+        assert.fail("cooperative shutdown must not fail the source"),
+    };
+    const provider: GoogleDriveMaterializationProvider = {
+      inspect: async () => ({
+        externalFileId: job.source.externalFileId,
+        headRevisionKey: job.source.headRevisionKey,
+        md5: job.source.expectedMd5,
+        sizeBytes: bytes.length,
+        canDownload: true,
+      }),
+      download: async (input) => {
+        await writeFile(input.destinationPath, bytes.subarray(0, 17));
+        controller.abort();
+        throw new DOMException("worker stopping", "AbortError");
+      },
+    };
+    const result = await runOneLocalGoogleDriveMaterializationJob(
+      store,
+      provider,
+      {
+        executionId: claim.executionId,
+        buildId: "build-1",
+        leaseMs: 60_000,
+        localMediaRoot: root,
+        minFreeBytes: 0,
+        signal: controller.signal,
+        now: () => new Date("2026-08-07T19:00:10.000Z"),
+      },
+    );
+    assert.deepEqual(result, {
+      disposition: "retry",
+      jobId: job.jobId,
+      code: "drive-materialization-worker-stopping",
+    });
+    assert.equal(retryCode, "drive-materialization-worker-stopping");
+    assert.equal((await stat(partialPath)).size, 17);
+    await assert.rejects(stat(outputPath));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("Drive materializer rejects provider drift and does not retain changed output", async () => {
   const root = await mkdtemp(
     path.join(tmpdir(), "quipsly-drive-materialize-drift-"),

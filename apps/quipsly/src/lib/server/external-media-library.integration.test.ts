@@ -393,4 +393,95 @@ runDatabaseSmoke("followed external media library", () => {
       { operation: "connection-revoked" },
     ]);
   });
+
+  it("retains an explicitly granted file set as a least-privilege refresh manifest", async () => {
+    const selectionConnection =
+      await prisma.studioMediaProviderConnection.create({
+        data: {
+          userId: actorUserId,
+          provider: "google-drive",
+          providerAccountKey: `library-selection-proof-${nonce}`,
+          status: "verified",
+          verifiedAt: new Date(),
+        },
+      });
+    try {
+      const original = file(
+        "selected_insv_001",
+        "VID_20260807_130000_00_001.insv",
+        "2000",
+        "f",
+      );
+      const browse = file(
+        "selected_lrv_001",
+        "LRV_20260807_130000_01_001.lrv",
+        "200",
+        "e",
+      );
+      const selectedPlan = plan([original, browse]);
+      selectedPlan.root = {
+        id: "selected_root_02",
+        name: "Explicitly selected 360 files",
+      };
+      const result = await recordGoogleDriveLibraryObservation({
+        prisma,
+        projectId,
+        actorUserId,
+        actorEmail,
+        connectionId: selectionConnection.id,
+        externalRootId: "selected_root_02",
+        sharedDriveId: null,
+        resourceKey: "selected_root_resource_02",
+        selectionManifest: [
+          {
+            externalFileId: original.id,
+            resourceKey: "selected_original_resource_02",
+          },
+          { externalFileId: browse.id, resourceKey: null },
+        ],
+        clientRequestId: randomUUID(),
+        plan: selectedPlan,
+        attachments: [],
+      });
+      expect(result.library).toMatchObject({
+        discoveryMode: "selected-files",
+        totalFileCount: 2,
+        canRefresh: true,
+      });
+      await expect(
+        prisma.studioExternalMediaLibrary.findUniqueOrThrow({
+          where: { id: result.library.id },
+          select: { providerLocatorJson: true },
+        }),
+      ).resolves.toMatchObject({
+        providerLocatorJson: {
+          schema: "quipsly-google-drive-library-locator-v2",
+          mode: "selection-manifest",
+          selections: expect.arrayContaining([
+            {
+              externalFileId: original.id,
+              resourceKey: "selected_original_resource_02",
+            },
+          ]),
+        },
+      });
+      const publicView = await listExternalMediaLibraries({
+        prisma,
+        projectId,
+        actorUserId,
+      });
+      const selected = publicView.find(
+        (library) => library.id === result.library.id,
+      );
+      expect(selected).toMatchObject({ discoveryMode: "selected-files" });
+      expect(JSON.stringify(selected)).not.toContain(
+        "selected_original_resource_02",
+      );
+      expect(JSON.stringify(selected)).not.toContain(original.id);
+    } finally {
+      await prisma.studioMediaProviderConnection.deleteMany({
+        where: { id: selectionConnection.id },
+      });
+    }
+  });
 });

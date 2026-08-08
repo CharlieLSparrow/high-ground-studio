@@ -345,6 +345,10 @@ function parseArgs(argv) {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
+    // pnpm forwards the conventional script-argument separator to some
+    // package scripts. Accept it so the documented invocation and direct Node
+    // invocation are both safe and equivalent.
+    if (argument === "--") continue;
     if (argument === "-h" || argument === "--help") return { help: true };
     if (argument === "--dry-run") {
       options.dryRun = true;

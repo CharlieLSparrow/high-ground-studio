@@ -124,6 +124,17 @@ test("machine-wide services use machine-wide ownership state", () => {
     up,
     /local_capture_upload_origin="\$\{QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-\$\{nest_url\}\}"/,
   );
+  assert.match(
+    up,
+    /local_app_host="\$\{QUIPSLY_LOCAL_APP_HOST:-\$\{nest_url\}\}"/,
+    "the local OAuth callback must stay on the same loopback origin as the browser session",
+  );
+  assert.match(
+    up,
+    /"QUIPSLY_APP_HOST=\$\{QUIPSLY_LOCAL_APP_HOST:-http:\/\/127\.0\.0\.1:3012\}"/,
+  );
+  assert.match(up, /"QUIPSLY_LOCAL_APP_HOST=\$\{local_app_host\}"/);
+  assert.match(up, /"app-host=\$\{local_app_host\}"/);
   assert.equal(
     up.match(/QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=/g)?.length,
     5,
@@ -146,10 +157,7 @@ test("optional Drive dogfood secrets are fetched inside durable children without
   assert.match(up, /state_dir}\/google-drive-secret-project/);
   assert.match(up, /configured_google_drive_secret_project/);
   assert.match(up, /load_google_drive_local_secrets\(\)/);
-  assert.match(
-    up,
-    /QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT:-/,
-  );
+  assert.match(up, /QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT:-/);
   assert.match(
     up,
     /secrets versions access latest[\s\S]*--secret="\$\{secret_name\}"[\s\S]*--project="\$\{project_id\}"/,
@@ -308,7 +316,10 @@ test("source fingerprints ignore unrelated commits but detect executable input d
   try {
     mkdirSync(join(fixtureRoot, "app"));
     mkdirSync(join(fixtureRoot, "docs"));
-    writeFileSync(join(fixtureRoot, "app", "entry.ts"), "export const value = 1;\n");
+    writeFileSync(
+      join(fixtureRoot, "app", "entry.ts"),
+      "export const value = 1;\n",
+    );
     writeFileSync(join(fixtureRoot, "docs", "readme.md"), "first\n");
 
     assert.equal(run("git", ["init", "--quiet"]).status, 0);
@@ -318,10 +329,7 @@ test("source fingerprints ignore unrelated commits but detect executable input d
       0,
     );
     assert.equal(run("git", ["add", "."]).status, 0);
-    assert.equal(
-      run("git", ["commit", "--quiet", "-m", "initial"]).status,
-      0,
-    );
+    assert.equal(run("git", ["commit", "--quiet", "-m", "initial"]).status, 0);
 
     const initial = fingerprint();
     assert.equal(initial.status, 0, initial.stderr);
@@ -336,19 +344,28 @@ test("source fingerprints ignore unrelated commits but detect executable input d
     assert.equal(afterDocsCommit.status, 0, afterDocsCommit.stderr);
     assert.equal(afterDocsCommit.stdout, initial.stdout);
 
-    writeFileSync(join(fixtureRoot, "app", "entry.ts"), "export const value = 2;\n");
+    writeFileSync(
+      join(fixtureRoot, "app", "entry.ts"),
+      "export const value = 2;\n",
+    );
     const afterContentEdit = fingerprint();
     assert.equal(afterContentEdit.status, 0, afterContentEdit.stderr);
     assert.notEqual(afterContentEdit.stdout, initial.stdout);
 
-    writeFileSync(join(fixtureRoot, "app", "entry.ts"), "export const value = 1;\n");
+    writeFileSync(
+      join(fixtureRoot, "app", "entry.ts"),
+      "export const value = 1;\n",
+    );
     chmodSync(join(fixtureRoot, "app", "entry.ts"), 0o755);
     const afterModeEdit = fingerprint();
     assert.equal(afterModeEdit.status, 0, afterModeEdit.stderr);
     assert.notEqual(afterModeEdit.stdout, initial.stdout);
 
     chmodSync(join(fixtureRoot, "app", "entry.ts"), 0o644);
-    writeFileSync(join(fixtureRoot, "app", "draft.ts"), "export const draft = true;\n");
+    writeFileSync(
+      join(fixtureRoot, "app", "draft.ts"),
+      "export const draft = true;\n",
+    );
     const afterUntrackedInput = fingerprint();
     assert.equal(afterUntrackedInput.status, 0, afterUntrackedInput.stderr);
     assert.notEqual(afterUntrackedInput.stdout, initial.stdout);
@@ -381,7 +398,10 @@ test("local workers reload when executable source or runtime configuration chang
     up,
     /recorded_transcript_runtime_revision.*local_transcript_worker_runtime_revision/s,
   );
-  assert.match(up, /drive-secret-project=\$\{local_google_drive_secret_project\}/);
+  assert.match(
+    up,
+    /drive-secret-project=\$\{local_google_drive_secret_project\}/,
+  );
   assert.match(
     up,
     /QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT=\$\{local_spatial_vault_root\}/,

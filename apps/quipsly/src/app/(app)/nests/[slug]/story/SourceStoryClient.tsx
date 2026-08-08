@@ -324,6 +324,7 @@ type ExternalMediaLibrary = {
   canRefresh: boolean;
   connectionState: string;
   connectedByCurrentUser: boolean;
+  discoveryMode?: "folder-scan" | "selected-files";
 };
 
 type SourceCollection = {
@@ -1118,7 +1119,8 @@ export function SourceCardTaskCapture({
         onClick={() => setOpen(true)}
         className="inline-flex min-h-11 items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black text-amber-950"
       >
-        <ListPlus size={15} aria-hidden="true" />Create follow-through task
+        <ListPlus size={15} aria-hidden="true" />
+        Create follow-through task
       </button>
     );
   }
@@ -1129,19 +1131,31 @@ export function SourceCardTaskCapture({
         Canonical Work action
       </p>
       <p className="mt-1 text-xs font-semibold leading-5 text-amber-950">
-        The task stays independently editable while retaining this card revision,
-        immutable range, source receipt, board position, and visible card tags.
+        The task stays independently editable while retaining this card
+        revision, immutable range, source receipt, board position, and visible
+        card tags.
       </p>
       {saved ? (
         <div className="mt-3 rounded-xl border border-emerald-200 bg-white p-3">
           <p role="status" className="text-xs font-black text-emerald-900">
-            Task saved in Work{saved.tags.length ? ` with ${saved.tags.map((tag) => `#${tag}`).join(", ")}` : ""}.
+            Task saved in Work
+            {saved.tags.length
+              ? ` with ${saved.tags.map((tag) => `#${tag}`).join(", ")}`
+              : ""}
+            .
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <Link href={saved.href} className="inline-flex min-h-11 items-center rounded-full bg-emerald-800 px-4 py-2 text-xs font-black text-white">
+            <Link
+              href={saved.href}
+              className="inline-flex min-h-11 items-center rounded-full bg-emerald-800 px-4 py-2 text-xs font-black text-white"
+            >
               Open task
             </Link>
-            <button type="button" onClick={resetForAnother} className="min-h-11 rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-black text-emerald-900">
+            <button
+              type="button"
+              onClick={resetForAnother}
+              className="min-h-11 rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-black text-emerald-900"
+            >
               Create another
             </button>
           </div>
@@ -1150,26 +1164,56 @@ export function SourceCardTaskCapture({
         <form onSubmit={submit} className="mt-3 space-y-3">
           <label className="block text-xs font-black text-amber-950">
             Task title
-            <input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={500} className="mt-1 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-semibold" />
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              required
+              maxLength={500}
+              className="mt-1 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-semibold"
+            />
           </label>
           <label className="block text-xs font-black text-amber-950">
-            What does done look like? <span className="font-semibold">Optional</span>
-            <textarea value={detail} onChange={(event) => setDetail(event.target.value)} maxLength={5000} rows={3} className="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-semibold" />
+            What does done look like?{" "}
+            <span className="font-semibold">Optional</span>
+            <textarea
+              value={detail}
+              onChange={(event) => setDetail(event.target.value)}
+              maxLength={5000}
+              rows={3}
+              className="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-semibold"
+            />
           </label>
           {card.tags.length ? (
             <p className="text-[11px] font-semibold text-amber-900">
-              Carries {card.tags.map((tag) => `#${tag.label}`).join(", ")} into Work.
+              Carries {card.tags.map((tag) => `#${tag.label}`).join(", ")} into
+              Work.
             </p>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            <button type="submit" disabled={pending || !title.trim()} className="min-h-11 rounded-full bg-amber-900 px-4 py-2 text-xs font-black text-white disabled:opacity-50">
+            <button
+              type="submit"
+              disabled={pending || !title.trim()}
+              className="min-h-11 rounded-full bg-amber-900 px-4 py-2 text-xs font-black text-white disabled:opacity-50"
+            >
               {pending ? "Creating…" : "Create Work task"}
             </button>
-            <button type="button" disabled={pending} onClick={() => setOpen(false)} className="min-h-11 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black text-amber-950 disabled:opacity-50">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setOpen(false)}
+              className="min-h-11 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black text-amber-950 disabled:opacity-50"
+            >
               Cancel
             </button>
           </div>
-          {error ? <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-900">{error}</p> : null}
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-900"
+            >
+              {error}
+            </p>
+          ) : null}
         </form>
       )}
     </div>
@@ -1212,8 +1256,15 @@ function reconcileWorkspaceInventory(
 ): SourceStoryWorkspace {
   return {
     ...next,
-    sourceSets: mergeById(current.sourceSets, next.sourceSets),
-    externalSources: mergeById(current.externalSources, next.externalSources),
+    sourceSets: mergeById(current.sourceSets ?? [], next.sourceSets ?? []),
+    externalSources: mergeById(
+      current.externalSources ?? [],
+      next.externalSources ?? [],
+    ),
+    externalMediaLibraries: mergeById(
+      current.externalMediaLibraries ?? [],
+      next.externalMediaLibraries ?? [],
+    ),
   };
 }
 
@@ -2858,7 +2909,7 @@ export function SourceStoryClient({
           <GoogleDriveSourcePicker
             projectSlug={project.slug}
             canWrite={canWrite}
-            libraries={workspace.externalMediaLibraries}
+            libraries={workspace.externalMediaLibraries ?? []}
             onAttached={refreshWorkspace}
           />
           <label className="relative mt-4 block">

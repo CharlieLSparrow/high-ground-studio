@@ -15,8 +15,13 @@ import {
 
 import { resolveCalendarPublicOrigin } from "@/lib/server/calendar-public-origin";
 
-export const GOOGLE_DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-export const GOOGLE_DRIVE_OAUTH_SCOPES = ["openid", "email", GOOGLE_DRIVE_FILE_SCOPE] as const;
+export const GOOGLE_DRIVE_FILE_SCOPE =
+  "https://www.googleapis.com/auth/drive.file";
+export const GOOGLE_DRIVE_OAUTH_SCOPES = [
+  "openid",
+  "email",
+  GOOGLE_DRIVE_FILE_SCOPE,
+] as const;
 export const GOOGLE_DRIVE_OAUTH_COOKIE = "quipsly_google_drive_oauth";
 export const GOOGLE_DRIVE_OAUTH_MAX_AGE_SECONDS = 10 * 60;
 
@@ -74,7 +79,9 @@ function encryptionKey(value: string) {
 export function normalizeGoogleDriveReturnTo(value: string | null | undefined) {
   const candidate = value?.trim() || "/projects";
   const parsed = new URL(candidate, "https://nest.quipsly.com");
-  const allowedPath = parsed.pathname === "/projects" || /^\/nests\/[^/]+\/story$/.test(parsed.pathname);
+  const allowedPath =
+    parsed.pathname === "/projects" ||
+    /^\/nests\/[^/]+\/story$/.test(parsed.pathname);
   if (
     !candidate.startsWith("/") ||
     candidate.startsWith("//") ||
@@ -84,9 +91,26 @@ export function normalizeGoogleDriveReturnTo(value: string | null | undefined) {
     parsed.hash ||
     !allowedPath
   ) {
-    throw new GoogleDriveOAuthError("The return destination is invalid.", "invalid-return-to");
+    throw new GoogleDriveOAuthError(
+      "The return destination is invalid.",
+      "invalid-return-to",
+    );
   }
   return `${parsed.pathname}${parsed.search}`.slice(0, 2_000);
+}
+
+export function googleDriveOAuthRedirectUrl(input: {
+  requestUrl: string;
+  returnTo: string;
+  state: string;
+  environment?: NodeJS.ProcessEnv;
+}) {
+  const target = new URL(
+    normalizeGoogleDriveReturnTo(input.returnTo),
+    resolveCalendarPublicOrigin(input.requestUrl, input.environment),
+  );
+  target.searchParams.set("drive", input.state);
+  return target;
 }
 
 export function getGoogleDriveOAuthConfig(
@@ -109,11 +133,15 @@ export function getGoogleDriveOAuthConfig(
       resolveCalendarPublicOrigin(requestUrl, environment),
     ).toString(),
     stateSecret,
-    encryptionKey: encryptionKey(required(environment, "GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY")),
+    encryptionKey: encryptionKey(
+      required(environment, "GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY"),
+    ),
   };
 }
 
-export function getGoogleDrivePickerPublicConfig(environment: NodeJS.ProcessEnv = process.env) {
+export function getGoogleDrivePickerPublicConfig(
+  environment: NodeJS.ProcessEnv = process.env,
+) {
   return {
     apiKey: required(environment, "GOOGLE_DRIVE_PICKER_API_KEY"),
     appId: required(environment, "GOOGLE_DRIVE_PICKER_APP_ID"),
@@ -153,7 +181,10 @@ function sign(value: string, secret: string) {
 function equalSignatures(left: string, right: string) {
   const leftBytes = Buffer.from(left);
   const rightBytes = Buffer.from(right);
-  return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes);
+  return (
+    leftBytes.length === rightBytes.length &&
+    timingSafeEqual(leftBytes, rightBytes)
+  );
 }
 
 export function beginGoogleDriveOAuth(input: {
@@ -170,14 +201,18 @@ export function beginGoogleDriveOAuth(input: {
     version: 1,
     userId: input.userId,
     nonce,
-    expiresAt: (input.now ?? new Date()).getTime() + GOOGLE_DRIVE_OAUTH_MAX_AGE_SECONDS * 1_000,
+    expiresAt:
+      (input.now ?? new Date()).getTime() +
+      GOOGLE_DRIVE_OAUTH_MAX_AGE_SECONDS * 1_000,
     returnTo: normalizeGoogleDriveReturnTo(input.returnTo),
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const state = `${encoded}.${sign(encoded, config.stateSecret)}`;
   const cookieBody = `${nonce}.${verifier}`;
   const cookieValue = `${cookieBody}.${sign(cookieBody, config.stateSecret)}`;
-  const authorizationUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  const authorizationUrl = new URL(
+    "https://accounts.google.com/o/oauth2/v2/auth",
+  );
   authorizationUrl.search = new URLSearchParams({
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
@@ -203,16 +238,30 @@ export function validateGoogleDriveOAuthCallback(input: {
 }) {
   const config = getGoogleDriveOAuthConfig(input.requestUrl, input.environment);
   const [encoded, stateSignature, ...stateRemainder] = input.state.split(".");
-  if (!encoded || !stateSignature || stateRemainder.length || !equalSignatures(sign(encoded, config.stateSecret), stateSignature)) {
-    throw new GoogleDriveOAuthError("The Google Drive connection request could not be verified.", "invalid-oauth-state");
+  if (
+    !encoded ||
+    !stateSignature ||
+    stateRemainder.length ||
+    !equalSignatures(sign(encoded, config.stateSecret), stateSignature)
+  ) {
+    throw new GoogleDriveOAuthError(
+      "The Google Drive connection request could not be verified.",
+      "invalid-oauth-state",
+    );
   }
   let payload: OAuthState;
   try {
-    payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as OAuthState;
+    payload = JSON.parse(
+      Buffer.from(encoded, "base64url").toString("utf8"),
+    ) as OAuthState;
   } catch {
-    throw new GoogleDriveOAuthError("The Google Drive connection request could not be verified.", "invalid-oauth-state");
+    throw new GoogleDriveOAuthError(
+      "The Google Drive connection request could not be verified.",
+      "invalid-oauth-state",
+    );
   }
-  const [nonce, verifier, cookieSignature, ...cookieRemainder] = input.cookieValue.split(".");
+  const [nonce, verifier, cookieSignature, ...cookieRemainder] =
+    input.cookieValue.split(".");
   const cookieBody = `${nonce}.${verifier}`;
   if (
     !nonce ||
@@ -225,18 +274,32 @@ export function validateGoogleDriveOAuthCallback(input: {
     payload.expiresAt < (input.now ?? new Date()).getTime() ||
     !equalSignatures(sign(cookieBody, config.stateSecret), cookieSignature)
   ) {
-    throw new GoogleDriveOAuthError("The Google Drive connection request expired or changed accounts.", "invalid-oauth-verifier");
+    throw new GoogleDriveOAuthError(
+      "The Google Drive connection request expired or changed accounts.",
+      "invalid-oauth-verifier",
+    );
   }
-  return { config, verifier, returnTo: normalizeGoogleDriveReturnTo(payload.returnTo) };
+  return {
+    config,
+    verifier,
+    returnTo: normalizeGoogleDriveReturnTo(payload.returnTo),
+  };
 }
 
 async function googleJson<T>(url: string, init: RequestInit): Promise<T> {
   const response = await fetch(url, init);
-  const body = await response.json().catch(() => null) as (T & { error?: unknown; error_description?: unknown }) | null;
+  const body = (await response.json().catch(() => null)) as
+    | (T & { error?: unknown; error_description?: unknown })
+    | null;
   if (!response.ok || !body) {
-    const code = body && typeof body.error === "string" ? body.error : `google-http-${response.status}`;
+    const code =
+      body && typeof body.error === "string"
+        ? body.error
+        : `google-http-${response.status}`;
     throw new GoogleDriveOAuthError(
-      code === "invalid_grant" ? "Google Drive access expired or was revoked. Connect it again." : "Google Drive could not verify the connection.",
+      code === "invalid_grant"
+        ? "Google Drive access expired or was revoked. Connect it again."
+        : "Google Drive could not verify the connection.",
       code,
       code === "invalid_grant" ? 409 : 502,
     );
@@ -267,27 +330,47 @@ export async function exchangeGoogleDriveCode(input: {
     }),
   });
   if (!token.refresh_token) {
-    throw new GoogleDriveOAuthError("Google did not return durable Drive access. Reconnect and approve offline access.", "missing-refresh-token", 409);
+    throw new GoogleDriveOAuthError(
+      "Google did not return durable Drive access. Reconnect and approve offline access.",
+      "missing-refresh-token",
+      409,
+    );
   }
-  const grantedScopes = new Set((token.scope ?? "").split(/\s+/).filter(Boolean));
+  const grantedScopes = new Set(
+    (token.scope ?? "").split(/\s+/).filter(Boolean),
+  );
   if (grantedScopes.size && !grantedScopes.has(GOOGLE_DRIVE_FILE_SCOPE)) {
-    throw new GoogleDriveOAuthError("The selected-file Drive permission is required.", "drive-scope-denied", 403);
+    throw new GoogleDriveOAuthError(
+      "The selected-file Drive permission is required.",
+      "drive-scope-denied",
+      403,
+    );
   }
   return {
     accessToken: token.access_token,
     refreshToken: token.refresh_token,
     expiresIn: token.expires_in ?? 3_600,
-    grantedScopes: grantedScopes.size ? [...grantedScopes] : [...GOOGLE_DRIVE_OAUTH_SCOPES],
+    grantedScopes: grantedScopes.size
+      ? [...grantedScopes]
+      : [...GOOGLE_DRIVE_OAUTH_SCOPES],
   };
 }
 
 export async function fetchGoogleDriveIdentity(accessToken: string) {
-  const identity = await googleJson<{ sub?: string; email?: string; email_verified?: boolean; name?: string }>(
-    "https://openidconnect.googleapis.com/v1/userinfo",
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
+  const identity = await googleJson<{
+    sub?: string;
+    email?: string;
+    email_verified?: boolean;
+    name?: string;
+  }>("https://openidconnect.googleapis.com/v1/userinfo", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   if (!identity.sub || !identity.email || identity.email_verified !== true) {
-    throw new GoogleDriveOAuthError("Google did not return a verified account identity.", "unverified-google-identity", 409);
+    throw new GoogleDriveOAuthError(
+      "Google did not return a verified account identity.",
+      "unverified-google-identity",
+      409,
+    );
   }
   return {
     subject: identity.sub,
@@ -300,7 +383,10 @@ export function googleDriveProviderAccountKey(subject: string) {
   return `google-drive:${createHash("sha256").update(subject).digest("hex")}`;
 }
 
-export function encryptGoogleDriveRefreshToken(refreshToken: string, key: Buffer) {
+export function encryptGoogleDriveRefreshToken(
+  refreshToken: string,
+  key: Buffer,
+) {
   return encryptGoogleDriveRefreshCredential(refreshToken, key);
 }
 
@@ -308,7 +394,11 @@ export function decryptGoogleDriveRefreshToken(payload: string, key: Buffer) {
   try {
     return decryptGoogleDriveRefreshCredential(payload, key);
   } catch {
-    throw new GoogleDriveOAuthError("The saved Google Drive credential could not be read.", "invalid-encrypted-credential", 503);
+    throw new GoogleDriveOAuthError(
+      "The saved Google Drive credential could not be read.",
+      "invalid-encrypted-credential",
+      503,
+    );
   }
 }
 
@@ -343,5 +433,9 @@ export async function revokeGoogleDriveToken(token: string) {
   });
   if (response.ok) return "revoked" as const;
   if (response.status === 400) return "already-invalid" as const;
-  throw new GoogleDriveOAuthError("Google Drive could not confirm revocation. Nothing was deleted in Quipsly.", "provider-revocation-failed", 502);
+  throw new GoogleDriveOAuthError(
+    "Google Drive could not confirm revocation. Nothing was deleted in Quipsly.",
+    "provider-revocation-failed",
+    502,
+  );
 }

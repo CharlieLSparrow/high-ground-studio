@@ -922,6 +922,9 @@ export async function attachGoogleDriveFilesToNest(input: {
     externalFileId: string;
     resourceKey?: string | null;
   }>;
+  libraryRootId?: string | null;
+  libraryRootName?: string | null;
+  libraryRootResourceKey?: string | null;
   clientRequestId: string;
   requestUrl: string;
   environment?: NodeJS.ProcessEnv;
@@ -933,15 +936,53 @@ export async function attachGoogleDriveFilesToNest(input: {
     requestUrl: input.requestUrl,
     environment: input.environment,
   });
+  const externalRootId = input.libraryRootId
+    ? fileId(input.libraryRootId, "The selected Drive library root")
+    : `picker:${access.connection.id}`;
+  const existingLibrary =
+    await input.prisma.studioExternalMediaLibrary.findUnique({
+      where: {
+        projectId_provider_externalRootId: {
+          projectId: input.projectId,
+          provider: "google-drive",
+          externalRootId,
+        },
+      },
+      select: { connectionId: true, providerLocatorJson: true },
+    });
+  if (
+    existingLibrary?.connectionId &&
+    existingLibrary.connectionId !== access.connection.id
+  ) {
+    throw new GoogleDriveSourceError(
+      "That Drive library is already followed through another collaborator's connection. Quipsly will not silently transfer refresh authority.",
+      "drive-library-connection-conflict",
+      409,
+    );
+  }
+  const priorSelections = existingLibrary
+    ? (locatorSelectionManifest(existingLibrary.providerLocatorJson) ?? [])
+    : [];
+  const selections = mergeGoogleDriveSelections(
+    priorSelections,
+    input.selections,
+  );
   const plan = await readGoogleDriveMediaSelection({
     accessToken: access.accessToken,
     connectionId: access.connection.id,
-    selections: input.selections,
+    selections,
   });
+  const rootResourceKey = resourceKey(input.libraryRootResourceKey);
+  const rootName =
+    input.libraryRootName?.trim().slice(0, 240) || plan.root.name;
+  const libraryPlan: GoogleDriveMediaLibraryPlan = {
+    ...plan,
+    root: { id: externalRootId, name: rootName },
+  };
   const attached = await attachGoogleDriveMediaPlanToNest({
     ...input,
     connectionId: access.connection.id,
-    plan,
+    plan: libraryPlan,
     sourceIdentity: (batch) => batch.folder.id,
     sourceUrl: (_batch, segment) => {
       const browse = segment.members.find(
@@ -953,11 +994,30 @@ export async function attachGoogleDriveFilesToNest(input: {
         : "https://drive.google.com/drive/my-drive";
     },
   });
+  const observation = await recordGoogleDriveLibraryObservation({
+    prisma: input.prisma,
+    projectId: input.projectId,
+    actorUserId: input.actorUserId,
+    actorEmail: input.actorEmail,
+    connectionId: access.connection.id,
+    externalRootId,
+    sharedDriveId: null,
+    resourceKey: rootResourceKey,
+    selectionManifest: selections.map((selection) => ({
+      externalFileId: selection.externalFileId,
+      resourceKey: selection.resourceKey ?? null,
+    })),
+    clientRequestId: input.clientRequestId,
+    plan: libraryPlan,
+    attachments: attached.attachments,
+  });
   return {
     plan: attached.plan,
     attachedCount: attached.attachedCount,
     sourceUnitCount: attached.sourceUnitCount,
     replayedCount: attached.replayedCount,
+    library: observation.library,
+    libraryReplayed: observation.replayed,
   };
 }
 
@@ -965,6 +1025,80 @@ function locatorResourceKey(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const resource = (value as Record<string, unknown>).resourceKey;
   return typeof resource === "string" ? resource : null;
+}
+
+function locatorSelectionManifest(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const locator = value as Record<string, unknown>;
+  if (
+    locator.mode !== "selection-manifest" ||
+    !Array.isArray(locator.selections)
+  )
+    return null;
+  const selections = locator.selections.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new GoogleDriveSourceError(
+        "The retained Drive selection manifest is malformed.",
+        "drive-library-selection-manifest-invalid",
+        500,
+      );
+    }
+    const row = item as Record<string, unknown>;
+    return {
+      externalFileId: fileId(
+        typeof row.externalFileId === "string" ? row.externalFileId : "",
+        "A retained Drive file",
+      ),
+      resourceKey: resourceKey(
+        typeof row.resourceKey === "string" ? row.resourceKey : null,
+      ),
+    };
+  });
+  if (!selections.length) {
+    throw new GoogleDriveSourceError(
+      "The retained Drive selection manifest is empty.",
+      "drive-library-selection-manifest-empty",
+      409,
+    );
+  }
+  return selections;
+}
+
+function mergeGoogleDriveSelections(
+  retained: Array<{ externalFileId: string; resourceKey: string | null }>,
+  added: Array<{
+    externalFileId: string;
+    resourceKey?: string | null;
+  }>,
+) {
+  const merged = new Map<
+    string,
+    { externalFileId: string; resourceKey: string | null }
+  >();
+  for (const selection of [...retained, ...added]) {
+    const externalFileId = fileId(
+      selection.externalFileId,
+      "A selected Drive file",
+    );
+    const selectedResourceKey = resourceKey(selection.resourceKey);
+    const current = merged.get(externalFileId);
+    if (
+      current?.resourceKey &&
+      selectedResourceKey &&
+      current.resourceKey !== selectedResourceKey
+    ) {
+      throw new GoogleDriveSourceError(
+        "Google Picker returned conflicting resource keys for a retained library file.",
+        "drive-library-selection-conflict",
+        409,
+      );
+    }
+    merged.set(externalFileId, {
+      externalFileId,
+      resourceKey: current?.resourceKey ?? selectedResourceKey,
+    });
+  }
+  return [...merged.values()];
 }
 
 export async function refreshGoogleDriveLibraryForNest(input: {
@@ -1006,13 +1140,29 @@ export async function refreshGoogleDriveLibraryForNest(input: {
     requestUrl: input.requestUrl,
     environment: input.environment,
   });
-  const folder = await readGoogleDriveMediaFolder({
-    accessToken: access.accessToken,
-    connectionId: access.connection.id,
-    folderId: library.externalRootId,
-    selectedResourceKey: locatorResourceKey(library.providerLocatorJson),
-  });
-  if (folder.plan.totalFiles === 0 && library.totalFileCount > 0) {
+  const selectionManifest = locatorSelectionManifest(
+    library.providerLocatorJson,
+  );
+  const folder = selectionManifest
+    ? null
+    : await readGoogleDriveMediaFolder({
+        accessToken: access.accessToken,
+        connectionId: access.connection.id,
+        folderId: library.externalRootId,
+        selectedResourceKey: locatorResourceKey(library.providerLocatorJson),
+      });
+  const observedPlan = selectionManifest
+    ? await readGoogleDriveMediaSelection({
+        accessToken: access.accessToken,
+        connectionId: access.connection.id,
+        selections: selectionManifest,
+      })
+    : folder!.plan;
+  const plan: GoogleDriveMediaLibraryPlan = {
+    ...observedPlan,
+    root: { id: library.externalRootId, name: library.name },
+  };
+  if (plan.totalFiles === 0 && library.totalFileCount > 0) {
     throw new GoogleDriveSourceError(
       "Google returned an empty child inventory for a library that previously contained media. Quipsly preserved the last successful inventory and made no source changes.",
       "drive-library-inventory-inconclusive",
@@ -1026,7 +1176,7 @@ export async function refreshGoogleDriveLibraryForNest(input: {
     actorEmail: input.actorEmail,
     connectionId: access.connection.id,
     clientRequestId: input.clientRequestId,
-    plan: folder.plan,
+    plan,
     sourceIdentity: (batch) => batch.folder.id,
     sourceUrl: (batch) =>
       `https://drive.google.com/drive/folders/${encodeURIComponent(batch.folder.id)}`,
@@ -1037,11 +1187,14 @@ export async function refreshGoogleDriveLibraryForNest(input: {
     actorUserId: input.actorUserId,
     actorEmail: input.actorEmail,
     connectionId: access.connection.id,
-    externalRootId: folder.folder.id,
-    sharedDriveId: folder.folder.driveId,
-    resourceKey: folder.folder.resourceKey,
+    externalRootId: library.externalRootId,
+    sharedDriveId: folder?.folder.driveId ?? library.sharedDriveId,
+    resourceKey:
+      folder?.folder.resourceKey ??
+      locatorResourceKey(library.providerLocatorJson),
+    selectionManifest: selectionManifest ?? undefined,
     clientRequestId: input.clientRequestId,
-    plan: folder.plan,
+    plan,
     attachments: attached.attachments,
   });
   return {

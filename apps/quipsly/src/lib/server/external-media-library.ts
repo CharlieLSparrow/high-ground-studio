@@ -132,6 +132,7 @@ function publicLibrary(
     lastCheckedAt: Date;
     lastSuccessfulRefreshAt: Date;
     createdByUserId: string;
+    providerLocatorJson: unknown;
     connection: { userId: string; status: string } | null;
     items?: Array<{ state: string }>;
   },
@@ -139,6 +140,12 @@ function publicLibrary(
 ) {
   const notObservedCount =
     library.items?.filter((item) => item.state === "not-observed").length ?? 0;
+  const locator =
+    library.providerLocatorJson &&
+    typeof library.providerLocatorJson === "object" &&
+    !Array.isArray(library.providerLocatorJson)
+      ? (library.providerLocatorJson as Record<string, unknown>)
+      : {};
   return {
     id: library.id,
     name: library.name,
@@ -157,6 +164,10 @@ function publicLibrary(
       library.connection.status === "verified",
     connectionState: library.connection?.status ?? "unavailable",
     connectedByCurrentUser: library.createdByUserId === actorUserId,
+    discoveryMode:
+      locator.mode === "selection-manifest"
+        ? ("selected-files" as const)
+        : ("folder-scan" as const),
   };
 }
 
@@ -185,11 +196,37 @@ export async function recordGoogleDriveLibraryObservation(input: {
   externalRootId: string;
   sharedDriveId: string | null;
   resourceKey: string | null;
+  selectionManifest?: Array<{
+    externalFileId: string;
+    resourceKey: string | null;
+  }>;
   clientRequestId: string;
   plan: GoogleDriveMediaLibraryPlan;
   attachments: LibraryAttachment[];
 }) {
   const normalizedRequestId = requestId(input.clientRequestId);
+  const selectionManifest = input.selectionManifest
+    ? [...input.selectionManifest]
+        .map((item) => ({
+          externalFileId: item.externalFileId,
+          resourceKey: item.resourceKey,
+        }))
+        .sort((left, right) =>
+          left.externalFileId.localeCompare(right.externalFileId),
+        )
+    : null;
+  const providerLocatorJson = selectionManifest
+    ? ({
+        schema: "quipsly-google-drive-library-locator-v2",
+        mode: "selection-manifest",
+        resourceKey: input.resourceKey,
+        selections: selectionManifest,
+      } satisfies Prisma.InputJsonValue)
+    : ({
+        schema: "quipsly-google-drive-library-locator-v1",
+        mode: "folder-scan",
+        resourceKey: input.resourceKey,
+      } satisfies Prisma.InputJsonValue);
   const inventory = libraryInventory(input.plan);
   const fingerprint = sha256(
     inventory.map((item) => ({
@@ -206,6 +243,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
     connectionId: input.connectionId,
     externalRootId: input.externalRootId,
     inventoryFingerprintSha256: fingerprint,
+    providerLocatorSha256: sha256(providerLocatorJson),
   });
   const attachmentByFile = new Map(
     input.attachments.map((item) => [item.externalFileId, item]),
@@ -214,16 +252,15 @@ export async function recordGoogleDriveLibraryObservation(input: {
 
   return input.prisma.$transaction(
     async (tx) => {
-      const actorConnection =
-        await tx.studioMediaProviderConnection.findFirst({
-          where: {
-            id: input.connectionId,
-            userId: input.actorUserId,
-            provider: "google-drive",
-            status: "verified",
-          },
-          select: { id: true },
-        });
+      const actorConnection = await tx.studioMediaProviderConnection.findFirst({
+        where: {
+          id: input.connectionId,
+          userId: input.actorUserId,
+          provider: "google-drive",
+          status: "verified",
+        },
+        select: { id: true },
+      });
       if (!actorConnection) {
         throw new ExternalMediaLibraryError(
           "The current user does not own a verified Drive connection for this library operation.",
@@ -312,6 +349,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
         unchangedCount,
         notObservedCount: notObserved.length,
         noAutomaticDeletion: true,
+        discoveryMode: selectionManifest ? "selected-files" : "folder-scan",
       } satisfies Prisma.InputJsonValue;
 
       const library = existing
@@ -328,10 +366,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
               totalSizeBytes: BigInt(input.plan.totalSizeBytes),
               readySegmentCount: input.plan.readySegmentCount,
               heldSegmentCount: input.plan.heldSegmentCount,
-              providerLocatorJson: {
-                schema: "quipsly-google-drive-library-locator-v1",
-                resourceKey: input.resourceKey,
-              },
+              providerLocatorJson,
               healthJson,
               lastCheckedAt: now,
               lastSuccessfulRefreshAt: now,
@@ -352,10 +387,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
               totalSizeBytes: BigInt(input.plan.totalSizeBytes),
               readySegmentCount: input.plan.readySegmentCount,
               heldSegmentCount: input.plan.heldSegmentCount,
-              providerLocatorJson: {
-                schema: "quipsly-google-drive-library-locator-v1",
-                resourceKey: input.resourceKey,
-              },
+              providerLocatorJson,
               healthJson,
               lastCheckedAt: now,
               lastSuccessfulRefreshAt: now,
@@ -427,6 +459,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
             totalSizeBytes: input.plan.totalSizeBytes,
             readySegmentCount: input.plan.readySegmentCount,
             heldSegmentCount: input.plan.heldSegmentCount,
+            discoveryMode: selectionManifest ? "selected-files" : "folder-scan",
             health: healthJson,
           },
         },

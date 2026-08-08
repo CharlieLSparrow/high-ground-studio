@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import { attachVerifiedExternalMediaSource } from "./external-media-source";
 import { getGoogleDriveAccess } from "./google-drive-connection";
+import { recordGoogleDriveLibraryObservation } from "./external-media-library";
 import { attachGoogleDriveFilesToNest } from "./google-drive-source";
 
 jest.mock("./external-media-source", () => ({
@@ -12,9 +13,13 @@ jest.mock("./external-media-source", () => ({
 jest.mock("./google-drive-connection", () => ({
   getGoogleDriveAccess: jest.fn(),
 }));
+jest.mock("./external-media-library", () => ({
+  recordGoogleDriveLibraryObservation: jest.fn(),
+}));
 
 const getAccess = jest.mocked(getGoogleDriveAccess);
 const attachExternal = jest.mocked(attachVerifiedExternalMediaSource);
+const recordLibrary = jest.mocked(recordGoogleDriveLibraryObservation);
 
 describe("Google Drive selected-file package attachment", () => {
   const originalFetch = global.fetch;
@@ -65,6 +70,7 @@ describe("Google Drive selected-file package attachment", () => {
     const sourceUnitUpsert = jest.fn(async () => ({ id: "source_unit_01" }));
     const prisma = {
       studioSourceUnit: { upsert: sourceUnitUpsert },
+      studioExternalMediaLibrary: { findUnique: jest.fn(async () => null) },
     } as unknown as PrismaClient;
     attachExternal.mockImplementation(
       async ({ value }) =>
@@ -74,6 +80,14 @@ describe("Google Drive selected-file package attachment", () => {
           replayed: false,
         }) as Awaited<ReturnType<typeof attachVerifiedExternalMediaSource>>,
     );
+    recordLibrary.mockResolvedValue({
+      replayed: false,
+      library: {
+        id: "library_01",
+        name: "Homer 360 Library",
+        discoveryMode: "selected-files",
+      },
+    } as Awaited<ReturnType<typeof recordGoogleDriveLibraryObservation>>);
 
     const result = await attachGoogleDriveFilesToNest({
       prisma,
@@ -82,6 +96,9 @@ describe("Google Drive selected-file package attachment", () => {
       actorEmail: "creator@example.test",
       connectionId: "connection_01",
       selections: [{ externalFileId: "insv_01" }, { externalFileId: "lrv_01" }],
+      libraryRootId: "drive_root_01",
+      libraryRootName: "Homer 360 Library",
+      libraryRootResourceKey: "root_resource_01",
       clientRequestId: "019f7c9d-a1b2-7c3d-8e4f-0123456789ab",
       requestUrl: "http://127.0.0.1:3012/nests/high-ground-odyssey/story",
     });
@@ -91,6 +108,7 @@ describe("Google Drive selected-file package attachment", () => {
       sourceUnitCount: 1,
       replayedCount: 0,
       plan: { readySegmentCount: 1, heldSegmentCount: 0 },
+      library: { id: "library_01", discoveryMode: "selected-files" },
     });
     expect(sourceUnitUpsert).toHaveBeenCalledTimes(1);
     expect(sourceUnitUpsert).toHaveBeenCalledWith(
@@ -102,6 +120,19 @@ describe("Google Drive selected-file package attachment", () => {
       }),
     );
     expect(attachExternal).toHaveBeenCalledTimes(2);
+    expect(recordLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalRootId: "drive_root_01",
+        resourceKey: "root_resource_01",
+        selectionManifest: [
+          { externalFileId: "insv_01", resourceKey: null },
+          { externalFileId: "lrv_01", resourceKey: null },
+        ],
+        plan: expect.objectContaining({
+          root: { id: "drive_root_01", name: "Homer 360 Library" },
+        }),
+      }),
+    );
     const attachedValues = attachExternal.mock.calls.map(
       ([call]) => call.value,
     );
@@ -126,6 +157,107 @@ describe("Google Drive selected-file package attachment", () => {
           }),
         }),
       ]),
+    );
+  });
+
+  it("unions a later Picker grant with the retained least-privilege manifest", async () => {
+    getAccess.mockResolvedValue({
+      accessToken: "short-lived-token",
+      connection: { id: "connection_01" },
+    } as Awaited<ReturnType<typeof getGoogleDriveAccess>>);
+    global.fetch = jest.fn(async (url: string | URL | Request) => {
+      const id = new URL(String(url)).pathname.split("/").pop();
+      const shared = {
+        mimeType: "video/3gpp",
+        parents: ["batch_folder_02"],
+        capabilities: {
+          canDownload: true,
+          canCopy: true,
+          canReadRevisions: true,
+        },
+      };
+      const files = {
+        retained_lrv_02: {
+          ...shared,
+          id: "retained_lrv_02",
+          name: "LRV_20260402_080506_01_002.lrv",
+          size: "1911738680",
+          md5Checksum: "c".repeat(32),
+        },
+        added_insv_02: {
+          ...shared,
+          id: "added_insv_02",
+          name: "VID_20260402_080506_00_002.insv",
+          size: "29871493438",
+          md5Checksum: "d".repeat(32),
+        },
+      } as const;
+      const selected = files[id as keyof typeof files];
+      return new Response(JSON.stringify(selected ?? {}), {
+        status: selected ? 200 : 404,
+      });
+    }) as typeof fetch;
+    const prisma = {
+      studioSourceUnit: {
+        upsert: jest.fn(async () => ({ id: "source_unit_02" })),
+      },
+      studioExternalMediaLibrary: {
+        findUnique: jest.fn(async () => ({
+          connectionId: "connection_01",
+          providerLocatorJson: {
+            schema: "quipsly-google-drive-library-locator-v2",
+            mode: "selection-manifest",
+            selections: [
+              {
+                externalFileId: "retained_lrv_02",
+                resourceKey: "retained_resource_02",
+              },
+            ],
+          },
+        })),
+      },
+    } as unknown as PrismaClient;
+    attachExternal.mockImplementation(
+      async ({ value }) =>
+        ({
+          reference: { id: `reference_${value.verifiedFile.externalFileId}` },
+          sourceRevisionId: `revision_${value.verifiedFile.externalFileId}`,
+          replayed: false,
+        }) as Awaited<ReturnType<typeof attachVerifiedExternalMediaSource>>,
+    );
+    recordLibrary.mockResolvedValue({
+      replayed: false,
+      library: { id: "library_02", discoveryMode: "selected-files" },
+    } as Awaited<ReturnType<typeof recordGoogleDriveLibraryObservation>>);
+
+    await attachGoogleDriveFilesToNest({
+      prisma,
+      projectId: "project_01",
+      actorUserId: "user_01",
+      actorEmail: "creator@example.test",
+      connectionId: "connection_01",
+      selections: [{ externalFileId: "added_insv_02" }],
+      libraryRootId: "drive_root_02",
+      libraryRootName: "Growing 360 Library",
+      clientRequestId: "019f7c9d-a1b2-7c3d-8e4f-1123456789ab",
+      requestUrl: "http://127.0.0.1:3012/nests/high-ground-odyssey/story",
+    });
+
+    expect(recordLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectionManifest: [
+          {
+            externalFileId: "retained_lrv_02",
+            resourceKey: "retained_resource_02",
+          },
+          { externalFileId: "added_insv_02", resourceKey: null },
+        ],
+        plan: expect.objectContaining({
+          totalFiles: 2,
+          readySegmentCount: 1,
+          heldSegmentCount: 0,
+        }),
+      }),
     );
   });
 });

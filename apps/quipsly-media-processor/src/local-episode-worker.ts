@@ -706,12 +706,14 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const shutdown = new AbortController();
   const googleDriveMaterialization = newLocalGoogleDriveMaterializationRuntime({
     pool,
     executionId,
     localMediaRoot,
     leaseMs: options.leaseMs,
     buildId: options.buildId,
+    signal: shutdown.signal,
   });
   const sourceVisualOverview = newLocalSourceVisualOverviewRuntime({
     pool,
@@ -730,9 +732,11 @@ async function main() {
   let stopping = false;
   process.once("SIGTERM", () => {
     stopping = true;
+    shutdown.abort();
   });
   process.once("SIGINT", () => {
     stopping = true;
+    shutdown.abort();
   });
   try {
     await presence.heartbeat(new Date(), true);

@@ -107,6 +107,7 @@ describe("Google Drive source picker entry", () => {
             canRefresh: false,
             connectionState: "verified",
             connectedByCurrentUser: false,
+            discoveryMode: "selected-files",
           },
         ]}
         onAttached={async () => undefined}
@@ -119,6 +120,9 @@ describe("Google Drive source picker entry", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/never deletes source history/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/refresh rechecks the exact files you selected/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^refresh$/i })).toBeDisabled();
     expect(

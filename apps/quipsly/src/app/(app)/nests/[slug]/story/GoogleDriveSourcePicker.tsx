@@ -33,6 +33,7 @@ type ExternalMediaLibrary = {
   canRefresh: boolean;
   connectionState: string;
   connectedByCurrentUser: boolean;
+  discoveryMode?: "folder-scan" | "selected-files";
 };
 
 type PickerDocument = {
@@ -198,12 +199,12 @@ function FollowedDriveLibraries({
   pending,
   onRefresh,
 }: {
-  libraries: ExternalMediaLibrary[];
+  libraries?: ExternalMediaLibrary[];
   canWrite: boolean;
   pending: boolean;
   onRefresh(library: ExternalMediaLibrary): void;
 }) {
-  if (!libraries.length) return null;
+  if (!libraries?.length) return null;
   return (
     <section
       aria-label="Followed Drive libraries"
@@ -250,6 +251,13 @@ function FollowedDriveLibraries({
               remain intact.
             </p>
           ) : null}
+          {library.discoveryMode === "selected-files" ? (
+            <p className="mt-2 text-[9px] font-semibold leading-4 text-teal-900">
+              Least-privilege library: Refresh rechecks the exact files you
+              selected. Use Choose 360 files again to grant and add another
+              camera batch; Quipsly does not scan unrelated Drive content.
+            </p>
+          ) : null}
           <div className="mt-2 flex items-center justify-between gap-3">
             <p className="text-[8px] font-semibold text-[#806a4d]">
               Checked {new Date(library.lastCheckedAt).toLocaleString()}
@@ -291,7 +299,7 @@ export function GoogleDriveSourcePicker({
 }: {
   projectSlug: string;
   canWrite: boolean;
-  libraries: ExternalMediaLibrary[];
+  libraries?: ExternalMediaLibrary[];
   onAttached(): Promise<unknown>;
 }) {
   const [connections, setConnections] = useState<DriveConnection[]>([]);
@@ -413,6 +421,9 @@ export function GoogleDriveSourcePicker({
           action: "attach-google-drive-files",
           connectionId,
           selections,
+          libraryRootId: folderSelection?.id ?? null,
+          libraryRootName: folderPlan?.root.name ?? null,
+          libraryRootResourceKey: folderSelection?.resourceKey ?? null,
           clientRequestId: crypto.randomUUID(),
         }),
       },
@@ -423,6 +434,7 @@ export function GoogleDriveSourcePicker({
         attachedCount?: number;
         sourceUnitCount?: number;
         plan?: FolderPlan;
+        library?: ExternalMediaLibrary;
       };
     };
     if (!response.ok)
@@ -434,6 +446,7 @@ export function GoogleDriveSourcePicker({
       attachedCount: payload.operation?.attachedCount ?? 0,
       sourceUnitCount: payload.operation?.sourceUnitCount ?? 0,
       plan: payload.operation?.plan ?? null,
+      library: payload.operation?.library ?? null,
     };
   }
 
@@ -549,7 +562,7 @@ export function GoogleDriveSourcePicker({
                 } else {
                   setFolderPlan(result.plan);
                   setMessage(
-                    `Grouped ${result.attachedCount} exact Drive file${result.attachedCount === 1 ? "" : "s"} into ${result.sourceUnitCount} camera segment${result.sourceUnitCount === 1 ? "" : "s"}. Originals remain in Drive.`,
+                    `Grouped ${result.attachedCount} exact Drive file${result.attachedCount === 1 ? "" : "s"} into ${result.sourceUnitCount} camera segment${result.sourceUnitCount === 1 ? "" : "s"} and saved a refreshable least-privilege library. Originals remain in Drive.`,
                   );
                 }
                 resolve();
@@ -749,7 +762,7 @@ export function GoogleDriveSourcePicker({
       ) : null}
       {!loadingConnections ? (
         <FollowedDriveLibraries
-          libraries={libraries}
+          libraries={libraries ?? []}
           canWrite={canWrite}
           pending={pending}
           onRefresh={(library) => void refreshLibrary(library)}

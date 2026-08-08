@@ -89,6 +89,7 @@ export interface GoogleDriveMaterializationProvider {
     job: GoogleDriveSourceMaterializationJob;
     destinationPath: string;
     resumeFromBytes: number;
+    signal?: AbortSignal;
     onProgress: (transferredBytes: number) => Promise<void>;
   }): Promise<GoogleDriveDownloadReceipt>;
 }
@@ -135,6 +136,7 @@ export type LocalGoogleDriveMaterializationOptions = {
   leaseMs: number;
   localMediaRoot: string;
   minFreeBytes: number;
+  signal?: AbortSignal;
   now: () => Date;
 };
 
@@ -253,6 +255,7 @@ export async function runOneLocalGoogleDriveMaterializationJob(
         job,
         destinationPath: partialPath,
         resumeFromBytes,
+        signal: options.signal,
         onProgress: async (transferredBytes) => {
           const retained = await store.progress({
             claim,
@@ -365,8 +368,9 @@ export async function runOneLocalGoogleDriveMaterializationJob(
       });
       return { disposition: "failed", jobId: job.jobId, code: error.code };
     }
-    const code =
-      error instanceof GoogleDriveMaterializationRetryError
+    const code = options.signal?.aborted
+      ? "drive-materialization-worker-stopping"
+      : error instanceof GoogleDriveMaterializationRetryError
         ? error.code
         : "drive-materialization-worker-retry";
     await store.retry({
@@ -859,6 +863,7 @@ export class GoogleDriveApiMaterializationProvider implements GoogleDriveMateria
     job: GoogleDriveSourceMaterializationJob;
     destinationPath: string;
     resumeFromBytes: number;
+    signal?: AbortSignal;
     onProgress: (transferredBytes: number) => Promise<void>;
   }) {
     const accessToken = await this.accessToken(input.resolved);
@@ -868,6 +873,7 @@ export class GoogleDriveApiMaterializationProvider implements GoogleDriveMateria
     url.searchParams.set("alt", "media");
     url.searchParams.set("supportsAllDrives", "true");
     const response = await this.fetchImpl(url, {
+      signal: input.signal,
       headers: {
         ...driveHeaders(input.job, accessToken),
         ...(input.resumeFromBytes > 0
@@ -979,6 +985,7 @@ export function newLocalGoogleDriveMaterializationRuntime(input: {
   localMediaRoot: string;
   leaseMs: number;
   buildId: string;
+  signal?: AbortSignal;
   environment?: NodeJS.ProcessEnv;
   provider?: GoogleDriveMaterializationProvider;
 }) {
@@ -999,6 +1006,7 @@ export function newLocalGoogleDriveMaterializationRuntime(input: {
         Number.isSafeInteger(configuredMinFree) && configuredMinFree >= 0
           ? configuredMinFree
           : DEFAULT_MIN_FREE_BYTES,
+      signal: input.signal,
       now: () => new Date(),
     } satisfies LocalGoogleDriveMaterializationOptions,
   };
