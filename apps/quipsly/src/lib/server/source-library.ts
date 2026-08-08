@@ -489,20 +489,26 @@ export async function readSourceLibraryPage(input: {
     emittedKeys.has(`external:${row.id}`),
   );
   const emittedExternalIds = new Set(emittedExternal.map((row) => row.id));
-  const missingClockReferenceIds = emittedSets.flatMap((sourceSet) => {
-    const id = sourceSet.sourceClockRevision.externalReference?.id;
-    return id && !emittedExternalIds.has(id) ? [id] : [];
-  });
-  const clockExternalSources = missingClockReferenceIds.length
+  const missingPackageReferenceIds = [
+    ...new Set(
+      emittedSets.flatMap((sourceSet) =>
+        sourceSet.members.flatMap((member) => {
+          const id = member.sourceRevision.externalReference?.id;
+          return id && !emittedExternalIds.has(id) ? [id] : [];
+        }),
+      ),
+    ),
+  ];
+  const packageExternalSources = missingPackageReferenceIds.length
     ? await input.prisma.studioExternalMediaReference.findMany({
         where: {
           projectId: input.projectId,
-          id: { in: missingClockReferenceIds },
+          id: { in: missingPackageReferenceIds },
         },
         select: externalSelect,
       })
     : [];
-  const projectedExternal = [...emittedExternal, ...clockExternalSources];
+  const projectedExternal = [...emittedExternal, ...packageExternalSources];
   const emittedAssets = assets.filter((row) =>
     emittedKeys.has(`asset:${row.id}`),
   );
