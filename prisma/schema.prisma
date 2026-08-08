@@ -3912,6 +3912,7 @@ model StudioProject {
   episodeAudioMixReviews        StudioEpisodeAudioMixReviewReceipt[]
   episodeAudioMixPromotions     StudioEpisodeAudioMixPromotionReceipt[]
   episodeProgramReviews         StudioEpisodeProgramReviewReceipt[]
+  episodeMasterReviews          StudioEpisodeMasterReviewReceipt[]
   episodeOutputSelections       StudioEpisodeOutputSelectionReceipt[]
   episodeAudioDecisions         StudioEpisodeAudioTrackDecisionReceipt[]
   episodeAudioAnalyses          StudioEpisodeAudioAnalysisReceipt[]
@@ -4061,6 +4062,7 @@ model StudioEpisodeProduction {
   audioMixReviews         StudioEpisodeAudioMixReviewReceipt[]
   audioMixPromotions      StudioEpisodeAudioMixPromotionReceipt[]
   programRenderReviews    StudioEpisodeProgramReviewReceipt[]
+  masterRenderReviews     StudioEpisodeMasterReviewReceipt[]
   programDeliveryReviews  StudioEpisodeProgramDeliveryReviewReceipt[]
   storyBoards             StudioStoryBoard[]
   storyTimelinePlacements StudioStoryTimelinePlacement[]
@@ -6084,6 +6086,7 @@ model StudioWorkflowJob {
   mediaDerivative       StudioMediaDerivative?
   mediaSourceReplica    StudioMediaSourceReplica?
   episodeProgramReviews StudioEpisodeProgramReviewReceipt[]
+  episodeMasterReviews  StudioEpisodeMasterReviewReceipt[]
 
   @@index([projectId, status, createdAt])
   @@index([assetId, status])
@@ -6131,6 +6134,49 @@ model StudioEpisodeProgramReviewReceipt {
   @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeProgramReview_project_actor_request_key")
   @@index([renderJobId, occurredAt], map: "StudioEpisodeProgramReview_job_occurred_idx")
   @@index([episodeProductionId, occurredAt], map: "StudioEpisodeProgramReview_episode_occurred_idx")
+}
+
+enum StudioEpisodeMasterReviewDecision {
+  APPROVED
+  REJECTED
+}
+
+// A 4K master viewing decision is append-only and bound to the approved
+// program receipt, exact master manifest, and exact encoded output generation.
+// Approval permits later promotion planning; it never uploads or publishes.
+model StudioEpisodeMasterReviewReceipt {
+  id                                String                            @id @default(cuid())
+  projectId                         String
+  episodeProductionId               String
+  renderJobId                       String
+  programApprovalReceiptId          String
+  actorUserId                       String?
+  actorEmail                        String
+  clientRequestId                   String
+  decision                          StudioEpisodeMasterReviewDecision
+  branchId                          String
+  branchRevision                    Int
+  timelineFingerprintSha256         String
+  sourceProjectionFingerprintSha256 String
+  editStateFingerprintSha256        String
+  approvedProgramManifestSha256     String
+  masterManifestSha256              String
+  outputSha256                      String
+  outputGeneration                  String
+  outputSizeBytes                   BigInt
+  requestSha256                     String
+  evidenceJson                      Json
+  note                              String?
+  occurredAt                        DateTime
+  createdAt                         DateTime                          @default(now())
+
+  project           StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction StudioEpisodeProduction @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  renderJob         StudioWorkflowJob       @relation(fields: [renderJobId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeMasterReview_project_actor_request_key")
+  @@index([renderJobId, occurredAt], map: "StudioEpisodeMasterReview_job_occurred_idx")
+  @@index([episodeProductionId, occurredAt], map: "StudioEpisodeMasterReview_episode_occurred_idx")
 }
 
 model StudioVideoSource {

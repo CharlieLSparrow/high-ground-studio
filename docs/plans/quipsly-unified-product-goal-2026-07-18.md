@@ -8727,3 +8727,12 @@ source upload verified` blocked `Rough cut ready for review` until complete;
 - Added server registration and protected executor-local playback for an explicitly unapproved `episode-master-candidate`; upload, delivery, master approval, and publication remain separate.
 - Corrected the render-root boundary to support dedicated internal/external durable media volumes while still rejecting filesystem, home, and temporary roots.
 - Proved the path with contract, worker, server, UI, custody, TypeScript, and real 4K FFmpeg tests. Live retained-database dogfood remains pending a responsive local database runtime and a current worker restart.
+
+### Checkpoint — exact 4K master review ledger (2026-08-08)
+
+- Added an append-only `StudioEpisodeMasterReviewReceipt` model and additive migration, separate from program-edit approval.
+- Bound each decision to the authorizing program receipt, exact edit and master manifests, exact 4K output generation, actor, request digest, and playback evidence.
+- Added protected master-context loading that re-verifies current edit, latest program approval, exact executor custody, output hash/bytes, and protected source registration.
+- Added browser playback coverage, approval, rejection, note, and latest-decision UI for the 4K candidate.
+- Master approval remains a receipt only; no portable upload, delivery encoding, or publication begins.
+- Prisma format, validation, and generation passed. The migration remains unapplied until a retained local database is available.

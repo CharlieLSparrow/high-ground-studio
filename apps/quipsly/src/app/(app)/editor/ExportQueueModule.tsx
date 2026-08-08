@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import {
   CheckCircle2,
   CircleOff,
@@ -63,6 +64,15 @@ export type ProgramReviewSummary = {
   };
 };
 
+type MasterReviewSummary = Omit<ProgramReviewSummary, "boundaries"> & {
+  boundaries: {
+    outputRemainsMasterCandidate: true;
+    sourceMediaRemainsImmutable: true;
+    portableUploadNotStarted: true;
+    publicationNotStarted: true;
+  };
+};
+
 type ProgramPlaybackEvidence = {
   durationSeconds: number;
   watchedSecondBins: number[];
@@ -87,6 +97,49 @@ function emptyProgramPlaybackEvidence(): ProgramPlaybackEvidence {
     volumeAtDecision: 1,
     seekCount: 0,
   };
+}
+
+function TrackedReviewVideo({
+  src,
+  setEvidence,
+  className = "aspect-video w-full bg-black",
+}: {
+  src: string;
+  setEvidence: Dispatch<SetStateAction<ProgramPlaybackEvidence>>;
+  className?: string;
+}) {
+  return (
+    <video
+      controls
+      playsInline
+      preload="metadata"
+      src={src}
+      className={className}
+      onLoadedMetadata={(event) => {
+        const video = event.currentTarget;
+        setEvidence((current) => ({ ...current, durationSeconds: video.duration, maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate), mutedAtDecision: video.muted, volumeAtDecision: video.volume }));
+      }}
+      onPlay={(event) => {
+        const video = event.currentTarget;
+        setEvidence((current) => ({ ...current, playbackStartedAt: current.playbackStartedAt ?? new Date().toISOString(), maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate), mutedAtDecision: video.muted, volumeAtDecision: video.volume }));
+      }}
+      onTimeUpdate={(event) => {
+        const video = event.currentTarget;
+        if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+        const bin = Math.min(Math.max(0, Math.ceil(video.duration) - 1), Math.max(0, Math.floor(video.currentTime)));
+        setEvidence((current) => ({ ...current, watchedSecondBins: current.watchedSecondBins.includes(bin) ? current.watchedSecondBins : [...current.watchedSecondBins, bin].sort((a, b) => a - b), maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate), mutedAtDecision: video.muted, volumeAtDecision: video.volume }));
+      }}
+      onSeeking={() => setEvidence((current) => ({ ...current, seekCount: current.seekCount + 1 }))}
+      onRateChange={(event) => setEvidence((current) => ({ ...current, maximumPlaybackRate: Math.max(current.maximumPlaybackRate, event.currentTarget.playbackRate) }))}
+      onVolumeChange={(event) => setEvidence((current) => ({ ...current, mutedAtDecision: event.currentTarget.muted, volumeAtDecision: event.currentTarget.volume }))}
+      onEnded={(event) => {
+        const video = event.currentTarget;
+        if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+        const lastBin = Math.max(0, Math.ceil(video.duration) - 1);
+        setEvidence((current) => ({ ...current, watchedSecondBins: current.watchedSecondBins.includes(lastBin) ? current.watchedSecondBins : [...current.watchedSecondBins, lastBin].sort((a, b) => a - b), playbackEndedAt: new Date().toISOString(), playthroughEnded: true, mutedAtDecision: video.muted, volumeAtDecision: video.volume }));
+      }}
+    />
+  );
 }
 
 function formatBytes(bytes: number) {
@@ -142,6 +195,10 @@ export function ExportQueueModule({
   const [programReviewJobId, setProgramReviewJobId] = useState<string | null>(null);
   const [masterPlan, setMasterPlan] = useState<EpisodeMasterConformPlan | null>(null);
   const [masterQueueJobId, setMasterQueueJobId] = useState<string | null>(null);
+  const [masterReview, setMasterReview] = useState<MasterReviewSummary | null>(null);
+  const [masterReviewJobId, setMasterReviewJobId] = useState<string | null>(null);
+  const [masterReviewNote, setMasterReviewNote] = useState("");
+  const [masterPlayback, setMasterPlayback] = useState<ProgramPlaybackEvidence>(emptyProgramPlaybackEvidence);
   const [reviewNote, setReviewNote] = useState("");
   const [programPlayback, setProgramPlayback] = useState<ProgramPlaybackEvidence>(emptyProgramPlaybackEvidence);
   const registeringRef = useRef(new Set<string>());
@@ -161,7 +218,9 @@ export function ExportQueueModule({
       | "review-program-render"
       | "plan-master-conform"
       | "queue-master-conform"
-      | "register-master-conform",
+      | "register-master-conform"
+      | "read-master-review"
+      | "review-master-conform",
     body: Record<string, unknown>,
   ) => {
     if (!verifiedHandoff) return null;
@@ -181,7 +240,7 @@ export function ExportQueueModule({
       });
       const result = await response.json().catch(() => null) as
         | (EpisodeEditDeskPayload & {
-            operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | EpisodeMasterConformPlan | QueueReceipt | ProgramReviewSummary | { review: ProgramReviewSummary };
+            operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | EpisodeMasterConformPlan | QueueReceipt | ProgramReviewSummary | MasterReviewSummary | { review: ProgramReviewSummary | MasterReviewSummary };
           })
         | { error?: string; payload?: EpisodeEditDeskPayload }
         | null;
@@ -194,7 +253,7 @@ export function ExportQueueModule({
         );
       }
       const payload = result as EpisodeEditDeskPayload & {
-        operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | EpisodeMasterConformPlan | QueueReceipt | ProgramReviewSummary | { review: ProgramReviewSummary };
+        operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | EpisodeMasterConformPlan | QueueReceipt | ProgramReviewSummary | MasterReviewSummary | { review: ProgramReviewSummary | MasterReviewSummary };
       };
       setDesk(payload);
       if (action === "plan-render-proof") {
@@ -239,6 +298,16 @@ export function ExportQueueModule({
           : "The master request was accepted, but its durable job receipt was not returned.");
       } else if (action === "register-master-conform") {
         setMessage("The 4K candidate passed byte, profile, and complete-decode verification. It remains unapproved and unpublished.");
+      } else if (action === "read-master-review") {
+        setMasterReview(payload.operationResult as MasterReviewSummary);
+        setMasterReviewJobId(String(body.jobId ?? ""));
+      } else if (action === "review-master-conform") {
+        const result = payload.operationResult as { review: MasterReviewSummary };
+        setMasterReview(result.review);
+        setMasterReviewJobId(String(body.jobId ?? ""));
+        setMessage(body.decision === "approved"
+          ? "Master approval saved against these exact 4K bytes. No upload, delivery encode, or publication was started."
+          : "Master change request saved against these exact 4K bytes. Sources and edit intent remain unchanged.");
       } else {
         setMessage(action === "register-program-render"
           ? "The complete program output passed server verification and is ready to watch. Approval remains separate."
@@ -264,6 +333,10 @@ export function ExportQueueModule({
     setProgramReviewJobId(null);
     setMasterPlan(null);
     setMasterQueueJobId(null);
+    setMasterReview(null);
+    setMasterReviewJobId(null);
+    setMasterReviewNote("");
+    setMasterPlayback(emptyProgramPlaybackEvidence());
     setReviewNote("");
     setProgramPlayback(emptyProgramPlaybackEvidence());
     setMessage("");
@@ -355,12 +428,33 @@ export function ExportQueueModule({
     : null;
 
   useEffect(() => {
+    if (!isOpen || !completedMaster || masterReviewJobId === completedMaster.id) return;
+    setMasterPlayback(emptyProgramPlaybackEvidence());
+    setMasterReviewNote("");
+    void post("read-master-review", { jobId: completedMaster.id });
+  }, [completedMaster, isOpen, masterReviewJobId, post]);
+
+  useEffect(() => {
     if (!isOpen || !completedProgram || programReviewJobId === completedProgram.id) return;
     setProgramPlayback(emptyProgramPlaybackEvidence());
     setReviewNote("");
     setMasterPlan(null);
     void post("read-program-review", { jobId: completedProgram.id });
   }, [completedProgram, isOpen, post, programReviewJobId]);
+
+  useEffect(() => {
+    if (
+      !isOpen
+      || !completedProgram
+      || !masterQueueJob
+      || masterPlan
+      || programReview?.latest?.decision !== "approved"
+    ) return;
+    void post("plan-master-conform", {
+      jobId: completedProgram.id,
+      approvalReceiptId: programReview.latest.id,
+    });
+  }, [completedProgram, isOpen, masterPlan, masterQueueJob, post, programReview?.latest]);
 
   if (!isOpen) return null;
 
@@ -381,6 +475,21 @@ export function ExportQueueModule({
     && !programPlayback.mutedAtDecision
     && programPlayback.volumeAtDecision > 0
     && programPlayback.maximumPlaybackRate <= 2,
+  );
+  const masterRequiredBins = Math.max(0, Math.ceil(masterPlayback.durationSeconds));
+  const masterWatchedFraction = masterRequiredBins > 0
+    ? masterPlayback.watchedSecondBins.length / masterRequiredBins
+    : 0;
+  const masterApprovalReady = Boolean(
+    completedMaster
+    && masterPlayback.playthroughEnded
+    && masterWatchedFraction >= 0.9
+    && masterPlayback.watchedSecondBins.includes(0)
+    && masterPlayback.watchedSecondBins.includes(Math.floor((masterRequiredBins - 1) / 2))
+    && masterPlayback.watchedSecondBins.includes(masterRequiredBins - 1)
+    && !masterPlayback.mutedAtDecision
+    && masterPlayback.volumeAtDecision > 0
+    && masterPlayback.maximumPlaybackRate <= 2,
   );
 
   return (
@@ -578,80 +687,7 @@ export function ExportQueueModule({
             ) : null}
             {completedProgram ? (
               <section className="mt-5 overflow-hidden rounded-2xl border border-indigo-300 bg-indigo-950 text-indigo-100">
-                <video
-                  controls
-                  playsInline
-                  preload="metadata"
-                  src={completedProgram.playbackUrl ?? undefined}
-                  className="aspect-video w-full bg-black"
-                  onLoadedMetadata={(event) => {
-                    const video = event.currentTarget;
-                    setProgramPlayback((current) => ({
-                      ...current,
-                      durationSeconds: video.duration,
-                      maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate),
-                      mutedAtDecision: video.muted,
-                      volumeAtDecision: video.volume,
-                    }));
-                  }}
-                  onPlay={(event) => {
-                    const video = event.currentTarget;
-                    setProgramPlayback((current) => ({
-                      ...current,
-                      playbackStartedAt: current.playbackStartedAt ?? new Date().toISOString(),
-                      maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate),
-                      mutedAtDecision: video.muted,
-                      volumeAtDecision: video.volume,
-                    }));
-                  }}
-                  onTimeUpdate={(event) => {
-                    const video = event.currentTarget;
-                    if (!Number.isFinite(video.duration) || video.duration <= 0) return;
-                    const bin = Math.min(
-                      Math.max(0, Math.ceil(video.duration) - 1),
-                      Math.max(0, Math.floor(video.currentTime)),
-                    );
-                    setProgramPlayback((current) => current.watchedSecondBins.includes(bin)
-                      ? {
-                          ...current,
-                          maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate),
-                          mutedAtDecision: video.muted,
-                          volumeAtDecision: video.volume,
-                        }
-                      : {
-                          ...current,
-                          watchedSecondBins: [...current.watchedSecondBins, bin].sort((left, right) => left - right),
-                          maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate),
-                          mutedAtDecision: video.muted,
-                          volumeAtDecision: video.volume,
-                        });
-                  }}
-                  onSeeking={() => setProgramPlayback((current) => ({ ...current, seekCount: current.seekCount + 1 }))}
-                  onRateChange={(event) => setProgramPlayback((current) => ({
-                    ...current,
-                    maximumPlaybackRate: Math.max(current.maximumPlaybackRate, event.currentTarget.playbackRate),
-                  }))}
-                  onVolumeChange={(event) => setProgramPlayback((current) => ({
-                    ...current,
-                    mutedAtDecision: event.currentTarget.muted,
-                    volumeAtDecision: event.currentTarget.volume,
-                  }))}
-                  onEnded={(event) => {
-                    const video = event.currentTarget;
-                    if (!Number.isFinite(video.duration) || video.duration <= 0) return;
-                    const lastBin = Math.max(0, Math.ceil(video.duration) - 1);
-                    setProgramPlayback((current) => ({
-                      ...current,
-                      watchedSecondBins: current.watchedSecondBins.includes(lastBin)
-                        ? current.watchedSecondBins
-                        : [...current.watchedSecondBins, lastBin].sort((left, right) => left - right),
-                      playbackEndedAt: new Date().toISOString(),
-                      playthroughEnded: true,
-                      mutedAtDecision: video.muted,
-                      volumeAtDecision: video.volume,
-                    }));
-                  }}
-                />
+                <TrackedReviewVideo src={completedProgram.playbackUrl!} setEvidence={setProgramPlayback} />
                 <p className="px-4 py-3 text-xs font-bold">Verified full-program review · shared revision {completedProgram.branchRevision} · not an approved master</p>
                 <div className="border-t border-indigo-800 bg-white p-4 text-[#3d3122]">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -782,8 +818,46 @@ export function ExportQueueModule({
                           ) : null}
                           {completedMaster ? (
                             <div className="mt-3 rounded-xl bg-slate-950 p-3 text-white">
-                              <video controls preload="metadata" src={completedMaster.playbackUrl ?? undefined} className="aspect-video w-full rounded-lg bg-black" />
-                              <p className="mt-2 text-[11px] text-white/70">Local protected playback of the verified 4K candidate. Watching does not approve, upload, or publish it.</p>
+                              <TrackedReviewVideo src={completedMaster.playbackUrl!} setEvidence={setMasterPlayback} className="aspect-video w-full rounded-lg bg-black" />
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-[11px] text-white/70">Local protected playback of the exact 4K candidate. Client tracking cannot prove attention or audibility.</p>
+                                <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${masterApprovalReady ? "bg-emerald-200 text-emerald-950" : "bg-amber-200 text-amber-950"}`}>
+                                  {Math.round(masterWatchedFraction * 100)}% observed {masterPlayback.playthroughEnded ? "· ended" : ""}
+                                </span>
+                              </div>
+                              {masterReview?.latest ? (
+                                <p className={`mt-3 rounded-xl p-3 text-xs font-bold ${masterReview.latest.decision === "approved" ? "bg-emerald-100 text-emerald-950" : "bg-rose-100 text-rose-950"}`}>
+                                  Latest 4K decision: {masterReview.latest.decision} by {masterReview.latest.actorEmail} · {Math.round(masterReview.latest.watchedFraction * 100)}% observed
+                                  {masterReview.latest.note ? ` · ${masterReview.latest.note}` : ""}
+                                </p>
+                              ) : null}
+                              <label className="mt-3 block text-xs font-black" htmlFor="master-review-note">4K master review note</label>
+                              <textarea
+                                id="master-review-note"
+                                value={masterReviewNote}
+                                onChange={(event) => setMasterReviewNote(event.target.value)}
+                                placeholder="Optional for approval; required when requesting changes."
+                                className="mt-2 min-h-20 w-full rounded-xl border border-white/20 bg-white p-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+                              />
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  disabled={busy || !masterApprovalReady || !masterPlayback.playbackStartedAt}
+                                  onClick={() => void post("review-master-conform", { jobId: completedMaster.id, decision: "approved", note: masterReviewNote, playbackEvidence: { kind: "quipsly-episode-program-review-playback-evidence-v1", ...masterPlayback } })}
+                                  className="inline-flex min-h-10 items-center rounded-xl bg-emerald-600 px-4 text-xs font-black text-white disabled:opacity-40"
+                                >
+                                  Approve exact 4K candidate
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy || masterPlayback.watchedSecondBins.length === 0 || masterReviewNote.trim().length < 3 || !masterPlayback.playbackStartedAt}
+                                  onClick={() => void post("review-master-conform", { jobId: completedMaster.id, decision: "rejected", note: masterReviewNote, playbackEvidence: { kind: "quipsly-episode-program-review-playback-evidence-v1", ...masterPlayback } })}
+                                  className="inline-flex min-h-10 items-center rounded-xl border border-rose-300 bg-white px-4 text-xs font-black text-rose-800 disabled:opacity-40"
+                                >
+                                  Request master changes
+                                </button>
+                              </div>
+                              <p className="mt-3 text-[11px] font-bold text-white/60">Approval records the exact bytes only. Portable promotion, delivery encoding, and publication remain separate actions.</p>
                             </div>
                           ) : null}
                         </div>

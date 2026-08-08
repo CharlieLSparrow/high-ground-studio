@@ -34,6 +34,11 @@ import {
   queueEpisodeMasterConform,
   registerEpisodeMasterConform,
 } from "@/lib/server/episode-master-conform";
+import {
+  appendEpisodeMasterReview,
+  EpisodeMasterReviewError,
+  readAuthorizedEpisodeMasterReviewSummary,
+} from "@/lib/server/episode-master-review";
 
 export const dynamic = "force-dynamic";
 
@@ -236,6 +241,27 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         jobId: String(body.jobId ?? ""),
         actor: { email: actor.email },
       });
+    } else if (action === "read-master-review") {
+      operationResult = await readAuthorizedEpisodeMasterReviewSummary({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        jobId: String(body.jobId ?? ""),
+      });
+    } else if (action === "review-master-conform") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required to review a master candidate." }, { status: 400 });
+      if (body.decision !== "approved" && body.decision !== "rejected") return NextResponse.json({ error: "Choose approve or request changes." }, { status: 400 });
+      operationResult = await appendEpisodeMasterReview({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        jobId: String(body.jobId ?? ""),
+        actor: { userId: actor.userId, email: actor.email },
+        clientRequestId: String(body.clientRequestId ?? crypto.randomUUID()),
+        decision: body.decision,
+        playbackEvidence: body.playbackEvidence,
+        note: typeof body.note === "string" ? body.note : null,
+      });
     } else {
       return NextResponse.json({ error: "Unknown editor action." }, { status: 400 });
     }
@@ -251,7 +277,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         || action === "review-program-render"
         || action === "plan-master-conform"
         || action === "queue-master-conform"
-        || action === "register-master-conform",
+        || action === "register-master-conform"
+        || action === "read-master-review"
+        || action === "review-master-conform",
       selectedMediaAssetId,
     }), operationResult }, {
       headers: { "Cache-Control": "no-store" },
@@ -267,6 +295,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
       return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
     }
     if (error instanceof EpisodeMasterConformError) {
+      return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+    }
+    if (error instanceof EpisodeMasterReviewError) {
       return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
     }
     if (error instanceof EpisodeEditConflict) {
