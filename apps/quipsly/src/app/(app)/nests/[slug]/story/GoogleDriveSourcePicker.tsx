@@ -270,17 +270,18 @@ function FollowedDriveLibraries({
   if (!libraries?.length) return null;
   return (
     <section
-      aria-label="Followed Drive libraries"
+      aria-label="Drive source libraries"
       className="mt-3 space-y-2 rounded-xl border border-teal-200 bg-white p-3"
     >
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-teal-900">
-          Followed libraries
+          Drive source libraries
         </p>
         <p className="mt-1 text-[10px] font-semibold leading-4 text-[#5f684f]">
-          Refresh finds new or completed camera files. Missing items are marked
-          for review; Quipsly never deletes source history from a provider
-          listing.
+          Folder libraries discover new or completed camera files. A
+          least-privilege selected-file library rechecks only files you
+          authorized and lets you add another batch. Neither mode deletes source
+          history from a provider listing.
         </p>
       </div>
       {libraries.map((library) => (
@@ -300,11 +301,18 @@ function FollowedDriveLibraries({
                 held
               </p>
             </div>
-            <span
-              className={`rounded-full px-2 py-1 text-[8px] font-black uppercase ${library.status === "ready" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-950"}`}
-            >
-              {library.status}
-            </span>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <span
+                className={`rounded-full px-2 py-1 text-[8px] font-black uppercase ${library.status === "ready" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-950"}`}
+              >
+                {library.status}
+              </span>
+              <span className="rounded-full border border-teal-200 bg-white px-2 py-1 text-[8px] font-black uppercase text-teal-900">
+                {library.discoveryMode === "selected-files"
+                  ? "Selected files"
+                  : "Folder scan"}
+              </span>
+            </div>
           </div>
           {library.notObservedCount > 0 ? (
             <p className="mt-2 text-[9px] font-bold leading-4 text-amber-900">
@@ -368,7 +376,9 @@ function FollowedDriveLibraries({
             <div className="mt-2 rounded-xl border border-teal-200 bg-teal-50/70 p-2">
               <p className="text-[9px] font-semibold leading-4 text-teal-900">
                 Least-privilege library: Refresh rechecks only the exact files
-                you selected. Quipsly does not scan unrelated Drive content.
+                you selected. To add a camera batch, open its folder in Google
+                Picker and select the matching INSV and LRV files together.
+                Quipsly does not scan unrelated Drive content.
               </p>
               {library.connectedByCurrentUser ? (
                 <button
@@ -378,7 +388,7 @@ function FollowedDriveLibraries({
                   className="mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-teal-400 bg-white px-3 text-[10px] font-black text-teal-950 disabled:opacity-50"
                 >
                   <FileVideo2 size={13} aria-hidden="true" />
-                  Add another camera batch
+                  Authorize more 360 files
                 </button>
               ) : null}
             </div>

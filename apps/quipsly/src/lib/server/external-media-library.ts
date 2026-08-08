@@ -591,6 +591,13 @@ export async function recordGoogleDriveLibraryObservation(input: {
     externalFileId: string;
     resourceKey: string | null;
   }>;
+  discoveryEvidence?: {
+    state: "upgraded-to-folder-scan" | "retained-selection-fallback";
+    previousMode: "selected-files";
+    retainedSelectionCount: number;
+    discoveredFileCount: number;
+    reasonCode?: string;
+  };
   clientRequestId: string;
   plan: GoogleDriveMediaLibraryPlan;
   attachments: LibraryAttachment[];
@@ -742,6 +749,9 @@ export async function recordGoogleDriveLibraryObservation(input: {
         notObservedCount: notObserved.length,
         noAutomaticDeletion: true,
         discoveryMode: selectionManifest ? "selected-files" : "folder-scan",
+        ...(input.discoveryEvidence
+          ? { discoveryEvidence: input.discoveryEvidence }
+          : {}),
         ...heldHealth,
       } satisfies Prisma.InputJsonValue;
 

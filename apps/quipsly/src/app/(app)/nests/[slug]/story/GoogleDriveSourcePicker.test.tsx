@@ -133,7 +133,7 @@ describe("Google Drive source picker entry", () => {
       screen.getByText(/previously seen file was not observed/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/never deletes source history/i),
+      screen.getByText(/neither mode deletes source history/i),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/refresh rechecks only the exact files you selected/i),
@@ -149,7 +149,7 @@ describe("Google Drive source picker entry", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^refresh$/i })).toBeDisabled();
     expect(
-      screen.queryByRole("button", { name: /add another camera batch/i }),
+      screen.queryByRole("button", { name: /authorize more 360 files/i }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByText(/connected account owner can refresh/i),
@@ -240,11 +240,15 @@ describe("Google Drive source picker entry", () => {
         onAttached={onAttached}
       />,
     );
-
     expect(await screen.findByText("Insta360")).toBeInTheDocument();
+    expect(screen.getByText("Selected files")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /add another camera batch/i }),
+      screen.getByText(/select the matching INSV and LRV files together/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /authorize more 360 files/i }),
     ).toBeEnabled();
+
     expect(
       screen.getByText(/does not scan unrelated drive content/i),
     ).toBeInTheDocument();

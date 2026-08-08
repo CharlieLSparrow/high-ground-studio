@@ -439,6 +439,13 @@ runDatabaseSmoke("followed external media library", () => {
           },
           { externalFileId: browse.id, resourceKey: null },
         ],
+        discoveryEvidence: {
+          state: "retained-selection-fallback",
+          previousMode: "selected-files",
+          retainedSelectionCount: 2,
+          discoveredFileCount: 0,
+          reasonCode: "drive-folder-discovery-empty",
+        },
         clientRequestId: randomUUID(),
         plan: selectedPlan,
         attachments: [],
@@ -451,7 +458,7 @@ runDatabaseSmoke("followed external media library", () => {
       await expect(
         prisma.studioExternalMediaLibrary.findUniqueOrThrow({
           where: { id: result.library.id },
-          select: { providerLocatorJson: true },
+          select: { providerLocatorJson: true, healthJson: true },
         }),
       ).resolves.toMatchObject({
         providerLocatorJson: {
@@ -463,6 +470,14 @@ runDatabaseSmoke("followed external media library", () => {
               resourceKey: "selected_original_resource_02",
             },
           ]),
+        },
+        healthJson: {
+          discoveryEvidence: {
+            state: "retained-selection-fallback",
+            retainedSelectionCount: 2,
+            discoveredFileCount: 0,
+            reasonCode: "drive-folder-discovery-empty",
+          },
         },
       });
       const publicView = await listExternalMediaLibraries({

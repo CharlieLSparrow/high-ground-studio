@@ -1209,6 +1209,103 @@ function mergeGoogleDriveSelections(
   return [...merged.values()];
 }
 
+type RetainedGoogleDriveSelection = {
+  externalFileId: string;
+  resourceKey: string | null;
+};
+
+type GoogleDriveRefreshDiscoveryEvidence = {
+  state: "upgraded-to-folder-scan" | "retained-selection-fallback";
+  previousMode: "selected-files";
+  retainedSelectionCount: number;
+  discoveredFileCount: number;
+  reasonCode?: string;
+};
+
+function discoveryFailureCode(error: unknown) {
+  if (error instanceof GoogleDriveSourceError) return error.code;
+  return "drive-folder-discovery-unavailable";
+}
+
+/**
+ * A library first attached through Picker may later have enough Drive scope to
+ * enumerate its parent folder. Prefer that live folder inventory when it is
+ * non-empty, but never replace a retained working inventory with an empty or
+ * failed discovery result.
+ */
+export async function readGoogleDriveRefreshInventory(input: {
+  accessToken: string;
+  connectionId: string;
+  externalRootId: string;
+  resourceKey: string | null;
+  selectionManifest: RetainedGoogleDriveSelection[] | null;
+  fetchImpl?: typeof fetch;
+}): Promise<{
+  folder: Awaited<ReturnType<typeof readGoogleDriveMediaFolder>> | null;
+  plan: GoogleDriveMediaLibraryPlan;
+  selectionManifest: RetainedGoogleDriveSelection[] | null;
+  discoveryEvidence?: GoogleDriveRefreshDiscoveryEvidence;
+}> {
+  if (!input.selectionManifest) {
+    const folder = await readGoogleDriveMediaFolder({
+      accessToken: input.accessToken,
+      connectionId: input.connectionId,
+      folderId: input.externalRootId,
+      selectedResourceKey: input.resourceKey,
+      fetchImpl: input.fetchImpl,
+    });
+    return { folder, plan: folder.plan, selectionManifest: null };
+  }
+
+  let folderDiscoveryReason = "drive-folder-identity-unavailable";
+  if (!input.externalRootId.startsWith("picker:")) {
+    try {
+      const folder = await readGoogleDriveMediaFolder({
+        accessToken: input.accessToken,
+        connectionId: input.connectionId,
+        folderId: input.externalRootId,
+        selectedResourceKey: input.resourceKey,
+        fetchImpl: input.fetchImpl,
+      });
+      if (folder.plan.totalFiles > 0) {
+        return {
+          folder,
+          plan: folder.plan,
+          selectionManifest: null,
+          discoveryEvidence: {
+            state: "upgraded-to-folder-scan",
+            previousMode: "selected-files",
+            retainedSelectionCount: input.selectionManifest.length,
+            discoveredFileCount: folder.plan.totalFiles,
+          },
+        };
+      }
+      folderDiscoveryReason = "drive-folder-discovery-empty";
+    } catch (error) {
+      folderDiscoveryReason = discoveryFailureCode(error);
+    }
+  }
+
+  const plan = await readGoogleDriveMediaSelection({
+    accessToken: input.accessToken,
+    connectionId: input.connectionId,
+    selections: input.selectionManifest,
+    fetchImpl: input.fetchImpl,
+  });
+  return {
+    folder: null,
+    plan,
+    selectionManifest: input.selectionManifest,
+    discoveryEvidence: {
+      state: "retained-selection-fallback",
+      previousMode: "selected-files",
+      retainedSelectionCount: input.selectionManifest.length,
+      discoveredFileCount: 0,
+      reasonCode: folderDiscoveryReason,
+    },
+  };
+}
+
 export async function refreshGoogleDriveLibraryForNest(input: {
   prisma: PrismaClient;
   projectId: string;
@@ -1251,21 +1348,15 @@ export async function refreshGoogleDriveLibraryForNest(input: {
   const selectionManifest = locatorSelectionManifest(
     library.providerLocatorJson,
   );
-  const folder = selectionManifest
-    ? null
-    : await readGoogleDriveMediaFolder({
-        accessToken: access.accessToken,
-        connectionId: access.connection.id,
-        folderId: library.externalRootId,
-        selectedResourceKey: locatorResourceKey(library.providerLocatorJson),
-      });
-  const observedPlan = selectionManifest
-    ? await readGoogleDriveMediaSelection({
-        accessToken: access.accessToken,
-        connectionId: access.connection.id,
-        selections: selectionManifest,
-      })
-    : folder!.plan;
+  const discovery = await readGoogleDriveRefreshInventory({
+    accessToken: access.accessToken,
+    connectionId: access.connection.id,
+    externalRootId: library.externalRootId,
+    resourceKey: locatorResourceKey(library.providerLocatorJson),
+    selectionManifest,
+  });
+  const folder = discovery.folder;
+  const observedPlan = discovery.plan;
   const plan: GoogleDriveMediaLibraryPlan = {
     ...observedPlan,
     root: { id: library.externalRootId, name: library.name },
@@ -1300,7 +1391,8 @@ export async function refreshGoogleDriveLibraryForNest(input: {
     resourceKey:
       folder?.folder.resourceKey ??
       locatorResourceKey(library.providerLocatorJson),
-    selectionManifest: selectionManifest ?? undefined,
+    selectionManifest: discovery.selectionManifest ?? undefined,
+    discoveryEvidence: discovery.discoveryEvidence,
     clientRequestId: input.clientRequestId,
     plan,
     attachments: attached.attachments,

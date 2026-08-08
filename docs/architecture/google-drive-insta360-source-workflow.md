@@ -1,6 +1,7 @@
 # Google Drive and Insta360 source workflow
 
-**Status:** Implemented durable intake foundation; real-provider acceptance pending
+**Status:** Implemented durable intake and real-provider acceptance; automatic
+folder discovery remains capability-dependent under least-privilege OAuth
 
 **Last reviewed:** 2026-08-08
 
@@ -43,11 +44,14 @@ Quipsly's editorial truth, provenance, and recovery behavior deterministic.
 3. Quipsly inspects direct batch folders and shows ready, incomplete, syncing,
    restricted, and ambiguous camera segments before attachment.
 4. Attach the library. This stores exact metadata only.
-5. The chosen folder becomes a **followed library** with a safe inventory
-   fingerprint, refresh history, and ready/held/not-observed health.
-6. Refresh the library when Drive finishes syncing or new camera files arrive.
-   A complete scan can add or revise observations. A missing file becomes
-   `not-observed`; it never deletes source revisions, ranges, cards, or boards.
+5. A folder whose children are visible becomes a **folder-scan library**. A
+   Picker fallback becomes a **selected-file library**. Both retain a safe
+   inventory fingerprint, refresh history, and ready/held/not-observed health.
+6. Refresh a folder-scan library when Drive finishes syncing or new camera
+   files arrive. Refresh a selected-file library to recheck its exact grants,
+   then use **Authorize more 360 files** for another batch. A missing file
+   becomes `not-observed`; it never deletes source revisions, ranges, cards,
+   or boards.
 7. Each camera segment appears as one Source Room item even when it contains
    multiple INSV originals and an LRV companion.
 8. Open a segment receipt to inspect every provider file, role, size, access
@@ -55,11 +59,11 @@ Quipsly's editorial truth, provenance, and recovery behavior deterministic.
 9. Prepare the LRV only when the segment needs playback, annotation,
    storyboarding, or editing.
 10. Work from the collaboration proxy in Nest.
-   Unstitched camera pixels use a normal video viewer for timing and ranges;
-   spatial look-around activates only after a stitched equirectangular
-   derivative is verified.
+    Unstitched camera pixels use a normal video viewer for timing and ranges;
+    spatial look-around activates only after a stitched equirectangular
+    derivative is verified.
 11. Open **Final render preflight** when a selected segment is ready to finish.
-   Inspection is metadata-only; it does not download media.
+    Inspection is metadata-only; it does not download media.
 12. Optionally inspect **Final-quality originals** on the followed library to
     compare every attached camera day against the active Mac's aggregate safe
     capacity. Incomplete, unattached packages remain visibly excluded.
@@ -110,7 +114,7 @@ least-privilege path. The creator selects the matching INSV and LRV files;
 Quipsly verifies each selected file, groups them by Drive parent and camera
 clock, and creates the same source-unit contract.
 
-A selected-file library exposes **Add another camera batch** only to the owner
+A selected-file library exposes **Authorize more 360 files** only to the owner
 of its verified Drive connection. The Picker token comes from that exact
 connection and the attach request targets the library's opaque Quipsly ID—not
 a provider folder locator returned to the browser. The server resolves the
@@ -135,6 +139,50 @@ Picker uses list mode because Google's current guidance warns that
 least-privilege tokens might not grant thumbnail access for every browsable
 file. Folder traversal is treated as a provider capability to prove, not an
 assumption. Explicit multi-file selection is the reviewed fallback.
+
+### Real-provider boundary proved on 2026-08-08
+
+The High Ground Odyssey library proved the exact least-privilege boundary:
+
+- Quipsly could verify the selected root folder;
+- the same `drive.file` token returned an empty child listing;
+- the retained 14-file selection was still readable and remained ready;
+- the refresh stored a path- and locator-withheld fallback receipt;
+- no prior item became missing and no source work was deleted.
+
+The refresh implementation now attempts a non-empty folder scan first. Success
+upgrades the locator from selected files to folder scan. Empty, restricted, or
+temporarily failed discovery falls back to the retained selection and records a
+safe reason code. This asymmetry prevents an incomplete provider response from
+masquerading as source deletion.
+
+Quipsly does **not** request `drive.readonly` merely to make this button more
+convenient. Google classifies that whole-Drive read/download permission as a
+restricted scope. A server-side production integration can require restricted
+scope verification and an annual third-party security assessment. The broader
+scope remains a later, explicitly reviewed product tier—not the default fix for
+a folder-picker limitation:
+
+- <https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification>
+- <https://support.google.com/cloud/answer/13464325>
+
+For automatic large-archive discovery without whole-Drive server access, the
+hybrid architecture is:
+
+1. The creator grants Quipsly Mac a security-scoped local folder, including a
+   folder synchronized by Google Drive for desktop.
+2. The Mac scans names, sizes, package completeness, and local availability;
+   raw filesystem paths stay device-local.
+3. Nest receives stable source identities, package health, fingerprints, and
+   path-withheld device receipts.
+4. LRV-derived collaboration proxies may sync to Quipsly; INSV originals remain
+   in the creator's Drive/local file-provider storage.
+5. Final conform resolves the exact locally available original and verifies its
+   provider revision/checksum before render.
+
+QuipslyStudio already uses security-scoped folder bookmarks. The remaining work
+is to connect that native grant to the canonical external-library observation
+contract rather than inventing a second editor-only media database.
 
 ## Source topology
 

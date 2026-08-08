@@ -2,6 +2,7 @@
 
 import {
   readGoogleDriveMediaFolder,
+  readGoogleDriveRefreshInventory,
   readGoogleDriveMediaSelection,
   verifyGoogleDriveFile,
 } from "./google-drive-source";
@@ -507,4 +508,149 @@ describe("Google Drive file verification", () => {
       ]),
     });
   });
+
+  it("upgrades a retained Picker inventory when its real root becomes enumerable", async () => {
+    const folderMime = "application/vnd.google-apps.folder";
+    const fetchImpl = jest.fn(async (url: string | URL | Request) => {
+      const value = new URL(String(url));
+      if (value.pathname.endsWith("/library_root")) {
+        return new Response(
+          JSON.stringify({
+            id: "library_root",
+            name: "Homer Insta360 library",
+            mimeType: folderMime,
+          }),
+          { status: 200 },
+        );
+      }
+      const query = value.searchParams.get("q");
+      if (query === "'library_root' in parents and trashed = false") {
+        return new Response(
+          JSON.stringify({
+            files: [
+              {
+                id: "new_insv_001",
+                name: "VID_20260808_090000_00_001.insv",
+                mimeType: "video/3gpp",
+                size: "3000",
+                capabilities: { canDownload: true },
+              },
+              {
+                id: "new_lrv_001",
+                name: "LRV_20260808_090000_01_001.lrv",
+                mimeType: "video/3gpp",
+                size: "300",
+                capabilities: { canDownload: true },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("{}", { status: 404 });
+    }) as typeof fetch;
+
+    const result = await readGoogleDriveRefreshInventory({
+      accessToken: "token",
+      connectionId: "connection_01",
+      externalRootId: "library_root",
+      resourceKey: null,
+      selectionManifest: [
+        { externalFileId: "old_insv_001", resourceKey: null },
+        { externalFileId: "old_lrv_001", resourceKey: null },
+      ],
+      fetchImpl,
+    });
+
+    expect(result).toMatchObject({
+      selectionManifest: null,
+      plan: { totalFiles: 2, readySegmentCount: 1 },
+      discoveryEvidence: {
+        state: "upgraded-to-folder-scan",
+        previousMode: "selected-files",
+        retainedSelectionCount: 2,
+        discoveredFileCount: 2,
+      },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [
+      "an inaccessible folder",
+      new Response("{}", { status: 403 }),
+      "drive-file-restricted",
+    ],
+    [
+      "an inconclusive empty folder",
+      new Response(
+        JSON.stringify({
+          id: "library_root",
+          name: "Homer Insta360 library",
+          mimeType: "application/vnd.google-apps.folder",
+        }),
+        { status: 200 },
+      ),
+      "drive-folder-discovery-empty",
+    ],
+  ])(
+    "preserves retained Picker files after %s",
+    async (_label, folderMetadataResponse, reasonCode) => {
+      const fetchImpl = jest.fn(async (url: string | URL | Request) => {
+        const value = new URL(String(url));
+        if (value.pathname.endsWith("/library_root")) {
+          return folderMetadataResponse.clone();
+        }
+        if (
+          value.searchParams.get("q") ===
+          "'library_root' in parents and trashed = false"
+        ) {
+          return new Response(JSON.stringify({ files: [] }), { status: 200 });
+        }
+        const id = value.pathname.split("/").pop();
+        const selected =
+          id === "old_insv_001"
+            ? {
+                id,
+                name: "VID_20260801_090000_00_001.insv",
+                mimeType: "video/3gpp",
+                size: "3000",
+                capabilities: { canDownload: true },
+              }
+            : {
+                id,
+                name: "LRV_20260801_090000_01_001.lrv",
+                mimeType: "video/3gpp",
+                size: "300",
+                capabilities: { canDownload: true },
+              };
+        return new Response(JSON.stringify(selected), { status: 200 });
+      }) as typeof fetch;
+      const selectionManifest = [
+        { externalFileId: "old_insv_001", resourceKey: null },
+        { externalFileId: "old_lrv_001", resourceKey: null },
+      ];
+
+      const result = await readGoogleDriveRefreshInventory({
+        accessToken: "token",
+        connectionId: "connection_01",
+        externalRootId: "library_root",
+        resourceKey: null,
+        selectionManifest,
+        fetchImpl,
+      });
+
+      expect(result).toMatchObject({
+        folder: null,
+        selectionManifest,
+        plan: { totalFiles: 2, readySegmentCount: 1 },
+        discoveryEvidence: {
+          state: "retained-selection-fallback",
+          retainedSelectionCount: 2,
+          discoveredFileCount: 0,
+          reasonCode,
+        },
+      });
+    },
+  );
 });
