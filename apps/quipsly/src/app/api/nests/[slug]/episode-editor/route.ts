@@ -17,6 +17,12 @@ import {
   queueEpisodeRenderProof,
   registerEpisodeRenderProof,
 } from "@/lib/server/episode-render-proof";
+import {
+  EpisodeProgramRenderError,
+  planEpisodeProgramRender,
+  queueEpisodeProgramRender,
+  registerEpisodeProgramRender,
+} from "@/lib/server/episode-program-render";
 
 export const dynamic = "force-dynamic";
 
@@ -136,17 +142,58 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         jobId: String(body.jobId ?? ""),
         actor: { ...actor, email: actor.email },
       });
+    } else if (action === "plan-program-render") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required to inspect full-program readiness." }, { status: 400 });
+      operationResult = await planEpisodeProgramRender({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        expectedRevision: Number(body.expectedRevision ?? 0),
+        executorNodeId:
+          typeof body.executorNodeId === "string" ? body.executorNodeId : null,
+        actor: { ...actor, email: actor.email },
+      });
+    } else if (action === "queue-program-render") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required to queue a full-program review." }, { status: 400 });
+      operationResult = await queueEpisodeProgramRender({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        expectedRevision: Number(body.expectedRevision ?? 0),
+        clientRequestId: String(body.clientRequestId ?? crypto.randomUUID()),
+        executorNodeId:
+          typeof body.executorNodeId === "string" ? body.executorNodeId : null,
+        actor: { ...actor, email: actor.email },
+      });
+    } else if (action === "register-program-render") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required to verify a full-program review." }, { status: 400 });
+      operationResult = await registerEpisodeProgramRender({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        jobId: String(body.jobId ?? ""),
+        actor: { ...actor, email: actor.email },
+      });
     } else {
       return NextResponse.json({ error: "Unknown editor action." }, { status: 400 });
     }
     return NextResponse.json({ ...await loadEpisodeEditDesk(slug, episodeSlug, true, {
-      includeInspection: action === "open-episode" || action === "plan-render-proof" || action === "queue-render-proof" || action === "register-render-proof",
+      includeInspection: action === "open-episode"
+        || action === "plan-render-proof"
+        || action === "queue-render-proof"
+        || action === "register-render-proof"
+        || action === "plan-program-render"
+        || action === "queue-program-render"
+        || action === "register-program-render",
       selectedMediaAssetId,
     }), operationResult }, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
     if (error instanceof EpisodeRenderProofError) {
+      return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+    }
+    if (error instanceof EpisodeProgramRenderError) {
       return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
     }
     if (error instanceof EpisodeEditConflict) {

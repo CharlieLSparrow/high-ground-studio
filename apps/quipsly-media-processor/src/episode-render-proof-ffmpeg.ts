@@ -1,7 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { EpisodeRenderProofJob } from "@high-ground/quipsly-media-processing";
+import type {
+  EpisodeRenderProofJob,
+  EpisodeRenderProofSource,
+} from "@high-ground/quipsly-media-processing";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,13 +27,18 @@ export type EpisodeRenderProofTechnical = {
   ffmpegVersion: string;
 };
 
+export type EpisodeRenderComposition = {
+  sources: EpisodeRenderProofSource[];
+  proof: EpisodeRenderProofJob["proof"];
+};
+
 export class FfmpegEpisodeRenderProofRenderer {
   constructor(
     private readonly ffmpeg = "ffmpeg",
     private readonly ffprobe = "ffprobe",
   ) {}
 
-  async render(job: EpisodeRenderProofJob, outputPath: string): Promise<EpisodeRenderProofTechnical> {
+  async render(job: EpisodeRenderComposition, outputPath: string): Promise<EpisodeRenderProofTechnical> {
     const duration = job.proof.sequenceEndSeconds - job.proof.sequenceStartSeconds;
     const sourceIndexes = new Map(job.sources.map((source, index) => [source.laneId, index]));
     const probeRows = await Promise.all(job.sources.map((source) => this.probe(source.locator)));
@@ -83,7 +91,7 @@ export class FfmpegEpisodeRenderProofRenderer {
   }
 
   private filterGraph(
-    job: EpisodeRenderProofJob,
+    job: EpisodeRenderComposition,
     indexes: ReadonlyMap<string, number>,
     probes: ProbeResult[],
     duration: number,

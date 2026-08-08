@@ -307,14 +307,20 @@ export async function authorizeStudioMediaSource(input: {
 
   if (!authorization.allowed) return authorization;
   const source = authorization.source as StudioSourceRecord;
-  if (source.provider === "local-episode-render-proof-worker") {
+  if (
+    source.provider === "local-episode-render-proof-worker"
+    || source.provider === "local-episode-program-render-worker"
+  ) {
     const assets = await sourceLinkedStudioAssets(input.prisma, source.id);
     const authorities = assets.flatMap((asset: any) =>
       (asset.assetAttachments ?? []).flatMap((attachment: any) => {
         const metadata = objectValue(attachment.metadataJson);
         const custodianNodeId = text(metadata.custodianNodeId);
         const storageScopeId = text(metadata.storageScopeId);
-        return metadata.schema === "quipsly-episode-render-proof-registration-v2"
+        return (
+          metadata.schema === "quipsly-episode-render-proof-registration-v2"
+          || metadata.schema === "quipsly-episode-program-render-registration-v1"
+        )
           && metadata.artifactPortability === "executor-local"
           && /^[A-Za-z0-9:_-]{8,200}$/.test(custodianNodeId)
           && /^[A-Za-z0-9:_-]{8,200}$/.test(storageScopeId)
@@ -333,7 +339,7 @@ export async function authorizeStudioMediaSource(input: {
         allowed: false,
         status: 409,
         errorCode: "LOCAL_ARTIFACT_CUSTODY_REQUIRED",
-        error: "This local proof has no unambiguous executor storage authority.",
+        error: "This local render has no unambiguous executor storage authority.",
       };
     }
     source.localArtifactAuthority = authority;

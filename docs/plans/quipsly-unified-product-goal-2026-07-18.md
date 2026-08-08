@@ -8634,3 +8634,35 @@ source upload verified` blocked `Rough cut ready for review` until complete;
 - Next: define and implement the separate generation-locked full-program
   conform contract, portable object-storage promotion, complete sync/decode
   verification, approval receipt, and explicit publish handoff.
+
+# 2026-08-08 checkpoint: full-program review conform
+
+- Advanced Studio can now freeze the complete authenticated Play Edit into a
+  generation-locked `episode-program-render` job for one named local executor.
+  It keeps the browser as the canonical editing surface while using the Mac for
+  exact-source rendering.
+- Visible edit spans become ordered, maximum-30-second chunks on a compressed
+  output clock. Explicit Skip decisions are accounted for; uncovered source
+  time, missing first-frame decisions, missing generations, and cross-executor
+  source mixtures fail closed.
+- The local worker validates source bytes before and after rendering, renews its
+  durable lease after each chunk, assembles a fast-start 1280x720/24 H.264/AAC
+  MP4, probes it, performs a complete decode, and returns an exact-executor
+  result receipt.
+- Server registration independently verifies the manifest, result, local file,
+  checksum, byte count, custody, duration, and technical receipt. Protected
+  playback requires one unambiguous registered executor authority.
+- Advanced Studio exposes a no-side-effect readiness check, named-executor
+  queue action, chunk progress, and completed playback labeled as a review
+  candidate rather than an approved master.
+- Verification: 9 shared contract/worker tests and 42 focused
+  web/server/editor tests pass; strict TypeScript passes for all three touched
+  packages; the media-processor production bundle and cache-disabled 194-page
+  standalone web build pass. A real FFmpeg integration also rendered and fully
+  decoded a two-chunk program with an explicit skipped source range.
+- Docker Desktop remained unavailable, so this checkpoint does not claim a
+  retained database/browser render. Detailed design and acceptance evidence is
+  in `docs/coordination/2026-08-08-episode-program-review-conform.md`.
+- Next: add generation-bound human review approval, then a separate durable
+  master promotion/conform contract. Publication remains another explicit
+  destination action.

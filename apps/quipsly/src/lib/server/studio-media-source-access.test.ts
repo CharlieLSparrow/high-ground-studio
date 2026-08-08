@@ -31,6 +31,13 @@ const proofSource = {
   url: "/api/ingest/media/source_episode_proof_001",
   title: "Episode edit proof",
 };
+const programSource = {
+  id: "source_episode_program_001",
+  provider: "local-episode-program-render-worker",
+  providerSourceId: "/tmp/quipsly-media-ingest/program.mp4",
+  url: "/api/ingest/media/source_episode_program_001",
+  title: "Episode program review",
+};
 const ownerAsset = {
   id: "asset_raw_001",
   isGlobal: false,
@@ -41,13 +48,26 @@ const ownerAsset = {
   assetAttachments: [{ metadataJson: {}, project: { slug: "high-ground-odyssey" } }],
 };
 
-function prismaForVariant(options: { heldRaw?: boolean; proofMetadata?: Record<string, unknown> } = {}) {
+function prismaForVariant(options: {
+  heldRaw?: boolean;
+  proofMetadata?: Record<string, unknown>;
+  programMetadata?: Record<string, unknown>;
+} = {}) {
   const proofOwnerAsset = {
     ...ownerAsset,
     id: "asset_episode_proof_001",
     url: proofSource.url,
     assetAttachments: [{
       metadataJson: options.proofMetadata ?? {},
+      project: { slug: "high-ground-odyssey" },
+    }],
+  };
+  const programOwnerAsset = {
+    ...ownerAsset,
+    id: "asset_episode_program_001",
+    url: programSource.url,
+    assetAttachments: [{
+      metadataJson: options.programMetadata ?? {},
       project: { slug: "high-ground-odyssey" },
     }],
   };
@@ -59,6 +79,8 @@ function prismaForVariant(options: { heldRaw?: boolean; proofMetadata?: Record<s
           ? rawSource
           : where.id === proofSource.id
             ? proofSource
+            : where.id === programSource.id
+              ? programSource
             : null),
     },
     studioMediaAsset: {
@@ -70,6 +92,8 @@ function prismaForVariant(options: { heldRaw?: boolean; proofMetadata?: Record<s
         ? [{ asset: ownerAsset }]
         : where.url === proofSource.url
           ? [{ asset: proofOwnerAsset }]
+          : where.url === programSource.url
+            ? [{ asset: programOwnerAsset }]
           : []),
     },
     mobileCaptureFinalizationReceipt: {
@@ -163,5 +187,73 @@ describe("studio media variant authorization", () => {
         },
       },
     });
+  });
+
+  it("returns exact custody for a registered full-program review", async () => {
+    const result = await authorizeStudioMediaSource({
+      prisma: prismaForVariant({
+        programMetadata: {
+          schema: "quipsly-episode-program-render-registration-v1",
+          artifactPortability: "executor-local",
+          custodianNodeId: "execution_worker_program_test",
+          storageScopeId: "storage_scope_program_test",
+        },
+      }),
+      actor,
+      sourceId: programSource.id,
+    });
+    expect(result).toMatchObject({
+      allowed: true,
+      source: {
+        id: programSource.id,
+        localArtifactAuthority: {
+          portability: "executor-local",
+          custodianNodeId: "execution_worker_program_test",
+          storageScopeId: "storage_scope_program_test",
+        },
+      },
+    });
+  });
+
+  it("holds a full-program review with conflicting executor receipts", async () => {
+    const prisma = prismaForVariant({
+      programMetadata: {
+        schema: "quipsly-episode-program-render-registration-v1",
+        artifactPortability: "executor-local",
+        custodianNodeId: "execution_worker_program_test",
+        storageScopeId: "storage_scope_program_test",
+      },
+    });
+    prisma.studioAssetVariant.findMany.mockResolvedValue([{
+      asset: {
+        ...ownerAsset,
+        id: "asset_episode_program_conflict",
+        url: programSource.url,
+        assetAttachments: [{
+          metadataJson: {
+            schema: "quipsly-episode-program-render-registration-v1",
+            artifactPortability: "executor-local",
+            custodianNodeId: "execution_worker_other_test",
+            storageScopeId: "storage_scope_other_test",
+          },
+          project: { slug: "high-ground-odyssey" },
+        }, {
+          metadataJson: {
+            schema: "quipsly-episode-program-render-registration-v1",
+            artifactPortability: "executor-local",
+            custodianNodeId: "execution_worker_program_test",
+            storageScopeId: "storage_scope_program_test",
+          },
+          project: { slug: "high-ground-odyssey" },
+        }],
+      },
+    }]);
+
+    await expect(authorizeStudioMediaSource({ prisma, actor, sourceId: programSource.id }))
+      .resolves.toMatchObject({
+        allowed: false,
+        status: 409,
+        errorCode: "LOCAL_ARTIFACT_CUSTODY_REQUIRED",
+      });
   });
 });

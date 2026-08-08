@@ -82,6 +82,7 @@ export class LocalExecutionPresence {
         "audio-pair-correlation",
         "episode-audio-mix",
         "episode-render-proof",
+        "episode-program-render",
         "google-drive-source-materialization",
         "source-visual-overview",
         "source-audio-navigation",
@@ -89,6 +90,7 @@ export class LocalExecutionPresence {
       renderProfiles: [
         "episode-edit-proof-1280x720-24fps-v1",
         "episode-section-review-1280x720-24fps-v1",
+        "episode-program-review-1280x720-24fps-v1",
       ],
       localOnly: true,
       directDatabaseLease: true,

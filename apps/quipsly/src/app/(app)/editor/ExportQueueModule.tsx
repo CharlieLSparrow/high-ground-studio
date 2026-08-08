@@ -16,6 +16,7 @@ import type { EpisodeRenderProfileId } from "@high-ground/quipsly-media-processi
 
 import type {
   EpisodeEditDeskPayload,
+  EpisodeProgramRenderPlan,
   EpisodeRenderPlan,
 } from "@/lib/editor/program-edit-contract";
 import type { VerifiedAdvancedStudioHandoff } from "./AdvancedStudioHandoffBanner";
@@ -50,6 +51,16 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 ** index).toFixed(index > 1 ? 1 : 0)} ${units[index]}`;
 }
 
+function formatDuration(seconds: number) {
+  const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const remainder = Math.floor(safe % 60);
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
+    : `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
 function executorTone(status: EpisodeRenderPlan["executors"][number]["status"]) {
   if (status === "ready") return "border-emerald-200 bg-emerald-50 text-emerald-950";
   if (status === "held") return "border-amber-200 bg-amber-50 text-amber-950";
@@ -69,6 +80,8 @@ export function ExportQueueModule({
   const [profile, setProfile] =
     useState<EpisodeRenderProfileId>("proof-10s");
   const [plan, setPlan] = useState<EpisodeRenderPlan | null>(null);
+  const [programPlan, setProgramPlan] =
+    useState<EpisodeProgramRenderPlan | null>(null);
   const [desk, setDesk] = useState<EpisodeEditDeskPayload | null>(
     verifiedHandoff?.payload ?? null,
   );
@@ -76,13 +89,20 @@ export function ExportQueueModule({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [queueJobId, setQueueJobId] = useState<string | null>(null);
+  const [programQueueJobId, setProgramQueueJobId] = useState<string | null>(null);
   const registeringRef = useRef(new Set<string>());
 
   const endpoint = `/api/nests/${encodeURIComponent(projectSlug)}/episode-editor`;
   const handoffRevision = verifiedHandoff?.request.branchRevision ?? null;
 
   const post = useCallback(async (
-    action: "plan-render-proof" | "queue-render-proof" | "register-render-proof",
+    action:
+      | "plan-render-proof"
+      | "queue-render-proof"
+      | "register-render-proof"
+      | "plan-program-render"
+      | "queue-program-render"
+      | "register-program-render",
     body: Record<string, unknown>,
   ) => {
     if (!verifiedHandoff) return null;
@@ -101,7 +121,9 @@ export function ExportQueueModule({
         }),
       });
       const result = await response.json().catch(() => null) as
-        | (EpisodeEditDeskPayload & { operationResult?: EpisodeRenderPlan | QueueReceipt })
+        | (EpisodeEditDeskPayload & {
+            operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | QueueReceipt;
+          })
         | { error?: string; payload?: EpisodeEditDeskPayload }
         | null;
       if (!response.ok) {
@@ -113,12 +135,15 @@ export function ExportQueueModule({
         );
       }
       const payload = result as EpisodeEditDeskPayload & {
-        operationResult?: EpisodeRenderPlan | QueueReceipt;
+        operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | QueueReceipt;
       };
       setDesk(payload);
       if (action === "plan-render-proof") {
         setPlan(payload.operationResult as EpisodeRenderPlan);
         setMessage("Readiness checked. No job, upload, cloud compute, or publication was started.");
+      } else if (action === "plan-program-render") {
+        setProgramPlan(payload.operationResult as EpisodeProgramRenderPlan);
+        setMessage("Full-program readiness checked. No render job, approval, upload, or publication was started.");
       } else if (action === "queue-render-proof") {
         const receipt = payload.operationResult as QueueReceipt;
         const jobId = receipt.job?.id ?? null;
@@ -126,8 +151,17 @@ export function ExportQueueModule({
         setMessage(jobId
           ? "The exact branch revision and executor-local sources are frozen. The selected Mac is rendering this review."
           : "The render request was accepted, but its durable job receipt was not returned.");
+      } else if (action === "queue-program-render") {
+        const receipt = payload.operationResult as QueueReceipt;
+        const jobId = receipt.job?.id ?? null;
+        setProgramQueueJobId(jobId);
+        setMessage(jobId
+          ? "The full Play Edit, exact sources, output clock, and selected Mac are frozen. Chunked rendering is underway."
+          : "The full-program request was accepted, but its durable job receipt was not returned.");
       } else {
-        setMessage("The worker output passed server verification and is ready to review.");
+        setMessage(action === "register-program-render"
+          ? "The complete program output passed server verification and is ready to watch. Approval remains separate."
+          : "The worker output passed server verification and is ready to review.");
       }
       return payload;
     } catch (caught) {
@@ -142,9 +176,15 @@ export function ExportQueueModule({
     if (!isOpen) return;
     setDesk(verifiedHandoff?.payload ?? null);
     setPlan(null);
+    setProgramPlan(null);
     setQueueJobId(null);
+    setProgramQueueJobId(null);
     setMessage("");
     setError("");
+  }, [handoffRevision, isOpen, verifiedHandoff]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     if (!verifiedHandoff || handoffRevision === null) return;
     void post("plan-render-proof", {
       sequenceTime: sequenceAtSeconds,
@@ -157,17 +197,26 @@ export function ExportQueueModule({
     () => desk?.executionInspection.jobs.find((job) => job.id === queueJobId) ?? null,
     [desk?.executionInspection.jobs, queueJobId],
   );
+  const programQueueJob = useMemo(
+    () => desk?.executionInspection.jobs.find((job) => job.id === programQueueJobId) ?? null,
+    [desk?.executionInspection.jobs, programQueueJobId],
+  );
+  const activeJob = programQueueJob ?? queueJob;
+  const activeJobId = programQueueJobId ?? queueJobId;
+  const activeRegistrationAction = programQueueJob
+    ? "register-program-render" as const
+    : "register-render-proof" as const;
 
   useEffect(() => {
-    if (!isOpen || !verifiedHandoff || !queueJobId || !queueJob) return;
-    if (queueJob.status === "output-ready") {
-      if (registeringRef.current.has(queueJobId)) return;
-      registeringRef.current.add(queueJobId);
-      void post("register-render-proof", { jobId: queueJobId })
-        .finally(() => registeringRef.current.delete(queueJobId));
+    if (!isOpen || !verifiedHandoff || !activeJobId || !activeJob) return;
+    if (activeJob.status === "output-ready") {
+      if (registeringRef.current.has(activeJobId)) return;
+      registeringRef.current.add(activeJobId);
+      void post(activeRegistrationAction, { jobId: activeJobId })
+        .finally(() => registeringRef.current.delete(activeJobId));
       return;
     }
-    if (!["queued", "processing"].includes(queueJob.status)) return;
+    if (!["queued", "processing"].includes(activeJob.status)) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams({ episode: verifiedHandoff.request.episodeSlug });
@@ -188,7 +237,7 @@ export function ExportQueueModule({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [endpoint, isOpen, post, queueJob, queueJobId, verifiedHandoff]);
+  }, [activeJob, activeJobId, activeRegistrationAction, endpoint, isOpen, post, verifiedHandoff]);
 
   if (!isOpen) return null;
 
@@ -197,6 +246,9 @@ export function ExportQueueModule({
   const returnHref = `/nests/${encodeURIComponent(projectSlug)}/episodes/${encodeURIComponent(episodeSlug)}?mode=edit`;
   const completedProof = queueJob?.status === "completed" && queueJob.playbackUrl
     ? queueJob
+    : null;
+  const completedProgram = programQueueJob?.status === "completed" && programQueueJob.playbackUrl
+    ? programQueueJob
     : null;
 
   return (
@@ -304,20 +356,98 @@ export function ExportQueueModule({
               </>
             ) : null}
 
-            {queueJob ? (
+            <section className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-indigo-950">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="max-w-xl">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700">Complete Play Edit</p>
+                  <h3 className="mt-1 text-xl font-black">Full program review</h3>
+                  <p className="mt-2 text-xs leading-5 text-indigo-900/75">
+                    Freeze every visible decision into generation-locked chunks, compress explicit Skip ranges on the output clock, and assemble one complete local review. This is the watch-the-whole-episode gate before master approval.
+                  </p>
+                </div>
+                {!programPlan ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void post("plan-program-render", {
+                      expectedRevision: verifiedHandoff.request.branchRevision,
+                      executorNodeId: plan?.executors.find((executor) => executor.id === "local-mac")?.executorNodeId ?? null,
+                    })}
+                    className="inline-flex min-h-10 items-center rounded-xl bg-indigo-950 px-4 text-xs font-black text-white disabled:opacity-40"
+                  >
+                    Check full program
+                  </button>
+                ) : null}
+              </div>
+
+              {programPlan ? (
+                <>
+                  <dl className="mt-4 grid gap-3 rounded-xl bg-white/80 p-3 text-xs sm:grid-cols-4">
+                    <div><dt className="font-black uppercase text-indigo-700">Play Edit</dt><dd className="mt-1 font-black">{formatDuration(programPlan.program.outputDurationSeconds)}</dd></div>
+                    <div><dt className="font-black uppercase text-indigo-700">Skipped</dt><dd className="mt-1 font-black">{formatDuration(programPlan.program.skippedDurationSeconds)}</dd></div>
+                    <div><dt className="font-black uppercase text-indigo-700">Chunks</dt><dd className="mt-1 font-black">{programPlan.program.chunkCount}</dd></div>
+                    <div><dt className="font-black uppercase text-indigo-700">Exact sources</dt><dd className="mt-1 font-black">{programPlan.sources.exactLocalCount}/{programPlan.sources.requiredCount} · {formatBytes(programPlan.sources.totalBytes)}</dd></div>
+                  </dl>
+                  <article className={`mt-3 rounded-xl border p-3 ${executorTone(programPlan.executor.status)}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <strong className="flex items-center gap-2 text-sm"><HardDrive className="h-5 w-5" />{programPlan.executor.label}</strong>
+                      <span className="rounded-full bg-white/70 px-2 py-1 text-[9px] font-black uppercase">{programPlan.executor.status}</span>
+                    </div>
+                    <p className="mt-2 text-xs leading-5">{programPlan.executor.detail}</p>
+                    <p className="mt-1 text-[11px] opacity-75">{programPlan.executor.qualityDetail} · {programPlan.executor.costDetail}</p>
+                    <button
+                      type="button"
+                      disabled={!programPlan.executor.canQueue || busy || programPlan.branchRevision !== verifiedHandoff.request.branchRevision}
+                      onClick={() => void post("queue-program-render", {
+                        expectedRevision: programPlan.branchRevision,
+                        executorNodeId: programPlan.executor.executorNodeId ?? null,
+                      })}
+                      className="mt-3 inline-flex min-h-10 items-center rounded-xl bg-indigo-950 px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Render full program on {programPlan.executor.label}
+                    </button>
+                  </article>
+                  <p className="mt-3 text-[11px] font-bold text-indigo-900/75">
+                    The candidate stays on this executor. Completing it creates no approval receipt, master promotion, upload, or publication.
+                  </p>
+                </>
+              ) : null}
+            </section>
+
+            {activeJob ? (
               <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950">
                 <div className="flex items-center justify-between gap-3">
                   <strong className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> Durable render job</strong>
-                  <span className="rounded-full bg-white px-2 py-1 text-[9px] font-black uppercase">{queueJob.status}</span>
+                  <span className="rounded-full bg-white px-2 py-1 text-[9px] font-black uppercase">{activeJob.status}</span>
                 </div>
-                <p className="mt-2 font-mono text-[11px]">{queueJob.id}</p>
-                {queueJob.error ? <p className="mt-2 text-xs font-bold text-rose-800">{queueJob.error}</p> : null}
+                <p className="mt-2 font-mono text-[11px]">{activeJob.id}</p>
+                {activeJob.progress ? (
+                  <div className="mt-3" aria-label={`Render progress ${activeJob.progress.completedUnits} of ${activeJob.progress.totalUnits} chunks`}>
+                    <div className="flex items-center justify-between text-[11px] font-black">
+                      <span>{activeJob.progress.completedUnits} of {activeJob.progress.totalUnits} chunks assembled</span>
+                      <span>{Math.round(activeJob.progress.fraction * 100)}%</span>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-indigo-100">
+                      <div
+                        className="h-full rounded-full bg-indigo-700 transition-[width]"
+                        style={{ width: `${Math.round(activeJob.progress.fraction * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                {activeJob.error ? <p className="mt-2 text-xs font-bold text-rose-800">{activeJob.error}</p> : null}
               </div>
             ) : null}
             {completedProof ? (
               <div className="mt-5 overflow-hidden rounded-2xl border border-emerald-300 bg-black">
                 <video controls playsInline preload="metadata" src={completedProof.playbackUrl ?? undefined} className="aspect-video w-full bg-black" />
                 <p className="bg-emerald-950 px-4 py-3 text-xs font-bold text-emerald-100">Verified local proof · shared revision {completedProof.branchRevision}</p>
+              </div>
+            ) : null}
+            {completedProgram ? (
+              <div className="mt-5 overflow-hidden rounded-2xl border border-indigo-300 bg-black">
+                <video controls playsInline preload="metadata" src={completedProgram.playbackUrl ?? undefined} className="aspect-video w-full bg-black" />
+                <p className="bg-indigo-950 px-4 py-3 text-xs font-bold text-indigo-100">Verified full-program review · shared revision {completedProgram.branchRevision} · not an approved master</p>
               </div>
             ) : null}
 

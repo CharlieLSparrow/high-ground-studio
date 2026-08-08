@@ -237,6 +237,7 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
           branchRevision: null,
           proofStartSeconds: null,
           proofEndSeconds: null,
+          progress: null,
           playbackUrl: null,
         }],
       },
@@ -266,6 +267,7 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
             branchRevision: 1,
             proofStartSeconds: 0,
             proofEndSeconds: 10,
+            progress: null,
             playbackUrl: "/api/ingest/media/proof-revision-1",
           },
           {
@@ -282,6 +284,7 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
             branchRevision: 3,
             proofStartSeconds: 0,
             proofEndSeconds: 10,
+            progress: null,
             playbackUrl: "/api/ingest/media/proof-revision-3",
           },
         ],

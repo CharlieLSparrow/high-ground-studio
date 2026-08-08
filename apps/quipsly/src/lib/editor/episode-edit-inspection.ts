@@ -5,7 +5,10 @@ import type {
   EpisodeEditTranscriptProjection,
   EpisodeEditTranscriptSegment,
 } from "@/lib/editor/program-edit-contract";
-import { episodeRenderProfile } from "@high-ground/quipsly-media-processing";
+import {
+  EPISODE_PROGRAM_REVIEW_PROFILE,
+  episodeRenderProfile,
+} from "@high-ground/quipsly-media-processing";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -165,7 +168,10 @@ export function projectEpisodeEditProcessingJob(row: {
   const provider = providerFrom(row.resultJson) ?? providerFrom(row.inputJson);
   const input = record(row.inputJson);
   const proof = record(input.proof);
+  const program = record(input.program);
   const result = record(row.resultJson);
+  const progress = record(result.progress);
+  const receiptWorker = record(record(result.receipt).worker);
   const registration = record(result.registration);
   let renderProfile: EpisodeEditProcessingJob["renderProfile"] = null;
   if (row.type === "episode-render-proof") {
@@ -174,7 +180,30 @@ export function projectEpisodeEditProcessingJob(row: {
     } catch {
       renderProfile = null;
     }
+  } else if (
+    row.type === "episode-program-render"
+    && input.renderProfile === EPISODE_PROGRAM_REVIEW_PROFILE
+  ) {
+    renderProfile = EPISODE_PROGRAM_REVIEW_PROFILE;
   }
+  const totalChunks = number(progress.chunkCount, program.chunkCount);
+  const renderedChunks = number(
+    progress.renderedChunkCount,
+    receiptWorker.renderedChunkCount,
+  );
+  const programProgress = row.type === "episode-program-render"
+    && totalChunks !== null
+    && totalChunks > 0
+    && renderedChunks !== null
+    && renderedChunks >= 0
+    && renderedChunks <= totalChunks
+    ? {
+        completedUnits: renderedChunks,
+        totalUnits: totalChunks,
+        fraction: Math.min(1, Math.max(0, renderedChunks / totalChunks)),
+        unit: "chunks" as const,
+      }
+    : null;
   return {
     id: row.id,
     type: row.type,
@@ -189,6 +218,7 @@ export function projectEpisodeEditProcessingJob(row: {
     branchRevision: number(input.branchRevision),
     proofStartSeconds: number(proof.sequenceStartSeconds),
     proofEndSeconds: number(proof.sequenceEndSeconds),
+    progress: programProgress,
     playbackUrl: text(registration.playbackUrl),
   };
 }

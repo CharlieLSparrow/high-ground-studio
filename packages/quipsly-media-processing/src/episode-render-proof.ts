@@ -208,7 +208,7 @@ export function parseEpisodeRenderProofJob(
     || declaredBoundaries.localArtifactsRequireExactExecutor !== true
     || declaredBoundaries.editorIntentIsPortableWithoutProofBytes !== true
   ) invalid("Episode render proof job contract or target authority is invalid.");
-  const sources = array(row.sources).map(parseSource);
+  const sources = array(row.sources).map(parseEpisodeRenderProofSource);
   if (sources.some((source) => !sameExecutorLocalArtifactAuthority(executionTarget, source))) {
     invalid("Episode render proof sources must belong to the selected executor.");
   }
@@ -357,7 +357,7 @@ export function newEpisodeRenderProofResult(
   }, expectedJob);
 }
 
-function parseSource(value: unknown): EpisodeRenderProofSource {
+export function parseEpisodeRenderProofSource(value: unknown): EpisodeRenderProofSource {
   const row = record(value);
   const authority = parseExecutorLocalArtifactAuthority(row, "sources");
   const kind = row.kind === "audio" || row.kind === "video" ? row.kind : invalid("sources.kind");

@@ -93,6 +93,37 @@ describe("Episode edit inspection projections", () => {
     }));
   });
 
+  it("projects full-program chunk progress without turning a review into a master", () => {
+    const job = projectEpisodeEditProcessingJob({
+      id: "program-job-1",
+      type: "episode-program-render",
+      status: "processing",
+      inputJson: {
+        renderProfile: "episode-program-review-1280x720-24fps-v1",
+        branchRevision: 12,
+        program: { chunkCount: 8 },
+        executionTarget: { provider: "local" },
+      },
+      resultJson: {
+        progress: { renderedChunkCount: 3, chunkCount: 8, fraction: 0.375 },
+      },
+      updatedAt: new Date("2026-08-08T12:00:00.000Z"),
+      completedAt: null,
+      error: null,
+    });
+
+    expect(job).toEqual(expect.objectContaining({
+      renderProfile: "episode-program-review-1280x720-24fps-v1",
+      branchRevision: 12,
+      progress: {
+        completedUnits: 3,
+        totalUnits: 8,
+        fraction: 0.375,
+        unit: "chunks",
+      },
+    }));
+  });
+
   it("treats only a current capability heartbeat as an observed local executor", () => {
     const worker = projectEpisodeEditExecutionWorker({
       id: "worker-1",

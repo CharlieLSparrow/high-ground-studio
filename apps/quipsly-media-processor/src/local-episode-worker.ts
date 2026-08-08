@@ -63,6 +63,10 @@ import {
   runOneLocalEpisodeRenderProofJob,
 } from "./local-episode-render-proof-worker.js";
 import {
+  newLocalEpisodeProgramRenderRuntime,
+  runOneLocalEpisodeProgramRenderJob,
+} from "./local-episode-program-render-worker.js";
+import {
   newLocalSpatialReframeRuntime,
   runOneLocalSpatialReframeJob,
 } from "./local-spatial-reframe-worker.js";
@@ -690,6 +694,15 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const episodeProgramRender = newLocalEpisodeProgramRenderRuntime({
+    pool,
+    executionId,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   const spatialVaultRoot = path.resolve(
     process.env.QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT ||
       path.join(homedir(), "Movies", "Quipsly Media Vault"),
@@ -903,16 +916,24 @@ async function main() {
           : mixResult;
       const workResult =
         episodeProofResult.disposition === "idle"
+          ? await runOneLocalEpisodeProgramRenderJob(
+              episodeProgramRender.store,
+              episodeProgramRender.renderer,
+              episodeProgramRender.options,
+            )
+          : episodeProofResult;
+      const spatialResult =
+        workResult.disposition === "idle"
           ? await runOneLocalSpatialReframeJob(
               spatialReframe.store,
               spatialReframe.renderer,
               spatialReframe.options,
             )
-          : episodeProofResult;
-      const result =
-        workResult.disposition === "idle"
-          ? await localMediaReconciler.maybeRun(once)
           : workResult;
+      const result =
+        spatialResult.disposition === "idle"
+          ? await localMediaReconciler.maybeRun(once)
+          : spatialResult;
       if (result.disposition !== "idle") {
         process.stdout.write(
           `${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`,

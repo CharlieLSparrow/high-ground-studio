@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type {
   EpisodeEditDeskPayload,
+  EpisodeProgramRenderPlan,
   EpisodeRenderPlan,
 } from "@/lib/editor/program-edit-contract";
 import type { VerifiedAdvancedStudioHandoff } from "./AdvancedStudioHandoffBanner";
@@ -129,6 +130,52 @@ const plan: EpisodeRenderPlan = {
   },
 };
 
+const programPlan: EpisodeProgramRenderPlan = {
+  schema: "quipsly-episode-program-render-plan-v1",
+  branchRevision: 7,
+  renderProfile: "episode-program-review-1280x720-24fps-v1",
+  profileLabel: "Full program review",
+  profileDescription: "One exact-source review candidate of the complete Play Edit.",
+  program: {
+    sequenceDurationSeconds: 120,
+    outputDurationSeconds: 110,
+    skippedDurationSeconds: 10,
+    chunkCount: 4,
+    visibleDecisionCount: 3,
+  },
+  output: {
+    width: 1280,
+    height: 720,
+    fps: 24,
+    videoCodec: "h264",
+    audioCodec: "aac",
+  },
+  sources: {
+    requiredCount: 2,
+    exactLocalCount: 2,
+    totalBytes: 2_097_152,
+    labels: ["Charlie", "Homer"],
+  },
+  executor: {
+    id: "local-mac",
+    label: "Wall-E Mac",
+    executorNodeId: "execution_worker_test",
+    artifactPortability: "executor-local",
+    status: "ready",
+    canQueue: true,
+    detail: "This Mac owns every exact source generation.",
+    costKind: "none",
+    costDetail: "No cloud compute",
+    qualityDetail: "Exact local source bytes",
+  },
+  boundaries: {
+    createsNoJob: true,
+    sourceMediaRemainsImmutable: true,
+    outputIsNotApprovedMaster: true,
+    publicationNotStarted: true,
+  },
+};
+
 function response(value: unknown, ok = true) {
   return Promise.resolve({ ok, json: async () => value } as Response);
 }
@@ -206,6 +253,7 @@ describe("Advanced Studio render readiness", () => {
             branchRevision: 7,
             proofStartSeconds: 42.25,
             proofEndSeconds: 52.25,
+            progress: null,
             playbackUrl: null,
           }],
         },
@@ -230,6 +278,75 @@ describe("Advanced Studio render readiness", () => {
     const queueRequest = (global.fetch as jest.Mock).mock.calls[1];
     expect(JSON.parse(queueRequest[1].body)).toEqual(expect.objectContaining({
       action: "queue-render-proof",
+      expectedRevision: 7,
+      executorNodeId: "execution_worker_test",
+    }));
+  });
+
+  it("plans and queues the complete Play Edit without claiming approval", async () => {
+    global.fetch = jest.fn()
+      .mockImplementationOnce(() => response({ ...payload, operationResult: plan }))
+      .mockImplementationOnce(() => response({ ...payload, operationResult: programPlan }))
+      .mockImplementationOnce(() => response({
+        ...payload,
+        executionInspection: {
+          ...payload.executionInspection,
+          jobs: [{
+            id: "episode_program_job_12345678",
+            type: "episode-program-render",
+            status: "processing",
+            lane: "local-worker",
+            provider: "local",
+            updatedAt: "2026-08-08T12:00:01.000Z",
+            completedAt: null,
+            error: null,
+            manifestSha256: "e".repeat(64),
+            renderProfile: "episode-program-review-1280x720-24fps-v1",
+            branchRevision: 7,
+            proofStartSeconds: null,
+            proofEndSeconds: null,
+            progress: {
+              completedUnits: 1,
+              totalUnits: 4,
+              fraction: 0.25,
+              unit: "chunks",
+            },
+            playbackUrl: null,
+          }],
+        },
+        operationResult: {
+          job: {
+            id: "episode_program_job_12345678",
+            status: "processing",
+            branchRevision: 7,
+            manifestSha256: "e".repeat(64),
+          },
+        },
+      }));
+    subject();
+
+    await screen.findByText(/2\/2 exact here/);
+    fireEvent.click(await screen.findByRole("button", { name: "Check full program" }));
+    expect(await screen.findByText("1:50")).toBeInTheDocument();
+    expect(screen.getByText("0:10")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.getByText(/creates no approval receipt/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "Render full program on Wall-E Mac",
+    }));
+
+    expect(await screen.findByText("episode_program_job_12345678")).toBeInTheDocument();
+    expect(screen.getByText("1 of 4 chunks assembled")).toBeInTheDocument();
+    expect(screen.getByText("25%")).toBeInTheDocument();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(3));
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[1][1].body)).toEqual(expect.objectContaining({
+      action: "plan-program-render",
+      expectedRevision: 7,
+      executorNodeId: "execution_worker_test",
+    }));
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[2][1].body)).toEqual(expect.objectContaining({
+      action: "queue-program-render",
       expectedRevision: 7,
       executorNodeId: "execution_worker_test",
     }));

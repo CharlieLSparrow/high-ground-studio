@@ -171,10 +171,19 @@ export type EpisodeEditProcessingJob = {
   completedAt: string | null;
   error: string | null;
   manifestSha256: string | null;
-  renderProfile: EpisodeRenderProfileId | null;
+  renderProfile:
+    | EpisodeRenderProfileId
+    | "episode-program-review-1280x720-24fps-v1"
+    | null;
   branchRevision: number | null;
   proofStartSeconds: number | null;
   proofEndSeconds: number | null;
+  progress: {
+    completedUnits: number;
+    totalUnits: number;
+    fraction: number;
+    unit: "chunks";
+  } | null;
   playbackUrl: string | null;
 };
 
@@ -219,6 +228,41 @@ export type EpisodeRenderPlan = {
     createsNoJob: true;
     sourceMediaRemainsImmutable: true;
     cloudUploadNotStarted: true;
+    publicationNotStarted: true;
+  };
+};
+
+export type EpisodeProgramRenderPlan = {
+  schema: "quipsly-episode-program-render-plan-v1";
+  branchRevision: number;
+  renderProfile: "episode-program-review-1280x720-24fps-v1";
+  profileLabel: "Full program review";
+  profileDescription: string;
+  program: {
+    sequenceDurationSeconds: number;
+    outputDurationSeconds: number;
+    skippedDurationSeconds: number;
+    chunkCount: number;
+    visibleDecisionCount: number;
+  };
+  output: {
+    width: 1280;
+    height: 720;
+    fps: 24;
+    videoCodec: "h264";
+    audioCodec: "aac";
+  };
+  sources: {
+    requiredCount: number;
+    exactLocalCount: number;
+    totalBytes: number;
+    labels: string[];
+  };
+  executor: EpisodeRenderExecutorPlan;
+  boundaries: {
+    createsNoJob: true;
+    sourceMediaRemainsImmutable: true;
+    outputIsNotApprovedMaster: true;
     publicationNotStarted: true;
   };
 };
