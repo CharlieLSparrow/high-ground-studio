@@ -363,6 +363,7 @@ export async function POST(
         libraryRootId: text(body.libraryRootId) || null,
         libraryRootName: text(body.libraryRootName) || null,
         libraryRootResourceKey: text(body.libraryRootResourceKey) || null,
+        existingLibraryId: text(body.existingLibraryId) || null,
         clientRequestId: text(body.clientRequestId),
         requestUrl: request.url,
       });

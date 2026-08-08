@@ -42,6 +42,7 @@ type ExternalMediaLibrary = {
   canRefresh: boolean;
   connectionState: string;
   connectedByCurrentUser: boolean;
+  connectionId?: string | null;
   discoveryMode?: "folder-scan" | "selected-files";
 };
 
@@ -208,12 +209,14 @@ function FollowedDriveLibraries({
   pending,
   onRefresh,
   onPrepare,
+  onAdd,
 }: {
   libraries?: ExternalMediaLibrary[];
   canWrite: boolean;
   pending: boolean;
   onRefresh(library: ExternalMediaLibrary): void;
   onPrepare(library: ExternalMediaLibrary): void;
+  onAdd(library: ExternalMediaLibrary): void;
 }) {
   if (!libraries?.length) return null;
   return (
@@ -313,11 +316,23 @@ function FollowedDriveLibraries({
             </>
           ) : null}
           {library.discoveryMode === "selected-files" ? (
-            <p className="mt-2 text-[9px] font-semibold leading-4 text-teal-900">
-              Least-privilege library: Refresh rechecks the exact files you
-              selected. Use Choose 360 files again to grant and add another
-              camera batch; Quipsly does not scan unrelated Drive content.
-            </p>
+            <div className="mt-2 rounded-xl border border-teal-200 bg-teal-50/70 p-2">
+              <p className="text-[9px] font-semibold leading-4 text-teal-900">
+                Least-privilege library: Refresh rechecks only the exact files
+                you selected. Quipsly does not scan unrelated Drive content.
+              </p>
+              {library.connectedByCurrentUser ? (
+                <button
+                  type="button"
+                  disabled={!canWrite || pending || !library.canRefresh}
+                  onClick={() => onAdd(library)}
+                  className="mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-teal-400 bg-white px-3 text-[10px] font-black text-teal-950 disabled:opacity-50"
+                >
+                  <FileVideo2 size={13} aria-hidden="true" />
+                  Add another camera batch
+                </button>
+              ) : null}
+            </div>
           ) : null}
           {library.connectedByCurrentUser && library.readySegmentCount > 0 ? (
             <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
@@ -493,6 +508,7 @@ export function GoogleDriveSourcePicker({
   async function attach360Documents(
     connectionId: string,
     documents: PickerDocument[],
+    targetLibrary?: ExternalMediaLibrary | null,
   ) {
     const selections = documents
       .filter((document) => Boolean(document.id))
@@ -514,6 +530,7 @@ export function GoogleDriveSourcePicker({
           libraryRootId: folderSelection?.id ?? null,
           libraryRootName: folderPlan?.root.name ?? null,
           libraryRootResourceKey: folderSelection?.resourceKey ?? null,
+          existingLibraryId: targetLibrary?.id ?? null,
           clientRequestId: crypto.randomUUID(),
         }),
       },
@@ -574,8 +591,12 @@ export function GoogleDriveSourcePicker({
     return payload.operation.plan;
   }
 
-  async function browseDrive(mode: "files" | "folder" | "360-files") {
-    if (!selectedConnectionId) return;
+  async function browseDrive(
+    mode: "files" | "folder" | "360-files",
+    targetLibrary?: ExternalMediaLibrary | null,
+  ) {
+    const pickerConnectionId = targetLibrary?.connectionId ?? selectedConnectionId;
+    if (!pickerConnectionId) return;
     setPending(true);
     setError(null);
     setMessage(null);
@@ -585,7 +606,7 @@ export function GoogleDriveSourcePicker({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ connectionId: selectedConnectionId }),
+          body: JSON.stringify({ connectionId: pickerConnectionId }),
         },
       );
       const token = (await tokenResponse.json()) as {
@@ -640,7 +661,11 @@ export function GoogleDriveSourcePicker({
               mode === "folder"
                 ? inspectFolder(token.connectionId!, documents[0] ?? {})
                 : mode === "360-files"
-                  ? attach360Documents(token.connectionId!, documents)
+                  ? attach360Documents(
+                      token.connectionId!,
+                      documents,
+                      targetLibrary,
+                    )
                   : attachDocuments(token.connectionId!, documents);
             void operation
               .then((result) => {
@@ -932,6 +957,7 @@ export function GoogleDriveSourcePicker({
           pending={pending}
           onRefresh={(library) => void refreshLibrary(library)}
           onPrepare={(library) => void prepareLibraryNavigation(library)}
+          onAdd={(library) => void browseDrive("360-files", library)}
         />
       ) : null}
       {!loadingConnections && verifiedConnections.length ? (

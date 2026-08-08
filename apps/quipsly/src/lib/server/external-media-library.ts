@@ -221,6 +221,7 @@ function publicLibrary(
     lastCheckedAt: Date;
     lastSuccessfulRefreshAt: Date;
     createdByUserId: string;
+    connectionId: string | null;
     providerLocatorJson: unknown;
     healthJson: unknown;
     connection: { userId: string; status: string } | null;
@@ -254,6 +255,11 @@ function publicLibrary(
     canRefresh:
       library.connection?.userId === actorUserId &&
       library.connection.status === "verified",
+    connectionId:
+      library.connection?.userId === actorUserId &&
+      library.connection.status === "verified"
+        ? library.connectionId
+        : null,
     connectionState: library.connection?.status ?? "unavailable",
     connectedByCurrentUser: library.createdByUserId === actorUserId,
     discoveryMode:

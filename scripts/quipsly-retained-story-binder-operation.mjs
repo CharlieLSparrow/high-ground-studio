@@ -275,7 +275,9 @@ try {
   if (storyPage.status !== 200 || storyEvidence.some((value) => !storyHtml.includes(value))) throw new Error("The retained Story page did not render the complete binder controls and productive section.");
   const sourceInventoryWindow = workspacePayload?.workspace?.sourceInventoryWindow;
   const retainedSpatialPackage = workspacePayload?.workspace?.sourceSets?.find((sourceSet) => sourceSet?.displayName?.includes("Insta360"));
+  const ownedSelectedLibrary = workspacePayload?.workspace?.externalMediaLibraries?.find((library) => library?.discoveryMode === "selected-files" && library?.canRefresh);
   if (workspaceResponse.status !== 200 || !sourceInventoryWindow || !retainedSpatialPackage) throw new Error("The authenticated Source bin did not project retained inventory capacity and the Insta360 package.");
+  if (ownedSelectedLibrary && !ownedSelectedLibrary.connectionId) throw new Error("The owned selected-file library did not expose its safe connection target for adding another camera batch.");
   if (writingPage.status !== 200 || writingEvidence.some((value) => !writingHtml.includes(value))) throw new Error("The retained writing page did not render its binder context.");
   if (!finalProductive || finalProductive.document?.id !== productiveWriting.documentId) throw new Error("The productive section lost its writing document in the final projection.");
   if (!archivedQa.archivedAt || !archivedQa.document || finalBoard.sections.some((section) => section.id === archivedQa.id)) throw new Error("The QA section did not archive while retaining its writing.");
@@ -316,6 +318,13 @@ try {
       collaborationProxyReady: Boolean(retainedSpatialPackage.sourceClockRevision?.collaborationProxy),
       spatialStitchMasterReady: Boolean(retainedSpatialPackage.sourceClockRevision?.spatialStitchMaster),
       inventoryWindow: sourceInventoryWindow,
+      ownedSelectedLibrary: ownedSelectedLibrary ? {
+        id: ownedSelectedLibrary.id,
+        name: ownedSelectedLibrary.name,
+        fileCount: ownedSelectedLibrary.totalFileCount,
+        readySegmentCount: ownedSelectedLibrary.readySegmentCount,
+        addTargetReady: Boolean(ownedSelectedLibrary.connectionId),
+      } : null,
     },
     sourceCollection: {
       id: retainedCollection.id,

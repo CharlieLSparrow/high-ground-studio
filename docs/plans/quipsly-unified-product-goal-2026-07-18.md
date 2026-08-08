@@ -8352,3 +8352,22 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   authenticated source-bin API, rendered the canonical shared editor at HTTP
   200, preserved all four promote/reconcile/withdraw/restore operations,
   rejected provenance stripping, and left source media unchanged.
+
+## 2026-08-08 incremental Drive camera-library checkpoint
+
+- Added **Add another camera batch** directly to owned, least-privilege
+  followed libraries. The creator no longer has to infer that the global file
+  picker will merge new INSV/LRV companions into the right library.
+- The browser targets an opaque Quipsly library ID. The server resolves its
+  retained Drive root, resource key, shared-drive context, exact prior
+  selection manifest, and verified owner connection; provider locators remain
+  server-only.
+- Multiple Drive accounts no longer create an accidental authority ambiguity:
+  the library's own verified connection supplies both Picker access and server
+  verification. Collaborators retain health/read access but never receive the
+  connection target or the add control.
+- A read-only inspection of the newly shared parent found eight camera-batch
+  folders with a mix of complete INSV/LRV pairs, empty/in-flight folders, and
+  one zero-byte observation. No files were downloaded or changed. This
+  validates the ready/held/not-observed model and the need for incremental
+  batch grants; it is not represented as an in-app OAuth attachment.

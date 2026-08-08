@@ -990,21 +990,45 @@ export async function attachGoogleDriveFilesToNest(input: {
   libraryRootId?: string | null;
   libraryRootName?: string | null;
   libraryRootResourceKey?: string | null;
+  existingLibraryId?: string | null;
   clientRequestId: string;
   requestUrl: string;
   environment?: NodeJS.ProcessEnv;
 }) {
+  const targetedLibrary = input.existingLibraryId
+    ? await input.prisma.studioExternalMediaLibrary.findFirst({
+        where: {
+          id: input.existingLibraryId,
+          projectId: input.projectId,
+          provider: "google-drive",
+        },
+        select: {
+          connectionId: true,
+          externalRootId: true,
+          sharedDriveId: true,
+          name: true,
+          providerLocatorJson: true,
+        },
+      })
+    : null;
+  if (input.existingLibraryId && !targetedLibrary) {
+    throw new GoogleDriveSourceError(
+      "That followed Drive library is not available in this Nest.",
+      "drive-library-not-found",
+      404,
+    );
+  }
   const access = await getGoogleDriveAccess({
     prisma: input.prisma,
     userId: input.actorUserId,
-    connectionId: input.connectionId,
+    connectionId: targetedLibrary?.connectionId ?? input.connectionId,
     requestUrl: input.requestUrl,
     environment: input.environment,
   });
-  const externalRootId = input.libraryRootId
+  const externalRootId = targetedLibrary?.externalRootId ?? (input.libraryRootId
     ? fileId(input.libraryRootId, "The selected Drive library root")
-    : `picker:${access.connection.id}`;
-  const existingLibrary =
+    : `picker:${access.connection.id}`);
+  const existingLibrary = targetedLibrary ??
     await input.prisma.studioExternalMediaLibrary.findUnique({
       where: {
         projectId_provider_externalRootId: {
@@ -1013,7 +1037,13 @@ export async function attachGoogleDriveFilesToNest(input: {
           externalRootId,
         },
       },
-      select: { connectionId: true, providerLocatorJson: true },
+      select: {
+        connectionId: true,
+        externalRootId: true,
+        sharedDriveId: true,
+        name: true,
+        providerLocatorJson: true,
+      },
     });
   if (
     existingLibrary?.connectionId &&
@@ -1037,9 +1067,12 @@ export async function attachGoogleDriveFilesToNest(input: {
     connectionId: access.connection.id,
     selections,
   });
-  const rootResourceKey = resourceKey(input.libraryRootResourceKey);
+  const rootResourceKey = resourceKey(input.libraryRootResourceKey)
+    ?? locatorResourceKey(existingLibrary?.providerLocatorJson);
   const rootName =
-    input.libraryRootName?.trim().slice(0, 240) || plan.root.name;
+    input.libraryRootName?.trim().slice(0, 240)
+    || existingLibrary?.name
+    || plan.root.name;
   const libraryPlan: GoogleDriveMediaLibraryPlan = {
     ...plan,
     root: { id: externalRootId, name: rootName },
@@ -1066,7 +1099,7 @@ export async function attachGoogleDriveFilesToNest(input: {
     actorEmail: input.actorEmail,
     connectionId: access.connection.id,
     externalRootId,
-    sharedDriveId: null,
+    sharedDriveId: existingLibrary?.sharedDriveId ?? null,
     resourceKey: rootResourceKey,
     selectionManifest: selections.map((selection) => ({
       externalFileId: selection.externalFileId,

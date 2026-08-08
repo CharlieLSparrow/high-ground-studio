@@ -95,6 +95,14 @@ least-privilege path. The creator selects the matching INSV and LRV files;
 Quipsly verifies each selected file, groups them by Drive parent and camera
 clock, and creates the same source-unit contract.
 
+A selected-file library exposes **Add another camera batch** only to the owner
+of its verified Drive connection. The Picker token comes from that exact
+connection and the attach request targets the library's opaque Quipsly ID—not
+a provider folder locator returned to the browser. The server resolves the
+retained root, resource key, shared-drive context, and prior selection manifest,
+then unions the newly granted files. A stale account selector cannot transfer
+refresh authority or accidentally create a disconnected sibling library.
+
 The general **Choose other Drive files** path remains separate so research and
 non-Insta360 source intake is not forced into the camera package model.
 

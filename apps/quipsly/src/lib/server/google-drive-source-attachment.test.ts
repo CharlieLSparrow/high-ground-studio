@@ -197,7 +197,7 @@ describe("Google Drive selected-file package attachment", () => {
     );
   });
 
-  it("unions a later Picker grant with the retained least-privilege manifest", async () => {
+  it("adds a later Picker grant to the explicitly targeted least-privilege library", async () => {
     getAccess.mockResolvedValue({
       accessToken: "short-lived-token",
       connection: { id: "connection_01" },
@@ -239,8 +239,11 @@ describe("Google Drive selected-file package attachment", () => {
         upsert: jest.fn(async () => ({ id: "source_unit_02" })),
       },
       studioExternalMediaLibrary: {
-        findUnique: jest.fn(async () => ({
+        findFirst: jest.fn(async () => ({
           connectionId: "connection_01",
+          externalRootId: "picker:connection_01",
+          sharedDriveId: "shared_drive_01",
+          name: "Growing 360 Library",
           providerLocatorJson: {
             schema: "quipsly-google-drive-library-locator-v2",
             mode: "selection-manifest",
@@ -272,16 +275,17 @@ describe("Google Drive selected-file package attachment", () => {
       projectId: "project_01",
       actorUserId: "user_01",
       actorEmail: "creator@example.test",
-      connectionId: "connection_01",
+      connectionId: "another-selected-connection",
       selections: [{ externalFileId: "added_insv_02" }],
-      libraryRootId: "drive_root_02",
-      libraryRootName: "Growing 360 Library",
+      existingLibraryId: "library_02",
       clientRequestId: "019f7c9d-a1b2-7c3d-8e4f-1123456789ab",
       requestUrl: "http://127.0.0.1:3012/nests/high-ground-odyssey/story",
     });
 
     expect(recordLibrary).toHaveBeenCalledWith(
       expect.objectContaining({
+        externalRootId: "picker:connection_01",
+        sharedDriveId: "shared_drive_01",
         selectionManifest: [
           {
             externalFileId: "retained_lrv_02",
@@ -290,11 +294,18 @@ describe("Google Drive selected-file package attachment", () => {
           { externalFileId: "added_insv_02", resourceKey: null },
         ],
         plan: expect.objectContaining({
+          root: {
+            id: "picker:connection_01",
+            name: "Growing 360 Library",
+          },
           totalFiles: 2,
           readySegmentCount: 1,
           heldSegmentCount: 0,
         }),
       }),
+    );
+    expect(getAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ connectionId: "connection_01" }),
     );
   });
 

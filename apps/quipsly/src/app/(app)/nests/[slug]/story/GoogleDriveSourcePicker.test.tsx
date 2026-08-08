@@ -136,7 +136,7 @@ describe("Google Drive source picker entry", () => {
       screen.getByText(/never deletes source history/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/refresh rechecks the exact files you selected/i),
+      screen.getByText(/refresh rechecks only the exact files you selected/i),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/review 11 held camera segments/i),
@@ -149,10 +149,59 @@ describe("Google Drive source picker entry", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^refresh$/i })).toBeDisabled();
     expect(
+      screen.queryByRole("button", { name: /add another camera batch/i }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.getByText(/connected account owner can refresh/i),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /connect google drive/i }),
     ).toBeInTheDocument();
+  });
+
+  it("gives the connection owner a direct add-to-library action", async () => {
+    global.fetch = jest.fn(async () =>
+      jsonResponse({
+        ok: true,
+        pickerConfigured: true,
+        connections: [{
+          id: "drive-connection-1",
+          accountLabel: "homer@example.test",
+          status: "verified",
+          revision: 1,
+          verifiedAt: "2026-08-08T20:00:00.000Z",
+        }],
+      }),
+    ) as unknown as typeof fetch;
+    render(
+      <GoogleDriveSourcePicker
+        projectSlug="high-ground-odyssey"
+        canWrite
+        libraries={[{
+          id: "library-1",
+          name: "Insta360",
+          status: "ready",
+          revision: 3,
+          totalFileCount: 6,
+          totalSizeBytes: "77181151118",
+          readySegmentCount: 3,
+          heldSegmentCount: 0,
+          notObservedCount: 0,
+          lastCheckedAt: "2026-08-08T20:00:00.000Z",
+          canRefresh: true,
+          connectionState: "verified",
+          connectedByCurrentUser: true,
+          connectionId: "drive-connection-1",
+          discoveryMode: "selected-files",
+        }]}
+        onAttached={async () => undefined}
+      />,
+    );
+
+    expect(await screen.findByText("Insta360")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /add another camera batch/i }),
+    ).toBeEnabled();
+    expect(screen.getByText(/does not scan unrelated drive content/i)).toBeInTheDocument();
   });
 });
