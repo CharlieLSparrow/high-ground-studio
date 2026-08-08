@@ -105,6 +105,7 @@ type ExternalMediaLibrary = {
     browseReadyCount: number;
     remainingCount: number;
     nextBatchCount: number;
+    nextBatchTransferBytes: string;
     pendingTransferBytes: string;
     inventoryTruncated: boolean;
     captureDays: Array<{
@@ -518,9 +519,11 @@ function FollowedDriveLibraries({
                   segment
                   {library.navigationHealth.nextBatchCount === 1 ? "" : "s"} ·
                   up to{" "}
+                  {formatBytes(library.navigationHealth.nextBatchTransferBytes)}{" "}
+                  in this storage-aware pass.{" "}
                   {formatBytes(library.navigationHealth.pendingTransferBytes)}{" "}
-                  of LRV companions remain to retain locally. INSV originals
-                  stay in Drive.
+                  of LRV companions remain overall. INSV originals stay in
+                  Drive.
                 </p>
               ) : (
                 <p className="mt-2 rounded-lg bg-emerald-100 p-2 text-[9px] font-black text-emerald-950">

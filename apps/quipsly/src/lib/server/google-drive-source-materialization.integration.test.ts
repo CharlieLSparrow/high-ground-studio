@@ -391,6 +391,7 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
         browseReadyCount: 0,
         remainingCount: 1,
         nextBatchCount: 1,
+        nextBatchTransferBytes: "2048",
         pendingTransferBytes: "2048",
         inventoryTruncated: false,
         captureDays: [

@@ -206,6 +206,7 @@ describe("Google Drive source picker entry", () => {
               browseReadyCount: 1,
               remainingCount: 2,
               nextBatchCount: 2,
+              nextBatchTransferBytes: "1900000000",
               pendingTransferBytes: "1900000000",
               inventoryTruncated: false,
               captureDays: [

@@ -8,6 +8,7 @@ import { sourceAudioNavigationJobId } from "@high-ground/quipsly-media-processin
 
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
 import { preferPreparedByteEquivalentRevision } from "@/lib/server/external-media-byte-identity";
+import { selectGoogleDriveBrowsePreparationBatch } from "@/lib/server/google-drive-navigation-batch";
 import type { GoogleDriveMediaLibraryPlan } from "@/lib/google-drive-media-package";
 
 type LibraryAttachment = {
@@ -43,6 +44,7 @@ type PublicLibraryNavigationHealth = {
   browseReadyCount: number;
   remainingCount: number;
   nextBatchCount: number;
+  nextBatchTransferBytes: string;
   pendingTransferBytes: string;
   inventoryTruncated: boolean;
   captureDays: Array<{
@@ -76,6 +78,7 @@ const EMPTY_LIBRARY_NAVIGATION_HEALTH: PublicLibraryNavigationHealth = {
   browseReadyCount: 0,
   remainingCount: 0,
   nextBatchCount: 0,
+  nextBatchTransferBytes: "0",
   pendingTransferBytes: "0",
   inventoryTruncated: false,
   captureDays: [],
@@ -498,6 +501,10 @@ export async function listExternalMediaLibraries(input: {
     const audioReadyCount = states.filter((state) => state.audioReady).length;
     const browseReadyCount = states.filter((state) => state.browseReady).length;
     const remainingCount = Math.max(0, candidates.length - browseReadyCount);
+    const nextBatch = selectGoogleDriveBrowsePreparationBatch({
+      candidates: states.filter((state) => !state.browseReady),
+      countLimit: 12,
+    });
     const navigationHealth: PublicLibraryNavigationHealth = {
       eligibleSourceCount: candidates.length,
       retainedBrowseCount,
@@ -506,7 +513,8 @@ export async function listExternalMediaLibraries(input: {
       audioReadyCount,
       browseReadyCount,
       remainingCount,
-      nextBatchCount: Math.min(12, remainingCount),
+      nextBatchCount: nextBatch.selected.length,
+      nextBatchTransferBytes: nextBatch.selectedTransferBytes.toString(),
       pendingTransferBytes: states
         .filter((state) => !state.retained)
         .reduce((total, state) => total + (state.revision.sizeBytes ?? 0n), 0n)

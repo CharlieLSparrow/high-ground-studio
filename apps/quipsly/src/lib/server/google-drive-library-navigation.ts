@@ -14,6 +14,7 @@ import {
 
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
 import { preferPreparedByteEquivalentRevision } from "@/lib/server/external-media-byte-identity";
+import { selectGoogleDriveBrowsePreparationBatch } from "@/lib/server/google-drive-navigation-batch";
 
 import {
   ExternalSourceProxyRequestError,
@@ -123,6 +124,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
   clientRequestId: string;
   limit?: number;
   retryFailed?: boolean;
+  environment?: NodeJS.ProcessEnv;
 }) {
   const projectId = cleanId(input.projectId, "projectId");
   const libraryId = cleanId(input.libraryId, "libraryId");
@@ -268,7 +270,12 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
       !readyNavigationJobIds.has(expected.audioJobId)
     );
   });
-  const selected = incomplete.slice(0, limit);
+  const batch = selectGoogleDriveBrowsePreparationBatch({
+    candidates: incomplete,
+    countLimit: limit,
+    environment: input.environment,
+  });
+  const selected = batch.selected;
   const items: Array<{
     sourceRevisionId: string;
     fileName: string;
@@ -421,6 +428,8 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
     bounds: {
       requestedLimit: limit,
       maximumLimit: MAX_BATCH_LIMIT,
+      maximumBrowseTransferBytes: batch.maximumTransferBytes.toString(),
+      oversizedSingleSource: batch.oversizedSingleSource,
       inspectedItemLimit: MAX_LIBRARY_ITEMS,
       inventoryTruncated: library.totalFileCount > MAX_LIBRARY_ITEMS,
     },
@@ -441,6 +450,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
       browseTransferBytes: items
         .reduce((total, item) => total + BigInt(item.transferBytes), 0n)
         .toString(),
+      selectedTransferBytes: batch.selectedTransferBytes.toString(),
     },
     items,
     boundaries: {
