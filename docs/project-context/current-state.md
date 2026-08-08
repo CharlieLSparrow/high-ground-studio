@@ -2928,6 +2928,15 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   playhead, keyboard seek controls, and explicit I/O range marks. Measurements
   remain evidence for a person to interpret rather than automatic edit
   authority.
+- Source Room now keeps the common selection path directly under that viewer:
+  mark an exact range, give the moment a recognizable title, optionally leave a
+  quick note, choose the canonical board, and save. Synopsis, story purpose,
+  section, project tags, and non-destructive 360 camera direction remain in one
+  explicit details drawer and still submit through the same `create-card`
+  contract. Sources with the checksum-bound navigation rail no longer repeat a
+  second I/O panel below it. Focused interaction tests, the 16-case PostgreSQL
+  source-story suite, TypeScript, and the complete 194-route production build
+  pass after the change.
 - Retained HGO operation proved exact replay and unchanged input bytes. It also
   found the retained 0.34-second proxy audio to be near digital silence at
   -160 dBFS; the UI reports that limitation instead of presenting a decorative

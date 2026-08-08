@@ -62,6 +62,7 @@ import { CollaborationThread } from "@/components/session-thread";
 import { createNestQuickWorkAction } from "../actions";
 
 import { GoogleDriveSourcePicker } from "./GoogleDriveSourcePicker";
+import { SourceQuickSelectComposer } from "./SourceQuickSelectComposer";
 import { SourceLibraryVisualMap } from "./SourceLibraryVisualMap";
 import {
   EquirectangularVideoViewer,
@@ -1387,7 +1388,9 @@ export function SourceStoryClient({
   );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [discussionCardId, setDiscussionCardId] = useState<string | null>(initialCardId);
+  const [discussionCardId, setDiscussionCardId] = useState<string | null>(
+    initialCardId,
+  );
 
   const selectedAsset =
     sourceAssets.find((asset) => asset.id === selectedAssetId) ?? null;
@@ -1585,7 +1588,9 @@ export function SourceStoryClient({
   useEffect(() => {
     if (!initialCardId) return;
     const frame = window.requestAnimationFrame(() => {
-      document.getElementById(`story-card-${initialCardId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document
+        .getElementById(`story-card-${initialCardId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [initialCardId, selectedBoardId]);
@@ -3924,345 +3929,283 @@ export function SourceStoryClient({
             />
           ) : null}
 
-          <div className="rounded-3xl border border-[#ddccb0] bg-[#fffdf8] p-4 shadow-sm md:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">
-                  Immutable source range
+          {!selectedViewerSource?.sourceRevisionId ? (
+            <div className="rounded-3xl border border-[#ddccb0] bg-[#fffdf8] p-4 shadow-sm md:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">
+                    Immutable source range
+                  </p>
+                  <h2 className="mt-1 font-serif text-2xl font-black">
+                    Mark the useful moment
+                  </h2>
+                </div>
+                <p className="max-w-md text-xs font-semibold leading-5 text-[#765f40]">
+                  I and O set source-clock boundaries. The card can move later
+                  without changing this range.
                 </p>
-                <h2 className="mt-1 font-serif text-2xl font-black">
-                  Mark the useful moment
-                </h2>
               </div>
-              <p className="max-w-md text-xs font-semibold leading-5 text-[#765f40]">
-                I and O set source-clock boundaries. The card can move later
-                without changing this range.
-              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  disabled={!canWrite || !canMarkRange}
+                  onClick={() =>
+                    mediaRef.current && setInPoint(mediaRef.current.currentTime)
+                  }
+                  className="min-h-16 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-left disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <span className="text-[10px] font-black uppercase tracking-wide text-sky-800">
+                    In point · I
+                  </span>
+                  <span className="mt-1 block font-mono text-xl font-black">
+                    {formatClock(inPoint)}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!canWrite || !canMarkRange}
+                  onClick={() =>
+                    mediaRef.current &&
+                    setOutPoint(mediaRef.current.currentTime)
+                  }
+                  className="min-h-16 rounded-2xl border border-orange-200 bg-orange-50 px-4 text-left disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <span className="text-[10px] font-black uppercase tracking-wide text-orange-800">
+                    Out point · O
+                  </span>
+                  <span className="mt-1 block font-mono text-xl font-black">
+                    {formatClock(outPoint)}
+                  </span>
+                </button>
+              </div>
+              {inPoint !== null && outPoint !== null ? (
+                <p
+                  className={`mt-3 text-xs font-black ${outPoint > inPoint ? "text-emerald-800" : "text-rose-800"}`}
+                >
+                  {outPoint > inPoint
+                    ? `${(outPoint - inPoint).toFixed(2)} seconds selected`
+                    : "The out point must be after the in point."}
+                </p>
+              ) : null}
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                disabled={!canWrite || !canMarkRange}
-                onClick={() =>
-                  mediaRef.current && setInPoint(mediaRef.current.currentTime)
-                }
-                className="min-h-16 rounded-2xl border border-sky-200 bg-sky-50 px-4 text-left disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                <span className="text-[10px] font-black uppercase tracking-wide text-sky-800">
-                  In point · I
-                </span>
-                <span className="mt-1 block font-mono text-xl font-black">
-                  {formatClock(inPoint)}
-                </span>
-              </button>
-              <button
-                type="button"
-                disabled={!canWrite || !canMarkRange}
-                onClick={() =>
-                  mediaRef.current && setOutPoint(mediaRef.current.currentTime)
-                }
-                className="min-h-16 rounded-2xl border border-orange-200 bg-orange-50 px-4 text-left disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                <span className="text-[10px] font-black uppercase tracking-wide text-orange-800">
-                  Out point · O
-                </span>
-                <span className="mt-1 block font-mono text-xl font-black">
-                  {formatClock(outPoint)}
-                </span>
-              </button>
-            </div>
-            {inPoint !== null && outPoint !== null ? (
-              <p
-                className={`mt-3 text-xs font-black ${outPoint > inPoint ? "text-emerald-800" : "text-rose-800"}`}
-              >
-                {outPoint > inPoint
-                  ? `${(outPoint - inPoint).toFixed(2)} seconds selected`
-                  : "The out point must be after the in point."}
-              </p>
-            ) : null}
-          </div>
+          ) : null}
 
-          <div className="rounded-3xl border border-[#ddccb0] bg-white p-4 shadow-sm md:p-5">
-            <div className="flex items-center gap-2">
-              <Clapperboard
-                size={19}
-                className="text-[#8a653d]"
-                aria-hidden="true"
+          <SourceQuickSelectComposer
+            canWrite={canWrite}
+            sourceLabel={selectedViewerSource?.filename ?? null}
+            inPoint={inPoint}
+            outPoint={outPoint}
+            title={title}
+            notes={notes}
+            selectedBoardId={selectedBoard?.id ?? null}
+            boards={workspace.boards}
+            pending={pending}
+            canSave={Boolean(rangeReady && selectedViewerSource)}
+            onTitleChange={setTitle}
+            onNotesChange={setNotes}
+            onBoardChange={setSelectedBoardId}
+            onSave={() => void createCard()}
+          >
+            <label>
+              <span className="text-xs font-black uppercase tracking-wide text-[#76522c]">
+                Synopsis
+              </span>
+              <textarea
+                value={synopsis}
+                onChange={(event) => setSynopsis(event.target.value)}
+                maxLength={10000}
+                rows={3}
+                placeholder="The concise Scrivener-style card summary…"
+                className="mt-1 w-full rounded-xl border border-[#d9c7a5] p-3 text-sm font-semibold leading-6 outline-none focus-visible:ring-4 focus-visible:ring-sky-100"
               />
-              <h2 className="font-serif text-2xl font-black">Write the card</h2>
+            </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label>
+                <span className="text-xs font-black uppercase tracking-wide text-[#76522c]">
+                  Story purpose
+                </span>
+                <select
+                  value={purpose}
+                  onChange={(event) => setPurpose(event.target.value)}
+                  className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-sm font-bold"
+                >
+                  {storyCardPurposes.map((value) => (
+                    <option key={value} value={value}>
+                      {value.replaceAll("-", " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="text-xs font-black uppercase tracking-wide text-[#76522c]">
+                  Section / beat
+                </span>
+                <input
+                  value={groupKey}
+                  onChange={(event) => setGroupKey(event.target.value)}
+                  maxLength={60}
+                  placeholder="Cold open, Act 1…"
+                  className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] px-3 text-sm font-semibold"
+                />
+              </label>
             </div>
-            {!canWrite ? (
-              <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
-                Viewer access preserves playback and board reading. An Owner or
-                Editor can create or revise cards.
-              </p>
-            ) : (
-              <div className="mt-4 grid gap-4">
-                <label>
-                  <span className="text-xs font-black uppercase tracking-wide text-[#76522c]">
-                    Card title
-                  </span>
-                  <input
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    maxLength={200}
-                    placeholder="What happens in this moment?"
-                    className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] px-3 text-sm font-semibold outline-none focus-visible:ring-4 focus-visible:ring-sky-100"
-                  />
-                </label>
-                <label>
-                  <span className="text-xs font-black uppercase tracking-wide text-[#76522c]">
-                    Synopsis
-                  </span>
-                  <textarea
-                    value={synopsis}
-                    onChange={(event) => setSynopsis(event.target.value)}
-                    maxLength={10000}
-                    rows={3}
-                    placeholder="The concise Scrivener-style card summary…"
-                    className="mt-1 w-full rounded-xl border border-[#d9c7a5] p-3 text-sm font-semibold leading-6 outline-none focus-visible:ring-4 focus-visible:ring-sky-100"
-                  />
-                </label>
-                <div className="grid gap-3 md:grid-cols-3">
-                  <label>
-                    <span className="text-xs font-black uppercase tracking-wide text-[#76522c]">
-                      Story purpose
-                    </span>
+            {tags.length ? (
+              <fieldset>
+                <legend className="flex items-center gap-1 text-xs font-black uppercase tracking-wide text-[#76522c]">
+                  <Tags size={14} aria-hidden="true" />
+                  Project tags
+                </legend>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {tags.map((tag) => {
+                    const active = selectedTagIds.includes(tag.id);
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() =>
+                          setSelectedTagIds((current) =>
+                            active
+                              ? current.filter((id) => id !== tag.id)
+                              : [...current, tag.id],
+                          )
+                        }
+                        className={`min-h-11 rounded-full border px-3 text-xs font-black ${active ? "border-sky-700 bg-sky-700 text-white" : "border-sky-200 bg-sky-50 text-sky-950"}`}
+                      >
+                        #{tag.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            ) : null}
+            {selectedViewerSource?.is360 &&
+            selectedViewerSource.mediaProjection === "equirectangular" ? (
+              <section
+                className="rounded-2xl border border-violet-200 bg-violet-50 p-4"
+                aria-label="Non-destructive 360 reframing"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-black text-violet-950">
+                      <Rotate3d size={18} aria-hidden="true" />
+                      Non-destructive camera direction
+                    </p>
+                    <p className="mt-1 max-w-xl text-xs font-semibold leading-5 text-violet-900">
+                      Look around above, pause on a useful composition, then
+                      save that view. Quipsly stores camera instructions against
+                      source time; the complete sphere and every original remain
+                      unchanged.
+                    </p>
+                  </div>
+                  <label className="text-[10px] font-black uppercase tracking-wide text-violet-900">
+                    Output frame
                     <select
-                      value={purpose}
-                      onChange={(event) => setPurpose(event.target.value)}
-                      className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-sm font-bold"
-                    >
-                      {storyCardPurposes.map((value) => (
-                        <option key={value} value={value}>
-                          {value.replaceAll("-", " ")}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span className="text-xs font-black uppercase tracking-wide text-[#76522c]">
-                      Section / beat
-                    </span>
-                    <input
-                      value={groupKey}
-                      onChange={(event) => setGroupKey(event.target.value)}
-                      maxLength={60}
-                      placeholder="Cold open, Act 1…"
-                      className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] px-3 text-sm font-semibold"
-                    />
-                  </label>
-                  <label>
-                    <span className="text-xs font-black uppercase tracking-wide text-[#76522c]">
-                      Board
-                    </span>
-                    <select
-                      value={selectedBoard?.id ?? ""}
+                      value={reframeAspectRatio}
                       onChange={(event) =>
-                        setSelectedBoardId(event.target.value || null)
+                        setReframeAspectRatio(
+                          event.target.value as typeof reframeAspectRatio,
+                        )
                       }
-                      className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-sm font-bold"
+                      className="mt-1 min-h-11 rounded-xl border border-violet-200 bg-white px-3 text-xs font-black"
                     >
-                      <option value="">Unfiled card</option>
-                      {workspace.boards.map((board) => (
-                        <option key={board.id} value={board.id}>
-                          {board.title} · r{board.revision}
-                        </option>
-                      ))}
+                      <option value="16:9">16:9 landscape</option>
+                      <option value="9:16">9:16 vertical</option>
+                      <option value="1:1">1:1 square</option>
+                      <option value="4:5">4:5 portrait</option>
                     </select>
                   </label>
                 </div>
-                <label>
-                  <span className="text-xs font-black uppercase tracking-wide text-[#76522c]">
-                    Working notes
-                  </span>
-                  <textarea
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                    maxLength={50000}
-                    rows={3}
-                    placeholder="Writing, edit, camera, research, or collaboration notes…"
-                    className="mt-1 w-full rounded-xl border border-[#d9c7a5] p-3 text-sm font-semibold leading-6"
-                  />
-                </label>
-                {tags.length ? (
-                  <fieldset>
-                    <legend className="flex items-center gap-1 text-xs font-black uppercase tracking-wide text-[#76522c]">
-                      <Tags size={14} aria-hidden="true" />
-                      Project tags
-                    </legend>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {tags.map((tag) => {
-                        const active = selectedTagIds.includes(tag.id);
-                        return (
-                          <button
-                            key={tag.id}
-                            type="button"
-                            aria-pressed={active}
-                            onClick={() =>
-                              setSelectedTagIds((current) =>
-                                active
-                                  ? current.filter((id) => id !== tag.id)
-                                  : [...current, tag.id],
-                              )
-                            }
-                            className={`min-h-11 rounded-full border px-3 text-xs font-black ${active ? "border-sky-700 bg-sky-700 text-white" : "border-sky-200 bg-sky-50 text-sky-950"}`}
-                          >
-                            #{tag.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </fieldset>
-                ) : null}
-                {selectedViewerSource?.is360 &&
-                selectedViewerSource.mediaProjection === "equirectangular" ? (
-                  <section
-                    className="rounded-2xl border border-violet-200 bg-violet-50 p-4"
-                    aria-label="Non-destructive 360 reframing"
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={inPoint === null || outPoint === null}
+                    onClick={captureReframeKeyframe}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-900 px-4 text-xs font-black text-white disabled:opacity-45"
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="flex items-center gap-2 text-sm font-black text-violet-950">
-                          <Rotate3d size={18} aria-hidden="true" />
-                          Non-destructive camera direction
-                        </p>
-                        <p className="mt-1 max-w-xl text-xs font-semibold leading-5 text-violet-900">
-                          Look around above, pause on a useful composition, then
-                          save that view. Quipsly stores camera instructions
-                          against source time; the complete sphere and every
-                          original remain unchanged.
-                        </p>
-                      </div>
-                      <label className="text-[10px] font-black uppercase tracking-wide text-violet-900">
-                        Output frame
-                        <select
-                          value={reframeAspectRatio}
-                          onChange={(event) =>
-                            setReframeAspectRatio(
-                              event.target.value as typeof reframeAspectRatio,
+                    <Video size={15} aria-hidden="true" />
+                    Save current view at playhead
+                  </button>
+                  <span className="rounded-full border border-violet-200 bg-white px-3 py-2 font-mono text-[10px] font-bold text-violet-950">
+                    pan {spatialView.panDegrees.toFixed(1)}° · tilt{" "}
+                    {spatialView.tiltDegrees.toFixed(1)}° · FOV{" "}
+                    {spatialView.fieldOfViewDegrees.toFixed(0)}°
+                  </span>
+                </div>
+                {reframeKeyframes.length ? (
+                  <ol className="mt-3 grid gap-2">
+                    {reframeKeyframes.map((keyframe, index) => (
+                      <li
+                        key={`${keyframe.sourceSeconds}:${index}`}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2"
+                      >
+                        <span className="text-xs font-black text-violet-950">
+                          {formatClock(keyframe.sourceSeconds)} · pan{" "}
+                          {keyframe.panDegrees.toFixed(1)}° · tilt{" "}
+                          {keyframe.tiltDegrees.toFixed(1)}° · FOV{" "}
+                          {keyframe.fieldOfViewDegrees.toFixed(0)}°
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReframeKeyframes((current) =>
+                              current.filter(
+                                (_, candidate) => candidate !== index,
+                              ),
                             )
                           }
-                          className="mt-1 min-h-11 rounded-xl border border-violet-200 bg-white px-3 text-xs font-black"
+                          className="min-h-11 rounded-full border border-rose-200 px-3 text-[10px] font-black uppercase tracking-wide text-rose-900"
                         >
-                          <option value="16:9">16:9 landscape</option>
-                          <option value="9:16">9:16 vertical</option>
-                          <option value="1:1">1:1 square</option>
-                          <option value="4:5">4:5 portrait</option>
-                        </select>
-                      </label>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={inPoint === null || outPoint === null}
-                        onClick={captureReframeKeyframe}
-                        className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-900 px-4 text-xs font-black text-white disabled:opacity-45"
-                      >
-                        <Video size={15} aria-hidden="true" />
-                        Save current view at playhead
-                      </button>
-                      <span className="rounded-full border border-violet-200 bg-white px-3 py-2 font-mono text-[10px] font-bold text-violet-950">
-                        pan {spatialView.panDegrees.toFixed(1)}° · tilt{" "}
-                        {spatialView.tiltDegrees.toFixed(1)}° · FOV{" "}
-                        {spatialView.fieldOfViewDegrees.toFixed(0)}°
-                      </span>
-                    </div>
-                    {reframeKeyframes.length ? (
-                      <ol className="mt-3 grid gap-2">
-                        {reframeKeyframes.map((keyframe, index) => (
-                          <li
-                            key={`${keyframe.sourceSeconds}:${index}`}
-                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2"
-                          >
-                            <span className="text-xs font-black text-violet-950">
-                              {formatClock(keyframe.sourceSeconds)} · pan{" "}
-                              {keyframe.panDegrees.toFixed(1)}° · tilt{" "}
-                              {keyframe.tiltDegrees.toFixed(1)}° · FOV{" "}
-                              {keyframe.fieldOfViewDegrees.toFixed(0)}°
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setReframeKeyframes((current) =>
-                                  current.filter(
-                                    (_, candidate) => candidate !== index,
-                                  ),
-                                )
-                              }
-                              className="min-h-11 rounded-full border border-rose-200 px-3 text-[10px] font-black uppercase tracking-wide text-rose-900"
-                            >
-                              Remove
-                            </button>
-                          </li>
-                        ))}
-                      </ol>
-                    ) : (
-                      <p className="mt-3 text-xs font-semibold text-violet-900">
-                        No camera views saved yet. The range will still preserve
-                        the complete 360° sphere.
-                      </p>
-                    )}
-                  </section>
-                ) : selectedViewerSource?.is360 ? (
-                  <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
-                    <p className="flex items-center gap-2 text-sm font-black text-violet-950">
-                      <Rotate3d size={18} aria-hidden="true" />
-                      Unstitched 360° camera preview
-                    </p>
-                    <p className="mt-1 text-xs font-semibold leading-5 text-violet-900">
-                      This lightweight camera file shows both fisheye lenses so
-                      you can review timing and mark the exact source range now.
-                      Quipsly preserves the complete 360° package, but camera
-                      direction stays unset until a reviewed stitched master is
-                      available.
-                    </p>
-                  </section>
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
                 ) : (
-                  <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-3">
-                    <input
-                      type="checkbox"
-                      checked={preserve360}
-                      onChange={(event) => setPreserve360(event.target.checked)}
-                      className="h-5 w-5"
-                    />
-                    <Rotate3d
-                      size={18}
-                      className="text-violet-800"
-                      aria-hidden="true"
-                    />
-                    <span>
-                      <span className="block text-sm font-black text-violet-950">
-                        This file is an equirectangular 360° source
-                      </span>
-                      <span className="block text-xs font-semibold text-violet-900">
-                        Use only when the source is a complete sphere. Quipsly
-                        will preserve an explicit non-destructive reframe
-                        recipe.
-                      </span>
-                    </span>
-                  </label>
+                  <p className="mt-3 text-xs font-semibold text-violet-900">
+                    No camera views saved yet. The range will still preserve the
+                    complete 360° sphere.
+                  </p>
                 )}
-                <button
-                  type="button"
-                  disabled={!rangeReady || pending || !selectedViewerSource}
-                  onClick={() => void createCard()}
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#3e2f21] px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  {pending ? (
-                    <Loader2
-                      className="animate-spin"
-                      size={18}
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <Save size={18} aria-hidden="true" />
-                  )}
-                  Save source-backed card
-                </button>
-              </div>
+              </section>
+            ) : selectedViewerSource?.is360 ? (
+              <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                <p className="flex items-center gap-2 text-sm font-black text-violet-950">
+                  <Rotate3d size={18} aria-hidden="true" />
+                  Unstitched 360° camera preview
+                </p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-violet-900">
+                  This lightweight camera file shows both fisheye lenses so you
+                  can review timing and mark the exact source range now. Quipsly
+                  preserves the complete 360° package, but camera direction
+                  stays unset until a reviewed stitched master is available.
+                </p>
+              </section>
+            ) : (
+              <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-3">
+                <input
+                  type="checkbox"
+                  checked={preserve360}
+                  onChange={(event) => setPreserve360(event.target.checked)}
+                  className="h-5 w-5"
+                />
+                <Rotate3d
+                  size={18}
+                  className="text-violet-800"
+                  aria-hidden="true"
+                />
+                <span>
+                  <span className="block text-sm font-black text-violet-950">
+                    This file is an equirectangular 360° source
+                  </span>
+                  <span className="block text-xs font-semibold text-violet-900">
+                    Use only when the source is a complete sphere. Quipsly will
+                    preserve an explicit non-destructive reframe recipe.
+                  </span>
+                </span>
+              </label>
             )}
-          </div>
+          </SourceQuickSelectComposer>
         </section>
 
         <aside className="min-w-0 space-y-4" aria-label="Story board">
