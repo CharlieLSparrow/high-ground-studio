@@ -7,6 +7,7 @@ import { sourceAudioNavigationIdentity } from "@high-ground/quipsly-media-proces
 import { sourceAudioNavigationJobId } from "@high-ground/quipsly-media-processing/source-navigation-identity";
 
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
+import { preferPreparedByteEquivalentRevision } from "@/lib/server/external-media-byte-identity";
 import type { GoogleDriveMediaLibraryPlan } from "@/lib/google-drive-media-package";
 
 type LibraryAttachment = {
@@ -57,6 +58,7 @@ type LibraryNavigationRevision = {
   identitySha256: string;
   sizeBytes: bigint | null;
   projectionJson: unknown;
+  provenanceJson: unknown;
   replicas: Array<{ id: string }>;
   derivatives: Array<{
     kind: string;
@@ -354,12 +356,13 @@ export async function listExternalMediaLibraries(input: {
               connectionId: true,
               revisions: {
                 orderBy: { createdAt: "desc" },
-                take: 1,
+                take: 12,
                 select: {
                   id: true,
                   identitySha256: true,
                   sizeBytes: true,
                   projectionJson: true,
+                  provenanceJson: true,
                   replicas: {
                     where: {
                       storageProvider: "local-cache",
@@ -408,7 +411,13 @@ export async function listExternalMediaLibraries(input: {
     const seenRevisionIds = new Set<string>();
     const candidates = library.items.flatMap((item) => {
       const reference = item.externalReference;
-      const revision = reference?.revisions[0];
+      const currentRevision = reference?.revisions[0];
+      const revision = currentRevision
+        ? preferPreparedByteEquivalentRevision(
+            currentRevision,
+            reference.revisions,
+          )
+        : null;
       if (
         !reference ||
         !revision ||

@@ -10,6 +10,10 @@ import {
   normalizeAttachVerifiedExternalMediaInput,
   type AttachVerifiedExternalMediaInput,
 } from "@/lib/external-media-contract";
+import {
+  externalMediaByteEvidence,
+  sameExternalMediaBytes,
+} from "@/lib/server/external-media-byte-identity";
 
 export class ExternalMediaConflictError extends Error {
   constructor(
@@ -47,6 +51,7 @@ function safeSnapshot(
   referenceId: string,
   revision: number,
   sourceRevisionId: string,
+  canonicalSourceRevisionId: string,
 ) {
   const file = input.verifiedFile;
   return {
@@ -81,6 +86,7 @@ function safeSnapshot(
     canCopy: file.canCopy,
     downloadRestrictionReason: file.downloadRestrictionReason,
     sourceRevisionId,
+    canonicalSourceRevisionId,
   };
 }
 
@@ -168,8 +174,74 @@ async function ensureProviderRevision(
     projectionMetadata: inputJson(file.projectionMetadata),
   };
   const identitySha256 = sha256(identity);
-  const revisionKey =
+  const providerRevisionKey =
     file.headRevisionKey ?? `metadata:${identitySha256.slice(0, 24)}`;
+  const retainedRevisions = file.headRevisionKey
+    ? await tx.studioMediaSourceRevision.findMany({
+        where: { externalReferenceId: referenceId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        include: {
+          sourceSetMembers: { select: { id: true }, take: 1 },
+        },
+      })
+    : [];
+  const matchingProviderRevision = retainedRevisions.filter((revision) => {
+    const provenance = revision.provenanceJson;
+    return Boolean(
+      provenance &&
+      typeof provenance === "object" &&
+      !Array.isArray(provenance) &&
+      (provenance as Record<string, unknown>).headRevisionKey ===
+        file.headRevisionKey,
+    );
+  });
+  const currentByteEvidence = {
+    provider: file.provider,
+    externalFileId: file.externalFileId,
+    sharedDriveId: file.sharedDriveId,
+    headRevisionKey: file.headRevisionKey,
+    sizeBytes: file.sizeBytes?.toString() ?? null,
+    checksumSha256: file.checksumSha256,
+    checksumMd5: file.checksumMd5,
+  };
+  for (const revision of matchingProviderRevision) {
+    const retainedByteEvidence = externalMediaByteEvidence(
+      revision.provenanceJson,
+    );
+    const contradictsKnownEvidence = Object.keys(currentByteEvidence).some(
+      (key) => {
+        const current =
+          currentByteEvidence[key as keyof typeof currentByteEvidence];
+        const retained =
+          retainedByteEvidence[key as keyof typeof retainedByteEvidence];
+        return current !== null && retained !== null && current !== retained;
+      },
+    );
+    if (contradictsKnownEvidence) {
+      throw new ExternalMediaConflictError(
+        "provider-revision-conflict",
+        "The provider reused a revision identity for different byte evidence. Exact-source work is held.",
+      );
+    }
+    if (revision.identitySha256 === identitySha256) {
+      return {
+        observedRevision: revision,
+        canonicalByteRevision:
+          matchingProviderRevision.find(
+            (candidate) => candidate.sourceSetMembers.length > 0,
+          ) ?? revision,
+      };
+    }
+  }
+  // Providers can enrich technical metadata (for example duration and frame
+  // dimensions) after a file was first observed without changing its byte
+  // revision. Preserve both immutable observations instead of misreporting the
+  // enrichment as byte corruption. A changed known size or checksum still
+  // fails closed above.
+  const revisionKey =
+    file.headRevisionKey && matchingProviderRevision.length > 0
+      ? `${providerRevisionKey}:metadata:${identitySha256.slice(0, 24)}`
+      : providerRevisionKey;
   const sourceState =
     file.checksumSha256 && file.sizeBytes && file.sizeBytes > BigInt(0)
       ? "checksum-bound"
@@ -210,6 +282,8 @@ async function ensureProviderRevision(
         schema: "quipsly-external-media-verification-v1",
         state: sourceState,
         provider: file.provider,
+        providerRevisionKey,
+        providerMetadataVariant: matchingProviderRevision.length > 0,
         providerRevisionBound: Boolean(file.headRevisionKey),
         sha256Bound: Boolean(file.checksumSha256),
         providerChecksum: file.checksumMd5
@@ -228,7 +302,15 @@ async function ensureProviderRevision(
       "The provider reused a revision identity for different byte evidence. Exact-source work is held.",
     );
   }
-  return revision;
+  return {
+    observedRevision: revision,
+    canonicalByteRevision:
+      matchingProviderRevision.find(
+        (candidate) =>
+          candidate.sourceSetMembers.length > 0 &&
+          sameExternalMediaBytes(candidate.provenanceJson, identity),
+      ) ?? revision,
+  };
 }
 
 export async function attachVerifiedExternalMediaSource(input: {
@@ -239,6 +321,7 @@ export async function attachVerifiedExternalMediaSource(input: {
     Record<string, never>
   >;
   sourceRevisionId: string;
+  canonicalSourceRevisionId: string;
   replayed: boolean;
 }> {
   const value = normalizeAttachVerifiedExternalMediaInput(input.value);
@@ -289,6 +372,13 @@ export async function attachVerifiedExternalMediaSource(input: {
             (receipt.snapshotJson as { sourceRevisionId?: unknown })
               .sourceRevisionId ?? "",
           ),
+          canonicalSourceRevisionId: String(
+            (receipt.snapshotJson as { canonicalSourceRevisionId?: unknown })
+              .canonicalSourceRevisionId ??
+              (receipt.snapshotJson as { sourceRevisionId?: unknown })
+                .sourceRevisionId ??
+              "",
+          ),
           replayed: true,
         };
       }
@@ -326,6 +416,13 @@ export async function attachVerifiedExternalMediaSource(input: {
           sourceRevisionId: String(
             (replay.snapshotJson as { sourceRevisionId?: unknown })
               .sourceRevisionId ?? "",
+          ),
+          canonicalSourceRevisionId: String(
+            (replay.snapshotJson as { canonicalSourceRevisionId?: unknown })
+              .canonicalSourceRevisionId ??
+              (replay.snapshotJson as { sourceRevisionId?: unknown })
+                .sourceRevisionId ??
+              "",
           ),
           replayed: true,
         };
@@ -417,13 +514,15 @@ export async function attachVerifiedExternalMediaSource(input: {
               value,
               reference.id,
               1,
-              sourceRevision.id,
+              sourceRevision.observedRevision.id,
+              sourceRevision.canonicalByteRevision.id,
             ),
           },
         });
         return {
           reference,
-          sourceRevisionId: sourceRevision.id,
+          sourceRevisionId: sourceRevision.observedRevision.id,
+          canonicalSourceRevisionId: sourceRevision.canonicalByteRevision.id,
           replayed: false,
         };
       }
@@ -459,7 +558,8 @@ export async function attachVerifiedExternalMediaSource(input: {
               value,
               reference.id,
               reference.revision,
-              sourceRevision.id,
+              sourceRevision.observedRevision.id,
+              sourceRevision.canonicalByteRevision.id,
             ),
           },
         });
@@ -468,7 +568,8 @@ export async function attachVerifiedExternalMediaSource(input: {
         });
         return {
           reference,
-          sourceRevisionId: sourceRevision.id,
+          sourceRevisionId: sourceRevision.observedRevision.id,
+          canonicalSourceRevisionId: sourceRevision.canonicalByteRevision.id,
           replayed: false,
         };
       }
@@ -527,7 +628,8 @@ export async function attachVerifiedExternalMediaSource(input: {
             value,
             reference.id,
             nextRevision,
-            sourceRevision.id,
+            sourceRevision.observedRevision.id,
+            sourceRevision.canonicalByteRevision.id,
           ),
         },
       });
@@ -536,7 +638,8 @@ export async function attachVerifiedExternalMediaSource(input: {
       });
       return {
         reference,
-        sourceRevisionId: sourceRevision.id,
+        sourceRevisionId: sourceRevision.observedRevision.id,
+        canonicalSourceRevisionId: sourceRevision.canonicalByteRevision.id,
         replayed: false,
       };
     },

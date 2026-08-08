@@ -13,6 +13,7 @@ import {
 } from "@high-ground/quipsly-media-processing/source-navigation-identity";
 
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
+import { preferPreparedByteEquivalentRevision } from "@/lib/server/external-media-byte-identity";
 
 import {
   ExternalSourceProxyRequestError,
@@ -142,7 +143,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
             include: {
               revisions: {
                 orderBy: { createdAt: "desc" },
-                take: 1,
+                take: 12,
                 include: {
                   replicas: {
                     where: { storageProvider: "local-cache", status: "ready" },
@@ -188,7 +189,13 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
 
   const candidates = library.items.flatMap((item) => {
     const reference = item.externalReference;
-    const revision = reference?.revisions[0];
+    const currentRevision = reference?.revisions[0];
+    const revision = currentRevision
+      ? preferPreparedByteEquivalentRevision(
+          currentRevision,
+          reference.revisions,
+        )
+      : null;
     if (
       !reference ||
       !revision ||

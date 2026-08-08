@@ -911,7 +911,10 @@ async function attachGoogleDriveMediaPlanToNest(input: {
           replayed: result.replayed,
         });
         attachedSegmentMembers.push({
-          sourceRevisionId: result.sourceRevisionId,
+          // Source sets bind byte identity, while the reference ledger retains
+          // every immutable metadata observation. Provider metadata enrichment
+          // therefore cannot fork an otherwise identical camera package.
+          sourceRevisionId: result.canonicalSourceRevisionId,
           role: member.role,
         });
       }
@@ -1026,11 +1029,14 @@ export async function attachGoogleDriveFilesToNest(input: {
     requestUrl: input.requestUrl,
     environment: input.environment,
   });
-  const externalRootId = targetedLibrary?.externalRootId ?? (input.libraryRootId
-    ? fileId(input.libraryRootId, "The selected Drive library root")
-    : `picker:${access.connection.id}`);
-  const existingLibrary = targetedLibrary ??
-    await input.prisma.studioExternalMediaLibrary.findUnique({
+  const externalRootId =
+    targetedLibrary?.externalRootId ??
+    (input.libraryRootId
+      ? fileId(input.libraryRootId, "The selected Drive library root")
+      : `picker:${access.connection.id}`);
+  const existingLibrary =
+    targetedLibrary ??
+    (await input.prisma.studioExternalMediaLibrary.findUnique({
       where: {
         projectId_provider_externalRootId: {
           projectId: input.projectId,
@@ -1045,7 +1051,7 @@ export async function attachGoogleDriveFilesToNest(input: {
         name: true,
         providerLocatorJson: true,
       },
-    });
+    }));
   if (
     existingLibrary?.connectionId &&
     existingLibrary.connectionId !== access.connection.id
@@ -1068,12 +1074,13 @@ export async function attachGoogleDriveFilesToNest(input: {
     connectionId: access.connection.id,
     selections,
   });
-  const rootResourceKey = resourceKey(input.libraryRootResourceKey)
-    ?? locatorResourceKey(existingLibrary?.providerLocatorJson);
+  const rootResourceKey =
+    resourceKey(input.libraryRootResourceKey) ??
+    locatorResourceKey(existingLibrary?.providerLocatorJson);
   const rootName =
-    input.libraryRootName?.trim().slice(0, 240)
-    || existingLibrary?.name
-    || plan.root.name;
+    input.libraryRootName?.trim().slice(0, 240) ||
+    existingLibrary?.name ||
+    plan.root.name;
   const libraryPlan: GoogleDriveMediaLibraryPlan = {
     ...plan,
     root: { id: externalRootId, name: rootName },

@@ -87,6 +87,8 @@ runDatabaseSmoke("external media attach and capability history", () => {
 
   afterAll(async () => {
     try {
+      if (projectId)
+        await prisma.studioMediaSourceSet.deleteMany({ where: { projectId } });
       if (workspaceId)
         await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
       if (actorUserId)
@@ -326,6 +328,96 @@ runDatabaseSmoke("external media attach and capability history", () => {
         where: { referenceId },
       }),
     ).resolves.toBe(4);
+  });
+
+  it("retains a metadata-enriched observation of the same provider byte revision", async () => {
+    const metadataFile = file({
+      externalFileId: `metadata-enrichment-${nonce}`,
+      fileName: "LRV_20260402_080506_01_004.lrv",
+      sizeBytes: "102420828",
+      headRevisionKey: "drive-metadata-revision-1",
+      checksumMd5: "d".repeat(32),
+      durationSeconds: null,
+      widthPixels: null,
+      heightPixels: null,
+      mediaProjection: "dual-fisheye",
+      projectionMetadata: {
+        schema: "quipsly-insta360-drive-member-v1",
+        stitched: false,
+      },
+    });
+    const attached = await attachVerifiedExternalMediaSource({
+      prisma,
+      value: {
+        projectId,
+        actorUserId,
+        actorEmail,
+        clientRequestId: randomUUID(),
+        operation: "attach",
+        verifiedFile: metadataFile,
+      },
+    });
+    await prisma.studioMediaSourceSet.create({
+      data: {
+        projectId,
+        kind: "insta360-360",
+        captureKey: `metadata-enrichment-${nonce}`,
+        displayName: "Metadata enrichment source-set proof",
+        identitySha256: "9".repeat(64),
+        sourceClockRevisionId: attached.sourceRevisionId,
+        clientRequestId: randomUUID(),
+        createdByUserId: actorUserId,
+        members: {
+          create: {
+            sourceRevisionId: attached.sourceRevisionId,
+            role: "browse-proxy",
+            ordinal: 0,
+            requiredForRender: false,
+            memberIdentitySha256: "8".repeat(64),
+          },
+        },
+      },
+    });
+    const enriched = await attachVerifiedExternalMediaSource({
+      prisma,
+      value: {
+        projectId,
+        actorUserId,
+        actorEmail,
+        clientRequestId: randomUUID(),
+        operation: "refresh",
+        expectedReferenceRevision: attached.reference.revision,
+        verifiedFile: {
+          ...metadataFile,
+          durationSeconds: 81.76,
+          widthPixels: 1664,
+          heightPixels: 832,
+        },
+      },
+    });
+    expect(enriched.reference.revision).toBe(attached.reference.revision);
+    expect(enriched.sourceRevisionId).not.toBe(attached.sourceRevisionId);
+    expect(enriched.canonicalSourceRevisionId).toBe(attached.sourceRevisionId);
+    await expect(
+      prisma.studioMediaSourceRevision.findMany({
+        where: { externalReferenceId: attached.reference.id },
+        orderBy: { createdAt: "asc" },
+        select: { revisionKey: true, verificationJson: true },
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        revisionKey: "drive-metadata-revision-1",
+      }),
+      expect.objectContaining({
+        revisionKey: expect.stringMatching(
+          /^drive-metadata-revision-1:metadata:[0-9a-f]{24}$/,
+        ),
+        verificationJson: expect.objectContaining({
+          providerMetadataVariant: true,
+          providerRevisionKey: "drive-metadata-revision-1",
+        }),
+      }),
+    ]);
   });
 
   it("keeps an identical external file identity isolated between Nests", async () => {
