@@ -338,12 +338,18 @@ export function buildSourceLibraryItems(input: {
     sourceUnitGroups.set(source.sourceUnit.id, group);
   }
   for (const sources of sourceUnitGroups.values()) {
+    const representedBySourceSet = sources.some(
+      (source) =>
+        source.latestSourceRevision &&
+        packagedRevisionIds.has(source.latestSourceRevision.id),
+    );
+    for (const source of sources) groupedExternalIds.add(source.id);
+    if (representedBySourceSet) continue;
     const representative =
       sources.find((source) =>
         source.fileName.toLowerCase().endsWith(".lrv"),
       ) ?? sources[0];
     if (!representative?.sourceUnit) continue;
-    for (const source of sources) groupedExternalIds.add(source.id);
     const metadata = record(representative.sourceUnit.metadataJson);
     const packageStatus =
       typeof metadata?.packageStatus === "string"

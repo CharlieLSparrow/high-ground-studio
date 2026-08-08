@@ -329,4 +329,39 @@ describe("source library projection", () => {
     });
     expect(resolveSourceLibraryItem(items, "external:missing")).toBeNull();
   });
+
+  it("hydrates a camera-set clock reference without rendering a duplicate source-unit card", () => {
+    const clockReference = {
+      ...externalSources[0],
+      id: "external-lrv",
+      fileName: "LRV_001.lrv",
+      sourceUnit: {
+        id: "source-unit-360",
+        kind: "insta360-drive-segment",
+        title: "Homer workshop walk-through",
+        capturedAt: "2026-08-06T14:00:00.000Z",
+        metadataJson: { packageStatus: "ready-to-attach" },
+      },
+      latestSourceRevision: {
+        id: "revision-lrv",
+        durationSeconds: 82,
+        collaborationProxy: proxy,
+      },
+    };
+
+    const items = buildSourceLibraryItems({
+      assets: [],
+      externalSources: [clockReference],
+      sourceSets,
+      cards,
+      boards,
+    });
+
+    expect(items.map((item) => item.key)).toEqual(["source-set:set-1"]);
+    expect(
+      resolveSourceLibraryItem(items, "external:external-lrv"),
+    ).toMatchObject({
+      key: "source-set:set-1",
+    });
+  });
 });
