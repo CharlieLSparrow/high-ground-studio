@@ -3185,3 +3185,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   range, source set, board, and three linked writing sections without provider
   locators or bytes. The 194-page production build passes. Production and
   physical-device recovery remain separate acceptance gates.
+
+### 2026-08-08 spatial render custody
+
+- Spatial render contract v2 separates portable editor intent from
+  executor-local media bytes. INSV replicas, reviewed 5.7K stitch masters,
+  reframe targets, results, and worker receipts must all name one exact local
+  executor and opaque storage scope.
+- The local spatial worker claims only jobs addressed to itself. Source Story
+  filters local artifacts and render jobs to the selected Mac, and derivative
+  playback refuses scoped bytes when that executor/storage identity is not
+  currently present.
+- A two-executor PostgreSQL proof confirms that the second Mac cannot see or
+  queue from the first Mac's stitch master. Canonical ranges and 360 keyframe
+  recipes remain portable and reversible so the render can be rematerialized
+  on another executor after its own exact sources are prepared.
+- Detailed architecture and proof:
+  `docs/coordination/2026-08-08-spatial-artifact-portability.md`.

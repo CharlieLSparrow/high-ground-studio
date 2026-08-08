@@ -15,8 +15,14 @@ import {
   type SpatialRenderJob,
 } from "@high-ground/quipsly-media-processing";
 
+const EXECUTION_TARGET = {
+  portability: "executor-local" as const,
+  custodianNodeId: "execution_worker_spatial_test",
+  storageScopeId: "storage_scope_spatial_test",
+};
+
 function fixture(overrides: Partial<SpatialRenderJob> = {}) {
-  const raw = {
+  const raw: Omit<SpatialRenderJob, "kind" | "version" | "boundaries"> = {
     jobId: "spatial-job-1",
     projectId: "project-1",
     episodeProductionId: "episode-1",
@@ -26,6 +32,7 @@ function fixture(overrides: Partial<SpatialRenderJob> = {}) {
     requestedByEmail: "editor@quipsly.test",
     clientRequestId: "request-1",
     queuedAt: "2026-08-08T00:00:00.000Z",
+    executionTarget: EXECUTION_TARGET,
     sourcePackage: {
       sourceSetId: "source-set-1",
       sourceSetIdentitySha256: "2".repeat(64),
@@ -36,6 +43,7 @@ function fixture(overrides: Partial<SpatialRenderJob> = {}) {
         role: "primary-original" as const,
         fileName: "VID_20250711_222639_00_037.insv",
         provider: "local" as const,
+        ...EXECUTION_TARGET,
         locator: "/authorized/source.insv",
         generation: `sha256:${"3".repeat(64)}`,
         sha256: "3".repeat(64),
@@ -67,14 +75,14 @@ function fixture(overrides: Partial<SpatialRenderJob> = {}) {
       width: 5760 as const,
       height: 2880 as const,
       videoCodec: "h265" as const,
-      target: { provider: "local" as const, locator: "spatial/intermediate/source-set-1.mp4", contentType: "video/mp4" as const },
+      target: { provider: "local" as const, ...EXECUTION_TARGET, locator: "spatial/intermediate/source-set-1.mp4", contentType: "video/mp4" as const },
       reviewedMaster: null,
     },
     reframe: {
       adapter: "ffmpeg-v360" as const,
       profile: "spatial-proof-720p24" as const,
       commandResolution: "output-frame" as const,
-      target: { provider: "local" as const, locator: "spatial/output/spatial-job-1.mp4", contentType: "video/mp4" as const },
+      target: { provider: "local" as const, ...EXECUTION_TARGET, locator: "spatial/output/spatial-job-1.mp4", contentType: "video/mp4" as const },
     },
     manifestSha256: "0".repeat(64),
     ...overrides,
@@ -101,6 +109,25 @@ test("spatial render refuses an LRV proxy or checksum-unbound source as final in
   assert.throws(() => parseSpatialRenderJob({ ...job, sourcePackage: { ...job.sourcePackage, members: [{ ...job.sourcePackage.members[0]!, generation: "1" }] } }), /generation must bind/);
 });
 
+test("executor-local spatial bytes cannot cross a Mac storage scope", () => {
+  const job = fixture();
+  assert.throws(
+    () =>
+      parseSpatialRenderJob({
+        ...job,
+        reframe: {
+          ...job.reframe,
+          target: {
+            ...job.reframe.target,
+            custodianNodeId: "execution_worker_other_test",
+            storageScopeId: "storage_scope_other_test",
+          },
+        },
+      }),
+    /execution boundary is invalid/,
+  );
+});
+
 test("reviewed Studio master jobs freeze the registered derivative receipt", () => {
   const base = fixture();
   const raw = {
@@ -108,7 +135,7 @@ test("reviewed Studio master jobs freeze the registered derivative receipt", () 
     stitch: {
       ...base.stitch,
       adapter: "insta360-studio-reviewed-export" as const,
-      target: { provider: "local" as const, locator: "/authorized/reviewed-master.mp4", contentType: "video/mp4" as const },
+      target: { provider: "local" as const, ...EXECUTION_TARGET, locator: "/authorized/reviewed-master.mp4", contentType: "video/mp4" as const },
       reviewedMaster: { derivativeId: "derivative-1", workflowJobId: "review-job-1", receiptSha256: "6".repeat(64), adapterVersion: "5.9.9", generation: `sha256:${"7".repeat(64)}`, sha256: "7".repeat(64), sizeBytes: 30_000_000, durationSeconds: 10, fps: 24, videoCodec: "hevc" },
     },
     manifestSha256: "0".repeat(64),
@@ -127,12 +154,27 @@ test("spatial result is bound to the frozen recipe, reviewed master, and output 
     jobId: job.jobId,
     completedAt: "2026-08-08T02:00:00.000Z",
     manifestSha256: job.manifestSha256,
-    stitch: { profile: "insta360-flowstate-equirectangular-master-v1", adapter: "insta360-mediasdk", adapterVersion: "3.1.0", sourceSetIdentitySha256: job.sourcePackage.sourceSetIdentitySha256, output: { provider: "local", locator: job.stitch.target.locator, contentType: "video/mp4", generation: `sha256:${stitchSha}`, sha256: stitchSha, sizeBytes: 30_000_000, durationSeconds: 10, completeDecode: true, width: 5760, height: 2880, fps: 24, videoCodec: "hevc", projection: "equirectangular" } },
-    reframe: { adapter: "ffmpeg-v360", ffmpegVersion: "ffmpeg 8.1.1", recipeSha256: job.recipeSha256, output: { provider: "local", locator: job.reframe.target.locator, contentType: "video/mp4", generation: `sha256:${outputSha}`, sha256: outputSha, sizeBytes: 2_000_000, durationSeconds: 0.3, completeDecode: true, width: 1280, height: 720, fps: 24, videoCodec: "h264", variantKind: "spatial-reframe-proof" } },
-    worker: { executionId: "execution-1", buildId: "test-build", imageDigest: null, attempt: 1 },
+    stitch: { profile: "insta360-flowstate-equirectangular-master-v1", adapter: "insta360-mediasdk", adapterVersion: "3.1.0", sourceSetIdentitySha256: job.sourcePackage.sourceSetIdentitySha256, output: { provider: "local", ...EXECUTION_TARGET, locator: job.stitch.target.locator, contentType: "video/mp4", generation: `sha256:${stitchSha}`, sha256: stitchSha, sizeBytes: 30_000_000, durationSeconds: 10, completeDecode: true, width: 5760, height: 2880, fps: 24, videoCodec: "hevc", projection: "equirectangular" } },
+    reframe: { adapter: "ffmpeg-v360", ffmpegVersion: "ffmpeg 8.1.1", recipeSha256: job.recipeSha256, output: { provider: "local", ...EXECUTION_TARGET, locator: job.reframe.target.locator, contentType: "video/mp4", generation: `sha256:${outputSha}`, sha256: outputSha, sizeBytes: 2_000_000, durationSeconds: 0.3, completeDecode: true, width: 1280, height: 720, fps: 24, videoCodec: "h264", variantKind: "spatial-reframe-proof" } },
+    worker: { ...EXECUTION_TARGET, executionId: "execution-1", buildId: "test-build", imageDigest: null, attempt: 1 },
   }, job);
   assert.equal(result.reframe.recipeSha256, job.recipeSha256);
   assert.throws(() => newSpatialRenderResult({ ...result, reframe: { ...result.reframe, recipeSha256: "a".repeat(64) } }, job), /frozen job contract/);
+  assert.throws(
+    () =>
+      newSpatialRenderResult(
+        {
+          ...result,
+          worker: {
+            ...result.worker,
+            custodianNodeId: "execution_worker_other_test",
+            storageScopeId: "storage_scope_other_test",
+          },
+        },
+        job,
+      ),
+    /frozen job contract/,
+  );
 });
 
 test("the current Mac is a truthful manual stitch handoff, not an automatic executor", () => {
@@ -169,8 +211,9 @@ test("reviewed Studio handoff binds a full-resolution master to the exact INSV p
     sourceSetId: "source-set-1",
     sourceSetIdentitySha256: "1".repeat(64),
     sourceClockRevisionId: "clock-revision-1",
+    executionTarget: EXECUTION_TARGET,
     exactMembers: [{ sourceRevisionId: "source-revision-1", role: "primary-original" as const, fileName: "VID_take.insv", generation: `sha256:${"2".repeat(64)}`, sha256: "2".repeat(64), sizeBytes: 20_000_000 }],
-    output: { provider: "local" as const, locator: "/authorized/stitched-master.mp4", contentType: "video/mp4" as const, generation: `sha256:${"3".repeat(64)}`, sha256: "3".repeat(64), sizeBytes: 30_000_000, durationSeconds: 10, completeDecode: true as const, width: 5760 as const, height: 2880 as const, fps: 24, videoCodec: "hevc", projection: "equirectangular" as const },
+    output: { provider: "local" as const, ...EXECUTION_TARGET, locator: "/authorized/stitched-master.mp4", contentType: "video/mp4" as const, generation: `sha256:${"3".repeat(64)}`, sha256: "3".repeat(64), sizeBytes: 30_000_000, durationSeconds: 10, completeDecode: true as const, width: 5760 as const, height: 2880 as const, fps: 24, videoCodec: "hevc", projection: "equirectangular" as const },
     review: { reviewedAt: "2026-08-08T01:00:00.000Z", reviewedByUserId: "reviewer-1", reviewedByEmail: "reviewer@quipsly.test", application: "Insta360 Studio" as const, applicationVersion: "5.9.9", flowStateEnabled: true, horizonLockEnabled: true, stitchMode: "ai-flow" as const, visualPlaybackReviewed: true as const },
     receiptSha256: "0".repeat(64),
   };
@@ -184,16 +227,17 @@ test("reviewed Studio handoff binds a full-resolution master to the exact INSV p
 
 test("reviewed Studio handoff refuses low-resolution or proxy-shaped claims", () => {
   const base = {
-    kind: "quipsly-reviewed-spatial-stitch-master-v1",
-    version: 1,
+    kind: "quipsly-reviewed-spatial-stitch-master-v2",
+    version: 2,
     receiptId: "reviewed-stitch-1",
     clientRequestId: "review-request-1",
     projectId: "project-1",
     sourceSetId: "source-set-1",
     sourceSetIdentitySha256: "1".repeat(64),
     sourceClockRevisionId: "clock-revision-1",
+    executionTarget: EXECUTION_TARGET,
     exactMembers: [{ sourceRevisionId: "source-revision-1", role: "primary-original", fileName: "LRV_take.lrv", generation: `sha256:${"2".repeat(64)}`, sha256: "2".repeat(64), sizeBytes: 20_000_000 }],
-    output: { provider: "local", locator: "/authorized/proxy.mp4", contentType: "video/mp4", generation: `sha256:${"3".repeat(64)}`, sha256: "3".repeat(64), sizeBytes: 30_000_000, durationSeconds: 10, completeDecode: true, width: 960, height: 480, fps: 24, videoCodec: "h264", projection: "equirectangular" },
+    output: { provider: "local", ...EXECUTION_TARGET, locator: "/authorized/proxy.mp4", contentType: "video/mp4", generation: `sha256:${"3".repeat(64)}`, sha256: "3".repeat(64), sizeBytes: 30_000_000, durationSeconds: 10, completeDecode: true, width: 960, height: 480, fps: 24, videoCodec: "h264", projection: "equirectangular" },
     review: { reviewedAt: "2026-08-08T01:00:00.000Z", reviewedByUserId: "reviewer-1", reviewedByEmail: "reviewer@quipsly.test", application: "Insta360 Studio", applicationVersion: "5.9.9", flowStateEnabled: true, horizonLockEnabled: true, stitchMode: "ai-flow", visualPlaybackReviewed: true },
     receiptSha256: "4".repeat(64),
     boundaries: { exactPackageVerifiedBeforeAndAfter: true, completeOutputDecode: true, manualExportIsNotAutomaticSdkExecution: true, lrvWasNotUsedAsStitchSource: true, sourceMediaRemainsImmutable: true, derivativeIsNotPublicationMedia: true },

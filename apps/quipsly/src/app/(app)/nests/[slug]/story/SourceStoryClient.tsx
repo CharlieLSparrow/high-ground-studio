@@ -236,6 +236,12 @@ type SourceStoryWorkspace = {
     timelinePlacementId: string;
     timelineFingerprintSha256: string;
     profile: string;
+    executionTarget: null | {
+      portability: "executor-local";
+      nodeId: string;
+      storageScopeId: string;
+      localPathWithheld: true;
+    };
     error: string | null;
     requestedByEmail: string | null;
     createdAt: string;
@@ -2149,7 +2155,13 @@ export function SourceStoryClient({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            ...body,
+            executorNodeId:
+              typeof body.executorNodeId === "string"
+                ? body.executorNodeId
+                : sourceExecutorNodeId || null,
+          }),
         },
       );
       const payload = (await response.json()) as ApiPayload;

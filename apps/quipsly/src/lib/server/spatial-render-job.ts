@@ -25,6 +25,7 @@ import {
   resolveExactSpatialSourceMember,
   SpatialExactSourceError,
 } from "@/lib/spatial-exact-source";
+import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
 
 const JOB_TYPE = "spatial-reframe";
 const JOB_SOURCE = "source-story.spatial-reframe";
@@ -40,7 +41,11 @@ export class SpatialRenderQueueError extends Error {
   }
 }
 
-const spatialSourceSetSelect = {
+function spatialSourceSetSelect(executionTarget: {
+  nodeId: string;
+  storageScopeId: string;
+}) {
+  return {
   id: true,
   identitySha256: true,
   completeness: true,
@@ -48,12 +53,19 @@ const spatialSourceSetSelect = {
   sourceClockRevision: {
     select: {
       derivatives: {
-        where: { kind: "spatial-stitch-master", status: "ready" },
+        where: {
+          kind: "spatial-stitch-master",
+          status: "ready",
+          custodianNodeId: executionTarget.nodeId,
+          storageScopeId: executionTarget.storageScopeId,
+        },
         orderBy: { createdAt: "desc" },
         take: 1,
         select: {
           id: true,
           workflowJobId: true,
+          custodianNodeId: true,
+          storageScopeId: true,
           locator: true,
           generation: true,
           contentSha256: true,
@@ -89,11 +101,18 @@ const spatialSourceSetSelect = {
             },
           },
           replicas: {
-            where: { storageProvider: "local-cache", status: "ready" },
+            where: {
+              storageProvider: "local-cache",
+              status: "ready",
+              custodianNodeId: executionTarget.nodeId,
+              storageScopeId: executionTarget.storageScopeId,
+            },
             orderBy: { createdAt: "desc" },
             take: 1,
             select: {
               locator: true,
+              custodianNodeId: true,
+              storageScopeId: true,
               generation: true,
               contentSha256: true,
               sizeBytes: true,
@@ -104,7 +123,8 @@ const spatialSourceSetSelect = {
       },
     },
   },
-} satisfies Prisma.StudioMediaSourceSetSelect;
+  } satisfies Prisma.StudioMediaSourceSetSelect;
+}
 
 export async function queueSpatialReframe(input: {
   prisma: PrismaClient;
@@ -115,7 +135,23 @@ export async function queueSpatialReframe(input: {
   requestedByEmail: string;
   clientRequestId: string;
   localMediaRoot: string;
+  executorNodeId?: string | null;
 }) {
+  const executorTarget = await readLocalExecutorTarget(
+    input.prisma,
+    input.executorNodeId,
+  );
+  if (!executorTarget) {
+    throw new SpatialRenderQueueError(
+      "spatial-reframe-executor-unavailable",
+      "No online local media executor is available for this spatial render.",
+    );
+  }
+  const executionTarget = {
+    portability: "executor-local" as const,
+    custodianNodeId: executorTarget.nodeId,
+    storageScopeId: executorTarget.storageScopeId,
+  };
   const existing = await input.prisma.studioWorkflowJob.findFirst({
     where: {
       type: JOB_TYPE,
@@ -131,7 +167,11 @@ export async function queueSpatialReframe(input: {
     if (
       manifest.timelinePlacementId !== input.timelinePlacementId ||
       manifest.reframe.profile !== input.profile ||
-      manifest.requestedByUserId !== input.requestedByUserId
+      manifest.requestedByUserId !== input.requestedByUserId ||
+      manifest.executionTarget.custodianNodeId !==
+        executionTarget.custodianNodeId ||
+      manifest.executionTarget.storageScopeId !==
+        executionTarget.storageScopeId
     ) {
       throw new SpatialRenderQueueError(
         "spatial-reframe-request-reuse-conflict",
@@ -157,7 +197,7 @@ export async function queueSpatialReframe(input: {
           startSeconds: true,
           endSeconds: true,
           reframeRecipeJson: true,
-          sourceSet: { select: spatialSourceSetSelect },
+          sourceSet: { select: spatialSourceSetSelect(executorTarget) },
         },
       },
       episodeProduction: { select: { timelineJson: true } },
@@ -177,7 +217,7 @@ export async function queueSpatialReframe(input: {
         sourceClockRevisionId: placement.sourceRange.sourceRevisionId,
         completeness: "complete",
       },
-      select: spatialSourceSetSelect,
+      select: spatialSourceSetSelect(executorTarget),
       orderBy: { createdAt: "desc" },
     }));
   if (!sourceSet || sourceSet.completeness !== "complete")
@@ -207,6 +247,12 @@ export async function queueSpatialReframe(input: {
     masterReceipt.sourceClockRevisionId !== sourceSet.sourceClockRevisionId ||
     masterReceipt.output.sha256 !== master.contentSha256 ||
     masterReceipt.output.generation !== master.generation ||
+    master.custodianNodeId !== executionTarget.custodianNodeId ||
+    master.storageScopeId !== executionTarget.storageScopeId ||
+    masterReceipt.executionTarget.custodianNodeId !==
+      executionTarget.custodianNodeId ||
+    masterReceipt.executionTarget.storageScopeId !==
+      executionTarget.storageScopeId ||
     masterReceipt.receiptSha256 !== verification.receiptSha256
   )
     throw new SpatialRenderQueueError(
@@ -228,7 +274,11 @@ export async function queueSpatialReframe(input: {
   );
   const members = sourceSet.members.map(({ role, sourceRevision }) => {
     try {
-      return resolveExactSpatialSourceMember({ role, sourceRevision });
+      return resolveExactSpatialSourceMember({
+        role,
+        sourceRevision,
+        executionTarget,
+      });
     } catch (error) {
       if (error instanceof SpatialExactSourceError) {
         throw new SpatialRenderQueueError(
@@ -240,7 +290,6 @@ export async function queueSpatialReframe(input: {
     }
   });
   const jobId = `spatialrender_${randomUUID()}`;
-  const root = path.resolve(input.localMediaRoot);
   const raw: Omit<SpatialRenderJob, "kind" | "version" | "boundaries"> = {
     jobId,
     projectId: placement.projectId,
@@ -251,6 +300,7 @@ export async function queueSpatialReframe(input: {
     requestedByEmail: input.requestedByEmail.toLowerCase(),
     clientRequestId: input.clientRequestId,
     queuedAt: new Date().toISOString(),
+    executionTarget,
     sourcePackage: {
       sourceSetId: sourceSet.id,
       sourceSetIdentitySha256: sourceSet.identitySha256,
@@ -278,6 +328,7 @@ export async function queueSpatialReframe(input: {
       videoCodec: "h265",
       target: {
         provider: "local",
+        ...executionTarget,
         locator: master.locator,
         contentType: "video/mp4",
       },
@@ -300,7 +351,8 @@ export async function queueSpatialReframe(input: {
       commandResolution: "output-frame",
       target: {
         provider: "local",
-        locator: path.join(root, "spatial", "reframes", `${jobId}.mp4`),
+        ...executionTarget,
+        locator: path.join("spatial", "reframes", `${jobId}.mp4`),
         contentType: "video/mp4",
       },
     },
@@ -408,6 +460,8 @@ export async function registerSpatialReframeResult(input: {
           projectId: job.projectId,
           sourceRevisionId: job.sourcePackage.sourceClockRevisionId,
           workflowJobId: job.jobId,
+          custodianNodeId: job.executionTarget.custodianNodeId,
+          storageScopeId: job.executionTarget.storageScopeId,
           kind: receipt.reframe.output.variantKind,
           profile: job.reframe.profile,
           storageProvider: "local",
@@ -431,6 +485,9 @@ export async function registerSpatialReframeResult(input: {
             recipeSha256: job.recipeSha256,
             stitchMasterReceiptSha256:
               job.stitch.reviewedMaster?.receiptSha256 ?? null,
+            artifactPortability: job.executionTarget.portability,
+            custodianNodeId: job.executionTarget.custodianNodeId,
+            storageScopeId: job.executionTarget.storageScopeId,
           },
           createdByUserId: job.requestedByUserId,
         },
@@ -465,6 +522,12 @@ function publicQueue(
       timelinePlacementId: manifest.timelinePlacementId,
       timelineFingerprintSha256: manifest.timelineFingerprintSha256,
       profile: manifest.reframe.profile,
+      executionTarget: {
+        portability: manifest.executionTarget.portability,
+        nodeId: manifest.executionTarget.custodianNodeId,
+        storageScopeId: manifest.executionTarget.storageScopeId,
+        localPathWithheld: true as const,
+      },
       sourceRange: [
         manifest.selection.startSeconds,
         manifest.selection.endSeconds,
@@ -515,7 +578,10 @@ function publicRegistration(
 }
 async function authorizeResultPath(configuredRoot: string, locator: string) {
   const root = await realpath(configuredRoot).catch(() => "");
-  const output = await realpath(locator).catch(() => "");
+  const requested = path.isAbsolute(locator)
+    ? locator
+    : path.resolve(configuredRoot, locator);
+  const output = await realpath(requested).catch(() => "");
   if (
     !root ||
     !output ||

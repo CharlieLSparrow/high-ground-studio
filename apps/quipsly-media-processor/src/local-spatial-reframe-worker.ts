@@ -21,24 +21,31 @@ const JOB_SOURCE = "source-story.spatial-reframe";
 
 export type LocalSpatialReframeClaim = { id: string; inputJson: unknown; attempt: number; executionId: string };
 export interface LocalSpatialReframeStore {
-  claim(input: { executionId: string; leaseMs: number; now: Date }): Promise<LocalSpatialReframeClaim | null>;
+  claim(input: {
+    executionId: string;
+    leaseMs: number;
+    now: Date;
+    custodianNodeId: string;
+    storageScopeId: string;
+  }): Promise<LocalSpatialReframeClaim | null>;
   complete(input: { claim: LocalSpatialReframeClaim; receipt: SpatialRenderResult; now: Date }): Promise<boolean>;
   retry(input: { claim: LocalSpatialReframeClaim; code: string; message: string; now: Date }): Promise<boolean>;
   fail(input: { claim: LocalSpatialReframeClaim; code: string; message: string; now: Date }): Promise<boolean>;
 }
 export interface LocalSpatialReframeRenderer { render(job: SpatialRenderJob, stitchedInputPath: string, outputPath: string): Promise<SpatialReframeTechnical>; }
-export type LocalSpatialReframeWorkerOptions = { executionId: string; buildId: string; imageDigest: string | null; leaseMs: number; outputRoot: string; authorizedSourceRoots: string[]; now: () => Date };
+export type LocalSpatialReframeWorkerOptions = { executionId: string; custodianNodeId: string; storageScopeId: string; buildId: string; imageDigest: string | null; leaseMs: number; outputRoot: string; authorizedSourceRoots: string[]; now: () => Date };
 export type LocalSpatialReframeWorkerResult = { disposition: "idle" } | { disposition: "completed" | "claim-lost" | "retry" | "failed"; jobId: string; code?: string; outputSha256?: string };
 
 class TerminalSpatialReframeError extends Error { constructor(readonly code: string, message: string) { super(message); this.name = "TerminalSpatialReframeError"; } }
 
 export async function runOneLocalSpatialReframeJob(store: LocalSpatialReframeStore, renderer: LocalSpatialReframeRenderer, options: LocalSpatialReframeWorkerOptions): Promise<LocalSpatialReframeWorkerResult> {
-  const claim = await store.claim({ executionId: options.executionId, leaseMs: options.leaseMs, now: options.now() });
+  const claim = await store.claim({ executionId: options.executionId, custodianNodeId: options.custodianNodeId, storageScopeId: options.storageScopeId, leaseMs: options.leaseMs, now: options.now() });
   if (!claim) return { disposition: "idle" };
   let job: SpatialRenderJob;
   try {
     job = parseSpatialRenderJob(claim.inputJson);
     if (job.jobId !== claim.id || digest(spatialRenderManifestCanonicalJson(job)) !== job.manifestSha256 || digest(spatialRecipeCanonicalJson(job)) !== job.recipeSha256) throw new Error("manifest digest mismatch");
+    if (job.executionTarget.custodianNodeId !== options.custodianNodeId || job.executionTarget.storageScopeId !== options.storageScopeId) throw new Error("executor custody mismatch");
     if (job.stitch.adapter !== "insta360-studio-reviewed-export" || !job.stitch.reviewedMaster) throw new Error("reviewed master binding missing");
   } catch (error) {
     await store.fail({ claim, code: "spatial-reframe-manifest-invalid", message: message(error), now: options.now() });
@@ -82,15 +89,15 @@ export async function runOneLocalSpatialReframeJob(store: LocalSpatialReframeSto
         adapter: "insta360-studio-reviewed-export",
         adapterVersion: binding.adapterVersion,
         sourceSetIdentitySha256: job.sourcePackage.sourceSetIdentitySha256,
-        output: { provider: "local", locator: job.stitch.target.locator, contentType: "video/mp4", generation: binding.generation, sha256: binding.sha256, sizeBytes: binding.sizeBytes, durationSeconds: binding.durationSeconds, completeDecode: true, width: 5760, height: 2880, fps: binding.fps, videoCodec: binding.videoCodec, projection: "equirectangular" },
+        output: { provider: "local", ...job.executionTarget, locator: job.stitch.target.locator, contentType: "video/mp4", generation: binding.generation, sha256: binding.sha256, sizeBytes: binding.sizeBytes, durationSeconds: binding.durationSeconds, completeDecode: true, width: 5760, height: 2880, fps: binding.fps, videoCodec: binding.videoCodec, projection: "equirectangular" },
       },
       reframe: {
         adapter: "ffmpeg-v360",
         ffmpegVersion: technical.ffmpegVersion,
         recipeSha256: job.recipeSha256,
-        output: { provider: "local", locator: job.reframe.target.locator, contentType: "video/mp4", generation: `sha256:${output.sha256}`, sha256: output.sha256, sizeBytes: output.sizeBytes, durationSeconds: technical.durationSeconds, completeDecode: true, width: technical.width, height: technical.height, fps: technical.fps, videoCodec: technical.videoCodec, variantKind: job.reframe.profile === "spatial-flat-4k24" ? "spatial-reframe-edit-source" : "spatial-reframe-proof" },
+        output: { provider: "local", ...job.executionTarget, locator: job.reframe.target.locator, contentType: "video/mp4", generation: `sha256:${output.sha256}`, sha256: output.sha256, sizeBytes: output.sizeBytes, durationSeconds: technical.durationSeconds, completeDecode: true, width: technical.width, height: technical.height, fps: technical.fps, videoCodec: technical.videoCodec, variantKind: job.reframe.profile === "spatial-flat-4k24" ? "spatial-reframe-edit-source" : "spatial-reframe-proof" },
       },
-      worker: { executionId: claim.executionId, buildId: options.buildId, imageDigest: options.imageDigest, attempt: claim.attempt },
+      worker: { ...job.executionTarget, executionId: claim.executionId, buildId: options.buildId, imageDigest: options.imageDigest, attempt: claim.attempt },
     }, job);
     const committed = await store.complete({ claim, receipt, now: options.now() });
     return committed ? { disposition: "completed", jobId: job.jobId, outputSha256: output.sha256 } : { disposition: "claim-lost", jobId: job.jobId };
@@ -106,11 +113,11 @@ export async function runOneLocalSpatialReframeJob(store: LocalSpatialReframeSto
 
 export class PostgresLocalSpatialReframeStore implements LocalSpatialReframeStore {
   constructor(private readonly pool: InstanceType<typeof Pool>) {}
-  async claim(input: { executionId: string; leaseMs: number; now: Date }) {
+  async claim(input: { executionId: string; leaseMs: number; now: Date; custodianNodeId: string; storageScopeId: string }) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const selected = await client.query({ text: `SELECT "id","inputJson","resultJson" FROM "StudioWorkflowJob" WHERE "type"=$1 AND "source"=$2 AND ("status"='queued' OR ("status"='processing' AND "updatedAt" < timezone('UTC',now()) - ($3 * interval '1 millisecond'))) ORDER BY "priority" ASC,"createdAt" ASC FOR UPDATE SKIP LOCKED LIMIT 1`, values: [JOB_TYPE, JOB_SOURCE, input.leaseMs] });
+      const selected = await client.query({ text: `SELECT "id","inputJson","resultJson" FROM "StudioWorkflowJob" WHERE "type"=$1 AND "source"=$2 AND "inputJson"->'executionTarget'->>'custodianNodeId'=$4 AND "inputJson"->'executionTarget'->>'storageScopeId'=$5 AND ("status"='queued' OR ("status"='processing' AND "updatedAt" < timezone('UTC',now()) - ($3 * interval '1 millisecond'))) ORDER BY "priority" ASC,"createdAt" ASC FOR UPDATE SKIP LOCKED LIMIT 1`, values: [JOB_TYPE, JOB_SOURCE, input.leaseMs, input.custodianNodeId, input.storageScopeId] });
       const row = selected.rows[0];
       if (!row) { await client.query("COMMIT"); return null; }
       const attempt = Math.max(0, Number(record(record(row.resultJson).lease).attempt) || 0) + 1;
@@ -125,12 +132,12 @@ export class PostgresLocalSpatialReframeStore implements LocalSpatialReframeStor
   private async release(input: { claim: LocalSpatialReframeClaim; code: string; message: string; now: Date }, status: "queued" | "failed") { return (await this.pool.query({ text: `UPDATE "StudioWorkflowJob" SET "status"=$3,"updatedAt"=timezone('UTC',now()),"completedAt"=CASE WHEN $3='failed' THEN timezone('UTC',now()) ELSE NULL END,"error"=$4,"resultJson"=$5::jsonb WHERE "id"=$1 AND "status"='processing' AND "resultJson"->'lease'->>'executionId'=$2`, values: [input.claim.id, input.claim.executionId, status, `${input.code}: ${input.message}`.slice(0, 4_000), JSON.stringify({ state: status, failure: { code: input.code, message: input.message }, lease: { executionId: input.claim.executionId, attempt: input.claim.attempt } })] })).rowCount === 1; }
 }
 
-export function newLocalSpatialReframeRuntime(input: { pool: InstanceType<typeof Pool>; outputRoot: string; authorizedSourceRoots: string[]; executionId?: string; leaseMs: number; buildId: string }) { return { store: new PostgresLocalSpatialReframeStore(input.pool), renderer: new FfmpegSpatialReframeRenderer(), options: { executionId: input.executionId ?? randomUUID(), buildId: input.buildId, imageDigest: null, leaseMs: input.leaseMs, outputRoot: input.outputRoot, authorizedSourceRoots: input.authorizedSourceRoots, now: () => new Date() } satisfies LocalSpatialReframeWorkerOptions }; }
+export function newLocalSpatialReframeRuntime(input: { pool: InstanceType<typeof Pool>; outputRoot: string; authorizedSourceRoots: string[]; executionId?: string; custodianNodeId: string; storageScopeId: string; leaseMs: number; buildId: string }) { return { store: new PostgresLocalSpatialReframeStore(input.pool), renderer: new FfmpegSpatialReframeRenderer(), options: { executionId: input.executionId ?? randomUUID(), custodianNodeId: input.custodianNodeId, storageScopeId: input.storageScopeId, buildId: input.buildId, imageDigest: null, leaseMs: input.leaseMs, outputRoot: input.outputRoot, authorizedSourceRoots: input.authorizedSourceRoots, now: () => new Date() } satisfies LocalSpatialReframeWorkerOptions }; }
 
 async function authorizedRoots(configured: string[]) { if (!configured.length) throw new TerminalSpatialReframeError("spatial-reframe-source-roots-missing", "No local source roots were configured."); return Promise.all(configured.map(async (root) => { const resolved = await realpath(root).catch(() => ""); if (!resolved || resolved === path.parse(resolved).root || resolved === path.resolve(process.env.HOME || "/nonexistent")) throw new TerminalSpatialReframeError("spatial-reframe-source-root-rejected", "A spatial source root is missing or too broad."); return resolved; })); }
 async function authorizedOutputRoot(configured: string) { const resolved = path.resolve(configured); await mkdir(resolved, { recursive: true, mode: 0o700 }); const root = await realpath(resolved); if (root === path.parse(root).root || root === path.resolve(process.env.HOME || "/nonexistent")) throw new TerminalSpatialReframeError("spatial-reframe-output-root-rejected", "The spatial output root is too broad."); return root; }
 async function authorizedSource(roots: string[], locator: string) { const source = await realpath(locator).catch(() => ""); if (!source || !roots.some((root) => inside(root, source))) throw new TerminalSpatialReframeError("spatial-reframe-source-path-rejected", "A spatial source escaped the authorized media vaults."); return source; }
-async function authorizedTarget(root: string, locator: string) { const requested = path.resolve(locator); if (!requested.toLowerCase().endsWith(".mp4")) throw new TerminalSpatialReframeError("spatial-reframe-target-path-rejected", "The spatial output escaped its authorized media vault."); await mkdir(path.dirname(requested), { recursive: true, mode: 0o700 }); const canonical = path.join(await realpath(path.dirname(requested)), path.basename(requested)); if (!inside(root, canonical)) throw new TerminalSpatialReframeError("spatial-reframe-target-path-rejected", "The spatial output escaped its authorized media vault."); return canonical; }
+async function authorizedTarget(root: string, locator: string) { const requested = path.isAbsolute(locator) ? path.resolve(locator) : path.resolve(root, locator); if (!requested.toLowerCase().endsWith(".mp4")) throw new TerminalSpatialReframeError("spatial-reframe-target-path-rejected", "The spatial output escaped its authorized media vault."); await mkdir(path.dirname(requested), { recursive: true, mode: 0o700 }); const canonical = path.join(await realpath(path.dirname(requested)), path.basename(requested)); if (!inside(root, canonical)) throw new TerminalSpatialReframeError("spatial-reframe-target-path-rejected", "The spatial output escaped its authorized media vault."); return canonical; }
 async function inspect(filePath: string) { const file = await stat(filePath); if (!file.isFile() || file.size <= 0) throw new TerminalSpatialReframeError("spatial-reframe-file-unavailable", "A spatial source or result is unavailable."); return { sizeBytes: file.size, sha256: await sha256File(filePath) }; }
 async function flush(filePath: string) { const handle = await open(filePath, "r+"); try { await handle.sync(); await handle.chmod(0o600); } finally { await handle.close(); } }
 function inside(root: string, candidate: string) { const relative = path.relative(root, candidate); return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)); }

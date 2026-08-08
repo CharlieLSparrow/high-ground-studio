@@ -11,6 +11,8 @@ import {
 } from "@high-ground/quipsly-media-processing";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
+import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
+
 const JOB_TYPE = "spatial-stitch-master";
 const JOB_SOURCE = "source-story.reviewed-studio-export";
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -28,6 +30,20 @@ export async function registerReviewedSpatialStitchMaster(input: {
   authorizedRoot: string;
 }) {
   const receipt = parseReviewedSpatialStitchMasterReceipt(input.receipt);
+  const executorTarget = await readLocalExecutorTarget(
+    input.prisma,
+    receipt.executionTarget.custodianNodeId,
+  );
+  if (
+    !executorTarget ||
+    executorTarget.storageScopeId !== receipt.executionTarget.storageScopeId
+  ) {
+    throw new SpatialStitchMasterRegistrationError(
+      "spatial-stitch-executor-unavailable",
+      "The executor that owns this reviewed stitch master is not online with the same storage scope.",
+      409,
+    );
+  }
   const canonicalReceiptSha256 = createHash("sha256").update(reviewedSpatialStitchMasterCanonicalJson(receipt)).digest("hex");
   if (canonicalReceiptSha256 !== receipt.receiptSha256) {
     throw new SpatialStitchMasterRegistrationError("spatial-stitch-receipt-digest-mismatch", "The reviewed stitch receipt changed after it was sealed.");
@@ -106,7 +122,14 @@ export async function registerReviewedSpatialStitchMaster(input: {
       throw new SpatialStitchMasterRegistrationError("spatial-stitch-package-drift", "The exact INSV package changed after the reviewed master was exported.", 409);
     }
     const existingDerivative = await transaction.studioMediaDerivative.findFirst({
-      where: { sourceRevisionId: receipt.sourceClockRevisionId, kind: "spatial-stitch-master", profile: SPATIAL_STITCH_PROFILE, generation: receipt.output.generation },
+      where: {
+        sourceRevisionId: receipt.sourceClockRevisionId,
+        kind: "spatial-stitch-master",
+        profile: SPATIAL_STITCH_PROFILE,
+        generation: receipt.output.generation,
+        custodianNodeId: receipt.executionTarget.custodianNodeId,
+        storageScopeId: receipt.executionTarget.storageScopeId,
+      },
     });
     if (existingDerivative) {
       const priorReceiptSha256 = record(existingDerivative.verificationJson).receiptSha256;
@@ -131,6 +154,7 @@ export async function registerReviewedSpatialStitchMaster(input: {
           sourceSetIdentitySha256: receipt.sourceSetIdentitySha256,
           exactMembers: receipt.exactMembers,
           clientRequestId: receipt.clientRequestId,
+          executionTarget: receipt.executionTarget,
         }),
         resultJson: prismaJson({ state: "completed", receipt }),
       },
@@ -141,6 +165,8 @@ export async function registerReviewedSpatialStitchMaster(input: {
         projectId: receipt.projectId,
         sourceRevisionId: receipt.sourceClockRevisionId,
         workflowJobId: receipt.receiptId,
+        custodianNodeId: receipt.executionTarget.custodianNodeId,
+        storageScopeId: receipt.executionTarget.storageScopeId,
         kind: "spatial-stitch-master",
         profile: SPATIAL_STITCH_PROFILE,
         storageProvider: "local",
@@ -155,7 +181,7 @@ export async function registerReviewedSpatialStitchMaster(input: {
         framesPerSecond: receipt.output.fps,
         status: "ready",
         verificationJson: prismaJson({ completeDecode: true, projection: receipt.output.projection, receiptSha256: receipt.receiptSha256 }),
-        provenanceJson: prismaJson({ schema: receipt.kind, receiptSha256: receipt.receiptSha256, review: receipt.review, boundaries: receipt.boundaries, sourceSetIdentitySha256: receipt.sourceSetIdentitySha256 }),
+        provenanceJson: prismaJson({ schema: receipt.kind, receiptSha256: receipt.receiptSha256, review: receipt.review, boundaries: receipt.boundaries, sourceSetIdentitySha256: receipt.sourceSetIdentitySha256, artifactPortability: receipt.executionTarget.portability, custodianNodeId: receipt.executionTarget.custodianNodeId, storageScopeId: receipt.executionTarget.storageScopeId }),
         createdByUserId: receipt.review.reviewedByUserId,
       },
     });

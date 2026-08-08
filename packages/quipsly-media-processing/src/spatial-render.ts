@@ -1,8 +1,14 @@
-export const SPATIAL_RENDER_CONTRACT_VERSION = 1 as const;
-export const SPATIAL_RENDER_JOB_KIND = "quipsly-spatial-render-job-v1" as const;
-export const SPATIAL_RENDER_RESULT_KIND = "quipsly-spatial-render-result-v1" as const;
+import {
+  parseExecutorLocalArtifactAuthority,
+  sameExecutorLocalArtifactAuthority,
+  type ExecutorLocalArtifactAuthority,
+} from "./artifact-portability.js";
+
+export const SPATIAL_RENDER_CONTRACT_VERSION = 2 as const;
+export const SPATIAL_RENDER_JOB_KIND = "quipsly-spatial-render-job-v2" as const;
+export const SPATIAL_RENDER_RESULT_KIND = "quipsly-spatial-render-result-v2" as const;
 export const SPATIAL_STITCH_PROFILE = "insta360-flowstate-equirectangular-master-v1" as const;
-export const REVIEWED_SPATIAL_STITCH_MASTER_KIND = "quipsly-reviewed-spatial-stitch-master-v1" as const;
+export const REVIEWED_SPATIAL_STITCH_MASTER_KIND = "quipsly-reviewed-spatial-stitch-master-v2" as const;
 
 export const SPATIAL_RENDER_PROFILES = {
   "spatial-proof-720p24": {
@@ -31,7 +37,7 @@ export type SpatialRenderProfileId = keyof typeof SPATIAL_RENDER_PROFILES;
 export type SpatialSourceMemberRole = "primary-original" | "secondary-original";
 export type SpatialInterpolation = "hold" | "linear" | "ease";
 
-export type SpatialRenderSourceMember = {
+export type SpatialRenderSourceMember = ExecutorLocalArtifactAuthority & {
   sourceRevisionId: string;
   role: SpatialSourceMemberRole;
   fileName: string;
@@ -65,6 +71,7 @@ export type SpatialRenderJob = {
   requestedByEmail: string;
   clientRequestId: string;
   queuedAt: string;
+  executionTarget: ExecutorLocalArtifactAuthority;
   sourcePackage: {
     sourceSetId: string;
     sourceSetIdentitySha256: string;
@@ -121,7 +128,7 @@ export type SpatialRenderJob = {
   boundaries: SpatialRenderBoundaries;
 };
 
-export type SpatialLocalTarget = {
+export type SpatialLocalTarget = ExecutorLocalArtifactAuthority & {
   provider: "local";
   locator: string;
   contentType: "video/mp4";
@@ -135,6 +142,8 @@ export type SpatialRenderBoundaries = {
   reframeIntentRemainsReversible: true;
   resultRequiresCompleteDecode: true;
   resultIsNotPublished: true;
+  localArtifactsRequireExactExecutor: true;
+  editorIntentIsPortableWithoutRenderedBytes: true;
 };
 
 export type SpatialRenderResult = {
@@ -162,7 +171,12 @@ export type SpatialRenderResult = {
       variantKind: "spatial-reframe-proof" | "spatial-reframe-edit-source";
     };
   };
-  worker: { executionId: string; buildId: string; imageDigest: string | null; attempt: number };
+  worker: ExecutorLocalArtifactAuthority & {
+    executionId: string;
+    buildId: string;
+    imageDigest: string | null;
+    attempt: number;
+  };
   boundaries: SpatialRenderBoundaries;
 };
 
@@ -183,6 +197,7 @@ export type ReviewedSpatialStitchMasterReceipt = {
   sourceSetId: string;
   sourceSetIdentitySha256: string;
   sourceClockRevisionId: string;
+  executionTarget: ExecutorLocalArtifactAuthority;
   exactMembers: Array<{
     sourceRevisionId: string;
     role: SpatialSourceMemberRole;
@@ -307,6 +322,11 @@ export function newReviewedSpatialStitchMasterReceipt(input: Omit<ReviewedSpatia
 export function parseReviewedSpatialStitchMasterReceipt(value: unknown): ReviewedSpatialStitchMasterReceipt {
   const row = record(value);
   const output = record(row.output);
+  const executionTarget = parseExecutorLocalArtifactAuthority(
+    row.executionTarget,
+    "executionTarget",
+  );
+  const outputAuthority = parseExecutorLocalArtifactAuthority(output, "output");
   const review = record(row.review);
   const declaredBoundaries = record(row.boundaries);
   const exactMembers = array(row.exactMembers).map((item) => {
@@ -324,6 +344,7 @@ export function parseReviewedSpatialStitchMasterReceipt(value: unknown): Reviewe
     || output.provider !== "local" || output.contentType !== "video/mp4" || output.completeDecode !== true
     || output.width !== 5760 || output.height !== 2880 || output.projection !== "equirectangular"
     || !["hevc", "h265"].includes(String(output.videoCodec).toLowerCase())
+    || !sameExecutorLocalArtifactAuthority(executionTarget, outputAuthority)
     || review.application !== "Insta360 Studio" || review.visualPlaybackReviewed !== true
     || typeof review.flowStateEnabled !== "boolean" || typeof review.horizonLockEnabled !== "boolean"
     || !["ai-flow", "optical-flow", "dynamic", "template"].includes(String(review.stitchMode))
@@ -338,11 +359,13 @@ export function parseReviewedSpatialStitchMasterReceipt(value: unknown): Reviewe
     sourceSetId: safeId(row.sourceSetId, "sourceSetId"),
     sourceSetIdentitySha256: sha(row.sourceSetIdentitySha256, "sourceSetIdentitySha256"),
     sourceClockRevisionId: safeId(row.sourceClockRevisionId, "sourceClockRevisionId"),
+    executionTarget,
     exactMembers,
     output: {
       provider: "local",
       locator: text(output.locator, "output.locator"),
       contentType: "video/mp4",
+      ...outputAuthority,
       generation: generation(output.generation, output.sha256, "output"),
       sha256: sha(output.sha256, "output.sha256"),
       sizeBytes: positiveInteger(output.sizeBytes, "output.sizeBytes"),
@@ -381,6 +404,10 @@ export function parseSpatialRenderJob(value: unknown): SpatialRenderJob {
   const recipe = record(row.recipe);
   const stitch = record(row.stitch);
   const reframe = record(row.reframe);
+  const executionTarget = parseExecutorLocalArtifactAuthority(
+    row.executionTarget,
+    "executionTarget",
+  );
   const stitchTarget = parseTarget(stitch.target, "stitch.target");
   const reframeTarget = parseTarget(reframe.target, "reframe.target");
   const reviewedMaster = stitch.reviewedMaster === null || stitch.reviewedMaster === undefined ? null : parseReviewedMasterBinding(stitch.reviewedMaster);
@@ -404,6 +431,9 @@ export function parseSpatialRenderJob(value: unknown): SpatialRenderJob {
     || stitch.scope !== "complete-source" || stitch.stitchType !== "ai-flow" || stitch.outputProjection !== "equirectangular"
     || stitch.width !== 5760 || stitch.height !== 2880 || stitch.videoCodec !== "h265"
     || reframe.adapter !== "ffmpeg-v360" || reframe.commandResolution !== "output-frame"
+    || !sameExecutorLocalArtifactAuthority(executionTarget, stitchTarget)
+    || !sameExecutorLocalArtifactAuthority(executionTarget, reframeTarget)
+    || members.some((member) => !sameExecutorLocalArtifactAuthority(executionTarget, member))
     || stitchTarget.locator === reframeTarget.locator
     || (stitch.adapter === "insta360-mediasdk" && reviewedMaster !== null)
     || (stitch.adapter === "insta360-studio-reviewed-export" && (!reviewedMaster || reviewedMaster.generation !== `sha256:${reviewedMaster.sha256}`))
@@ -421,6 +451,7 @@ export function parseSpatialRenderJob(value: unknown): SpatialRenderJob {
     requestedByEmail: text(row.requestedByEmail, "requestedByEmail").toLowerCase(),
     clientRequestId: safeId(row.clientRequestId, "clientRequestId"),
     queuedAt: iso(row.queuedAt, "queuedAt"),
+    executionTarget,
     sourcePackage: {
       sourceSetId: safeId(sourcePackage.sourceSetId, "sourcePackage.sourceSetId"),
       sourceSetIdentitySha256: sha(sourcePackage.sourceSetIdentitySha256, "sourcePackage.sourceSetIdentitySha256"),
@@ -460,6 +491,7 @@ export function parseSpatialRenderResult(value: unknown, job: SpatialRenderJob):
   const stitch = record(row.stitch);
   const reframe = record(row.reframe);
   const worker = record(row.worker);
+  const workerAuthority = parseExecutorLocalArtifactAuthority(worker, "worker");
   const declaredBoundaries = record(row.boundaries);
   const stitchOutput = parseVerifiedOutput(stitch.output, "stitch.output");
   const reframeOutput = parseVerifiedOutput(reframe.output, "reframe.output");
@@ -479,6 +511,9 @@ export function parseSpatialRenderResult(value: unknown, job: SpatialRenderJob):
     || reframeOutput.locator !== job.reframe.target.locator
     || reframeOutput.width !== profile.width || reframeOutput.height !== profile.height || Math.abs(reframeOutput.fps - profile.fps) > 0.01
     || reframeOutput.variantKind !== profile.variantKind || Math.abs(reframeOutput.durationSeconds - expectedDuration) > Math.max(0.25, 2 / profile.fps)
+    || !sameExecutorLocalArtifactAuthority(job.executionTarget, stitchOutput)
+    || !sameExecutorLocalArtifactAuthority(job.executionTarget, reframeOutput)
+    || !sameExecutorLocalArtifactAuthority(job.executionTarget, workerAuthority)
     || Object.entries(spatialBoundaries()).some(([key, expected]) => declaredBoundaries[key] !== expected)
   ) invalid("Spatial render result does not satisfy its frozen job contract.");
   return {
@@ -501,6 +536,7 @@ export function parseSpatialRenderResult(value: unknown, job: SpatialRenderJob):
       output: { ...reframeOutput, width: profile.width, height: profile.height, fps: profile.fps, videoCodec: text(reframeOutput.videoCodec, "reframe.output.videoCodec"), variantKind: profile.variantKind },
     },
     worker: {
+      ...workerAuthority,
       executionId: safeId(worker.executionId, "worker.executionId"),
       buildId: text(worker.buildId, "worker.buildId"),
       imageDigest: worker.imageDigest === null ? null : text(worker.imageDigest, "worker.imageDigest"),
@@ -520,12 +556,16 @@ export function spatialRecipeCanonicalJson(job: Pick<SpatialRenderJob, "selectio
 
 function parseSourceMember(value: unknown): SpatialRenderSourceMember {
   const row = record(value);
+  const authority = parseExecutorLocalArtifactAuthority(
+    row,
+    "sourcePackage.members",
+  );
   const fileName = text(row.fileName, "sourcePackage.members.fileName");
   const sourceSha256 = sha(row.sha256, "sourcePackage.members.sha256");
   if (row.provider !== "local" || row.requiredForRender !== true || !["primary-original", "secondary-original"].includes(String(row.role))) invalid("Spatial source member authority is invalid.");
   const generation = text(row.generation, "sourcePackage.members.generation");
   if (generation !== `sha256:${sourceSha256}`) invalid("Spatial source member generation must bind its exact SHA-256 digest.");
-  return { sourceRevisionId: safeId(row.sourceRevisionId, "sourcePackage.members.sourceRevisionId"), role: row.role as SpatialSourceMemberRole, fileName, provider: "local", locator: text(row.locator, "sourcePackage.members.locator"), generation, sha256: sourceSha256, sizeBytes: positiveInteger(row.sizeBytes, "sourcePackage.members.sizeBytes"), contentType: text(row.contentType, "sourcePackage.members.contentType"), requiredForRender: true };
+  return { ...authority, sourceRevisionId: safeId(row.sourceRevisionId, "sourcePackage.members.sourceRevisionId"), role: row.role as SpatialSourceMemberRole, fileName, provider: "local", locator: text(row.locator, "sourcePackage.members.locator"), generation, sha256: sourceSha256, sizeBytes: positiveInteger(row.sizeBytes, "sourcePackage.members.sizeBytes"), contentType: text(row.contentType, "sourcePackage.members.contentType"), requiredForRender: true };
 }
 
 function parseKeyframe(value: unknown, index: number, startSeconds: number, endSeconds: number): SpatialReframeKeyframe {
@@ -541,9 +581,10 @@ function parseKeyframe(value: unknown, index: number, startSeconds: number, endS
 
 function parseTarget(value: unknown, name: string): SpatialLocalTarget {
   const row = record(value);
+  const authority = parseExecutorLocalArtifactAuthority(row, name);
   const locator = text(row.locator, `${name}.locator`);
   if (row.provider !== "local" || row.contentType !== "video/mp4" || !locator.endsWith(".mp4")) invalid(`${name} is invalid.`);
-  return { provider: "local", locator, contentType: "video/mp4" };
+  return { ...authority, provider: "local", locator, contentType: "video/mp4" };
 }
 
 function parseVerifiedOutput(value: unknown, name: string) {
@@ -584,7 +625,7 @@ function parseReviewedMasterBinding(value: unknown): NonNullable<SpatialRenderJo
   };
 }
 
-function spatialBoundaries(): SpatialRenderBoundaries { return { exactPackageRequired: true, sourceMediaRemainsImmutable: true, browseProxyNeverAcceptedAsRenderSource: true, officialStitchStageRequiredForRawInsv: true, reframeIntentRemainsReversible: true, resultRequiresCompleteDecode: true, resultIsNotPublished: true }; }
+function spatialBoundaries(): SpatialRenderBoundaries { return { exactPackageRequired: true, sourceMediaRemainsImmutable: true, browseProxyNeverAcceptedAsRenderSource: true, officialStitchStageRequiredForRawInsv: true, reframeIntentRemainsReversible: true, resultRequiresCompleteDecode: true, resultIsNotPublished: true, localArtifactsRequireExactExecutor: true, editorIntentIsPortableWithoutRenderedBytes: true }; }
 function reviewedStitchBoundaries(): ReviewedSpatialStitchMasterReceipt["boundaries"] { return { exactPackageVerifiedBeforeAndAfter: true, completeOutputDecode: true, manualExportIsNotAutomaticSdkExecution: true, lrvWasNotUsedAsStitchSource: true, sourceMediaRemainsImmutable: true, derivativeIsNotPublicationMedia: true }; }
 function stable(value: unknown): unknown { if (Array.isArray(value)) return value.map(stable); if (!value || typeof value !== "object") return value; return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, item]) => item !== undefined).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, stable(item)])); }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }

@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
+import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
 import {
   normalizeAccessEmail,
   resolveStudioProjectAccess,
@@ -70,6 +71,21 @@ async function derivativeResponse(
     process.env.NODE_ENV === "production"
   )
     return notFound();
+  if (
+    Boolean(derivative.custodianNodeId) !== Boolean(derivative.storageScopeId)
+  )
+    return notFound();
+  if (derivative.custodianNodeId && derivative.storageScopeId) {
+    const executor = await readLocalExecutorTarget(
+      prisma,
+      derivative.custodianNodeId,
+    );
+    if (
+      !executor ||
+      executor.storageScopeId !== derivative.storageScopeId
+    )
+      return notFound();
+  }
 
   const candidate = await resolveAllowedLocalStudioMediaPath(
     derivative.locator,

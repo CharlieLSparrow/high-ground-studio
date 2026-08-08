@@ -356,7 +356,11 @@ export async function GET(
       externalMediaLibraries,
       spatialRenderReadiness,
     ] = await Promise.all([
-      readSourceStoryWorkspace(getPrismaClient(), actor.projectId),
+      readSourceStoryWorkspace(
+        getPrismaClient(),
+        actor.projectId,
+        executorNodeId,
+      ),
       readSourceCollections(getPrismaClient(), {
         projectId: actor.projectId,
         actorUserId: actor.userId,
@@ -860,6 +864,8 @@ export async function POST(
         requestedByEmail: actor.email,
         clientRequestId: text(body.clientRequestId),
         localMediaRoot: localSpatialVaultRoot(),
+        executorNodeId:
+          typeof body.executorNodeId === "string" ? body.executorNodeId : null,
       });
     } else if (action === "register-spatial-reframe") {
       operation = await registerSpatialReframeResult({
@@ -876,7 +882,11 @@ export async function POST(
     }
 
     const [workspace, sourceCollections] = await Promise.all([
-      readSourceStoryWorkspace(prisma, actor.projectId),
+      readSourceStoryWorkspace(
+        prisma,
+        actor.projectId,
+        typeof body.executorNodeId === "string" ? body.executorNodeId : null,
+      ),
       readSourceCollections(prisma, {
         projectId: actor.projectId,
         actorUserId: actor.userId,

@@ -695,6 +695,8 @@ async function main() {
   const spatialReframe = newLocalSpatialReframeRuntime({
     pool,
     executionId,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
     outputRoot: spatialVaultRoot,
     authorizedSourceRoots: [localMediaRoot, spatialVaultRoot],
     leaseMs: options.leaseMs,

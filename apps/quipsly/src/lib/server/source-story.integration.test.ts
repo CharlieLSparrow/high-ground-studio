@@ -49,6 +49,13 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
   const prisma = getPrismaClient();
   const nonce = randomUUID().slice(0, 8);
   const actorEmail = `source-story-${nonce}@example.test`;
+  const spatialExecutorNodeId = `execution_worker_spatial_${nonce}`;
+  const spatialStorageScopeId = `storage_scope_spatial_${nonce}`;
+  const spatialExecutionTarget = {
+    portability: "executor-local" as const,
+    custodianNodeId: spatialExecutorNodeId,
+    storageScopeId: spatialStorageScopeId,
+  };
   let actorUserId = "";
   let workspaceId = "";
   let projectId = "";
@@ -81,6 +88,29 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       data: { primaryEmail: actorEmail, name: "Source story operator" },
     });
     actorUserId = actor.id;
+    projectionNodeIds.push(spatialExecutorNodeId);
+    await prisma.agentNode.create({
+      data: {
+        id: spatialExecutorNodeId,
+        hostName: `quipsly-media-worker:Spatial Mac ${nonce}`,
+        ipAddress: "loopback",
+        status: "online",
+        capabilities: {
+          executorKind: "local-mac",
+          storage: {
+            schema: "quipsly-local-media-storage-v1",
+            status: "measured",
+            availableBytes: 20_000_000_000,
+            reserveBytes: 5_000_000_000,
+            safeAvailableBytes: 15_000_000_000,
+            measuredAt: new Date().toISOString(),
+            workspaceMode: "durable",
+            scopeId: spatialStorageScopeId,
+          },
+        },
+        lastHeartbeatAt: new Date(),
+      },
+    });
     const workspace = await prisma.studioWorkspace.create({
       data: { slug: `source-story-${nonce}`, name: "Source story smoke" },
     });
@@ -301,6 +331,39 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     spatialSourceSetIdentitySha256 = created.sourceSet.identitySha256;
     spatialClockRevisionId = browseRevision.id;
     spatialOriginalRevisionId = originalRevision.id;
+    const originalReplicaJobId = `spatialoriginalreplica_${nonce}`;
+    await prisma.studioWorkflowJob.create({
+      data: {
+        id: originalReplicaJobId,
+        projectId,
+        type: "device-media-original-verification",
+        status: "completed",
+        source: "source-story.device-media-verification",
+        requestedByEmail: actorEmail,
+        inputJson: { sourceRevisionId: originalRevision.id },
+        resultJson: { state: "completed", executionTarget: spatialExecutionTarget },
+      },
+    });
+    await prisma.studioMediaSourceReplica.create({
+      data: {
+        id: `spatialoriginalreplica_${nonce}`,
+        projectId,
+        sourceRevisionId: originalRevision.id,
+        workflowJobId: originalReplicaJobId,
+        custodianNodeId: spatialExecutorNodeId,
+        storageScopeId: spatialStorageScopeId,
+        storageProvider: "local-cache",
+        locator: path.join(spatialVaultRoot, "insta360-walkthrough.insv"),
+        generation: `sha256:${"d".repeat(64)}`,
+        contentSha256: "d".repeat(64),
+        sizeBytes: BigInt(4_200_000_000),
+        mimeType: "video/mp4",
+        status: "ready",
+        availabilityCheckedAt: new Date(),
+        contentVerifiedAt: new Date(),
+        createdByUserId: actorUserId,
+      },
+    });
     const proxyJobId = `spatialproxyjob_${nonce}`;
     await prisma.studioWorkflowJob.create({ data: { id: proxyJobId, projectId, type: "external-source-proxy", status: "completed", source: "source-story.external-proxy", requestedByEmail: actorEmail, inputJson: { source: { sourceRevisionId: browseRevision.id } }, resultJson: { state: "completed" } } });
     await prisma.studioMediaDerivative.create({ data: { id: `spatialproxy_${nonce}`, projectId, sourceRevisionId: browseRevision.id, workflowJobId: proxyJobId, kind: "collaboration-proxy", profile: "collaboration-1080p-h264-aac-v1", storageProvider: "local", locator: spatialMasterPath, generation: `sha256:${"f".repeat(64)}`, contentSha256: "f".repeat(64), sizeBytes: BigInt(33), mimeType: "video/mp4", durationSeconds: 120, widthPixels: 1920, heightPixels: 960, framesPerSecond: 29.97, status: "ready", createdByUserId: actorUserId } });
@@ -309,7 +372,11 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       replayed: true,
       sourceSet: { id: created.sourceSet.id },
     });
-    const workspace = await readSourceStoryWorkspace(prisma, projectId);
+    const workspace = await readSourceStoryWorkspace(
+      prisma,
+      projectId,
+      spatialExecutorNodeId,
+    );
     expect(workspace.sourceSets).toContainEqual(expect.objectContaining({
       id: created.sourceSet.id,
       displayName: "Homer walk-through package",
@@ -584,6 +651,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
   });
 
   it("registers one checksum-bound reviewed 5.7K master and exposes it without its local locator", async () => {
+    await prisma.agentNode.update({ where: { id: spatialExecutorNodeId }, data: { status: "online", lastHeartbeatAt: new Date() } });
     const output = await stat(spatialMasterPath);
     const outputSha256 = createHash("sha256").update(await readFile(spatialMasterPath)).digest("hex");
     const unsealed = newReviewedSpatialStitchMasterReceipt({
@@ -593,6 +661,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       sourceSetId: spatialSourceSetId,
       sourceSetIdentitySha256: spatialSourceSetIdentitySha256,
       sourceClockRevisionId: spatialClockRevisionId,
+      executionTarget: spatialExecutionTarget,
       exactMembers: [{
         sourceRevisionId: spatialOriginalRevisionId,
         role: "primary-original",
@@ -603,6 +672,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       }],
       output: {
         provider: "local",
+        ...spatialExecutionTarget,
         locator: spatialMasterPath,
         contentType: "video/mp4",
         generation: `sha256:${outputSha256}`,
@@ -641,7 +711,11 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     await expect(prisma.studioWorkflowJob.count({ where: { id: receipt.receiptId } })).resolves.toBe(1);
     await expect(prisma.studioMediaDerivative.count({ where: { workflowJobId: receipt.receiptId } })).resolves.toBe(1);
 
-    const workspace = await readSourceStoryWorkspace(prisma, projectId);
+    const workspace = await readSourceStoryWorkspace(
+      prisma,
+      projectId,
+      spatialExecutorNodeId,
+    );
     const sourceSet = workspace.sourceSets.find((candidate) => candidate.id === spatialSourceSetId);
     expect(sourceSet?.sourceClockRevision.spatialStitchMaster).toMatchObject({
       kind: "spatial-stitch-master",
@@ -1396,12 +1470,40 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     const before = (await readSourceStoryWorkspace(prisma, projectId)).episodes.find((candidate) => candidate.id === episode.id)!;
     const promoted = await promoteSourceStoryCardToEpisode({ prisma, actorUserId, actorEmail, value: { projectId, episodeProductionId: episode.id, cardId: card.id, originBoardId: null, originBoardPlacementId: null, clientRequestId: randomUUID(), expectedTimelineFingerprint: before.timelineFingerprint, placementMode: "append", trackId: "V2" } });
     const clientRequestId = `spatialrenderrequest_${nonce}`;
-    const queued = await queueSpatialReframe({ prisma, projectId, timelinePlacementId: promoted.placement.id, profile: "spatial-proof-720p24", requestedByUserId: actorUserId, requestedByEmail: actorEmail, clientRequestId, localMediaRoot: spatialVaultRoot });
+    await prisma.agentNode.update({ where: { id: spatialExecutorNodeId }, data: { status: "online", lastHeartbeatAt: new Date() } });
+    const otherSpatialNodeId = `execution_worker_spatial_other_${nonce}`;
+    const otherSpatialScopeId = `storage_scope_spatial_other_${nonce}`;
+    projectionNodeIds.push(otherSpatialNodeId);
+    await prisma.agentNode.create({
+      data: {
+        id: otherSpatialNodeId,
+        hostName: `quipsly-media-worker:Other Spatial Mac ${nonce}`,
+        ipAddress: "loopback",
+        status: "online",
+        capabilities: {
+          executorKind: "local-mac",
+          storage: {
+            schema: "quipsly-local-media-storage-v1",
+            status: "measured",
+            availableBytes: 20_000_000_000,
+            reserveBytes: 5_000_000_000,
+            safeAvailableBytes: 15_000_000_000,
+            measuredAt: new Date().toISOString(),
+            workspaceMode: "durable",
+            scopeId: otherSpatialScopeId,
+          },
+        },
+        lastHeartbeatAt: new Date(),
+      },
+    });
+    await expect(queueSpatialReframe({ prisma, projectId, timelinePlacementId: promoted.placement.id, profile: "spatial-proof-720p24", requestedByUserId: actorUserId, requestedByEmail: actorEmail, clientRequestId: `spatialrenderother_${nonce}`, localMediaRoot: spatialVaultRoot, executorNodeId: otherSpatialNodeId })).rejects.toMatchObject({ code: "spatial-reframe-master-required" });
+    const queued = await queueSpatialReframe({ prisma, projectId, timelinePlacementId: promoted.placement.id, profile: "spatial-proof-720p24", requestedByUserId: actorUserId, requestedByEmail: actorEmail, clientRequestId, localMediaRoot: spatialVaultRoot, executorNodeId: spatialExecutorNodeId });
     expect(queued).toMatchObject({ replayed: false, job: { status: "queued", timelinePlacementId: promoted.placement.id, profile: "spatial-proof-720p24" } });
-    await expect(queueSpatialReframe({ prisma, projectId, timelinePlacementId: promoted.placement.id, profile: "spatial-proof-720p24", requestedByUserId: actorUserId, requestedByEmail: actorEmail, clientRequestId, localMediaRoot: spatialVaultRoot })).resolves.toMatchObject({ replayed: true, job: { id: queued.job.id } });
+    await expect(queueSpatialReframe({ prisma, projectId, timelinePlacementId: promoted.placement.id, profile: "spatial-proof-720p24", requestedByUserId: actorUserId, requestedByEmail: actorEmail, clientRequestId, localMediaRoot: spatialVaultRoot, executorNodeId: spatialExecutorNodeId })).resolves.toMatchObject({ replayed: true, job: { id: queued.job.id } });
     const jobRow = await prisma.studioWorkflowJob.findUniqueOrThrow({ where: { id: queued.job.id } });
     const job = parseSpatialRenderJob(jobRow.inputJson);
-    const outputPath = job.reframe.target.locator;
+    const outputLocator = job.reframe.target.locator;
+    const outputPath = path.resolve(spatialVaultRoot, outputLocator);
     await mkdir(path.dirname(outputPath), { recursive: true });
     await writeFile(outputPath, "registered-spatial-proof-output");
     const outputBytes = await readFile(outputPath);
@@ -1411,14 +1513,15 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       jobId: job.jobId,
       completedAt: "2026-08-07T14:00:00.000Z",
       manifestSha256: job.manifestSha256,
-      stitch: { profile: job.stitch.profile, adapter: "insta360-studio-reviewed-export", adapterVersion: master.adapterVersion, sourceSetIdentitySha256: job.sourcePackage.sourceSetIdentitySha256, output: { provider: "local", locator: job.stitch.target.locator, contentType: "video/mp4", generation: master.generation, sha256: master.sha256, sizeBytes: master.sizeBytes, durationSeconds: master.durationSeconds, completeDecode: true, width: 5760, height: 2880, fps: master.fps, videoCodec: master.videoCodec, projection: "equirectangular" } },
-      reframe: { adapter: "ffmpeg-v360", ffmpegVersion: "ffmpeg 8.1.1", recipeSha256: job.recipeSha256, output: { provider: "local", locator: outputPath, contentType: "video/mp4", generation: `sha256:${outputSha256}`, sha256: outputSha256, sizeBytes: outputBytes.length, durationSeconds: 0.3, completeDecode: true, width: 1280, height: 720, fps: 24, videoCodec: "h264", variantKind: "spatial-reframe-proof" } },
-      worker: { executionId: `spatialexecution_${nonce}`, buildId: "integration-test", imageDigest: null, attempt: 1 },
+      stitch: { profile: job.stitch.profile, adapter: "insta360-studio-reviewed-export", adapterVersion: master.adapterVersion, sourceSetIdentitySha256: job.sourcePackage.sourceSetIdentitySha256, output: { provider: "local", ...spatialExecutionTarget, locator: job.stitch.target.locator, contentType: "video/mp4", generation: master.generation, sha256: master.sha256, sizeBytes: master.sizeBytes, durationSeconds: master.durationSeconds, completeDecode: true, width: 5760, height: 2880, fps: master.fps, videoCodec: master.videoCodec, projection: "equirectangular" } },
+      reframe: { adapter: "ffmpeg-v360", ffmpegVersion: "ffmpeg 8.1.1", recipeSha256: job.recipeSha256, output: { provider: "local", ...spatialExecutionTarget, locator: outputLocator, contentType: "video/mp4", generation: `sha256:${outputSha256}`, sha256: outputSha256, sizeBytes: outputBytes.length, durationSeconds: 0.3, completeDecode: true, width: 1280, height: 720, fps: 24, videoCodec: "h264", variantKind: "spatial-reframe-proof" } },
+      worker: { ...spatialExecutionTarget, executionId: `spatialexecution_${nonce}`, buildId: "integration-test", imageDigest: null, attempt: 1 },
     }, job);
     await prisma.studioWorkflowJob.update({ where: { id: job.jobId }, data: { status: "output-ready", resultJson: { state: "output-ready", receipt } } });
     await expect(registerSpatialReframeResult({ prisma, projectId, jobId: job.jobId, authorizedRoot: spatialVaultRoot })).resolves.toMatchObject({ replayed: false, derivative: { kind: "spatial-reframe-proof", widthPixels: 1280, heightPixels: 720 }, binding: { timelinePlacementId: promoted.placement.id, recipeSha256: job.recipeSha256 } });
     await expect(registerSpatialReframeResult({ prisma, projectId, jobId: job.jobId, authorizedRoot: spatialVaultRoot })).resolves.toMatchObject({ replayed: true });
     await expect(prisma.studioMediaDerivative.count({ where: { workflowJobId: job.jobId } })).resolves.toBe(1);
+    await expect(prisma.studioMediaDerivative.findUnique({ where: { workflowJobId: job.jobId }, select: { custodianNodeId: true, storageScopeId: true, provenanceJson: true } })).resolves.toMatchObject({ custodianNodeId: spatialExecutorNodeId, storageScopeId: spatialStorageScopeId, provenanceJson: expect.objectContaining({ artifactPortability: "executor-local" }) });
   });
 
   it("operates a durable binder independently from card order and retains archived section writing", async () => {

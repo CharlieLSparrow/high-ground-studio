@@ -1,4 +1,5 @@
 export const CAPTURE_PROXY_CONTRACT_VERSION = 1 as const;
+export * from "./artifact-portability.js";
 export * from "./audio-mastery.js";
 export * from "./audio-alignment-evidence.js";
 export * from "./audio-alignment-job.js";

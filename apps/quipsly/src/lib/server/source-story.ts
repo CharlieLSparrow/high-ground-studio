@@ -55,6 +55,7 @@ import {
 import { publicSourceAudioNavigationStatus } from "@/lib/server/source-audio-navigation";
 import { publicGoogleDriveSourceMaterializationJob } from "@/lib/server/google-drive-source-materialization";
 import { publicSourceVisualNavigationFrames } from "@/lib/server/source-visual-overview";
+import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
 
 type Database = PrismaClient | Prisma.TransactionClient;
 
@@ -3462,7 +3463,23 @@ export async function repositionSourceStoryTimelinePlacement(input: {
 export async function readSourceStoryWorkspace(
   prisma: PrismaClient,
   projectId: string,
+  executorNodeId?: string | null,
 ) {
+  const selectedExecutor = await readLocalExecutorTarget(
+    prisma,
+    executorNodeId,
+  );
+  const localArtifactCustodyWhere = selectedExecutor
+    ? {
+        OR: [
+          {
+            custodianNodeId: selectedExecutor.nodeId,
+            storageScopeId: selectedExecutor.storageScopeId,
+          },
+          { custodianNodeId: null, storageScopeId: null },
+        ],
+      }
+    : { custodianNodeId: null, storageScopeId: null };
   const derivativeSelect = {
     id: true,
     kind: true,
@@ -3572,6 +3589,7 @@ export async function readSourceStoryWorkspace(
                           where: {
                             kind: "collaboration-proxy",
                             status: "ready",
+                            ...localArtifactCustodyWhere,
                           },
                           orderBy: { createdAt: "desc" },
                           take: 1,
@@ -3639,6 +3657,7 @@ export async function readSourceStoryWorkspace(
                       in: ["collaboration-proxy", "source-contact-sheet"],
                     },
                     status: "ready",
+                    ...localArtifactCustodyWhere,
                   },
                   orderBy: { createdAt: "desc" },
                   take: 4,
@@ -3694,7 +3713,10 @@ export async function readSourceStoryWorkspace(
             heightPixels: true,
             framesPerSecond: true,
             replicas: {
-              where: { storageProvider: "local-cache" },
+              where: {
+                storageProvider: "local-cache",
+                ...localArtifactCustodyWhere,
+              },
               orderBy: { createdAt: "desc" },
               take: 1,
               select: {
@@ -3713,6 +3735,7 @@ export async function readSourceStoryWorkspace(
               where: {
                 kind: { in: ["collaboration-proxy", "source-contact-sheet"] },
                 status: "ready",
+                ...localArtifactCustodyWhere,
               },
               orderBy: { createdAt: "desc" },
               take: 4,
@@ -3807,13 +3830,17 @@ export async function readSourceStoryWorkspace(
                   ],
                 },
                 status: "ready",
+                ...localArtifactCustodyWhere,
               },
               orderBy: { createdAt: "desc" },
               take: 6,
               select: derivativeSelect,
             },
             replicas: {
-              where: { storageProvider: "local-cache" },
+              where: {
+                storageProvider: "local-cache",
+                ...localArtifactCustodyWhere,
+              },
               orderBy: { createdAt: "desc" },
               take: 1,
               select: {
@@ -3899,6 +3926,29 @@ export async function readSourceStoryWorkspace(
         projectId,
         type: "spatial-reframe",
         source: "source-story.spatial-reframe",
+        AND: selectedExecutor
+          ? [
+              {
+                inputJson: {
+                  path: ["executionTarget", "custodianNodeId"],
+                  equals: selectedExecutor.nodeId,
+                },
+              },
+              {
+                inputJson: {
+                  path: ["executionTarget", "storageScopeId"],
+                  equals: selectedExecutor.storageScopeId,
+                },
+              },
+            ]
+          : [
+              {
+                inputJson: {
+                  path: ["executionTarget", "custodianNodeId"],
+                  equals: "no_online_executor",
+                },
+              },
+            ],
       },
       orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
       take: 1_000,
@@ -4160,6 +4210,7 @@ export async function readSourceStoryWorkspace(
     spatialRenderJobs: spatialRenderJobs.map((job) => {
       const manifest = jsonRecord(job.inputJson);
       const reframe = jsonRecord(manifest?.reframe);
+      const executionTarget = jsonRecord(manifest?.executionTarget);
       return {
         id: job.id,
         status: job.status,
@@ -4172,6 +4223,16 @@ export async function readSourceStoryWorkspace(
             ? manifest.timelineFingerprintSha256
             : "",
         profile: typeof reframe?.profile === "string" ? reframe.profile : "",
+        executionTarget:
+          typeof executionTarget?.custodianNodeId === "string" &&
+          typeof executionTarget?.storageScopeId === "string"
+            ? {
+                portability: "executor-local" as const,
+                nodeId: executionTarget.custodianNodeId,
+                storageScopeId: executionTarget.storageScopeId,
+                localPathWithheld: true as const,
+              }
+            : null,
         error: job.error,
         requestedByEmail: job.requestedByEmail,
         createdAt: job.createdAt.toISOString(),

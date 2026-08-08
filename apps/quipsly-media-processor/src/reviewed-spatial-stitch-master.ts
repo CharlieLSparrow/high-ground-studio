@@ -33,6 +33,11 @@ export type ReviewedSpatialStitchMasterInput = {
   sourceClockRevisionId: string;
   sourceDurationSeconds: number;
   sourceFramesPerSecond: number;
+  executionTarget: {
+    portability: "executor-local";
+    custodianNodeId: string;
+    storageScopeId: string;
+  };
   exactMembers: ReviewedSpatialSourceMember[];
   outputPath: string;
   review: ReviewedSpatialStitchMasterReceipt["review"];
@@ -85,11 +90,13 @@ export class ReviewedSpatialStitchMasterVerifier {
       sourceSetId: input.sourceSetId,
       sourceSetIdentitySha256: input.sourceSetIdentitySha256,
       sourceClockRevisionId: input.sourceClockRevisionId,
+      executionTarget: input.executionTarget,
       exactMembers: before.map(({ locator: _locator, ...member }) => member),
       output: {
         provider: "local",
         locator: input.outputPath,
         contentType: "video/mp4",
+        ...input.executionTarget,
         generation: `sha256:${output.sha256}`,
         sha256: output.sha256,
         sizeBytes: output.sizeBytes,

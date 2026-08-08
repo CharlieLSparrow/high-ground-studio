@@ -4,6 +4,11 @@ import {
   type SpatialExactSourceRevision,
 } from "./spatial-exact-source";
 
+const EXECUTION_TARGET = {
+  custodianNodeId: "execution_worker_spatial_test",
+  storageScopeId: "storage_scope_spatial_test",
+};
+
 function revision(
   overrides: Partial<SpatialExactSourceRevision> = {},
 ): SpatialExactSourceRevision {
@@ -21,6 +26,7 @@ function revision(
     },
     replicas: [
       {
+        ...EXECUTION_TARGET,
         locator: "/private/cache/exact-original.insv",
         generation: `sha256:${sha256}`,
         contentSha256: sha256,
@@ -37,6 +43,7 @@ describe("exact spatial source resolution", () => {
     expect(
       resolveExactSpatialSourceMember({
         role: "primary-original",
+        executionTarget: EXECUTION_TARGET,
         sourceRevision: revision(),
       }),
     ).toMatchObject({
@@ -52,9 +59,11 @@ describe("exact spatial source resolution", () => {
     expect(() =>
       resolveExactSpatialSourceMember({
         role: "primary-original",
+        executionTarget: EXECUTION_TARGET,
         sourceRevision: revision({
           replicas: [
             {
+              ...EXECUTION_TARGET,
               locator: "/private/cache/changed.insv",
               generation: `sha256:${"b".repeat(64)}`,
               contentSha256: "b".repeat(64),

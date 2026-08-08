@@ -86,6 +86,11 @@ function input(fixture: Awaited<ReturnType<typeof fixtureFiles>>) {
     sourceClockRevisionId: "revision_test0001",
     sourceDurationSeconds: 10,
     sourceFramesPerSecond: 24,
+    executionTarget: {
+      portability: "executor-local" as const,
+      custodianNodeId: "execution_worker_spatial_test",
+      storageScopeId: "storage_scope_spatial_test",
+    },
     exactMembers: [{
       sourceRevisionId: "revision_test0001",
       role: "primary-original" as const,

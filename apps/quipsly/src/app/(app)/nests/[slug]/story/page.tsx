@@ -61,7 +61,7 @@ export default async function SourceStoryPage({
         take: 100,
         select: { id: true, slug: true, title: true, status: true },
       }),
-      readSourceStoryWorkspace(prisma, project.id),
+      readSourceStoryWorkspace(prisma, project.id, requestedExecutorNodeId),
       readSpatialRenderReadiness(),
     ]);
     const requestedCardId = typeof query.card === "string" ? query.card : null;

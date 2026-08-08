@@ -7,6 +7,7 @@ import path from "node:path";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
+import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
 
 import { GET } from "./route";
 
@@ -17,6 +18,9 @@ jest.mock("@/lib/server/quipsly-session", () => ({
 jest.mock("@/lib/server/studio-project-access", () => ({
   normalizeAccessEmail: (value: string) => value.toLowerCase(),
   resolveStudioProjectAccess: jest.fn(),
+}));
+jest.mock("@/lib/server/local-executor-storage", () => ({
+  readLocalExecutorTarget: jest.fn(),
 }));
 
 describe("local media derivative delivery", () => {
@@ -52,6 +56,7 @@ describe("local media derivative delivery", () => {
       allowed: true,
       projectId: "project-1",
     } as never);
+    jest.mocked(readLocalExecutorTarget).mockResolvedValue(null);
   });
 
   afterEach(async () => {
@@ -67,7 +72,14 @@ describe("local media derivative delivery", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  async function responseFor(locator: string, bytes: Buffer) {
+  async function responseFor(
+    locator: string,
+    bytes: Buffer,
+    custody: { custodianNodeId: string | null; storageScopeId: string | null } = {
+      custodianNodeId: null,
+      storageScopeId: null,
+    },
+  ) {
     jest.mocked(getPrismaClient).mockReturnValue({
       studioMediaDerivative: {
         findUnique: jest.fn().mockResolvedValue({
@@ -75,6 +87,7 @@ describe("local media derivative delivery", () => {
           projectId: "project-1",
           status: "ready",
           storageProvider: "local",
+          ...custody,
           locator,
           sizeBytes: BigInt(bytes.length),
           mimeType: "video/mp4",
@@ -112,5 +125,32 @@ describe("local media derivative delivery", () => {
 
     expect(response.status).toBe(404);
     expect(await response.text()).toBe("Not found");
+  });
+
+  it("streams executor-local bytes only while their exact storage scope is online", async () => {
+    const bytes = Buffer.from("scoped spatial proof bytes");
+    const locator = path.join(legacyRoot, "spatial-proof.mp4");
+    await writeFile(locator, bytes);
+    const custody = {
+      custodianNodeId: "execution_worker_spatial_test",
+      storageScopeId: "storage_scope_spatial_test",
+    };
+
+    expect((await responseFor(locator, bytes, custody)).status).toBe(404);
+    jest.mocked(readLocalExecutorTarget).mockResolvedValue({
+      nodeId: custody.custodianNodeId,
+      hostName: "Editing Mac",
+      storageScopeId: custody.storageScopeId,
+      storage: {
+        status: "measured",
+        safeAvailableBytes: "1",
+        availableBytes: "1",
+        reserveBytes: "0",
+        measuredAt: new Date().toISOString(),
+        workspaceMode: "durable",
+        localPathWithheld: true,
+      },
+    });
+    expect((await responseFor(locator, bytes, custody)).status).toBe(200);
   });
 });

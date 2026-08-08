@@ -8570,3 +8570,21 @@ source upload verified` blocked `Rough cut ready for review` until complete;
 - Next: classify stitched spatial masters, reframe outputs, and episode renders
   as executor-local or portable object storage, then carry that portability
   through Advanced Studio and final conform.
+
+# 2026-08-08 checkpoint: spatial artifact portability
+
+- Added shared artifact authority for executor-local bytes versus portable
+  object storage; spatial contract v2 applies exact custody without claiming a
+  cloud promotion that did not happen.
+- Portable Story/editor truth remains the source selection, timeline binding,
+  and reversible 360 recipe. INSV replicas, reviewed 5.7K masters, and flat
+  reframes are local materializations owned by one Mac/storage scope.
+- The queue, worker claim, worker receipt, registration transaction, Source
+  Story projection, and local playback route now enforce that same tuple.
+- Fifteen focused contract/worker tests, three playback-boundary tests, strict
+  TypeScript, and the 17-test PostgreSQL Source Story journey pass. The database
+  proof includes a second online executor that cannot inherit the first Mac's
+  stitch master or queue from it.
+- Next: apply the same authority to conventional Episode proof renders, then
+  let Advanced Studio compose portable edit intent over either locally
+  materialized 360 reframes or ordinary camera/audio sources.
