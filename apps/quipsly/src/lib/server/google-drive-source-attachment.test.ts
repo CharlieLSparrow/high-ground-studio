@@ -129,6 +129,12 @@ describe("Google Drive selected-file package attachment", () => {
         create: expect.objectContaining({
           kind: "insta360-drive-segment",
           sourceUrl: "https://drive.google.com/file/d/lrv_01/view",
+          metadataJson: expect.objectContaining({
+            schema: "quipsly-google-drive-insta360-segment-v2",
+            requiredMemberRoles: ["primary-original", "browse-proxy"],
+            optionalMemberRoles: ["secondary-original"],
+            observedMemberRoles: ["browse-proxy", "primary-original"],
+          }),
         }),
       }),
     );

@@ -171,8 +171,11 @@ describe("Google Drive Insta360 package planning", () => {
         folderName: "VID_20260128_173606_00_025_027-Original",
         files: [
           file("VID_20260128_173606_00_025.insv", "30414917944"),
+          file("LRV_20260128_173606_01_025.lrv", "1910296882"),
           file("VID_20260128_173606_00_026.insv", "28405190969"),
+          file("LRV_20260128_173606_01_026.lrv", "1910165811"),
           file("VID_20260128_173606_00_027.insv", "13542281567"),
+          file("LRV_20260128_173606_01_027.lrv", "998297945"),
         ],
       }),
       planGoogleDriveMediaFolder({
@@ -245,10 +248,10 @@ describe("Google Drive Insta360 package planning", () => {
 
     expect(library).toMatchObject({
       status: "partial",
-      totalFiles: 30,
-      totalSizeBytes: "435214857419",
-      readySegmentCount: 13,
-      heldSegmentCount: 11,
+      totalFiles: 33,
+      totalSizeBytes: "440033618057",
+      readySegmentCount: 16,
+      heldSegmentCount: 8,
     });
     expect(library.batches).toHaveLength(8);
     expect(
@@ -256,13 +259,13 @@ describe("Google Drive Insta360 package planning", () => {
         batch.folder.name.includes("20260128_173606"),
       ),
     ).toMatchObject({
-      totalFiles: 3,
-      readySegmentCount: 0,
-      heldSegmentCount: 3,
+      totalFiles: 6,
+      readySegmentCount: 3,
+      heldSegmentCount: 0,
       segments: [
-        expect.objectContaining({ status: "held-incomplete" }),
-        expect.objectContaining({ status: "held-incomplete" }),
-        expect.objectContaining({ status: "held-incomplete" }),
+        expect.objectContaining({ status: "ready-to-attach" }),
+        expect.objectContaining({ status: "ready-to-attach" }),
+        expect.objectContaining({ status: "ready-to-attach" }),
       ],
     });
   });

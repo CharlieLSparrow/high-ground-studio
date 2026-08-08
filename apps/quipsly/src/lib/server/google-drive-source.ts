@@ -795,8 +795,11 @@ async function attachGoogleDriveMediaPlanToNest(input: {
       (candidate) => candidate.status === "ready-to-attach",
     )) {
       const slug = sourceUnitSlug(input.sourceIdentity(batch), segment.key);
+      const observedMemberRoles = [
+        ...new Set(segment.members.map((member) => member.role)),
+      ].sort();
       const metadata = {
-        schema: "quipsly-google-drive-insta360-segment-v1",
+        schema: "quipsly-google-drive-insta360-segment-v2",
         provider: "google-drive",
         libraryRootName: input.plan.root.name,
         folderName: batch.folder.name,
@@ -805,11 +808,9 @@ async function attachGoogleDriveMediaPlanToNest(input: {
         segment: segment.segment,
         packageStatus: segment.status,
         reasons: segment.reasons,
-        expectedMemberRoles: [
-          "primary-original",
-          "secondary-original",
-          "browse-proxy",
-        ],
+        requiredMemberRoles: ["primary-original", "browse-proxy"],
+        optionalMemberRoles: ["secondary-original"],
+        observedMemberRoles,
         members: segment.members.map((member) => ({
           name: member.name,
           role: member.role,

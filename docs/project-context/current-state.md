@@ -2,6 +2,22 @@
 
 Date: 2026-08-07
 
+## Shared Insta360 Drive-root refresh checkpoint
+
+- A fresh read of the shared Insta360 root confirms eight direct capture-batch
+  folders and 33 currently visible files totaling 440,033,618,057 bytes. Sixteen
+  exact INSV/LRV segment pairs are now ready; eight expected segments remain
+  held across two empty batches and one zero-byte/incomplete batch.
+- The January 28 batch changed in place from three originals without browse
+  companions to three complete INSV/LRV pairs. The retained real-root package
+  regression now represents that provider transition rather than freezing an
+  obsolete inventory.
+- Version-two source-unit metadata describes the actual camera contract: one primary
+  original and one browse companion are required, a secondary original is
+  optional, and the exact observed roles are retained separately. Single-INSV
+  cameras are no longer mislabeled as if a nonexistent second original were
+  required for readiness or future explanation.
+
 ## Versioned Episode-to-Advanced-Studio handoff checkpoint
 
 - The canonical Episode editor no longer opens Advanced Studio with only a
