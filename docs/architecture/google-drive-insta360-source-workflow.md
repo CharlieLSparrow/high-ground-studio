@@ -1,7 +1,9 @@
 # Google Drive and Insta360 source workflow
 
 **Status:** Implemented durable intake foundation; real-provider acceptance pending
-**Last reviewed:** 2026-08-07  
+
+**Last reviewed:** 2026-08-08
+
 **Product surface:** Quipsly Nest Source Room, local media worker, hybrid episode editor
 
 ## Decision
@@ -59,6 +61,33 @@ Quipsly's editorial truth, provenance, and recovery behavior deterministic.
 13. Transfers resume by byte range and bind MD5 plus SHA-256 before the package
     becomes render-ready. Nest and the local editor then resolve the same
     immutable source-set identity.
+
+### Episode assembly from Story selects
+
+The canonical Episode collaboration editor owns a lazy **Story source bin**.
+Opening it reads the existing Source Story projection; it does not copy Drive
+media or create a second library. A creator can browse board sections, inspect
+the exact retained range, collaboration-proxy state, and 360 framing recipe,
+then place a card on V1–V9 at the shared playhead.
+
+Placement uses the Episode's current timeline fingerprint and the exact board,
+board-placement, card, and source-range identities. If a collaborator changes
+the timeline first, the API returns a conflict, the bin refreshes, and the
+creator must deliberately place again. Quipsly never retries at a stale time.
+An already-active card becomes **Cue** rather than **Add**, preventing an easy
+accidental duplicate. The editor can always return to the exact Story card.
+
+This is one composition model across browser and native rendering:
+
+- Story owns selection, notes, organization, and retained source clocks;
+- the Episode timeline owns editorial placement and trim decisions;
+- the collaboration proxy supports browser review;
+- final conform resolves the immutable original revision on a capable worker.
+
+The bin is lazy so a large followed Drive library does not inflate every
+Episode-editor request. The existing Source Story API remains the mutation
+boundary; the Episode editor only refreshes its canonical projection after a
+successful placement.
 
 If Google grants the selected folder identity but does not expose its
 descendants under per-file access, **Choose 360 files** is the equivalent
@@ -282,6 +311,10 @@ secret versions exist and pass private shape validation.
   `apps/quipsly/src/lib/spatial-exact-source.ts`
 - Source Room grouping:
   `apps/quipsly/src/lib/source-library-projection.ts`
+- Shared Episode Story source bin:
+  `apps/quipsly/src/app/(app)/nests/[slug]/episode-editor/EpisodeStoryBin.tsx`
+- Fingerprint-checked Source Story placement boundary:
+  `apps/quipsly/src/app/api/nests/[slug]/source-story/route.ts`
 - Local lifecycle:
   `scripts/dev/quipsly-local-up.sh`
 - Preview release gate:

@@ -8328,3 +8328,27 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   presence, second-account privacy, and disconnect-to-needs-reauth. Detailed
   architecture and evidence:
   `docs/coordination/2026-08-07-followed-drive-library.md`.
+
+## 2026-08-08 shared Episode Story source-bin checkpoint
+
+- Added a lazy Story source bin directly to the canonical Episode collaboration
+  editor. Creators can browse ordered board sections, retained source ranges,
+  verified proxy state, and 360 framing recipes without leaving the edit.
+- A card can be placed at the shared playhead on V1–V9 through the existing
+  source-to-timeline contract. The request binds the exact board placement,
+  card, Episode fingerprint, source range, playhead, and destination track.
+- Active cards become cue controls instead of duplicate-add controls. Every
+  card retains a direct return route to its Story context and originals remain
+  unchanged.
+- Collaboration conflicts fail closed: the bin refreshes the current timeline
+  fingerprint and requires a deliberate retry instead of silently moving or
+  duplicating media.
+- The shared editor refreshes its canonical projection after promotion, so the
+  newly placed proxy appears in the synchronized source monitors while final
+  conform remains checksum-bound to the exact source revision.
+- Focused Story-bin and Episode-editor tests pass 15/15 and the full Quipsly
+  TypeScript check passes. A retained High Ground Odyssey operation projected
+  the real `Insta360 field selects` board and active V3 placement through the
+  authenticated source-bin API, rendered the canonical shared editor at HTTP
+  200, preserved all four promote/reconcile/withdraw/restore operations,
+  rejected provenance stripping, and left source media unchanged.

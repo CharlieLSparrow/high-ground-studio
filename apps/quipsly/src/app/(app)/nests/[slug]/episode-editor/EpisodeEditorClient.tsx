@@ -17,6 +17,7 @@ import {
 import type { EpisodeRenderProfileId } from "@high-ground/quipsly-media-processing";
 import { EpisodeWorkspaceNav } from "../episodes/[episodeSlug]/EpisodeWorkspaceNav";
 import { EpisodeCaptureTakeHandoff } from "./EpisodeCaptureTakeHandoff";
+import { EpisodeStoryBin } from "./EpisodeStoryBin";
 
 const decisionColors: Record<ProgramDecisionKind, string> = {
   primary: "#3ea7b4",
@@ -885,6 +886,16 @@ export default function EpisodeEditorClient({
         </section>
 
         <aside className="space-y-3 xl:max-h-[calc(100vh-92px)] xl:overflow-y-auto xl:pr-1">
+          {episode ? (
+            <EpisodeStoryBin
+              projectSlug={payload.projectSlug}
+              episode={episode}
+              canEdit={payload.canEdit}
+              playhead={playhead}
+              onCue={seek}
+              onPromoted={refreshCanonicalProjection}
+            />
+          ) : null}
           <div className="rounded-2xl border border-[#2d4638] bg-[#0d1712] p-4">
             <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#d8ad56]">Protected sync baseline</p>
             <h2 className="mt-1 font-serif text-xl">{payload.baseline?.label ?? "Waiting for baseline"}</h2>

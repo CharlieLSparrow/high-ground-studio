@@ -204,6 +204,20 @@ try {
   const sourceStoryPage = await fetch(`${appOrigin}${sourceStoryHref}`, { headers: { cookie, "cache-control": "no-cache" } });
   const sourceStoryHtml = await sourceStoryPage.text();
   if (!sourceStoryPage.ok || !sourceStoryHtml.includes(card.id) || !sourceStoryHtml.includes(card.title)) throw new Error(`The exact-card Source Story return route did not render its retained card (HTTP ${sourceStoryPage.status}).`);
+  const sourceBinResponse = await fetch(`${appOrigin}/api/nests/${encodeURIComponent(project.slug)}/source-story`, { headers: { cookie, "cache-control": "no-cache" } });
+  const sourceBinPayload = await sourceBinResponse.json().catch(() => ({}));
+  const sourceBinBoard = sourceBinPayload?.workspace?.boards?.find((candidate) => candidate.placements?.some((candidatePlacement) => candidatePlacement.cardId === card.id));
+  const sourceBinEpisode = sourceBinPayload?.workspace?.episodes?.find((candidate) => candidate.id === episode.id);
+  const sourceBinPlacement = sourceBinPayload?.workspace?.timelinePlacements?.find((candidate) => candidate.id === placement.id && candidate.status === "active");
+  if (!sourceBinResponse.ok || !sourceBinBoard || !sourceBinEpisode?.timelineFingerprint || !sourceBinPlacement) {
+    throw new Error(`The shared Episode source bin could not project its exact board, Episode fingerprint, and active placement (HTTP ${sourceBinResponse.status}).`);
+  }
+  const sharedEditorHref = `/nests/${encodeURIComponent(project.slug)}/episodes/${encodeURIComponent(slug)}?mode=edit`;
+  const sharedEditorPage = await fetch(`${appOrigin}${sharedEditorHref}`, { headers: { cookie, "cache-control": "no-cache" } });
+  const sharedEditorHtml = await sharedEditorPage.text();
+  if (!sharedEditorPage.ok || !sharedEditorHtml.includes("Story source bin") || !sharedEditorHtml.includes("Build from retained selects")) {
+    throw new Error(`The canonical shared Episode editor did not render its lazy Story source bin (HTTP ${sharedEditorPage.status}).`);
+  }
 
   const [readback, operations] = await Promise.all([
     prisma.studioStoryTimelinePlacement.findUniqueOrThrow({ where: { id: placement.id } }),
@@ -221,6 +235,15 @@ try {
     editorPlacement: { trackId: readback.trackId, startIn: readback.episodeStartSeconds, duration: readback.durationSeconds, status: readback.status, revision: readback.revision },
     sourceStoryHref,
     sourceStoryPageStatus: sourceStoryPage.status,
+    sourceBinReadback: {
+      boardId: sourceBinBoard.id,
+      boardTitle: sourceBinBoard.title,
+      timelineFingerprint: sourceBinEpisode.timelineFingerprint,
+      activeTrackId: sourceBinPlacement.trackId,
+      episodeStartSeconds: sourceBinPlacement.episodeStartSeconds,
+    },
+    sharedEditorHref,
+    sharedEditorPageStatus: sharedEditorPage.status,
     operations,
     rejectedMutation: stripped.payload.errorCode,
     sourceMediaUnchanged: true,
