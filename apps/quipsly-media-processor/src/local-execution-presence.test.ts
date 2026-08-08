@@ -27,6 +27,7 @@ test("local execution presence publishes safe storage capacity without its path"
       executionId: "execution_12345678",
       buildId: "build-1",
       localMediaRoot: root,
+      workspaceMode: "temporary",
       storageReserveBytes: 0,
     });
     await presence.heartbeat(new Date("2026-08-07T20:00:00.000Z"), true);
@@ -35,6 +36,7 @@ test("local execution presence publishes safe storage capacity without its path"
     const storage = capabilities.storage as Record<string, unknown>;
     assert.equal(storage.status, "measured");
     assert.equal(storage.pathWithheld, true);
+    assert.equal(storage.workspaceMode, "temporary");
     assert.equal(typeof storage.safeAvailableBytes, "number");
     assert.equal(JSON.stringify(capabilities).includes(root), false);
     assert.ok(

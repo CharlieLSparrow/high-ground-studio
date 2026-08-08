@@ -37,6 +37,7 @@ function plan(input: {
             availableBytes: "180",
             reserveBytes: "100",
             measuredAt: "2026-08-08T20:00:00.000Z",
+            workspaceMode: "durable",
             localPathWithheld: true,
           }
         : {
@@ -45,6 +46,7 @@ function plan(input: {
             availableBytes: null,
             reserveBytes: null,
             measuredAt: null,
+            workspaceMode: "unknown",
             localPathWithheld: true,
           },
     },

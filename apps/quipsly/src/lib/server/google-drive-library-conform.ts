@@ -69,6 +69,7 @@ export function summarizeGoogleDriveLibraryConformPlans(input: {
     availableBytes: null,
     reserveBytes: null,
     measuredAt: null,
+    workspaceMode: "unknown" as const,
     localPathWithheld: true as const,
   };
   const aggregateShortfallBytes =

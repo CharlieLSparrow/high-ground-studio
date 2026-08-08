@@ -207,8 +207,19 @@ describe("Google Drive source picker entry", () => {
               remainingCount: 2,
               nextBatchCount: 2,
               nextBatchTransferBytes: "1900000000",
+              nextBatchFits: true,
+              nextBatchShortfallBytes: "0",
               pendingTransferBytes: "1900000000",
               inventoryTruncated: false,
+              executorStorage: {
+                status: "measured",
+                safeAvailableBytes: "5000000000",
+                availableBytes: "10000000000",
+                reserveBytes: "5000000000",
+                measuredAt: "2026-08-08T20:00:00.000Z",
+                workspaceMode: "durable",
+                localPathWithheld: true,
+              },
               captureDays: [
                 {
                   date: "2026-05-07",
@@ -246,6 +257,7 @@ describe("Google Drive source picker entry", () => {
     expect(
       screen.getByRole("button", { name: /prepare next 2/i }),
     ).toBeEnabled();
+    expect(screen.getByText(/durable mac workspace/i)).toBeInTheDocument();
     expect(
       screen.getByText(/1\.8 GB of LRV companions remain/i),
     ).toBeInTheDocument();
@@ -260,6 +272,68 @@ describe("Google Drive source picker entry", () => {
     expect(
       await screen.findByText(/updated insta360 browse readiness/i),
     ).toBeInTheDocument();
+  });
+
+  it("blocks a browse pass before queueing when the Mac reserve would be crossed", async () => {
+    global.fetch = jest.fn(async () =>
+      jsonResponse({ ok: true, pickerConfigured: true, connections: [] }),
+    ) as unknown as typeof fetch;
+    render(
+      <GoogleDriveSourcePicker
+        projectSlug="high-ground-odyssey"
+        canWrite
+        libraries={[
+          {
+            id: "library-storage-pressure",
+            name: "Insta360",
+            status: "ready",
+            revision: 3,
+            totalFileCount: 14,
+            totalSizeBytes: "159200000000",
+            readySegmentCount: 7,
+            heldSegmentCount: 0,
+            notObservedCount: 0,
+            lastCheckedAt: "2026-08-08T20:00:00.000Z",
+            canRefresh: true,
+            connectionState: "verified",
+            connectedByCurrentUser: true,
+            navigationHealth: {
+              eligibleSourceCount: 7,
+              retainedBrowseCount: 1,
+              proxyReadyCount: 4,
+              visualReadyCount: 4,
+              audioReadyCount: 4,
+              browseReadyCount: 4,
+              remainingCount: 3,
+              nextBatchCount: 1,
+              nextBatchTransferBytes: "1900000000",
+              nextBatchFits: false,
+              nextBatchShortfallBytes: "498000000",
+              pendingTransferBytes: "5700000000",
+              inventoryTruncated: false,
+              executorStorage: {
+                status: "measured",
+                safeAvailableBytes: "1402000000",
+                availableBytes: "6770709120",
+                reserveBytes: "5368709120",
+                measuredAt: "2026-08-08T20:00:00.000Z",
+                workspaceMode: "temporary",
+                localPathWithheld: true,
+              },
+              captureDays: [],
+            },
+          },
+        ]}
+        onAttached={jest.fn(async () => undefined)}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/this pass needs 474\.9 MB more safe storage/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /prepare next 1/i }),
+    ).toBeDisabled();
   });
 
   it("reports exact file and package deltas after a library refresh", async () => {

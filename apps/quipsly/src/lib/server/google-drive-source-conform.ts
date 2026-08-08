@@ -17,6 +17,7 @@ import {
   publicGoogleDriveSourceMaterializationJob,
   requestGoogleDriveSourceMaterialization,
 } from "@/lib/server/google-drive-source-materialization";
+import { readLocalExecutorStorage } from "@/lib/server/local-executor-storage";
 import { createMediaSourceSet } from "@/lib/server/source-story";
 
 export const GOOGLE_DRIVE_SOURCE_CONFORM_PLAN_SCHEMA =
@@ -126,56 +127,6 @@ function sameMembers(
         .sort()
         .join(":")
   );
-}
-
-async function readLocalExecutorStorage(prisma: PrismaClient) {
-  const freshAfter = new Date(Date.now() - 30_000);
-  const nodes = await prisma.agentNode.findMany({
-    where: {
-      status: "online",
-      lastHeartbeatAt: { gte: freshAfter },
-    },
-    select: { capabilities: true, lastHeartbeatAt: true },
-    orderBy: { lastHeartbeatAt: "desc" },
-  });
-  for (const node of nodes) {
-    const capabilities = record(node.capabilities);
-    if (capabilities.executorKind !== "local-mac") continue;
-    const storage = record(capabilities.storage);
-    const safeAvailableBytes = Number(storage.safeAvailableBytes);
-    const availableBytes = Number(storage.availableBytes);
-    const reserveBytes = Number(storage.reserveBytes);
-    if (
-      storage.schema === "quipsly-local-media-storage-v1" &&
-      storage.status === "measured" &&
-      Number.isSafeInteger(safeAvailableBytes) &&
-      safeAvailableBytes >= 0 &&
-      Number.isSafeInteger(availableBytes) &&
-      availableBytes >= 0 &&
-      Number.isSafeInteger(reserveBytes) &&
-      reserveBytes >= 0
-    ) {
-      return {
-        status: "measured" as const,
-        safeAvailableBytes: String(safeAvailableBytes),
-        availableBytes: String(availableBytes),
-        reserveBytes: String(reserveBytes),
-        measuredAt:
-          text(storage.measuredAt) ||
-          node.lastHeartbeatAt?.toISOString() ||
-          null,
-        localPathWithheld: true as const,
-      };
-    }
-  }
-  return {
-    status: "unavailable" as const,
-    safeAvailableBytes: null,
-    availableBytes: null,
-    reserveBytes: null,
-    measuredAt: null,
-    localPathWithheld: true as const,
-  };
 }
 
 async function loadConformState(input: {

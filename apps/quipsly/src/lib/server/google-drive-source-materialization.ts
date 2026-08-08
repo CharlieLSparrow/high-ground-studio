@@ -12,6 +12,10 @@ import {
 import type { PrismaClient } from "@prisma/client";
 
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
+import {
+  localExecutorStorageShortfall,
+  readLocalExecutorStorage,
+} from "@/lib/server/local-executor-storage";
 
 export const GOOGLE_DRIVE_SOURCE_MATERIALIZATION_JOB_TYPE =
   "google-drive-source-materialization";
@@ -368,6 +372,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       );
     }
     if (existing.status === "failed" && input.retryFailed) {
+      await assertLocalExecutorCapacity(input.prisma, BigInt(sizeBytes));
       const prior = object(existing.resultJson);
       const failureHistory = Array.isArray(prior.failureHistory)
         ? prior.failureHistory
@@ -404,6 +409,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
       state: existing.status,
     };
   }
+  await assertLocalExecutorCapacity(input.prisma, BigInt(sizeBytes));
   const job = await input.prisma.studioWorkflowJob.create({
     data: {
       id: jobId,
@@ -428,4 +434,18 @@ export async function requestGoogleDriveSourceMaterialization(input: {
     replayed: false,
     state: "queued" as const,
   };
+}
+
+async function assertLocalExecutorCapacity(
+  prisma: PrismaClient,
+  requiredBytes: bigint,
+) {
+  const storage = await readLocalExecutorStorage(prisma);
+  const shortfall = localExecutorStorageShortfall(storage, requiredBytes);
+  if (shortfall === null || shortfall === 0n) return;
+  throw new GoogleDriveSourceMaterializationRequestError(
+    "executor-storage-pressure",
+    `The active Mac is ${shortfall.toString()} bytes short of retaining this source while preserving its safety reserve. Free space or activate a durable media workspace before preparing it.`,
+    409,
+  );
 }

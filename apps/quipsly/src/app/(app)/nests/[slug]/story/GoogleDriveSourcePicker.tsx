@@ -45,6 +45,7 @@ type LibraryConformPlan = {
     availableBytes: string | null;
     reserveBytes: string | null;
     measuredAt: string | null;
+    workspaceMode: "durable" | "temporary" | "unknown";
     localPathWithheld: true;
   };
   days: Array<{
@@ -106,8 +107,19 @@ type ExternalMediaLibrary = {
     remainingCount: number;
     nextBatchCount: number;
     nextBatchTransferBytes: string;
+    nextBatchFits: boolean | null;
+    nextBatchShortfallBytes: string;
     pendingTransferBytes: string;
     inventoryTruncated: boolean;
+    executorStorage: {
+      status: "measured" | "unavailable";
+      safeAvailableBytes: string | null;
+      availableBytes: string | null;
+      reserveBytes: string | null;
+      measuredAt: string | null;
+      workspaceMode: "durable" | "temporary" | "unknown";
+      localPathWithheld: true;
+    };
     captureDays: Array<{
       date: string | null;
       eligibleSourceCount: number;
@@ -531,6 +543,60 @@ function FollowedDriveLibraries({
                   measured waveform.
                 </p>
               )}
+              {library.navigationHealth.executorStorage.status ===
+              "measured" ? (
+                <div
+                  role="status"
+                  className={`mt-2 rounded-lg border p-2 text-[9px] font-bold leading-4 ${
+                    library.navigationHealth.nextBatchFits === false
+                      ? "border-rose-300 bg-rose-100 text-rose-950"
+                      : library.navigationHealth.executorStorage
+                            .workspaceMode === "durable"
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-950"
+                        : "border-amber-300 bg-amber-100 text-amber-950"
+                  }`}
+                >
+                  {library.navigationHealth.nextBatchFits === false ? (
+                    <>
+                      This pass needs{" "}
+                      {formatBytes(
+                        library.navigationHealth.nextBatchShortfallBytes,
+                      )}{" "}
+                      more safe storage. No transfer will be queued. Free space
+                      or activate a durable media workspace.
+                    </>
+                  ) : library.navigationHealth.executorStorage.workspaceMode ===
+                    "durable" ? (
+                    <>
+                      Durable Mac workspace ·{" "}
+                      {formatBytes(
+                        library.navigationHealth.executorStorage
+                          .safeAvailableBytes ?? "0",
+                      )}{" "}
+                      safely available after the reserve.
+                    </>
+                  ) : (
+                    <>
+                      Temporary Mac workspace ·{" "}
+                      {formatBytes(
+                        library.navigationHealth.executorStorage
+                          .safeAvailableBytes ?? "0",
+                      )}{" "}
+                      safely available after the reserve. Prepared media may be
+                      reclaimed by macOS; activate a durable workspace before
+                      production batches.
+                    </>
+                  )}
+                </div>
+              ) : (
+                <p
+                  role="status"
+                  className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[9px] font-bold leading-4 text-amber-950"
+                >
+                  No fresh Mac capacity reading. The local worker still refuses
+                  transfers that cross its storage reserve.
+                </p>
+              )}
               {library.navigationHealth.inventoryTruncated ? (
                 <p className="mt-2 text-[9px] font-bold leading-4 text-amber-900">
                   This progress view is bounded to the first 500 observed files.
@@ -558,7 +624,8 @@ function FollowedDriveLibraries({
                     !canWrite ||
                     pending ||
                     !library.canRefresh ||
-                    library.navigationHealth.remainingCount === 0
+                    library.navigationHealth.remainingCount === 0 ||
+                    library.navigationHealth.nextBatchFits === false
                   }
                   onClick={() => onPrepare(library)}
                   className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sky-950 px-3 text-[10px] font-black text-white disabled:opacity-50"

@@ -48,6 +48,25 @@ safe to inspect, change, or abandon a plan.
 
 The migration never deletes source bytes.
 
+## Runtime visibility and admission control
+
+The local media worker publishes a path-withheld capacity heartbeat. Nest may
+show the measured available bytes, the protected reserve, safe available bytes,
+and whether the worker is using a `durable` or `temporary` workspace, but it
+must never expose the filesystem path.
+
+Drive preparation uses the same capacity contract at three boundaries:
+
+1. the Source Story disables a batch that does not fit after the reserve;
+2. the server refuses to create or retry the materialization job;
+3. the worker measures the filesystem again immediately before download.
+
+The worker remains the final authority because capacity can change after a web
+page is rendered. If no fresh heartbeat is available, Nest reports that the
+preflight is unavailable and the worker still enforces the reserve. A temporary
+workspace is suitable only for bounded development evidence; production media
+must use an activated durable workspace.
+
 ## Operator workflow
 
 Choose a dedicated folder in **Quipsly Mac → Settings → Media workspace**, or

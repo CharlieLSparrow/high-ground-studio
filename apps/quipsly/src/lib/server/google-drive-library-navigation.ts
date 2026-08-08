@@ -15,6 +15,10 @@ import {
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
 import { preferPreparedByteEquivalentRevision } from "@/lib/server/external-media-byte-identity";
 import { selectGoogleDriveBrowsePreparationBatch } from "@/lib/server/google-drive-navigation-batch";
+import {
+  localExecutorStorageShortfall,
+  readLocalExecutorStorage,
+} from "@/lib/server/local-executor-storage";
 
 import {
   ExternalSourceProxyRequestError,
@@ -276,6 +280,18 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
     environment: input.environment,
   });
   const selected = batch.selected;
+  const executorStorage = await readLocalExecutorStorage(input.prisma);
+  const batchShortfall = localExecutorStorageShortfall(
+    executorStorage,
+    batch.selectedTransferBytes,
+  );
+  if (batchShortfall !== null && batchShortfall > 0n) {
+    throw new GoogleDriveLibraryNavigationError(
+      "executor-storage-pressure",
+      `The active Mac is ${batchShortfall.toString()} bytes short of this preparation pass while preserving its safety reserve. Free space or activate a durable media workspace before preparing it.`,
+      409,
+    );
+  }
   const items: Array<{
     sourceRevisionId: string;
     fileName: string;
@@ -432,6 +448,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
       oversizedSingleSource: batch.oversizedSingleSource,
       inspectedItemLimit: MAX_LIBRARY_ITEMS,
       inventoryTruncated: library.totalFileCount > MAX_LIBRARY_ITEMS,
+      executorStorage,
     },
     summary: {
       eligibleSourceCount: candidates.length,

@@ -9,6 +9,11 @@ import { sourceAudioNavigationJobId } from "@high-ground/quipsly-media-processin
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
 import { preferPreparedByteEquivalentRevision } from "@/lib/server/external-media-byte-identity";
 import { selectGoogleDriveBrowsePreparationBatch } from "@/lib/server/google-drive-navigation-batch";
+import {
+  localExecutorStorageShortfall,
+  readLocalExecutorStorage,
+  type PublicLocalExecutorStorage,
+} from "@/lib/server/local-executor-storage";
 import type { GoogleDriveMediaLibraryPlan } from "@/lib/google-drive-media-package";
 
 type LibraryAttachment = {
@@ -45,7 +50,10 @@ type PublicLibraryNavigationHealth = {
   remainingCount: number;
   nextBatchCount: number;
   nextBatchTransferBytes: string;
+  nextBatchFits: boolean | null;
+  nextBatchShortfallBytes: string;
   pendingTransferBytes: string;
+  executorStorage: PublicLocalExecutorStorage;
   inventoryTruncated: boolean;
   captureDays: Array<{
     date: string | null;
@@ -79,7 +87,18 @@ const EMPTY_LIBRARY_NAVIGATION_HEALTH: PublicLibraryNavigationHealth = {
   remainingCount: 0,
   nextBatchCount: 0,
   nextBatchTransferBytes: "0",
+  nextBatchFits: null,
+  nextBatchShortfallBytes: "0",
   pendingTransferBytes: "0",
+  executorStorage: {
+    status: "unavailable",
+    safeAvailableBytes: null,
+    availableBytes: null,
+    reserveBytes: null,
+    measuredAt: null,
+    workspaceMode: "unknown",
+    localPathWithheld: true,
+  },
   inventoryTruncated: false,
   captureDays: [],
 };
@@ -339,54 +358,56 @@ export async function listExternalMediaLibraries(input: {
   projectId: string;
   actorUserId: string;
 }) {
-  const libraries = await input.prisma.studioExternalMediaLibrary.findMany({
-    where: { projectId: input.projectId },
-    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-    include: {
-      connection: { select: { userId: true, status: true } },
-      _count: {
-        select: { items: { where: { state: "not-observed" } } },
-      },
-      items: {
-        where: { state: "present", externalReferenceId: { not: null } },
-        orderBy: [{ lastObservedAt: "asc" }, { id: "asc" }],
-        take: 500,
-        select: {
-          state: true,
-          sourceUnit: { select: { capturedAt: true } },
-          externalReference: {
-            select: {
-              connectionId: true,
-              revisions: {
-                orderBy: { createdAt: "desc" },
-                take: 12,
-                select: {
-                  id: true,
-                  identitySha256: true,
-                  sizeBytes: true,
-                  projectionJson: true,
-                  provenanceJson: true,
-                  replicas: {
-                    where: {
-                      storageProvider: "local-cache",
-                      status: "ready",
-                    },
-                    take: 1,
-                    select: { id: true },
-                  },
-                  derivatives: {
-                    where: {
-                      status: "ready",
-                      kind: {
-                        in: ["collaboration-proxy", "source-contact-sheet"],
+  const [libraries, executorStorage] = await Promise.all([
+    input.prisma.studioExternalMediaLibrary.findMany({
+      where: { projectId: input.projectId },
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      include: {
+        connection: { select: { userId: true, status: true } },
+        _count: {
+          select: { items: { where: { state: "not-observed" } } },
+        },
+        items: {
+          where: { state: "present", externalReferenceId: { not: null } },
+          orderBy: [{ lastObservedAt: "asc" }, { id: "asc" }],
+          take: 500,
+          select: {
+            state: true,
+            sourceUnit: { select: { capturedAt: true } },
+            externalReference: {
+              select: {
+                connectionId: true,
+                revisions: {
+                  orderBy: { createdAt: "desc" },
+                  take: 12,
+                  select: {
+                    id: true,
+                    identitySha256: true,
+                    sizeBytes: true,
+                    projectionJson: true,
+                    provenanceJson: true,
+                    replicas: {
+                      where: {
+                        storageProvider: "local-cache",
+                        status: "ready",
                       },
+                      take: 1,
+                      select: { id: true },
                     },
-                    orderBy: { createdAt: "desc" },
-                    take: 8,
-                    select: {
-                      kind: true,
-                      generation: true,
-                      provenanceJson: true,
+                    derivatives: {
+                      where: {
+                        status: "ready",
+                        kind: {
+                          in: ["collaboration-proxy", "source-contact-sheet"],
+                        },
+                      },
+                      orderBy: { createdAt: "desc" },
+                      take: 8,
+                      select: {
+                        kind: true,
+                        generation: true,
+                        provenanceJson: true,
+                      },
                     },
                   },
                 },
@@ -395,8 +416,9 @@ export async function listExternalMediaLibraries(input: {
           },
         },
       },
-    },
-  });
+    }),
+    readLocalExecutorStorage(input.prisma),
+  ]);
   const candidatesByLibrary = new Map<
     string,
     Array<{
@@ -505,6 +527,10 @@ export async function listExternalMediaLibraries(input: {
       candidates: states.filter((state) => !state.browseReady),
       countLimit: 12,
     });
+    const nextBatchShortfall = localExecutorStorageShortfall(
+      executorStorage,
+      nextBatch.selectedTransferBytes,
+    );
     const navigationHealth: PublicLibraryNavigationHealth = {
       eligibleSourceCount: candidates.length,
       retainedBrowseCount,
@@ -515,11 +541,15 @@ export async function listExternalMediaLibraries(input: {
       remainingCount,
       nextBatchCount: nextBatch.selected.length,
       nextBatchTransferBytes: nextBatch.selectedTransferBytes.toString(),
+      nextBatchFits:
+        nextBatchShortfall === null ? null : nextBatchShortfall === 0n,
+      nextBatchShortfallBytes: (nextBatchShortfall ?? 0n).toString(),
       pendingTransferBytes: states
         .filter((state) => !state.retained)
         .reduce((total, state) => total + (state.revision.sizeBytes ?? 0n), 0n)
         .toString(),
       inventoryTruncated: library.totalFileCount > 500,
+      executorStorage,
       captureDays: [
         ...states
           .reduce(

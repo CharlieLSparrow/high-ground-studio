@@ -17,6 +17,7 @@ export class LocalExecutionPresence {
       executionId: string;
       buildId: string;
       localMediaRoot: string;
+      workspaceMode: "durable" | "temporary";
       storageReserveBytes?: number;
       heartbeatIntervalMs?: number;
     },
@@ -104,6 +105,7 @@ export class LocalExecutionPresence {
         reserveBytes,
         safeAvailableBytes: Math.max(0, availableBytes - reserveBytes),
         measuredAt: now.toISOString(),
+        workspaceMode: this.input.workspaceMode,
         pathWithheld: true,
       };
     } catch {
@@ -114,6 +116,7 @@ export class LocalExecutionPresence {
         reserveBytes,
         safeAvailableBytes: null,
         measuredAt: now.toISOString(),
+        workspaceMode: this.input.workspaceMode,
         pathWithheld: true,
       };
     }

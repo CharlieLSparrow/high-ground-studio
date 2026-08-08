@@ -588,8 +588,10 @@ async function main() {
   const databaseUrl = loopbackDatabaseUrl(
     String(process.env.DATABASE_URL || ""),
   );
+  const durableLocalMediaRoot =
+    process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT?.trim() || "";
   const localMediaRoot = path.resolve(
-    process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT ||
+    durableLocalMediaRoot ||
       process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT ||
       path.join(tmpdir(), "quipsly-media-ingest"),
   );
@@ -697,6 +699,7 @@ async function main() {
     executionId,
     buildId: options.buildId,
     localMediaRoot,
+    workspaceMode: durableLocalMediaRoot ? "durable" : "temporary",
     storageReserveBytes:
       Number(process.env.QUIPSLY_DRIVE_CACHE_MIN_FREE_BYTES) || undefined,
   });
