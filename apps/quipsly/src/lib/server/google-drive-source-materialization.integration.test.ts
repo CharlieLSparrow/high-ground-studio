@@ -603,6 +603,8 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
           sourceRevisionId: browse.id,
           workflowJobId: materializationJob.id,
           storageProvider: "local-cache",
+          custodianNodeId: executorNodeId,
+          storageScopeId: executorScopeId,
           locator: `/private/tmp/quipsly-drive-materialization/${nonce}.lrv`,
           generation,
           contentSha256: exactSha256,

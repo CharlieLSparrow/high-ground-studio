@@ -25,6 +25,8 @@ export type LocalSourceVisualOverviewClaim = {
   inputJson: unknown;
   attempt: number;
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
 };
 
 export type ResolvedVisualOverviewInput = {
@@ -62,6 +64,8 @@ export interface SourceVisualOverviewRenderer {
 export interface LocalSourceVisualOverviewStore {
   claim(input: {
     executionId: string;
+    custodianNodeId: string;
+    storageScopeId: string;
     leaseMs: number;
     now: Date;
   }): Promise<LocalSourceVisualOverviewClaim | null>;
@@ -91,6 +95,8 @@ export interface LocalSourceVisualOverviewStore {
 
 export type LocalSourceVisualOverviewOptions = {
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   buildId: string;
   leaseMs: number;
   localMediaRoot: string;
@@ -137,6 +143,8 @@ export async function runOneLocalSourceVisualOverviewJob(
 ): Promise<LocalSourceVisualOverviewResult> {
   const claim = await store.claim({
     executionId: options.executionId,
+    custodianNodeId: options.custodianNodeId,
+    storageScopeId: options.storageScopeId,
     leaseMs: options.leaseMs,
     now: options.now(),
   });
@@ -380,7 +388,13 @@ export class FfmpegSourceVisualOverviewRenderer implements SourceVisualOverviewR
 export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisualOverviewStore {
   constructor(private readonly pool: Pool) {}
 
-  async claim(input: { executionId: string; leaseMs: number; now: Date }) {
+  async claim(input: {
+    executionId: string;
+    custodianNodeId: string;
+    storageScopeId: string;
+    leaseMs: number;
+    now: Date;
+  }) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -391,11 +405,19 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
           FROM "StudioWorkflowJob"
           WHERE "type"=$1 AND "source"=$2
             AND "inputJson"->'input'->>'provider'='local'
+            AND "resultJson"->'executionTarget'->>'custodianNodeId'=$4
+            AND "resultJson"->'executionTarget'->>'storageScopeId'=$5
             AND ("status"='queued' OR ("status"='processing' AND "updatedAt" < timezone('UTC',$3::timestamptz)))
           ORDER BY "priority" ASC, "createdAt" ASC
           FOR UPDATE SKIP LOCKED LIMIT 1
         `,
-        values: [JOB_TYPE, JOB_SOURCE, staleBefore],
+        values: [
+          JOB_TYPE,
+          JOB_SOURCE,
+          staleBefore,
+          input.custodianNodeId,
+          input.storageScopeId,
+        ],
       });
       const row = selected.rows[0];
       if (!row) {
@@ -429,6 +451,8 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
         inputJson: updated.rows[0].inputJson,
         attempt,
         executionId: input.executionId,
+        custodianNodeId: input.custodianNodeId,
+        storageScopeId: input.storageScopeId,
       };
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -450,11 +474,14 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
         FROM "StudioMediaDerivative" d
         JOIN "StudioMediaSourceRevision" s ON s."id"=d."sourceRevisionId"
         WHERE d."id"=$1 AND d."sourceRevisionId"=$2 AND d."projectId"=$3
+          AND d."custodianNodeId"=$4 AND d."storageScopeId"=$5
       `,
       values: [
         job.input.derivativeId,
         job.source.sourceRevisionId,
         job.projectId,
+        _claim.custodianNodeId,
+        _claim.storageScopeId,
       ],
     });
     const row = result.rows[0];
@@ -510,10 +537,10 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
       await client.query({
         text: `
           INSERT INTO "StudioMediaDerivative" (
-            "id","projectId","sourceRevisionId","workflowJobId","kind","profile","storageProvider","locator","generation",
+            "id","projectId","sourceRevisionId","workflowJobId","custodianNodeId","storageScopeId","kind","profile","storageProvider","locator","generation",
             "contentSha256","sizeBytes","mimeType","widthPixels","heightPixels","status","verificationJson","provenanceJson",
             "createdByUserId","createdAt","availabilityCheckedAt","contentVerifiedAt","unavailableAt"
-          ) VALUES ($1,$2,$3,$4,$5,$6,'local',$7,$8,$9,$10,'image/jpeg',$11,$12,'ready',$13::jsonb,$14::jsonb,$15,$16,$16,$16,NULL)
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'local',$9,$10,$11,$12,'image/jpeg',$13,$14,'ready',$15::jsonb,$16::jsonb,$17,$18,$18,$18,NULL)
           ON CONFLICT ("id") DO UPDATE SET
             "status"='ready',
             "availabilityCheckedAt"=EXCLUDED."availabilityCheckedAt",
@@ -524,6 +551,8 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
           WHERE "StudioMediaDerivative"."projectId"=EXCLUDED."projectId"
             AND "StudioMediaDerivative"."sourceRevisionId"=EXCLUDED."sourceRevisionId"
             AND "StudioMediaDerivative"."workflowJobId"=EXCLUDED."workflowJobId"
+            AND "StudioMediaDerivative"."custodianNodeId"=EXCLUDED."custodianNodeId"
+            AND "StudioMediaDerivative"."storageScopeId"=EXCLUDED."storageScopeId"
             AND "StudioMediaDerivative"."locator"=EXCLUDED."locator"
             AND "StudioMediaDerivative"."generation"=EXCLUDED."generation"
             AND "StudioMediaDerivative"."contentSha256"=EXCLUDED."contentSha256"
@@ -534,6 +563,8 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
           input.job.projectId,
           input.job.source.sourceRevisionId,
           input.job.jobId,
+          input.claim.custodianNodeId,
+          input.claim.storageScopeId,
           SOURCE_VISUAL_OVERVIEW_DERIVATIVE_KIND,
           input.job.target.profile,
           input.receipt.output.locator,
@@ -562,17 +593,19 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
         ],
       });
       await client.query({
-        text: `UPDATE "StudioMediaDerivative" SET "status"='superseded' WHERE "projectId"=$1 AND "sourceRevisionId"=$2 AND "kind"=$3 AND "profile"=$4 AND "status"='ready' AND "id"<>$5`,
+        text: `UPDATE "StudioMediaDerivative" SET "status"='superseded' WHERE "projectId"=$1 AND "sourceRevisionId"=$2 AND "kind"=$3 AND "profile"=$4 AND "custodianNodeId"=$6 AND "storageScopeId"=$7 AND "status"='ready' AND "id"<>$5`,
         values: [
           input.job.projectId,
           input.job.source.sourceRevisionId,
           SOURCE_VISUAL_OVERVIEW_DERIVATIVE_KIND,
           input.job.target.profile,
           input.job.derivativeId,
+          input.claim.custodianNodeId,
+          input.claim.storageScopeId,
         ],
       });
       const retained = await client.query({
-        text: `SELECT "sourceRevisionId","workflowJobId","generation","contentSha256","sizeBytes" FROM "StudioMediaDerivative" WHERE "id"=$1`,
+        text: `SELECT "sourceRevisionId","workflowJobId","custodianNodeId","storageScopeId","generation","contentSha256","sizeBytes" FROM "StudioMediaDerivative" WHERE "id"=$1`,
         values: [input.job.derivativeId],
       });
       const row = retained.rows[0];
@@ -580,6 +613,8 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
         !row ||
         row.sourceRevisionId !== input.job.source.sourceRevisionId ||
         row.workflowJobId !== input.job.jobId ||
+        row.custodianNodeId !== input.claim.custodianNodeId ||
+        row.storageScopeId !== input.claim.storageScopeId ||
         row.generation !== input.receipt.output.generation ||
         row.contentSha256 !== input.receipt.output.sha256 ||
         Number(row.sizeBytes) !== input.receipt.output.sizeBytes
@@ -664,6 +699,8 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
 export function newLocalSourceVisualOverviewRuntime(input: {
   pool: Pool;
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   localMediaRoot: string;
   leaseMs: number;
   buildId: string;
@@ -673,6 +710,8 @@ export function newLocalSourceVisualOverviewRuntime(input: {
     renderer: new FfmpegSourceVisualOverviewRenderer(),
     options: {
       executionId: input.executionId,
+      custodianNodeId: input.custodianNodeId,
+      storageScopeId: input.storageScopeId,
       buildId: input.buildId,
       leaseMs: input.leaseMs,
       localMediaRoot: input.localMediaRoot,

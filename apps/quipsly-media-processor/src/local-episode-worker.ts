@@ -745,6 +745,8 @@ async function main() {
   const sourceVisualOverview = newLocalSourceVisualOverviewRuntime({
     pool,
     executionId,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
     localMediaRoot,
     leaseMs: options.leaseMs,
     buildId: options.buildId,
@@ -752,6 +754,8 @@ async function main() {
   const sourceAudioNavigation = newLocalSourceAudioNavigationRuntime({
     pool,
     executionId,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
     localMediaRoot,
     leaseMs: options.leaseMs,
     buildId: options.buildId,

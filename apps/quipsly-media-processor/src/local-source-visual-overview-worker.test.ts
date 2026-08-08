@@ -22,6 +22,9 @@ import {
   type SourceVisualOverviewRenderer,
 } from "./local-source-visual-overview-worker.js";
 
+const CUSTODIAN_NODE_ID = "execution_worker_12345678";
+const STORAGE_SCOPE_ID = "storage_scope_12345678";
+
 function sha256(value: Uint8Array) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -75,6 +78,8 @@ test("local source visual worker retains a bound contact sheet and never rewrite
       inputJson: job,
       attempt: 1,
       executionId: "worker-1",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
     };
     const receipts: Array<
       Parameters<LocalSourceVisualOverviewStore["complete"]>[0]["receipt"]
@@ -124,6 +129,8 @@ test("local source visual worker retains a bound contact sheet and never rewrite
     const before = await stat(inputPath);
     const result = await runOneLocalSourceVisualOverviewJob(store, renderer, {
       executionId: claim.executionId,
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
       buildId: "build-1",
       leaseMs: 60_000,
       localMediaRoot: root,
@@ -198,6 +205,8 @@ test("local source visual worker fails closed when retained input bytes drift", 
         inputJson: job,
         attempt: 1,
         executionId: "worker-2",
+        custodianNodeId: CUSTODIAN_NODE_ID,
+        storageScopeId: STORAGE_SCOPE_ID,
       }),
       resolve: async () => ({
         projectId: job.projectId,
@@ -231,6 +240,8 @@ test("local source visual worker fails closed when retained input bytes drift", 
     };
     const result = await runOneLocalSourceVisualOverviewJob(store, renderer, {
       executionId: "worker-2",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
       buildId: "build-1",
       leaseMs: 60_000,
       localMediaRoot: root,

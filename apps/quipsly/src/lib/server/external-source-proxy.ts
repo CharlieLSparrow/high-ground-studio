@@ -100,12 +100,12 @@ export async function requestExternalSourceProxy(input: {
           status: "ready",
         },
         orderBy: { createdAt: "desc" },
-        take: 1,
+        take: 12,
       },
       replicas: {
         where: { storageProvider: "local-cache", status: "ready" },
         orderBy: { createdAt: "desc" },
-        take: 1,
+        take: 12,
       },
     },
   });
@@ -117,13 +117,26 @@ export async function requestExternalSourceProxy(input: {
     );
   }
   const reference = source.externalReference;
+  const localReplica =
+    reference.provider === "google-drive"
+      ? (source.replicas.find(
+          (replica) => replica.custodianNodeId && replica.storageScopeId,
+        ) ?? null)
+      : (source.replicas[0] ?? null);
+  const executionTarget =
+    localReplica?.custodianNodeId && localReplica.storageScopeId
+      ? {
+          custodianNodeId: localReplica.custodianNodeId,
+          storageScopeId: localReplica.storageScopeId,
+        }
+      : null;
   if (!reference.mimeType?.startsWith("video/")) {
     throw new ExternalSourceProxyRequestError(
       "video-required",
       "This proxy profile currently requires a video source.",
     );
   }
-  const exactLocalReplicaAvailable = Boolean(source.replicas[0]);
+  const exactLocalReplicaAvailable = Boolean(localReplica);
   const deviceReplicaBacked =
     reference.provider === "quipsly-device-folder" &&
     exactLocalReplicaAvailable;
@@ -148,9 +161,17 @@ export async function requestExternalSourceProxy(input: {
       409,
     );
   }
-  if (source.derivatives[0]) {
+  const readyDerivative = reference.provider === "google-drive"
+    ? source.derivatives.find(
+        (derivative) =>
+          executionTarget &&
+          derivative.custodianNodeId === executionTarget.custodianNodeId &&
+          derivative.storageScopeId === executionTarget.storageScopeId,
+      )
+    : source.derivatives[0];
+  if (readyDerivative) {
     return {
-      derivative: source.derivatives[0],
+      derivative: readyDerivative,
       job: null,
       replayed: true,
       state: "ready" as const,
@@ -169,11 +190,20 @@ export async function requestExternalSourceProxy(input: {
       409,
     );
   }
+  if (reference.provider === "google-drive" && !executionTarget) {
+    throw new ExternalSourceProxyRequestError(
+      "provider-executor-unavailable",
+      "The exact Drive replica has no verified local executor custody. Prepare it again on an active Mac before creating a proxy.",
+      409,
+    );
+  }
 
   const identity = externalSourceProxyIdentity({
     projectId,
     sourceRevisionId,
     identitySha256: source.identitySha256,
+    custodianNodeId: executionTarget?.custodianNodeId,
+    storageScopeId: executionTarget?.storageScopeId,
   });
   const jobId = externalSourceProxyJobId(identity);
   const derivativeId = externalSourceProxyDerivativeId(identity);
@@ -243,6 +273,7 @@ export async function requestExternalSourceProxy(input: {
           completedAt: null,
           resultJson: {
             state: "queued",
+            ...(executionTarget ? { executionTarget } : {}),
             requestedBy: { actorUserId, actorEmail, clientRequestId },
             failureHistory: failure ? [...failures, failure] : failures,
             originalRemainsSourceTruth: true,
@@ -274,6 +305,7 @@ export async function requestExternalSourceProxy(input: {
           completedAt: null,
           resultJson: {
             state: "queued",
+            ...(executionTarget ? { executionTarget } : {}),
             requestedBy: { actorUserId, actorEmail, clientRequestId },
             recoveryReason: "local-derivative-unavailable",
             recoveryHistory: [
@@ -314,6 +346,7 @@ export async function requestExternalSourceProxy(input: {
       inputJson: manifest,
       resultJson: {
         state: "queued",
+        ...(executionTarget ? { executionTarget } : {}),
         requestedBy: { actorUserId, actorEmail, clientRequestId },
         originalRemainsSourceTruth: true,
       },

@@ -13,13 +13,25 @@ export function externalSourceProxyIdentity(input: {
   projectId: string;
   sourceRevisionId: string;
   identitySha256: string;
+  custodianNodeId?: string;
+  storageScopeId?: string;
   profile?: string;
 }) {
+  const custodianNodeId = text(input.custodianNodeId);
+  const storageScopeId = text(input.storageScopeId);
+  if (
+    Boolean(custodianNodeId) !== Boolean(storageScopeId) ||
+    (custodianNodeId &&
+      (!SAFE_ID.test(custodianNodeId) || !SAFE_ID.test(storageScopeId)))
+  ) {
+    throw new Error("External source proxy custody identity is invalid.");
+  }
   return [
-    "external-source-proxy-v1",
+    custodianNodeId ? "external-source-proxy-v2" : "external-source-proxy-v1",
     text(input.projectId),
     text(input.sourceRevisionId),
     text(input.identitySha256).toLowerCase(),
+    ...(custodianNodeId ? [custodianNodeId, storageScopeId] : []),
     text(input.profile) || EXTERNAL_SOURCE_PROXY_PROFILE,
   ].join(":");
 }

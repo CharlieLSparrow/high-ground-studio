@@ -67,7 +67,18 @@ an architecture or OAuth blocker.
 
 ## Next boundary
 
-`StudioMediaDerivative` is still a legacy global-local lane. Drive
-materialization and its immediate collaboration proxy are now executor-routed,
-but visual, waveform, and render derivatives should adopt the same explicit
-custody model before Quipsly schedules those stages across multiple Macs.
+The follow-on slice now scopes new local derivatives as well. Collaboration
+proxy identity includes executor custody, so the same exact Drive source can
+have independent proxies on two Macs without a job or derivative collision.
+The proxy, contact sheet, and complete audio-navigation job remain pinned to
+one scope; supersession and reconciliation cannot cross scope boundaries.
+Custody is an all-or-nothing database invariant, legacy unscoped derivative
+uniqueness remains enforced, and an executor cannot be deleted while it still
+owns local derivatives.
+
+Remaining work is projection and broader producer convergence: source-library
+queries should prefer artifacts on the current executor, device-folder
+receipts need a v2 custody-bearing contract, and spatial/render producers must
+declare whether their output is local-executor custody or portable object
+storage. Legacy device replicas remain temporarily readable only as an
+unscoped fallback; a worker never accepts another executor's scoped replica.

@@ -5125,6 +5125,8 @@ model StudioMediaDerivative {
   projectId             String
   sourceRevisionId      String
   workflowJobId         String    @unique
+  custodianNodeId       String?
+  storageScopeId        String?
   kind                  String
   profile               String
   storageProvider       String
@@ -5150,10 +5152,12 @@ model StudioMediaDerivative {
   sourceRevision StudioMediaSourceRevision @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
   workflowJob    StudioWorkflowJob         @relation(fields: [workflowJobId], references: [id], onDelete: Restrict)
   createdBy      User                      @relation("StudioMediaDerivativeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  custodianNode  AgentNode?                @relation("StudioMediaDerivativeCustodian", fields: [custodianNodeId], references: [id], onDelete: Restrict)
 
-  @@unique([sourceRevisionId, kind, profile, generation])
+  @@unique([sourceRevisionId, kind, profile, storageScopeId, generation], map: "StudioMediaDerivative_source_scope_generation_key")
   @@index([projectId, kind, createdAt])
   @@index([sourceRevisionId, status, createdAt])
+  @@index([custodianNodeId, storageScopeId, status], map: "StudioMediaDerivative_custody_status_idx")
   @@index([status, availabilityCheckedAt])
 }
 
@@ -7009,6 +7013,7 @@ model AgentNode {
   updatedAt           DateTime                   @updatedAt
   agentTasks          AgentTask[]
   mediaSourceReplicas StudioMediaSourceReplica[] @relation("StudioMediaSourceReplicaCustodian")
+  mediaDerivatives    StudioMediaDerivative[]    @relation("StudioMediaDerivativeCustodian")
 }
 
 model QuipslyAgent {

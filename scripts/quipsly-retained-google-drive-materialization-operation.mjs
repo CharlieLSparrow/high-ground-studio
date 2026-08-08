@@ -3,6 +3,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -22,6 +23,14 @@ import {
   runOneLocalGoogleDriveMaterializationJob,
 } from "../apps/quipsly-media-processor/src/local-google-drive-source-materialization-worker.ts";
 import { resolveLocalExecutionIdentity } from "../apps/quipsly-media-processor/src/local-execution-presence.ts";
+import {
+  newLocalSourceVisualOverviewRuntime,
+  runOneLocalSourceVisualOverviewJob,
+} from "../apps/quipsly-media-processor/src/local-source-visual-overview-worker.ts";
+import {
+  newLocalSourceAudioNavigationRuntime,
+  runOneLocalSourceAudioNavigationJob,
+} from "../apps/quipsly-media-processor/src/local-source-audio-navigation-worker.ts";
 
 const execFileAsync = promisify(execFile);
 const databaseUrl =
@@ -43,9 +52,9 @@ const workspaceSlug = "quipsly-retained-drive-360-lab";
 const projectSlug = "quipsly-retained-drive-360-source-room";
 const mediaRoot =
   process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT ||
-  "/tmp/quipsly-retained-drive-media";
+  path.join(tmpdir(), "quipsly-retained-drive-media");
 const providerFixture = path.join(
-  "/tmp",
+  tmpdir(),
   `quipsly-retained-drive-provider-${runKey}.lrv`,
 );
 
@@ -352,8 +361,91 @@ try {
   if (!derivative || !(await stat(derivative.locator)).isFile()) {
     throw new Error("Retained collaboration proxy is missing.");
   }
+  if (
+    derivative.custodianNodeId !== executionIdentity.nodeId ||
+    derivative.storageScopeId !== executionIdentity.storageScopeId
+  ) {
+    throw new Error("Collaboration proxy lost its local executor custody.");
+  }
   if (Number(derivative.sizeBytes) >= providerBytes.length) {
     throw new Error("Retained collaboration proxy is not storage-efficient.");
+  }
+  const [visualJob, audioJob] = await Promise.all([
+    prisma.studioWorkflowJob.findFirst({
+      where: {
+        projectId: project.id,
+        type: "source-visual-overview",
+        inputJson: { path: ["input", "derivativeId"], equals: derivative.id },
+      },
+    }),
+    prisma.studioWorkflowJob.findFirst({
+      where: {
+        projectId: project.id,
+        type: "source-audio-navigation",
+        inputJson: { path: ["input", "derivativeId"], equals: derivative.id },
+      },
+    }),
+  ]);
+  if (!visualJob || !audioJob) {
+    throw new Error(
+      "Proxy completion did not queue both browse-analysis jobs.",
+    );
+  }
+  await prisma.studioWorkflowJob.updateMany({
+    where: { id: { in: [visualJob.id, audioJob.id] } },
+    data: { priority: 1 },
+  });
+  const visualRuntime = newLocalSourceVisualOverviewRuntime({
+    pool,
+    executionId: `retained-drive-visual-${runKey}`,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
+    localMediaRoot: mediaRoot,
+    leaseMs: 60_000,
+    buildId: `retained-drive-${runKey}`,
+  });
+  const visualized = await runOneLocalSourceVisualOverviewJob(
+    visualRuntime.store,
+    visualRuntime.renderer,
+    visualRuntime.options,
+  );
+  const audioRuntime = newLocalSourceAudioNavigationRuntime({
+    pool,
+    executionId: `retained-drive-audio-${runKey}`,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
+    localMediaRoot: mediaRoot,
+    leaseMs: 60_000,
+    buildId: `retained-drive-${runKey}`,
+  });
+  const analyzed = await runOneLocalSourceAudioNavigationJob(
+    audioRuntime.store,
+    audioRuntime.analyzer,
+    audioRuntime.options,
+  );
+  if (
+    visualized.disposition !== "completed" ||
+    visualized.jobId !== visualJob.id ||
+    analyzed.disposition !== "completed" ||
+    analyzed.jobId !== audioJob.id
+  ) {
+    throw new Error(
+      `Browse analysis did not complete: ${JSON.stringify({ visualized, analyzed })}`,
+    );
+  }
+  const [visualDerivative, retainedAudioJob] = await Promise.all([
+    prisma.studioMediaDerivative.findFirst({
+      where: { workflowJobId: visualJob.id },
+    }),
+    prisma.studioWorkflowJob.findUnique({ where: { id: audioJob.id } }),
+  ]);
+  if (
+    !visualDerivative ||
+    visualDerivative.custodianNodeId !== executionIdentity.nodeId ||
+    visualDerivative.storageScopeId !== executionIdentity.storageScopeId ||
+    retainedAudioJob?.status !== "output-ready"
+  ) {
+    throw new Error("Browse analysis lost its executor-scoped evidence.");
   }
   if (
     digest("sha256", await readFile(providerFixture)) !== providerSha256Before
@@ -382,11 +474,18 @@ try {
           sizeBytes: Number(derivative.sizeBytes),
           sha256: derivative.contentSha256,
         },
+        browseAnalysis: {
+          visualJobId: visualJob.id,
+          visualDerivativeId: visualDerivative.id,
+          audioJobId: audioJob.id,
+        },
         boundaries: {
           providerFixtureUnchanged: true,
           exactReplicaVerified: true,
           collaborationProxyVerified: true,
           executorCustodyVerified: true,
+          visualCustodyVerified: true,
+          audioNavigationVerified: true,
           realDriveOriginalsDownloaded: false,
         },
       },

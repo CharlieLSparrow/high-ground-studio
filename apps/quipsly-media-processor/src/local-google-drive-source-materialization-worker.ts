@@ -703,6 +703,8 @@ export class PostgresLocalGoogleDriveMaterializationStore implements LocalGoogle
           projectId: input.job.projectId,
           sourceRevisionId: input.job.source.sourceRevisionId,
           identitySha256: input.job.source.identitySha256,
+          custodianNodeId: input.job.target.custodianNodeId,
+          storageScopeId: input.job.target.storageScopeId,
         });
         const proxyJobId = externalSourceProxyJobId(proxyIdentity);
         const proxyDerivativeId =

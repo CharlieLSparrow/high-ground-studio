@@ -248,7 +248,10 @@ export class LocalMediaArtifactReconciler {
           SELECT "id", 'derivative'::text AS "artifactKind", "locator", "contentSha256",
             "sizeBytes", "status", "availabilityCheckedAt", "contentVerifiedAt", "createdAt"
           FROM "StudioMediaDerivative"
-          WHERE "storageProvider"='local' AND "status" IN ('ready','missing','invalid')
+          WHERE "storageProvider"='local'
+            AND "custodianNodeId"=$2
+            AND "storageScopeId"=$3
+            AND "status" IN ('ready','missing','invalid')
         ) AS artifacts
         ORDER BY
           CASE WHEN "status" IN ('missing','invalid') THEN 0 ELSE 1 END,

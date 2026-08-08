@@ -460,10 +460,19 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
           FROM "StudioMediaSourceReplica"
           WHERE "sourceRevisionId"=s."id"
             AND "storageProvider"='local-cache'
-            AND "custodianNodeId"=$4
-            AND "storageScopeId"=$5
+            AND (
+              ("custodianNodeId"=$4 AND "storageScopeId"=$5)
+              OR (
+                r."provider"='quipsly-device-folder'
+                AND "custodianNodeId" IS NULL
+                AND "storageScopeId" IS NULL
+              )
+            )
             AND "status"='ready'
-          ORDER BY "createdAt" DESC LIMIT 1
+          ORDER BY
+            CASE WHEN "custodianNodeId"=$4 AND "storageScopeId"=$5 THEN 0 ELSE 1 END,
+            "createdAt" DESC
+          LIMIT 1
         ) replica ON TRUE
         WHERE s."id"=$1 AND r."id"=$2 AND s."projectId"=$3
       `,
@@ -532,10 +541,10 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
       await client.query({
         text: `
           INSERT INTO "StudioMediaDerivative" (
-            "id","projectId","sourceRevisionId","workflowJobId","kind","profile","storageProvider","locator","generation",
+            "id","projectId","sourceRevisionId","workflowJobId","custodianNodeId","storageScopeId","kind","profile","storageProvider","locator","generation",
             "contentSha256","sizeBytes","mimeType","durationSeconds","widthPixels","heightPixels","framesPerSecond",
             "status","verificationJson","provenanceJson","availabilityCheckedAt","contentVerifiedAt","unavailableAt","createdByUserId","createdAt"
-          ) VALUES ($1,$2,$3,$4,'collaboration-proxy',$5,'local',$6,$7,$8,$9,'video/mp4',$10,$11,$12,$13,'ready',$14::jsonb,$15::jsonb,$17,$17,NULL,$16,$17)
+          ) VALUES ($1,$2,$3,$4,$5,$6,'collaboration-proxy',$7,'local',$8,$9,$10,$11,'video/mp4',$12,$13,$14,$15,'ready',$16::jsonb,$17::jsonb,$19,$19,NULL,$18,$19)
           ON CONFLICT ("id") DO UPDATE SET
             "status"='ready',
             "availabilityCheckedAt"=EXCLUDED."availabilityCheckedAt",
@@ -546,6 +555,8 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
           WHERE "StudioMediaDerivative"."projectId"=EXCLUDED."projectId"
             AND "StudioMediaDerivative"."sourceRevisionId"=EXCLUDED."sourceRevisionId"
             AND "StudioMediaDerivative"."workflowJobId"=EXCLUDED."workflowJobId"
+            AND "StudioMediaDerivative"."custodianNodeId"=EXCLUDED."custodianNodeId"
+            AND "StudioMediaDerivative"."storageScopeId"=EXCLUDED."storageScopeId"
             AND "StudioMediaDerivative"."locator"=EXCLUDED."locator"
             AND "StudioMediaDerivative"."generation"=EXCLUDED."generation"
             AND "StudioMediaDerivative"."contentSha256"=EXCLUDED."contentSha256"
@@ -556,6 +567,8 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
           input.job.projectId,
           input.job.source.sourceRevisionId,
           input.job.jobId,
+          input.claim.custodianNodeId,
+          input.claim.storageScopeId,
           input.job.target.profile,
           input.receipt.output.locator,
           input.receipt.output.generation,
@@ -581,11 +594,13 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
         ],
       });
       await client.query({
-        text: `UPDATE "StudioMediaDerivative" SET "status"='superseded' WHERE "projectId"=$1 AND "sourceRevisionId"=$2 AND "kind"='collaboration-proxy' AND "status"='ready' AND "id"<>$3`,
+        text: `UPDATE "StudioMediaDerivative" SET "status"='superseded' WHERE "projectId"=$1 AND "sourceRevisionId"=$2 AND "kind"='collaboration-proxy' AND "custodianNodeId"=$4 AND "storageScopeId"=$5 AND "status"='ready' AND "id"<>$3`,
         values: [
           input.job.projectId,
           input.job.source.sourceRevisionId,
           input.job.derivativeId,
+          input.claim.custodianNodeId,
+          input.claim.storageScopeId,
         ],
       });
       await client.query({
@@ -599,7 +614,7 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
         ],
       });
       const retained = await client.query({
-        text: `SELECT "sourceRevisionId","workflowJobId","generation","contentSha256","sizeBytes" FROM "StudioMediaDerivative" WHERE "id"=$1`,
+        text: `SELECT "sourceRevisionId","workflowJobId","custodianNodeId","storageScopeId","generation","contentSha256","sizeBytes" FROM "StudioMediaDerivative" WHERE "id"=$1`,
         values: [input.job.derivativeId],
       });
       const row = retained.rows[0];
@@ -607,6 +622,8 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
         !row ||
         row.sourceRevisionId !== input.job.source.sourceRevisionId ||
         row.workflowJobId !== input.job.jobId ||
+        row.custodianNodeId !== input.claim.custodianNodeId ||
+        row.storageScopeId !== input.claim.storageScopeId ||
         row.generation !== input.receipt.output.generation ||
         row.contentSha256 !== input.receipt.output.sha256 ||
         Number(row.sizeBytes) !== input.receipt.output.sizeBytes
@@ -639,6 +656,10 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
           JSON.stringify(navigation.visual),
           JSON.stringify({
             state: "queued",
+            executionTarget: {
+              custodianNodeId: input.claim.custodianNodeId,
+              storageScopeId: input.claim.storageScopeId,
+            },
             requestedBy: {
               actorUserId: input.job.actorUserId,
               actorEmail: input.job.actorEmail,
@@ -655,6 +676,10 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
           JSON.stringify(navigation.audio),
           JSON.stringify({
             state: "queued",
+            executionTarget: {
+              custodianNodeId: input.claim.custodianNodeId,
+              storageScopeId: input.claim.storageScopeId,
+            },
             requestedBy: {
               actorUserId: input.job.actorUserId,
               actorEmail: input.job.actorEmail,

@@ -183,6 +183,14 @@ test("reconciliation selects replicas only from its own executor storage scope",
 
   assert.match(queries[0]?.text ?? "", /"custodianNodeId"=\$2/);
   assert.match(queries[0]?.text ?? "", /"storageScopeId"=\$3/);
+  assert.equal(
+    [...(queries[0]?.text ?? "").matchAll(/"custodianNodeId"=\$2/g)].length,
+    2,
+  );
+  assert.equal(
+    [...(queries[0]?.text ?? "").matchAll(/"storageScopeId"=\$3/g)].length,
+    2,
+  );
   assert.deepEqual(queries[0]?.values, [
     50,
     "execution_worker_12345678",

@@ -8504,3 +8504,26 @@ source upload verified` blocked `Rough cut ready for review` until complete;
   held until a roomy durable SSD is active.
 - Detailed contract and evidence:
   `docs/coordination/2026-08-08-local-media-executor-custody.md`.
+
+# 2026-08-08 checkpoint: executor-scoped 360 browse derivatives
+
+- Added explicit custodian and storage scope to new local media derivatives;
+  legacy rows remain unscoped instead of receiving guessed ownership.
+- Made the Drive collaboration-proxy identity executor-specific. Two Macs can
+  now prepare the same provider revision without colliding on one global proxy
+  job or derivative ID.
+- Pinned contact-sheet and complete audio-navigation jobs to their input
+  proxy's executor. Both resolve only the derivative owned by that scope, and
+  local supersession/reconciliation cannot cross to another Mac.
+- Preserved the legacy derivative uniqueness contract, enforced paired
+  custodian/scope identity, and made executor deletion fail closed while it
+  still owns local derivative bytes. Device-folder v1 replicas retain a narrow
+  unscoped fallback without accepting artifacts scoped to another executor.
+- Extended retained dogfood through the whole lightweight browse chain:
+  synthetic exact LRV, checksum-bound local replica, storage-efficient proxy,
+  eight-frame visual contact sheet, and complete audio/frequency navigation.
+  Every file artifact retained the same custody and the source fixture's final
+  SHA-256 remained unchanged.
+- Next: make source-library projections prefer the active executor, add
+  custody to the native device-folder receipt, and classify spatial/render
+  outputs as either executor-local or portable object storage.

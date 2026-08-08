@@ -15,6 +15,9 @@ import {
   type SourceAudioNavigationAnalyzer,
 } from "./local-source-audio-navigation-worker.js";
 
+const CUSTODIAN_NODE_ID = "execution_worker_12345678";
+const STORAGE_SCOPE_ID = "storage_scope_12345678";
+
 function sha256(value: Uint8Array) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -131,6 +134,8 @@ test("source audio navigation worker completely decodes exact proxy bytes withou
       inputJson: job,
       attempt: 1,
       executionId: "worker_12345678",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
     };
     const resolved: ResolvedSourceAudioNavigationInput = {
       projectId: job.projectId,
@@ -166,6 +171,8 @@ test("source audio navigation worker completely decodes exact proxy bytes withou
     const before = await stat(inputPath);
     const result = await runOneLocalSourceAudioNavigationJob(store, analyzer, {
       executionId: claim.executionId,
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
       buildId: "build-1",
       leaseMs: 60_000,
       localMediaRoot: root,
@@ -225,6 +232,8 @@ test("source audio navigation worker fails before decode when proxy bytes drift"
         inputJson: job,
         attempt: 1,
         executionId: "worker_87654321",
+        custodianNodeId: CUSTODIAN_NODE_ID,
+        storageScopeId: STORAGE_SCOPE_ID,
       }),
       resolve: async () => ({
         projectId: job.projectId,
@@ -256,6 +265,8 @@ test("source audio navigation worker fails before decode when proxy bytes drift"
     };
     const result = await runOneLocalSourceAudioNavigationJob(store, analyzer, {
       executionId: "worker_87654321",
+      custodianNodeId: CUSTODIAN_NODE_ID,
+      storageScopeId: STORAGE_SCOPE_ID,
       buildId: "build-1",
       leaseMs: 60_000,
       localMediaRoot: root,

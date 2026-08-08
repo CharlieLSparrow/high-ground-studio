@@ -27,6 +27,8 @@ export type LocalSourceAudioNavigationClaim = {
   inputJson: unknown;
   attempt: number;
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
 };
 
 export type ResolvedSourceAudioNavigationInput = {
@@ -55,6 +57,8 @@ export interface SourceAudioNavigationAnalyzer {
 export interface LocalSourceAudioNavigationStore {
   claim(input: {
     executionId: string;
+    custodianNodeId: string;
+    storageScopeId: string;
     leaseMs: number;
     now: Date;
   }): Promise<LocalSourceAudioNavigationClaim | null>;
@@ -83,6 +87,8 @@ export interface LocalSourceAudioNavigationStore {
 
 export type LocalSourceAudioNavigationOptions = {
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   buildId: string;
   leaseMs: number;
   localMediaRoot: string;
@@ -113,6 +119,8 @@ export async function runOneLocalSourceAudioNavigationJob(
 ): Promise<LocalSourceAudioNavigationResult> {
   const claim = await store.claim({
     executionId: options.executionId,
+    custodianNodeId: options.custodianNodeId,
+    storageScopeId: options.storageScopeId,
     leaseMs: options.leaseMs,
     now: options.now(),
   });
@@ -227,7 +235,13 @@ export async function runOneLocalSourceAudioNavigationJob(
 export class PostgresLocalSourceAudioNavigationStore implements LocalSourceAudioNavigationStore {
   constructor(private readonly pool: Pool) {}
 
-  async claim(input: { executionId: string; leaseMs: number; now: Date }) {
+  async claim(input: {
+    executionId: string;
+    custodianNodeId: string;
+    storageScopeId: string;
+    leaseMs: number;
+    now: Date;
+  }) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -238,11 +252,19 @@ export class PostgresLocalSourceAudioNavigationStore implements LocalSourceAudio
           FROM "StudioWorkflowJob"
           WHERE "type"=$1 AND "source"=$2
             AND "inputJson"->'input'->>'provider'='local'
+            AND "resultJson"->'executionTarget'->>'custodianNodeId'=$4
+            AND "resultJson"->'executionTarget'->>'storageScopeId'=$5
             AND ("status"='queued' OR ("status"='processing' AND "updatedAt" < timezone('UTC',$3::timestamptz)))
           ORDER BY "priority" ASC, "createdAt" ASC
           FOR UPDATE SKIP LOCKED LIMIT 1
         `,
-        values: [JOB_TYPE, JOB_SOURCE, staleBefore],
+        values: [
+          JOB_TYPE,
+          JOB_SOURCE,
+          staleBefore,
+          input.custodianNodeId,
+          input.storageScopeId,
+        ],
       });
       const row = selected.rows[0];
       if (!row) {
@@ -285,6 +307,8 @@ export class PostgresLocalSourceAudioNavigationStore implements LocalSourceAudio
         inputJson: updated.rows[0].inputJson,
         attempt,
         executionId: input.executionId,
+        custodianNodeId: input.custodianNodeId,
+        storageScopeId: input.storageScopeId,
       } satisfies LocalSourceAudioNavigationClaim;
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -306,11 +330,14 @@ export class PostgresLocalSourceAudioNavigationStore implements LocalSourceAudio
         FROM "StudioMediaDerivative" d
         JOIN "StudioMediaSourceRevision" s ON s."id"=d."sourceRevisionId"
         WHERE d."id"=$1 AND d."sourceRevisionId"=$2 AND d."projectId"=$3
+          AND d."custodianNodeId"=$4 AND d."storageScopeId"=$5
       `,
       values: [
         job.input.derivativeId,
         job.source.sourceRevisionId,
         job.projectId,
+        _claim.custodianNodeId,
+        _claim.storageScopeId,
       ],
     });
     const row = result.rows[0];
@@ -439,6 +466,8 @@ export class PostgresLocalSourceAudioNavigationStore implements LocalSourceAudio
 export function newLocalSourceAudioNavigationRuntime(input: {
   pool: Pool;
   executionId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   localMediaRoot: string;
   leaseMs: number;
   buildId: string;
@@ -448,6 +477,8 @@ export function newLocalSourceAudioNavigationRuntime(input: {
     analyzer: new FfmpegAudioSignalProfiler(),
     options: {
       executionId: input.executionId,
+      custodianNodeId: input.custodianNodeId,
+      storageScopeId: input.storageScopeId,
       buildId: input.buildId,
       leaseMs: input.leaseMs,
       localMediaRoot: input.localMediaRoot,
