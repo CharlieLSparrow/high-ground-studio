@@ -251,6 +251,14 @@ function FollowedDriveLibraries({
               remain intact.
             </p>
           ) : null}
+          {library.heldSegmentCount > 0 ? (
+            <p className="mt-2 text-[9px] font-semibold leading-4 text-amber-900">
+              Held packages are observed but not attached as usable Studio
+              sources. Refresh after Drive finishes syncing or missing camera
+              companions arrive; complete packages attach without disturbing
+              existing cards.
+            </p>
+          ) : null}
           {library.discoveryMode === "selected-files" ? (
             <p className="mt-2 text-[9px] font-semibold leading-4 text-teal-900">
               Least-privilege library: Refresh rechecks the exact files you
@@ -433,6 +441,8 @@ export function GoogleDriveSourcePicker({
       operation?: {
         attachedCount?: number;
         sourceUnitCount?: number;
+        sourceSetCount?: number;
+        observedHeldSegmentCount?: number;
         plan?: FolderPlan;
         library?: ExternalMediaLibrary;
       };
@@ -445,6 +455,9 @@ export function GoogleDriveSourcePicker({
     return {
       attachedCount: payload.operation?.attachedCount ?? 0,
       sourceUnitCount: payload.operation?.sourceUnitCount ?? 0,
+      sourceSetCount: payload.operation?.sourceSetCount ?? 0,
+      observedHeldSegmentCount:
+        payload.operation?.observedHeldSegmentCount ?? 0,
       plan: payload.operation?.plan ?? null,
       library: payload.operation?.library ?? null,
     };
@@ -562,7 +575,7 @@ export function GoogleDriveSourcePicker({
                 } else {
                   setFolderPlan(result.plan);
                   setMessage(
-                    `Grouped ${result.attachedCount} exact Drive file${result.attachedCount === 1 ? "" : "s"} into ${result.sourceUnitCount} camera segment${result.sourceUnitCount === 1 ? "" : "s"} and saved a refreshable least-privilege library. Originals remain in Drive.`,
+                    `Attached ${result.sourceUnitCount} ready camera segment${result.sourceUnitCount === 1 ? "" : "s"} from ${result.attachedCount} exact Drive file${result.attachedCount === 1 ? "" : "s"}. ${result.observedHeldSegmentCount} held segment${result.observedHeldSegmentCount === 1 ? " remains" : "s remain"} visible in the refreshable library without becoming usable sources. Originals remain in Drive.`,
                   );
                 }
                 resolve();
@@ -611,6 +624,8 @@ export function GoogleDriveSourcePicker({
         operation?: {
           attachedCount?: number;
           sourceUnitCount?: number;
+          sourceSetCount?: number;
+          observedHeldSegmentCount?: number;
           plan?: FolderPlan;
         };
       };
@@ -622,8 +637,12 @@ export function GoogleDriveSourcePicker({
       await onAttached();
       const sourceUnits = payload.operation?.sourceUnitCount ?? 0;
       const files = payload.operation?.attachedCount ?? 0;
+      const held =
+        payload.operation?.observedHeldSegmentCount ??
+        payload.operation?.plan?.heldSegmentCount ??
+        folderPlan.heldSegmentCount;
       setMessage(
-        `Attached ${sourceUnits} camera segment${sourceUnits === 1 ? "" : "s"} from ${files} exact Drive file${files === 1 ? "" : "s"}. Originals remain in Drive.`,
+        `Attached ${sourceUnits} ready camera segment${sourceUnits === 1 ? "" : "s"} from ${files} exact Drive file${files === 1 ? "" : "s"}. ${held} held segment${held === 1 ? " remains" : "s remain"} visible and monitored without becoming usable sources. Originals remain in Drive.`,
       );
     } catch (attachError) {
       setError(
@@ -909,11 +928,15 @@ export function GoogleDriveSourcePicker({
                 className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-800 px-3 text-xs font-black text-white disabled:opacity-50"
               >
                 <Cloud size={15} aria-hidden="true" />
-                Attach package manifest
+                {folderPlan.readySegmentCount > 0
+                  ? "Attach ready + follow library"
+                  : "Follow library for completion"}
               </button>
               <p className="mt-2 text-[9px] font-semibold leading-4 text-[#5f684f]">
-                Quipsly retains provider identities and package relationships.
-                It does not copy original camera files during attachment.
+                Complete packages become source-clock sets. Held packages stay
+                in the observation ledger and cannot be used until complete.
+                Quipsly retains provider identities and relationships without
+                copying original camera files during attachment.
               </p>
             </section>
           ) : null}

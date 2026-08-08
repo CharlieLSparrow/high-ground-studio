@@ -756,6 +756,8 @@ export async function attachGoogleDriveFolderToNest(input: {
     attachedCount: attached.attachedCount,
     sourceUnitCount: attached.sourceUnitCount,
     replayedCount: attached.replayedCount,
+    observedHeldSegmentCount: attached.observedHeldSegmentCount,
+    sourceSetCount: attached.sourceSetCount,
     library: observation.library,
     libraryReplayed: observation.replayed,
   };
@@ -784,8 +786,13 @@ async function attachGoogleDriveMediaPlanToNest(input: {
   }> = [];
   const sourceSetIds = new Set<string>();
   for (const batch of input.plan.batches) {
+    // A followed library is also an observation ledger: incomplete, empty,
+    // restricted, or still-syncing packages stay visible in the library plan
+    // without becoming canonical Studio sources. Only a complete package may
+    // cross the source boundary. This also prevents one zero-byte companion
+    // from interrupting attachment of healthy sibling segments.
     for (const segment of batch.segments.filter(
-      (candidate) => candidate.members.length > 0,
+      (candidate) => candidate.status === "ready-to-attach",
     )) {
       const slug = sourceUnitSlug(input.sourceIdentity(batch), segment.key);
       const metadata = {
@@ -959,6 +966,7 @@ async function attachGoogleDriveMediaPlanToNest(input: {
     attachedCount: attached.length,
     sourceUnitCount: new Set(attached.map((value) => value.sourceUnitId)).size,
     replayedCount: attached.filter((value) => value.replayed).length,
+    observedHeldSegmentCount: input.plan.heldSegmentCount,
     sourceSetCount: sourceSetIds.size,
     sourceSetIds: [...sourceSetIds],
     attachments: attached.map((value) => ({
@@ -1073,6 +1081,8 @@ export async function attachGoogleDriveFilesToNest(input: {
     attachedCount: attached.attachedCount,
     sourceUnitCount: attached.sourceUnitCount,
     replayedCount: attached.replayedCount,
+    observedHeldSegmentCount: attached.observedHeldSegmentCount,
+    sourceSetCount: attached.sourceSetCount,
     library: observation.library,
     libraryReplayed: observation.replayed,
   };
@@ -1259,6 +1269,8 @@ export async function refreshGoogleDriveLibraryForNest(input: {
     attachedCount: attached.attachedCount,
     sourceUnitCount: attached.sourceUnitCount,
     replayedCount: attached.replayedCount,
+    observedHeldSegmentCount: attached.observedHeldSegmentCount,
+    sourceSetCount: attached.sourceSetCount,
     library: observation.library,
     libraryReplayed: observation.replayed,
   };
