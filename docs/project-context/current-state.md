@@ -200,17 +200,31 @@ Date: 2026-08-07
   recorded in an append-only operation ledger. Withdrawal removes only the
   canonical clip and now-unused imported-media descriptor; it keeps the card,
   source range, package, and history.
+- Ordinary editor saves now reconcile Source Story placements in the same
+  serializable transaction as the Episode artifact. Moves/trims become
+  `timeline-reconcile`, editor deletion becomes `editor-withdraw`, and exact
+  restoration becomes `editor-restore`; provenance stripping, duplication,
+  source substitution, and trimming outside the retained range fail closed.
+  The selected-clip inspector shows retained versus current source clocks,
+  proxy-versus-final-conform boundaries, card revision, 360 framing, and a
+  direct link to the highlighted source card and discussion.
 - The retained High Ground Odyssey card `231ea3c6-c0bf-49a7-9541-320a63e4c6a6`
   is actively placed as `fddb3f8f-3f94-4d3c-8a1c-645a5ba2e56f` in QA Episode
   `source-story-spatial-promotion-qa-20260807`. Authenticated app readback
   returned the Story projection, editor shell, and canonical Episode clip;
   protected first/suffix ranges returned 206, an unauthenticated range returned
   404, and both retained Insta360 originals kept their exact SHA-256 values.
-- The eight-case PostgreSQL smoke covers create/revise/rebind, promotion,
+- The sixteen-case PostgreSQL smoke covers create/revise/rebind, promotion,
   replay, request collision, artifact hydration, spatial transforms,
-  withdrawal, ledger order, and source/card survival. This is a local
+  withdrawal, editor reconciliation and rejection paths, ledger order, and
+  source/card survival. This is a local
   production-shaped checkpoint, not a cloud deployment or final
   Insta360-quality render claim.
+- `pnpm quipsly:retained:source-story-editor-handoff` operates the HGO path
+  through the authenticated web API and exact-card page. The retained QA
+  placement is active at revision 4 after move/trim, delete, and restore; a
+  provenance-stripped save returned `SOURCE_STORY_BINDING_REMOVED`, and the
+  exact Source Story deep link returned HTTP 200 without changing source media.
 
 ## Insta360 source-to-story checkpoint
 

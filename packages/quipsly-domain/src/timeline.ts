@@ -102,13 +102,18 @@ export type SourceStoryTimelineBinding = {
   cardStableId: string;
   cardRevision: number;
   sourceRangeId: string;
+  sourceRangeStartSeconds?: number;
+  sourceRangeEndSeconds?: number;
   selectorSha256: string;
   sourceRevisionId: string;
+  mediaAssetId?: string | null;
   sourceIdentitySha256: string;
   sourceContentSha256: string | null;
   sourceSetId: string | null;
   sourceSetIdentitySha256: string | null;
   externalReferenceId: string | null;
+  originBoardId?: string | null;
+  originBoardPlacementId?: string | null;
   browseDerivative: null | {
     id: string;
     profile: string;

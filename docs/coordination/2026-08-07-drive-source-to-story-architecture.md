@@ -575,6 +575,34 @@ stitching/stabilization through a versioned local executor, long-source
 performance, mobile arrangement UX, and a cloud cost proposal remain separate
 delivery gates.
 
+### Canonical editor reconciliation
+
+The normal Episode save transaction now owns both canonical playback bytes and
+the current `StudioStoryTimelinePlacement` projection. Before it writes an
+Episode artifact, it validates every Source Story clip against the immutable
+promotion snapshot and then records only meaningful projection changes:
+
+- a move, trim, track change, or transform edit becomes `timeline-reconcile`;
+- deleting the clip becomes reversible `editor-withdraw`;
+- restoring the exact bound clip becomes `editor-restore`;
+- unchanged Story clips create no ledger noise;
+- stripped, substituted, unknown, duplicated, or out-of-range bindings fail the
+  whole serializable save rather than creating split truth.
+
+The editor can trim only inside the retained card range. It cannot extend a
+selection, change playback rate, turn the placement into audio, clone one
+placement identity, or replace its source/card/package proof. New promotions
+also carry the retained range, media identity, and origin board identities so
+the editor can explain the boundary and return to the exact highlighted card.
+
+The retained HGO route operation uses a real 360 source set and the normal
+authenticated Episode API. It moved and trimmed a 58.350–118.360 card range to
+58.600–118.110 on V3 at 7.250, deleted it, restored it, rejected a provenance-
+stripped save with `SOURCE_STORY_BINDING_REMOVED`, and read the exact-card Story
+route back at HTTP 200. The placement remained active at revision 4 with
+`promote`, `timeline-reconcile`, `editor-withdraw`, and `editor-restore` in
+order. Re-run with `pnpm quipsly:retained:source-story-editor-handoff`.
+
 ## Versioned spatial render executor
 
 The executor boundary is now explicit and split at the format boundary rather

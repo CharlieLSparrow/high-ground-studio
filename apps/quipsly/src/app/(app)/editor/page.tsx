@@ -38,6 +38,7 @@ import { sourceBoundSpectralEditMarkers } from "@/components/audio/spectral-evid
 import { SourceSyncEvidenceMap } from "./SourceSyncEvidenceMap";
 import { CaptureTakeMaterializationPanel } from "./CaptureTakeMaterializationPanel";
 import { CaptureSourceRecoveryPanel } from "./CaptureSourceRecoveryPanel";
+import { SourceStoryProvenanceCard } from "./SourceStoryProvenanceCard";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import {
   buildEpisodeArtifactPayload as buildCanonicalEpisodeArtifactPayload,
@@ -10759,6 +10760,14 @@ function CloudEditorContent() {
                   <>
               <div className="font-black uppercase tracking-[0.18em] text-[#9a641e]">Selected clip</div>
               <div className="mt-2 font-black text-[#3d3122]">{selectedClip.name}</div>
+              {selectedClip.sourceStory ? (
+                <SourceStoryProvenanceCard
+                  projectSlug={resolvedProjectSlug}
+                  binding={selectedClip.sourceStory}
+                  currentSourceStart={selectedClip.sourceStart}
+                  currentSourceEnd={selectedClip.sourceEnd ?? selectedClip.sourceStart + selectedClip.duration}
+                />
+              ) : null}
               {selectedClipIsPremiereRestorePreview && (
                 <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-indigo-950">
                   <div className="flex flex-wrap items-start justify-between gap-3">

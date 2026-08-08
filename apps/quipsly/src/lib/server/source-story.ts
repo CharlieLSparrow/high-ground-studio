@@ -2876,13 +2876,18 @@ export async function promoteSourceStoryCardToEpisode(input: {
         cardStableId: card.stableId,
         cardRevision: card.revision,
         sourceRangeId: range.id,
+        sourceRangeStartSeconds: range.startSeconds,
+        sourceRangeEndSeconds: range.endSeconds,
         selectorSha256: range.selectorSha256,
         sourceRevisionId: revision.id,
+        mediaAssetId: revision.mediaAsset?.id ?? null,
         sourceIdentitySha256: revision.identitySha256,
         sourceContentSha256: revision.contentSha256,
         sourceSetId: effectiveSourceSet?.id ?? null,
         sourceSetIdentitySha256: effectiveSourceSet?.identitySha256 ?? null,
         externalReferenceId: revision.externalReference?.id ?? null,
+        originBoardId: value.originBoardId,
+        originBoardPlacementId: originBoardPlacement?.id ?? null,
         browseDerivative: derivative
           ? {
               id: derivative.id,

@@ -1294,6 +1294,7 @@ export function SourceStoryClient({
   initialExternalReferenceId,
   initialSourceSetId,
   initialBoardId,
+  initialCardId,
 }: {
   project: { id: string; slug: string; name: string };
   canWrite: boolean;
@@ -1307,6 +1308,7 @@ export function SourceStoryClient({
   initialExternalReferenceId: string | null;
   initialSourceSetId: string | null;
   initialBoardId: string | null;
+  initialCardId: string | null;
 }) {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const pendingPlaybackRef = useRef<{
@@ -1383,7 +1385,7 @@ export function SourceStoryClient({
   );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [discussionCardId, setDiscussionCardId] = useState<string | null>(null);
+  const [discussionCardId, setDiscussionCardId] = useState<string | null>(initialCardId);
 
   const selectedAsset =
     sourceAssets.find((asset) => asset.id === selectedAssetId) ?? null;
@@ -1577,6 +1579,14 @@ export function SourceStoryClient({
     if (!selectedBoardId && workspace.boards[0])
       setSelectedBoardId(workspace.boards[0].id);
   }, [selectedBoardId, workspace.boards]);
+
+  useEffect(() => {
+    if (!initialCardId) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`story-card-${initialCardId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [initialCardId, selectedBoardId]);
 
   useEffect(() => {
     setSourceVisibleLimit(60);
@@ -4501,7 +4511,7 @@ export function SourceStoryClient({
                               <li
                                 key={placement.id}
                                 id={`story-card-${placement.card.id}`}
-                                className="rounded-xl border border-[#e2d2b6] bg-white p-3"
+                                className={`rounded-xl border bg-white p-3 ${initialCardId === placement.card.id ? "border-violet-400 ring-4 ring-violet-100" : "border-[#e2d2b6]"}`}
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
@@ -4632,7 +4642,7 @@ export function SourceStoryClient({
                               <article
                                 key={placement.id}
                                 id={`story-card-${placement.card.id}`}
-                                className="rounded-2xl border border-[#e2d2b6] bg-[#fffaf0] p-4"
+                                className={`rounded-2xl border bg-[#fffaf0] p-4 ${initialCardId === placement.card.id ? "border-violet-400 ring-4 ring-violet-100" : "border-[#e2d2b6]"}`}
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">

@@ -8,7 +8,7 @@ import path from "node:path";
 import { newReviewedSpatialStitchMasterReceipt, newSpatialRenderResult, parseSpatialRenderJob, reviewedSpatialStitchMasterCanonicalJson } from "@high-ground/quipsly-media-processing";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { normalizeEpisodeArtifact, timelineStateFromEpisodeArtifact } from "@/app/(app)/episode-production/episodeArtifact";
+import { buildEpisodeArtifactPayload, normalizeEpisodeArtifact, timelineStateFromEpisodeArtifact } from "@/app/(app)/episode-production/episodeArtifact";
 
 import {
   SourceStoryConflictError,
@@ -32,6 +32,7 @@ import { registerReviewedSpatialStitchMaster } from "./spatial-stitch-master";
 import { queueSpatialReframe, registerSpatialReframeResult } from "./spatial-render-job";
 import { readSourceLibraryPage } from "./source-library";
 import { addSourceToCollection, createSourceCollection, readSourceCollections, removeSourceFromCollection } from "./source-collections";
+import { reconcileSourceStoryTimelinePlacements } from "./source-story-timeline-reconciliation";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
@@ -1179,6 +1180,97 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     expect(await prisma.studioStoryTimelinePlacementOperation.findMany({ where: { placementId: promoted.placement.id }, orderBy: { revision: "asc" }, select: { revision: true, operation: true } })).toEqual([
       { revision: 1, operation: "promote" },
       { revision: 2, operation: "withdraw" },
+    ]);
+  });
+
+  it("reconciles editor trims, withdrawals, and restores without losing immutable Story provenance", async () => {
+    const document = await prisma.studioDocument.create({
+      data: { projectId, stableId: `source-story-editor-reconcile-document-${nonce}`, title: "Source Story editor reconciliation", projectionStatus: "review", isPrivate: false },
+    });
+    const episode = await prisma.studioEpisodeProduction.create({
+      data: { projectId, documentId: document.id, slug: `source-story-editor-reconcile-${nonce}`, title: "Source Story editor reconciliation", boundaryLabel: "Editor reconciliation", status: "draft" },
+      include: { project: { select: { slug: true } } },
+    });
+    const before = await readSourceStoryWorkspace(prisma, projectId);
+    const promoted = await promoteSourceStoryCardToEpisode({
+      prisma,
+      actorUserId,
+      actorEmail,
+      value: {
+        projectId,
+        episodeProductionId: episode.id,
+        cardId: firstCardId,
+        originBoardId: null,
+        originBoardPlacementId: null,
+        clientRequestId: randomUUID(),
+        expectedTimelineFingerprint: before.episodes.find((candidate) => candidate.id === episode.id)!.timelineFingerprint,
+        placementMode: "append",
+        trackId: "V2",
+      },
+    });
+
+    async function saveThroughReconciliation(nextClips: ReturnType<typeof timelineStateFromEpisodeArtifact>["clips"], requestId: string) {
+      return prisma.$transaction(async (tx) => {
+        const current = await tx.studioEpisodeProduction.findUniqueOrThrow({ where: { id: episode.id } });
+        const currentTimeline = timelineStateFromEpisodeArtifact(current.timelineJson);
+        const nextTimeline = { ...currentTimeline, clips: nextClips };
+        const artifact = buildEpisodeArtifactPayload({
+          timeline: nextTimeline,
+          projectSlug: episode.project.slug,
+          episodeSlug: episode.slug,
+          generatedFrom: "source-story-reconciliation-test",
+          savedAt: new Date().toISOString(),
+          source: "quipsly-editor",
+        });
+        artifact.importedMedia = normalizeEpisodeArtifact(current.timelineJson)?.importedMedia ?? [];
+        const summary = await reconcileSourceStoryTimelinePlacements({
+          prisma: tx,
+          episodeProductionId: episode.id,
+          actorUserId,
+          clientRequestId: requestId,
+          previousTimeline: currentTimeline,
+          incomingTimeline: nextTimeline,
+          occurredAt: new Date(),
+        });
+        const persistedArtifact = JSON.parse(JSON.stringify(artifact));
+        await tx.studioEpisodeProduction.update({ where: { id: episode.id }, data: { timelineJson: persistedArtifact, transcriptJson: persistedArtifact } });
+        return summary;
+      });
+    }
+
+    const promotedEpisode = await prisma.studioEpisodeProduction.findUniqueOrThrow({ where: { id: episode.id } });
+    const originalClip = timelineStateFromEpisodeArtifact(promotedEpisode.timelineJson).clips[0]!;
+    const trimmedClip = {
+      ...originalClip,
+      trackId: "V3",
+      startIn: 12.25,
+      sourceStart: originalClip.sourceStart + 0.5,
+      sourceEnd: (originalClip.sourceEnd ?? originalClip.sourceStart + originalClip.duration) - 0.5,
+      duration: originalClip.duration - 1,
+    };
+    await expect(saveThroughReconciliation([trimmedClip], randomUUID())).resolves.toMatchObject({ reconciled: 1, withdrawn: 0, restored: 0 });
+    await expect(saveThroughReconciliation([], randomUUID())).resolves.toMatchObject({ reconciled: 0, withdrawn: 1, restored: 0 });
+    await expect(saveThroughReconciliation([trimmedClip], randomUUID())).resolves.toMatchObject({ reconciled: 0, withdrawn: 0, restored: 1 });
+    await expect(saveThroughReconciliation([{ ...trimmedClip, sourceStory: undefined }], randomUUID())).rejects.toMatchObject({ code: "SOURCE_STORY_BINDING_REMOVED" });
+    await expect(saveThroughReconciliation([trimmedClip, { ...trimmedClip, id: `${trimmedClip.id}:duplicate` }], randomUUID())).rejects.toMatchObject({ code: "SOURCE_STORY_PLACEMENT_DUPLICATED" });
+
+    expect(await prisma.studioStoryTimelinePlacement.findUniqueOrThrow({ where: { id: promoted.placement.id } })).toMatchObject({
+      status: "active",
+      revision: 4,
+      trackId: "V3",
+      episodeStartSeconds: 12.25,
+      durationSeconds: originalClip.duration - 1,
+      withdrawnAt: null,
+    });
+    expect(await prisma.studioStoryTimelinePlacementOperation.findMany({
+      where: { placementId: promoted.placement.id },
+      orderBy: { revision: "asc" },
+      select: { revision: true, operation: true },
+    })).toEqual([
+      { revision: 1, operation: "promote" },
+      { revision: 2, operation: "timeline-reconcile" },
+      { revision: 3, operation: "editor-withdraw" },
+      { revision: 4, operation: "editor-restore" },
     ]);
   });
 

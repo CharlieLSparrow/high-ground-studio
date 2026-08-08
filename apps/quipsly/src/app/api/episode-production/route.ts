@@ -15,8 +15,13 @@ import {
   EpisodeEditReviewLedgerError,
   publicEpisodeEditReviewReceipt,
 } from "@/lib/server/episode-edit-review-ledger";
+import {
+  reconcileSourceStoryTimelinePlacements,
+  SourceStoryTimelineReconciliationError,
+} from "@/lib/server/source-story-timeline-reconciliation";
 import { lookupStudioProjectDocument, projectConfig } from "../../(app)/create/projectConfig";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../../(app)/episode-production/episodeArtifact";
+import { timelineStateFromEpisodeArtifact } from "../../(app)/episode-production/episodeArtifact";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
 
@@ -402,6 +407,15 @@ export async function POST(request: Request) {
           });
           return { conflict: false as const, current: currentForMerge, receipt, updated: currentForMerge };
         }
+        const sourceStoryReconciliation = await reconcileSourceStoryTimelinePlacements({
+          prisma: tx,
+          episodeProductionId: state.id,
+          actorUserId: saveAccess.actor.id,
+          clientRequestId: saveRequestId,
+          previousTimeline: timelineStateFromEpisodeArtifact(currentForMerge.timelineJson),
+          incomingTimeline: timelineStateFromEpisodeArtifact(timelinePayload),
+          occurredAt: saveOccurredAt,
+        });
         const updated = await tx.studioEpisodeProduction.update({
           where: { id: state.id },
           data: {
@@ -428,10 +442,13 @@ export async function POST(request: Request) {
             occurredAt: saveOccurredAt,
           })
           : null;
-        return { conflict: false as const, current: currentForMerge, receipt, updated };
+        return { conflict: false as const, current: currentForMerge, receipt, updated, sourceStoryReconciliation };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (error instanceof EpisodeEditReviewLedgerError) {
+        return NextResponse.json({ ...state, ok: false, mode: "conflict", message: error.message, errorCode: error.code }, { status: error.status });
+      }
+      if (error instanceof SourceStoryTimelineReconciliationError) {
         return NextResponse.json({ ...state, ok: false, mode: "conflict", message: error.message, errorCode: error.code }, { status: error.status });
       }
       throw error;
@@ -460,6 +477,7 @@ export async function POST(request: Request) {
       productionJson: write.updated.productionJson ?? null,
       updatedAt: write.updated.updatedAt.toISOString(),
       editReviewReceipt: write.receipt ? publicEpisodeEditReviewReceipt(write.receipt) : null,
+      sourceStoryReconciliation: "sourceStoryReconciliation" in write ? write.sourceStoryReconciliation : null,
     });
   }
 

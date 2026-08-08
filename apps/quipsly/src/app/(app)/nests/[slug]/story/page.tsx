@@ -30,7 +30,7 @@ export default async function SourceStoryPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ asset?: string | string[]; external?: string | string[]; set?: string | string[]; board?: string | string[] }>;
+  searchParams: Promise<{ asset?: string | string[]; external?: string | string[]; set?: string | string[]; board?: string | string[]; card?: string | string[] }>;
 }) {
   const [{ slug }, query, session] = await Promise.all([params, searchParams, getQuipslySession()]);
   if (!session?.user.id) redirect(`/login?callbackUrl=${encodeURIComponent(`/nests/${slug}/story`)}`);
@@ -62,9 +62,11 @@ export default async function SourceStoryPage({
       readSourceStoryWorkspace(prisma, project.id),
       readSpatialRenderReadiness(),
     ]);
-    const requestedAssetId = typeof query.asset === "string" ? query.asset : null;
-    const requestedExternalReferenceId = typeof query.external === "string" ? query.external : null;
-    const requestedSourceSetId = typeof query.set === "string" ? query.set : null;
+    const requestedCardId = typeof query.card === "string" ? query.card : null;
+    const focusedCard = coreWorkspace.cards.find((card) => card.id === requestedCardId) ?? null;
+    const requestedAssetId = typeof query.asset === "string" ? query.asset : focusedCard?.sourceRange?.sourceRevision.mediaAsset?.id ?? null;
+    const requestedExternalReferenceId = typeof query.external === "string" ? query.external : focusedCard?.sourceRange?.sourceRevision.externalReference?.id ?? null;
+    const requestedSourceSetId = typeof query.set === "string" ? query.set : focusedCard?.sourceRange?.sourceSet?.id ?? null;
     const requestedSourceId = requestedSourceSetId || requestedExternalReferenceId || requestedAssetId;
     const focusedSourcePage = requestedSourceId && !initialSourcePage.orderedKeys.some((key) => key.endsWith(`:${requestedSourceId}`))
       ? await readSourceLibraryPage({ prisma, projectId: project.id, limit: 3, query: requestedSourceId })
@@ -104,9 +106,12 @@ export default async function SourceStoryPage({
     const selectedExternalReferenceId = selectedLogicalSource?.kind === "external" ? selectedLogicalSource.id : null;
     const requestedBoardId = typeof query.board === "string" ? query.board : null;
     const selectedAssetId = selectedLogicalSource?.kind === "asset" ? selectedLogicalSource.id : null;
+    const focusedCardBoard = focusedCard
+      ? workspace.boards.find((board) => board.placements.some((placement) => placement.cardId === focusedCard.id))
+      : null;
     const selectedBoardId = workspace.boards.some((board) => board.id === requestedBoardId)
       ? requestedBoardId
-      : workspace.boards[0]?.id ?? null;
+      : focusedCardBoard?.id ?? workspace.boards[0]?.id ?? null;
 
     return (
       <SourceStoryClient
@@ -122,6 +127,7 @@ export default async function SourceStoryPage({
         initialExternalReferenceId={selectedExternalReferenceId}
         initialSourceSetId={selectedSourceSetId}
         initialBoardId={selectedBoardId}
+        initialCardId={focusedCard?.id ?? null}
       />
     );
   } catch (error) {
