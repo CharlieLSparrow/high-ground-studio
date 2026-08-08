@@ -242,7 +242,7 @@ function errorResponse(error: unknown) {
   if (error instanceof DeviceMediaFolderContractError) {
     return NextResponse.json(
       { error: error.message, errorCode: error.code },
-      { status: 400 },
+      { status: error.status },
     );
   }
   if (error instanceof DeviceMediaPreparationContractError) {
@@ -463,6 +463,8 @@ export async function POST(
         actorUserId: actor.userId,
         actorEmail: actor.email,
         clientRequestId: text(body.clientRequestId),
+        executorNodeId: text(body.executorNodeId),
+        storageScopeId: text(body.storageScopeId),
         observation: body.observation,
       });
     } else if (action === "register-device-media-preparation") {

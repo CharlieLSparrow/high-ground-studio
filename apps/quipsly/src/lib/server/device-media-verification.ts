@@ -11,6 +11,7 @@ import {
   parseDeviceMediaVerificationReceipt,
 } from "@/lib/device-media-verification-contract";
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
+import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
 import { createMediaSourceSet } from "@/lib/server/source-story";
 
 export const DEVICE_MEDIA_VERIFICATION_JOB_TYPE = "device-media-verification";
@@ -170,6 +171,20 @@ export async function registerDeviceMediaVerification(input: {
   receipt: unknown;
 }) {
   const receipt = parseDeviceMediaVerificationReceipt(input.receipt);
+  const executorTarget = await readLocalExecutorTarget(
+    input.prisma,
+    receipt.custodianNodeId,
+  );
+  if (
+    !executorTarget ||
+    executorTarget.storageScopeId !== receipt.storageScopeId
+  ) {
+    throw new DeviceMediaVerificationError(
+      "device-media-executor-unavailable",
+      "The Mac media workspace that verified these bytes is offline or has changed. Restart its local worker and retry from that Mac.",
+      409,
+    );
+  }
   const retained = await input.prisma.$transaction(
     async (tx) => {
       const library = await tx.studioExternalMediaLibrary.findFirst({
@@ -196,7 +211,9 @@ export async function registerDeviceMediaVerification(input: {
       const locator = object(library.providerLocatorJson);
       if (
         locator.deviceId !== receipt.deviceId ||
-        locator.folderGrantId !== receipt.folderGrantId
+        locator.folderGrantId !== receipt.folderGrantId ||
+        locator.custodianNodeId !== receipt.custodianNodeId ||
+        locator.storageScopeId !== receipt.storageScopeId
       ) {
         throw new DeviceMediaVerificationError(
           "device-library-grant-mismatch",
@@ -258,6 +275,8 @@ export async function registerDeviceMediaVerification(input: {
         projectId: input.projectId,
         sourceRevisionId: source.id,
         observedRevisionKey: source.revisionKey,
+        custodianNodeId: receipt.custodianNodeId,
+        storageScopeId: receipt.storageScopeId,
       });
       const jobId = deviceMediaVerificationJobId(identity);
       const jobIntent = {
@@ -267,6 +286,8 @@ export async function registerDeviceMediaVerification(input: {
         libraryId: library.id,
         deviceId: receipt.deviceId,
         folderGrantId: receipt.folderGrantId,
+        custodianNodeId: receipt.custodianNodeId,
+        storageScopeId: receipt.storageScopeId,
         externalFileId: receipt.externalFileId,
         externalReferenceId: receipt.externalReferenceId,
         sourceRevisionId: source.id,
@@ -289,7 +310,7 @@ export async function registerDeviceMediaVerification(input: {
         );
       }
       const now = new Date(receipt.completedAt);
-      const replayed = Boolean(source.contentSha256);
+      const replayed = Boolean(existingJob);
       const resultJson = {
         state: "output-ready",
         receipt,
@@ -346,6 +367,8 @@ export async function registerDeviceMediaVerification(input: {
               exactSizeBytes: receipt.expectedSizeBytes,
               completedAt: receipt.completedAt,
               memberRole: role,
+              custodianNodeId: receipt.custodianNodeId,
+              storageScopeId: receipt.storageScopeId,
               exactSourceVerifiedInPlace: true,
               originalRemainsOnAuthorizedDevice: true,
               localPathWithheld: true,

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const DEVICE_MEDIA_VERIFICATION_RECEIPT_SCHEMA =
-  "quipsly-device-media-verification-receipt-v1" as const;
+  "quipsly-device-media-verification-receipt-v2" as const;
 export const DEVICE_MEDIA_VERIFICATION_PROFILE =
   "device-folder-in-place-sha256-v1" as const;
 
@@ -10,6 +10,8 @@ export type DeviceMediaVerificationReceipt = {
   libraryId: string;
   deviceId: string;
   folderGrantId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   externalFileId: string;
   externalReferenceId: string;
   sourceRevisionId: string;
@@ -117,12 +119,16 @@ export function deviceMediaVerificationIdentity(input: {
   projectId: string;
   sourceRevisionId: string;
   observedRevisionKey: string;
+  custodianNodeId: string;
+  storageScopeId: string;
 }) {
   return [
-    "device-media-verification-v1",
+    "device-media-verification-v2",
     input.projectId,
     input.sourceRevisionId,
     input.observedRevisionKey,
+    input.custodianNodeId,
+    input.storageScopeId,
     DEVICE_MEDIA_VERIFICATION_PROFILE,
   ].join(":");
 }
@@ -174,6 +180,8 @@ export function parseDeviceMediaVerificationReceipt(
     libraryId: id(input.libraryId, "receipt.libraryId"),
     deviceId: id(input.deviceId, "receipt.deviceId"),
     folderGrantId: id(input.folderGrantId, "receipt.folderGrantId"),
+    custodianNodeId: id(input.custodianNodeId, "receipt.custodianNodeId"),
+    storageScopeId: id(input.storageScopeId, "receipt.storageScopeId"),
     externalFileId: id(input.externalFileId, "receipt.externalFileId"),
     externalReferenceId: id(
       input.externalReferenceId,

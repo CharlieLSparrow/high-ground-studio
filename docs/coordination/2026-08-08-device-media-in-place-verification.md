@@ -21,7 +21,14 @@ The Mac app receives relative observations only after the user explicitly grants
 4. confirms size and modification time did not change during verification;
 5. sends a path-free receipt to Nest.
 
-The receipt contract rejects path-like top-level fields. Nest validates ownership, active device grant, exact observation key, external reference, revision, byte size, source-unit membership, and source role before recording the receipt. A conflicting checksum is refused rather than overwritten.
+The version-two receipt contract rejects path-like top-level fields and binds
+the exact local executor node and opaque storage scope. Nest validates
+ownership, an online matching executor, active device grant, exact observation
+key, external reference, revision, byte size, source-unit membership, and
+source role before recording the receipt. A conflicting checksum is refused
+rather than overwritten. Verification job identity includes executor custody,
+so two Macs can retain independent in-place evidence without either inheriting
+the other's availability.
 
 ## Canonical binding
 
@@ -46,7 +53,8 @@ Nest shows exact verified members and complete immutable package sets beside bro
 
 ## Acceptance evidence
 
-- Receipt contract: malformed checksums, zero sizes, invalid technical metadata, and path-bearing payloads are rejected.
+- Receipt contract: version-one and path-bearing receipts, malformed checksums,
+  zero sizes, and invalid technical metadata are rejected.
 - Database integration: a two-member INSV/LRV package was observed; the LRV was prepared as a browse replica; the INSV was verified in place; a complete two-member source set was produced; the LRV became the clock; the original retained zero replicas and no path was returned.
 - TypeScript typecheck passes.
 - The signed macOS target builds with the repository-owned automatic-signing settings and an Apple Development identity for team `585GUXMY5M`.
@@ -68,7 +76,8 @@ This confirms several production requirements already represented in the folder 
 
 ## Next production slice
 
-1. Follow a small, explicitly selected real Insta360 folder and verify one complete package end to end.
+1. Activate a roomy durable media workspace, follow a small explicitly selected
+   real Insta360 folder, and verify one complete package end to end.
 2. Generate the first browse proxy, visual map, and waveform from its LRV and inspect them in Nest.
 3. Apply the same immutable identity model to Google Drive selections while preserving Drive as the original byte authority.
 4. Add conform resolution that can choose an authorized Mac original, an exact user-controlled replica, or a cloud original without changing editor identity.

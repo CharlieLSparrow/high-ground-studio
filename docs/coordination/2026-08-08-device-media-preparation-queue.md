@@ -37,14 +37,15 @@ Registration must match all current server facts:
 - Nest and library;
 - library creator and current actor;
 - Mac installation and security-scoped folder grant;
+- online local executor node and exact opaque storage scope;
 - present inventory item and opaque external file identity;
 - attached reference and immutable source revision;
 - observed device metadata revision and byte count;
 - browse-proxy package role; and
 - a deterministic relative locator computed by the server.
 
-The database retains only the relative worker locator. Local source paths stay
-in the Mac ledger. A receipt conflict, stale observation, path traversal,
+The database retains only the relative worker locator plus opaque executor
+custody. Local source paths stay in the Mac ledger. A receipt conflict, stale observation, path traversal,
 absolute path, size drift, or checksum contradiction fails closed.
 
 ## Storage model
@@ -52,6 +53,8 @@ absolute path, size drift, or checksum contradiction fails closed.
 - Google Drive or an external drive remains source truth.
 - Only the lightweight LRV is copied during browse preparation.
 - The local replica is exact source bytes, not a derivative.
+- The local replica is available only on its recorded executor and storage
+  scope; another Mac must prepare its own exact replica.
 - The collaboration proxy, contact sheet, and audio navigation are separate
   append-only derivatives.
 - Full-resolution INSV members remain in place until an explicit conform or

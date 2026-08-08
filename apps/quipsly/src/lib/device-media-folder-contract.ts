@@ -36,6 +36,7 @@ export class DeviceMediaFolderContractError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly status = 400,
   ) {
     super(message);
     this.name = "DeviceMediaFolderContractError";
@@ -188,10 +189,7 @@ export function parseDeviceMediaFolderObservation(
     }
     return {
       id: opaqueId(batch.id, `observation.batches[${batchIndex}].id`),
-      name: displayName(
-        batch.name,
-        `observation.batches[${batchIndex}].name`,
-      ),
+      name: displayName(batch.name, `observation.batches[${batchIndex}].name`),
       files: batch.files.map((candidateFile, fileIndex) => {
         const file = record(
           candidateFile,
@@ -246,10 +244,7 @@ export function parseDeviceMediaFolderObservation(
   const observation = {
     schema: DEVICE_MEDIA_FOLDER_OBSERVATION_SCHEMA,
     deviceId: opaqueId(input.deviceId, "observation.deviceId"),
-    folderGrantId: opaqueId(
-      input.folderGrantId,
-      "observation.folderGrantId",
-    ),
+    folderGrantId: opaqueId(input.folderGrantId, "observation.folderGrantId"),
     root: {
       id: opaqueId(rootInput.id, "observation.root.id"),
       name: displayName(rootInput.name, "observation.root.name"),

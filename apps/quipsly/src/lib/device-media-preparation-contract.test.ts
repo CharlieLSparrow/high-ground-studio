@@ -11,6 +11,8 @@ function receipt() {
     libraryId: "library_12345678",
     deviceId: "device:12345678",
     folderGrantId: "grant:12345678",
+    custodianNodeId: "execution_worker_12345678",
+    storageScopeId: "storage_scope_12345678",
     externalFileId: "device-file:12345678",
     externalReferenceId: "reference_12345678",
     sourceRevisionId: "revision_12345678",
@@ -62,5 +64,14 @@ describe("device media preparation receipt", () => {
     ).toMatch(
       /^source-cache\/device-folder\/high-ground-odyssey\/revision_12345678\/device-folder-exact-browse-v1-[a-f0-9]{20}\.lrv$/,
     );
+  });
+
+  it("rejects a version-one receipt that has no executor custody", () => {
+    expect(() =>
+      parseDeviceMediaPreparationReceipt({
+        ...receipt(),
+        schema: "quipsly-device-media-preparation-receipt-v1",
+      }),
+    ).toThrow("unsupported");
   });
 });

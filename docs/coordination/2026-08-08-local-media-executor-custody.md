@@ -93,10 +93,32 @@ new code, and the synthetic Drive operation again proves exact source bytes,
 proxy, contact sheet, waveform, and frequency evidence without downloading a
 real Drive original.
 
+## Native device-folder receipt v2
+
+The macOS folder workflow now joins the same executor boundary. Before a
+folder observation, preparation, or in-place verification, the app resolves
+the active worker root to its canonical filesystem path and derives the exact
+node and storage-scope IDs used by the local media worker. Nest verifies that
+tuple against a fresh online heartbeat.
+
+Device library locator v2, preparation plan v2, verification plan v2, and both
+receipt v2 contracts carry that custody. Stable workflow identities include
+the node and scope. Exact LRV replicas are retained with both database foreign
+keys, device-backed proxy selection is scope-aware, and in-place verification
+jobs preserve separate evidence for each executor. Readiness is the union of a
+scope's exact replica and its own verification receipts; another Mac's global
+source checksum is not mistaken for local byte availability.
+
+The PostgreSQL operation uses two simultaneously online executor fixtures. It
+proves the second executor sees zero retained LRV, proxy, and verification
+readiness after the first executor completes all three. A receipt carrying the
+second executor identity against the first executor's folder library is
+rejected. Swift and Node identity derivation were compared directly on the
+live temporary workspace and produce the same opaque tuple.
+
 ## Remaining boundary
 
-Device-folder receipts still need a v2 custody-bearing contract, and
-spatial/render producers must declare whether their output is executor-local
-or portable object storage. Legacy device replicas remain temporarily readable
-only as an unscoped fallback; a worker never accepts another executor's scoped
-replica.
+Spatial/render producers must declare whether their output is executor-local
+or portable object storage. Legacy device replicas remain readable only as an
+unscoped fallback where the older workflow requires them; no new native
+receipt can create unscoped local custody.

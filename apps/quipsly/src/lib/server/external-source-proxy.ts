@@ -124,15 +124,16 @@ export async function requestExternalSourceProxy(input: {
     );
   }
   const reference = source.externalReference;
-  const localReplica =
-    reference.provider === "google-drive"
-      ? (source.replicas.find(
-          (replica) =>
-            selectedExecutor &&
-            replica.custodianNodeId === selectedExecutor.nodeId &&
-            replica.storageScopeId === selectedExecutor.storageScopeId,
-        ) ?? null)
-      : (source.replicas[0] ?? null);
+  const localReplica = ["google-drive", "quipsly-device-folder"].includes(
+    reference.provider,
+  )
+    ? (source.replicas.find(
+        (replica) =>
+          selectedExecutor &&
+          replica.custodianNodeId === selectedExecutor.nodeId &&
+          replica.storageScopeId === selectedExecutor.storageScopeId,
+      ) ?? null)
+    : (source.replicas[0] ?? null);
   const executionTarget =
     localReplica?.custodianNodeId && localReplica.storageScopeId
       ? {
@@ -171,7 +172,9 @@ export async function requestExternalSourceProxy(input: {
       409,
     );
   }
-  const readyDerivative = reference.provider === "google-drive"
+  const readyDerivative = ["google-drive", "quipsly-device-folder"].includes(
+    reference.provider,
+  )
     ? source.derivatives.find(
         (derivative) =>
           executionTarget &&
@@ -200,10 +203,13 @@ export async function requestExternalSourceProxy(input: {
       409,
     );
   }
-  if (reference.provider === "google-drive" && !executionTarget) {
+  if (
+    ["google-drive", "quipsly-device-folder"].includes(reference.provider) &&
+    !executionTarget
+  ) {
     throw new ExternalSourceProxyRequestError(
       "provider-executor-unavailable",
-      "The exact Drive replica has no verified local executor custody. Prepare it again on an active Mac before creating a proxy.",
+      "The exact source replica has no verified local executor custody. Prepare it again on an active Mac before creating a proxy.",
       409,
     );
   }

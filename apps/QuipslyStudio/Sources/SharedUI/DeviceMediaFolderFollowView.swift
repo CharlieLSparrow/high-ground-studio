@@ -40,6 +40,8 @@ private struct DeviceFolderObservation: Encodable {
 private struct DeviceFolderFollowRequest: Encodable {
     let action = "observe-device-media-folder"
     let clientRequestId: String
+    let executorNodeId: String
+    let storageScopeId: String
     let observation: DeviceFolderObservation
 }
 
@@ -476,6 +478,7 @@ struct DeviceMediaFolderFollowView: View {
         do {
             status = "Reading folder names and file metadata. Originals are not being downloaded or uploaded…"
             let rootURL = try externalMediaAccess.withGrantedFolderURL { $0 }
+            let executionIdentity = try DeviceMediaPreparation.localExecutionIdentity()
             let scan = try await Task.detached(priority: .userInitiated) {
                 try DeviceMediaFolderScanner.scan(
                     rootURL: rootURL,
@@ -501,6 +504,8 @@ struct DeviceMediaFolderFollowView: View {
             request.httpBody = try encoder.encode(
                 DeviceFolderFollowRequest(
                     clientRequestId: UUID().uuidString.lowercased(),
+                    executorNodeId: executionIdentity.custodianNodeId,
+                    storageScopeId: executionIdentity.storageScopeId,
                     observation: scan.observation
                 )
             )
@@ -618,6 +623,8 @@ struct DeviceMediaFolderFollowView: View {
                         libraryId: current.libraryId,
                         deviceId: current.deviceId,
                         folderGrantId: current.folderGrantId,
+                        custodianNodeId: current.custodianNodeId,
+                        storageScopeId: current.storageScopeId,
                         sourceUnitId: current.sourceUnitId,
                         externalFileId: current.externalFileId,
                         externalReferenceId: current.externalReferenceId,
@@ -712,6 +719,8 @@ struct DeviceMediaFolderFollowView: View {
                         libraryId: current.libraryId,
                         deviceId: current.deviceId,
                         folderGrantId: current.folderGrantId,
+                        custodianNodeId: current.custodianNodeId,
+                        storageScopeId: current.storageScopeId,
                         externalFileId: current.externalFileId,
                         externalReferenceId: current.externalReferenceId,
                         sourceRevisionId: current.sourceRevisionId,
@@ -733,6 +742,8 @@ struct DeviceMediaFolderFollowView: View {
                         libraryId: current.libraryId,
                         deviceId: current.deviceId,
                         folderGrantId: current.folderGrantId,
+                        custodianNodeId: current.custodianNodeId,
+                        storageScopeId: current.storageScopeId,
                         sourceUnitId: current.sourceUnitId,
                         externalFileId: current.externalFileId,
                         externalReferenceId: current.externalReferenceId,

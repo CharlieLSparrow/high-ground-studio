@@ -1,6 +1,27 @@
 # Current State
 
-Date: 2026-08-07
+Date: 2026-08-08
+
+## Native device-folder executor-custody checkpoint
+
+- Mac folder follow, exact LRV preparation, and in-place INSV verification now
+  use version-two receipts that bind the originating `AgentNode` and opaque
+  storage scope. The native app derives the same identity as the local media
+  worker from the canonical worker root and filesystem identity; local paths
+  remain withheld.
+- Nest accepts the observation or receipt only while that exact executor/scope
+  is online and unchanged. Device-library locators, durable workflow intent,
+  local replicas, proxy jobs, verification evidence, and readiness counts all
+  preserve the same custody.
+- A second Mac may follow and verify the same camera package independently,
+  but it cannot inherit the first Mac's replica, proxy, or verification-ready
+  projection. Version-one receipts are rejected rather than silently recorded
+  as global local availability.
+- Twenty-one receipt/folder contract tests, the PostgreSQL two-executor
+  operation, the existing external-proxy operation, Quipsly TypeScript, and a
+  complete unsigned QuipslyMac Debug build pass. Direct Swift/Node readback
+  produces identical node and storage-scope IDs after canonicalizing macOS's
+  `/var` alias to `/private/var`.
 
 ## Shared Insta360 Drive-root refresh checkpoint
 

@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 #if os(macOS)
@@ -6,6 +7,8 @@ struct DeviceMediaPreparationCandidate: Decodable, Identifiable {
     let libraryId: String
     let deviceId: String
     let folderGrantId: String
+    let custodianNodeId: String
+    let storageScopeId: String
     let externalFileId: String
     let externalReferenceId: String
     let sourceRevisionId: String
@@ -34,10 +37,12 @@ struct DeviceMediaPreparationReceipt: Encodable {
         let buildId: String
     }
 
-    let schema = "quipsly-device-media-preparation-receipt-v1"
+    let schema = "quipsly-device-media-preparation-receipt-v2"
     let libraryId: String
     let deviceId: String
     let folderGrantId: String
+    let custodianNodeId: String
+    let storageScopeId: String
     let externalFileId: String
     let externalReferenceId: String
     let sourceRevisionId: String
@@ -56,6 +61,12 @@ private struct DeviceMediaWorkspaceConfiguration: Decodable {
     let workerMediaRoot: String
 }
 
+struct DeviceMediaLocalExecutionIdentity: Equatable {
+    let custodianNodeId: String
+    let storageScopeId: String
+    let workerMediaRoot: URL
+}
+
 enum DeviceMediaPreparation {
     private static let bufferSize = 4 * 1_024 * 1_024
     private static let reserveBytes: Int64 = 10 * 1_024 * 1_024 * 1_024
@@ -66,6 +77,14 @@ enum DeviceMediaPreparation {
         relativeLocator: String,
         progress: @escaping @Sendable (Int64, Int64) -> Void
     ) throws -> DeviceMediaPreparationReceipt {
+        let executionIdentity = try localExecutionIdentity()
+        guard candidate.custodianNodeId == executionIdentity.custodianNodeId,
+              candidate.storageScopeId == executionIdentity.storageScopeId else {
+            throw preparationError(
+                9,
+                "This preparation was planned for a different Mac media workspace. Follow the folder again from this Mac."
+            )
+        }
         let expectedSize = try positiveByteCount(candidate.expectedSizeBytes)
         let sourceURL = try authorizedSourceURL(
             root: sourceRoot,
@@ -79,7 +98,7 @@ enum DeviceMediaPreparation {
             )
         }
 
-        let workerRoot = try activeWorkerRoot()
+        let workerRoot = executionIdentity.workerMediaRoot
         let targetURL = try authorizedTargetURL(
             workerRoot: workerRoot,
             relativeLocator: candidate.targetLocator
@@ -133,6 +152,8 @@ enum DeviceMediaPreparation {
             libraryId: candidate.libraryId,
             deviceId: candidate.deviceId,
             folderGrantId: candidate.folderGrantId,
+            custodianNodeId: candidate.custodianNodeId,
+            storageScopeId: candidate.storageScopeId,
             externalFileId: candidate.externalFileId,
             externalReferenceId: candidate.externalReferenceId,
             sourceRevisionId: candidate.sourceRevisionId,
@@ -154,6 +175,55 @@ enum DeviceMediaPreparation {
                 ) as? String ?? "local-development"
             )
         )
+    }
+
+    static func localExecutionIdentity() throws -> DeviceMediaLocalExecutionIdentity {
+        let configuredRoot = try activeWorkerRoot()
+        guard let canonicalPointer = Darwin.realpath(configuredRoot.path, nil) else {
+            throw preparationError(
+                19,
+                "Quipsly could not resolve the active local media workspace."
+            )
+        }
+        defer { free(canonicalPointer) }
+        let workerRoot = URL(
+            fileURLWithPath: String(cString: canonicalPointer),
+            isDirectory: true
+        )
+        let details = try FileManager.default.attributesOfItem(
+            atPath: workerRoot.path
+        )
+        guard let deviceNumber = details[.systemNumber] as? NSNumber,
+              let fileNumber = details[.systemFileNumber] as? NSNumber else {
+            throw preparationError(
+                19,
+                "Quipsly could not identify the active local media workspace."
+            )
+        }
+        var hostBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        guard gethostname(&hostBuffer, hostBuffer.count) == 0 else {
+            throw preparationError(20, "Quipsly could not identify this Mac.")
+        }
+        let host = String(cString: hostBuffer)
+        let hostName = String("quipsly-media-worker:\(host)".prefix(220))
+        let storageMaterial = "\(hostName)\0\(workerRoot.path)\0\(deviceNumber.stringValue)\0\(fileNumber.stringValue)"
+        let storageDigest = SHA256.hash(data: Data(storageMaterial.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return DeviceMediaLocalExecutionIdentity(
+            custodianNodeId: "execution_worker_\(stableHostID(hostName))",
+            storageScopeId: "storage_scope_\(storageDigest.prefix(40))",
+            workerMediaRoot: workerRoot
+        )
+    }
+
+    private static func stableHostID(_ value: String) -> String {
+        var hash: UInt32 = 2_166_136_261
+        for scalar in value.unicodeScalars {
+            hash ^= scalar.value
+            hash = hash &* 16_777_619
+        }
+        return String(format: "%08x", hash)
     }
 
     private static func activeWorkerRoot() throws -> URL {

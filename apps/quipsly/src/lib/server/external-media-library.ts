@@ -750,6 +750,8 @@ export async function recordDeviceFolderLibraryObservation(input: {
   externalRootId: string;
   deviceId: string;
   folderGrantId: string;
+  custodianNodeId: string;
+  storageScopeId: string;
   clientRequestId: string;
   plan: GoogleDriveMediaLibraryPlan;
   attachments: LibraryAttachment[];
@@ -761,10 +763,12 @@ export async function recordDeviceFolderLibraryObservation(input: {
     sharedDriveId: null,
     resourceKey: null,
     providerLocatorJson: {
-      schema: "quipsly-device-folder-library-locator-v1",
+      schema: "quipsly-device-folder-library-locator-v2",
       mode: "device-folder-scan",
       deviceId: input.deviceId,
       folderGrantId: input.folderGrantId,
+      custodianNodeId: input.custodianNodeId,
+      storageScopeId: input.storageScopeId,
       localPathWithheld: true,
     },
     discoveryMode: "device-folder-scan",

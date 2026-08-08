@@ -7,6 +7,8 @@ struct DeviceMediaVerificationCandidate: Decodable, Identifiable, Sendable {
     let libraryId: String
     let deviceId: String
     let folderGrantId: String
+    let custodianNodeId: String
+    let storageScopeId: String
     let sourceUnitId: String
     let externalFileId: String
     let externalReferenceId: String
@@ -36,10 +38,12 @@ struct DeviceMediaVerificationReceipt: Encodable, Sendable {
         let buildId: String
     }
 
-    let schema = "quipsly-device-media-verification-receipt-v1"
+    let schema = "quipsly-device-media-verification-receipt-v2"
     let libraryId: String
     let deviceId: String
     let folderGrantId: String
+    let custodianNodeId: String
+    let storageScopeId: String
     let externalFileId: String
     let externalReferenceId: String
     let sourceRevisionId: String
@@ -60,6 +64,14 @@ enum DeviceMediaVerification {
         relativeLocator: String,
         progress: @escaping @Sendable (Int64, Int64) -> Void
     ) async throws -> DeviceMediaVerificationReceipt {
+        let executionIdentity = try DeviceMediaPreparation.localExecutionIdentity()
+        guard candidate.custodianNodeId == executionIdentity.custodianNodeId,
+              candidate.storageScopeId == executionIdentity.storageScopeId else {
+            throw verificationError(
+                9,
+                "This verification was planned for a different Mac media workspace. Follow the folder again from this Mac."
+            )
+        }
         let expectedSize = try positiveByteCount(candidate.expectedSizeBytes)
         let sourceURL = try authorizedSourceURL(
             root: sourceRoot,
@@ -102,6 +114,8 @@ enum DeviceMediaVerification {
             libraryId: candidate.libraryId,
             deviceId: candidate.deviceId,
             folderGrantId: candidate.folderGrantId,
+            custodianNodeId: candidate.custodianNodeId,
+            storageScopeId: candidate.storageScopeId,
             externalFileId: candidate.externalFileId,
             externalReferenceId: candidate.externalReferenceId,
             sourceRevisionId: candidate.sourceRevisionId,

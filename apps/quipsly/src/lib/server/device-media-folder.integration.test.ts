@@ -33,6 +33,28 @@ runDatabaseSmoke("device media folder canonical observation", () => {
   let actorUserId = "";
   let workspaceId = "";
   let projectId = "";
+  const executorNodeId = `device_executor_${nonce}`;
+  const executorScopeId = `storage_scope_device_${nonce}`;
+  const otherExecutorNodeId = `device_executor_other_${nonce}`;
+  const otherExecutorScopeId = `storage_scope_device_other_${nonce}`;
+
+  function executorCapabilities(storageScopeId: string) {
+    return {
+      schema: "quipsly-execution-worker-capabilities-v1",
+      executorKind: "local-mac",
+      storage: {
+        schema: "quipsly-local-media-storage-v1",
+        status: "measured",
+        availableBytes: 20_000_000_000,
+        reserveBytes: 5_000_000_000,
+        safeAvailableBytes: 15_000_000_000,
+        measuredAt: new Date().toISOString(),
+        workspaceMode: "durable",
+        scopeId: storageScopeId,
+        pathWithheld: true,
+      },
+    };
+  }
 
   function observation(lrvSize = "120000000") {
     return {
@@ -96,6 +118,26 @@ runDatabaseSmoke("device media folder canonical observation", () => {
       },
     });
     projectId = project.id;
+    await prisma.agentNode.createMany({
+      data: [
+        {
+          id: executorNodeId,
+          hostName: `device-media-test:${nonce}`,
+          ipAddress: "loopback",
+          status: "online",
+          capabilities: executorCapabilities(executorScopeId),
+          lastHeartbeatAt: new Date(),
+        },
+        {
+          id: otherExecutorNodeId,
+          hostName: `device-media-test-other:${nonce}`,
+          ipAddress: "loopback",
+          status: "online",
+          capabilities: executorCapabilities(otherExecutorScopeId),
+          lastHeartbeatAt: new Date(),
+        },
+      ],
+    });
   });
 
   afterAll(async () => {
@@ -106,6 +148,9 @@ runDatabaseSmoke("device media folder canonical observation", () => {
         await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
       if (actorUserId)
         await prisma.user.deleteMany({ where: { id: actorUserId } });
+      await prisma.agentNode.deleteMany({
+        where: { id: { in: [executorNodeId, otherExecutorNodeId] } },
+      });
     } finally {
       await prisma.$disconnect();
     }
@@ -119,6 +164,8 @@ runDatabaseSmoke("device media folder canonical observation", () => {
       actorUserId,
       actorEmail,
       clientRequestId,
+      executorNodeId,
+      storageScopeId: executorScopeId,
       observation: observation(),
     });
 
@@ -158,6 +205,8 @@ runDatabaseSmoke("device media folder canonical observation", () => {
         actorUserId,
         actorEmail,
         clientRequestId,
+        executorNodeId,
+        storageScopeId: executorScopeId,
         observation: observation(),
       }),
     ).resolves.toMatchObject({ libraryReplayed: true });
@@ -196,6 +245,37 @@ runDatabaseSmoke("device media folder canonical observation", () => {
     );
 
     const candidate = first.preparation.candidates[0]!;
+    expect(candidate).toMatchObject({
+      custodianNodeId: executorNodeId,
+      storageScopeId: executorScopeId,
+    });
+    await expect(
+      registerDeviceMediaPreparation({
+        prisma,
+        projectId,
+        actorUserId,
+        actorEmail,
+        clientRequestId: randomUUID(),
+        receipt: {
+          schema: "quipsly-device-media-preparation-receipt-v2",
+          ...candidate,
+          custodianNodeId: otherExecutorNodeId,
+          storageScopeId: otherExecutorScopeId,
+          contentSha256: "d".repeat(64),
+          completedAt: "2026-08-08T08:59:00.000Z",
+          technical: {
+            durationSeconds: 180,
+            widthPixels: 1920,
+            heightPixels: 960,
+            framesPerSecond: 29.97,
+          },
+          worker: {
+            executionId: `device-prep-other:${nonce}`,
+            buildId: "integration-test",
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "device-library-grant-mismatch" });
     const prepared = await registerDeviceMediaPreparation({
       prisma,
       projectId,
@@ -203,10 +283,12 @@ runDatabaseSmoke("device media folder canonical observation", () => {
       actorEmail,
       clientRequestId: randomUUID(),
       receipt: {
-        schema: "quipsly-device-media-preparation-receipt-v1",
+        schema: "quipsly-device-media-preparation-receipt-v2",
         libraryId: candidate.libraryId,
         deviceId: candidate.deviceId,
         folderGrantId: candidate.folderGrantId,
+        custodianNodeId: candidate.custodianNodeId,
+        storageScopeId: candidate.storageScopeId,
         externalFileId: candidate.externalFileId,
         externalReferenceId: candidate.externalReferenceId,
         sourceRevisionId: candidate.sourceRevisionId,
@@ -250,11 +332,21 @@ runDatabaseSmoke("device media folder canonical observation", () => {
       listExternalMediaLibraries({ prisma, projectId, actorUserId }),
     ]);
     expect(replica.locator).toBe(candidate.targetLocator);
+    expect(replica).toMatchObject({
+      custodianNodeId: executorNodeId,
+      storageScopeId: executorScopeId,
+    });
     expect(replica.locator).not.toContain("/Users/");
     expect(revision.contentSha256).toBe("e".repeat(64));
     expect(revision.sourceState).toBe("checksum-bound");
     expect(proxyJob.inputJson).toMatchObject({
       source: { provider: "quipsly-device-folder" },
+    });
+    expect(proxyJob.resultJson).toMatchObject({
+      executionTarget: {
+        custodianNodeId: executorNodeId,
+        storageScopeId: executorScopeId,
+      },
     });
     expect(preparedLibraries).toEqual(
       expect.arrayContaining([
@@ -284,10 +376,12 @@ runDatabaseSmoke("device media folder canonical observation", () => {
       actorEmail,
       clientRequestId: randomUUID(),
       receipt: {
-        schema: "quipsly-device-media-verification-receipt-v1",
+        schema: "quipsly-device-media-verification-receipt-v2",
         libraryId: originalCandidate.libraryId,
         deviceId: originalCandidate.deviceId,
         folderGrantId: originalCandidate.folderGrantId,
+        custodianNodeId: originalCandidate.custodianNodeId,
+        storageScopeId: originalCandidate.storageScopeId,
         externalFileId: originalCandidate.externalFileId,
         externalReferenceId: originalCandidate.externalReferenceId,
         sourceRevisionId: originalCandidate.sourceRevisionId,
@@ -354,6 +448,8 @@ runDatabaseSmoke("device media folder canonical observation", () => {
       actorUserId,
       actorEmail,
       clientRequestId: randomUUID(),
+      executorNodeId,
+      storageScopeId: executorScopeId,
       observation: observation("0"),
     });
     expect(second).toMatchObject({
@@ -365,5 +461,28 @@ runDatabaseSmoke("device media folder canonical observation", () => {
         where: { projectId, provider: "quipsly-device-folder" },
       }),
     ).toBe(2);
+
+    const otherExecutor = await observeDeviceMediaFolderForNest({
+      prisma,
+      projectId,
+      actorUserId,
+      actorEmail,
+      clientRequestId: randomUUID(),
+      executorNodeId: otherExecutorNodeId,
+      storageScopeId: otherExecutorScopeId,
+      observation: observation(),
+    });
+    expect(otherExecutor).toMatchObject({
+      library: { revision: 3, status: "ready" },
+      exactByteVerificationPending: true,
+      preparation: {
+        exactReplicaReadyCount: 0,
+        proxyReadyCount: 0,
+      },
+      verification: {
+        exactVerifiedCount: 0,
+        sourceSetCount: 0,
+      },
+    });
   });
 });

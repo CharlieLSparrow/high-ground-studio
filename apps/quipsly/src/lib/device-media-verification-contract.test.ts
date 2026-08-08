@@ -4,10 +4,12 @@ import {
 } from "./device-media-verification-contract";
 
 const valid = {
-  schema: "quipsly-device-media-verification-receipt-v1",
+  schema: "quipsly-device-media-verification-receipt-v2",
   libraryId: "library_1",
   deviceId: "device:1",
   folderGrantId: "grant:1",
+  custodianNodeId: "execution_worker_12345678",
+  storageScopeId: "storage_scope_12345678",
   externalFileId: "file:1",
   externalReferenceId: "reference_1",
   sourceRevisionId: "revision_1",
@@ -65,5 +67,14 @@ describe("device media verification receipts", () => {
         technical: { ...valid.technical, widthPixels: 1.5 },
       }),
     ).toThrow("positive integer");
+  });
+
+  it("rejects a version-one receipt that has no executor custody", () => {
+    expect(() =>
+      parseDeviceMediaVerificationReceipt({
+        ...valid,
+        schema: "quipsly-device-media-verification-receipt-v1",
+      }),
+    ).toThrow("unsupported");
   });
 });

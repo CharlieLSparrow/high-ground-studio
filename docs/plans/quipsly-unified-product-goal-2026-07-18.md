@@ -8548,3 +8548,25 @@ source upload verified` blocked `Rough cut ready for review` until complete;
   visible readiness evidence rather than permanent failure labels.
 - Next: custody-bearing device-folder receipt v2, then explicit portability
   classification for stitched spatial masters and episode render outputs.
+
+# 2026-08-08 checkpoint: native device-folder receipt v2
+
+- Bound native folder observations, exact LRV preparation receipts, and
+  in-place original verification receipts to the same local executor and
+  opaque storage scope used by the media worker.
+- Made the Mac derive that tuple from the canonical worker root and filesystem
+  identity, then verified Swift and Node produce the same values on the live
+  workspace. This caught and repaired the `/var` versus `/private/var` alias
+  before it could make every legitimate receipt look foreign.
+- Upgraded device library locator, preparation plan, verification plan, and
+  receipt contracts to v2. Version-one receipts now fail closed instead of
+  creating new globally ambiguous local readiness.
+- Scoped device LRV replicas and device-backed proxy selection to the exact
+  executor. In-place verification jobs also include custody, so a second Mac
+  can verify the same source independently without inheriting availability.
+- Proved the boundary with two online executor fixtures: after one Mac retained
+  the LRV, queued its proxy, and verified the INSV, the second Mac still
+  projected zero exact-replica, proxy, and verification readiness.
+- Next: classify stitched spatial masters, reframe outputs, and episode renders
+  as executor-local or portable object storage, then carry that portability
+  through Advanced Studio and final conform.
