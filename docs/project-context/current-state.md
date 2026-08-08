@@ -2,6 +2,25 @@
 
 Date: 2026-08-07
 
+## Source-select to Episode-editor continuity checkpoint
+
+- A promoted Source Story placement now continues into the canonical shared
+  Episode workspace rather than bypassing it for the global Advanced Studio
+  surface. The handoff carries the exact Story card and exact timeline
+  placement as stable URL identities alongside the Episode identity.
+- The Episode editor opens its retained Story bin, resolves the requested
+  placement only inside the current Episode, selects the owning board, cues the
+  saved track time, highlights and focuses the exact card, and explains that
+  its immutable source range remains linked. A placement-only deep link derives
+  the card from that verified placement rather than losing focus.
+- Missing, withdrawn, inaccessible, or mismatched identities fail visibly and
+  leave the library open without guessing another source. The local Studio link
+  remains available from the Episode editor for advanced conform and rendering;
+  it is no longer the first hop from source organization into editorial work.
+- Twenty-two focused interaction and route tests prove encoded navigation,
+  server-to-client identity forwarding, exact cue/highlight behavior, and the
+  existing Story-bin editing contract. Quipsly TypeScript remains clean.
+
 ## Source-library visual-map checkpoint
 
 - Source-library cards now distinguish a checksum-bound contact-sheet sprite
@@ -2948,13 +2967,13 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   -160 dBFS; the UI reports that limitation instead of presenting a decorative
   waveform as usable sound.
 - The shared `Insta360` Drive root was inspected read-only again on 2026-08-07.
-  It contained eight capture-batch folders, 30 visible files, 435.21 decimal GB
-  (405.33 GiB) of visible source data, 13 complete INSV/LRV segment pairs, and
-  11 expected segments held because their uploads or companions were
-  incomplete. Two capture folders were still empty, one exposed only a
-  zero-byte LRV, and one had three INSV originals without browsing companions.
-  The root was still changing, so these are observed intake facts, not a
-  completion or checksum claim.
+  The latest connector readback contained eight capture-batch folders, 33
+  visible files, 440.03 decimal GB (409.81 GiB) of visible source data, and 16
+  complete INSV/LRV segment pairs. Two capture folders were still empty and one
+  exposed only a zero-byte LRV. A previously incomplete three-segment batch now
+  had its LRV companions, proving that readiness must be refreshed rather than
+  inferred forever from an earlier scan. The root was still changing, so these
+  are observed intake facts, not a completion or checksum claim.
 - Google Drive intake now models library root -> capture batch -> independently
   seekable segment -> exact INSV/LRV members. Google Picker can select one
   library root, Quipsly recursively inspects exactly one reviewed level,

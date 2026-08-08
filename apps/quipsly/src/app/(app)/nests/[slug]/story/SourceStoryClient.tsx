@@ -1290,6 +1290,25 @@ function sourceHref(
   return `/nests/${encodeURIComponent(projectSlug)}/story?${params.toString()}`;
 }
 
+export function episodeStoryEditorHref({
+  projectSlug,
+  episodeSlug,
+  cardId,
+  placementId,
+}: {
+  projectSlug: string;
+  episodeSlug: string;
+  cardId: string;
+  placementId: string;
+}) {
+  const params = new URLSearchParams({
+    mode: "edit",
+    storyCard: cardId,
+    storyPlacement: placementId,
+  });
+  return `/nests/${encodeURIComponent(projectSlug)}/episodes/${encodeURIComponent(episodeSlug)}?${params.toString()}`;
+}
+
 export function SourceStoryClient({
   project,
   canWrite,
@@ -5483,11 +5502,16 @@ function TimelinePromotionEditor({
                   <div className="flex flex-wrap gap-2">
                     {target ? (
                       <Link
-                        href={`/editor?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(target.slug)}`}
+                        href={episodeStoryEditorHref({
+                          projectSlug,
+                          episodeSlug: target.slug,
+                          cardId: card.id,
+                          placementId: placement.id,
+                        })}
                         className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-3 text-[10px] font-black uppercase tracking-wide text-violet-950"
                       >
                         <Clapperboard size={14} aria-hidden="true" />
-                        Open editor
+                        Open in Episode editor
                       </Link>
                     ) : null}
                     {placement.status === "active" && target ? (

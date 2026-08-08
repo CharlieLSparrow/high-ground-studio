@@ -170,6 +170,44 @@ describe("EpisodeStoryBin", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("opens, cues, and highlights the exact Story placement from Source Room", async () => {
+    const focusedWorkspace = {
+      ...workspace,
+      timelinePlacements: [{
+        id: "timeline-placement-1",
+        episodeProductionId: "episode-9",
+        cardId: "card-curious",
+        originBoardId: "board-360",
+        originBoardPlacementId: "board-placement-1",
+        trackId: "V3",
+        episodeStartSeconds: 42.25,
+        durationSeconds: 60.01,
+        status: "active",
+        revision: 1,
+      }],
+    };
+    const fetchMock = jest.fn(() => response({ ok: true, workspace: focusedWorkspace }));
+    global.fetch = fetchMock;
+    const scrollIntoView = jest.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    const { onCue } = renderBin({
+      initialStoryCardId: "card-curious",
+      initialTimelinePlacementId: "timeline-placement-1",
+    });
+
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(await screen.findByText(/Opened Be Curious at 00:42.25 on V3/)).toBeInTheDocument();
+    const focusedCard = document.getElementById("episode-story-card-card-curious");
+    expect(focusedCard).toHaveAttribute("aria-current", "true");
+    await waitFor(() => expect(onCue).toHaveBeenCalledWith(42.25));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("auditions only the exact retained source range from the protected proxy", async () => {
     global.fetch = jest.fn(() => response({ ok: true, workspace }));
     const play = jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);

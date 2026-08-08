@@ -42,12 +42,19 @@ jest.mock("../../episode-editor/EpisodeEditorClient", () => function EpisodeEdit
   projectName,
   canonicalWorkspace,
   recordingRoomId,
+  initialStoryCardId,
+  initialStoryPlacementId,
 }: {
   projectName?: string;
   canonicalWorkspace?: boolean;
   recordingRoomId?: string | null;
+  initialStoryCardId?: string;
+  initialStoryPlacementId?: string;
 }) {
-  return <div>{canonicalWorkspace ? "Canonical editor" : "Legacy editor"} · {projectName} · {recordingRoomId || "no recording"}</div>;
+  return <div
+    data-story-card={initialStoryCardId ?? ""}
+    data-story-placement={initialStoryPlacementId ?? ""}
+  >{canonicalWorkspace ? "Canonical editor" : "Legacy editor"} · {projectName} · {recordingRoomId || "no recording"}</div>;
 });
 
 const payload = {
@@ -137,6 +144,21 @@ describe("EpisodeRoomPage access failures", () => {
     });
     expect(ensureEpisodeEditBranch).not.toHaveBeenCalled();
     expect(screen.getByText("Canonical editor · High Ground · room-4")).toBeInTheDocument();
+  });
+
+  it("preserves an exact Story card and timeline placement into the shared editor", async () => {
+    render(await EpisodeRoomPage({
+      params: Promise.resolve({ slug: "high-ground", episodeSlug: "episode-4" }),
+      searchParams: Promise.resolve({
+        mode: "edit",
+        storyCard: "card-curious",
+        storyPlacement: "timeline-placement-1",
+      }),
+    }));
+
+    const editor = screen.getByText("Canonical editor · High Ground · room-4");
+    expect(editor).toHaveAttribute("data-story-card", "card-curious");
+    expect(editor).toHaveAttribute("data-story-placement", "timeline-placement-1");
   });
 
   it("materializes a missing edit branch with attributable human provenance", async () => {

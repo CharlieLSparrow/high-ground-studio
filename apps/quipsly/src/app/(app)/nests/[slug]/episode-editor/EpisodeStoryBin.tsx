@@ -81,6 +81,8 @@ type EpisodeStoryBinProps = {
   playhead: number;
   onCue: (seconds: number) => void;
   onPromoted: () => Promise<void> | void;
+  initialStoryCardId?: string;
+  initialTimelinePlacementId?: string;
 };
 
 type SourceAudition = {
@@ -157,10 +159,13 @@ export function EpisodeStoryBin({
   playhead,
   onCue,
   onPromoted,
+  initialStoryCardId,
+  initialTimelinePlacementId,
 }: EpisodeStoryBinProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(initialStoryCardId || initialTimelinePlacementId));
   const [workspace, setWorkspace] = useState<StoryWorkspace | null>(null);
   const [selectedBoardId, setSelectedBoardId] = useState("");
+  const [focusedStoryCardId, setFocusedStoryCardId] = useState(initialStoryCardId ?? "");
   const [trackId, setTrackId] = useState("V3");
   const [loading, setLoading] = useState(false);
   const [pendingCardId, setPendingCardId] = useState<string | null>(null);
@@ -171,6 +176,8 @@ export function EpisodeStoryBin({
   const [draggedPlacementId, setDraggedPlacementId] = useState<string | null>(null);
   const [message, setMessage] = useState("Browse retained selects without copying their originals.");
   const auditionRef = useRef<HTMLVideoElement>(null);
+  const initialFocusLoadedRef = useRef(false);
+  const initialFocusScrolledRef = useRef(false);
 
   const endpoint = `/api/nests/${encodeURIComponent(projectSlug)}/source-story`;
 
@@ -182,13 +189,44 @@ export function EpisodeStoryBin({
       if (!response.ok) throw new Error(errorMessage(body, "The Story library could not be opened."));
       const next = (body as { workspace?: StoryWorkspace }).workspace;
       if (!next) throw new Error("The Story library response did not include a workspace.");
+      const requestedPlacement = initialTimelinePlacementId
+        ? next.timelinePlacements.find((placement) => (
+          placement.id === initialTimelinePlacementId
+          && placement.episodeProductionId === episode.id
+        )) ?? null
+        : null;
+      const requestedCardId = initialStoryCardId || requestedPlacement?.cardId || null;
+      const requestedBoard = (
+        requestedPlacement?.originBoardId
+          ? next.boards.find((board) => board.id === requestedPlacement.originBoardId)
+          : null
+      ) ?? (
+        requestedCardId
+          ? next.boards.find((board) => board.placements.some((placement) => placement.cardId === requestedCardId))
+          : null
+      );
       setWorkspace(next);
+      setFocusedStoryCardId(requestedCardId ?? "");
       setSelectedBoardId((current) => (
-        current && next.boards.some((board) => board.id === current)
+        requestedBoard
+          ? requestedBoard.id
+          : current && next.boards.some((board) => board.id === current)
           ? current
           : next.boards.find((board) => board.placements.length)?.id ?? next.boards[0]?.id ?? ""
       ));
-      if (reason) setMessage(reason);
+      if (requestedPlacement?.status === "active") onCue(requestedPlacement.episodeStartSeconds);
+      if (reason) {
+        setMessage(reason);
+      } else if (requestedCardId && requestedBoard) {
+        const requestedCard = requestedBoard.placements.find((placement) => (
+          placement.cardId === requestedCardId
+        ))?.card;
+        setMessage(requestedPlacement?.status === "active"
+          ? `Opened ${requestedCard?.title ?? "the exact retained select"} at ${clock(requestedPlacement.episodeStartSeconds)} on ${requestedPlacement.trackId}. Its Story card and immutable source range remain linked.`
+          : `Opened ${requestedCard?.title ?? "the exact retained select"} from ${requestedBoard.title}. Its source range remains unchanged.`);
+      } else if (initialStoryCardId || initialTimelinePlacementId) {
+        setMessage("That requested Story select is not present in this accessible Episode workspace. The retained library is open without guessing another source.");
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The Story library could not be opened.");
     } finally {
@@ -201,6 +239,28 @@ export function EpisodeStoryBin({
     setOpen(next);
     if (next && !workspace && !loading) await loadWorkspace();
   }
+
+  useEffect(() => {
+    if (
+      initialFocusLoadedRef.current
+      || (!initialStoryCardId && !initialTimelinePlacementId)
+    ) return;
+    initialFocusLoadedRef.current = true;
+    setOpen(true);
+    void loadWorkspace();
+  }, [initialStoryCardId, initialTimelinePlacementId]);
+
+  useEffect(() => {
+    if (initialFocusScrolledRef.current || !workspace || !focusedStoryCardId) return;
+    const target = document.getElementById(`episode-story-card-${focusedStoryCardId}`);
+    if (!target) return;
+    initialFocusScrolledRef.current = true;
+    const frame = window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusedStoryCardId, selectedBoardId, workspace]);
 
   async function refreshEditorProjection() {
     try {
@@ -757,7 +817,15 @@ export function EpisodeStoryBin({
                     else if (source?.sourceRevision.externalReference?.id) storyParams.set("external", source.sourceRevision.externalReference.id);
                     else if (source?.sourceRevision.mediaAsset?.id) storyParams.set("asset", source.sourceRevision.mediaAsset.id);
                     return (
-                      <article key={placement.id} id={`episode-story-card-${card.id}`} className="rounded-xl border border-violet-800/60 bg-[#090b13] p-3">
+                      <article
+                        key={placement.id}
+                        id={`episode-story-card-${card.id}`}
+                        tabIndex={-1}
+                        aria-current={card.id === focusedStoryCardId ? "true" : undefined}
+                        className={card.id === focusedStoryCardId
+                          ? "rounded-xl border border-[#d8ad56] bg-[#17140b] p-3 ring-2 ring-[#d8ad56]/40 focus:outline-none focus:ring-4"
+                          : "rounded-xl border border-violet-800/60 bg-[#090b13] p-3"}
+                      >
                         {frame ? (
                           <div
                             role="img"

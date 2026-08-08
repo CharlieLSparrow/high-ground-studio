@@ -89,11 +89,15 @@ export default function EpisodeEditorClient({
   projectName,
   canonicalWorkspace = false,
   recordingRoomId,
+  initialStoryCardId,
+  initialStoryPlacementId,
 }: {
   initialPayload: EpisodeEditDeskPayload;
   projectName?: string;
   canonicalWorkspace?: boolean;
   recordingRoomId?: string | null;
+  initialStoryCardId?: string;
+  initialStoryPlacementId?: string;
 }) {
   const router = useRouter();
   const [payload, setPayload] = useState(initialPayload);
@@ -894,6 +898,8 @@ export default function EpisodeEditorClient({
               playhead={playhead}
               onCue={seek}
               onPromoted={refreshCanonicalProjection}
+              initialStoryCardId={initialStoryCardId}
+              initialTimelinePlacementId={initialStoryPlacementId}
             />
           ) : null}
           <div className="rounded-2xl border border-[#2d4638] bg-[#0d1712] p-4">

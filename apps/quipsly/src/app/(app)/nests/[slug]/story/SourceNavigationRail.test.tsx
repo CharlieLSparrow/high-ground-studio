@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
-import { SourceNavigationRail } from "./SourceStoryClient";
+import {
+  episodeStoryEditorHref,
+  SourceNavigationRail,
+} from "./SourceStoryClient";
 
 jest.mock("../actions", () => ({
   createNestQuickWorkAction: jest.fn(),
@@ -85,6 +88,19 @@ const audioNavigation = {
 };
 
 describe("SourceNavigationRail", () => {
+  it("continues into the canonical Episode editor with the exact Story identities", () => {
+    expect(
+      episodeStoryEditorHref({
+        projectSlug: "high ground/odyssey",
+        episodeSlug: "episode 9",
+        cardId: "card/curious",
+        placementId: "placement 42",
+      }),
+    ).toBe(
+      "/nests/high%20ground%2Fodyssey/episodes/episode%209?mode=edit&storyCard=card%2Fcurious&storyPlacement=placement+42",
+    );
+  });
+
   it("keeps picture, sound, and exact source-range transport in one interaction surface", () => {
     const onSeek = jest.fn();
     const onSetIn = jest.fn();

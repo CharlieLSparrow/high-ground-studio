@@ -16,7 +16,12 @@ export default async function EpisodeRoomPage({
   searchParams,
 }: {
   params: Promise<{ slug: string; episodeSlug: string }>;
-  searchParams?: Promise<{ mode?: string; source?: string }>;
+  searchParams?: Promise<{
+    mode?: string;
+    source?: string;
+    storyCard?: string;
+    storyPlacement?: string;
+  }>;
 }) {
   const { slug, episodeSlug } = await params;
   const query = await searchParams;
@@ -103,6 +108,8 @@ export default async function EpisodeRoomPage({
       projectName={payload.project.name}
       canonicalWorkspace
       recordingRoomId={recordingRoomId}
+      initialStoryCardId={query?.storyCard}
+      initialStoryPlacementId={query?.storyPlacement}
     />;
   }
 
