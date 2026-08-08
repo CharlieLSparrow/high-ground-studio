@@ -13,7 +13,7 @@ import { getAuth } from "firebase-admin/auth";
 
 import { attachVerifiedExternalMediaSource } from "../apps/quipsly/src/lib/server/external-media-source.ts";
 import { requestExternalSourceProxy } from "../apps/quipsly/src/lib/server/external-source-proxy.ts";
-import { arrangeStoryBoard, createMediaSourceSet, createSourceStoryCard, createStoryBoard, promoteSourceStoryCardToEpisode, readSourceStoryWorkspace, withdrawSourceStoryTimelinePlacement } from "../apps/quipsly/src/lib/server/source-story.ts";
+import { arrangeStoryBoard, createMediaSourceSet, createSourceStoryCard, createStoryBoard, promoteSourceStoryCardToEpisode, readSourceStoryWorkspace, repositionSourceStoryTimelinePlacement, withdrawSourceStoryTimelinePlacement } from "../apps/quipsly/src/lib/server/source-story.ts";
 
 const databaseUrl = process.env.QUIPSLY_LOCAL_DATABASE_URL || process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio";
 const parsedDatabase = new URL(databaseUrl);
@@ -786,6 +786,50 @@ try {
     },
   });
 
+  const repositionRequestId = deterministicUuid(`${project.id}:${promotion.placement.id}:retained-reposition-v1`);
+  const existingRepositionOperation = await prisma.studioStoryTimelinePlacementOperation.findFirst({
+    where: {
+      placementId: promotion.placement.id,
+      actorUserId: actor.id,
+      clientRequestId: repositionRequestId,
+    },
+    select: { id: true, operation: true, snapshotJson: true },
+  });
+  if (!existingRepositionOperation) {
+    const beforeReposition = await readSourceStoryWorkspace(prisma, project.id);
+    const episodeBeforeReposition = beforeReposition.episodes.find((candidate) => candidate.id === episode.id);
+    if (!episodeBeforeReposition) throw new Error("The retained QA Episode disappeared before placement repositioning.");
+    await repositionSourceStoryTimelinePlacement({
+      prisma,
+      actorUserId: actor.id,
+      value: {
+        projectId: project.id,
+        placementId: promotion.placement.id,
+        expectedRevision: promotion.placement.revision,
+        expectedTimelineFingerprint: episodeBeforeReposition.timelineFingerprint,
+        clientRequestId: repositionRequestId,
+        episodeStartSeconds: 1.25,
+        trackId: "V2",
+      },
+    });
+  }
+  const retainedReposition = await prisma.studioStoryTimelinePlacement.findUniqueOrThrow({
+    where: { id: promotion.placement.id },
+    include: {
+      operations: {
+        where: { actorUserId: actor.id, clientRequestId: repositionRequestId },
+        take: 1,
+      },
+    },
+  });
+  if (
+    retainedReposition.trackId !== "V2" ||
+    retainedReposition.episodeStartSeconds !== 1.25 ||
+    retainedReposition.operations[0]?.operation !== "reposition"
+  ) {
+    throw new Error("The retained QA Episode did not preserve its exact reposition operation and current placement projection.");
+  }
+
   const [workspace, originalShaAfter, browseShaAfter, derivativeStat, derivativeSha] = await Promise.all([
     readSourceStoryWorkspace(prisma, project.id),
     sha256File(originalPath),
@@ -837,6 +881,13 @@ try {
     episodeSlug: episode.slug,
     timelinePlacementId: promotion.placement.id,
     timelinePlacementReplayed: promotion.replayed,
+    timelineRepositionReplayed: Boolean(existingRepositionOperation),
+    timelineReposition: {
+      revision: retainedReposition.revision,
+      trackId: retainedReposition.trackId,
+      episodeStartSeconds: retainedReposition.episodeStartSeconds,
+      operation: retainedReposition.operations[0].operation,
+    },
     sourceRange: [card.sourceRange.startSeconds, card.sourceRange.endSeconds],
     reframeKeyframes: Array.isArray(card.sourceRange.reframeRecipeJson?.keyframes) ? card.sourceRange.reframeRecipeJson.keyframes.length : 0,
     originalPackageMutated: false,

@@ -99,6 +99,7 @@ function sequenceFixtures() {
       episodeStartSeconds: 42.25,
       durationSeconds: 60.01,
       status: "active",
+      revision: 1,
     }],
   };
   const bothPlaced = {
@@ -114,6 +115,7 @@ function sequenceFixtures() {
       episodeStartSeconds: 102.26,
       durationSeconds: 15.5,
       status: "active",
+      revision: 1,
     }],
   };
   return { sequenceWorkspace, firstPlaced, bothPlaced };
@@ -268,6 +270,7 @@ describe("EpisodeStoryBin", () => {
         episodeStartSeconds: 42.25,
         durationSeconds: 60.01,
         status: "active",
+        revision: 1,
       }],
     };
     const fetchMock = jest.fn()
@@ -311,6 +314,7 @@ describe("EpisodeStoryBin", () => {
         episodeStartSeconds: 42.25,
         durationSeconds: 60.01,
         status: "active",
+        revision: 1,
       }],
     };
     global.fetch = jest.fn()
@@ -341,6 +345,7 @@ describe("EpisodeStoryBin", () => {
         episodeStartSeconds: 17.5,
         durationSeconds: 60.01,
         status: "active",
+        revision: 1,
       }],
     };
     global.fetch = jest.fn(() => response({ ok: true, workspace: placed }));
@@ -352,6 +357,108 @@ describe("EpisodeStoryBin", () => {
 
     expect(onCue).toHaveBeenCalledWith(17.5);
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("repositions an active Story placement at the shared playhead with a fresh receipt", async () => {
+    const placed = {
+      ...workspace,
+      timelinePlacements: [{
+        id: "timeline-placement-1",
+        episodeProductionId: "episode-9",
+        cardId: "card-curious",
+        originBoardId: "board-360",
+        originBoardPlacementId: "board-placement-1",
+        trackId: "V5",
+        episodeStartSeconds: 17.5,
+        durationSeconds: 60.01,
+        status: "active",
+        revision: 1,
+      }],
+    };
+    const moved = {
+      ...placed,
+      episodes: [{ id: "episode-9", timelineFingerprint: "fingerprint-10" }],
+      timelinePlacements: [{
+        ...placed.timelinePlacements[0]!,
+        trackId: "V3",
+        episodeStartSeconds: 42.25,
+        revision: 2,
+      }],
+    };
+    const fetchMock = jest.fn()
+      .mockImplementationOnce(() => response({ ok: true, workspace: placed }))
+      .mockImplementationOnce(() => response({ ok: true, workspace: moved }));
+    global.fetch = fetchMock;
+    const user = userEvent.setup();
+    const { onPromoted } = renderBin();
+
+    await user.click(screen.getByRole("button", { name: "Browse" }));
+    await user.click(await screen.findByRole("button", { name: "Move to V3 · 00:42.25" }));
+
+    await waitFor(() => expect(onPromoted).toHaveBeenCalledTimes(1));
+    expect(JSON.parse((fetchMock.mock.calls[1]![1] as RequestInit).body as string)).toMatchObject({
+      action: "reposition-timeline-placement",
+      placementId: "timeline-placement-1",
+      expectedRevision: 1,
+      expectedTimelineFingerprint: "fingerprint-9",
+      episodeStartSeconds: 42.25,
+      trackId: "V3",
+    });
+    expect(screen.getByText(/Moved Be Curious from V5 at 00:17.50 to V3 at 00:42.25/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cue V3 · 00:42.25" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "At selected destination" })).toBeDisabled();
+  });
+
+  it("requires confirmation before withdrawing an active Episode placement", async () => {
+    const placed = {
+      ...workspace,
+      timelinePlacements: [{
+        id: "timeline-placement-1",
+        episodeProductionId: "episode-9",
+        cardId: "card-curious",
+        originBoardId: "board-360",
+        originBoardPlacementId: "board-placement-1",
+        trackId: "V5",
+        episodeStartSeconds: 17.5,
+        durationSeconds: 60.01,
+        status: "active",
+        revision: 2,
+      }],
+    };
+    const withdrawn = {
+      ...workspace,
+      episodes: [{ id: "episode-9", timelineFingerprint: "fingerprint-10" }],
+      timelinePlacements: [{
+        ...placed.timelinePlacements[0]!,
+        status: "withdrawn",
+        revision: 3,
+      }],
+    };
+    const fetchMock = jest.fn()
+      .mockImplementationOnce(() => response({ ok: true, workspace: placed }))
+      .mockImplementationOnce(() => response({ ok: true, workspace: withdrawn }));
+    global.fetch = fetchMock;
+    const user = userEvent.setup();
+    const { onPromoted } = renderBin();
+
+    await user.click(screen.getByRole("button", { name: "Browse" }));
+    await user.click(await screen.findByRole("button", { name: "Remove from Episode…" }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("group", { name: "Confirm removal of Be Curious" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Keep clip" }));
+    expect(screen.queryByRole("button", { name: "Confirm remove" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remove from Episode…" }));
+    await user.click(screen.getByRole("button", { name: "Confirm remove" }));
+
+    await waitFor(() => expect(onPromoted).toHaveBeenCalledTimes(1));
+    expect(JSON.parse((fetchMock.mock.calls[1]![1] as RequestInit).body as string)).toMatchObject({
+      action: "withdraw-timeline-placement",
+      placementId: "timeline-placement-1",
+      expectedRevision: 2,
+      expectedTimelineFingerprint: "fingerprint-9",
+    });
+    expect(screen.getByText(/placement receipt, Story card, source range, and original remain retained/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add at 00:42.25" })).toBeInTheDocument();
   });
 
   it("refreshes a stale timeline fingerprint without silently retrying the placement", async () => {

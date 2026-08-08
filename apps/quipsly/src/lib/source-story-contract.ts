@@ -181,6 +181,16 @@ export type WithdrawSourceStoryTimelinePlacementInput = {
   clientRequestId: string;
 };
 
+export type RepositionSourceStoryTimelinePlacementInput = {
+  projectId: string;
+  placementId: string;
+  expectedRevision: number;
+  expectedTimelineFingerprint: string;
+  clientRequestId: string;
+  episodeStartSeconds: number;
+  trackId: string;
+};
+
 export class SourceStoryContractError extends Error {
   readonly code: string;
 
@@ -594,6 +604,27 @@ export function normalizeWithdrawSourceStoryTimelinePlacementInput(value: Withdr
     expectedRevision,
     expectedTimelineFingerprint: sha256Fingerprint(value.expectedTimelineFingerprint, "expectedTimelineFingerprint"),
     clientRequestId: clientRequestId(value.clientRequestId),
+  };
+}
+
+export function normalizeRepositionSourceStoryTimelinePlacementInput(value: RepositionSourceStoryTimelinePlacementInput) {
+  const expectedRevision = Number(value.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
+    throw new SourceStoryContractError("invalid-revision", "The current timeline placement revision is required.");
+  }
+  const trackId = boundedText(value.trackId, "trackId", 8, true).toUpperCase();
+  if (!/^V[1-9][0-9]?$/.test(trackId)) {
+    throw new SourceStoryContractError("invalid-track", "Source Story video must be placed on a video track from V1 through V99.");
+  }
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    projectId: opaqueId(value.projectId, "projectId"),
+    placementId: opaqueId(value.placementId, "placementId"),
+    expectedRevision,
+    expectedTimelineFingerprint: sha256Fingerprint(value.expectedTimelineFingerprint, "expectedTimelineFingerprint"),
+    clientRequestId: clientRequestId(value.clientRequestId),
+    episodeStartSeconds: finiteSeconds(value.episodeStartSeconds, "episodeStartSeconds"),
+    trackId,
   };
 }
 

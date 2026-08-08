@@ -22,6 +22,7 @@ import {
   openStoryBoardSectionWriting,
   readSourceStoryWorkspace,
   promoteSourceStoryCardToEpisode,
+  repositionSourceStoryTimelinePlacement,
   rebindSourceStoryCard,
   reorderStoryBoard,
   updateSourceStoryCard,
@@ -1116,7 +1117,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     });
   });
 
-  it("promotes a verified Story range into the canonical Episode and withdraws it reversibly", async () => {
+  it("promotes, repositions, and withdraws a verified Story range with one reversible ledger", async () => {
     const document = await prisma.studioDocument.create({
       data: { projectId, stableId: `source-story-document-${nonce}`, title: "Episode 9 source build", projectionStatus: "review", isPrivate: false },
     });
@@ -1161,17 +1162,51 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     const promotedWorkspace = await readSourceStoryWorkspace(prisma, projectId);
     const promotedEpisode = promotedWorkspace.episodes.find((candidate) => candidate.id === episode.id)!;
     expect(promotedEpisode).toMatchObject({ clipCount: 1, timelineDurationSeconds: 6.5 });
-    const withdrawRequestId = randomUUID();
-    const withdrawValue = {
+    const repositionRequestId = randomUUID();
+    const repositionValue = {
       projectId,
       placementId: promoted.placement.id,
       expectedRevision: 1,
       expectedTimelineFingerprint: promotedEpisode.timelineFingerprint,
+      clientRequestId: repositionRequestId,
+      episodeStartSeconds: 12.5,
+      trackId: "v4",
+    };
+    const repositioned = await repositionSourceStoryTimelinePlacement({ prisma, actorUserId, value: repositionValue });
+    expect(repositioned).toMatchObject({
+      replayed: false,
+      placement: { status: "active", revision: 2, trackId: "V4", episodeStartSeconds: 12.5 },
+    });
+    await expect(repositionSourceStoryTimelinePlacement({ prisma, actorUserId, value: repositionValue })).resolves.toMatchObject({
+      replayed: true,
+      placement: { revision: 2, trackId: "V4", episodeStartSeconds: 12.5 },
+    });
+    await expect(repositionSourceStoryTimelinePlacement({
+      prisma,
+      actorUserId,
+      value: { ...repositionValue, trackId: "V5" },
+    })).rejects.toMatchObject({ code: "request-reuse-conflict", currentRevision: 2 });
+    const afterReposition = await prisma.studioEpisodeProduction.findUniqueOrThrow({ where: { id: episode.id } });
+    expect(timelineStateFromEpisodeArtifact(afterReposition.timelineJson).clips).toEqual([
+      expect.objectContaining({
+        id: promoted.placement.clipId,
+        trackId: "V4",
+        startIn: 12.5,
+        generatedFrom: "quipsly-source-story-reposition-v1",
+        sourceStory: expect.objectContaining({ placementId: promoted.placement.id }),
+      }),
+    ]);
+    const withdrawRequestId = randomUUID();
+    const withdrawValue = {
+      projectId,
+      placementId: promoted.placement.id,
+      expectedRevision: 2,
+      expectedTimelineFingerprint: repositioned.episode!.timelineFingerprint,
       clientRequestId: withdrawRequestId,
     };
     const withdrawn = await withdrawSourceStoryTimelinePlacement({ prisma, actorUserId, value: withdrawValue });
-    expect(withdrawn).toMatchObject({ replayed: false, placement: { status: "withdrawn", revision: 2 } });
-    await expect(withdrawSourceStoryTimelinePlacement({ prisma, actorUserId, value: withdrawValue })).resolves.toMatchObject({ replayed: true, placement: { revision: 2 } });
+    expect(withdrawn).toMatchObject({ replayed: false, placement: { status: "withdrawn", revision: 3 } });
+    await expect(withdrawSourceStoryTimelinePlacement({ prisma, actorUserId, value: withdrawValue })).resolves.toMatchObject({ replayed: true, placement: { revision: 3 } });
     const afterWithdrawal = await prisma.studioEpisodeProduction.findUniqueOrThrow({ where: { id: episode.id } });
     expect(timelineStateFromEpisodeArtifact(afterWithdrawal.timelineJson).clips).toEqual([]);
     expect(normalizeEpisodeArtifact(afterWithdrawal.timelineJson)?.importedMedia).toEqual([]);
@@ -1179,7 +1214,8 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     expect(await prisma.studioSourceRange.findUnique({ where: { id: firstRangeId } })).not.toBeNull();
     expect(await prisma.studioStoryTimelinePlacementOperation.findMany({ where: { placementId: promoted.placement.id }, orderBy: { revision: "asc" }, select: { revision: true, operation: true } })).toEqual([
       { revision: 1, operation: "promote" },
-      { revision: 2, operation: "withdraw" },
+      { revision: 2, operation: "reposition" },
+      { revision: 3, operation: "withdraw" },
     ]);
   });
 

@@ -64,6 +64,7 @@ import {
   openStoryBoardSectionWriting,
   readSourceStoryWorkspace,
   promoteSourceStoryCardToEpisode,
+  repositionSourceStoryTimelinePlacement,
   rebindSourceStoryCard,
   reorderStoryBoard,
   updateSourceStoryCard,
@@ -722,6 +723,20 @@ export async function POST(
           expectedRevision: Number(body.expectedRevision),
           expectedTimelineFingerprint: text(body.expectedTimelineFingerprint),
           clientRequestId: text(body.clientRequestId),
+        },
+      });
+    } else if (action === "reposition-timeline-placement") {
+      operation = await repositionSourceStoryTimelinePlacement({
+        prisma,
+        actorUserId: actor.userId,
+        value: {
+          projectId: actor.projectId,
+          placementId: text(body.placementId),
+          expectedRevision: Number(body.expectedRevision),
+          expectedTimelineFingerprint: text(body.expectedTimelineFingerprint),
+          clientRequestId: text(body.clientRequestId),
+          episodeStartSeconds: Number(body.episodeStartSeconds),
+          trackId: text(body.trackId),
         },
       });
     } else if (action === "queue-spatial-reframe") {

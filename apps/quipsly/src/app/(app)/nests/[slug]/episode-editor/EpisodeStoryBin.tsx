@@ -69,6 +69,7 @@ type StoryWorkspace = {
     episodeStartSeconds: number;
     durationSeconds: number;
     status: string;
+    revision: number;
   }>;
   boards: StoryBoard[];
 };
@@ -165,6 +166,7 @@ export function EpisodeStoryBin({
   const [pendingCardId, setPendingCardId] = useState<string | null>(null);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [audition, setAudition] = useState<SourceAudition | null>(null);
+  const [confirmWithdrawPlacementId, setConfirmWithdrawPlacementId] = useState<string | null>(null);
   const [message, setMessage] = useState("Browse retained selects without copying their originals.");
   const auditionRef = useRef<HTMLVideoElement>(null);
 
@@ -212,6 +214,7 @@ export function EpisodeStoryBin({
   useEffect(() => {
     auditionRef.current?.pause();
     setAudition(null);
+    setConfirmWithdrawPlacementId(null);
   }, [selectedBoardId]);
   const groups = useMemo(() => {
     if (!selectedBoard) return [];
@@ -393,6 +396,58 @@ export function EpisodeStoryBin({
       setMessage(
         `${promotedIds.length ? `${promotedIds.length} select${promotedIds.length === 1 ? " was" : "s were"} added. ` : ""}${error instanceof Error ? error.message : "The remaining sequence could not be added."}${refreshWarning}`,
       );
+    } finally {
+      setPendingCardId(null);
+    }
+  }
+
+  async function revisePlacement(
+    action: "reposition-timeline-placement" | "withdraw-timeline-placement",
+    placement: StoryWorkspace["timelinePlacements"][number],
+    cardTitle: string,
+  ) {
+    const projectedEpisode = workspace?.episodes.find((candidate) => candidate.id === episode.id);
+    if (!projectedEpisode) {
+      setMessage("This Episode is not in the current Story projection. Refresh before changing the placement.");
+      return;
+    }
+    const pendingId = `${action}:${placement.id}`;
+    setPendingCardId(pendingId);
+    setMessage(action === "reposition-timeline-placement"
+      ? `Moving ${cardTitle} to ${trackId} at ${clock(playhead)}…`
+      : `Removing ${cardTitle} from this Episode…`);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          placementId: placement.id,
+          expectedRevision: placement.revision,
+          expectedTimelineFingerprint: projectedEpisode.timelineFingerprint,
+          clientRequestId: requestId(),
+          ...(action === "reposition-timeline-placement"
+            ? { episodeStartSeconds: playhead, trackId }
+            : {}),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        setConfirmWithdrawPlacementId(null);
+        await loadWorkspace("The Episode timeline changed before that placement could be revised. It is refreshed now; review it before trying again.");
+        return;
+      }
+      if (!response.ok) throw new Error(errorMessage(body, "The Episode placement could not be revised."));
+      const next = (body as { workspace?: StoryWorkspace }).workspace;
+      if (!next) throw new Error("The placement changed without a refreshed Story projection.");
+      setWorkspace(next);
+      setConfirmWithdrawPlacementId(null);
+      const refreshWarning = await refreshEditorProjection();
+      setMessage(action === "reposition-timeline-placement"
+        ? `Moved ${cardTitle} from ${placement.trackId} at ${clock(placement.episodeStartSeconds)} to ${trackId} at ${clock(playhead)}. Its source range and original remain unchanged.${refreshWarning}`
+        : `Removed ${cardTitle} from this Episode. The placement receipt, Story card, source range, and original remain retained.${refreshWarning}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The Episode placement could not be revised.");
     } finally {
       setPendingCardId(null);
     }
@@ -590,13 +645,60 @@ export function EpisodeStoryBin({
                             </label>
                           ) : null}
                           {activePlacement ? (
-                            <button
-                              type="button"
-                              onClick={() => onCue(activePlacement.episodeStartSeconds)}
-                              className="min-h-9 rounded-lg bg-violet-700 px-3 text-xs font-black text-white"
-                            >
-                              Cue {activePlacement.trackId} · {clock(activePlacement.episodeStartSeconds)}
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onCue(activePlacement.episodeStartSeconds)}
+                                className="min-h-9 rounded-lg bg-violet-700 px-3 text-xs font-black text-white"
+                              >
+                                Cue {activePlacement.trackId} · {clock(activePlacement.episodeStartSeconds)}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={
+                                  !canEdit ||
+                                  pendingCardId !== null ||
+                                  (activePlacement.trackId === trackId && Math.abs(activePlacement.episodeStartSeconds - playhead) < 0.0005)
+                                }
+                                onClick={() => void revisePlacement("reposition-timeline-placement", activePlacement, card.title)}
+                                className="min-h-9 rounded-lg border border-[#d8ad56]/70 px-3 text-xs font-black text-[#f3d991] disabled:opacity-35"
+                              >
+                                {pendingCardId === `reposition-timeline-placement:${activePlacement.id}`
+                                  ? "Moving…"
+                                  : activePlacement.trackId === trackId && Math.abs(activePlacement.episodeStartSeconds - playhead) < 0.0005
+                                    ? "At selected destination"
+                                    : `Move to ${trackId} · ${clock(playhead)}`}
+                              </button>
+                              {confirmWithdrawPlacementId === activePlacement.id ? (
+                                <span className="inline-flex flex-wrap gap-2 rounded-lg border border-rose-700/70 bg-rose-950/30 p-1" role="group" aria-label={`Confirm removal of ${card.title}`}>
+                                  <button
+                                    type="button"
+                                    disabled={!canEdit || pendingCardId !== null}
+                                    onClick={() => void revisePlacement("withdraw-timeline-placement", activePlacement, card.title)}
+                                    className="min-h-8 rounded-md bg-rose-600 px-3 text-[10px] font-black text-white disabled:opacity-40"
+                                  >
+                                    {pendingCardId === `withdraw-timeline-placement:${activePlacement.id}` ? "Removing…" : "Confirm remove"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={pendingCardId !== null}
+                                    onClick={() => setConfirmWithdrawPlacementId(null)}
+                                    className="min-h-8 rounded-md px-3 text-[10px] font-black text-rose-100 disabled:opacity-40"
+                                  >
+                                    Keep clip
+                                  </button>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={!canEdit || pendingCardId !== null}
+                                  onClick={() => setConfirmWithdrawPlacementId(activePlacement.id)}
+                                  className="min-h-9 rounded-lg border border-rose-900/80 px-3 text-xs font-black text-rose-200 disabled:opacity-40"
+                                >
+                                  Remove from Episode…
+                                </button>
+                              )}
+                            </>
                           ) : (
                             <button
                               type="button"

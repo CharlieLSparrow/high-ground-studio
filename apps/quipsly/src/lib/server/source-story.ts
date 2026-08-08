@@ -30,6 +30,7 @@ import {
   normalizeOpenStoryBoardSectionWritingInput,
   normalizeRebindSourceStoryCardInput,
   normalizePromoteSourceStoryCardInput,
+  normalizeRepositionSourceStoryTimelinePlacementInput,
   normalizeStoryReframeRecipe,
   normalizeUpdateStoryBoardSectionInput,
   normalizeWithdrawSourceStoryTimelinePlacementInput,
@@ -45,6 +46,7 @@ import {
   type OpenStoryBoardSectionWritingInput,
   type RebindSourceStoryCardInput,
   type PromoteSourceStoryCardInput,
+  type RepositionSourceStoryTimelinePlacementInput,
   type WithdrawSourceStoryTimelinePlacementInput,
   type StoryCardPurpose,
   type StoryCardStatus,
@@ -3255,6 +3257,187 @@ export async function withdrawSourceStoryTimelinePlacement(input: {
                 afterFingerprint,
                 clipId: placement.clipId,
                 withdrawnAt,
+              }),
+            },
+          },
+        },
+      });
+      return {
+        placement: sourceStoryPublicPlacement(updated),
+        replayed: false,
+        episode: {
+          id: episode.id,
+          slug: episode.slug,
+          timelineFingerprint: afterFingerprint,
+        },
+      };
+    },
+    { isolationLevel: "Serializable" },
+  );
+}
+
+export async function repositionSourceStoryTimelinePlacement(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  value: RepositionSourceStoryTimelinePlacementInput;
+}) {
+  const value = normalizeRepositionSourceStoryTimelinePlacementInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const requestSha256 = sha256(stableSourceStoryJson(value));
+
+  return input.prisma.$transaction(
+    async (tx) => {
+      const placement = await tx.studioStoryTimelinePlacement.findFirst({
+        where: { id: value.placementId, projectId: value.projectId },
+        include: {
+          episodeProduction: {
+            include: { project: { select: { slug: true } } },
+          },
+          operations: {
+            where: { actorUserId, clientRequestId: value.clientRequestId },
+            take: 1,
+          },
+        },
+      });
+      if (!placement)
+        throw new SourceStoryContractError(
+          "timeline-placement-missing",
+          "That Story timeline placement is unavailable in this Nest.",
+        );
+      const replay = placement.operations[0];
+      if (replay) {
+        if (replay.requestSha256 !== requestSha256)
+          throw new SourceStoryConflictError(
+            "request-reuse-conflict",
+            "That request identity already repositioned this placement differently.",
+            placement.revision,
+          );
+        return {
+          placement: sourceStoryPublicPlacement(placement),
+          replayed: true,
+        };
+      }
+      if (placement.revision !== value.expectedRevision)
+        throw new SourceStoryConflictError(
+          "stale-timeline-placement",
+          "That timeline placement changed before it could be repositioned.",
+          placement.revision,
+        );
+      if (placement.status !== "active")
+        throw new SourceStoryConflictError(
+          "timeline-placement-not-active",
+          "That Story clip is no longer active in the Episode.",
+          placement.revision,
+        );
+
+      const episode = placement.episodeProduction;
+      const currentArtifact = normalizeEpisodeArtifact(episode.timelineJson);
+      const timeline = timelineStateFromEpisodeArtifact(episode.timelineJson);
+      const beforeFingerprint = episodeFingerprintSha256(timeline);
+      if (beforeFingerprint !== value.expectedTimelineFingerprint)
+        throw new SourceStoryConflictError(
+          "stale-episode-timeline",
+          "The Episode timeline changed before this Story clip could be repositioned.",
+        );
+      const currentClip = timeline.clips.find(
+        (clip) => clip.id === placement.clipId,
+      );
+      if (!currentClip)
+        throw new SourceStoryConflictError(
+          "timeline-clip-missing",
+          "The canonical Episode no longer contains this placement clip.",
+          placement.revision,
+        );
+      if (currentClip.sourceStory?.placementId !== placement.id)
+        throw new SourceStoryConflictError(
+          "timeline-binding-mismatch",
+          "The canonical Episode clip no longer carries this Story placement receipt.",
+          placement.revision,
+        );
+
+      const nextClip: TimelineClip = {
+        ...currentClip,
+        trackId: value.trackId,
+        startIn: value.episodeStartSeconds,
+        generatedFrom: "quipsly-source-story-reposition-v1",
+      };
+      const nextTimeline: TimelineState = {
+        ...timeline,
+        clips: timeline.clips.map((clip) =>
+          clip.id === placement.clipId ? nextClip : clip,
+        ),
+      };
+      const repositionedAt = new Date().toISOString();
+      const artifact = buildEpisodeArtifactPayload({
+        timeline: nextTimeline,
+        projectSlug: episode.project.slug,
+        episodeSlug: episode.slug,
+        generatedFrom: "quipsly-source-story-reposition-v1",
+        savedAt: repositionedAt,
+        source: "quipsly-editor",
+      });
+      artifact.importedMedia = currentArtifact?.importedMedia ?? [];
+      const priorProduction = jsonRecord(episode.productionJson) ?? {};
+      const productionJson = {
+        ...priorProduction,
+        importedMedia: artifact.importedMedia,
+        timelineClips: artifact.timelineClips,
+        lastSourceStoryReposition: {
+          placementId: placement.id,
+          clipId: placement.clipId,
+          from: {
+            trackId: placement.trackId,
+            episodeStartSeconds: placement.episodeStartSeconds,
+          },
+          to: {
+            trackId: value.trackId,
+            episodeStartSeconds: value.episodeStartSeconds,
+          },
+          repositionedAt,
+          sourceMediaUnchanged: true,
+          publicationNotStarted: true,
+        },
+      };
+      const afterFingerprint = episodeFingerprintSha256(nextTimeline);
+      const nextRevision = placement.revision + 1;
+      await tx.studioEpisodeProduction.update({
+        where: { id: episode.id },
+        data: {
+          timelineJson: prismaJson(artifact),
+          transcriptJson: prismaJson(artifact),
+          productionJson: prismaJson(productionJson),
+        },
+      });
+      const updated = await tx.studioStoryTimelinePlacement.update({
+        where: { id: placement.id },
+        data: {
+          trackId: value.trackId,
+          episodeStartSeconds: value.episodeStartSeconds,
+          revision: nextRevision,
+          timelineFingerprintAfterSha256: afterFingerprint,
+          timelineClipJson: prismaJson(nextClip),
+          updatedByUserId: actorUserId,
+          operations: {
+            create: {
+              revision: nextRevision,
+              previousRevision: placement.revision,
+              operation: "reposition",
+              actorUserId,
+              clientRequestId: value.clientRequestId,
+              requestSha256,
+              snapshotJson: prismaJson({
+                beforeFingerprint,
+                afterFingerprint,
+                from: {
+                  trackId: placement.trackId,
+                  episodeStartSeconds: placement.episodeStartSeconds,
+                },
+                to: {
+                  trackId: value.trackId,
+                  episodeStartSeconds: value.episodeStartSeconds,
+                },
+                clipId: placement.clipId,
+                repositionedAt,
               }),
             },
           },

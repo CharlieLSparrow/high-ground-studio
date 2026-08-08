@@ -5465,8 +5465,9 @@ model StudioStoryTimelinePlacement {
   @@index([originBoardPlacementId])
 }
 
-// Append-only promotion and withdrawal ledger. Every operation binds the
-// exact before/after timeline fingerprints and the normalized request hash.
+// Append-only promotion, reposition, withdrawal, and reconciliation ledger.
+// Every operation binds exact before/after timeline fingerprints and the
+// normalized request hash.
 model StudioStoryTimelinePlacementOperation {
   id               String   @id @default(cuid())
   placementId      String

@@ -83,6 +83,15 @@ repositions the remainder silently. A projection-refresh failure is also
 reported separately from placement success so a saved edit is never described
 as failed merely because the browser needs reloading.
 
+Placed cards remain editable through the same canonical source bin. A move is
+not client-only geometry: `reposition-timeline-placement` requires the current
+placement revision and Episode fingerprint, rewrites the canonical clip's
+track/time transactionally, and appends an immutable before/after operation
+receipt. A timeline change returns a collaboration conflict and is never
+retried silently. Withdrawal requires an explicit confirmation in the editor;
+it removes the canonical clip while retaining the placement history, Story
+card, source range, and original package.
+
 ## Board sections and writing
 
 A section label cannot be the identity of a Scrivener-style binder item. `StudioStoryBoardSection` is therefore the durable board-owned section behind each placement `groupKey`. Its stable ID, board-scoped key, title, synopsis, order, revision, and optional writing document survive even when every card is moved elsewhere.

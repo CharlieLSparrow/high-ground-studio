@@ -8391,7 +8391,13 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
 - Added an in-editor exact-range audition player over the same authenticated
   collaboration proxy. It begins at the card's immutable In, stops at Out,
   constrains replay to that receipt, and never projects a provider locator.
-- Nineteen focused Episode UI tests, sixteen local PostgreSQL Source Story
+- Added canonical placement revision from the same source bin: creators can
+  move an active Story clip to the shared playhead/track or withdraw it after
+  confirmation. Reposition is a serializable database transaction with an
+  idempotent request identity, expected placement revision, exact Episode
+  fingerprint, and append-only before/after receipt. No drag-only truth was
+  introduced.
+- Twenty-one focused Episode UI tests, sixteen local PostgreSQL Source Story
   integration tests, and the full Quipsly TypeScript check pass. The retained
   Episode 5 operation proved the exact eight-sample visual receipt reaches the
   board card projection, the authenticated Story/Writing/Editor surfaces
