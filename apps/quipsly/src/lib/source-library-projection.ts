@@ -43,7 +43,7 @@ export type SourceLibraryExternal = {
     id: string;
     durationSeconds: number | null;
     collaborationProxy: null | { id: string };
-    visualOverview?: null | { id: string; playbackUrl: string };
+    visualOverview?: SourceLibraryVisualOverview | null;
   };
 };
 
@@ -64,7 +64,7 @@ export type SourceLibrarySet = {
     };
     collaborationProxy: null | { id: string };
     spatialStitchMaster: null | { id: string };
-    visualOverview?: null | { id: string; playbackUrl: string };
+    visualOverview?: SourceLibraryVisualOverview | null;
   };
   members: Array<{
     requiredForRender: boolean;
@@ -99,6 +99,16 @@ export type SourceLibraryBoard = {
   placements: Array<{ cardId: string }>;
 };
 
+export type SourceLibraryVisualOverview = {
+  id: string;
+  playbackUrl: string;
+  navigationFrames: null | {
+    columns: number;
+    rows: number;
+    sampleTimesSeconds: number[];
+  };
+};
+
 export type SourceLibraryItem = {
   key: string;
   /**
@@ -117,6 +127,12 @@ export type SourceLibraryItem = {
   durationSeconds: number | null;
   sizeBytes: string | null;
   thumbnailUrl: string | null;
+  /**
+   * Checksum-bound contact-sheet navigation, kept separate from an ordinary
+   * thumbnail so the UI can crop its source-time cells instead of squeezing
+   * the complete sprite sheet into one misleading image.
+   */
+  visualOverview: SourceLibraryVisualOverview | null;
   health: "render-ready" | "browse-ready" | "needs-attention";
   healthLabel: string;
   selectCount: number;
@@ -313,6 +329,7 @@ export function buildSourceLibraryItems(input: {
       sizeBytes,
       thumbnailUrl:
         sourceSet.sourceClockRevision.visualOverview?.playbackUrl ?? null,
+      visualOverview: sourceSet.sourceClockRevision.visualOverview ?? null,
       health,
       healthLabel: renderReady
         ? "Browse and final render ready"
@@ -389,6 +406,8 @@ export function buildSourceLibraryItems(input: {
       thumbnailUrl:
         representative.latestSourceRevision?.visualOverview?.playbackUrl ??
         null,
+      visualOverview:
+        representative.latestSourceRevision?.visualOverview ?? null,
       health: proxyReady ? "browse-ready" : "needs-attention",
       healthLabel: proxyReady
         ? "Browse ready · originals remain in Drive"
@@ -439,6 +458,7 @@ export function buildSourceLibraryItems(input: {
       sizeBytes: source.sizeBytes,
       thumbnailUrl:
         source.latestSourceRevision?.visualOverview?.playbackUrl ?? null,
+      visualOverview: source.latestSourceRevision?.visualOverview ?? null,
       health,
       healthLabel:
         accessReady && proxyReady
@@ -474,6 +494,7 @@ export function buildSourceLibraryItems(input: {
       durationSeconds: asset.duration,
       sizeBytes: asset.sizeBytes,
       thumbnailUrl: asset.thumbnailUrl,
+      visualOverview: null,
       health: asset.isProxy ? "browse-ready" : "render-ready",
       healthLabel: asset.isProxy ? "Browse proxy" : "Registered source ready",
       ...usageFields(key, usage),

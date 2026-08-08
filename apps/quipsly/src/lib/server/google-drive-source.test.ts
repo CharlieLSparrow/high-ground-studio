@@ -397,4 +397,114 @@ describe("Google Drive file verification", () => {
       ],
     });
   });
+
+  it("keeps complete, empty, and zero-byte camera batches visible while a real library is still uploading", async () => {
+    const folderMime = "application/vnd.google-apps.folder";
+    const batchFolders = [
+      {
+        id: "batch_complete",
+        name: "VID_20260128_173606_00_025_027-Original",
+        mimeType: folderMime,
+      },
+      {
+        id: "batch_empty",
+        name: "VID_20260117_094111_00_030_032-Original",
+        mimeType: folderMime,
+      },
+      {
+        id: "batch_zero",
+        name: "VID_20260114_145426_00_025_027-Original",
+        mimeType: folderMime,
+      },
+    ];
+    const completeFiles = ["025", "026", "027"].flatMap((segment) => [
+      {
+        id: `insv_${segment}`,
+        name: `VID_20260128_173606_00_${segment}.insv`,
+        mimeType: "video/3gpp",
+        size: "30000000000",
+        capabilities: { canDownload: true },
+      },
+      {
+        id: `lrv_${segment}`,
+        name: `LRV_20260128_173606_01_${segment}.lrv`,
+        mimeType: "video/3gpp",
+        size: "1900000000",
+        capabilities: { canDownload: true },
+      },
+    ]);
+    const fetchImpl = jest.fn(async (url: string | URL | Request) => {
+      const value = new URL(String(url));
+      if (value.pathname.endsWith("/real_library_root")) {
+        return new Response(
+          JSON.stringify({
+            id: "real_library_root",
+            name: "Homer Insta360 source library",
+            mimeType: folderMime,
+          }),
+          { status: 200 },
+        );
+      }
+      const query = value.searchParams.get("q");
+      if (query === "'real_library_root' in parents and trashed = false") {
+        return new Response(JSON.stringify({ files: batchFolders }), {
+          status: 200,
+        });
+      }
+      if (query === "'batch_complete' in parents and trashed = false") {
+        return new Response(JSON.stringify({ files: completeFiles }), {
+          status: 200,
+        });
+      }
+      if (query === "'batch_empty' in parents and trashed = false") {
+        return new Response(JSON.stringify({ files: [] }), { status: 200 });
+      }
+      expect(query).toBe("'batch_zero' in parents and trashed = false");
+      return new Response(
+        JSON.stringify({
+          files: [
+            {
+              id: "zero_lrv_027",
+              name: "LRV_20260114_145426_01_027.lrv",
+              mimeType: "application/octet-stream",
+              size: "0",
+              capabilities: { canDownload: true },
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const result = await readGoogleDriveMediaFolder({
+      accessToken: "token",
+      connectionId: "connection_01",
+      folderId: "real_library_root",
+      fetchImpl,
+    });
+
+    expect(result.plan).toMatchObject({
+      status: "partial",
+      totalFiles: 7,
+      readySegmentCount: 3,
+      heldSegmentCount: 6,
+      batches: expect.arrayContaining([
+        expect.objectContaining({
+          status: "ready",
+          readySegmentCount: 3,
+          heldSegmentCount: 0,
+        }),
+        expect.objectContaining({
+          status: "partial",
+          readySegmentCount: 0,
+          heldSegmentCount: 3,
+        }),
+        expect.objectContaining({
+          status: "partial",
+          readySegmentCount: 0,
+          heldSegmentCount: 3,
+        }),
+      ]),
+    });
+  });
 });

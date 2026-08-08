@@ -7,6 +7,15 @@ import {
 } from "./source-library-projection";
 
 const proxy = { id: "proxy-1" };
+const visualOverview = {
+  id: "visual-1",
+  playbackUrl: "/api/media/derivatives/visual-1",
+  navigationFrames: {
+    columns: 4,
+    rows: 2,
+    sampleTimesSeconds: [3.75, 11.25, 18.75, 26.25, 33.75, 41.25, 48.75, 56.25],
+  },
+};
 
 describe("source library projection", () => {
   const sourceSets = [
@@ -27,6 +36,7 @@ describe("source library projection", () => {
         },
         collaborationProxy: proxy,
         spatialStitchMaster: null,
+        visualOverview,
       },
       members: [
         {
@@ -162,6 +172,7 @@ describe("source library projection", () => {
       selectedCount: 1,
       boardCount: 1,
       isWorking: true,
+      visualOverview,
     });
     expect(sourceLibraryStats(items)).toEqual({
       total: 3,
@@ -285,6 +296,7 @@ describe("source library projection", () => {
           id: "drive-lrv-revision",
           durationSeconds: 120,
           collaborationProxy: proxy,
+          visualOverview,
         },
       },
     ];
@@ -305,6 +317,7 @@ describe("source library projection", () => {
         sizeBytes: "30900000000",
         health: "browse-ready",
         healthLabel: "Browse ready · originals remain in Drive",
+        visualOverview,
       }),
     ]);
     expect(

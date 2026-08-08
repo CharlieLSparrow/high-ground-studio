@@ -62,6 +62,7 @@ import { CollaborationThread } from "@/components/session-thread";
 import { createNestQuickWorkAction } from "../actions";
 
 import { GoogleDriveSourcePicker } from "./GoogleDriveSourcePicker";
+import { SourceLibraryVisualMap } from "./SourceLibraryVisualMap";
 import {
   EquirectangularVideoViewer,
   type SpatialView,
@@ -3147,7 +3148,13 @@ export function SourceStoryClient({
                           <span
                             className={`relative grid w-full place-items-center overflow-hidden rounded-xl bg-[#e9dfcf] text-[#795a35] ${sourceViewMode === "grid" ? "aspect-video" : "h-16"}`}
                           >
-                            {item.thumbnailUrl ? (
+                            {item.visualOverview?.navigationFrames ? (
+                              <SourceLibraryVisualMap
+                                visualOverview={item.visualOverview}
+                                sourceLabel={item.name}
+                                compact={sourceViewMode === "list"}
+                              />
+                            ) : item.thumbnailUrl ? (
                               <img
                                 src={item.thumbnailUrl}
                                 alt=""

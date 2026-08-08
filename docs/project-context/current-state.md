@@ -2,6 +2,25 @@
 
 Date: 2026-08-07
 
+## Source-library visual-map checkpoint
+
+- Source-library cards now distinguish a checksum-bound contact-sheet sprite
+  from an ordinary thumbnail. Camera packages preserve the derivative grid and
+  exact source-time samples in their logical library projection rather than
+  flattening the complete sheet into one unreadable image.
+- Grid cards show representative first, middle, and last source-clock cells;
+  compact list cards show the endpoints. They reuse one protected derivative,
+  add no copied media or per-card thumbnail jobs, and expose an accessible
+  description of the sample count and covered source-time range.
+- The full source viewer remains the deliberate inspection surface: opening a
+  card reveals every retained filmstrip frame, waveform, and exact In/Out
+  transport. The browse map is an orientation aid, not an editing decision.
+- Read-only inspection of a real eight-batch shared Drive library confirmed the
+  existing intake boundary matches working Insta360 storage: one root may own
+  direct capture-batch folders, each batch may contain multiple INSV/LRV
+  segments, zero-byte or not-yet-uploaded members stay held, and completed
+  packages remain logical camera units instead of loose files.
+
 ## Real Episode 5 source-navigation checkpoint
 
 - The retained Episode 5 segment-4 source story now addresses its source by

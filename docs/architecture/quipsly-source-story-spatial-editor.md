@@ -2,6 +2,21 @@
 
 Status: implemented local production slice, 2026-08-07
 
+## Source-library visual maps
+
+`StudioMediaDerivative(kind = source-contact-sheet)` is a navigation sprite,
+not a conventional thumbnail. The source-library projection carries its
+protected playback URL together with the verified `columns`, `rows`, and
+ordered `sampleTimesSeconds`. Browse cards crop representative cells from that
+one derivative; they must never squeeze the full sprite into one frame or
+create new media merely to decorate the library.
+
+The compact browse map deliberately answers only “what part of this source is
+this?” Opening the logical source remains the path to all checksum-bound visual
+samples, measured audio evidence, exact source-clock seeking, and reviewed
+range creation. Incomplete Drive packages do not receive invented maps: they
+remain held until a real collaboration proxy and its derivative exist.
+
 ## Product decision
 
 Quipsly treats a 360 camera take as one immutable source package, not as a loose pile of files and not as a pre-flattened video. The browser uses a lightweight equirectangular proxy for looking around, marking ranges, writing cards, and saving reversible camera moves. A final-quality flat render resolves the exact INSV package through an approved stitch master and applies the saved view recipe only when an Episode placement needs pixels.
@@ -17,13 +32,13 @@ The experience remains one Quipsly workflow. The user should not need to underst
 
 ## Media roles
 
-| Media | Purpose | Authority |
-| --- | --- | --- |
-| INSV package members | Exact camera originals | Immutable, checksum-bound final source |
-| LRV/collaboration proxy | Fast browser viewing and 360 selection | Browse only; never accepted as final render input |
-| Reviewed 5760×2880 stitch master | Full-source stabilized equirectangular intermediate | Verified derivative bound to exact INSV members and an Insta360 Studio review receipt |
-| 720p spatial proof | Fast collaborative review of one saved camera recipe | Non-public review derivative |
-| 4K spatial edit source | High-quality flat input for the Episode editor and local final assembly | Non-public edit derivative |
+| Media                            | Purpose                                                                 | Authority                                                                             |
+| -------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| INSV package members             | Exact camera originals                                                  | Immutable, checksum-bound final source                                                |
+| LRV/collaboration proxy          | Fast browser viewing and 360 selection                                  | Browse only; never accepted as final render input                                     |
+| Reviewed 5760×2880 stitch master | Full-source stabilized equirectangular intermediate                     | Verified derivative bound to exact INSV members and an Insta360 Studio review receipt |
+| 720p spatial proof               | Fast collaborative review of one saved camera recipe                    | Non-public review derivative                                                          |
+| 4K spatial edit source           | High-quality flat input for the Episode editor and local final assembly | Non-public edit derivative                                                            |
 
 Google Drive or another connected vault may remain the authority for ordinary source video. Quipsly retains provider identity and immutable revision evidence, generates only the proxy or derivative required for collaboration, and resolves original bytes at final render. Drive is not treated as a frame-serving edit backend and no bearer locator is returned to the browser.
 

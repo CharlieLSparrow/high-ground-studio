@@ -372,7 +372,7 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
         ? [["honest unstitched preview", "360° camera preview · unstitched"]]
         : []),
       ...(projectedSourceSet?.sourceClockRevision?.visualOverview
-        ? [["visual source navigation", "Visual filmstrip"]]
+        ? [["visual source navigation", "Visual filmstrip"], ["source-bin visual map", "visual map with 8 source-time samples"]]
         : []),
       ...(projectedSourceSet?.sourceClockRevision?.audioNavigation?.status === "output-ready"
         ? [
