@@ -100,6 +100,13 @@ export type SourceLibraryBoard = {
 
 export type SourceLibraryItem = {
   key: string;
+  /**
+   * Stable source identities represented by this one logical library item.
+   * A camera package can own several provider files, but every old or shared
+   * member link must still resolve to the package instead of stranding the
+   * viewer on a proprietary original that cannot be scrubbed in a browser.
+   */
+  selectionAliases: string[];
   kind: "source-set" | "external" | "asset";
   id: string;
   name: string;
@@ -270,6 +277,13 @@ export function buildSourceLibraryItems(input: {
       .toString();
     items.push({
       key,
+      selectionAliases: [
+        key,
+        ...sourceSet.members.flatMap((member) => {
+          const externalId = member.sourceRevision.externalReference?.id;
+          return externalId ? [`external:${externalId}`] : [];
+        }),
+      ],
       kind: "source-set",
       id: sourceSet.id,
       name: sourceSet.displayName,
@@ -334,6 +348,7 @@ export function buildSourceLibraryItems(input: {
       .toString();
     items.push({
       key,
+      selectionAliases: sources.map((source) => `external:${source.id}`),
       kind: "external",
       id: representative.id,
       name: representative.sourceUnit.title,
@@ -387,6 +402,7 @@ export function buildSourceLibraryItems(input: {
           : "needs-attention";
     items.push({
       key,
+      selectionAliases: [key],
       kind: "external",
       id: source.id,
       name: source.fileName,
@@ -424,6 +440,7 @@ export function buildSourceLibraryItems(input: {
     const key = `asset:${asset.id}`;
     items.push({
       key,
+      selectionAliases: [key],
       kind: "asset",
       id: asset.id,
       name: asset.filename,
@@ -445,6 +462,19 @@ export function buildSourceLibraryItems(input: {
   }
 
   return items;
+}
+
+/** Resolve a raw provider/member URL to the one logical item shown in the bin. */
+export function resolveSourceLibraryItem(
+  items: SourceLibraryItem[],
+  requestedKey: string | null,
+) {
+  if (!requestedKey) return null;
+  return (
+    items.find((item) => item.key === requestedKey) ??
+    items.find((item) => item.selectionAliases.includes(requestedKey)) ??
+    null
+  );
 }
 
 export function filterSourceLibraryItems(

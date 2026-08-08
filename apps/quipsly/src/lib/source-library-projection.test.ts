@@ -2,6 +2,7 @@ import {
   buildSourceLibraryItems,
   filterSourceLibraryItems,
   groupSourceLibraryItems,
+  resolveSourceLibraryItem,
   sourceLibraryStats,
 } from "./source-library-projection";
 
@@ -147,6 +148,12 @@ describe("source library projection", () => {
       "asset:asset-1",
     ]);
     expect(items[0]).toMatchObject({
+      selectionAliases: [
+        "source-set:set-1",
+        "external:external-a",
+        "external:external-b",
+        "external:external-lrv",
+      ],
       mimeFamily: "360",
       health: "browse-ready",
       sizeBytes: "240",
@@ -263,6 +270,7 @@ describe("source library projection", () => {
     expect(items).toEqual([
       expect.objectContaining({
         key: "external:drive-lrv",
+        selectionAliases: ["external:drive-insv", "external:drive-lrv"],
         id: "drive-lrv",
         name: sourceUnit.title,
         mimeFamily: "360",
@@ -271,5 +279,26 @@ describe("source library projection", () => {
         healthLabel: "Browse ready · originals remain in Drive",
       }),
     ]);
+    expect(
+      resolveSourceLibraryItem(items, "external:drive-insv"),
+    ).toMatchObject({ key: "external:drive-lrv" });
+  });
+
+  it("promotes any source-set member link to the canonical camera package", () => {
+    const items = buildSourceLibraryItems({
+      assets,
+      externalSources,
+      sourceSets,
+      cards,
+      boards,
+    });
+
+    expect(
+      resolveSourceLibraryItem(items, "external:external-a"),
+    ).toMatchObject({ key: "source-set:set-1" });
+    expect(resolveSourceLibraryItem(items, "source-set:set-1")).toMatchObject({
+      key: "source-set:set-1",
+    });
+    expect(resolveSourceLibraryItem(items, "external:missing")).toBeNull();
   });
 });

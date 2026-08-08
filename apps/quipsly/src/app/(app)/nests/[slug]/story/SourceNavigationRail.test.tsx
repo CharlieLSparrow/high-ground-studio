@@ -2,6 +2,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import { SourceNavigationRail } from "./SourceStoryClient";
 
+jest.mock("../actions", () => ({
+  createNestQuickWorkAction: jest.fn(),
+}));
+
 const visualOverview = {
   id: "visual-1",
   kind: "source-visual-overview",

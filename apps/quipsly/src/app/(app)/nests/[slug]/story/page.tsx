@@ -8,6 +8,7 @@ import { readSourceCollections } from "@/lib/server/source-collections";
 import { readSourceLibraryPage } from "@/lib/server/source-library";
 import { readSpatialRenderReadiness } from "@/lib/server/spatial-render-readiness";
 import { listExternalMediaLibraries } from "@/lib/server/external-media-library";
+import { buildSourceLibraryItems, resolveSourceLibraryItem } from "@/lib/source-library-projection";
 import {
   findStudioProjectForAccess,
   normalizeAccessEmail,
@@ -83,18 +84,26 @@ export default async function SourceStoryPage({
       sourceCollections,
       externalMediaLibraries,
     };
-    const requestedAnySource = Boolean(requestedAssetId || requestedExternalReferenceId || requestedSourceSetId);
     const fallbackSourceKey = sourcePage.orderedKeys[0] ?? null;
-    const selectedSourceSetId = workspace.sourceSets.some((sourceSet) => sourceSet.id === requestedSourceSetId)
-      ? requestedSourceSetId
-      : !requestedAnySource && fallbackSourceKey?.startsWith("source-set:") ? fallbackSourceKey.slice("source-set:".length) : null;
-    const selectedExternalReferenceId = workspace.externalSources.some((source) => source.id === requestedExternalReferenceId)
-      && !selectedSourceSetId ? requestedExternalReferenceId
-      : !requestedAnySource && !selectedSourceSetId && fallbackSourceKey?.startsWith("external:") ? fallbackSourceKey.slice("external:".length) : null;
+    const requestedSourceKey = requestedSourceSetId
+      ? `source-set:${requestedSourceSetId}`
+      : requestedExternalReferenceId
+        ? `external:${requestedExternalReferenceId}`
+        : requestedAssetId
+          ? `asset:${requestedAssetId}`
+          : null;
+    const logicalSourceItems = buildSourceLibraryItems({
+      assets,
+      externalSources: workspace.externalSources,
+      sourceSets: workspace.sourceSets,
+      cards: workspace.cards,
+      boards: workspace.boards,
+    });
+    const selectedLogicalSource = resolveSourceLibraryItem(logicalSourceItems, requestedSourceKey ?? fallbackSourceKey);
+    const selectedSourceSetId = selectedLogicalSource?.kind === "source-set" ? selectedLogicalSource.id : null;
+    const selectedExternalReferenceId = selectedLogicalSource?.kind === "external" ? selectedLogicalSource.id : null;
     const requestedBoardId = typeof query.board === "string" ? query.board : null;
-    const selectedAssetId = selectedExternalReferenceId || selectedSourceSetId ? null : assets.some((asset) => asset.id === requestedAssetId)
-      ? requestedAssetId
-      : !requestedAnySource && fallbackSourceKey?.startsWith("asset:") ? fallbackSourceKey.slice("asset:".length) : null;
+    const selectedAssetId = selectedLogicalSource?.kind === "asset" ? selectedLogicalSource.id : null;
     const selectedBoardId = workspace.boards.some((board) => board.id === requestedBoardId)
       ? requestedBoardId
       : workspace.boards[0]?.id ?? null;
