@@ -474,7 +474,10 @@ export class PostgresLocalSourceVisualOverviewStore implements LocalSourceVisual
         FROM "StudioMediaDerivative" d
         JOIN "StudioMediaSourceRevision" s ON s."id"=d."sourceRevisionId"
         WHERE d."id"=$1 AND d."sourceRevisionId"=$2 AND d."projectId"=$3
-          AND d."custodianNodeId"=$4 AND d."storageScopeId"=$5
+          AND (
+            (d."custodianNodeId"=$4 AND d."storageScopeId"=$5)
+            OR (d."custodianNodeId" IS NULL AND d."storageScopeId" IS NULL)
+          )
       `,
       values: [
         job.input.derivativeId,

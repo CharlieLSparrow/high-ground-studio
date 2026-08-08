@@ -12,7 +12,8 @@ import { preferPreparedByteEquivalentRevision } from "@/lib/server/external-medi
 import { selectGoogleDriveBrowsePreparationBatch } from "@/lib/server/google-drive-navigation-batch";
 import {
   localExecutorStorageShortfall,
-  readLocalExecutorStorage,
+  readLocalExecutorTarget,
+  type LocalExecutorTarget,
 } from "@/lib/server/local-executor-storage";
 import type { GoogleDriveMediaLibraryPlan } from "@/lib/google-drive-media-package";
 
@@ -51,10 +52,17 @@ type LibraryNavigationRevision = {
   sizeBytes: bigint | null;
   projectionJson: unknown;
   provenanceJson: unknown;
-  replicas: Array<{ id: string }>;
+  replicas: Array<{
+    id: string;
+    custodianNodeId: string | null;
+    storageScopeId: string | null;
+  }>;
   derivatives: Array<{
+    id: string;
     kind: string;
     generation: string;
+    custodianNodeId: string | null;
+    storageScopeId: string | null;
     provenanceJson: unknown;
   }>;
 };
@@ -350,12 +358,31 @@ function jsonRecord(value: unknown) {
     : {};
 }
 
+function artifactForExecutor<
+  T extends { custodianNodeId: string | null; storageScopeId: string | null },
+>(artifacts: T[], executor: LocalExecutorTarget | null) {
+  return (
+    (executor
+      ? artifacts.find(
+          (artifact) =>
+            artifact.custodianNodeId === executor.nodeId &&
+            artifact.storageScopeId === executor.storageScopeId,
+        )
+      : null) ??
+    artifacts.find(
+      (artifact) =>
+        artifact.custodianNodeId === null && artifact.storageScopeId === null,
+    )
+  );
+}
+
 export async function listExternalMediaLibraries(input: {
   prisma: PrismaClient;
   projectId: string;
   actorUserId: string;
+  executorNodeId?: string | null;
 }) {
-  const [libraries, executorStorage] = await Promise.all([
+  const [libraries, selectedExecutor] = await Promise.all([
     input.prisma.studioExternalMediaLibrary.findMany({
       where: { projectId: input.projectId },
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
@@ -392,8 +419,12 @@ export async function listExternalMediaLibraries(input: {
                         storageProvider: "local-cache",
                         status: "ready",
                       },
-                      take: 1,
-                      select: { id: true },
+                      take: 12,
+                      select: {
+                        id: true,
+                        custodianNodeId: true,
+                        storageScopeId: true,
+                      },
                     },
                     derivatives: {
                       where: {
@@ -405,8 +436,11 @@ export async function listExternalMediaLibraries(input: {
                       orderBy: { createdAt: "desc" },
                       take: 8,
                       select: {
+                        id: true,
                         kind: true,
                         generation: true,
+                        custodianNodeId: true,
+                        storageScopeId: true,
                         provenanceJson: true,
                       },
                     },
@@ -418,17 +452,16 @@ export async function listExternalMediaLibraries(input: {
         },
       },
     }),
-    readLocalExecutorStorage(input.prisma),
+    readLocalExecutorTarget(input.prisma, input.executorNodeId),
   ]);
+  const executorStorage =
+    selectedExecutor?.storage ??
+    EMPTY_LIBRARY_NAVIGATION_HEALTH.executorStorage;
   const candidatesByLibrary = new Map<
     string,
     Array<{
       revision: LibraryNavigationRevision;
-      proxy: {
-        kind: string;
-        generation: string;
-        provenanceJson: unknown;
-      } | null;
+      proxy: LibraryNavigationRevision["derivatives"][number] | null;
       capturedAt: Date | null;
     }>
   >();
@@ -465,8 +498,11 @@ export async function listExternalMediaLibraries(input: {
       }
       seenRevisionIds.add(revision.id);
       const proxy =
-        revision.derivatives.find(
-          (derivative) => derivative.kind === "collaboration-proxy",
+        artifactForExecutor(
+          revision.derivatives.filter(
+            (derivative) => derivative.kind === "collaboration-proxy",
+          ),
+          selectedExecutor,
         ) ?? null;
       if (proxy) {
         const jobId = sourceAudioNavigationJobId(
@@ -475,6 +511,7 @@ export async function listExternalMediaLibraries(input: {
             sourceRevisionId: revision.id,
             sourceIdentitySha256: revision.identitySha256,
             inputGeneration: proxy.generation,
+            inputDerivativeId: proxy.id,
           }),
         );
         expectedAudioJobs.set(revision.id, jobId);
@@ -512,13 +549,20 @@ export async function listExternalMediaLibraries(input: {
   return libraries.map((library) => {
     const candidates = candidatesByLibrary.get(library.id) ?? [];
     const states = candidates.map(({ revision, proxy, capturedAt }) => {
-      const retained = revision.replicas.length > 0;
+      const retained = Boolean(
+        artifactForExecutor(revision.replicas, selectedExecutor),
+      );
       const visualReady = proxy
-        ? revision.derivatives.some(
-            (derivative) =>
-              derivative.kind === "source-contact-sheet" &&
-              jsonRecord(derivative.provenanceJson).inputGeneration ===
-                proxy.generation,
+        ? Boolean(
+            artifactForExecutor(
+              revision.derivatives.filter(
+                (derivative) =>
+                  derivative.kind === "source-contact-sheet" &&
+                  jsonRecord(derivative.provenanceJson).inputGeneration ===
+                    proxy.generation,
+              ),
+              selectedExecutor,
+            ),
           )
         : false;
       const audioJobId = expectedAudioJobs.get(revision.id);

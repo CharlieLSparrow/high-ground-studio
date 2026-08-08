@@ -11,6 +11,7 @@ import { sourceAudioNavigationJobId } from "@high-ground/quipsly-media-processin
 import type { PrismaClient } from "@prisma/client";
 
 import { compactEpisodeMixWaveform } from "@/lib/episode-mix-waveform";
+import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
 
 export const SOURCE_AUDIO_NAVIGATION_JOB_TYPE = "source-audio-navigation";
 export const SOURCE_AUDIO_NAVIGATION_JOB_SOURCE =
@@ -72,6 +73,7 @@ export async function requestSourceAudioNavigation(input: {
   actorUserId: string;
   actorEmail: string;
   clientRequestId: string;
+  executorNodeId?: string | null;
   retryFailed?: boolean;
 }) {
   const projectId = cleanId(input.projectId, "projectId");
@@ -79,6 +81,10 @@ export async function requestSourceAudioNavigation(input: {
   const actorUserId = cleanId(input.actorUserId, "actorUserId");
   const clientRequestId = requestId(input.clientRequestId);
   const actorEmail = input.actorEmail.trim().toLowerCase();
+  const selectedExecutor = await readLocalExecutorTarget(
+    input.prisma,
+    input.executorNodeId,
+  );
   const source = await input.prisma.studioMediaSourceRevision.findFirst({
     where: { id: sourceRevisionId, projectId },
     include: {
@@ -86,7 +92,7 @@ export async function requestSourceAudioNavigation(input: {
       derivatives: {
         where: { status: "ready", kind: "collaboration-proxy" },
         orderBy: { createdAt: "desc" },
-        take: 1,
+        take: 12,
       },
     },
   });
@@ -104,7 +110,19 @@ export async function requestSourceAudioNavigation(input: {
       409,
     );
   }
-  const proxy = source.derivatives[0];
+  const proxy =
+    (selectedExecutor
+      ? source.derivatives.find(
+          (derivative) =>
+            derivative.custodianNodeId === selectedExecutor.nodeId &&
+            derivative.storageScopeId === selectedExecutor.storageScopeId,
+        )
+      : null) ??
+    source.derivatives.find(
+      (derivative) =>
+        derivative.custodianNodeId === null &&
+        derivative.storageScopeId === null,
+    );
   if (
     !proxy ||
     proxy.storageProvider !== "local" ||
@@ -113,6 +131,25 @@ export async function requestSourceAudioNavigation(input: {
     throw new SourceAudioNavigationRequestError(
       "audio-navigation-input-unavailable",
       "Create or restore the verified collaboration proxy before decoding its waveform.",
+      409,
+    );
+  }
+  const executionTarget =
+    proxy.custodianNodeId && proxy.storageScopeId
+      ? {
+          custodianNodeId: proxy.custodianNodeId,
+          storageScopeId: proxy.storageScopeId,
+        }
+      : selectedExecutor
+        ? {
+            custodianNodeId: selectedExecutor.nodeId,
+            storageScopeId: selectedExecutor.storageScopeId,
+          }
+        : null;
+  if (!executionTarget) {
+    throw new SourceAudioNavigationRequestError(
+      "audio-navigation-executor-unavailable",
+      "Start or select the local media computer that owns this proxy before decoding its waveform.",
       409,
     );
   }
@@ -133,6 +170,11 @@ export async function requestSourceAudioNavigation(input: {
     sourceRevisionId,
     sourceIdentitySha256: source.identitySha256,
     inputGeneration: proxy.generation,
+    inputDerivativeId: proxy.id,
+    executionScopeId:
+      proxy.storageScopeId === null
+        ? executionTarget.storageScopeId
+        : undefined,
   });
   const jobId = sourceAudioNavigationJobId(identity);
   const manifest = newSourceAudioNavigationJob({
@@ -215,6 +257,7 @@ export async function requestSourceAudioNavigation(input: {
           completedAt: null,
           resultJson: {
             state: "queued",
+            executionTarget,
             requestedBy: { actorUserId, actorEmail, clientRequestId },
             failureHistory: Object.keys(failure).length
               ? [...history, failure]
@@ -248,6 +291,7 @@ export async function requestSourceAudioNavigation(input: {
       inputJson: manifest,
       resultJson: {
         state: "queued",
+        executionTarget,
         requestedBy: { actorUserId, actorEmail, clientRequestId },
         originalRemainsSourceTruth: true,
         inputDerivativeRemainsUnchanged: true,

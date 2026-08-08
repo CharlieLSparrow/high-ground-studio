@@ -64,6 +64,17 @@ describe("source visual overview contract", () => {
     ).toContain(
       `${hash("a")}:sha256:${hash("c")}:${SOURCE_VISUAL_OVERVIEW_PROFILE}`,
     );
+    const scoped = (inputDerivativeId: string) =>
+      sourceVisualOverviewIdentity({
+        projectId: "project_12345678",
+        sourceRevisionId: "revision_12345678",
+        sourceIdentitySha256: hash("a"),
+        inputGeneration: `sha256:${hash("c")}`,
+        inputDerivativeId,
+      });
+    expect(scoped("proxy_executor_a_12345678")).not.toBe(
+      scoped("proxy_executor_b_12345678"),
+    );
   });
 
   test("places samples at stable interior source times", () => {

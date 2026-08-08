@@ -187,6 +187,7 @@ export async function planGoogleDriveLibraryConform(input: {
   projectId: string;
   libraryId: string;
   actorUserId: string;
+  executorNodeId?: string | null;
 }) {
   const projectId = cleanId(input.projectId, "projectId");
   const libraryId = cleanId(input.libraryId, "libraryId");
@@ -233,6 +234,7 @@ export async function planGoogleDriveLibraryConform(input: {
               projectId,
               sourceUnitId,
               actorUserId,
+              executorNodeId: input.executorNodeId,
             }),
           ),
       )),

@@ -8527,3 +8527,24 @@ source upload verified` blocked `Rough cut ready for review` until complete;
 - Next: make source-library projections prefer the active executor, add
   custody to the native device-folder receipt, and classify spatial/render
   outputs as either executor-local or portable object storage.
+
+# 2026-08-08 checkpoint: executor-aware source library and Drive batches
+
+- Added an explicit Local media computer selector to Source Room. The selected
+  node and opaque storage scope now govern source pagination, followed-library
+  readiness, LRV preparation, proxy generation, filmstrip, waveform, and
+  final-quality storage planning.
+- Removed silent executor substitution. When a selected Mac is unavailable,
+  operations hold visibly instead of running on another online computer.
+- Added proxy-ID-bound v2 filmstrip and audio-navigation identities. Identical
+  source bytes prepared on different executors no longer collide on one job.
+- Proved isolation with a two-executor PostgreSQL operation and reran the real
+  retained Episode 5 visual/audio workflow after restarting the actual local
+  worker. The complete 81.69-second waveform/frequency decode passed and input
+  media remained unchanged.
+- Read the user-shared Insta360 root through Drive without downloading media:
+  eight capture folders, 33 visible files, 16 complete INSV/LRV pairs, two
+  empty folders, and one zero-byte LRV. These changing upload states remain
+  visible readiness evidence rather than permanent failure labels.
+- Next: custody-bearing device-folder receipt v2, then explicit portability
+  classification for stitched spatial masters and episode render outputs.

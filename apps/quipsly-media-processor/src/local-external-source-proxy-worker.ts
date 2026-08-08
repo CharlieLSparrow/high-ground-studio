@@ -140,12 +140,14 @@ export function sourceNavigationJobsFromExternalProxy(input: {
     sourceRevisionId: input.job.source.sourceRevisionId,
     sourceIdentitySha256: input.job.source.identitySha256,
     inputGeneration: input.receipt.output.generation,
+    inputDerivativeId: input.job.derivativeId,
   });
   const audioIdentity = sourceAudioNavigationIdentity({
     projectId: input.job.projectId,
     sourceRevisionId: input.job.source.sourceRevisionId,
     sourceIdentitySha256: input.job.source.identitySha256,
     inputGeneration: input.receipt.output.generation,
+    inputDerivativeId: input.job.derivativeId,
   });
   const shared = {
     projectId: input.job.projectId,

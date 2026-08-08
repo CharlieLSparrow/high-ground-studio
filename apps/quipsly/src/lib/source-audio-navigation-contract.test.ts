@@ -156,6 +156,23 @@ describe("source audio navigation contract", () => {
         inputGeneration: queued.input.generation,
       }),
     ).toContain(SOURCE_AUDIO_NAVIGATION_PROFILE);
+    expect(
+      sourceAudioNavigationIdentity({
+        projectId: queued.projectId,
+        sourceRevisionId: queued.source.sourceRevisionId,
+        sourceIdentitySha256: queued.source.identitySha256,
+        inputGeneration: queued.input.generation,
+        inputDerivativeId: "proxy_executor_a_12345678",
+      }),
+    ).not.toBe(
+      sourceAudioNavigationIdentity({
+        projectId: queued.projectId,
+        sourceRevisionId: queued.source.sourceRevisionId,
+        sourceIdentitySha256: queued.source.identitySha256,
+        inputGeneration: queued.input.generation,
+        inputDerivativeId: "proxy_executor_b_12345678",
+      }),
+    );
   });
 
   test("rejects evidence observed from different bytes", () => {

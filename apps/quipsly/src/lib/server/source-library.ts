@@ -5,6 +5,10 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
 import { publicSourceAudioNavigationStatus } from "@/lib/server/source-audio-navigation";
 import { publicGoogleDriveSourceMaterializationJob } from "@/lib/server/google-drive-source-materialization";
+import {
+  readLocalExecutorTargets,
+  type LocalExecutorTarget,
+} from "@/lib/server/local-executor-storage";
 import { publicSourceVisualNavigationFrames } from "@/lib/server/source-visual-overview";
 
 const CURSOR_SCHEMA = "quipsly-source-library-cursor-v1" as const;
@@ -30,6 +34,8 @@ const derivativeSelect = {
   widthPixels: true,
   heightPixels: true,
   framesPerSecond: true,
+  custodianNodeId: true,
+  storageScopeId: true,
   verificationJson: true,
   createdAt: true,
 } satisfies Prisma.StudioMediaDerivativeSelect;
@@ -66,15 +72,17 @@ const sourceSetSelect = {
           status: "ready",
         },
         orderBy: { createdAt: "desc" },
-        take: 6,
+        take: 12,
         select: derivativeSelect,
       },
       replicas: {
         where: { storageProvider: "local-cache" },
         orderBy: { createdAt: "desc" },
-        take: 1,
+        take: 12,
         select: {
           id: true,
+          custodianNodeId: true,
+          storageScopeId: true,
           status: true,
           availabilityCheckedAt: true,
           contentVerifiedAt: true,
@@ -155,9 +163,11 @@ const externalSelect = {
       replicas: {
         where: { storageProvider: "local-cache" },
         orderBy: { createdAt: "desc" },
-        take: 1,
+        take: 12,
         select: {
           id: true,
+          custodianNodeId: true,
+          storageScopeId: true,
           status: true,
           contentSha256: true,
           sizeBytes: true,
@@ -174,7 +184,7 @@ const externalSelect = {
           status: "ready",
         },
         orderBy: { createdAt: "desc" },
-        take: 4,
+        take: 12,
         select: derivativeSelect,
       },
     },
@@ -209,6 +219,8 @@ function publicDerivative(
         widthPixels: number | null;
         heightPixels: number | null;
         framesPerSecond: number | null;
+        custodianNodeId: string | null;
+        storageScopeId: string | null;
         verificationJson: unknown;
         createdAt: Date;
       }
@@ -226,6 +238,13 @@ function publicDerivative(
         heightPixels: derivative.heightPixels,
         framesPerSecond: derivative.framesPerSecond,
         createdAt: derivative.createdAt.toISOString(),
+        executorCustody:
+          derivative.custodianNodeId && derivative.storageScopeId
+            ? {
+                nodeId: derivative.custodianNodeId,
+                storageScopeId: derivative.storageScopeId,
+              }
+            : null,
         playbackUrl: `/api/media/derivatives/${encodeURIComponent(derivative.id)}`,
         navigationFrames:
           derivative.kind === "source-contact-sheet"
@@ -233,6 +252,61 @@ function publicDerivative(
             : null,
       }
     : null;
+}
+
+type ExecutorScopedArtifact = {
+  custodianNodeId: string | null;
+  storageScopeId: string | null;
+};
+
+function artifactForExecutor<T extends ExecutorScopedArtifact>(
+  artifacts: T[],
+  executor: LocalExecutorTarget | null,
+) {
+  const exact = executor
+    ? artifacts.find(
+        (artifact) =>
+          artifact.custodianNodeId === executor.nodeId &&
+          artifact.storageScopeId === executor.storageScopeId,
+      )
+    : null;
+  return (
+    exact ??
+    artifacts.find(
+      (artifact) =>
+        artifact.custodianNodeId === null && artifact.storageScopeId === null,
+    )
+  );
+}
+
+function derivativeForExecutor<
+  T extends ExecutorScopedArtifact & { kind: string },
+>(derivatives: T[], kind: string, executor: LocalExecutorTarget | null) {
+  return artifactForExecutor(
+    derivatives.filter((derivative) => derivative.kind === kind),
+    executor,
+  );
+}
+
+function executorLabel(hostName: string) {
+  return hostName.replace(/^quipsly-media-worker:/, "").trim() || "Local Mac";
+}
+
+function jobProjectionRank(
+  resultJson: unknown,
+  executor: LocalExecutorTarget | null,
+) {
+  const target = jsonRecord(jsonRecord(resultJson)?.executionTarget);
+  const nodeId =
+    typeof target?.custodianNodeId === "string" ? target.custodianNodeId : null;
+  const storageScopeId =
+    typeof target?.storageScopeId === "string" ? target.storageScopeId : null;
+  if (!nodeId && !storageScopeId) return executor ? 1 : 0;
+  return executor &&
+    nodeId === executor.nodeId &&
+    storageScopeId === executor.storageScopeId
+    ? 0
+    : 2;
 }
 
 function cursorPoint(value: unknown): CursorPoint | null {
@@ -412,6 +486,7 @@ function jsonRecord(value: unknown) {
 export async function readSourceLibraryPage(input: {
   prisma: PrismaClient;
   projectId: string;
+  executorNodeId?: string | null;
   cursor?: string | null;
   limit?: number | null;
   query?: string | null;
@@ -419,6 +494,12 @@ export async function readSourceLibraryPage(input: {
   const cursor = decodeSourceLibraryCursor(input.cursor);
   const limit = pageSize(input.limit);
   const query = cleanQuery(input.query);
+  const executorTargets = await readLocalExecutorTargets(input.prisma);
+  const selectedExecutor = input.executorNodeId
+    ? (executorTargets.find(
+        (target) => target.nodeId === input.executorNodeId,
+      ) ?? null)
+    : (executorTargets[0] ?? null);
   const setWhere = sourceSetWhere(input.projectId, query, cursor.sourceSet);
   const connectedWhere = externalWhere(input.projectId, query, cursor.external);
   const mediaWhere = assetWhere(input.projectId, query, cursor.asset);
@@ -596,7 +677,19 @@ export async function readSourceLibraryPage(input: {
     string,
     ReturnType<typeof publicGoogleDriveSourceMaterializationJob>
   >();
-  for (const job of sourceJobs) {
+  const projectedSourceJobs = sourceJobs
+    .map((job) => ({
+      job,
+      rank: jobProjectionRank(job.resultJson, selectedExecutor),
+    }))
+    .filter((entry) => entry.rank < 2)
+    .sort(
+      (left, right) =>
+        left.rank - right.rank ||
+        right.job.updatedAt.getTime() - left.job.updatedAt.getTime(),
+    )
+    .map((entry) => entry.job);
+  for (const job of projectedSourceJobs) {
     const source = jsonRecord(jsonRecord(job.inputJson)?.source);
     const sourceRevisionId =
       typeof source?.sourceRevisionId === "string"
@@ -643,130 +736,166 @@ export async function readSourceLibraryPage(input: {
 
   return {
     schema: "quipsly-source-library-page-v1" as const,
-    query,
-    orderedKeys: emitted.map((row) => `${row.kind}:${row.id}`),
-    sourceSets: emittedSets.map((sourceSet) => ({
-      ...sourceSet,
-      createdAt: sourceSet.createdAt.toISOString(),
-      sourceClockRevision: {
-        ...sourceSet.sourceClockRevision,
-        projectionMetadata: sourceSet.sourceClockRevision.projectionJson,
-        projectionJson: undefined,
-        collaborationProxy: publicDerivative(
-          sourceSet.sourceClockRevision.derivatives.find(
-            (derivative) => derivative.kind === "collaboration-proxy",
-          ),
-        ),
-        spatialStitchMaster: publicDerivative(
-          sourceSet.sourceClockRevision.derivatives.find(
-            (derivative) => derivative.kind === "spatial-stitch-master",
-          ),
-        ),
-        visualOverview: publicDerivative(
-          sourceSet.sourceClockRevision.derivatives.find(
-            (derivative) => derivative.kind === "source-contact-sheet",
-          ),
-        ),
-        localReplicaAvailability: sourceSet.sourceClockRevision.replicas[0]
-          ? {
-              id: sourceSet.sourceClockRevision.replicas[0].id,
-              status: sourceSet.sourceClockRevision.replicas[0].status,
-              availabilityCheckedAt:
-                sourceSet.sourceClockRevision.replicas[0].availabilityCheckedAt?.toISOString() ??
-                null,
-              contentVerifiedAt:
-                sourceSet.sourceClockRevision.replicas[0].contentVerifiedAt?.toISOString() ??
-                null,
-              unavailableAt:
-                sourceSet.sourceClockRevision.replicas[0].unavailableAt?.toISOString() ??
-                null,
-              pathWithheld: true as const,
-            }
-          : null,
-        replicas: undefined,
-        visualOverviewJob:
-          visualJobBySourceRevisionId.get(sourceSet.sourceClockRevision.id) ??
-          null,
-        audioNavigation:
-          audioNavigationBySourceRevisionId.get(
-            sourceSet.sourceClockRevision.id,
-          ) ?? null,
-        derivatives: undefined,
-      },
-      members: sourceSet.members.map((member) => ({
-        ...member,
-        sourceRevision: {
-          ...member.sourceRevision,
-          sizeBytes: member.sourceRevision.sizeBytes?.toString() ?? null,
-        },
-      })),
-    })),
-    externalSources: projectedExternal.map(({ revisions, ...source }) => ({
-      ...source,
-      sizeBytes: source.sizeBytes?.toString() ?? null,
-      providerCreatedAt: source.providerCreatedAt?.toISOString() ?? null,
-      providerModifiedAt: source.providerModifiedAt?.toISOString() ?? null,
-      lastVerifiedAt: source.lastVerifiedAt?.toISOString() ?? null,
-      createdAt: source.createdAt.toISOString(),
-      latestSourceRevision: revisions[0]
+    executorProjection: {
+      requestedNodeId: input.executorNodeId ?? null,
+      selected: selectedExecutor
         ? {
-            ...revisions[0],
-            derivatives: undefined,
-            replicas: undefined,
-            projectionJson: undefined,
-            memberRole: externalMediaMemberRole(
-              jsonRecord(revisions[0].projectionJson)?.memberRole,
-            ),
-            sizeBytes: revisions[0].sizeBytes?.toString() ?? null,
-            verifiedAt: revisions[0].verifiedAt?.toISOString() ?? null,
-            collaborationProxy: publicDerivative(
-              revisions[0].derivatives.find(
-                (derivative) => derivative.kind === "collaboration-proxy",
-              ),
-            ),
-            visualOverview: publicDerivative(
-              revisions[0].derivatives.find(
-                (derivative) => derivative.kind === "source-contact-sheet",
-              ),
-            ),
-            proxyJob: proxyJobBySourceRevisionId.get(revisions[0].id) ?? null,
-            exactReplica:
-              revisions[0].replicas[0]?.status === "ready"
-                ? {
-                    id: revisions[0].replicas[0].id,
-                    contentSha256: revisions[0].replicas[0].contentSha256,
-                    sizeBytes: revisions[0].replicas[0].sizeBytes.toString(),
-                    mimeType: revisions[0].replicas[0].mimeType,
-                    createdAt: revisions[0].replicas[0].createdAt.toISOString(),
-                  }
-                : null,
-            localReplicaAvailability: revisions[0].replicas[0]
-              ? {
-                  id: revisions[0].replicas[0].id,
-                  status: revisions[0].replicas[0].status,
-                  sizeBytes: revisions[0].replicas[0].sizeBytes.toString(),
-                  availabilityCheckedAt:
-                    revisions[0].replicas[0].availabilityCheckedAt?.toISOString() ??
-                    null,
-                  contentVerifiedAt:
-                    revisions[0].replicas[0].contentVerifiedAt?.toISOString() ??
-                    null,
-                  unavailableAt:
-                    revisions[0].replicas[0].unavailableAt?.toISOString() ??
-                    null,
-                  pathWithheld: true as const,
-                }
-              : null,
-            materializationJob:
-              driveMaterializationBySourceRevisionId.get(revisions[0].id) ??
-              null,
-            visualOverviewJob:
-              visualJobBySourceRevisionId.get(revisions[0].id) ?? null,
-            audioNavigation:
-              audioNavigationBySourceRevisionId.get(revisions[0].id) ?? null,
+            nodeId: selectedExecutor.nodeId,
+            storageScopeId: selectedExecutor.storageScopeId,
+            label: executorLabel(selectedExecutor.hostName),
+            storage: selectedExecutor.storage,
           }
         : null,
-    })),
+      options: executorTargets.map((target) => ({
+        nodeId: target.nodeId,
+        storageScopeId: target.storageScopeId,
+        label: executorLabel(target.hostName),
+        storage: target.storage,
+      })),
+    },
+    query,
+    orderedKeys: emitted.map((row) => `${row.kind}:${row.id}`),
+    sourceSets: emittedSets.map((sourceSet) => {
+      const sourceClockRevision = sourceSet.sourceClockRevision;
+      const localReplica = artifactForExecutor(
+        sourceClockRevision.replicas,
+        selectedExecutor,
+      );
+      return {
+        ...sourceSet,
+        createdAt: sourceSet.createdAt.toISOString(),
+        sourceClockRevision: {
+          ...sourceClockRevision,
+          projectionMetadata: sourceSet.sourceClockRevision.projectionJson,
+          projectionJson: undefined,
+          collaborationProxy: publicDerivative(
+            derivativeForExecutor(
+              sourceClockRevision.derivatives,
+              "collaboration-proxy",
+              selectedExecutor,
+            ),
+          ),
+          spatialStitchMaster: publicDerivative(
+            derivativeForExecutor(
+              sourceClockRevision.derivatives,
+              "spatial-stitch-master",
+              selectedExecutor,
+            ),
+          ),
+          visualOverview: publicDerivative(
+            derivativeForExecutor(
+              sourceClockRevision.derivatives,
+              "source-contact-sheet",
+              selectedExecutor,
+            ),
+          ),
+          localReplicaAvailability: localReplica
+            ? {
+                id: localReplica.id,
+                status: localReplica.status,
+                availabilityCheckedAt:
+                  localReplica.availabilityCheckedAt?.toISOString() ?? null,
+                contentVerifiedAt:
+                  localReplica.contentVerifiedAt?.toISOString() ?? null,
+                unavailableAt:
+                  localReplica.unavailableAt?.toISOString() ?? null,
+                pathWithheld: true as const,
+              }
+            : null,
+          replicas: undefined,
+          visualOverviewJob:
+            visualJobBySourceRevisionId.get(sourceSet.sourceClockRevision.id) ??
+            null,
+          audioNavigation:
+            audioNavigationBySourceRevisionId.get(
+              sourceSet.sourceClockRevision.id,
+            ) ?? null,
+          derivatives: undefined,
+        },
+        members: sourceSet.members.map((member) => ({
+          ...member,
+          sourceRevision: {
+            ...member.sourceRevision,
+            sizeBytes: member.sourceRevision.sizeBytes?.toString() ?? null,
+          },
+        })),
+      };
+    }),
+    externalSources: projectedExternal.map(({ revisions, ...source }) => {
+      const latestRevision = revisions[0];
+      const exactReplica = latestRevision
+        ? artifactForExecutor(latestRevision.replicas, selectedExecutor)
+        : undefined;
+      return {
+        ...source,
+        sizeBytes: source.sizeBytes?.toString() ?? null,
+        providerCreatedAt: source.providerCreatedAt?.toISOString() ?? null,
+        providerModifiedAt: source.providerModifiedAt?.toISOString() ?? null,
+        lastVerifiedAt: source.lastVerifiedAt?.toISOString() ?? null,
+        createdAt: source.createdAt.toISOString(),
+        latestSourceRevision: latestRevision
+          ? {
+              ...latestRevision,
+              derivatives: undefined,
+              replicas: undefined,
+              projectionJson: undefined,
+              memberRole: externalMediaMemberRole(
+                jsonRecord(latestRevision.projectionJson)?.memberRole,
+              ),
+              sizeBytes: latestRevision.sizeBytes?.toString() ?? null,
+              verifiedAt: latestRevision.verifiedAt?.toISOString() ?? null,
+              collaborationProxy: publicDerivative(
+                derivativeForExecutor(
+                  latestRevision.derivatives,
+                  "collaboration-proxy",
+                  selectedExecutor,
+                ),
+              ),
+              visualOverview: publicDerivative(
+                derivativeForExecutor(
+                  latestRevision.derivatives,
+                  "source-contact-sheet",
+                  selectedExecutor,
+                ),
+              ),
+              proxyJob:
+                proxyJobBySourceRevisionId.get(latestRevision.id) ?? null,
+              exactReplica:
+                exactReplica?.status === "ready"
+                  ? {
+                      id: exactReplica.id,
+                      contentSha256: exactReplica.contentSha256,
+                      sizeBytes: exactReplica.sizeBytes.toString(),
+                      mimeType: exactReplica.mimeType,
+                      createdAt: exactReplica.createdAt.toISOString(),
+                    }
+                  : null,
+              localReplicaAvailability: exactReplica
+                ? {
+                    id: exactReplica.id,
+                    status: exactReplica.status,
+                    sizeBytes: exactReplica.sizeBytes.toString(),
+                    availabilityCheckedAt:
+                      exactReplica.availabilityCheckedAt?.toISOString() ?? null,
+                    contentVerifiedAt:
+                      exactReplica.contentVerifiedAt?.toISOString() ?? null,
+                    unavailableAt:
+                      exactReplica.unavailableAt?.toISOString() ?? null,
+                    pathWithheld: true as const,
+                  }
+                : null,
+              materializationJob:
+                driveMaterializationBySourceRevisionId.get(latestRevision.id) ??
+                null,
+              visualOverviewJob:
+                visualJobBySourceRevisionId.get(latestRevision.id) ?? null,
+              audioNavigation:
+                audioNavigationBySourceRevisionId.get(latestRevision.id) ??
+                null,
+            }
+          : null,
+      };
+    }),
     assets: emittedAssets.map((asset) => ({
       ...asset,
       sizeBytes: asset.sizeBytes?.toString() ?? null,

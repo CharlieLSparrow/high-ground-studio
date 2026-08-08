@@ -17,6 +17,7 @@ import {
   Film,
   FolderOpen,
   Grid2X2,
+  HardDrive,
   LayoutGrid,
   List,
   ListPlus,
@@ -368,10 +369,32 @@ type SourceLibraryPagePayload = {
   ok?: boolean;
   error?: string;
   page?: {
+    executorProjection: SourceExecutorProjection;
     sourceSets: MediaSourceSet[];
     externalSources: SourceStoryWorkspace["externalSources"];
     assets: Asset[];
     pageInfo: SourcePageInfo;
+  };
+};
+
+type SourceExecutorProjection = {
+  requestedNodeId: string | null;
+  selected: SourceExecutorOption | null;
+  options: SourceExecutorOption[];
+};
+
+type SourceExecutorOption = {
+  nodeId: string;
+  storageScopeId: string;
+  label: string;
+  storage: {
+    status: "measured" | "unavailable";
+    safeAvailableBytes: string | null;
+    availableBytes: string | null;
+    reserveBytes: string | null;
+    measuredAt: string | null;
+    workspaceMode: "durable" | "temporary" | "unknown";
+    localPathWithheld: true;
   };
 };
 
@@ -1297,14 +1320,16 @@ function mergeById<T extends { id: string }>(current: T[], incoming: T[]) {
 function reconcileWorkspaceInventory(
   current: SourceStoryWorkspace,
   next: SourceStoryWorkspace,
+  preserveCurrentSourceProjection = false,
 ): SourceStoryWorkspace {
   return {
     ...next,
-    sourceSets: mergeById(current.sourceSets ?? [], next.sourceSets ?? []),
-    externalSources: mergeById(
-      current.externalSources ?? [],
-      next.externalSources ?? [],
-    ),
+    sourceSets: preserveCurrentSourceProjection
+      ? mergeById(next.sourceSets ?? [], current.sourceSets ?? [])
+      : mergeById(current.sourceSets ?? [], next.sourceSets ?? []),
+    externalSources: preserveCurrentSourceProjection
+      ? mergeById(next.externalSources ?? [], current.externalSources ?? [])
+      : mergeById(current.externalSources ?? [], next.externalSources ?? []),
     externalMediaLibraries: mergeById(
       current.externalMediaLibraries ?? [],
       next.externalMediaLibraries ?? [],
@@ -1352,6 +1377,7 @@ export function SourceStoryClient({
   episodes,
   initialWorkspace,
   initialSourcePageInfo,
+  initialSourceExecutorProjection,
   spatialRenderReadiness,
   initialAssetId,
   initialExternalReferenceId,
@@ -1366,6 +1392,7 @@ export function SourceStoryClient({
   episodes: Episode[];
   initialWorkspace: SourceStoryWorkspace;
   initialSourcePageInfo: SourcePageInfo;
+  initialSourceExecutorProjection: SourceExecutorProjection;
   spatialRenderReadiness: SpatialRenderReadinessReport;
   initialAssetId: string | null;
   initialExternalReferenceId: string | null;
@@ -1387,6 +1414,19 @@ export function SourceStoryClient({
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [sourceAssets, setSourceAssets] = useState(initialAssets);
   const [sourcePageInfo, setSourcePageInfo] = useState(initialSourcePageInfo);
+  const [sourceExecutorProjection, setSourceExecutorProjection] = useState(
+    initialSourceExecutorProjection,
+  );
+  const [sourceExecutorNodeId, setSourceExecutorNodeId] = useState(
+    initialSourceExecutorProjection.selected?.nodeId ??
+      initialSourceExecutorProjection.requestedNodeId ??
+      "",
+  );
+  const [sourceServerExecutorNodeId, setSourceServerExecutorNodeId] = useState(
+    initialSourceExecutorProjection.selected?.nodeId ??
+      initialSourceExecutorProjection.requestedNodeId ??
+      "",
+  );
   const [sourceAllTotal] = useState(initialSourcePageInfo.totals.all);
   const [sourceServerQuery, setSourceServerQuery] = useState("");
   const [sourcePagePending, setSourcePagePending] = useState(false);
@@ -1678,7 +1718,12 @@ export function SourceStoryClient({
 
   useEffect(() => {
     const query = sourceQuery.trim().replace(/\s+/g, " ").slice(0, 160);
-    if (query === sourceServerQuery) return;
+    const executorChanged = sourceExecutorNodeId !== sourceServerExecutorNodeId;
+    if (
+      query === sourceServerQuery &&
+      sourceExecutorNodeId === sourceServerExecutorNodeId
+    )
+      return;
     const sequence = sourceSearchSequenceRef.current + 1;
     sourceSearchSequenceRef.current = sequence;
     const controller = new AbortController();
@@ -1688,6 +1733,8 @@ export function SourceStoryClient({
       try {
         const params = new URLSearchParams({ limit: "60" });
         if (query) params.set("query", query);
+        if (sourceExecutorNodeId)
+          params.set("executorNodeId", sourceExecutorNodeId);
         const response = await fetch(
           `/api/nests/${encodeURIComponent(project.slug)}/source-story/sources?${params.toString()}`,
           { cache: "no-store", signal: controller.signal },
@@ -1708,20 +1755,39 @@ export function SourceStoryClient({
           ...current,
           sourceSets: mergeById(
             payload.page!.sourceSets,
-            current.sourceSets.filter(
-              (sourceSet) => sourceSet.id === selectedSourceSetId,
-            ),
+            executorChanged
+              ? []
+              : current.sourceSets.filter(
+                  (sourceSet) => sourceSet.id === selectedSourceSetId,
+                ),
           ),
           externalSources: mergeById(
             payload.page!.externalSources,
-            current.externalSources.filter(
-              (source) => source.id === selectedExternalReferenceId,
-            ),
+            executorChanged
+              ? []
+              : current.externalSources.filter(
+                  (source) => source.id === selectedExternalReferenceId,
+                ),
           ),
         }));
         setSourcePageInfo(payload.page.pageInfo);
+        setSourceExecutorProjection(payload.page.executorProjection);
+        setSourceExecutorNodeId(
+          payload.page.executorProjection.selected?.nodeId ??
+            payload.page.executorProjection.requestedNodeId ??
+            "",
+        );
+        setSourceServerExecutorNodeId(
+          payload.page.executorProjection.selected?.nodeId ??
+            payload.page.executorProjection.requestedNodeId ??
+            "",
+        );
         setSourceServerQuery(query);
         setSourceVisibleLimit(60);
+        if (executorChanged)
+          void refreshWorkspace(sourceExecutorNodeId, true).catch(
+            () => undefined,
+          );
       } catch (searchError) {
         if (controller.signal.aborted) return;
         setError(
@@ -1743,9 +1809,25 @@ export function SourceStoryClient({
     selectedAssetId,
     selectedExternalReferenceId,
     selectedSourceSetId,
+    sourceExecutorNodeId,
     sourceQuery,
+    sourceServerExecutorNodeId,
     sourceServerQuery,
   ]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (sourceServerExecutorNodeId) {
+      url.searchParams.set("executor", sourceServerExecutorNodeId);
+    } else {
+      url.searchParams.delete("executor");
+    }
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [sourceServerExecutorNodeId]);
 
   useEffect(() => {
     const pendingPlayback = pendingPlaybackRef.current;
@@ -1888,20 +1970,67 @@ export function SourceStoryClient({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  async function refreshWorkspace() {
-    const response = await fetch(
-      `/api/nests/${encodeURIComponent(project.slug)}/source-story`,
-      { cache: "no-store" },
-    );
-    const payload = (await response.json()) as ApiPayload;
-    if (!response.ok || !payload.workspace)
+  async function refreshWorkspace(
+    executorNodeId = sourceExecutorNodeId,
+    replaceSourceProjection = false,
+  ) {
+    const sourceParams = new URLSearchParams({ limit: "120" });
+    if (executorNodeId) sourceParams.set("executorNodeId", executorNodeId);
+    const [response, sourceResponse] = await Promise.all([
+      fetch(
+        `/api/nests/${encodeURIComponent(project.slug)}/source-story${executorNodeId ? `?executorNodeId=${encodeURIComponent(executorNodeId)}` : ""}`,
+        { cache: "no-store" },
+      ),
+      fetch(
+        `/api/nests/${encodeURIComponent(project.slug)}/source-story/sources?${sourceParams.toString()}`,
+        { cache: "no-store" },
+      ),
+    ]);
+    const [payload, sourcePayload] = (await Promise.all([
+      response.json(),
+      sourceResponse.json(),
+    ])) as [ApiPayload, SourceLibraryPagePayload];
+    if (
+      !response.ok ||
+      !payload.workspace ||
+      !sourceResponse.ok ||
+      !sourcePayload.page
+    )
       throw new Error(
-        payload.error || "The shared story workspace could not be refreshed.",
+        payload.error ||
+          sourcePayload.error ||
+          "The shared story workspace could not be refreshed.",
       );
-    setWorkspace((current) =>
-      reconcileWorkspaceInventory(current, payload.workspace!),
+    const nextWorkspace = {
+      ...payload.workspace,
+      sourceSets: sourcePayload.page.sourceSets,
+      externalSources: sourcePayload.page.externalSources,
+    };
+    setWorkspace((current) => {
+      const reconciled = reconcileWorkspaceInventory(current, nextWorkspace);
+      return replaceSourceProjection
+        ? {
+            ...reconciled,
+            sourceSets: nextWorkspace.sourceSets,
+            externalSources: nextWorkspace.externalSources,
+          }
+        : reconciled;
+    });
+    setSourceAssets((current) =>
+      mergeById(current, sourcePayload.page!.assets),
     );
-    return payload.workspace;
+    setSourceExecutorProjection(sourcePayload.page.executorProjection);
+    setSourceExecutorNodeId(
+      sourcePayload.page.executorProjection.selected?.nodeId ??
+        sourcePayload.page.executorProjection.requestedNodeId ??
+        "",
+    );
+    setSourceServerExecutorNodeId(
+      sourcePayload.page.executorProjection.selected?.nodeId ??
+        sourcePayload.page.executorProjection.requestedNodeId ??
+        "",
+    );
+    return nextWorkspace;
   }
 
   async function loadMoreSources() {
@@ -1919,6 +2048,8 @@ export function SourceStoryClient({
         limit: "60",
       });
       if (sourceServerQuery) params.set("query", sourceServerQuery);
+      if (sourceServerExecutorNodeId)
+        params.set("executorNodeId", sourceServerExecutorNodeId);
       const response = await fetch(
         `/api/nests/${encodeURIComponent(project.slug)}/source-story/sources?${params.toString()}`,
         { cache: "no-store" },
@@ -1938,6 +2069,7 @@ export function SourceStoryClient({
         ),
       }));
       setSourcePageInfo(payload.page.pageInfo);
+      setSourceExecutorProjection(payload.page.executorProjection);
       setSourceVisibleLimit((current) =>
         Math.max(
           current,
@@ -2028,8 +2160,9 @@ export function SourceStoryClient({
         );
       }
       setWorkspace((current) =>
-        reconcileWorkspaceInventory(current, payload.workspace!),
+        reconcileWorkspaceInventory(current, payload.workspace!, true),
       );
+      void refreshWorkspace().catch(() => undefined);
       setMessage(successMessage);
       return payload.workspace;
     } catch (mutationError) {
@@ -2355,6 +2488,7 @@ export function SourceStoryClient({
           : "request-external-proxy",
         referenceId: source.id,
         sourceRevisionId: source.latestSourceRevision.id,
+        executorNodeId: sourceExecutorNodeId || null,
         clientRequestId: crypto.randomUUID(),
         retryFailed,
       },
@@ -2393,6 +2527,7 @@ export function SourceStoryClient({
             sourceUnitId,
             clientRequestId: options.prepare ? crypto.randomUUID() : undefined,
             expectedRemainingBytes: options.expectedRemainingBytes,
+            executorNodeId: sourceExecutorNodeId || null,
             retryFailed: options.retryFailed === true,
           }),
         },
@@ -2410,7 +2545,7 @@ export function SourceStoryClient({
       setConformPlan(plan);
       if (payload.workspace) {
         setWorkspace((current) =>
-          reconcileWorkspaceInventory(current, payload.workspace!),
+          reconcileWorkspaceInventory(current, payload.workspace!, true),
         );
       }
       setMessage(
@@ -2440,6 +2575,7 @@ export function SourceStoryClient({
       {
         action: "request-source-visual-overview",
         sourceRevisionId,
+        executorNodeId: sourceExecutorNodeId || null,
         clientRequestId: crypto.randomUUID(),
         retryFailed,
       },
@@ -2458,6 +2594,7 @@ export function SourceStoryClient({
       {
         action: "request-source-audio-navigation",
         sourceRevisionId,
+        executorNodeId: sourceExecutorNodeId || null,
         clientRequestId: crypto.randomUUID(),
         retryFailed,
       },
@@ -2675,7 +2812,7 @@ export function SourceStoryClient({
           payload.error || "The section writing page could not be opened.",
         );
       setWorkspace((current) =>
-        reconcileWorkspaceInventory(current, payload.workspace!),
+        reconcileWorkspaceInventory(current, payload.workspace!, true),
       );
       const documentId =
         payload.operation && "document" in payload.operation
@@ -3052,10 +3189,67 @@ export function SourceStoryClient({
             </div>
           </div>
 
+          {sourceExecutorProjection.options.length ? (
+            <section className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-sky-950">
+              <label className="flex min-h-11 items-center gap-3 text-[10px] font-black uppercase tracking-wide">
+                <HardDrive size={16} aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  Local media computer
+                  <span className="mt-0.5 block text-[9px] font-semibold normal-case tracking-normal text-sky-800">
+                    Browse readiness, proxies, filmstrips, and waveforms are
+                    shown only for this computer&apos;s verified storage.
+                  </span>
+                </span>
+                <select
+                  value={sourceExecutorNodeId}
+                  disabled={sourcePagePending}
+                  onChange={(event) =>
+                    setSourceExecutorNodeId(event.target.value)
+                  }
+                  className="min-h-11 max-w-48 rounded-xl border border-sky-300 bg-white px-2 text-xs font-bold normal-case tracking-normal text-sky-950 disabled:opacity-60"
+                >
+                  {sourceExecutorNodeId &&
+                  !sourceExecutorProjection.options.some(
+                    (executor) => executor.nodeId === sourceExecutorNodeId,
+                  ) ? (
+                    <option value={sourceExecutorNodeId}>
+                      Selected computer is offline
+                    </option>
+                  ) : null}
+                  {sourceExecutorProjection.options.map((executor) => (
+                    <option key={executor.nodeId} value={executor.nodeId}>
+                      {executor.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {sourceExecutorProjection.selected ? (
+                <p className="mt-2 text-[10px] font-semibold text-sky-800">
+                  {sourceExecutorProjection.selected.storage.status ===
+                  "measured"
+                    ? `${formatBytes(sourceExecutorProjection.selected.storage.safeAvailableBytes)} safe workspace remaining · ${sourceExecutorProjection.selected.storage.workspaceMode} workspace`
+                    : "Storage is connected, but current free space could not be measured."}
+                </p>
+              ) : sourceExecutorNodeId ? (
+                <p className="mt-2 text-[10px] font-bold text-amber-800">
+                  This computer is offline. Source decisions remain available,
+                  but its local media operations are held.
+                </p>
+              ) : null}
+            </section>
+          ) : (
+            <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[10px] font-bold leading-4 text-amber-950">
+              No local media computer is online. Canonical source notes remain
+              available; local proxies and navigation evidence are held until an
+              executor reconnects.
+            </p>
+          )}
+
           <GoogleDriveSourcePicker
             projectSlug={project.slug}
             canWrite={canWrite}
             libraries={workspace.externalMediaLibraries ?? []}
+            executorNodeId={sourceExecutorNodeId}
             onAttached={refreshWorkspace}
           />
           <label className="relative mt-4 block">

@@ -18,6 +18,7 @@ export async function GET(request: Request, context: { params: Promise<{ slug: s
     const page = await readSourceLibraryPage({
       prisma: getPrismaClient(),
       projectId: actor.projectId,
+      executorNodeId: url.searchParams.get("executorNodeId"),
       cursor: url.searchParams.get("cursor"),
       query: url.searchParams.get("query"),
       limit: url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : undefined,

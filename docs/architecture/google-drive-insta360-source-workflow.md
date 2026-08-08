@@ -56,20 +56,23 @@ Quipsly's editorial truth, provenance, and recovery behavior deterministic.
    multiple INSV originals and an LRV companion.
 8. Open a segment receipt to inspect every provider file, role, size, access
    state, and local-copy state.
-9. Prepare the LRV only when the segment needs playback, annotation,
+9. Choose the **Local media computer** that should own temporary browse media
+   and final-render storage. Its safe capacity and workspace durability remain
+   visible; its filesystem path remains private.
+10. Prepare the LRV only when the segment needs playback, annotation,
    storyboarding, or editing.
-10. Work from the collaboration proxy in Nest.
+11. Work from the collaboration proxy in Nest.
     Unstitched camera pixels use a normal video viewer for timing and ranges;
     spatial look-around activates only after a stitched equirectangular
     derivative is verified.
-11. Open **Final render preflight** when a selected segment is ready to finish.
+12. Open **Final render preflight** when a selected segment is ready to finish.
     Inspection is metadata-only; it does not download media.
-12. Optionally inspect **Final-quality originals** on the followed library to
+13. Optionally inspect **Final-quality originals** on the followed library to
     compare every attached camera day against the active Mac's aggregate safe
     capacity. Incomplete, unattached packages remain visibly excluded.
-13. Review exact bytes remaining and safe Mac capacity, then explicitly choose
+14. Review exact bytes remaining and safe Mac capacity, then explicitly choose
     **Prepare … on this Mac**.
-14. Transfers resume by byte range and bind MD5 plus SHA-256 before the package
+15. Transfers resume by byte range and bind MD5 plus SHA-256 before the package
     becomes render-ready. Nest and the local editor then resolve the same
     immutable source-set identity.
 
@@ -80,6 +83,13 @@ queue a bulk original download. A creator must still open one segment's
 preflight and approve its stale-checked byte total. This keeps large-archive
 planning transparent without turning one innocent click into hundreds of
 gigabytes of transfer.
+
+The executor choice is authoritative across the whole preparation batch. An
+LRV replica, collaboration proxy, filmstrip, waveform, and conform plan are
+projected only when they are available on that node and opaque storage scope.
+Quipsly never changes the selected executor because another online Mac happens
+to have newer local artifacts. If the selection is no longer online, the
+operation stops with a visible hold.
 
 ### Episode assembly from Story selects
 

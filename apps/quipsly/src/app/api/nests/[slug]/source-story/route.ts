@@ -15,6 +15,7 @@ import {
 } from "@/lib/source-story-contract";
 import { readSpatialRenderReadiness } from "@/lib/server/spatial-render-readiness";
 import { requireSourceStoryAccess } from "@/lib/server/source-story-access";
+import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
 import {
   attachGoogleDriveFolderToNest,
   attachGoogleDriveFilesToNest,
@@ -346,6 +347,9 @@ export async function GET(
   try {
     const { slug } = await context.params;
     const actor = await requireSourceStoryAccess(request, slug, "read");
+    const executorNodeId = new URL(request.url).searchParams.get(
+      "executorNodeId",
+    );
     const [
       workspace,
       sourceCollections,
@@ -361,6 +365,7 @@ export async function GET(
         prisma: getPrismaClient(),
         projectId: actor.projectId,
         actorUserId: actor.userId,
+        executorNodeId,
       }),
       readSpatialRenderReadiness(),
     ]);
@@ -487,6 +492,7 @@ export async function POST(
         actorUserId: actor.userId,
         actorEmail: actor.email,
         clientRequestId: text(body.clientRequestId),
+        executorNodeId: text(body.executorNodeId) || null,
         retryFailed: body.retryFailed === true,
       });
     } else if (action === "prepare-google-drive-source") {
@@ -498,6 +504,11 @@ export async function POST(
         actorUserId: actor.userId,
         actorEmail: actor.email,
         clientRequestId: text(body.clientRequestId),
+        executorTarget:
+          (await readLocalExecutorTarget(
+            prisma,
+            text(body.executorNodeId) || null,
+          )) ?? undefined,
         retryFailed: body.retryFailed === true,
       });
     } else if (action === "prepare-google-drive-library-navigation") {
@@ -510,6 +521,7 @@ export async function POST(
         clientRequestId: text(body.clientRequestId),
         limit: body.limit === undefined ? undefined : Number(body.limit),
         retryFailed: body.retryFailed === true,
+        executorNodeId: text(body.executorNodeId) || null,
       });
     } else if (action === "plan-google-drive-source-conform") {
       operation = await planGoogleDriveSourceUnitConform({
@@ -517,6 +529,7 @@ export async function POST(
         projectId: actor.projectId,
         sourceUnitId: text(body.sourceUnitId),
         actorUserId: actor.userId,
+        executorNodeId: text(body.executorNodeId) || null,
       });
     } else if (action === "plan-google-drive-library-conform") {
       operation = await planGoogleDriveLibraryConform({
@@ -524,6 +537,7 @@ export async function POST(
         projectId: actor.projectId,
         libraryId: text(body.libraryId),
         actorUserId: actor.userId,
+        executorNodeId: text(body.executorNodeId) || null,
       });
     } else if (action === "prepare-google-drive-source-conform") {
       operation = await requestGoogleDriveSourceUnitConform({
@@ -534,6 +548,7 @@ export async function POST(
         actorEmail: actor.email,
         clientRequestId: text(body.clientRequestId),
         expectedRemainingBytes: text(body.expectedRemainingBytes),
+        executorNodeId: text(body.executorNodeId) || null,
         retryFailed: body.retryFailed === true,
       });
     } else if (action === "request-source-visual-overview") {
@@ -544,6 +559,7 @@ export async function POST(
         actorUserId: actor.userId,
         actorEmail: actor.email,
         clientRequestId: text(body.clientRequestId),
+        executorNodeId: text(body.executorNodeId) || null,
         retryFailed: body.retryFailed === true,
       });
     } else if (action === "request-source-audio-navigation") {
@@ -554,6 +570,7 @@ export async function POST(
         actorUserId: actor.userId,
         actorEmail: actor.email,
         clientRequestId: text(body.clientRequestId),
+        executorNodeId: text(body.executorNodeId) || null,
         retryFailed: body.retryFailed === true,
       });
     } else if (action === "create-source-set") {

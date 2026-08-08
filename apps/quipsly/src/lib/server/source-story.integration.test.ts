@@ -70,6 +70,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
   let spatialVaultRoot = "";
   let spatialMasterPath = "";
   const additionalAssetIds: string[] = [];
+  const projectionNodeIds: string[] = [];
   let collectionOtherUserId = "";
 
   beforeAll(async () => {
@@ -198,6 +199,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
         await prisma.studioMediaSourceSet.deleteMany({ where: { projectId } });
       }
       if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
+      if (projectionNodeIds.length) await prisma.agentNode.deleteMany({ where: { id: { in: projectionNodeIds } } });
       await prisma.studioMediaAsset.deleteMany({
         where: { id: { in: [firstAssetId, secondAssetId, otherAssetId, ...additionalAssetIds].filter(Boolean) } },
       });
@@ -381,6 +383,71 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       code: "invalid-source-library-cursor",
       status: 400,
     });
+  });
+
+  it("projects local replicas, derivatives, and jobs only from the selected executor", async () => {
+    const nodeA = `execution_worker_story_a_${nonce}`;
+    const nodeB = `execution_worker_story_b_${nonce}`;
+    const scopeA = `storage_scope_story_a_${nonce}`;
+    const scopeB = `storage_scope_story_b_${nonce}`;
+    projectionNodeIds.push(nodeA, nodeB);
+    const capabilities = (scopeId: string) => ({
+      executorKind: "local-mac",
+      storage: {
+        schema: "quipsly-local-media-storage-v1",
+        status: "measured",
+        availableBytes: 20_000_000,
+        reserveBytes: 5_000_000,
+        safeAvailableBytes: 15_000_000,
+        measuredAt: new Date().toISOString(),
+        workspaceMode: "durable",
+        scopeId,
+      },
+    });
+    await prisma.agentNode.createMany({
+      data: [
+        { id: nodeA, hostName: `quipsly-media-worker:Editing Mac A ${nonce}`, ipAddress: "loopback", status: "online", capabilities: capabilities(scopeA), lastHeartbeatAt: new Date() },
+        { id: nodeB, hostName: `quipsly-media-worker:Editing Mac B ${nonce}`, ipAddress: "loopback", status: "online", capabilities: capabilities(scopeB), lastHeartbeatAt: new Date() },
+      ],
+    });
+    const jobA = `sourcevisual_a_${nonce}`;
+    const jobB = `sourcevisual_b_${nonce}`;
+    const replicaJobA = `sourcematerialize_a_${nonce}`;
+    const replicaJobB = `sourcematerialize_b_${nonce}`;
+    await prisma.studioWorkflowJob.createMany({
+      data: [
+        { id: jobA, projectId, type: "source-visual-overview", status: "completed", source: "source-story.visual-overview", requestedByEmail: actorEmail, inputJson: { source: { sourceRevisionId: spatialClockRevisionId } }, resultJson: { state: "completed", executionTarget: { custodianNodeId: nodeA, storageScopeId: scopeA } } },
+        { id: jobB, projectId, type: "source-visual-overview", status: "completed", source: "source-story.visual-overview", requestedByEmail: actorEmail, inputJson: { source: { sourceRevisionId: spatialClockRevisionId } }, resultJson: { state: "completed", executionTarget: { custodianNodeId: nodeB, storageScopeId: scopeB } } },
+        { id: replicaJobA, projectId, type: "google-drive-source-materialization", status: "completed", source: "source-story.google-drive-materialization", requestedByEmail: actorEmail, inputJson: { source: { sourceRevisionId: spatialClockRevisionId } }, resultJson: { state: "completed", executionTarget: { custodianNodeId: nodeA, storageScopeId: scopeA } } },
+        { id: replicaJobB, projectId, type: "google-drive-source-materialization", status: "completed", source: "source-story.google-drive-materialization", requestedByEmail: actorEmail, inputJson: { source: { sourceRevisionId: spatialClockRevisionId } }, resultJson: { state: "completed", executionTarget: { custodianNodeId: nodeB, storageScopeId: scopeB } } },
+      ],
+    });
+    await Promise.all([
+      prisma.studioMediaSourceReplica.create({ data: { id: `story_replica_a_${nonce}`, projectId, sourceRevisionId: spatialClockRevisionId, workflowJobId: replicaJobA, custodianNodeId: nodeA, storageScopeId: scopeA, storageProvider: "local-cache", locator: `source-story/${nonce}/a.lrv`, generation: `sha256:${"e".repeat(64)}`, contentSha256: "e".repeat(64), sizeBytes: BigInt(110_000_000), mimeType: "video/mp4", status: "ready", availabilityCheckedAt: new Date(), contentVerifiedAt: new Date(), createdByUserId: actorUserId } }),
+      prisma.studioMediaSourceReplica.create({ data: { id: `story_replica_b_${nonce}`, projectId, sourceRevisionId: spatialClockRevisionId, workflowJobId: replicaJobB, custodianNodeId: nodeB, storageScopeId: scopeB, storageProvider: "local-cache", locator: `source-story/${nonce}/b.lrv`, generation: `sha256:${"e".repeat(64)}`, contentSha256: "e".repeat(64), sizeBytes: BigInt(110_000_000), mimeType: "video/mp4", status: "ready", availabilityCheckedAt: new Date(), contentVerifiedAt: new Date(), createdByUserId: actorUserId } }),
+      prisma.studioMediaDerivative.create({ data: { id: `story_visual_a_${nonce}`, projectId, sourceRevisionId: spatialClockRevisionId, workflowJobId: jobA, custodianNodeId: nodeA, storageScopeId: scopeA, kind: "source-contact-sheet", profile: "source-contact-sheet-4x2-jpeg-v1", storageProvider: "local", locator: `source-story/${nonce}/a.jpg`, generation: `sha256:${"c".repeat(64)}`, contentSha256: "c".repeat(64), sizeBytes: BigInt(512), mimeType: "image/jpeg", status: "ready", createdByUserId: actorUserId } }),
+      prisma.studioMediaDerivative.create({ data: { id: `story_visual_b_${nonce}`, projectId, sourceRevisionId: spatialClockRevisionId, workflowJobId: jobB, custodianNodeId: nodeB, storageScopeId: scopeB, kind: "source-contact-sheet", profile: "source-contact-sheet-4x2-jpeg-v1", storageProvider: "local", locator: `source-story/${nonce}/b.jpg`, generation: `sha256:${"c".repeat(64)}`, contentSha256: "c".repeat(64), sizeBytes: BigInt(512), mimeType: "image/jpeg", status: "ready", createdByUserId: actorUserId } }),
+    ]);
+
+    const pageA = await readSourceLibraryPage({ prisma, projectId, limit: 10, query: "Homer walk-through", executorNodeId: nodeA });
+    const pageB = await readSourceLibraryPage({ prisma, projectId, limit: 10, query: "Homer walk-through", executorNodeId: nodeB });
+    const offlineNodeId = `execution_worker_story_offline_${nonce}`;
+    const offlinePage = await readSourceLibraryPage({ prisma, projectId, limit: 10, query: "Homer walk-through", executorNodeId: offlineNodeId });
+    const sourceA = pageA.sourceSets.find((sourceSet) => sourceSet.id === spatialSourceSetId)!;
+    const sourceB = pageB.sourceSets.find((sourceSet) => sourceSet.id === spatialSourceSetId)!;
+    expect(pageA.executorProjection.selected).toMatchObject({ nodeId: nodeA, storageScopeId: scopeA, label: expect.stringContaining("Editing Mac A") });
+    expect(sourceA.sourceClockRevision).toMatchObject({ visualOverview: { id: `story_visual_a_${nonce}` }, localReplicaAvailability: { id: `story_replica_a_${nonce}` }, visualOverviewJob: { id: jobA } });
+    expect(sourceB.sourceClockRevision).toMatchObject({ visualOverview: { id: `story_visual_b_${nonce}` }, localReplicaAvailability: { id: `story_replica_b_${nonce}` }, visualOverviewJob: { id: jobB } });
+    expect(JSON.stringify(sourceA)).not.toContain(`story_visual_b_${nonce}`);
+    expect(JSON.stringify(sourceB)).not.toContain(`story_replica_a_${nonce}`);
+    expect(offlinePage.executorProjection).toMatchObject({
+      requestedNodeId: offlineNodeId,
+      selected: null,
+    });
+    expect(JSON.stringify(offlinePage.sourceSets)).not.toContain(`story_visual_a_${nonce}`);
+    expect(JSON.stringify(offlinePage.sourceSets)).not.toContain(`story_visual_b_${nonce}`);
+    expect(JSON.stringify(offlinePage.sourceSets)).not.toContain(`story_replica_a_${nonce}`);
+    expect(JSON.stringify(offlinePage.sourceSets)).not.toContain(`story_replica_b_${nonce}`);
   });
 
   it("files canonical sources into revisioned personal and shared collections without copying media", async () => {

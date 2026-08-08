@@ -89,7 +89,20 @@ export async function readLocalExecutorStorage(
 
 export async function readLocalExecutorTarget(
   prisma: PrismaClient,
+  preferredNodeId?: string | null,
 ): Promise<LocalExecutorTarget | null> {
+  const targets = await readLocalExecutorTargets(prisma);
+  if (preferredNodeId) {
+    return (
+      targets.find((target) => target.nodeId === preferredNodeId) ?? null
+    );
+  }
+  return targets[0] ?? null;
+}
+
+export async function readLocalExecutorTargets(
+  prisma: PrismaClient,
+): Promise<LocalExecutorTarget[]> {
   const nodes = await prisma.agentNode.findMany({
     where: {
       status: "online",
@@ -118,16 +131,16 @@ export async function readLocalExecutorTarget(
       });
     }
   }
-  return (
-    targets.find(
-      (target) =>
-        target.storage.status === "measured" &&
-        target.storage.workspaceMode === "durable",
-    ) ??
-    targets.find((target) => target.storage.status === "measured") ??
-    targets[0] ??
-    null
-  );
+  return targets.sort((left, right) => {
+    const rank = (target: LocalExecutorTarget) =>
+      target.storage.status === "measured" &&
+      target.storage.workspaceMode === "durable"
+        ? 0
+        : target.storage.status === "measured"
+          ? 1
+          : 2;
+    return rank(left) - rank(right);
+  });
 }
 
 export function localExecutorStorageShortfall(

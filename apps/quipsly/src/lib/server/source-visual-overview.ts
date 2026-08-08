@@ -17,6 +17,8 @@ import {
 } from "@high-ground/quipsly-media-processing/source-navigation-identity";
 import type { PrismaClient } from "@prisma/client";
 
+import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
+
 export const SOURCE_VISUAL_OVERVIEW_JOB_TYPE = "source-visual-overview";
 export const SOURCE_VISUAL_OVERVIEW_JOB_SOURCE = "source-story.visual-overview";
 
@@ -116,6 +118,7 @@ export async function requestSourceVisualOverview(input: {
   actorUserId: string;
   actorEmail: string;
   clientRequestId: string;
+  executorNodeId?: string | null;
   retryFailed?: boolean;
 }) {
   const projectId = cleanId(input.projectId, "projectId");
@@ -123,6 +126,10 @@ export async function requestSourceVisualOverview(input: {
   const actorUserId = cleanId(input.actorUserId, "actorUserId");
   const clientRequestId = requestId(input.clientRequestId);
   const actorEmail = input.actorEmail.trim().toLowerCase();
+  const selectedExecutor = await readLocalExecutorTarget(
+    input.prisma,
+    input.executorNodeId,
+  );
   const source = await input.prisma.studioMediaSourceRevision.findFirst({
     where: { id: sourceRevisionId, projectId },
     include: {
@@ -156,9 +163,22 @@ export async function requestSourceVisualOverview(input: {
       409,
     );
   }
-  const proxy = source.derivatives.find(
+  const proxyCandidates = source.derivatives.filter(
     (derivative) => derivative.kind === "collaboration-proxy",
   );
+  const proxy =
+    (selectedExecutor
+      ? proxyCandidates.find(
+          (derivative) =>
+            derivative.custodianNodeId === selectedExecutor.nodeId &&
+            derivative.storageScopeId === selectedExecutor.storageScopeId,
+        )
+      : null) ??
+    proxyCandidates.find(
+      (derivative) =>
+        derivative.custodianNodeId === null &&
+        derivative.storageScopeId === null,
+    );
   if (
     !proxy ||
     proxy.storageProvider !== "local" ||
@@ -167,6 +187,25 @@ export async function requestSourceVisualOverview(input: {
     throw new SourceVisualOverviewRequestError(
       "visual-input-unavailable",
       "Create or restore the verified collaboration proxy before building this visual map.",
+      409,
+    );
+  }
+  const executionTarget =
+    proxy.custodianNodeId && proxy.storageScopeId
+      ? {
+          custodianNodeId: proxy.custodianNodeId,
+          storageScopeId: proxy.storageScopeId,
+        }
+      : selectedExecutor
+        ? {
+            custodianNodeId: selectedExecutor.nodeId,
+            storageScopeId: selectedExecutor.storageScopeId,
+          }
+        : null;
+  if (!executionTarget) {
+    throw new SourceVisualOverviewRequestError(
+      "visual-executor-unavailable",
+      "Start or select the local media computer that owns this proxy before building its visual map.",
       409,
     );
   }
@@ -187,11 +226,20 @@ export async function requestSourceVisualOverview(input: {
     sourceRevisionId,
     sourceIdentitySha256: source.identitySha256,
     inputGeneration: proxy.generation,
+    inputDerivativeId: proxy.id,
+    executionScopeId:
+      proxy.storageScopeId === null
+        ? executionTarget.storageScopeId
+        : undefined,
   });
   const existingDerivative = source.derivatives.find(
     (derivative) =>
       derivative.kind === SOURCE_VISUAL_OVERVIEW_DERIVATIVE_KIND &&
       derivative.profile === SOURCE_VISUAL_OVERVIEW_PROFILE &&
+      ((derivative.custodianNodeId === executionTarget.custodianNodeId &&
+        derivative.storageScopeId === executionTarget.storageScopeId) ||
+        (derivative.custodianNodeId === null &&
+          derivative.storageScopeId === null)) &&
       derivative.provenanceJson &&
       typeof derivative.provenanceJson === "object" &&
       !Array.isArray(derivative.provenanceJson) &&
@@ -283,6 +331,7 @@ export async function requestSourceVisualOverview(input: {
           completedAt: null,
           resultJson: {
             state: "queued",
+            executionTarget,
             requestedBy: { actorUserId, actorEmail, clientRequestId },
             failureHistory: failure
               ? [...failureHistory, failure]
@@ -317,6 +366,7 @@ export async function requestSourceVisualOverview(input: {
           completedAt: null,
           resultJson: {
             state: "queued",
+            executionTarget,
             requestedBy: { actorUserId, actorEmail, clientRequestId },
             recoveryReason: "local-derivative-unavailable",
             recoveryHistory: [
@@ -357,6 +407,7 @@ export async function requestSourceVisualOverview(input: {
       inputJson: manifest,
       resultJson: {
         state: "queued",
+        executionTarget,
         requestedBy: { actorUserId, actorEmail, clientRequestId },
         originalRemainsSourceTruth: true,
         inputDerivativeRemainsUnchanged: true,

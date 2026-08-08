@@ -3009,7 +3009,8 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   found the retained 0.34-second proxy audio to be near digital silence at
   -160 dBFS; the UI reports that limitation instead of presenting a decorative
   waveform as usable sound.
-- The shared `Insta360` Drive root was inspected read-only again on 2026-08-07.
+- The shared `Insta360` Drive root was inspected read-only again on 2026-08-08
+  from the exact folder the user shared with Quipsly.
   The latest connector readback contained eight capture-batch folders, 33
   visible files, 440.03 decimal GB (409.81 GiB) of visible source data, and 16
   complete INSV/LRV segment pairs. Two capture folders were still empty and one
@@ -3017,6 +3018,11 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   had its LRV companions, proving that readiness must be refreshed rather than
   inferred forever from an earlier scan. The root was still changing, so these
   are observed intake facts, not a completion or checksum claim.
+- Source Room now projects this inventory through one explicitly selected
+  local media computer. Library counts, retained LRVs, proxies, filmstrips,
+  waveforms, bounded preparation, and final-quality capacity use the same node
+  and opaque storage scope. An offline selection is held rather than silently
+  replaced by another Mac.
 - Google Drive intake now models library root -> capture batch -> independently
   seekable segment -> exact INSV/LRV members. Google Picker can select one
   library root, Quipsly recursively inspects exactly one reviewed level,

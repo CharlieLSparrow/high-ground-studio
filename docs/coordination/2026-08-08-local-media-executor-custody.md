@@ -65,7 +65,7 @@ space than Quipsly's 5 GiB reserve. The connected My Passport volume is also
 durable media workspace is mounted and selected. This is a capacity hold, not
 an architecture or OAuth blocker.
 
-## Next boundary
+## Executor-aware source library
 
 The follow-on slice now scopes new local derivatives as well. Collaboration
 proxy identity includes executor custody, so the same exact Drive source can
@@ -76,9 +76,27 @@ Custody is an all-or-nothing database invariant, legacy unscoped derivative
 uniqueness remains enforced, and an executor cannot be deleted while it still
 owns local derivatives.
 
-Remaining work is projection and broader producer convergence: source-library
-queries should prefer artifacts on the current executor, device-folder
-receipts need a v2 custody-bearing contract, and spatial/render producers must
-declare whether their output is local-executor custody or portable object
-storage. Legacy device replicas remain temporarily readable only as an
-unscoped fallback; a worker never accepts another executor's scoped replica.
+Source Room now exposes a **Local media computer** selector backed by the
+ranked online executor inventory. Source pages, followed-library health,
+materialization, proxy generation, filmstrip, waveform, and final-quality
+storage planning all use that exact node and storage scope. If the selected
+computer goes offline, Quipsly holds the operation rather than silently
+substituting another Mac. Legacy unscoped artifacts remain a narrow fallback;
+artifacts scoped to a different executor never appear ready.
+
+Visual and audio navigation identities now include the exact input proxy ID,
+so byte-identical proxy generations on two executors cannot share a job. A
+two-executor PostgreSQL test proves that each projection contains only its own
+replica, derivative, and job. The retained Episode 5 filmstrip and complete
+81.69-second audio analysis pass after restarting the actual worker from the
+new code, and the synthetic Drive operation again proves exact source bytes,
+proxy, contact sheet, waveform, and frequency evidence without downloading a
+real Drive original.
+
+## Remaining boundary
+
+Device-folder receipts still need a v2 custody-bearing contract, and
+spatial/render producers must declare whether their output is executor-local
+or portable object storage. Legacy device replicas remain temporarily readable
+only as an unscoped fallback; a worker never accepts another executor's scoped
+replica.

@@ -97,4 +97,71 @@ describe("local executor storage projection", () => {
       measuredAt: "2026-08-08T20:00:00.000Z",
     });
   });
+
+  it("honors an explicitly selected online executor", async () => {
+    const node = (id: string, scopeId: string) => ({
+      id,
+      hostName: `quipsly-media-worker:${id}`,
+      lastHeartbeatAt: new Date("2026-08-08T20:00:00.000Z"),
+      capabilities: {
+        executorKind: "local-mac",
+        storage: {
+          schema: "quipsly-local-media-storage-v1",
+          status: "measured",
+          availableBytes: 20_000,
+          reserveBytes: 5_000,
+          safeAvailableBytes: 15_000,
+          measuredAt: "2026-08-08T20:00:00.000Z",
+          workspaceMode: "durable",
+          scopeId,
+        },
+      },
+    });
+    const prisma = {
+      agentNode: {
+        findMany: jest.fn(async () => [
+          node("execution_worker_default", "storage_scope_default"),
+          node("execution_worker_homer", "storage_scope_homer"),
+        ]),
+      },
+    } as never;
+
+    await expect(
+      readLocalExecutorTarget(prisma, "execution_worker_homer"),
+    ).resolves.toMatchObject({
+      nodeId: "execution_worker_homer",
+      storageScopeId: "storage_scope_homer",
+    });
+  });
+
+  it("does not silently substitute another executor for an unavailable selection", async () => {
+    const prisma = {
+      agentNode: {
+        findMany: jest.fn(async () => [
+          {
+            id: "executor_available_123",
+            hostName: "quipsly-media-worker:Available",
+            lastHeartbeatAt: new Date("2026-08-08T20:00:00.000Z"),
+            capabilities: {
+              executorKind: "local-mac",
+              storage: {
+                schema: "quipsly-local-media-storage-v1",
+                status: "measured",
+                availableBytes: 1_000,
+                reserveBytes: 100,
+                safeAvailableBytes: 900,
+                measuredAt: "2026-08-08T20:00:00.000Z",
+                workspaceMode: "durable",
+                scopeId: "storage_scope_available_123",
+              },
+            },
+          },
+        ]),
+      },
+    } as never;
+
+    await expect(
+      readLocalExecutorTarget(prisma, "executor_offline_123"),
+    ).resolves.toBeNull();
+  });
 });

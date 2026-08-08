@@ -927,11 +927,13 @@ export function GoogleDriveSourcePicker({
   projectSlug,
   canWrite,
   libraries,
+  executorNodeId,
   onAttached,
 }: {
   projectSlug: string;
   canWrite: boolean;
   libraries?: ExternalMediaLibrary[];
+  executorNodeId?: string | null;
   onAttached(): Promise<unknown>;
 }) {
   const [connections, setConnections] = useState<DriveConnection[]>([]);
@@ -1353,6 +1355,7 @@ export function GoogleDriveSourcePicker({
             clientRequestId: crypto.randomUUID(),
             limit: 12,
             retryFailed: true,
+            executorNodeId: executorNodeId || null,
           }),
         },
       );
@@ -1434,6 +1437,7 @@ export function GoogleDriveSourcePicker({
           body: JSON.stringify({
             action: "plan-google-drive-library-conform",
             libraryId: library.id,
+            executorNodeId: executorNodeId || null,
           }),
         },
       );

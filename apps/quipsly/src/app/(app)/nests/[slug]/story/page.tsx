@@ -30,7 +30,7 @@ export default async function SourceStoryPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ asset?: string | string[]; external?: string | string[]; set?: string | string[]; board?: string | string[]; card?: string | string[] }>;
+  searchParams: Promise<{ asset?: string | string[]; external?: string | string[]; set?: string | string[]; board?: string | string[]; card?: string | string[]; executor?: string | string[] }>;
 }) {
   const [{ slug }, query, session] = await Promise.all([params, searchParams, getQuipslySession()]);
   if (!session?.user.id) redirect(`/login?callbackUrl=${encodeURIComponent(`/nests/${slug}/story`)}`);
@@ -41,12 +41,14 @@ export default async function SourceStoryPage({
   const access = await resolveStudioProjectAccess({ projectSlug: slug, email: actorEmail, action: "read", prisma });
   if (!access.allowed || !access.projectId) notFound();
   const canWrite = Boolean(access.role && roleAllowsAction(access.role, "write"));
+  const requestedExecutorNodeId =
+    typeof query.executor === "string" ? query.executor : null;
 
   try {
     const [initialSourcePage, sourceCollections, externalMediaLibraries, tags, episodes, coreWorkspace, spatialRenderReadiness] = await Promise.all([
-      readSourceLibraryPage({ prisma, projectId: project.id, limit: 60 }),
+      readSourceLibraryPage({ prisma, projectId: project.id, limit: 60, executorNodeId: requestedExecutorNodeId }),
       readSourceCollections(prisma, { projectId: project.id, actorUserId: session.user.id }),
-      listExternalMediaLibraries({ prisma, projectId: project.id, actorUserId: session.user.id }),
+      listExternalMediaLibraries({ prisma, projectId: project.id, actorUserId: session.user.id, executorNodeId: requestedExecutorNodeId }),
       prisma.studioTag.findMany({
         where: { projectId: project.id, isActive: true },
         orderBy: [{ category: "asc" }, { label: "asc" }],
@@ -69,7 +71,7 @@ export default async function SourceStoryPage({
     const requestedSourceSetId = typeof query.set === "string" ? query.set : focusedCard?.sourceRange?.sourceSet?.id ?? null;
     const requestedSourceId = requestedSourceSetId || requestedExternalReferenceId || requestedAssetId;
     const focusedSourcePage = requestedSourceId && !initialSourcePage.orderedKeys.some((key) => key.endsWith(`:${requestedSourceId}`))
-      ? await readSourceLibraryPage({ prisma, projectId: project.id, limit: 3, query: requestedSourceId })
+      ? await readSourceLibraryPage({ prisma, projectId: project.id, limit: 3, query: requestedSourceId, executorNodeId: requestedExecutorNodeId })
       : null;
     const sourcePage = focusedSourcePage ? {
       ...initialSourcePage,
@@ -122,6 +124,7 @@ export default async function SourceStoryPage({
         episodes={episodes}
         initialWorkspace={workspace}
         initialSourcePageInfo={sourcePage.pageInfo}
+        initialSourceExecutorProjection={sourcePage.executorProjection}
         spatialRenderReadiness={spatialRenderReadiness}
         initialAssetId={selectedAssetId}
         initialExternalReferenceId={selectedExternalReferenceId}

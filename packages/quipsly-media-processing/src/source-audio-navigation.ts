@@ -103,14 +103,28 @@ export function sourceAudioNavigationIdentity(input: {
   sourceRevisionId: string;
   sourceIdentitySha256: string;
   inputGeneration: string;
+  inputDerivativeId?: string;
+  executionScopeId?: string;
   profile?: string;
 }) {
+  const inputDerivativeId = cleanText(input.inputDerivativeId);
+  const executionScopeId = cleanText(input.executionScopeId);
+  if (
+    (inputDerivativeId && !SAFE_ID.test(inputDerivativeId)) ||
+    (executionScopeId && !SAFE_ID.test(executionScopeId))
+  ) {
+    throw new Error("Source audio-navigation derivative identity is invalid.");
+  }
   return [
-    "source-audio-navigation-v1",
+    inputDerivativeId || executionScopeId
+      ? "source-audio-navigation-v2"
+      : "source-audio-navigation-v1",
     cleanText(input.projectId),
     cleanText(input.sourceRevisionId),
     cleanText(input.sourceIdentitySha256).toLowerCase(),
     cleanText(input.inputGeneration),
+    ...(inputDerivativeId ? [inputDerivativeId] : []),
+    ...(executionScopeId ? [executionScopeId] : []),
     cleanText(input.profile) || SOURCE_AUDIO_NAVIGATION_PROFILE,
   ].join(":");
 }

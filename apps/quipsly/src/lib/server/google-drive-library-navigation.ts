@@ -17,7 +17,7 @@ import { preferPreparedByteEquivalentRevision } from "@/lib/server/external-medi
 import { selectGoogleDriveBrowsePreparationBatch } from "@/lib/server/google-drive-navigation-batch";
 import {
   localExecutorStorageShortfall,
-  readLocalExecutorStorage,
+  readLocalExecutorTarget,
 } from "@/lib/server/local-executor-storage";
 
 import {
@@ -119,6 +119,23 @@ function knownPreparationError(error: unknown) {
   return null;
 }
 
+function artifactForExecutor<
+  T extends { custodianNodeId: string | null; storageScopeId: string | null },
+>(artifacts: T[], executor: { nodeId: string; storageScopeId: string }) {
+  return (
+    artifacts.find(
+      (artifact) =>
+        artifact.custodianNodeId === executor.nodeId &&
+        artifact.storageScopeId === executor.storageScopeId,
+    ) ??
+    artifacts.find(
+      (artifact) =>
+        artifact.custodianNodeId === null && artifact.storageScopeId === null,
+    ) ??
+    null
+  );
+}
+
 export async function prepareGoogleDriveLibraryNavigation(input: {
   prisma: PrismaClient;
   projectId: string;
@@ -128,6 +145,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
   clientRequestId: string;
   limit?: number;
   retryFailed?: boolean;
+  executorNodeId?: string | null;
   environment?: NodeJS.ProcessEnv;
 }) {
   const projectId = cleanId(input.projectId, "projectId");
@@ -136,6 +154,17 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
   const clientRequestId = requestId(input.clientRequestId);
   const limit = batchLimit(input.limit);
   const actorEmail = input.actorEmail.trim().toLowerCase();
+  const executor = await readLocalExecutorTarget(
+    input.prisma,
+    input.executorNodeId,
+  );
+  if (!executor) {
+    throw new GoogleDriveLibraryNavigationError(
+      "local-executor-unavailable",
+      "No local media computer is online to prepare this Drive library.",
+      409,
+    );
+  }
   const library = await input.prisma.studioExternalMediaLibrary.findFirst({
     where: { id: libraryId, projectId, provider: "google-drive" },
     include: {
@@ -154,7 +183,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
                   replicas: {
                     where: { storageProvider: "local-cache", status: "ready" },
                     orderBy: { createdAt: "desc" },
-                    take: 1,
+                    take: 12,
                   },
                   derivatives: {
                     where: {
@@ -211,18 +240,29 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
     ) {
       return [];
     }
-    return [{ item, reference, revision }];
+    return [
+      {
+        item,
+        reference,
+        revision,
+        replica: artifactForExecutor(revision.replicas, executor),
+        proxy: artifactForExecutor(
+          revision.derivatives.filter(
+            (derivative) => derivative.kind === "collaboration-proxy",
+          ),
+          executor,
+        ),
+      },
+    ];
   });
-  const expectedNavigation = candidates.flatMap(({ revision }) => {
-    const proxy = revision.derivatives.find(
-      (derivative) => derivative.kind === "collaboration-proxy",
-    );
+  const expectedNavigation = candidates.flatMap(({ revision, proxy }) => {
     if (!proxy) return [];
     const identityInput = {
       projectId,
       sourceRevisionId: revision.id,
       sourceIdentitySha256: revision.identitySha256,
       inputGeneration: proxy.generation,
+      inputDerivativeId: proxy.id,
     };
     return [
       {
@@ -259,14 +299,20 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
   const readyNavigationJobIds = new Set(
     readyNavigationJobs.map((job) => job.id),
   );
-  const incomplete = candidates.filter(({ revision }) => {
+  const incomplete = candidates.filter(({ revision, proxy }) => {
     const expected = expectedByRevision.get(revision.id);
     if (!expected) return true;
-    const visualReady = revision.derivatives.some(
-      (derivative) =>
-        derivative.kind === "source-contact-sheet" &&
-        record(derivative.provenanceJson).inputGeneration ===
-          expected.proxyGeneration,
+    const visualReady = Boolean(
+      artifactForExecutor(
+        revision.derivatives.filter(
+          (derivative) =>
+            derivative.kind === "source-contact-sheet" &&
+            record(derivative.provenanceJson).inputGeneration ===
+              expected.proxyGeneration &&
+            record(derivative.provenanceJson).inputDerivativeId === proxy?.id,
+        ),
+        executor,
+      ),
     );
     return (
       !visualReady ||
@@ -280,7 +326,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
     environment: input.environment,
   });
   const selected = batch.selected;
-  const executorStorage = await readLocalExecutorStorage(input.prisma);
+  const executorStorage = executor.storage;
   const batchShortfall = localExecutorStorageShortfall(
     executorStorage,
     batch.selectedTransferBytes,
@@ -307,7 +353,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
   for (const candidate of selected) {
     const { reference, revision } = candidate;
     try {
-      let replicaReady = Boolean(revision.replicas[0]);
+      let replicaReady = Boolean(candidate.replica);
       if (!replicaReady) {
         const prepared = await requestGoogleDriveSourceMaterialization({
           prisma: input.prisma,
@@ -321,6 +367,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
             revision.id,
             "materialization",
           ),
+          executorTarget: executor,
           retryFailed: input.retryFailed,
         });
         replicaReady = prepared.state === "ready";
@@ -340,9 +387,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
         }
       }
 
-      let proxyReady = revision.derivatives.some(
-        (derivative) => derivative.kind === "collaboration-proxy",
-      );
+      let proxyReady = Boolean(candidate.proxy);
       if (!proxyReady) {
         const proxied = await requestExternalSourceProxy({
           prisma: input.prisma,
@@ -356,6 +401,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
             revision.id,
             "proxy",
           ),
+          executorNodeId: executor.nodeId,
           retryFailed: input.retryFailed,
         });
         proxyReady = proxied.state === "ready";
@@ -387,6 +433,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
             revision.id,
             "visual",
           ),
+          executorNodeId: executor.nodeId,
           retryFailed: input.retryFailed,
         }),
         requestSourceAudioNavigation({
@@ -400,6 +447,7 @@ export async function prepareGoogleDriveLibraryNavigation(input: {
             revision.id,
             "audio",
           ),
+          executorNodeId: executor.nodeId,
           retryFailed: input.retryFailed,
         }),
       ]);

@@ -223,13 +223,17 @@ export async function planGoogleDriveSourceUnitConform(input: {
   projectId: string;
   sourceUnitId: string;
   actorUserId?: string;
+  executorNodeId?: string | null;
 }) {
   const projectId = cleanId(input.projectId, "projectId");
   const sourceUnitId = cleanId(input.sourceUnitId, "sourceUnitId");
   const actorUserId = input.actorUserId
     ? cleanId(input.actorUserId, "actorUserId")
     : null;
-  const executorTarget = await readLocalExecutorTarget(input.prisma);
+  const executorTarget = await readLocalExecutorTarget(
+    input.prisma,
+    input.executorNodeId,
+  );
   const { sourceUnit, members } = await loadConformState({
     prisma: input.prisma,
     projectId,
@@ -423,6 +427,7 @@ export async function requestGoogleDriveSourceUnitConform(input: {
   actorEmail: string;
   clientRequestId: string;
   expectedRemainingBytes: string;
+  executorNodeId?: string | null;
   retryFailed?: boolean;
   environment?: NodeJS.ProcessEnv;
 }) {
@@ -433,6 +438,7 @@ export async function requestGoogleDriveSourceUnitConform(input: {
     projectId: input.projectId,
     sourceUnitId: input.sourceUnitId,
     actorUserId,
+    executorNodeId: input.executorNodeId,
   });
   if (initial.storage.remainingBytes !== input.expectedRemainingBytes) {
     throw new GoogleDriveSourceConformError(
@@ -442,7 +448,10 @@ export async function requestGoogleDriveSourceUnitConform(input: {
     );
   }
   if (initial.status === "render-ready") return initial;
-  const executorTarget = await readLocalExecutorTarget(input.prisma);
+  const executorTarget = await readLocalExecutorTarget(
+    input.prisma,
+    input.executorNodeId,
+  );
   if (
     !executorTarget ||
     executorTarget.nodeId !== initial.storage.executorTarget?.nodeId ||
@@ -491,6 +500,7 @@ export async function requestGoogleDriveSourceUnitConform(input: {
     projectId: input.projectId,
     sourceUnitId: input.sourceUnitId,
     actorUserId,
+    executorNodeId: input.executorNodeId,
   });
   if (current.status !== "ready-to-bind") return current;
   const browse = current.members.find(
@@ -531,6 +541,7 @@ export async function requestGoogleDriveSourceUnitConform(input: {
     projectId: input.projectId,
     sourceUnitId: input.sourceUnitId,
     actorUserId,
+    executorNodeId: input.executorNodeId,
   });
   return current;
 }

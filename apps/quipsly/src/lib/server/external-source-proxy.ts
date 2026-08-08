@@ -13,6 +13,8 @@ import {
 } from "@high-ground/quipsly-media-processing/external-source-proxy-identity";
 import type { PrismaClient } from "@prisma/client";
 
+import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
+
 export const EXTERNAL_SOURCE_PROXY_JOB_TYPE = "external-source-proxy";
 export const EXTERNAL_SOURCE_PROXY_JOB_SOURCE = "source-story.external-proxy";
 
@@ -67,6 +69,7 @@ export async function requestExternalSourceProxy(input: {
   actorUserId: string;
   actorEmail: string;
   clientRequestId: string;
+  executorNodeId?: string | null;
   retryFailed?: boolean;
 }) {
   const projectId = cleanId(input.projectId, "projectId");
@@ -75,6 +78,10 @@ export async function requestExternalSourceProxy(input: {
   const actorUserId = cleanId(input.actorUserId, "actorUserId");
   const clientRequestId = requestId(input.clientRequestId);
   const actorEmail = input.actorEmail.trim().toLowerCase();
+  const selectedExecutor = await readLocalExecutorTarget(
+    input.prisma,
+    input.executorNodeId,
+  );
   const source = await input.prisma.studioMediaSourceRevision.findFirst({
     where: {
       id: sourceRevisionId,
@@ -120,7 +127,10 @@ export async function requestExternalSourceProxy(input: {
   const localReplica =
     reference.provider === "google-drive"
       ? (source.replicas.find(
-          (replica) => replica.custodianNodeId && replica.storageScopeId,
+          (replica) =>
+            selectedExecutor &&
+            replica.custodianNodeId === selectedExecutor.nodeId &&
+            replica.storageScopeId === selectedExecutor.storageScopeId,
         ) ?? null)
       : (source.replicas[0] ?? null);
   const executionTarget =

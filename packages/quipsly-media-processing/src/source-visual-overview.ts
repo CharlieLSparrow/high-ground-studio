@@ -140,14 +140,28 @@ export function sourceVisualOverviewIdentity(input: {
   sourceRevisionId: string;
   sourceIdentitySha256: string;
   inputGeneration: string;
+  inputDerivativeId?: string;
+  executionScopeId?: string;
   profile?: string;
 }) {
+  const inputDerivativeId = text(input.inputDerivativeId);
+  const executionScopeId = text(input.executionScopeId);
+  if (
+    (inputDerivativeId && !SAFE_ID.test(inputDerivativeId)) ||
+    (executionScopeId && !SAFE_ID.test(executionScopeId))
+  ) {
+    throw new Error("Source visual-overview derivative identity is invalid.");
+  }
   return [
-    "source-visual-overview-v1",
+    inputDerivativeId || executionScopeId
+      ? "source-visual-overview-v2"
+      : "source-visual-overview-v1",
     text(input.projectId),
     text(input.sourceRevisionId),
     text(input.sourceIdentitySha256).toLowerCase(),
     text(input.inputGeneration),
+    ...(inputDerivativeId ? [inputDerivativeId] : []),
+    ...(executionScopeId ? [executionScopeId] : []),
     text(input.profile) || SOURCE_VISUAL_OVERVIEW_PROFILE,
   ].join(":");
 }
