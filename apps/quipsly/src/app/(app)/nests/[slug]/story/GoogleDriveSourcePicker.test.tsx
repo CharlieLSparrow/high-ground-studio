@@ -102,6 +102,20 @@ describe("Google Drive source picker entry", () => {
             totalSizeBytes: "435214857419",
             readySegmentCount: 13,
             heldSegmentCount: 11,
+            heldSegments: [
+              {
+                batchName: "VID_20260114_145426_00_025_027-Original",
+                displayName: "2026-01-14 14:54:26 · segment 027",
+                segment: "027",
+                status: "held-incomplete",
+                reasons: [
+                  "The exact INSV original is missing.",
+                  "At least one file is empty or still syncing.",
+                ],
+                observedMemberCount: 1,
+              },
+            ],
+            heldSegmentsOmittedCount: 10,
             notObservedCount: 1,
             lastCheckedAt: "2026-08-07T20:00:00.000Z",
             canRefresh: false,
@@ -123,6 +137,15 @@ describe("Google Drive source picker entry", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/refresh rechecks the exact files you selected/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/review 11 held camera segments/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/exact insv original is missing/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/10 additional held segments/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^refresh$/i })).toBeDisabled();
     expect(

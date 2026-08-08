@@ -484,4 +484,94 @@ runDatabaseSmoke("followed external media library", () => {
       });
     }
   });
+
+  it("publishes repairable held-package reasons without leaking Drive locators", async () => {
+    const heldConnection = await prisma.studioMediaProviderConnection.create({
+      data: {
+        userId: actorUserId,
+        provider: "google-drive",
+        providerAccountKey: `library-held-proof-${nonce}`,
+        status: "verified",
+        verifiedAt: new Date(),
+      },
+    });
+    try {
+      const zeroLrv = file(
+        "private_drive_file_zero_027",
+        "LRV_20260114_145426_01_027.lrv",
+        "0",
+        "0",
+      );
+      const heldPlan = planGoogleDriveMediaLibrary({
+        rootFolderId: "private_held_root_03",
+        rootFolderName: "Insta360 working library",
+        batches: [
+          planGoogleDriveMediaFolder({
+            folderId: "private_held_batch_03",
+            folderName: "VID_20260114_145426_00_025_027-Original",
+            files: [zeroLrv],
+          }),
+        ],
+      });
+      const result = await recordGoogleDriveLibraryObservation({
+        prisma,
+        projectId,
+        actorUserId,
+        actorEmail,
+        connectionId: heldConnection.id,
+        externalRootId: "private_held_root_03",
+        sharedDriveId: null,
+        resourceKey: "private_held_resource_03",
+        clientRequestId: randomUUID(),
+        plan: heldPlan,
+        attachments: [],
+      });
+
+      expect(result.library).toMatchObject({
+        status: "attention",
+        heldSegmentCount: 3,
+        heldSegmentsOmittedCount: 0,
+        heldSegments: [
+          expect.objectContaining({
+            batchName: "VID_20260114_145426_00_025_027-Original",
+            segment: "025",
+            observedMemberCount: 0,
+            reasons: [
+              "The exact INSV original is missing.",
+              "The LRV browsing companion is missing.",
+            ],
+          }),
+          expect.objectContaining({ segment: "026", observedMemberCount: 0 }),
+          expect.objectContaining({
+            segment: "027",
+            observedMemberCount: 1,
+            reasons: expect.arrayContaining([
+              "The exact INSV original is missing.",
+              "At least one file is empty or still syncing.",
+            ]),
+          }),
+        ],
+      });
+      const publicJson = JSON.stringify(result.library);
+      expect(publicJson).not.toContain("private_drive_file_zero_027");
+      expect(publicJson).not.toContain("private_held_root_03");
+      expect(publicJson).not.toContain("private_held_resource_03");
+
+      const stored = await prisma.studioExternalMediaLibrary.findUniqueOrThrow({
+        where: { id: result.library.id },
+        select: { healthJson: true },
+      });
+      expect(stored.healthJson).toMatchObject({
+        schema: "quipsly-external-media-library-health-v2",
+        heldSegmentsOmittedCount: 0,
+        heldSegments: expect.arrayContaining([
+          expect.objectContaining({ segment: "027" }),
+        ]),
+      });
+    } finally {
+      await prisma.studioMediaProviderConnection.deleteMany({
+        where: { id: heldConnection.id },
+      });
+    }
+  });
 });

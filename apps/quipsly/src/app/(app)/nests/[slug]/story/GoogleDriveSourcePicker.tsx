@@ -28,6 +28,15 @@ type ExternalMediaLibrary = {
   totalSizeBytes: string;
   readySegmentCount: number;
   heldSegmentCount: number;
+  heldSegments?: Array<{
+    batchName: string;
+    displayName: string;
+    segment: string;
+    status: string;
+    reasons: string[];
+    observedMemberCount: number;
+  }>;
+  heldSegmentsOmittedCount?: number;
   notObservedCount: number;
   lastCheckedAt: string;
   canRefresh: boolean;
@@ -252,12 +261,54 @@ function FollowedDriveLibraries({
             </p>
           ) : null}
           {library.heldSegmentCount > 0 ? (
-            <p className="mt-2 text-[9px] font-semibold leading-4 text-amber-900">
-              Held packages are observed but not attached as usable Studio
-              sources. Refresh after Drive finishes syncing or missing camera
-              companions arrive; complete packages attach without disturbing
-              existing cards.
-            </p>
+            <>
+              <p className="mt-2 text-[9px] font-semibold leading-4 text-amber-900">
+                Held packages are observed but not attached as usable Studio
+                sources. Refresh after Drive finishes syncing or missing camera
+                companions arrive; complete packages attach without disturbing
+                existing cards.
+              </p>
+              {library.heldSegments?.length ? (
+                <details className="mt-2 rounded-xl border border-amber-200 bg-amber-50/70 px-2">
+                  <summary className="cursor-pointer min-h-11 py-3 text-[9px] font-black uppercase tracking-wide text-amber-950">
+                    Review {library.heldSegmentCount} held camera segment
+                    {library.heldSegmentCount === 1 ? "" : "s"}
+                  </summary>
+                  <div className="max-h-56 space-y-2 overflow-y-auto pb-2 pr-1">
+                    {library.heldSegments.map((segment) => (
+                      <article
+                        key={`${segment.batchName}:${segment.segment}`}
+                        className="rounded-lg border border-amber-200 bg-white p-2"
+                      >
+                        <p className="truncate text-[8px] font-black uppercase tracking-wide text-amber-800">
+                          {segment.batchName}
+                        </p>
+                        <div className="mt-1 flex items-start justify-between gap-2">
+                          <p className="text-[10px] font-black text-[#3e2f21]">
+                            {segment.displayName}
+                          </p>
+                          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-1 text-[8px] font-black text-amber-950">
+                            {segment.observedMemberCount} observed
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[9px] font-semibold leading-4 text-amber-950">
+                          {segment.reasons.join(" ") ||
+                            "The camera package is not complete yet."}
+                        </p>
+                      </article>
+                    ))}
+                    {(library.heldSegmentsOmittedCount ?? 0) > 0 ? (
+                      <p className="rounded-lg border border-amber-200 bg-white p-2 text-[9px] font-bold text-amber-950">
+                        {library.heldSegmentsOmittedCount} additional held
+                        segments are retained in the library receipt. Split very
+                        large roots into smaller working libraries for detailed
+                        review.
+                      </p>
+                    ) : null}
+                  </div>
+                </details>
+              ) : null}
+            </>
           ) : null}
           {library.discoveryMode === "selected-files" ? (
             <p className="mt-2 text-[9px] font-semibold leading-4 text-teal-900">

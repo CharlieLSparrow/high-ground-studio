@@ -19,6 +19,17 @@ type InventoryRow = {
   sizeBytes: bigint | null;
 };
 
+const MAX_PUBLIC_HELD_SEGMENTS = 100;
+
+type PublicHeldSegment = {
+  batchName: string;
+  displayName: string;
+  segment: string;
+  status: string;
+  reasons: string[];
+  observedMemberCount: number;
+};
+
 export class ExternalMediaLibraryError extends Error {
   constructor(
     message: string,
@@ -119,6 +130,84 @@ function libraryInventory(plan: GoogleDriveMediaLibraryPlan) {
   );
 }
 
+function heldSegmentHealth(plan: GoogleDriveMediaLibraryPlan) {
+  const all = plan.batches.flatMap((batch) =>
+    batch.segments
+      .filter((segment) => segment.status !== "ready-to-attach")
+      .map(
+        (segment): PublicHeldSegment => ({
+          batchName: batch.folder.name.slice(0, 240),
+          displayName: segment.displayName.slice(0, 240),
+          segment: segment.segment.slice(0, 16),
+          status: segment.status,
+          reasons: segment.reasons
+            .slice(0, 8)
+            .map((reason) => reason.slice(0, 500)),
+          observedMemberCount: segment.members.length,
+        }),
+      ),
+  );
+  return {
+    heldSegments: all.slice(0, MAX_PUBLIC_HELD_SEGMENTS),
+    heldSegmentsOmittedCount: Math.max(
+      0,
+      all.length - MAX_PUBLIC_HELD_SEGMENTS,
+    ),
+  };
+}
+
+function publicHeldSegmentHealth(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return {
+      heldSegments: [] as PublicHeldSegment[],
+      heldSegmentsOmittedCount: 0,
+    };
+  const record = value as Record<string, unknown>;
+  const heldSegments = Array.isArray(record.heldSegments)
+    ? record.heldSegments
+        .slice(0, MAX_PUBLIC_HELD_SEGMENTS)
+        .flatMap((candidate): PublicHeldSegment[] => {
+          if (
+            !candidate ||
+            typeof candidate !== "object" ||
+            Array.isArray(candidate)
+          )
+            return [];
+          const item = candidate as Record<string, unknown>;
+          if (
+            typeof item.batchName !== "string" ||
+            typeof item.displayName !== "string" ||
+            typeof item.segment !== "string" ||
+            typeof item.status !== "string" ||
+            !Array.isArray(item.reasons) ||
+            typeof item.observedMemberCount !== "number"
+          )
+            return [];
+          return [
+            {
+              batchName: item.batchName,
+              displayName: item.displayName,
+              segment: item.segment,
+              status: item.status,
+              reasons: item.reasons.filter(
+                (reason): reason is string => typeof reason === "string",
+              ),
+              observedMemberCount: item.observedMemberCount,
+            },
+          ];
+        })
+    : [];
+  return {
+    heldSegments,
+    heldSegmentsOmittedCount:
+      typeof record.heldSegmentsOmittedCount === "number" &&
+      Number.isInteger(record.heldSegmentsOmittedCount) &&
+      record.heldSegmentsOmittedCount > 0
+        ? record.heldSegmentsOmittedCount
+        : 0,
+  };
+}
+
 function publicLibrary(
   library: {
     id: string;
@@ -133,6 +222,7 @@ function publicLibrary(
     lastSuccessfulRefreshAt: Date;
     createdByUserId: string;
     providerLocatorJson: unknown;
+    healthJson: unknown;
     connection: { userId: string; status: string } | null;
     items?: Array<{ state: string }>;
   },
@@ -146,6 +236,7 @@ function publicLibrary(
     !Array.isArray(library.providerLocatorJson)
       ? (library.providerLocatorJson as Record<string, unknown>)
       : {};
+  const heldHealth = publicHeldSegmentHealth(library.healthJson);
   return {
     id: library.id,
     name: library.name,
@@ -156,6 +247,7 @@ function publicLibrary(
     totalSizeBytes: library.totalSizeBytes.toString(),
     readySegmentCount: library.readySegmentCount,
     heldSegmentCount: library.heldSegmentCount,
+    ...heldHealth,
     notObservedCount,
     lastCheckedAt: library.lastCheckedAt.toISOString(),
     lastSuccessfulRefreshAt: library.lastSuccessfulRefreshAt.toISOString(),
@@ -341,8 +433,9 @@ export async function recordGoogleDriveLibraryObservation(input: {
           ? "attention"
           : "ready";
       const nextRevision = existing ? existing.revision + 1 : 1;
+      const heldHealth = heldSegmentHealth(input.plan);
       const healthJson = {
-        schema: "quipsly-external-media-library-health-v1",
+        schema: "quipsly-external-media-library-health-v2",
         addedCount,
         changedCount,
         restoredCount,
@@ -350,6 +443,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
         notObservedCount: notObserved.length,
         noAutomaticDeletion: true,
         discoveryMode: selectionManifest ? "selected-files" : "folder-scan",
+        ...heldHealth,
       } satisfies Prisma.InputJsonValue;
 
       const library = existing
