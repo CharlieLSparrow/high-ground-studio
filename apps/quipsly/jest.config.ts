@@ -31,6 +31,7 @@ const config: Config = {
     '^@high-ground/quipsly-document-kernel$': '<rootDir>/../../packages/quipsly-document-kernel/src/index.ts',
     '^@high-ground/quipsly-media-processing$': '<rootDir>/../../packages/quipsly-media-processing/src/index.ts',
     '^@high-ground/quipsly-media-processing/external-source-proxy-identity$': '<rootDir>/../../packages/quipsly-media-processing/src/external-source-proxy-identity.ts',
+    '^@high-ground/quipsly-media-processing/source-navigation-identity$': '<rootDir>/../../packages/quipsly-media-processing/src/source-navigation-identity.ts',
     '^@high-ground/quipsly-media-processing/google-drive-provider-credential$': '<rootDir>/../../packages/quipsly-media-processing/src/google-drive-provider-credential.ts',
     '^@high-ground/quipsly-capture-verification$': '<rootDir>/../../packages/quipsly-capture-verification/src/index.ts',
     '^@high-ground/quipsly-domain/art-recipes$': '<rootDir>/../../packages/quipsly-domain/src/art-recipes.ts',

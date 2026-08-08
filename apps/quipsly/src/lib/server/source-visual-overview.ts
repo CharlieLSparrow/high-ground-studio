@@ -1,7 +1,5 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
-
 import {
   SOURCE_VISUAL_OVERVIEW_COLUMNS,
   SOURCE_VISUAL_OVERVIEW_DERIVATIVE_KIND,
@@ -12,6 +10,11 @@ import {
   parseSourceVisualOverviewJob,
   sourceVisualOverviewIdentity,
 } from "@high-ground/quipsly-media-processing";
+import {
+  buildSourceVisualOverviewTargetLocator,
+  sourceVisualOverviewDerivativeId,
+  sourceVisualOverviewJobId,
+} from "@high-ground/quipsly-media-processing/source-navigation-identity";
 import type { PrismaClient } from "@prisma/client";
 
 export const SOURCE_VISUAL_OVERVIEW_JOB_TYPE = "source-visual-overview";
@@ -98,10 +101,6 @@ function requestId(value: unknown) {
     );
   }
   return result;
-}
-
-function deterministicId(prefix: string, identity: string) {
-  return `${prefix}_${createHash("sha256").update(identity).digest("hex").slice(0, 48)}`;
 }
 
 function safeNumber(value: bigint | null) {
@@ -208,14 +207,13 @@ export async function requestSourceVisualOverview(input: {
     };
   }
 
-  const jobId = deterministicId("svojob", identity);
-  const derivativeId = deterministicId("svoderivative", identity);
-  const locator = [
-    "source-story",
-    source.project.slug,
+  const jobId = sourceVisualOverviewJobId(identity);
+  const derivativeId = sourceVisualOverviewDerivativeId(identity);
+  const locator = buildSourceVisualOverviewTargetLocator({
+    projectSlug: source.project.slug,
     sourceRevisionId,
-    `${SOURCE_VISUAL_OVERVIEW_PROFILE}-${proxy.contentSha256.slice(0, 20)}.jpg`,
-  ].join("/");
+    inputContentSha256: proxy.contentSha256,
+  });
   const manifest = newSourceVisualOverviewJob({
     jobId,
     derivativeId,

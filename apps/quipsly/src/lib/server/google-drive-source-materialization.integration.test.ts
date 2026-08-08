@@ -6,6 +6,10 @@ import { getPrismaClient } from "@/lib/prisma";
 
 import { attachVerifiedExternalMediaSource } from "./external-media-source";
 import { requestExternalSourceProxy } from "./external-source-proxy";
+import {
+  GoogleDriveLibraryNavigationError,
+  prepareGoogleDriveLibraryNavigation,
+} from "./google-drive-library-navigation";
 import { saveGoogleDriveConnection } from "./google-drive-connection";
 import {
   GoogleDriveSourceMaterializationRequestError,
@@ -235,6 +239,103 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
       code: "drive-connection-mismatch",
       status: 403,
     } satisfies Partial<GoogleDriveSourceMaterializationRequestError>);
+  });
+
+  it("prepares a bounded followed-library batch through the owning Drive connection", async () => {
+    const attached = await attach("browse-proxy", {
+      key: `library-batch-${nonce}`,
+    });
+    const library = await prisma.studioExternalMediaLibrary.create({
+      data: {
+        projectId,
+        connectionId,
+        provider: "google-drive",
+        externalRootId: `library-batch-${nonce}`,
+        name: "Homer bounded 360 library",
+        status: "ready",
+        revision: 1,
+        inventoryFingerprintSha256: "f".repeat(64),
+        totalFileCount: 1,
+        totalSizeBytes: BigInt(2048),
+        readySegmentCount: 1,
+        heldSegmentCount: 0,
+        providerLocatorJson: {
+          schema: "quipsly-google-drive-library-locator-v2",
+          mode: "selection-manifest",
+        },
+        healthJson: {
+          schema: "quipsly-external-media-library-health-v2",
+        },
+        lastCheckedAt: new Date(),
+        lastSuccessfulRefreshAt: new Date(),
+        clientRequestId: randomUUID(),
+        createdByUserId: actorUserId,
+        createdByEmail: actorEmail,
+        items: {
+          create: {
+            externalFileId: attached.reference.externalFileId,
+            externalReferenceId: attached.reference.id,
+            fileName: attached.reference.fileName,
+            observedRevisionKey: attached.reference.headRevisionKey,
+            sizeBytes: BigInt(2048),
+            state: "present",
+            lastObservedAt: new Date(),
+          },
+        },
+      },
+    });
+    const clientRequestId = randomUUID();
+    const prepared = await prepareGoogleDriveLibraryNavigation({
+      prisma,
+      projectId,
+      libraryId: library.id,
+      actorUserId,
+      actorEmail,
+      clientRequestId,
+      limit: 1,
+      retryFailed: true,
+    });
+    expect(prepared).toMatchObject({
+      schema: "quipsly-google-drive-library-navigation-batch-v1",
+      summary: {
+        eligibleSourceCount: 1,
+        selectedCount: 1,
+        materializationCount: 1,
+        browseTransferBytes: "2048",
+      },
+      boundaries: {
+        originalsRemainInDrive: true,
+        finalConformNotStarted: true,
+        deterministicReplay: true,
+      },
+    });
+    await expect(
+      prepareGoogleDriveLibraryNavigation({
+        prisma,
+        projectId,
+        libraryId: library.id,
+        actorUserId,
+        actorEmail,
+        clientRequestId,
+        limit: 1,
+      }),
+    ).resolves.toMatchObject({
+      summary: { selectedCount: 1, materializationCount: 1 },
+    });
+    await expect(
+      prepareGoogleDriveLibraryNavigation({
+        prisma,
+        projectId,
+        libraryId: library.id,
+        actorUserId: otherUserId,
+        actorEmail: `drive-materializer-other-${nonce}@example.test`,
+        clientRequestId: randomUUID(),
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({
+      code: "library-connection-owner-required",
+      status: 403,
+    } satisfies Partial<GoogleDriveLibraryNavigationError>);
   });
 
   it("requires explicit conform for INSV originals and activates the proxy path only after exact LRV retention", async () => {

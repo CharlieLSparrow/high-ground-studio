@@ -12,6 +12,10 @@
       "types": "./src/external-source-proxy-identity.ts",
       "import": "./src/external-source-proxy-identity.ts"
     },
+    "./source-navigation-identity": {
+      "types": "./src/source-navigation-identity.ts",
+      "import": "./src/source-navigation-identity.ts"
+    },
     "./google-drive-provider-credential": {
       "types": "./src/google-drive-provider-credential.ts",
       "import": "./src/google-drive-provider-credential.ts"

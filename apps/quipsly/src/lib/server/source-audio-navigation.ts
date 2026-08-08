@@ -1,7 +1,5 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
-
 import {
   SOURCE_AUDIO_NAVIGATION_PROFILE,
   newSourceAudioNavigationJob,
@@ -9,6 +7,7 @@ import {
   parseSourceAudioNavigationResult,
   sourceAudioNavigationIdentity,
 } from "@high-ground/quipsly-media-processing";
+import { sourceAudioNavigationJobId } from "@high-ground/quipsly-media-processing/source-navigation-identity";
 import type { PrismaClient } from "@prisma/client";
 
 import { compactEpisodeMixWaveform } from "@/lib/episode-mix-waveform";
@@ -52,10 +51,6 @@ function requestId(value: unknown) {
     );
   }
   return result;
-}
-
-function deterministicId(prefix: string, identity: string) {
-  return `${prefix}_${createHash("sha256").update(identity).digest("hex").slice(0, 48)}`;
 }
 
 function safeNumber(value: bigint | null) {
@@ -139,7 +134,7 @@ export async function requestSourceAudioNavigation(input: {
     sourceIdentitySha256: source.identitySha256,
     inputGeneration: proxy.generation,
   });
-  const jobId = deterministicId("sanjob", identity);
+  const jobId = sourceAudioNavigationJobId(identity);
   const manifest = newSourceAudioNavigationJob({
     jobId,
     projectId,

@@ -207,11 +207,13 @@ function FollowedDriveLibraries({
   canWrite,
   pending,
   onRefresh,
+  onPrepare,
 }: {
   libraries?: ExternalMediaLibrary[];
   canWrite: boolean;
   pending: boolean;
   onRefresh(library: ExternalMediaLibrary): void;
+  onPrepare(library: ExternalMediaLibrary): void;
 }) {
   if (!libraries?.length) return null;
   return (
@@ -316,6 +318,35 @@ function FollowedDriveLibraries({
               selected. Use Choose 360 files again to grant and add another
               camera batch; Quipsly does not scan unrelated Drive content.
             </p>
+          ) : null}
+          {library.connectedByCurrentUser && library.readySegmentCount > 0 ? (
+            <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+              <p className="text-[9px] font-black uppercase tracking-wide text-sky-950">
+                Local browse preparation
+              </p>
+              <p className="mt-1 text-[9px] font-semibold leading-4 text-sky-900">
+                Prepare up to 12 camera segments in one resumable pass. Quipsly
+                caches only each LRV, then builds a small proxy, visual map, and
+                full-decode waveform on this Mac. INSV originals stay in Drive.
+              </p>
+              <button
+                type="button"
+                disabled={!canWrite || pending || !library.canRefresh}
+                onClick={() => onPrepare(library)}
+                className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-sky-950 px-3 text-[10px] font-black text-white disabled:opacity-50"
+              >
+                {pending ? (
+                  <Loader2
+                    size={13}
+                    className="animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <FileVideo2 size={13} aria-hidden="true" />
+                )}
+                Prepare next 12 browse maps
+              </button>
+            </div>
           ) : null}
           <div className="mt-2 flex items-center justify-between gap-3">
             <p className="text-[8px] font-semibold text-[#806a4d]">
@@ -751,6 +782,70 @@ export function GoogleDriveSourcePicker({
     }
   }
 
+  async function prepareLibraryNavigation(library: ExternalMediaLibrary) {
+    setPending(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(
+        `/api/nests/${encodeURIComponent(projectSlug)}/source-story`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "prepare-google-drive-library-navigation",
+            libraryId: library.id,
+            clientRequestId: crypto.randomUUID(),
+            limit: 12,
+            retryFailed: true,
+          }),
+        },
+      );
+      const payload = (await response.json()) as {
+        error?: string;
+        operation?: {
+          schema?: string;
+          summary?: {
+            eligibleSourceCount: number;
+            alreadyReadyCount: number;
+            selectedCount: number;
+            remainingCount: number;
+            materializationCount: number;
+            proxyCount: number;
+            navigationCount: number;
+            heldCount: number;
+            browseTransferBytes: string;
+          };
+        };
+      };
+      if (
+        !response.ok ||
+        payload.operation?.schema !==
+          "quipsly-google-drive-library-navigation-batch-v1" ||
+        !payload.operation.summary
+      ) {
+        throw new Error(
+          payload.error || "That Drive library could not be prepared.",
+        );
+      }
+      await onAttached();
+      const summary = payload.operation.summary;
+      setMessage(
+        summary.selectedCount === 0
+          ? `${library.name} is browse-ready: all ${summary.eligibleSourceCount} attached camera segments already have their proxy, visual map, and waveform.`
+          : `Prepared the next ${summary.selectedCount} segment${summary.selectedCount === 1 ? "" : "s"}: ${summary.materializationCount} LRV transfer${summary.materializationCount === 1 ? "" : "s"} (${formatBytes(summary.browseTransferBytes)}), ${summary.proxyCount} proxy stage${summary.proxyCount === 1 ? "" : "s"}, and ${summary.navigationCount} navigation stage${summary.navigationCount === 1 ? "" : "s"}. ${summary.heldCount} held; ${summary.remainingCount} remain for the next bounded pass. You can leave while the local worker continues.`,
+      );
+    } catch (prepareError) {
+      setError(
+        prepareError instanceof Error
+          ? prepareError.message
+          : "That Drive library could not be prepared.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function disconnectDrive() {
     if (
       !selectedConnectionId ||
@@ -836,6 +931,7 @@ export function GoogleDriveSourcePicker({
           canWrite={canWrite}
           pending={pending}
           onRefresh={(library) => void refreshLibrary(library)}
+          onPrepare={(library) => void prepareLibraryNavigation(library)}
         />
       ) : null}
       {!loadingConnections && verifiedConnections.length ? (
