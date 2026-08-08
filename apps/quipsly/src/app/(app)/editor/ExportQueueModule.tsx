@@ -41,6 +41,53 @@ type QueueReceipt = {
   };
 };
 
+export type ProgramReviewSummary = {
+  latest: null | {
+    id: string;
+    jobId: string;
+    decision: "approved" | "rejected";
+    note: string | null;
+    actorEmail: string;
+    reviewedAt: string;
+    watchedFraction: number;
+  };
+  approvalCount: number;
+  rejectionCount: number;
+  boundaries: {
+    outputRemainsReviewCandidate: true;
+    sourceMediaRemainsImmutable: true;
+    masterNotCreated: true;
+    portableUploadNotStarted: true;
+    publicationNotStarted: true;
+  };
+};
+
+type ProgramPlaybackEvidence = {
+  durationSeconds: number;
+  watchedSecondBins: number[];
+  playbackStartedAt: string | null;
+  playbackEndedAt: string | null;
+  playthroughEnded: boolean;
+  maximumPlaybackRate: number;
+  mutedAtDecision: boolean;
+  volumeAtDecision: number;
+  seekCount: number;
+};
+
+function emptyProgramPlaybackEvidence(): ProgramPlaybackEvidence {
+  return {
+    durationSeconds: 0,
+    watchedSecondBins: [],
+    playbackStartedAt: null,
+    playbackEndedAt: null,
+    playthroughEnded: false,
+    maximumPlaybackRate: 1,
+    mutedAtDecision: false,
+    volumeAtDecision: 1,
+    seekCount: 0,
+  };
+}
+
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -90,6 +137,10 @@ export function ExportQueueModule({
   const [error, setError] = useState("");
   const [queueJobId, setQueueJobId] = useState<string | null>(null);
   const [programQueueJobId, setProgramQueueJobId] = useState<string | null>(null);
+  const [programReview, setProgramReview] = useState<ProgramReviewSummary | null>(null);
+  const [programReviewJobId, setProgramReviewJobId] = useState<string | null>(null);
+  const [reviewNote, setReviewNote] = useState("");
+  const [programPlayback, setProgramPlayback] = useState<ProgramPlaybackEvidence>(emptyProgramPlaybackEvidence);
   const registeringRef = useRef(new Set<string>());
 
   const endpoint = `/api/nests/${encodeURIComponent(projectSlug)}/episode-editor`;
@@ -102,7 +153,9 @@ export function ExportQueueModule({
       | "register-render-proof"
       | "plan-program-render"
       | "queue-program-render"
-      | "register-program-render",
+      | "register-program-render"
+      | "read-program-review"
+      | "review-program-render",
     body: Record<string, unknown>,
   ) => {
     if (!verifiedHandoff) return null;
@@ -122,7 +175,7 @@ export function ExportQueueModule({
       });
       const result = await response.json().catch(() => null) as
         | (EpisodeEditDeskPayload & {
-            operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | QueueReceipt;
+            operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | QueueReceipt | ProgramReviewSummary | { review: ProgramReviewSummary };
           })
         | { error?: string; payload?: EpisodeEditDeskPayload }
         | null;
@@ -135,7 +188,7 @@ export function ExportQueueModule({
         );
       }
       const payload = result as EpisodeEditDeskPayload & {
-        operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | QueueReceipt;
+        operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | QueueReceipt | ProgramReviewSummary | { review: ProgramReviewSummary };
       };
       setDesk(payload);
       if (action === "plan-render-proof") {
@@ -158,6 +211,16 @@ export function ExportQueueModule({
         setMessage(jobId
           ? "The full Play Edit, exact sources, output clock, and selected Mac are frozen. Chunked rendering is underway."
           : "The full-program request was accepted, but its durable job receipt was not returned.");
+      } else if (action === "read-program-review") {
+        setProgramReview(payload.operationResult as ProgramReviewSummary);
+        setProgramReviewJobId(String(body.jobId ?? ""));
+      } else if (action === "review-program-render") {
+        const result = payload.operationResult as { review: ProgramReviewSummary };
+        setProgramReview(result.review);
+        setProgramReviewJobId(String(body.jobId ?? ""));
+        setMessage(body.decision === "rejected"
+          ? "Change request saved against these exact review bytes. The canonical edit and source media remain unchanged."
+          : "Full-program approval saved against this exact generation. No master, upload, or publication was created.");
       } else {
         setMessage(action === "register-program-render"
           ? "The complete program output passed server verification and is ready to watch. Approval remains separate."
@@ -179,6 +242,10 @@ export function ExportQueueModule({
     setProgramPlan(null);
     setQueueJobId(null);
     setProgramQueueJobId(null);
+    setProgramReview(null);
+    setProgramReviewJobId(null);
+    setReviewNote("");
+    setProgramPlayback(emptyProgramPlaybackEvidence());
     setMessage("");
     setError("");
   }, [handoffRevision, isOpen, verifiedHandoff]);
@@ -198,11 +265,17 @@ export function ExportQueueModule({
     [desk?.executionInspection.jobs, queueJobId],
   );
   const programQueueJob = useMemo(
-    () => desk?.executionInspection.jobs.find((job) => job.id === programQueueJobId) ?? null,
-    [desk?.executionInspection.jobs, programQueueJobId],
+    () => desk?.executionInspection.jobs.find((job) => job.id === programQueueJobId)
+      ?? desk?.executionInspection.jobs.find((job) => (
+        job.type === "episode-program-render"
+        && job.branchRevision === handoffRevision
+        && ["queued", "processing", "output-ready", "completed"].includes(job.status)
+      ))
+      ?? null,
+    [desk?.executionInspection.jobs, handoffRevision, programQueueJobId],
   );
   const activeJob = programQueueJob ?? queueJob;
-  const activeJobId = programQueueJobId ?? queueJobId;
+  const activeJobId = programQueueJob?.id ?? queueJob?.id ?? null;
   const activeRegistrationAction = programQueueJob
     ? "register-program-render" as const
     : "register-render-proof" as const;
@@ -239,17 +312,40 @@ export function ExportQueueModule({
     };
   }, [activeJob, activeJobId, activeRegistrationAction, endpoint, isOpen, post, verifiedHandoff]);
 
-  if (!isOpen) return null;
-
-  const minutes = Math.floor(timelineDurationSeconds / 60);
-  const seconds = Math.floor(timelineDurationSeconds % 60);
-  const returnHref = `/nests/${encodeURIComponent(projectSlug)}/episodes/${encodeURIComponent(episodeSlug)}?mode=edit`;
   const completedProof = queueJob?.status === "completed" && queueJob.playbackUrl
     ? queueJob
     : null;
   const completedProgram = programQueueJob?.status === "completed" && programQueueJob.playbackUrl
     ? programQueueJob
     : null;
+
+  useEffect(() => {
+    if (!isOpen || !completedProgram || programReviewJobId === completedProgram.id) return;
+    setProgramPlayback(emptyProgramPlaybackEvidence());
+    setReviewNote("");
+    void post("read-program-review", { jobId: completedProgram.id });
+  }, [completedProgram, isOpen, post, programReviewJobId]);
+
+  if (!isOpen) return null;
+
+  const minutes = Math.floor(timelineDurationSeconds / 60);
+  const seconds = Math.floor(timelineDurationSeconds % 60);
+  const returnHref = `/nests/${encodeURIComponent(projectSlug)}/episodes/${encodeURIComponent(episodeSlug)}?mode=edit`;
+  const requiredPlaybackBins = Math.max(0, Math.ceil(programPlayback.durationSeconds));
+  const watchedFraction = requiredPlaybackBins > 0
+    ? programPlayback.watchedSecondBins.length / requiredPlaybackBins
+    : 0;
+  const approvalReady = Boolean(
+    completedProgram
+    && programPlayback.playthroughEnded
+    && watchedFraction >= 0.9
+    && programPlayback.watchedSecondBins.includes(0)
+    && programPlayback.watchedSecondBins.includes(Math.floor((requiredPlaybackBins - 1) / 2))
+    && programPlayback.watchedSecondBins.includes(requiredPlaybackBins - 1)
+    && !programPlayback.mutedAtDecision
+    && programPlayback.volumeAtDecision > 0
+    && programPlayback.maximumPlaybackRate <= 2,
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
@@ -445,10 +541,145 @@ export function ExportQueueModule({
               </div>
             ) : null}
             {completedProgram ? (
-              <div className="mt-5 overflow-hidden rounded-2xl border border-indigo-300 bg-black">
-                <video controls playsInline preload="metadata" src={completedProgram.playbackUrl ?? undefined} className="aspect-video w-full bg-black" />
-                <p className="bg-indigo-950 px-4 py-3 text-xs font-bold text-indigo-100">Verified full-program review · shared revision {completedProgram.branchRevision} · not an approved master</p>
-              </div>
+              <section className="mt-5 overflow-hidden rounded-2xl border border-indigo-300 bg-indigo-950 text-indigo-100">
+                <video
+                  controls
+                  playsInline
+                  preload="metadata"
+                  src={completedProgram.playbackUrl ?? undefined}
+                  className="aspect-video w-full bg-black"
+                  onLoadedMetadata={(event) => {
+                    const video = event.currentTarget;
+                    setProgramPlayback((current) => ({
+                      ...current,
+                      durationSeconds: video.duration,
+                      maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate),
+                      mutedAtDecision: video.muted,
+                      volumeAtDecision: video.volume,
+                    }));
+                  }}
+                  onPlay={(event) => {
+                    const video = event.currentTarget;
+                    setProgramPlayback((current) => ({
+                      ...current,
+                      playbackStartedAt: current.playbackStartedAt ?? new Date().toISOString(),
+                      maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate),
+                      mutedAtDecision: video.muted,
+                      volumeAtDecision: video.volume,
+                    }));
+                  }}
+                  onTimeUpdate={(event) => {
+                    const video = event.currentTarget;
+                    if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+                    const bin = Math.min(
+                      Math.max(0, Math.ceil(video.duration) - 1),
+                      Math.max(0, Math.floor(video.currentTime)),
+                    );
+                    setProgramPlayback((current) => current.watchedSecondBins.includes(bin)
+                      ? {
+                          ...current,
+                          maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate),
+                          mutedAtDecision: video.muted,
+                          volumeAtDecision: video.volume,
+                        }
+                      : {
+                          ...current,
+                          watchedSecondBins: [...current.watchedSecondBins, bin].sort((left, right) => left - right),
+                          maximumPlaybackRate: Math.max(current.maximumPlaybackRate, video.playbackRate),
+                          mutedAtDecision: video.muted,
+                          volumeAtDecision: video.volume,
+                        });
+                  }}
+                  onSeeking={() => setProgramPlayback((current) => ({ ...current, seekCount: current.seekCount + 1 }))}
+                  onRateChange={(event) => setProgramPlayback((current) => ({
+                    ...current,
+                    maximumPlaybackRate: Math.max(current.maximumPlaybackRate, event.currentTarget.playbackRate),
+                  }))}
+                  onVolumeChange={(event) => setProgramPlayback((current) => ({
+                    ...current,
+                    mutedAtDecision: event.currentTarget.muted,
+                    volumeAtDecision: event.currentTarget.volume,
+                  }))}
+                  onEnded={(event) => {
+                    const video = event.currentTarget;
+                    if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+                    const lastBin = Math.max(0, Math.ceil(video.duration) - 1);
+                    setProgramPlayback((current) => ({
+                      ...current,
+                      watchedSecondBins: current.watchedSecondBins.includes(lastBin)
+                        ? current.watchedSecondBins
+                        : [...current.watchedSecondBins, lastBin].sort((left, right) => left - right),
+                      playbackEndedAt: new Date().toISOString(),
+                      playthroughEnded: true,
+                      mutedAtDecision: video.muted,
+                      volumeAtDecision: video.volume,
+                    }));
+                  }}
+                />
+                <p className="px-4 py-3 text-xs font-bold">Verified full-program review · shared revision {completedProgram.branchRevision} · not an approved master</p>
+                <div className="border-t border-indigo-800 bg-white p-4 text-[#3d3122]">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700">Generation-bound decision</p>
+                      <h3 className="mt-1 text-lg font-black">Watch the Play Edit, then decide</h3>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${approvalReady ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>
+                      {Math.round(watchedFraction * 100)}% observed {programPlayback.playthroughEnded ? "· ended" : ""}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-[#7a674c]">
+                    Approval unlocks planning for a separate exact-source master conform. It does not create, upload, or publish a master. Quipsly records browser playback coverage as review evidence; it cannot prove attention or audibility.
+                  </p>
+                  {programReview?.latest ? (
+                    <p className={`mt-3 rounded-xl p-3 text-xs font-bold ${programReview.latest.decision === "approved" ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}>
+                      Latest decision: {programReview.latest.decision} by {programReview.latest.actorEmail} · {Math.round(programReview.latest.watchedFraction * 100)}% observed
+                      {programReview.latest.note ? ` · ${programReview.latest.note}` : ""}
+                    </p>
+                  ) : null}
+                  <label className="mt-3 block text-xs font-black" htmlFor="program-review-note">Review note</label>
+                  <textarea
+                    id="program-review-note"
+                    value={reviewNote}
+                    onChange={(event) => setReviewNote(event.target.value)}
+                    placeholder="Optional for approval; required when requesting changes."
+                    className="mt-2 min-h-20 w-full rounded-xl border border-[#d8ccb5] bg-white p-3 text-sm outline-none focus:border-indigo-500"
+                  />
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={busy || !approvalReady || !programPlayback.playbackStartedAt}
+                      onClick={() => void post("review-program-render", {
+                        jobId: completedProgram.id,
+                        decision: "approved",
+                        note: reviewNote,
+                        playbackEvidence: {
+                          kind: "quipsly-episode-program-review-playback-evidence-v1",
+                          ...programPlayback,
+                        },
+                      })}
+                      className="inline-flex min-h-10 items-center rounded-xl bg-emerald-800 px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Approve for master planning
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || programPlayback.watchedSecondBins.length === 0 || reviewNote.trim().length < 3 || !programPlayback.playbackStartedAt}
+                      onClick={() => void post("review-program-render", {
+                        jobId: completedProgram.id,
+                        decision: "rejected",
+                        note: reviewNote,
+                        playbackEvidence: {
+                          kind: "quipsly-episode-program-review-playback-evidence-v1",
+                          ...programPlayback,
+                        },
+                      })}
+                      className="inline-flex min-h-10 items-center rounded-xl border border-rose-300 bg-white px-4 text-xs font-black text-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Request changes
+                    </button>
+                  </div>
+                </div>
+              </section>
             ) : null}
 
             <div className="mt-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">

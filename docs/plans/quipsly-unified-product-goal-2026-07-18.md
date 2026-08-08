@@ -8666,3 +8666,31 @@ source upload verified` blocked `Rough cut ready for review` until complete;
 - Next: add generation-bound human review approval, then a separate durable
   master promotion/conform contract. Publication remains another explicit
   destination action.
+
+# 2026-08-08 checkpoint: generation-bound full-program approval
+
+- Added an append-only `StudioEpisodeProgramReviewReceipt` and additive
+  migration. Every decision binds the canonical branch revision, all edit and
+  source fingerprints, render manifest, and exact output generation, SHA-256,
+  and byte count.
+- Advanced Studio now records bounded playback evidence while the creator
+  watches the verified full-program candidate. Approval requires at least 90%
+  observed coverage including beginning/middle/end, an ended playthrough,
+  audible player settings, and at most 2× speed. Seeking to the end cannot
+  manufacture approval; rejection requires observed playback plus a note.
+- The server rechecks Nest/Episode scope, current branch revision, exact local
+  executor/storage authority, protected source binding, checksum, bytes, and
+  full decode before saving. It repeats manifest/output identity checks inside
+  a serializable advisory-locked transaction.
+- Approval explicitly creates no master, portable upload, or publication.
+  Client playback telemetry is disclosed as process evidence, not proof of
+  attention or audibility.
+- Verification: 4 shared evidence tests, 4 server/security tests, and 5
+  Advanced Studio tests pass. Prisma validation/client generation, strict
+  TypeScript, and the cache-disabled 194-page standalone web build pass.
+- Docker Desktop remained unavailable; the migration is validated but was not
+  applied to a retained local database. No cloud migration or deployment ran.
+- Detailed evidence is in
+  `docs/coordination/2026-08-08-episode-program-approval-ledger.md`.
+- Next: use only the latest exact approval to plan a separate original-source
+  master conform. Never upscale or relabel the 720p review as a master.

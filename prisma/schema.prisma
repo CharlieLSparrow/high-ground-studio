@@ -3911,6 +3911,7 @@ model StudioProject {
   episodeProgramDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
   episodeAudioMixReviews        StudioEpisodeAudioMixReviewReceipt[]
   episodeAudioMixPromotions     StudioEpisodeAudioMixPromotionReceipt[]
+  episodeProgramReviews         StudioEpisodeProgramReviewReceipt[]
   episodeOutputSelections       StudioEpisodeOutputSelectionReceipt[]
   episodeAudioDecisions         StudioEpisodeAudioTrackDecisionReceipt[]
   episodeAudioAnalyses          StudioEpisodeAudioAnalysisReceipt[]
@@ -4059,6 +4060,7 @@ model StudioEpisodeProduction {
   audioReviews            StudioEpisodeAudioReviewReceipt[]
   audioMixReviews         StudioEpisodeAudioMixReviewReceipt[]
   audioMixPromotions      StudioEpisodeAudioMixPromotionReceipt[]
+  programRenderReviews    StudioEpisodeProgramReviewReceipt[]
   programDeliveryReviews  StudioEpisodeProgramDeliveryReviewReceipt[]
   storyBoards             StudioStoryBoard[]
   storyTimelinePlacements StudioStoryTimelinePlacement[]
@@ -6075,18 +6077,60 @@ model StudioWorkflowJob {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  project            StudioProject?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  asset              StudioMediaAsset?         @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  productionRoom     StudioProductionRoom?     @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
-  outputPacket       StudioOutputPacket?       @relation(fields: [outputPacketId], references: [id], onDelete: SetNull)
-  mediaDerivative    StudioMediaDerivative?
-  mediaSourceReplica StudioMediaSourceReplica?
+  project               StudioProject?                      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  asset                 StudioMediaAsset?                   @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  productionRoom        StudioProductionRoom?               @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
+  outputPacket          StudioOutputPacket?                 @relation(fields: [outputPacketId], references: [id], onDelete: SetNull)
+  mediaDerivative       StudioMediaDerivative?
+  mediaSourceReplica    StudioMediaSourceReplica?
+  episodeProgramReviews StudioEpisodeProgramReviewReceipt[]
 
   @@index([projectId, status, createdAt])
   @@index([assetId, status])
   @@index([productionRoomId, status])
   @@index([outputPacketId, status])
   @@index([type, status])
+}
+
+enum StudioEpisodeProgramReviewDecision {
+  APPROVED
+  REJECTED
+}
+
+// A full-program viewing decision is append-only and bound to one canonical
+// edit revision, exact render manifest, and exact output generation. Approval
+// does not create a master, copy bytes, upload, or publish.
+model StudioEpisodeProgramReviewReceipt {
+  id                                String                             @id @default(cuid())
+  projectId                         String
+  episodeProductionId               String
+  renderJobId                       String
+  actorUserId                       String?
+  actorEmail                        String
+  clientRequestId                   String
+  decision                          StudioEpisodeProgramReviewDecision
+  branchId                          String
+  branchRevision                    Int
+  timelineFingerprintSha256         String
+  sourceProjectionFingerprintSha256 String
+  editStateFingerprintSha256        String
+  manifestSha256                    String
+  outputSha256                      String
+  outputGeneration                  String
+  outputSizeBytes                   BigInt
+  requestSha256                     String
+  evidenceJson                      Json
+  note                              String?
+  occurredAt                        DateTime
+  createdAt                         DateTime                           @default(now())
+
+  project           StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction StudioEpisodeProduction @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  renderJob         StudioWorkflowJob       @relation(fields: [renderJobId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeProgramReview_project_actor_request_key")
+  @@index([renderJobId, occurredAt], map: "StudioEpisodeProgramReview_job_occurred_idx")
+  @@index([episodeProductionId, occurredAt], map: "StudioEpisodeProgramReview_episode_occurred_idx")
 }
 
 model StudioVideoSource {

@@ -6,7 +6,7 @@ import type {
   EpisodeRenderPlan,
 } from "@/lib/editor/program-edit-contract";
 import type { VerifiedAdvancedStudioHandoff } from "./AdvancedStudioHandoffBanner";
-import { ExportQueueModule } from "./ExportQueueModule";
+import { ExportQueueModule, type ProgramReviewSummary } from "./ExportQueueModule";
 
 const branchFingerprint = "a".repeat(64);
 const timelineFingerprint = "b".repeat(64);
@@ -349,6 +349,101 @@ describe("Advanced Studio render readiness", () => {
       action: "queue-program-render",
       expectedRevision: 7,
       executorNodeId: "execution_worker_test",
+    }));
+  });
+
+  it("records complete playback before approving exact review bytes", async () => {
+    const completedDesk: EpisodeEditDeskPayload = {
+      ...payload,
+      executionInspection: {
+        ...payload.executionInspection,
+        jobs: [{
+          id: "episode_program_completed_12345678",
+          type: "episode-program-render",
+          status: "completed",
+          lane: "local-worker",
+          provider: "local",
+          updatedAt: "2026-08-08T12:10:00.000Z",
+          completedAt: "2026-08-08T12:10:00.000Z",
+          error: null,
+          manifestSha256: "e".repeat(64),
+          renderProfile: "episode-program-review-1280x720-24fps-v1",
+          branchRevision: 7,
+          proofStartSeconds: null,
+          proofEndSeconds: null,
+          progress: { completedUnits: 1, totalUnits: 1, fraction: 1, unit: "chunks" },
+          playbackUrl: "/api/ingest/media/program-completed",
+        }],
+      },
+    };
+    const emptyReview: ProgramReviewSummary = {
+      latest: null,
+      approvalCount: 0,
+      rejectionCount: 0,
+      boundaries: {
+        outputRemainsReviewCandidate: true,
+        sourceMediaRemainsImmutable: true,
+        masterNotCreated: true,
+        portableUploadNotStarted: true,
+        publicationNotStarted: true,
+      },
+    };
+    const approvedReview: ProgramReviewSummary = {
+      ...emptyReview,
+      latest: {
+        id: "program_review_receipt_1",
+        jobId: "episode_program_completed_12345678",
+        decision: "approved",
+        note: "Ready for conform.",
+        actorEmail: "editor@example.test",
+        reviewedAt: "2026-08-08T12:20:00.000Z",
+        watchedFraction: 1,
+      },
+      approvalCount: 1,
+    };
+    global.fetch = jest.fn()
+      .mockImplementationOnce(() => response({ ...completedDesk, operationResult: plan }))
+      .mockImplementationOnce(() => response({ ...completedDesk, operationResult: emptyReview }))
+      .mockImplementationOnce(() => response({ ...completedDesk, operationResult: { review: approvedReview } }));
+    const rendered = subject();
+
+    const video = await waitFor(() => {
+      const element = rendered.container.querySelector("video");
+      expect(element).not.toBeNull();
+      return element as HTMLVideoElement;
+    });
+    Object.defineProperty(video, "duration", { configurable: true, value: 10 });
+    Object.defineProperty(video, "muted", { configurable: true, writable: true, value: false });
+    Object.defineProperty(video, "volume", { configurable: true, writable: true, value: 1 });
+    Object.defineProperty(video, "playbackRate", { configurable: true, writable: true, value: 1 });
+    fireEvent.loadedMetadata(video);
+    fireEvent.play(video);
+    for (let second = 0; second < 10; second += 1) {
+      Object.defineProperty(video, "currentTime", { configurable: true, value: second + 0.25 });
+      fireEvent.timeUpdate(video);
+    }
+    fireEvent.ended(video);
+
+    const approve = screen.getByRole("button", { name: "Approve for master planning" });
+    await waitFor(() => expect(approve).toBeEnabled());
+    fireEvent.change(screen.getByLabelText("Review note"), { target: { value: "Ready for conform." } });
+    fireEvent.click(approve);
+
+    expect(await screen.findByText(/Latest decision: approved/)).toBeInTheDocument();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(3));
+    const request = JSON.parse((global.fetch as jest.Mock).mock.calls[2][1].body);
+    expect(request).toEqual(expect.objectContaining({
+      action: "review-program-render",
+      jobId: "episode_program_completed_12345678",
+      decision: "approved",
+      note: "Ready for conform.",
+      playbackEvidence: expect.objectContaining({
+        kind: "quipsly-episode-program-review-playback-evidence-v1",
+        durationSeconds: 10,
+        watchedSecondBins: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        playthroughEnded: true,
+        mutedAtDecision: false,
+      }),
     }));
   });
 });

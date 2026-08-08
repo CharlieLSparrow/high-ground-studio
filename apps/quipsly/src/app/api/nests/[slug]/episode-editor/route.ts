@@ -23,6 +23,11 @@ import {
   queueEpisodeProgramRender,
   registerEpisodeProgramRender,
 } from "@/lib/server/episode-program-render";
+import {
+  appendEpisodeProgramReview,
+  EpisodeProgramReviewError,
+  readAuthorizedEpisodeProgramReviewSummary,
+} from "@/lib/server/episode-program-review";
 
 export const dynamic = "force-dynamic";
 
@@ -174,6 +179,29 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         jobId: String(body.jobId ?? ""),
         actor: { ...actor, email: actor.email },
       });
+    } else if (action === "read-program-review") {
+      operationResult = await readAuthorizedEpisodeProgramReviewSummary({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        jobId: String(body.jobId ?? ""),
+      });
+    } else if (action === "review-program-render") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required to review a full program." }, { status: 400 });
+      if (body.decision !== "approved" && body.decision !== "rejected") {
+        return NextResponse.json({ error: "Choose approve or request changes." }, { status: 400 });
+      }
+      operationResult = await appendEpisodeProgramReview({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        jobId: String(body.jobId ?? ""),
+        actor: { userId: actor.userId, email: actor.email },
+        clientRequestId: String(body.clientRequestId ?? crypto.randomUUID()),
+        decision: body.decision,
+        playbackEvidence: body.playbackEvidence,
+        note: typeof body.note === "string" ? body.note : null,
+      });
     } else {
       return NextResponse.json({ error: "Unknown editor action." }, { status: 400 });
     }
@@ -184,7 +212,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         || action === "register-render-proof"
         || action === "plan-program-render"
         || action === "queue-program-render"
-        || action === "register-program-render",
+        || action === "register-program-render"
+        || action === "read-program-review"
+        || action === "review-program-render",
       selectedMediaAssetId,
     }), operationResult }, {
       headers: { "Cache-Control": "no-store" },
@@ -194,6 +224,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
       return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
     }
     if (error instanceof EpisodeProgramRenderError) {
+      return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+    }
+    if (error instanceof EpisodeProgramReviewError) {
       return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
     }
     if (error instanceof EpisodeEditConflict) {

@@ -8,6 +8,7 @@ export * from "./audio-delivery.js";
 export * from "./episode-program-delivery.js";
 export * from "./episode-render-proof.js";
 export * from "./episode-program-render.js";
+export * from "./episode-program-review.js";
 export * from "./spatial-render.js";
 export * from "./external-source-proxy.js";
 export * from "./source-visual-overview.js";
