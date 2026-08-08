@@ -423,10 +423,10 @@ export async function listExternalMediaLibraries(input: {
   >();
   const expectedAudioJobs = new Map<string, string>();
   for (const library of libraries) {
-    if (library.provider !== "google-drive") {
-      // A device-folder library is metadata-only in Nest. Exact bytes and
-      // proxies resolve through its originating Mac; a Cloud Run or local web
-      // executor must never estimate or begin a Google Drive transfer for it.
+    if (
+      library.provider !== "google-drive" &&
+      library.provider !== "quipsly-device-folder"
+    ) {
       candidatesByLibrary.set(library.id, []);
       continue;
     }
@@ -443,7 +443,8 @@ export async function listExternalMediaLibraries(input: {
       if (
         !reference ||
         !revision ||
-        reference.connectionId !== library.connectionId ||
+        (library.provider === "google-drive" &&
+          reference.connectionId !== library.connectionId) ||
         seenRevisionIds.has(revision.id) ||
         externalMediaMemberRole(
           jsonRecord(revision.projectionJson).memberRole,

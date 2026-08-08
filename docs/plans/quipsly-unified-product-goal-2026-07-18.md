@@ -8442,3 +8442,39 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   acceptance remains one account callback click plus the explicit folder
   grant. Detailed architecture and evidence:
   `docs/coordination/2026-08-08-device-folder-drive-bridge.md`.
+
+# 2026-08-08 checkpoint: explicit device-folder browse preparation
+
+- Added the missing exact-byte bridge between a followed Drive-for-desktop or
+  external-device 360 library and Quipsly's existing proxy/audio/visual worker
+  system.
+- Quipsly Studio now offers an explicit storage-aware **Prepare browse media**
+  queue. It copies only LRV companions, streams SHA-256 while copying, rechecks
+  source stability, publishes atomically, permissions-hardens retained bytes,
+  and registers path-free receipts. Full-resolution INSV originals remain in
+  place.
+- The server rejects receipts that do not match the current Nest, library
+  owner, Mac installation, folder grant, inventory item, attached reference,
+  immutable source revision, metadata revision, exact size, browsing role, and
+  server-derived relative locator.
+- Accepted receipts create an idempotent exact local replica and queue the
+  established collaboration proxy pipeline. Device-backed proxies now resolve
+  relative replicas only beneath the authorized local worker root, including
+  when the originating provider remains correctly marked metadata-only.
+- Nest now projects device-library progress across exact LRV, proxy, visual
+  map, waveform, and complete browsing stages without exposing local paths or
+  offering an invalid browser/server transfer action.
+- Verification passed: 18 focused web/contract tests, the real PostgreSQL
+  integration, 4 local proxy-worker filesystem tests, both TypeScript checks,
+  the 194-page production web build, and native Mac compilation. Launch-level
+  testing then caught the missing-profile defect in a manually signed build;
+  installing the existing valid team profile let Xcode produce an
+  automatically signed app that passed strict validation and launched from the
+  exact new bundle.
+- Real 360 preparation is correctly held until a roomy SSD-backed media
+  workspace is active. The system volume has roughly 2.7 GB free and the
+  connected Passport has roughly 61 GB free at 99% utilization, so Quipsly's
+  10 GB reserve prevented us from treating temporary storage as production
+  media custody. No original or LRV was changed.
+- Detailed evidence and the next conform/source-set boundary are recorded in
+  `docs/coordination/2026-08-08-device-media-preparation-queue.md`.

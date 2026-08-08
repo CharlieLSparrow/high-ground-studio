@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -310,4 +310,98 @@ test("local external proxy worker refuses to retain a browsing derivative larger
   );
   assert.equal(result.disposition, "failed");
   assert.equal(failureCode, "external-proxy-not-storage-efficient");
+});
+
+test("local external proxy worker resolves a device-folder replica only beneath its worker root", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-device-replica-"));
+  const relativeSource =
+    "source-cache/device-folder/project/revision/browse.lrv";
+  const sourcePath = path.join(root, relativeSource);
+  await import("node:fs/promises").then(({ mkdir }) =>
+    mkdir(path.dirname(sourcePath), { recursive: true }),
+  );
+  await writeFile(sourcePath, Buffer.alloc(4_096, 11));
+  const sourceRealPath = await realpath(sourcePath);
+  const sourceSha256 = await sha256File(sourcePath);
+  const job = newExternalSourceProxyJob({
+    jobId: "xspjob_device0001",
+    derivativeId: "xspderivative_device0001",
+    projectId: "project_device0001",
+    projectSlug: "device-project",
+    actorUserId: "user_device0001",
+    actorEmail: "creator@example.test",
+    queuedAt: "2026-08-08T00:00:00.000Z",
+    source: {
+      provider: "quipsly-device-folder",
+      externalReferenceId: "reference_device0001",
+      sourceRevisionId: "revision_device0001",
+      revisionKey: "device-metadata:revision0001",
+      identitySha256: "f".repeat(64),
+      expectedContentSha256: sourceSha256,
+      expectedSizeBytes: 4_096,
+      contentType: "video/mp4",
+    },
+    target: {
+      provider: "local",
+      locator: `source-story/device-project/revision_device0001/${EXTERNAL_SOURCE_PROXY_PROFILE}-ffffffff.mp4`,
+      contentType: "video/mp4",
+      profile: EXTERNAL_SOURCE_PROXY_PROFILE,
+    },
+  });
+  const store: LocalExternalSourceProxyStore = {
+    claim: async () => ({
+      id: job.jobId,
+      inputJson: job,
+      attempt: 1,
+      executionId: "execution_device0001",
+    }),
+    resolve: async () => ({
+      path: relativeSource,
+      projectId: job.projectId,
+      referenceId: job.source.externalReferenceId,
+      sourceRevisionId: job.source.sourceRevisionId,
+      revisionKey: job.source.revisionKey,
+      identitySha256: job.source.identitySha256,
+      contentSha256: job.source.expectedContentSha256,
+      sizeBytes: job.source.expectedSizeBytes,
+      accessState: "available",
+      capabilityState: "metadata-only",
+      provider: job.source.provider,
+    }),
+    complete: async () => true,
+    retry: async () => true,
+    fail: async () => true,
+  };
+  const result = await runOneLocalExternalSourceProxyJob(
+    store,
+    {
+      transcode: async (inputPath, outputPath) => {
+        assert.equal(inputPath, sourceRealPath);
+        await writeFile(outputPath, Buffer.alloc(2_048, 12));
+        return {
+          sizeBytes: 2_048,
+          sha256: await sha256File(outputPath),
+          technical: {
+            durationSeconds: 8,
+            width: 960,
+            height: 480,
+            fps: 24,
+            hasAudio: true,
+            videoCodec: "h264" as const,
+            audioCodec: "aac" as const,
+            pixelFormat: "yuv420p" as const,
+            fastStart: true as const,
+          },
+        };
+      },
+    },
+    {
+      executionId: "execution_device0001",
+      buildId: "build_device0001",
+      leaseMs: 60_000,
+      localMediaRoot: root,
+      now: () => new Date("2026-08-08T00:01:00.000Z"),
+    },
+  );
+  assert.equal(result.disposition, "completed");
 });

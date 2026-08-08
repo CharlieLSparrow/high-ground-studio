@@ -29,6 +29,7 @@
 		580B69FFE4E356A63F3A7051 /* TimelineEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39245425D6374B5E32BFC281 /* TimelineEditorView.swift */; };
 		5C0D3233F037AAB54E120B15 /* QuipslyNativeAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6DB451F15CEDA1D550460AD /* QuipslyNativeAccount.swift */; };
 		60E095898C3519A9223E6C0F /* AudioDetailAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31732569DB6E494F1F66872 /* AudioDetailAnalysis.swift */; };
+		667B6E758FF53AB4B3915713 /* DeviceMediaPreparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00AB9811CEE27ECC420D4DE6 /* DeviceMediaPreparation.swift */; };
 		697410343FE5BB9BCC5AB84C /* ProfessionalDecisionTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAFCF579A967784847F72C5E /* ProfessionalDecisionTimelineView.swift */; };
 		79DDF6787B938B8CFF7A41A6 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 19CB3C3C1BA8DA49B6467712 /* FirebaseAuth */; };
 		82E400A3ED5C0DB696513B8B /* QuipslyNativeAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6DB451F15CEDA1D550460AD /* QuipslyNativeAccount.swift */; };
@@ -59,12 +60,14 @@
 		EC2C8ED2F5FAF4581E39AC05 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = EDB9790D44F4E8A5BA7AA2F7 /* FirebaseFirestore */; };
 		EEAE61D262D50AA2C9C25337 /* AgentServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A26C85B53E7F56A319EB618 /* AgentServer.swift */; };
 		F5F63F49AFC565DF64A4C26F /* QuipslyVideoCore in Frameworks */ = {isa = PBXBuildFile; productRef = B30D3EA8F554B06973DEF210 /* QuipslyVideoCore */; };
+		F73B13269F0A619DDEF6F1C0 /* DeviceMediaPreparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00AB9811CEE27ECC420D4DE6 /* DeviceMediaPreparation.swift */; };
 		F8DDDA19C500F6E969CB665A /* QuipslyMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50573AE9640D0892E0F71F4 /* QuipslyMacApp.swift */; };
 		FD32FD477285520E74973EE5 /* ProfessionalDecisionTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAFCF579A967784847F72C5E /* ProfessionalDecisionTimelineView.swift */; };
 		FF5D8CE53806ADC760CE1605 /* CaptureSourceSyncReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 962E70862EE8723DBB2271E4 /* CaptureSourceSyncReviewSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		00AB9811CEE27ECC420D4DE6 /* DeviceMediaPreparation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMediaPreparation.swift; sourceTree = "<group>"; };
 		17A0747BA3E8F7658062A88E /* Episode4CutIntelligenceBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Episode4CutIntelligenceBoardView.swift; sourceTree = "<group>"; };
 		1A26C85B53E7F56A319EB618 /* AgentServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentServer.swift; sourceTree = "<group>"; };
 		1DA9847F6A86C52079F4C9F1 /* MacAudioRoomController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAudioRoomController.swift; sourceTree = "<group>"; };
@@ -182,6 +185,7 @@
 				76EBABDDD4253CD4CC3535F7 /* AudioRoomCommandRouter.swift */,
 				962E70862EE8723DBB2271E4 /* CaptureSourceSyncReviewSheet.swift */,
 				7056563F8515EF444201A350 /* DeviceMediaFolderFollowView.swift */,
+				00AB9811CEE27ECC420D4DE6 /* DeviceMediaPreparation.swift */,
 				17A0747BA3E8F7658062A88E /* Episode4CutIntelligenceBoardView.swift */,
 				9A460FF7FBCC077EA753487B /* ExternalMediaAccess.swift */,
 				B58E53B06D44AC3CA4E0338F /* InspectorSidebarView.swift */,
@@ -297,6 +301,7 @@
 				2019552FF64725B1D459CA80 /* AudioRoomCommandRouter.swift in Sources */,
 				FF5D8CE53806ADC760CE1605 /* CaptureSourceSyncReviewSheet.swift in Sources */,
 				0082BFB9BAD2730ADF23A0AC /* DeviceMediaFolderFollowView.swift in Sources */,
+				F73B13269F0A619DDEF6F1C0 /* DeviceMediaPreparation.swift in Sources */,
 				C3A5B6D5E9694674D8D7613E /* Episode4CutIntelligenceBoardView.swift in Sources */,
 				BB83C5C675E2F786C5B650BF /* EpisodeCaptureSetupView.swift in Sources */,
 				5017CEF4F2B29AE676DC557F /* ExternalMediaAccess.swift in Sources */,
@@ -328,6 +333,7 @@
 				2F41D9F270FD16EBABBAA2BB /* AudioRoomCommandRouter.swift in Sources */,
 				DCA9C2C16A93A0A8F8C3807E /* CaptureSourceSyncReviewSheet.swift in Sources */,
 				B70C50B1FA30E384F507B405 /* DeviceMediaFolderFollowView.swift in Sources */,
+				667B6E758FF53AB4B3915713 /* DeviceMediaPreparation.swift in Sources */,
 				BCEBABA86C6286052246204F /* Episode4CutIntelligenceBoardView.swift in Sources */,
 				8C0D12FB4B3F44C3DF18F2BB /* ExternalMediaAccess.swift in Sources */,
 				3E7A257B3B98B51EA06E6638 /* InspectorSidebarView.swift in Sources */,

@@ -43,6 +43,18 @@ private struct DeviceFolderFollowRequest: Encodable {
     let observation: DeviceFolderObservation
 }
 
+private struct DeviceFolderPreparationRegistrationRequest: Encodable {
+    let action = "register-device-media-preparation"
+    let clientRequestId: String
+    let receipt: DeviceMediaPreparationReceipt
+}
+
+private struct DeviceFolderPreparationRegistrationResponse: Decodable {
+    let ok: Bool
+    let error: String?
+    let errorCode: String?
+}
+
 private struct DeviceFolderFollowResponse: Decodable {
     struct Operation: Decodable {
         struct Plan: Decodable {
@@ -55,12 +67,19 @@ private struct DeviceFolderFollowResponse: Decodable {
             let revision: Int
             let status: String
         }
+        struct Preparation: Decodable {
+            let totalCandidates: Int
+            let exactReplicaReadyCount: Int
+            let proxyReadyCount: Int
+            let candidates: [DeviceMediaPreparationCandidate]
+        }
         let plan: Plan
         let attachedCount: Int
         let sourceUnitCount: Int
         let sourceSetCount: Int
         let exactByteVerificationPending: Bool
         let library: Library
+        let preparation: Preparation
         let localPathWithheld: Bool
     }
 
@@ -217,8 +236,8 @@ private enum DeviceMediaFolderScanner {
 }
 
 private enum DeviceMediaFolderLocatorLedger {
-    private struct Payload: Encodable {
-        let schema = "quipsly-device-media-folder-locator-ledger-v1"
+    private struct Payload: Codable {
+        let schema: String
         let folderGrantId: String
         let rootId: String
         let updatedAt: String
@@ -242,6 +261,7 @@ private enum DeviceMediaFolderLocatorLedger {
             isDirectory: false
         )
         let payload = Payload(
+            schema: "quipsly-device-media-folder-locator-ledger-v1",
             folderGrantId: scan.observation.folderGrantId,
             rootId: scan.observation.root.id,
             updatedAt: ISO8601DateFormatter().string(from: Date()),
@@ -255,6 +275,34 @@ private enum DeviceMediaFolderLocatorLedger {
             ofItemAtPath: target.path
         )
     }
+
+    static func relativeLocator(
+        folderGrantId: String,
+        externalFileId: String
+    ) throws -> String {
+        let base = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ).appendingPathComponent("QuipslyStudio/DeviceMediaFolders", isDirectory: true)
+        let target = base.appendingPathComponent("\(folderGrantId).json")
+        let payload = try JSONDecoder().decode(
+            Payload.self,
+            from: Data(contentsOf: target)
+        )
+        guard payload.schema == "quipsly-device-media-folder-locator-ledger-v1",
+              payload.folderGrantId == folderGrantId,
+              let locator = payload.relativeLocators[externalFileId] else {
+            throw NSError(
+                domain: "QuipslyDeviceMediaFolder",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "The private Mac folder ledger no longer resolves this source. Follow the folder again before preparing it."]
+            )
+        }
+        return locator
+    }
 }
 
 struct DeviceMediaFolderFollowView: View {
@@ -263,9 +311,12 @@ struct DeviceMediaFolderFollowView: View {
     @AppStorage("quipsly.nativeEditor.deviceFolderNestSlug")
     private var selectedNestSlug = ""
     @State private var isFollowing = false
+    @State private var isPreparing = false
     @State private var status =
         "Follow this folder to make its 360 packages visible in Nest without uploading originals."
     @State private var lastLibraryId = ""
+    @State private var preparationCandidates: [DeviceMediaPreparationCandidate] = []
+    @State private var preparationProgress = 0.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -302,6 +353,22 @@ struct DeviceMediaFolderFollowView: View {
                         .foregroundStyle(.green)
                         .accessibilityLabel("Nest library observation saved")
                 }
+
+                Button(isPreparing ? "Preparing…" : preparationButtonTitle) {
+                    Task { await prepareBrowseMedia() }
+                }
+                .buttonStyle(.bordered)
+                .disabled(
+                    isPreparing ||
+                    isFollowing ||
+                    preparationCandidates.allSatisfy(\.exactReplicaReady)
+                )
+                .accessibilityIdentifier("quipsly.storage.prepareBrowseMedia")
+            }
+            if isPreparing {
+                ProgressView(value: preparationProgress)
+                    .progressViewStyle(.linear)
+                    .accessibilityLabel("Preparing browse media")
             }
             Text(status)
                 .font(.caption2)
@@ -312,6 +379,11 @@ struct DeviceMediaFolderFollowView: View {
         .onChange(of: accountStore.visibleProjects.map(\.slug)) { _, _ in
             chooseDefaultNestIfNeeded()
         }
+    }
+
+    private var preparationButtonTitle: String {
+        let remaining = preparationCandidates.filter { !$0.exactReplicaReady }.count
+        return remaining > 0 ? "Prepare browse media (\(remaining))" : "Browse media ready"
     }
 
     private func chooseDefaultNestIfNeeded() {
@@ -382,10 +454,102 @@ struct DeviceMediaFolderFollowView: View {
             }
             try DeviceMediaFolderLocatorLedger.persist(scan: scan)
             lastLibraryId = operation.library.id
+            preparationCandidates = operation.preparation.candidates
             status =
-                "Nest saved revision \(operation.library.revision): \(operation.plan.totalFiles) files, \(operation.plan.readySegmentCount) ready packages, \(operation.plan.heldSegmentCount) held for attention, and \(operation.attachedCount) canonical source members. Original paths stayed on this Mac; exact byte verification waits for an explicit local conform or render operation."
+                "Nest saved revision \(operation.library.revision): \(operation.plan.totalFiles) files, \(operation.plan.readySegmentCount) ready packages, \(operation.plan.heldSegmentCount) held for attention, and \(operation.attachedCount) canonical source members. \(operation.preparation.exactReplicaReadyCount) of \(operation.preparation.totalCandidates) lightweight browse files are exact locally; originals stay where they are."
         } catch {
             status = "Could not follow this folder: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func prepareBrowseMedia() async {
+        guard let baseURL = accountStore.normalizedBaseURL else {
+            status = "Restore the native Quipsly account before preparing media."
+            return
+        }
+        let pending = preparationCandidates.filter { !$0.exactReplicaReady }
+        guard !pending.isEmpty else { return }
+        isPreparing = true
+        preparationProgress = 0
+        defer { isPreparing = false }
+        do {
+            let rootURL = try externalMediaAccess.withGrantedFolderURL { $0 }
+            for (index, candidate) in pending.enumerated() {
+                let relativeLocator = try DeviceMediaFolderLocatorLedger.relativeLocator(
+                    folderGrantId: candidate.folderGrantId,
+                    externalFileId: candidate.externalFileId
+                )
+                status = "Verifying \(candidate.fileName) without changing the source…"
+                let receipt = try await Task.detached(priority: .userInitiated) {
+                    try DeviceMediaPreparation.prepare(
+                        candidate: candidate,
+                        sourceRoot: rootURL,
+                        relativeLocator: relativeLocator
+                    ) { copied, total in
+                        let fileProgress = total > 0 ? Double(copied) / Double(total) : 0
+                        Task { @MainActor in
+                            preparationProgress =
+                                (Double(index) + fileProgress) / Double(pending.count)
+                        }
+                    }
+                }.value
+                var request = URLRequest(
+                    url: baseURL.appending(
+                        path: "/api/nests/\(selectedNestSlug)/source-story"
+                    )
+                )
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONEncoder().encode(
+                    DeviceFolderPreparationRegistrationRequest(
+                        clientRequestId: UUID().uuidString.lowercased(),
+                        receipt: receipt
+                    )
+                )
+                let (data, response) = try await accountStore.authenticatedData(
+                    for: request
+                )
+                let payload = try JSONDecoder().decode(
+                    DeviceFolderPreparationRegistrationResponse.self,
+                    from: data
+                )
+                guard (200 ..< 300).contains(response.statusCode), payload.ok else {
+                    throw NSError(
+                        domain: "QuipslyDeviceMediaPreparation",
+                        code: response.statusCode,
+                        userInfo: [NSLocalizedDescriptionKey:
+                            payload.error ?? "Nest did not accept the exact-byte preparation receipt."]
+                    )
+                }
+                if let candidateIndex = preparationCandidates.firstIndex(where: {
+                    $0.sourceRevisionId == candidate.sourceRevisionId
+                }) {
+                    let current = preparationCandidates[candidateIndex]
+                    preparationCandidates[candidateIndex] = .init(
+                        libraryId: current.libraryId,
+                        deviceId: current.deviceId,
+                        folderGrantId: current.folderGrantId,
+                        externalFileId: current.externalFileId,
+                        externalReferenceId: current.externalReferenceId,
+                        sourceRevisionId: current.sourceRevisionId,
+                        observedRevisionKey: current.observedRevisionKey,
+                        expectedSizeBytes: current.expectedSizeBytes,
+                        fileName: current.fileName,
+                        captureKey: current.captureKey,
+                        capturedAt: current.capturedAt,
+                        targetLocator: current.targetLocator,
+                        exactReplicaReady: true,
+                        proxyReady: current.proxyReady
+                    )
+                }
+            }
+            preparationProgress = 1
+            status = "Exact lightweight browse replicas are registered. Quipsly's local worker is now building collaboration proxies, visual maps, and audio navigation; full-resolution INSV originals remain untouched."
+        } catch is CancellationError {
+            status = "Browse preparation paused. Completed exact replicas remain reusable."
+        } catch {
+            status = "Could not prepare browse media: \(error.localizedDescription)"
         }
     }
 }

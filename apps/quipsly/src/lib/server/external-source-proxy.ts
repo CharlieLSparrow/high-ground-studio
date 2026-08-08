@@ -123,9 +123,13 @@ export async function requestExternalSourceProxy(input: {
       "This proxy profile currently requires a video source.",
     );
   }
+  const exactLocalReplicaAvailable = Boolean(source.replicas[0]);
+  const deviceReplicaBacked =
+    reference.provider === "quipsly-device-folder" &&
+    exactLocalReplicaAvailable;
   if (
     reference.accessState !== "available" ||
-    reference.capabilityState !== "downloadable"
+    (reference.capabilityState !== "downloadable" && !deviceReplicaBacked)
   ) {
     throw new ExternalSourceProxyRequestError(
       "source-access-held",
@@ -154,7 +158,10 @@ export async function requestExternalSourceProxy(input: {
   }
   if (
     reference.provider !== "local-file-vault" &&
-    !(reference.provider === "google-drive" && source.replicas[0])
+    !(
+      ["google-drive", "quipsly-device-folder"].includes(reference.provider) &&
+      exactLocalReplicaAvailable
+    )
   ) {
     throw new ExternalSourceProxyRequestError(
       "provider-executor-unavailable",

@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { DEVICE_MEDIA_FOLDER_OBSERVATION_SCHEMA } from "@/lib/device-media-folder-contract";
 
 import { observeDeviceMediaFolderForNest } from "./device-media-folder";
+import { registerDeviceMediaPreparation } from "./device-media-preparation";
 import { listExternalMediaLibraries } from "./external-media-library";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
@@ -132,6 +133,13 @@ runDatabaseSmoke("device media folder canonical observation", () => {
         connectionState: "device-authorized",
         discoveryMode: "device-folder-scan",
       },
+      preparation: {
+        totalCandidates: 1,
+        exactReplicaReadyCount: 0,
+        proxyReadyCount: 0,
+        originalBytesWillBeCopied: false,
+        localPathsWithheld: true,
+      },
     });
     await expect(
       observeDeviceMediaFolderForNest({
@@ -144,20 +152,21 @@ runDatabaseSmoke("device media folder canonical observation", () => {
       }),
     ).resolves.toMatchObject({ libraryReplayed: true });
 
-    const [references, sourceUnit, sourceSetCount, libraries] = await Promise.all([
-      prisma.studioExternalMediaReference.findMany({
-        where: { projectId, provider: "quipsly-device-folder" },
-      }),
-      prisma.studioSourceUnit.findFirstOrThrow({
-        where: { projectId, kind: "insta360-device-segment" },
-      }),
-      prisma.studioMediaSourceSet.count({ where: { projectId } }),
-      listExternalMediaLibraries({ prisma, projectId, actorUserId }),
-    ]);
+    const [references, sourceUnit, sourceSetCount, libraries] =
+      await Promise.all([
+        prisma.studioExternalMediaReference.findMany({
+          where: { projectId, provider: "quipsly-device-folder" },
+        }),
+        prisma.studioSourceUnit.findFirstOrThrow({
+          where: { projectId, kind: "insta360-device-segment" },
+        }),
+        prisma.studioMediaSourceSet.count({ where: { projectId } }),
+        listExternalMediaLibraries({ prisma, projectId, actorUserId }),
+      ]);
     expect(references).toHaveLength(2);
-    expect(references.every((reference) => reference.connectionId === null)).toBe(
-      true,
-    );
+    expect(
+      references.every((reference) => reference.connectionId === null),
+    ).toBe(true);
     const durableLocators = JSON.stringify(
       references.map((reference) => reference.providerLocatorJson),
     );
@@ -172,6 +181,81 @@ runDatabaseSmoke("device media folder canonical observation", () => {
           provider: "quipsly-device-folder",
           canRefresh: true,
           connectionId: null,
+        }),
+      ]),
+    );
+
+    const candidate = first.preparation.candidates[0]!;
+    const prepared = await registerDeviceMediaPreparation({
+      prisma,
+      projectId,
+      actorUserId,
+      actorEmail,
+      clientRequestId: randomUUID(),
+      receipt: {
+        schema: "quipsly-device-media-preparation-receipt-v1",
+        libraryId: candidate.libraryId,
+        deviceId: candidate.deviceId,
+        folderGrantId: candidate.folderGrantId,
+        externalFileId: candidate.externalFileId,
+        externalReferenceId: candidate.externalReferenceId,
+        sourceRevisionId: candidate.sourceRevisionId,
+        observedRevisionKey: candidate.observedRevisionKey,
+        expectedSizeBytes: candidate.expectedSizeBytes,
+        targetLocator: candidate.targetLocator,
+        contentSha256: "e".repeat(64),
+        completedAt: "2026-08-08T09:00:00.000Z",
+        technical: {
+          durationSeconds: 180,
+          widthPixels: 1920,
+          heightPixels: 960,
+          framesPerSecond: 29.97,
+        },
+        worker: {
+          executionId: `device-prep:${nonce}`,
+          buildId: "integration-test",
+        },
+      },
+    });
+    expect(prepared).toMatchObject({
+      state: "ready",
+      replica: { status: "ready", localPathWithheld: true },
+      proxy: { state: "queued" },
+      originalRemainsOnAuthorizedDevice: true,
+    });
+    const [replica, revision, proxyJob, preparedLibraries] = await Promise.all([
+      prisma.studioMediaSourceReplica.findFirstOrThrow({
+        where: { sourceRevisionId: candidate.sourceRevisionId },
+      }),
+      prisma.studioMediaSourceRevision.findUniqueOrThrow({
+        where: { id: candidate.sourceRevisionId },
+      }),
+      prisma.studioWorkflowJob.findFirstOrThrow({
+        where: {
+          projectId,
+          type: "external-source-proxy",
+          status: "queued",
+        },
+      }),
+      listExternalMediaLibraries({ prisma, projectId, actorUserId }),
+    ]);
+    expect(replica.locator).toBe(candidate.targetLocator);
+    expect(replica.locator).not.toContain("/Users/");
+    expect(revision.contentSha256).toBe("e".repeat(64));
+    expect(revision.sourceState).toBe("checksum-bound");
+    expect(proxyJob.inputJson).toMatchObject({
+      source: { provider: "quipsly-device-folder" },
+    });
+    expect(preparedLibraries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: candidate.libraryId,
+          navigationHealth: expect.objectContaining({
+            eligibleSourceCount: 1,
+            retainedBrowseCount: 1,
+            proxyReadyCount: 0,
+            browseReadyCount: 0,
+          }),
         }),
       ]),
     );

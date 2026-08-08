@@ -8,6 +8,7 @@ import {
   parseDeviceMediaFolderObservation,
   planDeviceMediaFolderObservation,
 } from "@/lib/device-media-folder-contract";
+import { deviceMediaPreparationTargetLocator } from "@/lib/device-media-preparation-contract";
 import { attachVerifiedExternalMediaSource } from "@/lib/server/external-media-source";
 import { recordDeviceFolderLibraryObservation } from "@/lib/server/external-media-library";
 
@@ -30,9 +31,7 @@ function sourceUnitSlug(rootId: string, segmentKey: string) {
     .slice(0, 32)}`;
 }
 
-function publicPlan(
-  plan: ReturnType<typeof planDeviceMediaFolderObservation>,
-) {
+function publicPlan(plan: ReturnType<typeof planDeviceMediaFolderObservation>) {
   return {
     schema: plan.schema,
     root: { name: plan.root.name },
@@ -85,11 +84,29 @@ export async function observeDeviceMediaFolderForNest(input: {
 }) {
   const observation = parseDeviceMediaFolderObservation(input.observation);
   const plan = planDeviceMediaFolderObservation(observation);
+  const project = await input.prisma.studioProject.findUniqueOrThrow({
+    where: { id: input.projectId },
+    select: { slug: true },
+  });
   const attached: Array<{
     externalFileId: string;
     externalReferenceId: string;
     sourceUnitId: string;
     replayed: boolean;
+  }> = [];
+  const preparationCandidates: Array<{
+    libraryId?: string;
+    deviceId: string;
+    folderGrantId: string;
+    externalFileId: string;
+    externalReferenceId: string;
+    sourceRevisionId: string;
+    observedRevisionKey: string;
+    expectedSizeBytes: string;
+    fileName: string;
+    captureKey: string;
+    capturedAt: string;
+    targetLocator: string;
   }> = [];
 
   for (const batch of plan.batches) {
@@ -198,6 +215,25 @@ export async function observeDeviceMediaFolderForNest(input: {
           sourceUnitId: sourceUnit.id,
           replayed: result.replayed,
         });
+        if (member.role === "browse-proxy") {
+          preparationCandidates.push({
+            deviceId: observation.deviceId,
+            folderGrantId: observation.folderGrantId,
+            externalFileId: member.id,
+            externalReferenceId: result.reference.id,
+            sourceRevisionId: result.canonicalSourceRevisionId,
+            observedRevisionKey: member.headRevisionId!,
+            expectedSizeBytes: member.sizeBytes!,
+            fileName: member.name,
+            captureKey: segment.captureKey,
+            capturedAt: segment.capturedAt,
+            targetLocator: deviceMediaPreparationTargetLocator({
+              projectSlug: project.slug,
+              sourceRevisionId: result.canonicalSourceRevisionId,
+              observedRevisionKey: member.headRevisionId!,
+            }),
+          });
+        }
       }
     }
   }
@@ -214,6 +250,31 @@ export async function observeDeviceMediaFolderForNest(input: {
     plan,
     attachments: attached,
   });
+  const readiness = await input.prisma.studioMediaSourceRevision.findMany({
+    where: {
+      id: {
+        in: preparationCandidates.map(
+          (candidate) => candidate.sourceRevisionId,
+        ),
+      },
+    },
+    select: {
+      id: true,
+      replicas: {
+        where: { storageProvider: "local-cache", status: "ready" },
+        select: { id: true },
+        take: 1,
+      },
+      derivatives: {
+        where: { kind: "collaboration-proxy", status: "ready" },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+  const readinessByRevision = new Map(
+    readiness.map((revision) => [revision.id, revision]),
+  );
   return {
     plan: publicPlan(plan),
     attachedCount: attached.length,
@@ -223,6 +284,33 @@ export async function observeDeviceMediaFolderForNest(input: {
     exactByteVerificationPending: attached.length > 0,
     library: library.library,
     libraryReplayed: library.replayed,
+    preparation: {
+      schema: "quipsly-device-media-preparation-plan-v1" as const,
+      mode: "explicit-browse-copy" as const,
+      totalCandidates: preparationCandidates.length,
+      exactReplicaReadyCount: preparationCandidates.filter(
+        (candidate) =>
+          readinessByRevision.get(candidate.sourceRevisionId)?.replicas.length,
+      ).length,
+      proxyReadyCount: preparationCandidates.filter(
+        (candidate) =>
+          readinessByRevision.get(candidate.sourceRevisionId)?.derivatives
+            .length,
+      ).length,
+      candidates: preparationCandidates.map((candidate) => ({
+        ...candidate,
+        libraryId: library.library.id,
+        exactReplicaReady: Boolean(
+          readinessByRevision.get(candidate.sourceRevisionId)?.replicas.length,
+        ),
+        proxyReady: Boolean(
+          readinessByRevision.get(candidate.sourceRevisionId)?.derivatives
+            .length,
+        ),
+      })),
+      originalBytesWillBeCopied: false as const,
+      localPathsWithheld: true as const,
+    },
     localPathWithheld: true as const,
   };
 }

@@ -28,7 +28,12 @@ import {
   listExternalMediaLibraries,
 } from "@/lib/server/external-media-library";
 import { DeviceMediaFolderContractError } from "@/lib/device-media-folder-contract";
+import { DeviceMediaPreparationContractError } from "@/lib/device-media-preparation-contract";
 import { observeDeviceMediaFolderForNest } from "@/lib/server/device-media-folder";
+import {
+  DeviceMediaPreparationError,
+  registerDeviceMediaPreparation,
+} from "@/lib/server/device-media-preparation";
 import {
   ExternalSourceProxyRequestError,
   requestExternalSourceProxy,
@@ -234,6 +239,18 @@ function errorResponse(error: unknown) {
       { status: 400 },
     );
   }
+  if (error instanceof DeviceMediaPreparationContractError) {
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: 400 },
+    );
+  }
+  if (error instanceof DeviceMediaPreparationError) {
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: error.status },
+    );
+  }
   if (error instanceof SourceStoryContractError) {
     return NextResponse.json(
       { error: error.message, errorCode: error.code },
@@ -425,6 +442,15 @@ export async function POST(
         actorEmail: actor.email,
         clientRequestId: text(body.clientRequestId),
         observation: body.observation,
+      });
+    } else if (action === "register-device-media-preparation") {
+      operation = await registerDeviceMediaPreparation({
+        prisma,
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        clientRequestId: text(body.clientRequestId),
+        receipt: body.receipt,
       });
     } else if (action === "request-external-proxy") {
       operation = await requestExternalSourceProxy({

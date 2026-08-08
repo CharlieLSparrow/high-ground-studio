@@ -396,16 +396,87 @@ function FollowedDriveLibraries({
           ) : null}
           {library.provider === "quipsly-device-folder" ? (
             <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
-              <p className="text-[9px] font-black uppercase tracking-wide text-emerald-950">
-                Mac-resolved originals
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-wide text-emerald-950">
+                    Mac-resolved originals
+                  </p>
+                  {library.navigationHealth?.eligibleSourceCount ? (
+                    <p className="mt-1 text-xs font-black text-emerald-950">
+                      {library.navigationHealth.browseReadyCount} of{" "}
+                      {library.navigationHealth.eligibleSourceCount} segments
+                      ready to browse
+                    </p>
+                  ) : null}
+                </div>
+                {library.navigationHealth?.eligibleSourceCount ? (
+                  <span className="rounded-full bg-white px-2 py-1 text-[9px] font-black text-emerald-950">
+                    {Math.round(
+                      (library.navigationHealth.browseReadyCount /
+                        library.navigationHealth.eligibleSourceCount) *
+                        100,
+                    )}
+                    %
+                  </span>
+                ) : null}
+              </div>
+              {library.navigationHealth?.eligibleSourceCount ? (
+                <>
+                  <div
+                    role="progressbar"
+                    aria-label={`${library.name} device browse readiness`}
+                    aria-valuemin={0}
+                    aria-valuemax={library.navigationHealth.eligibleSourceCount}
+                    aria-valuenow={library.navigationHealth.browseReadyCount}
+                    className="mt-2 h-2 overflow-hidden rounded-full bg-emerald-100"
+                  >
+                    <span
+                      className="block h-full rounded-full bg-emerald-700 transition-[width]"
+                      style={{
+                        width: `${(library.navigationHealth.browseReadyCount / library.navigationHealth.eligibleSourceCount) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-1 text-[8px] sm:grid-cols-5 xl:grid-cols-2 2xl:grid-cols-5">
+                    {[
+                      [
+                        "LRV exact",
+                        library.navigationHealth.retainedBrowseCount,
+                      ],
+                      ["Proxy", library.navigationHealth.proxyReadyCount],
+                      ["Visual map", library.navigationHealth.visualReadyCount],
+                      ["Waveform", library.navigationHealth.audioReadyCount],
+                      ["Complete", library.navigationHealth.browseReadyCount],
+                    ].map(([label, value]) => (
+                      <div
+                        key={String(label)}
+                        className="rounded-lg border border-emerald-100 bg-white p-2"
+                      >
+                        <dt className="font-bold text-emerald-700">{label}</dt>
+                        <dd className="mt-1 text-[11px] font-black text-emerald-950">
+                          {value} /{" "}
+                          {library.navigationHealth!.eligibleSourceCount}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </>
+              ) : null}
               <p className="mt-1 text-[9px] font-semibold leading-4 text-emerald-900">
                 Nest has safe package identities and health, but no local path
                 and no permission to fetch these bytes. Open Quipsly Studio on
-                the Mac that granted this folder to refresh it, verify exact
-                bytes, build proxies, or render. Drive for desktop may keep the
-                originals streamed until one of those explicit operations.
+                the Mac that granted this folder, choose Prepare browse media,
+                and leave it open while the local worker builds proxies, visual
+                maps, and waveforms. Full-resolution INSV originals stay where
+                they are until an explicit conform or render.
               </p>
+              {library.navigationHealth?.remainingCount ? (
+                <p className="mt-2 rounded-lg bg-white p-2 text-[9px] font-bold leading-4 text-emerald-950">
+                  {formatBytes(library.navigationHealth.pendingTransferBytes)}{" "}
+                  of lightweight LRV companions remain to be verified locally.
+                  This browser will not start a Drive or server transfer.
+                </p>
+              ) : null}
             </div>
           ) : library.navigationHealth?.eligibleSourceCount ? (
             <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">

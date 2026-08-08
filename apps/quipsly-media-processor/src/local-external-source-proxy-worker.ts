@@ -227,7 +227,12 @@ export async function runOneLocalExternalSourceProxyJob(
   try {
     const resolved = await store.resolve(claim, job);
     assertResolvedSource(job, resolved);
-    const sourcePath = await realpath(resolved.path).catch(() => "");
+    const root = await authorizedOutputRoot(options.localMediaRoot);
+    const requestedSourcePath =
+      resolved.provider === "quipsly-device-folder"
+        ? authorizedSourceReplicaPath(root, resolved.path)
+        : resolved.path;
+    const sourcePath = await realpath(requestedSourcePath).catch(() => "");
     if (!sourcePath || !path.isAbsolute(sourcePath)) {
       throw new ExternalProxyTerminalError(
         "external-proxy-source-unavailable",
@@ -237,7 +242,6 @@ export async function runOneLocalExternalSourceProxyJob(
     const sourceBefore = await inspectSource(sourcePath);
     assertSourceBytes(job, sourceBefore);
 
-    const root = await authorizedOutputRoot(options.localMediaRoot);
     outputPath = authorizedTargetPath(root, job.target.locator);
     partialPath = `${outputPath.slice(0, -4)}.partial-${claim.executionId.replace(/[^A-Za-z0-9_-]+/g, "-")}.mp4`;
     await mkdir(path.dirname(outputPath), { recursive: true, mode: 0o700 });
@@ -364,7 +368,7 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
           SELECT "id", "inputJson", "resultJson"
           FROM "StudioWorkflowJob"
           WHERE "type"=$1 AND "source"=$2
-            AND "inputJson"->'source'->>'provider' IN ('local-file-vault','google-drive')
+            AND "inputJson"->'source'->>'provider' IN ('local-file-vault','google-drive','quipsly-device-folder')
             AND ("status"='queued' OR ("status"='processing' AND "updatedAt" < timezone('UTC', $3::timestamptz)))
           ORDER BY "priority" ASC, "createdAt" ASC
           FOR UPDATE SKIP LOCKED LIMIT 1
@@ -444,14 +448,13 @@ export class PostgresLocalExternalSourceProxyStore implements LocalExternalSourc
       );
     const locator = asRecord(row.providerLocatorJson);
     return {
-      path:
-        row.provider === "google-drive"
-          ? typeof row.replicaLocator === "string"
-            ? row.replicaLocator
-            : ""
-          : typeof locator.localPath === "string"
-            ? locator.localPath
-            : "",
+      path: ["google-drive", "quipsly-device-folder"].includes(row.provider)
+        ? typeof row.replicaLocator === "string"
+          ? row.replicaLocator
+          : ""
+        : typeof locator.localPath === "string"
+          ? locator.localPath
+          : "",
       projectId: row.projectId,
       referenceId: row.referenceId,
       sourceRevisionId: row.sourceRevisionId,
@@ -787,7 +790,8 @@ function assertResolvedSource(
     source.sizeBytes !== job.source.expectedSizeBytes ||
     source.provider !== job.source.provider ||
     source.accessState !== "available" ||
-    source.capabilityState !== "downloadable"
+    (source.capabilityState !== "downloadable" &&
+      !(source.provider === "quipsly-device-folder" && source.path))
   ) {
     throw new ExternalProxyTerminalError(
       "external-proxy-source-binding-changed",
@@ -842,6 +846,29 @@ function authorizedTargetPath(root: string, locator: string) {
     );
   }
   return output;
+}
+
+function authorizedSourceReplicaPath(root: string, locator: string) {
+  if (path.isAbsolute(locator)) {
+    throw new ExternalProxyTerminalError(
+      "external-proxy-source-path-rejected",
+      "A device-folder replica must use a relative locator beneath the dedicated worker root.",
+    );
+  }
+  const source = path.resolve(root, locator);
+  const relative = path.relative(root, source);
+  if (
+    !relative ||
+    relative.startsWith("..") ||
+    path.isAbsolute(relative) ||
+    !/\.(?:lrv|insv|mp4)$/i.test(source)
+  ) {
+    throw new ExternalProxyTerminalError(
+      "external-proxy-source-path-rejected",
+      "The device-folder replica escaped its dedicated local worker root.",
+    );
+  }
+  return source;
 }
 
 async function flushFile(filePath: string) {
