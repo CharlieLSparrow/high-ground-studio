@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AudioEvidenceMap } from "@/components/audio/AudioEvidenceMap";
 import { StudioTranscriptReviewDesk } from "@/app/(app)/editor/StudioTranscriptReviewDesk";
+import { advancedStudioHandoffHref } from "@/lib/editor/advanced-studio-handoff";
 import {
   DECISION_SHORTCUTS,
   decisionAt,
@@ -962,7 +963,16 @@ export default function EpisodeEditorClient({
                 >
                   Render options
                 </button>
-                {episode ? <Link href={`/editor?project=${encodeURIComponent(payload.projectSlug)}&episode=${encodeURIComponent(episode.slug)}`} className="inline-flex min-h-9 items-center rounded-lg border border-[#587160] px-3 text-xs font-black text-[#e7c97d] hover:border-[#d8ad56]">Open Advanced Studio</Link> : null}
+                {episode ? <Link href={advancedStudioHandoffHref({
+                  projectSlug: payload.projectSlug,
+                  episodeSlug: episode.slug,
+                  branch: payload.branch,
+                  timelineFingerprintSha256: payload.timelineFingerprintSha256,
+                  sourceProjectionFingerprint: payload.state.sourceProjectionFingerprint,
+                  sequenceAtSeconds: playhead,
+                  storyCardId: initialStoryCardId,
+                  storyPlacementId: initialStoryPlacementId,
+                })} className="inline-flex min-h-9 items-center rounded-lg border border-[#587160] px-3 text-xs font-black text-[#e7c97d] hover:border-[#d8ad56]">Open Advanced Studio</Link> : null}
               </div>
             </div>
             {renderOptionsOpen ? (

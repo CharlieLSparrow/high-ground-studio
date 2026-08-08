@@ -39,6 +39,7 @@ import { SourceSyncEvidenceMap } from "./SourceSyncEvidenceMap";
 import { CaptureTakeMaterializationPanel } from "./CaptureTakeMaterializationPanel";
 import { CaptureSourceRecoveryPanel } from "./CaptureSourceRecoveryPanel";
 import { SourceStoryProvenanceCard } from "./SourceStoryProvenanceCard";
+import { AdvancedStudioHandoffBanner } from "./AdvancedStudioHandoffBanner";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import {
   buildEpisodeArtifactPayload as buildCanonicalEpisodeArtifactPayload,
@@ -76,6 +77,11 @@ import type {
   EditReviewSubjectKind,
   EpisodeEditReviewReceipt,
 } from "@/lib/editor/edit-review-contract";
+import {
+  ADVANCED_STUDIO_HANDOFF_SCHEMA,
+  parseAdvancedStudioHandoff,
+  type AdvancedStudioHandoffRequest,
+} from "@/lib/editor/advanced-studio-handoff";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
 type TimelineSaveState = "idle" | "queued" | "saving" | "saved" | "error" | "fallback" | "conflict";
@@ -3214,6 +3220,7 @@ function CloudEditorContent() {
   const timelineRouteRef = useRef("");
   const captureGroupFocusAppliedRef = useRef("");
   const sourceClockFocusAppliedRef = useRef("");
+  const advancedStudioHandoffAppliedRef = useRef("");
   const audioSignalProfileAutoStartedRef = useRef<Set<string>>(new Set());
   const syncPreviewSpineRef = useRef<HTMLAudioElement | null>(null);
   const syncPreviewTargetRef = useRef<HTMLMediaElement | null>(null);
@@ -3230,6 +3237,21 @@ function CloudEditorContent() {
   );
   const resolvedProjectSlug = projectId ?? DEFAULT_EDITOR_PROJECT_SLUG;
   const episodeLabel = humanizeSlug(episodeSlug);
+  const advancedStudioHandoff = useMemo(
+    () => parseAdvancedStudioHandoff(searchParams),
+    [searchParams],
+  );
+  const malformedAdvancedStudioHandoff =
+    searchParams.get("handoff") === ADVANCED_STUDIO_HANDOFF_SCHEMA &&
+    !advancedStudioHandoff;
+  const [verifiedAdvancedStudioHandoff, setVerifiedAdvancedStudioHandoff] =
+    useState<AdvancedStudioHandoffRequest | null>(null);
+  const handleVerifiedAdvancedStudioHandoff = useCallback(
+    (request: AdvancedStudioHandoffRequest) => {
+      setVerifiedAdvancedStudioHandoff(request);
+    },
+    [],
+  );
   const [realEditingMode, setRealEditingMode] = useState(false);
   const [isAddAtPlayheadPickerOpen, setIsAddAtPlayheadPickerOpen] = useState(false);
   const [isReplaceSourcePickerOpen, setIsReplaceSourcePickerOpen] = useState(false);
@@ -7075,6 +7097,35 @@ function CloudEditorContent() {
     setAiEditMessage(`Opened exact source-clock evidence at ${formatClock(requestedSourceClockSeconds)}${requestedSourceClockFocusId ? ` (${requestedSourceClockFocusId})` : ""}. No edit decision was applied.`);
     sourceClockFocusAppliedRef.current = key;
   }, [episodeSlug, isTimelineHydrated, requestedSourceClockFocusId, requestedSourceClockSeconds, resolvedProjectSlug, setEditorMode, totalDuration]);
+  useEffect(() => {
+    if (!isTimelineHydrated || !verifiedAdvancedStudioHandoff) return;
+    const key = [
+      verifiedAdvancedStudioHandoff.branchId,
+      verifiedAdvancedStudioHandoff.branchRevision,
+      verifiedAdvancedStudioHandoff.branchFingerprint,
+      verifiedAdvancedStudioHandoff.timelineFingerprintSha256,
+      verifiedAdvancedStudioHandoff.sourceProjectionFingerprint,
+      verifiedAdvancedStudioHandoff.sequenceAtSeconds,
+    ].join(":");
+    if (advancedStudioHandoffAppliedRef.current === key) return;
+    advancedStudioHandoffAppliedRef.current = key;
+    setEditorMode("play-all");
+    setCurrentTime(
+      Math.max(
+        0,
+        Math.min(totalDuration, verifiedAdvancedStudioHandoff.sequenceAtSeconds),
+      ),
+    );
+    setViewMode("timeline");
+    setAiEditMessage(
+      `Verified shared-edit revision ${verifiedAdvancedStudioHandoff.branchRevision} and opened the canonical Episode sequence at ${formatClock(verifiedAdvancedStudioHandoff.sequenceAtSeconds)}. No edit decision was applied.`,
+    );
+  }, [
+    isTimelineHydrated,
+    setEditorMode,
+    totalDuration,
+    verifiedAdvancedStudioHandoff,
+  ]);
   const projectedSkippedDuration = deactivatedTimelineIntervals(timelineState)
     .reduce((total, interval) => total + interval.endSeconds - interval.startSeconds, 0);
   const renderedDurationSeconds = timelineState.editorMode === "play-all"
@@ -7846,6 +7897,13 @@ function CloudEditorContent() {
           </button>
         </div>
       </header>
+
+      <AdvancedStudioHandoffBanner
+        request={advancedStudioHandoff}
+        malformed={malformedAdvancedStudioHandoff}
+        fallbackReturnHref={`/nests/${encodeURIComponent(resolvedProjectSlug)}/episodes/${encodeURIComponent(episodeSlug)}?mode=edit`}
+        onVerified={handleVerifiedAdvancedStudioHandoff}
+      />
 
       {(collaborationState || remoteTimelineNotice) && (
         <section className="border-b border-[#e8dcc4] bg-[#fffaf0] px-4 py-2">

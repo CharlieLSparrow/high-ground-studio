@@ -2,6 +2,33 @@
 
 Date: 2026-08-07
 
+## Versioned Episode-to-Advanced-Studio handoff checkpoint
+
+- The canonical Episode editor no longer opens Advanced Studio with only a
+  project and episode slug. Its handoff envelope binds the exact shared-edit
+  branch identity, optimistic revision, branch-state fingerprint, canonical
+  timeline SHA-256 digest, canonical source-projection fingerprint, and current
+  Episode-sequence playhead. The URL never carries the full canonical timeline
+  manifest. Optional Story card and placement identities are retained solely
+  for the return path.
+- Advanced Studio treats every route value as an untrusted handoff hint. It
+  re-reads the permission-checked Episode editor projection, compares the
+  Episode, branch, revision, edit intent, timeline, and source identities, and
+  applies the sequence focus only after every value matches. Focus changes no
+  media and creates no edit decision.
+- A changed branch, timeline, source projection, mismatched Episode, malformed
+  envelope, or inaccessible projection fails visibly. Studio keeps its normal
+  editor state, refuses to guess another source or branch, and offers a return
+  to the current canonical Episode workspace. Legacy branches without a state
+  fingerprint continue to open Studio but are not mislabeled as verified
+  versioned handoffs.
+- Twenty-five focused contract, interaction, and route tests pass alongside the
+  Episode-edit store test and a retained-database operation. That operation
+  loaded a real local Episode through the permission-checked projection,
+  round-tripped its bounded handoff, verified the exact revision, and refused a
+  deliberately newer revision. Quipsly typecheck and the complete 194-route
+  production build pass.
+
 ## Source-select to Episode-editor continuity checkpoint
 
 - A promoted Source Story placement now continues into the canonical shared

@@ -96,6 +96,10 @@ function fingerprint(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
+function sha256Text(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
 function slugify(value: string): string {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "note";
 }
@@ -565,6 +569,7 @@ export async function loadEpisodeEditDesk(
       projectId: null,
       projectSlug,
       timelineFingerprint: null,
+      timelineFingerprintSha256: null,
       episodes: [],
       selectedEpisode: null,
       baseline: null,
@@ -666,13 +671,15 @@ export async function loadEpisodeEditDesk(
         orderBy: [{ startSeconds: "asc" }, { createdAt: "asc" }],
       })
     : [];
+  const timelineFingerprint = episodeTimelineContentFingerprint(
+    timelineStateFromEpisodeArtifact(selected.timelineJson),
+  );
   return {
     inspectionFresh: includeInspection,
     projectId: selected.projectId,
     projectSlug,
-    timelineFingerprint: episodeTimelineContentFingerprint(
-      timelineStateFromEpisodeArtifact(selected.timelineJson),
-    ),
+    timelineFingerprint,
+    timelineFingerprintSha256: sha256Text(timelineFingerprint),
     episodes: episodes.map((episode) => ({
       id: episode.id,
       slug: episode.slug,
@@ -701,6 +708,7 @@ export async function loadEpisodeEditDesk(
       slug: branch.slug,
       name: branch.name,
       headRevision: branch.headRevision,
+      stateFingerprint: branch.stateFingerprint,
       updatedAt: branch.updatedAt.toISOString(),
     } : null,
     state: branch ? projectedState(selected, branch.stateJson) : projectCanonicalEpisodeEditState(selected),

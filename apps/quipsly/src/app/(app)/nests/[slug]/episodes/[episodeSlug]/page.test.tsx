@@ -69,7 +69,7 @@ const editPayload = {
   projectSlug: "high-ground",
   episodes: [{ id: "episode-4", slug: "episode-4", title: "Episode 4" }],
   selectedEpisode: { id: "episode-4", slug: "episode-4", title: "Episode 4" },
-  branch: { id: "branch-4", headRevision: 3 },
+  branch: { id: "branch-4", headRevision: 3, stateFingerprint: "branch-fingerprint-3" },
 };
 
 describe("EpisodeRoomPage access failures", () => {

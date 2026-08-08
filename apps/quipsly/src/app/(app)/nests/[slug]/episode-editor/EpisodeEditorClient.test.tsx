@@ -13,6 +13,7 @@ const payload: EpisodeEditDeskPayload = {
   projectId: "project-1",
   projectSlug: "high-ground-odyssey",
   timelineFingerprint: "timeline-fingerprint-1",
+  timelineFingerprintSha256: "b".repeat(64),
   episodes: [{
     id: "episode-1",
     slug: "episode-4-part-2",
@@ -40,12 +41,14 @@ const payload: EpisodeEditDeskPayload = {
     slug: "shared-editor-cut",
     name: "Shared editor cut",
     headRevision: 0,
+    stateFingerprint: "a".repeat(64),
     updatedAt: "2026-07-27T19:00:00.000Z",
   },
   state: {
     version: "quipsly-program-edit.v1",
     durationSeconds: 60,
     sources: [],
+    sourceProjectionFingerprint: "c".repeat(64),
     programDecisions: [],
   },
   watchDerivatives: [{
@@ -137,6 +140,10 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
     expect(screen.getByRole("link", { name: "Review & finish" })).toHaveAttribute(
       "href",
       "/sessions/call-room-1?mode=outputs",
+    );
+    expect(screen.getByRole("link", { name: "Open Advanced Studio" })).toHaveAttribute(
+      "href",
+      `/editor?project=high-ground-odyssey&episode=episode-4-part-2&handoff=quipsly-episode-studio-handoff-v1&editBranch=branch-1&editRevision=0&editFingerprint=${"a".repeat(64)}&timelineSha256=${"b".repeat(64)}&sourceFingerprint=${"c".repeat(64)}&sequenceAt=0`,
     );
   });
 

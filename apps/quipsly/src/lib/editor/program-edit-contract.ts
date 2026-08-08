@@ -260,6 +260,7 @@ export type EpisodeEditDeskPayload = {
   projectId: string | null;
   projectSlug: string;
   timelineFingerprint: string | null;
+  timelineFingerprintSha256: string | null;
   episodes: EpisodeDeskEpisode[];
   selectedEpisode: EpisodeDeskEpisode | null;
   baseline: null | {
@@ -276,6 +277,7 @@ export type EpisodeEditDeskPayload = {
     slug: string;
     name: string;
     headRevision: number;
+    stateFingerprint: string | null;
     updatedAt: string;
   };
   state: ProgramEditState;
