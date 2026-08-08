@@ -7,7 +7,10 @@ import path from "node:path";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
-import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
+import {
+  readCurrentLocalExecutorIdentity,
+  readLocalExecutorTarget,
+} from "@/lib/server/local-executor-storage";
 
 import { GET } from "./route";
 
@@ -20,6 +23,7 @@ jest.mock("@/lib/server/studio-project-access", () => ({
   resolveStudioProjectAccess: jest.fn(),
 }));
 jest.mock("@/lib/server/local-executor-storage", () => ({
+  readCurrentLocalExecutorIdentity: jest.fn(),
   readLocalExecutorTarget: jest.fn(),
 }));
 
@@ -57,6 +61,7 @@ describe("local media derivative delivery", () => {
       projectId: "project-1",
     } as never);
     jest.mocked(readLocalExecutorTarget).mockResolvedValue(null);
+    jest.mocked(readCurrentLocalExecutorIdentity).mockResolvedValue(null);
   });
 
   afterEach(async () => {
@@ -150,6 +155,12 @@ describe("local media derivative delivery", () => {
         workspaceMode: "durable",
         localPathWithheld: true,
       },
+    });
+    expect((await responseFor(locator, bytes, custody)).status).toBe(404);
+    jest.mocked(readCurrentLocalExecutorIdentity).mockResolvedValue({
+      nodeId: custody.custodianNodeId,
+      hostName: "Editing Mac",
+      storageScopeId: custody.storageScopeId,
     });
     expect((await responseFor(locator, bytes, custody)).status).toBe(200);
   });

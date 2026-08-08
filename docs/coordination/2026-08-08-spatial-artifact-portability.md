@@ -46,10 +46,10 @@ has been promoted to cloud storage.
 - The PostgreSQL derivative readback retains the exact custodian, storage
   scope, and `executor-local` provenance.
 
-## Remaining boundary
+## Follow-through
 
-Episode proof renders still use an older local-only contract. They must adopt
-the same execution-target and portability authority before Advanced Studio can
-truthfully combine conventional camera media and 360 reframes across Macs.
+Conventional Episode proofs now use the same authority in contract v2. See
+`docs/coordination/2026-08-08-episode-render-artifact-portability.md` for the
+queue, worker, registration, playback, and Episode Editor UX boundary.
 Portable object promotion and cloud rendering remain later, explicit actions;
-this slice does not claim those bytes moved.
+neither slice claims those bytes moved.

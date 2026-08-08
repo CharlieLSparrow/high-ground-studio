@@ -24,6 +24,13 @@ const rawSource = {
   url: "/api/ingest/media/source_raw_001",
   title: "Raw source",
 };
+const proofSource = {
+  id: "source_episode_proof_001",
+  provider: "local-episode-render-proof-worker",
+  providerSourceId: "/tmp/quipsly-media-ingest/proof.mp4",
+  url: "/api/ingest/media/source_episode_proof_001",
+  title: "Episode edit proof",
+};
 const ownerAsset = {
   id: "asset_raw_001",
   isGlobal: false,
@@ -34,17 +41,36 @@ const ownerAsset = {
   assetAttachments: [{ metadataJson: {}, project: { slug: "high-ground-odyssey" } }],
 };
 
-function prismaForVariant(options: { heldRaw?: boolean } = {}) {
+function prismaForVariant(options: { heldRaw?: boolean; proofMetadata?: Record<string, unknown> } = {}) {
+  const proofOwnerAsset = {
+    ...ownerAsset,
+    id: "asset_episode_proof_001",
+    url: proofSource.url,
+    assetAttachments: [{
+      metadataJson: options.proofMetadata ?? {},
+      project: { slug: "high-ground-odyssey" },
+    }],
+  };
   return {
     studioVideoSource: {
-      findUnique: jest.fn(async ({ where }: any) => where.id === derivedSource.id ? derivedSource : where.id === rawSource.id ? rawSource : null),
+      findUnique: jest.fn(async ({ where }: any) => where.id === derivedSource.id
+        ? derivedSource
+        : where.id === rawSource.id
+          ? rawSource
+          : where.id === proofSource.id
+            ? proofSource
+            : null),
     },
     studioMediaAsset: {
       findMany: jest.fn(async () => []),
       findUnique: jest.fn(async () => null),
     },
     studioAssetVariant: {
-      findMany: jest.fn(async ({ where }: any) => where.url === derivedSource.url ? [{ asset: ownerAsset }] : []),
+      findMany: jest.fn(async ({ where }: any) => where.url === derivedSource.url
+        ? [{ asset: ownerAsset }]
+        : where.url === proofSource.url
+          ? [{ asset: proofOwnerAsset }]
+          : []),
     },
     mobileCaptureFinalizationReceipt: {
       findMany: jest.fn(async ({ where }: any) => options.heldRaw && where.sourceId === rawSource.id
@@ -98,5 +124,44 @@ describe("studio media variant authorization", () => {
       error: "Owner review is still required.",
     });
     expect(mobileCaptureMediaProcessingGate).not.toHaveBeenCalled();
+  });
+
+  it("holds a local Episode proof that has no executor custody receipt", async () => {
+    const result = await authorizeStudioMediaSource({
+      prisma: prismaForVariant(),
+      actor,
+      sourceId: proofSource.id,
+    });
+    expect(result).toMatchObject({
+      allowed: false,
+      status: 409,
+      errorCode: "LOCAL_ARTIFACT_CUSTODY_REQUIRED",
+    });
+  });
+
+  it("returns the exact executor authority for a registered local Episode proof", async () => {
+    const result = await authorizeStudioMediaSource({
+      prisma: prismaForVariant({
+        proofMetadata: {
+          schema: "quipsly-episode-render-proof-registration-v2",
+          artifactPortability: "executor-local",
+          custodianNodeId: "execution_worker_render_test",
+          storageScopeId: "storage_scope_render_test",
+        },
+      }),
+      actor,
+      sourceId: proofSource.id,
+    });
+    expect(result).toMatchObject({
+      allowed: true,
+      source: {
+        id: proofSource.id,
+        localArtifactAuthority: {
+          portability: "executor-local",
+          custodianNodeId: "execution_worker_render_test",
+          storageScopeId: "storage_scope_render_test",
+        },
+      },
+    });
   });
 });

@@ -307,7 +307,7 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
       sources: { requiredCount: 3, browserPlayableCount: 3, exactLocalCount: 3, totalBytes: 2_097_152, labels: ["Camera", "Charlie", "Homer"] },
       executors: [
         { id: "browser", label: "Browser preview", status: "ready", canQueue: false, detail: "Keep editing immediately.", costKind: "none", costDetail: "No render compute or upload started", qualityDetail: "Protected proxies" },
-        { id: "local-mac", label: "This Mac", status: "ready", canQueue: true, detail: "Exact sources are ready.", costKind: "none", costDetail: "No incremental cloud compute or transfer", qualityDetail: "Exact local source bytes" },
+        { id: "local-mac", label: "Editing Mac", executorNodeId: "execution_worker_render_test", artifactPortability: "executor-local", status: "ready", canQueue: true, detail: "Exact sources are ready.", costKind: "none", costDetail: "No incremental cloud compute or transfer", qualityDetail: "Exact local source bytes" },
         { id: "cloud", label: "Quipsly Cloud", status: "not-configured", canQueue: false, detail: "Cloud rendering is intentionally unavailable.", costKind: "metered", costDetail: "No upload started", qualityDetail: "Planned exact originals" },
       ],
       boundaries: { createsNoJob: true, sourceMediaRemainsImmutable: true, cloudUploadNotStarted: true, publicationNotStarted: true },
@@ -321,12 +321,17 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
     render(<EpisodeEditorClient initialPayload={payload} />);
 
     await user.click(screen.getByRole("button", { name: "Render options" }));
-    expect(await screen.findByText("This Mac")).toBeInTheDocument();
+    expect(await screen.findByText("Editing Mac")).toBeInTheDocument();
     expect(screen.getByText("Quipsly Cloud")).toBeInTheDocument();
     expect(screen.getByText(/No job, upload, or publication was started/)).toBeInTheDocument();
+    expect(screen.getByText("Proof bytes stay on this executor; the shared edit remains portable.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Render fast proof on this Mac" })).toBeEnabled();
     expect(fetchMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
       body: expect.stringContaining('"action":"plan-render-proof"'),
+    }));
+    await user.click(screen.getByRole("button", { name: "Render fast proof on this Mac" }));
+    expect(fetchMock).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({
+      body: expect.stringContaining('"executorNodeId":"execution_worker_render_test"'),
     }));
   });
 

@@ -3202,3 +3202,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   on another executor after its own exact sources are prepared.
 - Detailed architecture and proof:
   `docs/coordination/2026-08-08-spatial-artifact-portability.md`.
+
+### 2026-08-08 conventional Episode proof custody
+
+- Episode render proof contract v2 now binds the job, exact camera/audio
+  sources, output target, result, and worker to one local executor and opaque
+  storage scope. PostgreSQL claims and worker runtime both reject foreign work
+  before rendering.
+- The Episode editor names the planned Mac, discloses that proof bytes remain
+  executor-local while edit intent stays portable, and queues against that
+  exact node. An unavailable selected Mac is held rather than replaced.
+- Registration verifies exact bytes and complete decode while the custodian is
+  online. Playback requires one unambiguous v2 custody receipt and the same
+  current executor scope derived by the serving process from its canonical
+  media root and filesystem identity; an online remote Mac or project
+  authorization alone cannot make a local path globally readable.
+- Detailed architecture and proof:
+  `docs/coordination/2026-08-08-episode-render-artifact-portability.md`.

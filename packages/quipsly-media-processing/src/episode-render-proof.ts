@@ -1,6 +1,12 @@
-export const EPISODE_RENDER_PROOF_CONTRACT_VERSION = 1 as const;
-export const EPISODE_RENDER_PROOF_JOB_KIND = "quipsly-episode-render-proof-job-v1" as const;
-export const EPISODE_RENDER_PROOF_RESULT_KIND = "quipsly-episode-render-proof-result-v1" as const;
+import {
+  parseExecutorLocalArtifactAuthority,
+  sameExecutorLocalArtifactAuthority,
+  type ExecutorLocalArtifactAuthority,
+} from "./artifact-portability.js";
+
+export const EPISODE_RENDER_PROOF_CONTRACT_VERSION = 2 as const;
+export const EPISODE_RENDER_PROOF_JOB_KIND = "quipsly-episode-render-proof-job-v2" as const;
+export const EPISODE_RENDER_PROOF_RESULT_KIND = "quipsly-episode-render-proof-result-v2" as const;
 
 export const EPISODE_RENDER_PROFILES = {
   "proof-10s": {
@@ -29,7 +35,7 @@ export function episodeRenderProfile(value: unknown) {
   throw new Error("Episode render profile is invalid.");
 }
 
-export type EpisodeRenderProofSource = {
+export type EpisodeRenderProofSource = ExecutorLocalArtifactAuthority & {
   laneId: string;
   mediaAssetId: string;
   sourceId: string;
@@ -63,8 +69,8 @@ export type EpisodeRenderProofJob = {
   sourceProjectionFingerprintSha256: string;
   editStateFingerprintSha256: string;
   manifestSha256: string;
-  /** Missing only on retained v1 ten-second jobs created before profiles were explicit. */
-  renderProfile?: EpisodeRenderProfileId;
+  renderProfile: EpisodeRenderProfileId;
+  executionTarget: ExecutorLocalArtifactAuthority;
   proof: {
     sequenceStartSeconds: number;
     sequenceEndSeconds: number;
@@ -75,7 +81,7 @@ export type EpisodeRenderProofJob = {
     audioLaneIds: string[];
   };
   sources: EpisodeRenderProofSource[];
-  target: {
+  target: ExecutorLocalArtifactAuthority & {
     provider: "local";
     locator: string;
     contentType: "video/mp4";
@@ -94,6 +100,8 @@ export type EpisodeRenderProofJob = {
     proofIsNotApprovedOutput: true;
     proofIsNotPublicationMedia: true;
     serverMustVerifyResultBeforePlayback: true;
+    localArtifactsRequireExactExecutor: true;
+    editorIntentIsPortableWithoutProofBytes: true;
   };
 };
 
@@ -103,7 +111,7 @@ export type EpisodeRenderProofResult = {
   jobId: string;
   completedAt: string;
   manifestSha256: string;
-  output: {
+  output: ExecutorLocalArtifactAuthority & {
     provider: "local";
     locator: string;
     generation: string;
@@ -120,7 +128,7 @@ export type EpisodeRenderProofResult = {
     fastStart: true;
     variantKind: EpisodeRenderVariantKind;
   };
-  worker: {
+  worker: ExecutorLocalArtifactAuthority & {
     executionId: string;
     buildId: string;
     imageDigest: string | null;
@@ -160,6 +168,11 @@ export function parseEpisodeRenderProofJob(
   const row = record(value);
   const proof = record(row.proof);
   const target = record(row.target);
+  const executionTarget = parseExecutorLocalArtifactAuthority(
+    row.executionTarget,
+    "executionTarget",
+  );
+  const targetAuthority = parseExecutorLocalArtifactAuthority(target, "target");
   const declaredBoundaries = record(row.boundaries);
   const jobId = safeId(row.jobId, "jobId");
   const episodeProductionId = safeId(row.episodeProductionId, "episodeProductionId");
@@ -167,14 +180,8 @@ export function parseEpisodeRenderProofJob(
   const branchRevision = nonnegativeInteger(row.branchRevision, "branchRevision");
   const sequenceStartSeconds = nonnegative(rowValue(proof.sequenceStartSeconds), "proof.sequenceStartSeconds");
   const sequenceEndSeconds = positive(rowValue(proof.sequenceEndSeconds), "proof.sequenceEndSeconds");
-  const explicitRenderProfile = row.renderProfile === undefined ? undefined : episodeRenderProfile(row.renderProfile).id;
-  const renderProfile = explicitRenderProfile
-    ? episodeRenderProfile(explicitRenderProfile)
-    : target.variantKind === "episode-edit-proof"
-      ? EPISODE_RENDER_PROFILES["proof-10s"]
-      : target.variantKind === "episode-section-review"
-        ? EPISODE_RENDER_PROFILES["section-review-30s"]
-        : invalid("Episode render profile is missing or invalid.");
+  const explicitRenderProfile = episodeRenderProfile(row.renderProfile).id;
+  const renderProfile = episodeRenderProfile(explicitRenderProfile);
   if (
     row.kind !== EPISODE_RENDER_PROOF_JOB_KIND
     || row.version !== EPISODE_RENDER_PROOF_CONTRACT_VERSION
@@ -192,13 +199,19 @@ export function parseEpisodeRenderProofJob(
     || target.fps !== 24
     || target.sampleRateHz !== 48_000
     || target.variantKind !== renderProfile.variantKind
+    || !sameExecutorLocalArtifactAuthority(executionTarget, targetAuthority)
     || declaredBoundaries.sourceMediaRemainsImmutable !== true
     || declaredBoundaries.editBranchRemainsCanonicalIntent !== true
     || declaredBoundaries.proofIsNotApprovedOutput !== true
     || declaredBoundaries.proofIsNotPublicationMedia !== true
     || declaredBoundaries.serverMustVerifyResultBeforePlayback !== true
+    || declaredBoundaries.localArtifactsRequireExactExecutor !== true
+    || declaredBoundaries.editorIntentIsPortableWithoutProofBytes !== true
   ) invalid("Episode render proof job contract or target authority is invalid.");
   const sources = array(row.sources).map(parseSource);
+  if (sources.some((source) => !sameExecutorLocalArtifactAuthority(executionTarget, source))) {
+    invalid("Episode render proof sources must belong to the selected executor.");
+  }
   const laneIds = new Set(sources.map((source) => source.laneId));
   if (!sources.length || laneIds.size !== sources.length) invalid("Episode render proof sources must be non-empty and lane-unique.");
   const visualLaneIds = ids(proof.visualLaneIds, "proof.visualLaneIds");
@@ -224,7 +237,8 @@ export function parseEpisodeRenderProofJob(
     sourceProjectionFingerprintSha256: sha(row.sourceProjectionFingerprintSha256, "sourceProjectionFingerprintSha256"),
     editStateFingerprintSha256: sha(row.editStateFingerprintSha256, "editStateFingerprintSha256"),
     manifestSha256: sha(row.manifestSha256, "manifestSha256"),
-    ...(explicitRenderProfile ? { renderProfile: explicitRenderProfile } : {}),
+    renderProfile: explicitRenderProfile,
+    executionTarget,
     proof: {
       sequenceStartSeconds,
       sequenceEndSeconds,
@@ -237,6 +251,7 @@ export function parseEpisodeRenderProofJob(
     sources,
     target: {
       provider: "local",
+      ...targetAuthority,
       locator: String(target.locator),
       contentType: "video/mp4",
       container: "mp4",
@@ -265,6 +280,8 @@ export function parseEpisodeRenderProofResult(
   const row = record(value);
   const output = record(row.output);
   const worker = record(row.worker);
+  const outputAuthority = parseExecutorLocalArtifactAuthority(output, "output");
+  const workerAuthority = parseExecutorLocalArtifactAuthority(worker, "worker");
   const resultBoundaries = record(row.boundaries);
   const outputSha256 = sha(output.sha256, "output.sha256");
   const durationSeconds = positive(rowValue(output.durationSeconds), "output.durationSeconds");
@@ -283,6 +300,8 @@ export function parseEpisodeRenderProofResult(
     || output.completeDecode !== true
     || output.fastStart !== true
     || output.variantKind !== job.target.variantKind
+    || !sameExecutorLocalArtifactAuthority(job.executionTarget, outputAuthority)
+    || !sameExecutorLocalArtifactAuthority(job.executionTarget, workerAuthority)
     || Math.abs(durationSeconds - expectedDuration) > 0.2
     || resultBoundaries.sourceMediaRemainsImmutable !== true
     || resultBoundaries.editBranchRemainsCanonicalIntent !== true
@@ -298,6 +317,7 @@ export function parseEpisodeRenderProofResult(
     manifestSha256: String(row.manifestSha256),
     output: {
       provider: "local",
+      ...outputAuthority,
       locator: String(output.locator),
       generation: String(output.generation),
       sha256: outputSha256,
@@ -314,6 +334,7 @@ export function parseEpisodeRenderProofResult(
       variantKind: job.target.variantKind,
     },
     worker: {
+      ...workerAuthority,
       executionId: safeId(worker.executionId, "worker.executionId"),
       buildId: requiredText(worker.buildId, "worker.buildId"),
       imageDigest: worker.imageDigest === null ? null : requiredText(worker.imageDigest, "worker.imageDigest"),
@@ -338,6 +359,7 @@ export function newEpisodeRenderProofResult(
 
 function parseSource(value: unknown): EpisodeRenderProofSource {
   const row = record(value);
+  const authority = parseExecutorLocalArtifactAuthority(row, "sources");
   const kind = row.kind === "audio" || row.kind === "video" ? row.kind : invalid("sources.kind");
   const role = row.role === "primary" || row.role === "secondary" || row.role === "clip" || row.role === "audio" || row.role === "reference"
     ? row.role
@@ -345,6 +367,7 @@ function parseSource(value: unknown): EpisodeRenderProofSource {
   const sourceSha256 = sha(row.sha256, "sources.sha256");
   if (row.provider !== "local" || row.generation !== `sha256:${sourceSha256}`) invalid("Episode render proof currently requires exact local sources.");
   return {
+    ...authority,
     laneId: safeId(row.laneId, "sources.laneId"),
     mediaAssetId: safeId(row.mediaAssetId, "sources.mediaAssetId"),
     sourceId: safeId(row.sourceId, "sources.sourceId"),
@@ -371,6 +394,8 @@ function boundaries(): EpisodeRenderProofJob["boundaries"] {
     proofIsNotApprovedOutput: true,
     proofIsNotPublicationMedia: true,
     serverMustVerifyResultBeforePlayback: true,
+    localArtifactsRequireExactExecutor: true,
+    editorIntentIsPortableWithoutProofBytes: true,
   };
 }
 

@@ -16,6 +16,30 @@ const mockedProject = jest.mocked(projectCanonicalEpisodeEditState);
 const mockedResolve = jest.mocked(resolveAllowedLocalStudioMediaPath);
 const TEST_SOURCE_PATH = __filename;
 const TEST_SOURCE_SIZE = statSync(TEST_SOURCE_PATH).size;
+const EXECUTOR_NODE_ID = "execution_worker_render_test";
+const EXECUTOR_SCOPE_ID = "storage_scope_render_test";
+
+function executorCapabilities() {
+  return {
+    schema: "quipsly-execution-worker-capabilities-v1",
+    executorKind: "local-mac",
+    jobTypes: ["episode-render-proof"],
+    renderProfiles: [
+      "episode-edit-proof-1280x720-24fps-v1",
+      "episode-section-review-1280x720-24fps-v1",
+    ],
+    storage: {
+      schema: "quipsly-local-media-storage-v1",
+      status: "measured",
+      availableBytes: 20_000_000,
+      reserveBytes: 5_000_000,
+      safeAvailableBytes: 15_000_000,
+      measuredAt: new Date().toISOString(),
+      workspaceMode: "durable",
+      scopeId: EXECUTOR_SCOPE_ID,
+    },
+  };
+}
 
 describe("Episode render proof queue", () => {
   beforeEach(() => {
@@ -70,6 +94,11 @@ describe("Episode render proof queue", () => {
     const job = parseEpisodeRenderProofJob(createdInput.data.inputJson, createdInput.data.id);
     expect(result).toEqual(expect.objectContaining({ idempotentReplay: false, job: expect.objectContaining({ branchRevision: 4, sequenceStartSeconds: 5, sequenceEndSeconds: 15 }) }));
     expect(job.target).toEqual(expect.objectContaining({ provider: "local", width: 1280, height: 720, fps: 24 }));
+    expect(job.executionTarget).toEqual({
+      portability: "executor-local",
+      custodianNodeId: EXECUTOR_NODE_ID,
+      storageScopeId: EXECUTOR_SCOPE_ID,
+    });
     expect(job.proof).toEqual(expect.objectContaining({ decisionKind: "audio-source-through", audioLaneIds: ["audio_lane_0001"] }));
     expect(job.sources[0]).toEqual(expect.objectContaining({ sha256: "a".repeat(64), locator: TEST_SOURCE_PATH }));
     expect(job.manifestSha256).toMatch(/^[0-9a-f]{64}$/);
@@ -97,14 +126,11 @@ describe("Episode render proof queue", () => {
   it("plans local, browser, and cloud execution without creating a job or uploading media", async () => {
     const prisma = database();
     prisma.agentNode.findMany.mockResolvedValue([{
+      id: EXECUTOR_NODE_ID,
+      hostName: "Editing Mac",
       status: "online",
       lastHeartbeatAt: new Date(),
-      capabilities: {
-        schema: "quipsly-execution-worker-capabilities-v1",
-        executorKind: "local-mac",
-        jobTypes: ["episode-render-proof"],
-        renderProfiles: ["episode-edit-proof-1280x720-24fps-v1"],
-      },
+      capabilities: executorCapabilities(),
     }]);
     const plan = await planEpisodeRenderProof({
       prisma,
@@ -123,7 +149,15 @@ describe("Episode render proof queue", () => {
     });
     expect(plan.executors).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "browser", status: "ready", canQueue: false }),
-      expect.objectContaining({ id: "local-mac", status: "ready", canQueue: true, costKind: "none" }),
+      expect.objectContaining({
+        id: "local-mac",
+        label: "Editing Mac",
+        executorNodeId: EXECUTOR_NODE_ID,
+        artifactPortability: "executor-local",
+        status: "ready",
+        canQueue: true,
+        costKind: "none",
+      }),
       expect.objectContaining({ id: "cloud", status: "not-configured", canQueue: false, costKind: "metered" }),
     ]));
     expect(plan.sources).toEqual(expect.objectContaining({ exactLocalCount: 1, requiredCount: 1, totalBytes: TEST_SOURCE_SIZE }));
@@ -199,6 +233,69 @@ describe("Episode render proof queue", () => {
       actor: { userId: "user-1", email: "charlie@quipsly.com", type: "human" },
     })).rejects.toMatchObject({ code: "EPISODE_RENDER_PROOF_HELD", message: expect.stringContaining("not available as an exact local worker source") });
   });
+
+  it("does not silently substitute another Mac for a requested executor", async () => {
+    await expect(queueEpisodeRenderProof({
+      prisma: database(),
+      projectSlug: "high-ground-odyssey",
+      episodeSlug: "episode-9",
+      sequenceStartSeconds: 5,
+      expectedRevision: 4,
+      clientRequestId: "proof_request_wrong_executor_0001",
+      executorNodeId: "execution_worker_missing_test",
+      actor: { userId: "user-1", email: "charlie@quipsly.com", type: "human" },
+    })).rejects.toMatchObject({
+      code: "EPISODE_RENDER_PROOF_EXECUTOR_UNAVAILABLE",
+    });
+  });
+
+  it("chooses a compatible executor when the newest local Mac lacks the render profile", async () => {
+    const prisma = database();
+    const incompatibleNodeId = "execution_worker_incompatible_test";
+    const compatibleNodeId = "execution_worker_compatible_test";
+    const storageCapabilities = (scopeId: string) => ({
+      ...executorCapabilities(),
+      storage: { ...executorCapabilities().storage, scopeId },
+    });
+    prisma.agentNode.findMany.mockResolvedValue([
+      {
+        id: incompatibleNodeId,
+        hostName: "Newest but incompatible Mac",
+        status: "online",
+        lastHeartbeatAt: new Date(),
+        capabilities: storageCapabilities("storage_scope_incompatible_test"),
+      },
+      {
+        id: compatibleNodeId,
+        hostName: "Episode Render Mac",
+        status: "online",
+        lastHeartbeatAt: new Date(),
+        capabilities: storageCapabilities("storage_scope_compatible_test"),
+      },
+    ]);
+    prisma.agentNode.findUnique.mockImplementation(async ({ where }: any) => ({
+      status: "online",
+      lastHeartbeatAt: new Date(),
+      capabilities: where.id === incompatibleNodeId
+        ? { ...storageCapabilities("storage_scope_incompatible_test"), renderProfiles: [] }
+        : storageCapabilities("storage_scope_compatible_test"),
+    }));
+
+    const plan = await planEpisodeRenderProof({
+      prisma,
+      projectSlug: "high-ground-odyssey",
+      episodeSlug: "episode-9",
+      sequenceStartSeconds: 5,
+      expectedRevision: 4,
+      renderProfile: "proof-10s",
+      actor: { userId: "user-1", email: "charlie@quipsly.com", type: "human" },
+    });
+    expect(plan.executors.find((executor) => executor.id === "local-mac")).toMatchObject({
+      label: "Episode Render Mac",
+      executorNodeId: compatibleNodeId,
+      status: "ready",
+    });
+  });
 });
 
 function database(onCreate: (input: any) => void = () => undefined): any {
@@ -217,6 +314,19 @@ function database(onCreate: (input: any) => void = () => undefined): any {
     studioVideoSource: {
       findMany: jest.fn(async () => [{ id: "video_source_0001", providerSourceId: TEST_SOURCE_PATH, url: "/api/ingest/media/video_source_0001" }]),
     },
-    agentNode: { findMany: jest.fn(async () => []) },
+    agentNode: {
+      findMany: jest.fn(async () => [{
+        id: EXECUTOR_NODE_ID,
+        hostName: "Editing Mac",
+        status: "online",
+        lastHeartbeatAt: new Date(),
+        capabilities: executorCapabilities(),
+      }]),
+      findUnique: jest.fn(async () => ({
+        status: "online",
+        lastHeartbeatAt: new Date(),
+        capabilities: executorCapabilities(),
+      })),
+    },
   };
 }

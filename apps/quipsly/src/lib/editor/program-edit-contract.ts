@@ -181,6 +181,8 @@ export type EpisodeEditProcessingJob = {
 export type EpisodeRenderExecutorPlan = {
   id: "browser" | "local-mac" | "cloud";
   label: string;
+  executorNodeId?: string | null;
+  artifactPortability?: "portable" | "executor-local";
   status: "ready" | "offline" | "held" | "not-configured";
   canQueue: boolean;
   detail: string;

@@ -5,7 +5,10 @@ import { Readable } from "node:stream";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
-import { readLocalExecutorTarget } from "@/lib/server/local-executor-storage";
+import {
+  readCurrentLocalExecutorIdentity,
+  readLocalExecutorTarget,
+} from "@/lib/server/local-executor-storage";
 import {
   normalizeAccessEmail,
   resolveStudioProjectAccess,
@@ -76,13 +79,16 @@ async function derivativeResponse(
   )
     return notFound();
   if (derivative.custodianNodeId && derivative.storageScopeId) {
-    const executor = await readLocalExecutorTarget(
-      prisma,
-      derivative.custodianNodeId,
-    );
+    const [executor, currentExecutor] = await Promise.all([
+      readLocalExecutorTarget(prisma, derivative.custodianNodeId),
+      readCurrentLocalExecutorIdentity(),
+    ]);
     if (
       !executor ||
-      executor.storageScopeId !== derivative.storageScopeId
+      executor.storageScopeId !== derivative.storageScopeId ||
+      !currentExecutor ||
+      currentExecutor.nodeId !== derivative.custodianNodeId ||
+      currentExecutor.storageScopeId !== derivative.storageScopeId
     )
       return notFound();
   }

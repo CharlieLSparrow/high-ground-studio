@@ -27,6 +27,11 @@ import {
   type EditActor,
 } from "@/lib/server/episode-edit-store";
 import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
+import {
+  readLocalExecutorTarget,
+  readLocalExecutorTargets,
+  type LocalExecutorTarget,
+} from "@/lib/server/local-executor-storage";
 
 const execFileAsync = promisify(execFile);
 const JOB_TYPE = "episode-render-proof";
@@ -50,6 +55,12 @@ export type EpisodeRenderProofQueueResult = {
     renderProfile: EpisodeRenderProfileId;
     sequenceStartSeconds: number;
     sequenceEndSeconds: number;
+    executionTarget: {
+      portability: "executor-local";
+      nodeId: string;
+      storageScopeId: string;
+      localPathWithheld: true;
+    };
   };
 };
 
@@ -60,6 +71,7 @@ export async function planEpisodeRenderProof(input: {
   sequenceStartSeconds: number;
   expectedRevision: number;
   renderProfile: EpisodeRenderProfileId;
+  executorNodeId?: string | null;
   actor: EditActor & { email: string };
 }): Promise<EpisodeRenderPlan> {
   const profile = episodeRenderProfile(input.renderProfile);
@@ -76,7 +88,17 @@ export async function planEpisodeRenderProof(input: {
   const state = projectState(episode, current.stateJson);
   let manifest: EpisodeRenderProofJob | null = null;
   let holdReason: string | null = null;
+  const executorTarget = await episodeRenderExecutor(
+    input.prisma,
+    profile.capability,
+    input.executorNodeId,
+  );
   try {
+    if (!executorTarget) {
+      throw new EpisodeRenderProofError(
+        "No compatible local media executor is online for this proof profile.",
+      );
+    }
     manifest = await buildManifest({
       prisma: input.prisma,
       episode,
@@ -86,6 +108,7 @@ export async function planEpisodeRenderProof(input: {
       clientRequestId: `render_plan_${randomUUID().replaceAll("-", "")}`,
       requestedByEmail: input.actor.email,
       renderProfile: profile.id,
+      executorTarget,
     });
   } catch (error) {
     if (!(error instanceof EpisodeRenderProofError) || error.code === "EPISODE_RENDER_PROOF_STALE_EDIT") throw error;
@@ -97,7 +120,8 @@ export async function planEpisodeRenderProof(input: {
     requestedStartSeconds: sequenceStartSeconds,
     profileId: profile.id,
     manifest,
-    workerOnline: await localWorkerSupports(input.prisma, profile.capability),
+    executorTarget,
+    workerOnline: Boolean(executorTarget),
     holdReason,
   });
 }
@@ -110,11 +134,24 @@ export async function queueEpisodeRenderProof(input: {
   expectedRevision: number;
   clientRequestId: string;
   renderProfile?: EpisodeRenderProfileId;
+  executorNodeId?: string | null;
   actor: EditActor & { email: string };
 }): Promise<EpisodeRenderProofQueueResult> {
   const profile = episodeRenderProfile(input.renderProfile ?? "proof-10s");
   const clientRequestId = safeRequestId(input.clientRequestId);
   const sequenceStartSeconds = nonnegative(input.sequenceStartSeconds, "Choose a valid Episode time for the proof.");
+  const executorTarget = await episodeRenderExecutor(
+    input.prisma,
+    profile.capability,
+    input.executorNodeId,
+  );
+  if (!executorTarget) {
+    throw new EpisodeRenderProofError(
+      "No compatible local media executor is online for this proof profile.",
+      409,
+      "EPISODE_RENDER_PROOF_EXECUTOR_UNAVAILABLE",
+    );
+  }
   const { episode, branch } = await ensureEpisodeEditBranch(input.projectSlug, input.episodeSlug, input.actor);
   const current = await input.prisma.studioEditBranch.findUnique({ where: { id: branch.id } });
   if (!current || current.headRevision !== input.expectedRevision) {
@@ -141,7 +178,9 @@ export async function queueEpisodeRenderProof(input: {
       || existingJob.episodeProductionId !== episode.id
       || existingJob.branchId !== current.id
       || existingJob.branchRevision !== input.expectedRevision
-      || (existingJob.renderProfile ?? "proof-10s") !== profile.id
+      || existingJob.renderProfile !== profile.id
+      || existingJob.executionTarget.custodianNodeId !== executorTarget.nodeId
+      || existingJob.executionTarget.storageScopeId !== executorTarget.storageScopeId
       || Math.abs(existingJob.proof.sequenceStartSeconds - sequenceStartSeconds) > 0.001
     ) {
       throw new EpisodeRenderProofError(
@@ -163,6 +202,7 @@ export async function queueEpisodeRenderProof(input: {
     clientRequestId,
     requestedByEmail: input.actor.email,
     renderProfile: profile.id,
+    executorTarget,
   });
   const created = await input.prisma.studioWorkflowJob.create({
     data: {
@@ -192,6 +232,20 @@ export async function registerEpisodeRenderProof(input: {
     throw new EpisodeRenderProofError("That Episode proof job does not exist.", 404, "EPISODE_RENDER_PROOF_NOT_FOUND");
   }
   const job = parseEpisodeRenderProofJob(row.inputJson, row.id);
+  const executorTarget = await readLocalExecutorTarget(
+    input.prisma,
+    job.executionTarget.custodianNodeId,
+  );
+  if (
+    !executorTarget ||
+    executorTarget.storageScopeId !== job.executionTarget.storageScopeId
+  ) {
+    throw new EpisodeRenderProofError(
+      "The Mac that owns this proof output is not online with the same storage scope.",
+      409,
+      "EPISODE_RENDER_PROOF_EXECUTOR_UNAVAILABLE",
+    );
+  }
   const episode = await input.prisma.studioEpisodeProduction.findFirst({
     where: { id: job.episodeProductionId, slug: input.episodeSlug, project: { slug: input.projectSlug } },
     select: { id: true, projectId: true },
@@ -210,7 +264,7 @@ export async function registerEpisodeRenderProof(input: {
   const envelope = record(row.resultJson);
   const result = parseEpisodeRenderProofResult(envelope.receipt, job);
   const verifiedOutputPath = await verifyLocalResult(result.output.locator, result.output.sha256, result.output.sizeBytes);
-  const isSectionReview = (job.renderProfile ?? "proof-10s") === "section-review-30s";
+  const isSectionReview = job.renderProfile === "section-review-30s";
   const attachmentRole = isSectionReview ? "episode-review-draft" : "episode-edit-proof";
 
   return input.prisma.$transaction(async (tx: any) => {
@@ -279,7 +333,7 @@ export async function registerEpisodeRenderProof(input: {
           state: "completed",
           receipt: result,
           registration: {
-            schema: "quipsly-episode-render-proof-registration-v1",
+            schema: "quipsly-episode-render-proof-registration-v2",
             verifiedAt: new Date().toISOString(),
             verifiedByEmail: input.actor.email.toLowerCase(),
             assetId: asset.id,
@@ -287,6 +341,9 @@ export async function registerEpisodeRenderProof(input: {
             playbackUrl,
             proofIsNotApprovedOutput: true,
             proofIsNotPublicationMedia: true,
+            artifactPortability: job.executionTarget.portability,
+            custodianNodeId: job.executionTarget.custodianNodeId,
+            storageScopeId: job.executionTarget.storageScopeId,
           },
         }),
       },
@@ -315,6 +372,7 @@ async function buildManifest(input: {
   clientRequestId: string;
   requestedByEmail: string;
   renderProfile: EpisodeRenderProfileId;
+  executorTarget: LocalExecutorTarget;
 }): Promise<EpisodeRenderProofJob> {
   const renderProfile = episodeRenderProfile(input.renderProfile);
   if (!input.state.sourceProjectionFingerprint || !/^[0-9a-f]{64}$/.test(input.state.sourceProjectionFingerprint)) {
@@ -389,6 +447,9 @@ async function buildManifest(input: {
       throw new EpisodeRenderProofError(`${source.label} is playable in the browser but is not available as an exact local worker source on this Mac.`);
     }
     exactSources.push({
+      portability: "executor-local",
+      custodianNodeId: input.executorTarget.nodeId,
+      storageScopeId: input.executorTarget.storageScopeId,
       laneId: source.id,
       mediaAssetId: asset.id,
       sourceId: source.sourceId!,
@@ -411,6 +472,9 @@ async function buildManifest(input: {
   const jobId = `render_proof_${randomUUID().replaceAll("-", "")}`;
   const target = {
     provider: "local" as const,
+    portability: "executor-local" as const,
+    custodianNodeId: input.executorTarget.nodeId,
+    storageScopeId: input.executorTarget.storageScopeId,
     locator: buildEpisodeRenderProofTargetLocator({
       episodeProductionId: input.episode.id,
       branchId: input.branch.id,
@@ -441,6 +505,11 @@ async function buildManifest(input: {
     editStateFingerprintSha256: fingerprint(input.state),
     manifestSha256: ZERO_SHA256,
     renderProfile: renderProfile.id,
+    executionTarget: {
+      portability: "executor-local" as const,
+      custodianNodeId: input.executorTarget.nodeId,
+      storageScopeId: input.executorTarget.storageScopeId,
+    },
     proof: {
       sequenceStartSeconds: start,
       sequenceEndSeconds: end,
@@ -490,13 +559,17 @@ async function verifyLocalResult(locator: string, expectedSha256: string, expect
 
 function registrationMetadata(job: EpisodeRenderProofJob, result: ReturnType<typeof parseEpisodeRenderProofResult>, sourceId: string, playbackUrl: string) {
   return {
-    schema: "quipsly-episode-render-proof-registration-v1",
+    schema: "quipsly-episode-render-proof-registration-v2",
     jobId: job.jobId,
     episodeProductionId: job.episodeProductionId,
     branchId: job.branchId,
     branchRevision: job.branchRevision,
     manifestSha256: job.manifestSha256,
-    renderProfile: job.renderProfile ?? "proof-10s",
+    renderProfile: job.renderProfile,
+    executionTarget: job.executionTarget,
+    artifactPortability: job.executionTarget.portability,
+    custodianNodeId: job.executionTarget.custodianNodeId,
+    storageScopeId: job.executionTarget.storageScopeId,
     sourceId,
     playbackUrl,
     proof: job.proof,
@@ -528,9 +601,15 @@ function publicQueue(row: any, job: EpisodeRenderProofJob, idempotentReplay: boo
       status: row.status,
       branchRevision: job.branchRevision,
       manifestSha256: job.manifestSha256,
-      renderProfile: job.renderProfile ?? "proof-10s",
+      renderProfile: job.renderProfile,
       sequenceStartSeconds: job.proof.sequenceStartSeconds,
       sequenceEndSeconds: job.proof.sequenceEndSeconds,
+      executionTarget: {
+        portability: job.executionTarget.portability,
+        nodeId: job.executionTarget.custodianNodeId,
+        storageScopeId: job.executionTarget.storageScopeId,
+        localPathWithheld: true,
+      },
     },
   };
 }
@@ -541,6 +620,7 @@ function renderPlan(input: {
   requestedStartSeconds: number;
   profileId: EpisodeRenderProfileId;
   manifest: EpisodeRenderProofJob | null;
+  executorTarget: LocalExecutorTarget | null;
   workerOnline: boolean;
   holdReason: string | null;
 }): EpisodeRenderPlan {
@@ -585,6 +665,8 @@ function renderPlan(input: {
       {
         id: "browser",
         label: "Browser preview",
+        executorNodeId: null,
+        artifactPortability: "portable",
         status: "ready",
         canQueue: false,
         detail: "Keep editing immediately with protected playback sources. No new media file is created.",
@@ -594,7 +676,9 @@ function renderPlan(input: {
       },
       {
         id: "local-mac",
-        label: "This Mac",
+        label: input.executorTarget?.hostName || "Local Mac",
+        executorNodeId: input.executorTarget?.nodeId ?? null,
+        artifactPortability: "executor-local",
         status: localStatus,
         canQueue: localStatus === "ready" && Boolean(input.manifest),
         detail: localDetail,
@@ -605,6 +689,8 @@ function renderPlan(input: {
       {
         id: "cloud",
         label: "Quipsly Cloud",
+        executorNodeId: null,
+        artifactPortability: "portable",
         status: "not-configured",
         canQueue: false,
         detail: "Cloud rendering is intentionally unavailable until exact-source upload, generation locking, result verification, and spend disclosure are wired end to end.",
@@ -622,28 +708,37 @@ function renderPlan(input: {
   };
 }
 
-async function localWorkerSupports(prisma: any, capability: string): Promise<boolean> {
-  if (!prisma.agentNode?.findMany) return false;
-  const workers = await prisma.agentNode.findMany({
-    where: { capabilities: { path: ["schema"], equals: "quipsly-execution-worker-capabilities-v1" } },
-    orderBy: [{ lastHeartbeatAt: "desc" }],
-    take: 8,
-    select: { status: true, capabilities: true, lastHeartbeatAt: true },
-  });
-  const now = Date.now();
-  return workers.some((worker: any) => {
+async function episodeRenderExecutor(
+  prisma: any,
+  capability: string,
+  preferredNodeId?: string | null,
+): Promise<LocalExecutorTarget | null> {
+  if (!prisma.agentNode?.findMany || !prisma.agentNode?.findUnique) return null;
+  const targets = await readLocalExecutorTargets(prisma);
+  const candidates = preferredNodeId
+    ? targets.filter((target) => target.nodeId === preferredNodeId)
+    : targets;
+  for (const target of candidates) {
+    const worker = await prisma.agentNode.findUnique({
+      where: { id: target.nodeId },
+      select: { status: true, capabilities: true, lastHeartbeatAt: true },
+    });
+    if (!worker) continue;
     const capabilities = record(worker.capabilities);
     const heartbeat = worker.lastHeartbeatAt instanceof Date
       ? worker.lastHeartbeatAt.getTime()
       : new Date(worker.lastHeartbeatAt ?? 0).getTime();
-    return worker.status === "online"
-      && now - heartbeat <= 30_000
+    if (
+      worker.status === "online"
+      && Date.now() - heartbeat <= 30_000
       && capabilities.executorKind === "local-mac"
       && Array.isArray(capabilities.jobTypes)
       && capabilities.jobTypes.includes(JOB_TYPE)
       && Array.isArray(capabilities.renderProfiles)
-      && capabilities.renderProfiles.includes(capability);
-  });
+      && capabilities.renderProfiles.includes(capability)
+    ) return target;
+  }
+  return null;
 }
 
 function fingerprint(value: unknown) {

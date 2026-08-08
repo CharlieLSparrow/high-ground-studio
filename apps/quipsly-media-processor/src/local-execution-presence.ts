@@ -1,8 +1,12 @@
-import { createHash } from "node:crypto";
 import { mkdir, realpath, stat, statfs } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 
+import {
+  localExecutorHostName,
+  localExecutorNodeId,
+  localExecutorStorageScopeId,
+} from "@high-ground/quipsly-media-processing/local-executor-identity";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -25,14 +29,16 @@ export async function resolveLocalExecutionIdentity(
     realpath(resolved),
     stat(resolved),
   ]);
-  const hostName = `quipsly-media-worker:${hostname()}`.slice(0, 220);
+  const hostName = localExecutorHostName(hostname());
   return {
-    nodeId: `execution_worker_${stableHostId(hostName)}`,
+    nodeId: localExecutorNodeId(hostName),
     hostName,
-    storageScopeId: `storage_scope_${createHash("sha256")
-      .update(`${hostName}\0${canonicalRoot}\0${details.dev}\0${details.ino}`)
-      .digest("hex")
-      .slice(0, 40)}`,
+    storageScopeId: localExecutorStorageScopeId({
+      hostName,
+      canonicalRoot,
+      deviceId: details.dev,
+      inode: details.ino,
+    }),
   };
 }
 
@@ -150,13 +156,4 @@ export class LocalExecutionPresence {
       };
     }
   }
-}
-
-function stableHostId(value: string) {
-  let hash = 2166136261;
-  for (const character of value) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
 }

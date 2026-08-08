@@ -109,6 +109,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         sequenceStartSeconds: Number(body.sequenceTime ?? 0),
         expectedRevision: Number(body.expectedRevision ?? 0),
         renderProfile: requestedRenderProfile(body.renderProfile),
+        executorNodeId:
+          typeof body.executorNodeId === "string" ? body.executorNodeId : null,
         actor: { ...actor, email: actor.email },
       });
     } else if (action === "queue-render-proof") {
@@ -121,6 +123,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         expectedRevision: Number(body.expectedRevision ?? 0),
         clientRequestId: String(body.clientRequestId ?? crypto.randomUUID()),
         renderProfile: requestedRenderProfile(body.renderProfile),
+        executorNodeId:
+          typeof body.executorNodeId === "string" ? body.executorNodeId : null,
         actor: { ...actor, email: actor.email },
       });
     } else if (action === "register-render-proof") {

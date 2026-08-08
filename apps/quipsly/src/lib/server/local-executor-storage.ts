@@ -1,6 +1,15 @@
 import "server-only";
 
+import { realpath, stat } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
+import path from "node:path";
+
 import type { PrismaClient } from "@prisma/client";
+import {
+  localExecutorHostName,
+  localExecutorNodeId,
+  localExecutorStorageScopeId,
+} from "@high-ground/quipsly-media-processing/local-executor-identity";
 
 import type { LocalExecutorStorageProjection } from "@/lib/external-media-library-contract";
 
@@ -11,6 +20,11 @@ export type LocalExecutorTarget = {
   storageScopeId: string;
   storage: PublicLocalExecutorStorage;
 };
+
+export type CurrentLocalExecutorIdentity = Pick<
+  LocalExecutorTarget,
+  "nodeId" | "hostName" | "storageScopeId"
+>;
 
 const UNAVAILABLE_LOCAL_EXECUTOR_STORAGE: PublicLocalExecutorStorage = {
   status: "unavailable",
@@ -141,6 +155,34 @@ export async function readLocalExecutorTargets(
           : 2;
     return rank(left) - rank(right);
   });
+}
+
+export async function readCurrentLocalExecutorIdentity(): Promise<CurrentLocalExecutorIdentity | null> {
+  const configuredRoot = path.resolve(
+    process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT?.trim()
+      || process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT?.trim()
+      || path.join(tmpdir(), "quipsly-media-ingest"),
+  );
+  try {
+    const [canonicalRoot, details] = await Promise.all([
+      realpath(configuredRoot),
+      stat(configuredRoot),
+    ]);
+    if (!details.isDirectory()) return null;
+    const hostName = localExecutorHostName(hostname());
+    return {
+      nodeId: localExecutorNodeId(hostName),
+      hostName,
+      storageScopeId: localExecutorStorageScopeId({
+        hostName,
+        canonicalRoot,
+        deviceId: details.dev,
+        inode: details.ino,
+      }),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function localExecutorStorageShortfall(

@@ -992,7 +992,13 @@ export default function EpisodeEditorClient({
                       disabled={saving || !payload.branch}
                       onClick={() => {
                         setSelectedRenderProfile(profile);
-                        void post({ action: "plan-render-proof", sequenceTime: playhead, expectedRevision: payload.branch?.headRevision ?? 0, renderProfile: profile });
+                        void post({
+                          action: "plan-render-proof",
+                          sequenceTime: playhead,
+                          expectedRevision: payload.branch?.headRevision ?? 0,
+                          renderProfile: profile,
+                          executorNodeId: renderPlan?.executors.find((executor) => executor.id === "local-mac")?.executorNodeId ?? null,
+                        });
                       }}
                       className={`rounded-lg border p-2 text-left text-xs ${selectedRenderProfile === profile ? "border-[#d8ad56] bg-[#2a321f] text-[#f4dfac]" : "border-[#405a49] text-[#b7c4b8]"}`}
                     >
@@ -1019,11 +1025,20 @@ export default function EpisodeEditorClient({
                           </div>
                           <p className="mt-1 text-[11px] leading-4 text-[#b7c4b8]">{executor.detail}</p>
                           <p className="mt-1 text-[10px] text-[#789585]">{executor.qualityDetail} · {executor.costDetail}</p>
+                          {executor.artifactPortability === "executor-local" ? (
+                            <p className="mt-1 text-[10px] text-[#d8ad56]">Proof bytes stay on this executor; the shared edit remains portable.</p>
+                          ) : null}
                           {executor.id === "local-mac" ? (
                             <button
                               type="button"
                               disabled={!executor.canQueue || saving || !payload.branch}
-                              onClick={() => void post({ action: "queue-render-proof", sequenceTime: renderPlan.sequenceStartSeconds, expectedRevision: renderPlan.branchRevision, renderProfile: renderPlan.renderProfile })}
+                              onClick={() => void post({
+                                action: "queue-render-proof",
+                                sequenceTime: renderPlan.sequenceStartSeconds,
+                                expectedRevision: renderPlan.branchRevision,
+                                renderProfile: renderPlan.renderProfile,
+                                executorNodeId: executor.executorNodeId ?? null,
+                              })}
                               className="mt-2 inline-flex min-h-9 items-center rounded-lg bg-[#d8ad56] px-3 text-xs font-black text-[#172018] disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               Render {renderPlan.profileLabel.toLowerCase()} on this Mac

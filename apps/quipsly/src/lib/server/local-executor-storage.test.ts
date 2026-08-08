@@ -1,8 +1,19 @@
 /** @jest-environment node */
 
+import { mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
+import path from "node:path";
+
+import {
+  localExecutorHostName,
+  localExecutorNodeId,
+  localExecutorStorageScopeId,
+} from "@high-ground/quipsly-media-processing/local-executor-identity";
+
 import {
   localExecutorStorageShortfall,
   publicLocalExecutorStorage,
+  readCurrentLocalExecutorIdentity,
   readLocalExecutorTarget,
 } from "./local-executor-storage";
 
@@ -163,5 +174,36 @@ describe("local executor storage projection", () => {
     await expect(
       readLocalExecutorTarget(prisma, "executor_offline_123"),
     ).resolves.toBeNull();
+  });
+
+  it("derives the web process identity from the same filesystem authority as the worker", async () => {
+    const originalWorkspaceRoot = process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT;
+    const root = await mkdtemp(path.join(tmpdir(), "quipsly-current-executor-test-"));
+    process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT = root;
+    try {
+      const [canonicalRoot, details, identity] = await Promise.all([
+        realpath(root),
+        stat(root),
+        readCurrentLocalExecutorIdentity(),
+      ]);
+      const hostName = localExecutorHostName(hostname());
+      expect(identity).toEqual({
+        nodeId: localExecutorNodeId(hostName),
+        hostName,
+        storageScopeId: localExecutorStorageScopeId({
+          hostName,
+          canonicalRoot,
+          deviceId: details.dev,
+          inode: details.ino,
+        }),
+      });
+    } finally {
+      if (originalWorkspaceRoot === undefined) {
+        delete process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT;
+      } else {
+        process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT = originalWorkspaceRoot;
+      }
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

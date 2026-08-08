@@ -684,6 +684,8 @@ async function main() {
   const episodeRenderProof = newLocalEpisodeRenderProofRuntime({
     pool,
     executionId,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
     localMediaRoot,
     leaseMs: options.leaseMs,
     buildId: options.buildId,

@@ -19,6 +19,10 @@
     "./google-drive-provider-credential": {
       "types": "./src/google-drive-provider-credential.ts",
       "import": "./src/google-drive-provider-credential.ts"
+    },
+    "./local-executor-identity": {
+      "types": "./src/local-executor-identity.ts",
+      "import": "./src/local-executor-identity.ts"
     }
   },
   "scripts": {

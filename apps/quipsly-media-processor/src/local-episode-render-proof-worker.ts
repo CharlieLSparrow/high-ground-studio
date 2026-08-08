@@ -25,25 +25,26 @@ const JOB_SOURCE = "episode-editor.local-proof";
 
 export type LocalEpisodeRenderProofClaim = { id: string; inputJson: unknown; attempt: number; executionId: string };
 export interface LocalEpisodeRenderProofStore {
-  claim(input: { executionId: string; leaseMs: number; now: Date }): Promise<LocalEpisodeRenderProofClaim | null>;
+  claim(input: { executionId: string; custodianNodeId: string; storageScopeId: string; leaseMs: number; now: Date }): Promise<LocalEpisodeRenderProofClaim | null>;
   complete(input: { claim: LocalEpisodeRenderProofClaim; receipt: EpisodeRenderProofResult; now: Date }): Promise<boolean>;
   retry(input: { claim: LocalEpisodeRenderProofClaim; code: string; message: string; now: Date }): Promise<boolean>;
   fail(input: { claim: LocalEpisodeRenderProofClaim; code: string; message: string; now: Date }): Promise<boolean>;
 }
 export interface LocalEpisodeRenderProofRenderer { render(job: EpisodeRenderProofJob, outputPath: string): Promise<EpisodeRenderProofTechnical>; }
-export type LocalEpisodeRenderProofWorkerOptions = { executionId: string; buildId: string; imageDigest: string | null; leaseMs: number; localMediaRoot: string; now: () => Date };
+export type LocalEpisodeRenderProofWorkerOptions = { executionId: string; custodianNodeId: string; storageScopeId: string; buildId: string; imageDigest: string | null; leaseMs: number; localMediaRoot: string; now: () => Date };
 export type LocalEpisodeRenderProofWorkerResult = { disposition: "idle" } | { disposition: "completed" | "claim-lost" | "retry" | "failed"; jobId: string; code?: string; outputSha256?: string };
 
 class TerminalEpisodeRenderProofError extends Error { constructor(readonly code: string, message: string) { super(message); this.name = "TerminalEpisodeRenderProofError"; } }
 
 export async function runOneLocalEpisodeRenderProofJob(store: LocalEpisodeRenderProofStore, renderer: LocalEpisodeRenderProofRenderer, options: LocalEpisodeRenderProofWorkerOptions): Promise<LocalEpisodeRenderProofWorkerResult> {
-  const claim = await store.claim({ executionId: options.executionId, leaseMs: options.leaseMs, now: options.now() });
+  const claim = await store.claim({ executionId: options.executionId, custodianNodeId: options.custodianNodeId, storageScopeId: options.storageScopeId, leaseMs: options.leaseMs, now: options.now() });
   if (!claim) return { disposition: "idle" };
   let job: EpisodeRenderProofJob;
   try {
     job = parseEpisodeRenderProofJob(claim.inputJson, claim.id);
     const manifestSha256 = createHash("sha256").update(episodeRenderProofManifestCanonicalJson(job)).digest("hex");
     if (manifestSha256 !== job.manifestSha256) throw new Error("manifest digest mismatch");
+    if (job.executionTarget.custodianNodeId !== options.custodianNodeId || job.executionTarget.storageScopeId !== options.storageScopeId) throw new Error("executor custody mismatch");
   } catch (error) {
     await store.fail({ claim, code: "episode-render-proof-manifest-invalid", message: message(error), now: options.now() });
     return { disposition: "failed", jobId: claim.id, code: "episode-render-proof-manifest-invalid" };
@@ -52,8 +53,10 @@ export async function runOneLocalEpisodeRenderProofJob(store: LocalEpisodeRender
   let outputPath = "";
   try {
     const root = await authorizedRoot(options.localMediaRoot);
+    const resolvedSourcePaths = new Map<string, string>();
     for (const source of job.sources) {
       const sourcePath = await authorizedSource(root, source.locator);
+      resolvedSourcePaths.set(source.laneId, sourcePath);
       const before = await inspect(sourcePath);
       if (before.sha256 !== source.sha256 || before.sizeBytes !== source.sizeBytes || source.generation !== `sha256:${before.sha256}`) {
         throw new TerminalEpisodeRenderProofError("episode-render-proof-source-byte-mismatch", `${source.label} no longer matches the frozen source receipt.`);
@@ -68,7 +71,7 @@ export async function runOneLocalEpisodeRenderProofJob(store: LocalEpisodeRender
     await rename(partialPath, outputPath);
     const output = await inspect(outputPath);
     for (const source of job.sources) {
-      const current = await inspect(source.locator);
+      const current = await inspect(resolvedSourcePaths.get(source.laneId)!);
       if (current.sha256 !== source.sha256 || current.sizeBytes !== source.sizeBytes) {
         await rm(outputPath, { force: true });
         throw new TerminalEpisodeRenderProofError("episode-render-proof-source-drift", `${source.label} changed while its proof was rendering.`);
@@ -80,6 +83,7 @@ export async function runOneLocalEpisodeRenderProofJob(store: LocalEpisodeRender
       manifestSha256: job.manifestSha256,
       output: {
         provider: "local",
+        ...job.executionTarget,
         locator: job.target.locator,
         generation: `sha256:${output.sha256}`,
         sha256: output.sha256,
@@ -96,6 +100,7 @@ export async function runOneLocalEpisodeRenderProofJob(store: LocalEpisodeRender
         variantKind: job.target.variantKind,
       },
       worker: {
+        ...job.executionTarget,
         executionId: claim.executionId,
         buildId: options.buildId,
         imageDigest: options.imageDigest,
@@ -116,11 +121,11 @@ export async function runOneLocalEpisodeRenderProofJob(store: LocalEpisodeRender
 
 export class PostgresLocalEpisodeRenderProofStore implements LocalEpisodeRenderProofStore {
   constructor(private readonly pool: InstanceType<typeof Pool>) {}
-  async claim(input: { executionId: string; leaseMs: number; now: Date }) {
+  async claim(input: { executionId: string; custodianNodeId: string; storageScopeId: string; leaseMs: number; now: Date }) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const selected = await client.query({ text: `SELECT "id", "inputJson", "resultJson" FROM "StudioWorkflowJob" WHERE "type"=$1 AND "source"=$2 AND "inputJson"->'target'->>'provider'='local' AND ("status"='queued' OR ("status"='processing' AND "updatedAt" < timezone('UTC', now()) - ($3 * interval '1 millisecond'))) ORDER BY "priority" ASC,"createdAt" ASC FOR UPDATE SKIP LOCKED LIMIT 1`, values: [JOB_TYPE, JOB_SOURCE, input.leaseMs] });
+      const selected = await client.query({ text: `SELECT "id", "inputJson", "resultJson" FROM "StudioWorkflowJob" WHERE "type"=$1 AND "source"=$2 AND "inputJson"->'target'->>'provider'='local' AND "inputJson"->'executionTarget'->>'custodianNodeId'=$4 AND "inputJson"->'executionTarget'->>'storageScopeId'=$5 AND ("status"='queued' OR ("status"='processing' AND "updatedAt" < timezone('UTC', now()) - ($3 * interval '1 millisecond'))) ORDER BY "priority" ASC,"createdAt" ASC FOR UPDATE SKIP LOCKED LIMIT 1`, values: [JOB_TYPE, JOB_SOURCE, input.leaseMs, input.custodianNodeId, input.storageScopeId] });
       const row = selected.rows[0];
       if (!row) { await client.query("COMMIT"); return null; }
       const attempt = Math.max(0, Number(record(record(row.resultJson).lease).attempt) || 0) + 1;
@@ -136,8 +141,8 @@ export class PostgresLocalEpisodeRenderProofStore implements LocalEpisodeRenderP
   private async release(input: { claim: LocalEpisodeRenderProofClaim; code: string; message: string; now: Date }, status: "queued" | "failed") { return (await this.pool.query({ text: `UPDATE "StudioWorkflowJob" SET "status"=$3,"updatedAt"=timezone('UTC', now()),"completedAt"=CASE WHEN $3='failed' THEN timezone('UTC', now()) ELSE NULL END,"error"=$4,"resultJson"=$5::jsonb WHERE "id"=$1 AND "status"='processing' AND "resultJson"->'lease'->>'executionId'=$2`, values: [input.claim.id, input.claim.executionId, status, `${input.code}: ${input.message}`.slice(0, 4_000), JSON.stringify({ state: status, failure: { code: input.code, message: input.message }, lease: { executionId: input.claim.executionId, attempt: input.claim.attempt }, sourceMediaRemainsImmutable: true })] })).rowCount === 1; }
 }
 
-export function newLocalEpisodeRenderProofRuntime(input: { pool: InstanceType<typeof Pool>; executionId?: string; localMediaRoot: string; leaseMs: number; buildId: string }) {
-  return { store: new PostgresLocalEpisodeRenderProofStore(input.pool), renderer: new FfmpegEpisodeRenderProofRenderer(), options: { executionId: input.executionId ?? randomUUID(), buildId: input.buildId, imageDigest: null, leaseMs: input.leaseMs, localMediaRoot: input.localMediaRoot, now: () => new Date() } satisfies LocalEpisodeRenderProofWorkerOptions };
+export function newLocalEpisodeRenderProofRuntime(input: { pool: InstanceType<typeof Pool>; executionId?: string; custodianNodeId: string; storageScopeId: string; localMediaRoot: string; leaseMs: number; buildId: string }) {
+  return { store: new PostgresLocalEpisodeRenderProofStore(input.pool), renderer: new FfmpegEpisodeRenderProofRenderer(), options: { executionId: input.executionId ?? randomUUID(), custodianNodeId: input.custodianNodeId, storageScopeId: input.storageScopeId, buildId: input.buildId, imageDigest: null, leaseMs: input.leaseMs, localMediaRoot: input.localMediaRoot, now: () => new Date() } satisfies LocalEpisodeRenderProofWorkerOptions };
 }
 
 async function authorizedRoot(configuredRoot: string) { const temporaryRoot = await realpath(tmpdir()); const resolved = path.resolve(configuredRoot); await mkdir(resolved, { recursive: true, mode: 0o700 }); const root = await realpath(resolved); if (root === temporaryRoot || !inside(temporaryRoot, root)) throw new TerminalEpisodeRenderProofError("episode-render-proof-root-rejected", "Local proof root must be a dedicated directory below the operating-system temporary directory."); return root; }

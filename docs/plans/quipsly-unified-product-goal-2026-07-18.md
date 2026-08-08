@@ -8588,3 +8588,28 @@ source upload verified` blocked `Rough cut ready for review` until complete;
 - Next: apply the same authority to conventional Episode proof renders, then
   let Advanced Studio compose portable edit intent over either locally
   materialized 360 reframes or ordinary camera/audio sources.
+
+# 2026-08-08 checkpoint: conventional Episode proof portability
+
+- Upgraded the conventional Episode proof job/result contract to v2 and bound
+  every local byte-bearing edge to one custodian Mac and opaque storage scope.
+- Enforced the tuple in planning, stable queue identity, PostgreSQL claims,
+  worker preflight, source drift checks, result receipts, registration, and
+  protected playback. A second or restarted-with-different-storage executor
+  cannot inherit local availability from a path string.
+- Centralized worker/web executor identity derivation and made playback prove
+  that the serving process owns the same canonical filesystem scope. Merely
+  seeing the custodian Mac online in the database is no longer enough.
+- Made locality visible in the Episode Editor: the plan names its actual Mac,
+  explains that proof bytes stay there while the edit stays portable, and
+  sends the exact planned node when the creator chooses Render.
+- Kept browser preview, canonical edit decisions, and annotations portable.
+  A proof is still explicitly unapproved review media, not a final master or
+  publication artifact.
+- Focused contract, worker, server, authorization, and UI suites, strict
+  TypeScript, the 194-route cache-disabled production web build, and the
+  bundled media-processor build pass.
+- Next: carry the same authority through Advanced Studio and final conform,
+  then implement explicit generation-locked promotion to portable object
+  storage instead of treating local files or mutable Drive documents as
+  globally durable render outputs.

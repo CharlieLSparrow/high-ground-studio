@@ -10,6 +10,10 @@ import {
   authorizeConfiguredMediaVaultLocation,
   resolveAllowedLocalStudioMediaPath,
 } from "@/lib/server/studio-media-location-security";
+import {
+  readCurrentLocalExecutorIdentity,
+  readLocalExecutorTarget,
+} from "@/lib/server/local-executor-storage";
 
 function inferContentType(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
@@ -156,6 +160,31 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sou
     );
   }
   const source = releasedSource.source;
+
+  if (source.localArtifactAuthority) {
+    const [executor, currentExecutor] = await Promise.all([
+      readLocalExecutorTarget(
+        prisma,
+        source.localArtifactAuthority.custodianNodeId,
+      ),
+      readCurrentLocalExecutorIdentity(),
+    ]);
+    if (
+      !executor
+      || executor.storageScopeId !==
+        source.localArtifactAuthority.storageScopeId
+      || !currentExecutor
+      || currentExecutor.nodeId !==
+        source.localArtifactAuthority.custodianNodeId
+      || currentExecutor.storageScopeId !==
+        source.localArtifactAuthority.storageScopeId
+    ) {
+      return NextResponse.json(
+        { error: "This local media artifact is not available on this executor." },
+        { status: 404, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
+  }
 
   if (isHttpUrl(source.url)) {
     const response = NextResponse.redirect(source.url, { status: 307 });
