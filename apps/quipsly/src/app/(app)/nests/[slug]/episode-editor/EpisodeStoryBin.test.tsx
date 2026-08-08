@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { EpisodeStoryBin } from "./EpisodeStoryBin";
@@ -35,7 +35,11 @@ const workspace = {
               accessState: "available",
               capabilityState: "metadata-ready",
             },
-            collaborationProxy: { id: "proxy-1" },
+            collaborationProxy: {
+              id: "proxy-1",
+              playbackUrl: "/api/media/derivatives/proxy-1",
+              mimeType: "video/mp4",
+            },
             visualOverview: {
               playbackUrl: "/api/media/derivatives/contact-sheet-1",
               navigationFrames: {
@@ -162,6 +166,29 @@ describe("EpisodeStoryBin", () => {
       backgroundImage: "url(/api/media/derivatives/contact-sheet-1)",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("auditions only the exact retained source range from the protected proxy", async () => {
+    global.fetch = jest.fn(() => response({ ok: true, workspace }));
+    const play = jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = jest.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    renderBin();
+
+    await user.click(screen.getByRole("button", { name: "Browse" }));
+    await user.click(await screen.findByRole("button", { name: "Preview source range" }));
+    const player = screen.getByLabelText("Be Curious retained source range player") as HTMLVideoElement;
+    expect(player).toHaveAttribute("src", "/api/media/derivatives/proxy-1");
+
+    fireEvent.loadedMetadata(player);
+    expect(player.currentTime).toBe(58.35);
+    expect(play).toHaveBeenCalledTimes(1);
+
+    player.currentTime = 118.36;
+    fireEvent.timeUpdate(player);
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(player.currentTime).toBe(118.36);
+    expect(screen.getByText(/original remains untouched/i)).toBeInTheDocument();
   });
 
   it("assembles selected cards consecutively in board order with fresh fingerprints", async () => {

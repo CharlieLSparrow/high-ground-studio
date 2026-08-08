@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type VisualOverview = {
   playbackUrl: string;
@@ -32,7 +32,11 @@ type StoryCard = {
         accessState: string;
         capabilityState: string;
       };
-      collaborationProxy: null | { id: string };
+      collaborationProxy: null | {
+        id: string;
+        playbackUrl: string;
+        mimeType: string;
+      };
       visualOverview: VisualOverview | null;
       sourceState: string;
       verifiedAt: string | null;
@@ -76,6 +80,13 @@ type EpisodeStoryBinProps = {
   playhead: number;
   onCue: (seconds: number) => void;
   onPromoted: () => Promise<void> | void;
+};
+
+type SourceAudition = {
+  cardId: string;
+  playbackUrl: string;
+  startSeconds: number;
+  endSeconds: number;
 };
 
 function clock(value: number) {
@@ -153,7 +164,9 @@ export function EpisodeStoryBin({
   const [loading, setLoading] = useState(false);
   const [pendingCardId, setPendingCardId] = useState<string | null>(null);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+  const [audition, setAudition] = useState<SourceAudition | null>(null);
   const [message, setMessage] = useState("Browse retained selects without copying their originals.");
+  const auditionRef = useRef<HTMLVideoElement>(null);
 
   const endpoint = `/api/nests/${encodeURIComponent(projectSlug)}/source-story`;
 
@@ -196,6 +209,10 @@ export function EpisodeStoryBin({
 
   const selectedBoard = workspace?.boards.find((board) => board.id === selectedBoardId) ?? null;
   useEffect(() => setSelectedCardIds([]), [selectedBoardId]);
+  useEffect(() => {
+    auditionRef.current?.pause();
+    setAudition(null);
+  }, [selectedBoardId]);
   const groups = useMemo(() => {
     if (!selectedBoard) return [];
     const sectionKeys = new Set(selectedBoard.sections.map((section) => section.key));
@@ -243,6 +260,30 @@ export function EpisodeStoryBin({
     setSelectedCardIds((current) => current.includes(cardId)
       ? current.filter((candidate) => candidate !== cardId)
       : [...current, cardId]);
+  }
+
+  function playAudition(next: SourceAudition) {
+    if (audition?.cardId !== next.cardId) {
+      auditionRef.current?.pause();
+      setAudition(next);
+      return;
+    }
+    const media = auditionRef.current;
+    if (!media) return;
+    media.currentTime = next.startSeconds;
+    void media.play().catch(() => undefined);
+  }
+
+  function constrainAudition(event: React.SyntheticEvent<HTMLVideoElement>) {
+    if (!audition) return;
+    const media = event.currentTarget;
+    if (media.currentTime < audition.startSeconds - 0.01) {
+      media.currentTime = audition.startSeconds;
+      return;
+    }
+    if (media.currentTime < audition.endSeconds - 0.005) return;
+    media.pause();
+    media.currentTime = audition.endSeconds;
   }
 
   async function promote(board: StoryBoard, placement: StoryBoard["placements"][number]) {
@@ -448,6 +489,13 @@ export function EpisodeStoryBin({
                       && candidate.cardId === card.id
                       && candidate.status === "active"
                     ));
+                    const collaborationProxy = source?.sourceRevision.collaborationProxy ?? null;
+                    const cardAudition = source && collaborationProxy ? {
+                      cardId: card.id,
+                      playbackUrl: collaborationProxy.playbackUrl,
+                      startSeconds: source.startSeconds,
+                      endSeconds: source.endSeconds,
+                    } : null;
                     const storyParams = new URLSearchParams({ board: selectedBoard.id, card: card.id });
                     if (source?.sourceSet?.id) storyParams.set("set", source.sourceSet.id);
                     else if (source?.sourceRevision.externalReference?.id) storyParams.set("external", source.sourceRevision.externalReference.id);
@@ -476,7 +524,58 @@ export function EpisodeStoryBin({
                             {recipe ? <span className="rounded bg-violet-950/70 px-2 py-1">360° {recipe.aspectRatio} · {recipe.count} keyframe{recipe.count === 1 ? "" : "s"}</span> : null}
                           </div>
                         ) : <p className="mt-2 text-[10px] font-bold text-amber-200">No exact source range is attached.</p>}
+                        {audition?.cardId === card.id ? (
+                          <section className="mt-3 rounded-xl border border-sky-700/60 bg-sky-950/25 p-3" aria-label={`Source audition for ${card.title}`}>
+                            <div className="mb-2 flex items-start justify-between gap-3">
+                              <div>
+                                <strong className="text-xs text-sky-100">Exact retained range</strong>
+                                <p className="mt-1 font-mono text-[9px] text-sky-200">{clock(audition.startSeconds)}–{clock(audition.endSeconds)} · protected proxy</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  auditionRef.current?.pause();
+                                  setAudition(null);
+                                }}
+                                className="min-h-9 rounded-lg border border-sky-700/70 px-3 text-[10px] font-black text-sky-100"
+                              >
+                                Close preview
+                              </button>
+                            </div>
+                            <video
+                              key={`${audition.cardId}:${audition.startSeconds}:${audition.endSeconds}`}
+                              ref={auditionRef}
+                              src={audition.playbackUrl}
+                              controls
+                              playsInline
+                              preload="metadata"
+                              aria-label={`${card.title} retained source range player`}
+                              onLoadedMetadata={(event) => {
+                                event.currentTarget.currentTime = audition.startSeconds;
+                                void event.currentTarget.play().catch(() => undefined);
+                              }}
+                              onPlay={(event) => {
+                                if (
+                                  event.currentTarget.currentTime < audition.startSeconds - 0.01 ||
+                                  event.currentTarget.currentTime >= audition.endSeconds - 0.005
+                                ) event.currentTarget.currentTime = audition.startSeconds;
+                              }}
+                              onTimeUpdate={constrainAudition}
+                              className="aspect-video w-full rounded-lg bg-black"
+                            />
+                            <p className="mt-2 text-[10px] leading-4 text-sky-100/80">Playback is constrained to the card’s immutable source-clock receipt. Scrubbing outside it returns to the retained boundary; the original remains untouched.</p>
+                          </section>
+                        ) : null}
                         <div className="mt-3 flex flex-wrap items-center gap-2">
+                          {cardAudition ? (
+                            <button
+                              type="button"
+                              onClick={() => playAudition(cardAudition)}
+                              className="min-h-9 rounded-lg border border-sky-700/70 px-3 text-xs font-black text-sky-100"
+                            >
+                              {audition?.cardId === card.id ? "Restart exact range" : "Preview source range"}
+                            </button>
+                          ) : null}
                           {!activePlacement && source ? (
                             <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-violet-700/70 px-3 text-xs font-black text-violet-100">
                               <input

@@ -66,6 +66,12 @@ its exact source revision and chooses the sample nearest the retained range
 midpoint as a compact representative frame. No new thumbnail, copied still,
 or untracked image identity is created.
 
+The same card can be auditioned inside the Episode editor from its protected
+collaboration-proxy route. The player starts at the immutable source-range In,
+stops at Out, and constrains replays and scrubbing to those source-clock
+boundaries. It never exposes a provider locator or silently expands the card
+to the whole source file.
+
 Creators can select several unplaced cards and add them consecutively in board
 order on one video track. The browser advances the cursor at millisecond
 precision and carries the newly returned Episode fingerprint into each next

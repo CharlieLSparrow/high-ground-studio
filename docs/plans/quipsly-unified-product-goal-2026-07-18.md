@@ -8388,7 +8388,10 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   projection refresh fails, Quipsly tells the creator that the edit is saved
   and requires a reload instead of misreporting the durable placement as a
   failure.
-- Eighteen focused Episode UI tests, sixteen local PostgreSQL Source Story
+- Added an in-editor exact-range audition player over the same authenticated
+  collaboration proxy. It begins at the card's immutable In, stops at Out,
+  constrains replay to that receipt, and never projects a provider locator.
+- Nineteen focused Episode UI tests, sixteen local PostgreSQL Source Story
   integration tests, and the full Quipsly TypeScript check pass. The retained
   Episode 5 operation proved the exact eight-sample visual receipt reaches the
   board card projection, the authenticated Story/Writing/Editor surfaces
