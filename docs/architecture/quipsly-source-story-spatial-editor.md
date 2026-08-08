@@ -43,6 +43,14 @@ A provider refresh reports signed file, ready-package, and held-package deltas
 against the library state the user refreshed. Checking local preparation is a
 separate read path: it reloads canonical jobs without rescanning Drive.
 
+The same followed-library card can build a metadata-only final-quality
+manifest. It reuses each segment's canonical conform planner, groups results by
+capture day, sums exact original and remaining bytes, and computes an aggregate
+shortfall against the newest measured local-Mac safety reserve. The manifest
+does not queue work and never serializes member reference IDs, source-revision
+IDs, provider names or locators, or local paths. Original transfer still
+requires opening one segment and accepting that segment's stale-checked plan.
+
 ## Product decision
 
 Quipsly treats a 360 camera take as one immutable source package, not as a loose pile of files and not as a pre-flattened video. The browser uses a lightweight equirectangular proxy for looking around, marking ranges, writing cards, and saving reversible camera moves. A final-quality flat render resolves the exact INSV package through an approved stitch master and applies the saved view recipe only when an Episode placement needs pixels.

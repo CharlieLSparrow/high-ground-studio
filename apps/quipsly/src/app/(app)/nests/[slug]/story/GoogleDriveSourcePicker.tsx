@@ -5,6 +5,7 @@ import {
   ExternalLink,
   FileVideo2,
   FolderOpen,
+  HardDrive,
   Loader2,
   RefreshCw,
   Unplug,
@@ -17,6 +18,57 @@ type DriveConnection = {
   status: string;
   revision: number;
   verifiedAt: string | null;
+};
+
+type LibraryConformPlan = {
+  schema: "quipsly-google-drive-library-conform-plan-v1";
+  library: {
+    id: string;
+    name: string;
+    unattachedHeldSegmentCount: number;
+  };
+  summary: {
+    segmentCount: number;
+    renderReady: number;
+    readyToBind: number;
+    preparing: number;
+    needsPreparation: number;
+    held: number;
+    totalOriginalBytes: string;
+    remainingBytes: string;
+    aggregateShortfallBytes: string;
+    inventoryTruncated: boolean;
+  };
+  executor: {
+    status: "measured" | "unavailable";
+    safeAvailableBytes: string | null;
+    availableBytes: string | null;
+    reserveBytes: string | null;
+    measuredAt: string | null;
+    localPathWithheld: true;
+  };
+  days: Array<{
+    date: string | null;
+    segmentCount: number;
+    renderReadyCount: number;
+    heldCount: number;
+    remainingBytes: string;
+    originalBytes: string;
+    segments: Array<{
+      sourceUnitId: string;
+      title: string;
+      captureKey: string | null;
+      status:
+        | "render-ready"
+        | "held"
+        | "ready-to-bind"
+        | "preparing"
+        | "needs-preparation";
+      remainingBytes: string;
+      originalBytes: string;
+      holds: string[];
+    }>;
+  }>;
 };
 
 type ExternalMediaLibrary = {
@@ -241,6 +293,8 @@ function FollowedDriveLibraries({
   onRefresh,
   onPrepare,
   onCheck,
+  conformPlan,
+  onPlanConform,
   onAdd,
 }: {
   libraries?: ExternalMediaLibrary[];
@@ -249,6 +303,8 @@ function FollowedDriveLibraries({
   onRefresh(library: ExternalMediaLibrary): void;
   onPrepare(library: ExternalMediaLibrary): void;
   onCheck(library: ExternalMediaLibrary): void;
+  conformPlan: LibraryConformPlan | null;
+  onPlanConform(library: ExternalMediaLibrary): void;
   onAdd(library: ExternalMediaLibrary): void;
 }) {
   if (!libraries?.length) return null;
@@ -547,6 +603,153 @@ function FollowedDriveLibraries({
               </button>
             </div>
           ) : null}
+          {library.readySegmentCount > 0 ? (
+            <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/70 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-wide text-violet-950">
+                    Final-quality originals
+                  </p>
+                  <p className="mt-1 text-[9px] font-semibold leading-4 text-violet-900">
+                    Inspect exact INSV storage for the whole followed library.
+                    This metadata-only plan cannot start a download.
+                  </p>
+                </div>
+                <HardDrive
+                  size={16}
+                  className="shrink-0 text-violet-800"
+                  aria-hidden="true"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={!canWrite || pending}
+                onClick={() => onPlanConform(library)}
+                className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-3 text-[10px] font-black text-violet-950 disabled:opacity-50"
+              >
+                {pending ? (
+                  <Loader2
+                    size={13}
+                    className="animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <HardDrive size={13} aria-hidden="true" />
+                )}
+                {conformPlan?.library.id === library.id
+                  ? "Refresh final-quality plan"
+                  : "Plan final-quality storage"}
+              </button>
+              {conformPlan?.library.id === library.id ? (
+                <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3 text-[9px] text-violet-950">
+                  <p className="text-xs font-black">
+                    {conformPlan.summary.renderReady} of{" "}
+                    {conformPlan.summary.segmentCount} attached segments are
+                    render-ready
+                  </p>
+                  <p className="mt-1 font-semibold leading-4">
+                    {formatBytes(conformPlan.summary.remainingBytes)} remain
+                    across {formatBytes(conformPlan.summary.totalOriginalBytes)}{" "}
+                    of exact originals. No downloads have started.
+                  </p>
+                  {conformPlan.executor.status === "measured" ? (
+                    <p className="mt-2 rounded-lg bg-violet-50 p-2 font-bold leading-4">
+                      {formatBytes(
+                        conformPlan.executor.safeAvailableBytes ?? "0",
+                      )}{" "}
+                      safely available on the active Mac after its{" "}
+                      {formatBytes(conformPlan.executor.reserveBytes ?? "0")}{" "}
+                      reserve.
+                    </p>
+                  ) : (
+                    <p className="mt-2 rounded-lg bg-amber-50 p-2 font-bold leading-4 text-amber-950">
+                      No fresh Mac storage measurement is available. Individual
+                      preparation still refuses to cross the configured safety
+                      reserve.
+                    </p>
+                  )}
+                  {conformPlan.summary.aggregateShortfallBytes !== "0" ? (
+                    <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 font-black leading-4 text-rose-950">
+                      The whole library is{" "}
+                      {formatBytes(conformPlan.summary.aggregateShortfallBytes)}{" "}
+                      over this Mac&apos;s safe capacity. Prepare only chosen
+                      segments or free storage first.
+                    </p>
+                  ) : null}
+                  {conformPlan.library.unattachedHeldSegmentCount > 0 ? (
+                    <p className="mt-2 font-bold leading-4 text-amber-950">
+                      {conformPlan.library.unattachedHeldSegmentCount}{" "}
+                      incomplete library segment
+                      {conformPlan.library.unattachedHeldSegmentCount === 1
+                        ? " is"
+                        : "s are"}{" "}
+                      excluded until the exact camera package is complete.
+                    </p>
+                  ) : null}
+                  <details className="mt-2 rounded-lg border border-violet-200 bg-violet-50/50 px-2">
+                    <summary className="cursor-pointer min-h-11 py-3 font-black uppercase tracking-wide">
+                      Final-quality camera days · {conformPlan.days.length}
+                    </summary>
+                    <div className="space-y-2 pb-2">
+                      {conformPlan.days.map((day) => (
+                        <article
+                          key={day.date ?? "conform-date-unavailable"}
+                          className="rounded-lg border border-violet-100 bg-white p-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[10px] font-black">
+                                {formatCaptureDay(day.date)}
+                              </p>
+                              <p className="mt-1 font-bold text-violet-700">
+                                {day.renderReadyCount} of {day.segmentCount}{" "}
+                                render-ready · {formatBytes(day.remainingBytes)}{" "}
+                                remain
+                              </p>
+                            </div>
+                            {day.heldCount > 0 ? (
+                              <span className="rounded-full bg-amber-100 px-2 py-1 text-[8px] font-black text-amber-950">
+                                {day.heldCount} held
+                              </span>
+                            ) : null}
+                          </div>
+                          <ul className="mt-2 space-y-1">
+                            {day.segments.map((segment) => (
+                              <li
+                                key={segment.sourceUnitId}
+                                className="rounded-md bg-violet-50 p-2"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="min-w-0 truncate font-black">
+                                    {segment.title}
+                                  </span>
+                                  <span className="shrink-0 uppercase text-violet-700">
+                                    {segment.status.replaceAll("-", " ")}
+                                  </span>
+                                </div>
+                                <p className="mt-1 font-semibold text-violet-800">
+                                  {formatBytes(segment.remainingBytes)} remain
+                                  {segment.holds.length
+                                    ? ` · ${segment.holds.join(" ")}`
+                                    : ""}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        </article>
+                      ))}
+                    </div>
+                  </details>
+                  {conformPlan.summary.inventoryTruncated ? (
+                    <p className="mt-2 font-bold leading-4 text-amber-950">
+                      This plan is bounded to 50 attached camera segments. Split
+                      larger archives into working libraries before conform.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-2 flex items-center justify-between gap-3">
             <p className="text-[8px] font-semibold text-[#806a4d]">
               Checked {new Date(library.lastCheckedAt).toLocaleString()}
@@ -603,6 +806,8 @@ export function GoogleDriveSourcePicker({
   const [folderPlan, setFolderPlan] = useState<FolderPlan | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [libraryConformPlan, setLibraryConformPlan] =
+    useState<LibraryConformPlan | null>(null);
 
   const returnTo = `/nests/${encodeURIComponent(projectSlug)}/story`;
   const connectHref = `/api/media/connections/google-drive/start?returnTo=${encodeURIComponent(returnTo)}`;
@@ -1076,6 +1281,50 @@ export function GoogleDriveSourcePicker({
     }
   }
 
+  async function inspectLibraryConform(library: ExternalMediaLibrary) {
+    setPending(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(
+        `/api/nests/${encodeURIComponent(projectSlug)}/source-story`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "plan-google-drive-library-conform",
+            libraryId: library.id,
+          }),
+        },
+      );
+      const payload = (await response.json()) as {
+        error?: string;
+        operation?: LibraryConformPlan;
+      };
+      if (
+        !response.ok ||
+        payload.operation?.schema !==
+          "quipsly-google-drive-library-conform-plan-v1"
+      ) {
+        throw new Error(
+          payload.error || "Final-quality storage could not be planned.",
+        );
+      }
+      setLibraryConformPlan(payload.operation);
+      setMessage(
+        `Inspected ${library.name} final-quality storage without downloading originals. Choose one segment in Source Story before any exact INSV transfer can begin.`,
+      );
+    } catch (planError) {
+      setError(
+        planError instanceof Error
+          ? planError.message
+          : "Final-quality storage could not be planned.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function disconnectDrive() {
     if (
       !selectedConnectionId ||
@@ -1163,6 +1412,8 @@ export function GoogleDriveSourcePicker({
           onRefresh={(library) => void refreshLibrary(library)}
           onPrepare={(library) => void prepareLibraryNavigation(library)}
           onCheck={(library) => void checkLibraryProgress(library)}
+          conformPlan={libraryConformPlan}
+          onPlanConform={(library) => void inspectLibraryConform(library)}
           onAdd={(library) => void browseDrive("360-files", library)}
         />
       ) : null}

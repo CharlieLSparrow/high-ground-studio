@@ -341,4 +341,134 @@ describe("Google Drive source picker entry", () => {
     ).toBeInTheDocument();
     expect(onAttached).toHaveBeenCalledTimes(1);
   });
+
+  it("plans aggregate final-quality storage without starting original downloads", async () => {
+    global.fetch = jest.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/media/connections/google-drive") {
+          return jsonResponse({
+            ok: true,
+            pickerConfigured: true,
+            connections: [],
+          });
+        }
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          action: "plan-google-drive-library-conform",
+          libraryId: "library-1",
+        });
+        return jsonResponse({
+          operation: {
+            schema: "quipsly-google-drive-library-conform-plan-v1",
+            library: {
+              id: "library-1",
+              name: "Insta360",
+              unattachedHeldSegmentCount: 3,
+            },
+            summary: {
+              segmentCount: 2,
+              renderReady: 1,
+              readyToBind: 0,
+              preparing: 0,
+              needsPreparation: 0,
+              held: 1,
+              totalOriginalBytes: "429496729600",
+              remainingBytes: "322122547200",
+              aggregateShortfallBytes: "107374182400",
+              inventoryTruncated: false,
+            },
+            executor: {
+              status: "measured",
+              safeAvailableBytes: "214748364800",
+              availableBytes: "322122547200",
+              reserveBytes: "107374182400",
+              measuredAt: "2026-08-08T20:00:00.000Z",
+              localPathWithheld: true,
+            },
+            days: [
+              {
+                date: "2026-05-07",
+                segmentCount: 2,
+                renderReadyCount: 1,
+                heldCount: 1,
+                remainingBytes: "322122547200",
+                originalBytes: "429496729600",
+                segments: [
+                  {
+                    sourceUnitId: "source-unit-1",
+                    title: "May 7 segment 080",
+                    captureKey: "VID_20260507_180459_080",
+                    status: "render-ready",
+                    remainingBytes: "0",
+                    originalBytes: "214748364800",
+                    holds: [],
+                  },
+                  {
+                    sourceUnitId: "source-unit-2",
+                    title: "May 7 segment 081",
+                    captureKey: "VID_20260507_180459_081",
+                    status: "held",
+                    remainingBytes: "322122547200",
+                    originalBytes: "214748364800",
+                    holds: ["Reconnect the owning Drive account."],
+                  },
+                ],
+              },
+            ],
+            boundaries: {
+              inspectionOnly: true,
+              originalsRemainInDrive: true,
+              preparationRequiresOneExplicitSegment: true,
+              providerLocatorsWithheld: true,
+              localPathsWithheld: true,
+            },
+          },
+        });
+      },
+    ) as unknown as typeof fetch;
+    render(
+      <GoogleDriveSourcePicker
+        projectSlug="high-ground-odyssey"
+        canWrite
+        libraries={[
+          {
+            id: "library-1",
+            name: "Insta360",
+            status: "attention",
+            revision: 3,
+            totalFileCount: 30,
+            totalSizeBytes: "435214857419",
+            readySegmentCount: 2,
+            heldSegmentCount: 3,
+            notObservedCount: 0,
+            lastCheckedAt: "2026-08-08T20:00:00.000Z",
+            canRefresh: true,
+            connectionState: "verified",
+            connectedByCurrentUser: true,
+            connectionId: "drive-connection-1",
+          },
+        ]}
+        onAttached={async () => undefined}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /plan final-quality storage/i,
+      }),
+    );
+    expect(
+      await screen.findByText(/1 of 2 attached segments are render-ready/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/300\.0 GB remain across 400\.0 GB/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/100\.0 GB over this Mac/i)).toBeInTheDocument();
+    expect(screen.getByText(/No downloads have started/i)).toBeInTheDocument();
+    expect(screen.getByText(/May 7, 2026/i)).toBeInTheDocument();
+    expect(screen.getByText(/May 7 segment 081/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Reconnect the owning Drive account/i),
+    ).toBeInTheDocument();
+  });
 });

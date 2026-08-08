@@ -2969,6 +2969,19 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   no provider identifiers, resource locators, local paths, or credentials.
 - Drive refresh now reports signed file, ready-package, and held-package deltas;
   local job progress can be checked without spending a provider rescan.
+- Followed libraries now offer a metadata-only final-quality manifest across up
+  to 50 attached camera segments. It reuses the exact per-segment conform
+  contract, groups status by capture day, sums remaining bytes, and catches an
+  aggregate Mac storage shortfall that individual preflights cannot see. It
+  excludes incomplete unattached packages, withholds provider/revision/local
+  locators, and cannot queue bulk originals; one segment still requires an
+  explicit stale-checked conform approval before transfer.
+- The retained HGO `Insta360` library exercised that manifest over three real
+  January 28 segments. Their exact originals total 72,362,390,480 bytes and all
+  remain in Drive. The active Mac reported only 1,543,467,008 safe bytes after
+  its 5 GiB reserve, so the library is 70,818,923,472 bytes short and every
+  segment is honestly held before transfer. This is a measured capacity result,
+  not a provider download or render claim.
 - The progress query bounds detailed preparation evidence to 500 present items,
   computes not-observed history independently, and labels bounded inventories
   instead of claiming false completion. Focused UI tests and real PostgreSQL

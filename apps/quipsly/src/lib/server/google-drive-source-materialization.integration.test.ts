@@ -11,6 +11,7 @@ import {
   GoogleDriveLibraryNavigationError,
   prepareGoogleDriveLibraryNavigation,
 } from "./google-drive-library-navigation";
+import { planGoogleDriveLibraryConform } from "./google-drive-library-conform";
 import { saveGoogleDriveConnection } from "./google-drive-connection";
 import {
   GoogleDriveSourceMaterializationRequestError,
@@ -243,7 +244,26 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
   });
 
   it("prepares a bounded followed-library batch through the owning Drive connection", async () => {
+    const sourceUnit = await prisma.studioSourceUnit.create({
+      data: {
+        projectId,
+        slug: `library-batch-${nonce}`,
+        kind: "insta360-drive-segment",
+        title: "May 7 camera segment",
+        capturedAt: new Date("2026-05-07T18:04:59.000Z"),
+        metadataJson: {
+          captureKey: `VID_20260507_180459_${nonce}`,
+          packageStatus: "ready-to-attach",
+          reasons: [],
+        },
+      },
+    });
     const attached = await attach("browse-proxy", {
+      sourceUnitId: sourceUnit.id,
+      key: `library-batch-${nonce}`,
+    });
+    const original = await attach("primary-original", {
+      sourceUnitId: sourceUnit.id,
       key: `library-batch-${nonce}`,
     });
     const library = await prisma.studioExternalMediaLibrary.create({
@@ -256,8 +276,8 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
         status: "ready",
         revision: 1,
         inventoryFingerprintSha256: "f".repeat(64),
-        totalFileCount: 1,
-        totalSizeBytes: BigInt(2048),
+        totalFileCount: 2,
+        totalSizeBytes: BigInt(10240),
         readySegmentCount: 1,
         heldSegmentCount: 0,
         providerLocatorJson: {
@@ -273,16 +293,60 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
         createdByUserId: actorUserId,
         createdByEmail: actorEmail,
         items: {
-          create: {
-            externalFileId: attached.reference.externalFileId,
-            externalReferenceId: attached.reference.id,
-            fileName: attached.reference.fileName,
-            observedRevisionKey: attached.reference.headRevisionKey,
-            sizeBytes: BigInt(2048),
-            state: "present",
-            lastObservedAt: new Date(),
-          },
+          create: [
+            {
+              externalFileId: attached.reference.externalFileId,
+              sourceUnitId: sourceUnit.id,
+              externalReferenceId: attached.reference.id,
+              fileName: attached.reference.fileName,
+              observedRevisionKey: attached.reference.headRevisionKey,
+              sizeBytes: BigInt(2048),
+              state: "present",
+              lastObservedAt: new Date(),
+            },
+            {
+              externalFileId: original.reference.externalFileId,
+              sourceUnitId: sourceUnit.id,
+              externalReferenceId: original.reference.id,
+              fileName: original.reference.fileName,
+              observedRevisionKey: original.reference.headRevisionKey,
+              sizeBytes: BigInt(8192),
+              state: "present",
+              lastObservedAt: new Date(),
+            },
+          ],
         },
+      },
+    });
+    await expect(
+      planGoogleDriveLibraryConform({
+        prisma,
+        projectId,
+        libraryId: library.id,
+        actorUserId,
+      }),
+    ).resolves.toMatchObject({
+      schema: "quipsly-google-drive-library-conform-plan-v1",
+      summary: {
+        segmentCount: 1,
+        renderReady: 0,
+        needsPreparation: 1,
+        totalOriginalBytes: "8192",
+        remainingBytes: "10240",
+        inventoryTruncated: false,
+      },
+      days: [
+        {
+          date: "2026-05-07",
+          segmentCount: 1,
+          renderReadyCount: 0,
+          remainingBytes: "10240",
+        },
+      ],
+      boundaries: {
+        inspectionOnly: true,
+        originalsRemainInDrive: true,
+        preparationRequiresOneExplicitSegment: true,
       },
     });
     const clientRequestId = randomUUID();
@@ -331,7 +395,7 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
         inventoryTruncated: false,
         captureDays: [
           {
-            date: null,
+            date: "2026-05-07",
             eligibleSourceCount: 1,
             browseReadyCount: 0,
             pendingTransferBytes: "2048",

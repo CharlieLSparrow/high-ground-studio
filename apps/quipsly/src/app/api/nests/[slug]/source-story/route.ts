@@ -45,6 +45,10 @@ import {
   requestGoogleDriveSourceUnitConform,
 } from "@/lib/server/google-drive-source-conform";
 import {
+  GoogleDriveLibraryConformError,
+  planGoogleDriveLibraryConform,
+} from "@/lib/server/google-drive-library-conform";
+import {
   SourceVisualOverviewRequestError,
   requestSourceVisualOverview,
 } from "@/lib/server/source-visual-overview";
@@ -252,6 +256,12 @@ function errorResponse(error: unknown) {
       { status: error.status },
     );
   }
+  if (error instanceof GoogleDriveLibraryConformError) {
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: error.status },
+    );
+  }
   if (error instanceof SourceVisualOverviewRequestError) {
     return NextResponse.json(
       { error: error.message, errorCode: error.code },
@@ -437,6 +447,13 @@ export async function POST(
         prisma,
         projectId: actor.projectId,
         sourceUnitId: text(body.sourceUnitId),
+        actorUserId: actor.userId,
+      });
+    } else if (action === "plan-google-drive-library-conform") {
+      operation = await planGoogleDriveLibraryConform({
+        prisma,
+        projectId: actor.projectId,
+        libraryId: text(body.libraryId),
         actorUserId: actor.userId,
       });
     } else if (action === "prepare-google-drive-source-conform") {

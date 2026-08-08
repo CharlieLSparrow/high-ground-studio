@@ -390,6 +390,7 @@ export async function planGoogleDriveSourceUnitConform(input: {
       id: sourceUnit.id,
       title: sourceUnit.title,
       captureKey: metadata.captureKey || null,
+      capturedAt: sourceUnit.capturedAt?.toISOString() ?? null,
     },
     status,
     holds: [...new Set(holds)],

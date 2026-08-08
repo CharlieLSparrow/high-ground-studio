@@ -23,6 +23,10 @@ staging area:
   cache, verifies it, and only then builds the collaboration proxy;
 - final conform shows exact remaining bytes, the active Mac's safety reserve,
   and per-member transfer state before it queues any INSV download;
+- a metadata-only followed-library manifest groups attached conform plans by
+  capture day and compares their combined remaining bytes against that same
+  Mac reserve, so individually safe segments cannot collectively overfill the
+  executor;
 - once every required member is checksum-bound locally, Quipsly creates one
   immutable render-ready source set without changing the Drive originals;
 - cards, annotations, ranges, collections, and editor decisions bind to stable
@@ -56,11 +60,22 @@ Quipsly's editorial truth, provenance, and recovery behavior deterministic.
    derivative is verified.
 11. Open **Final render preflight** when a selected segment is ready to finish.
    Inspection is metadata-only; it does not download media.
-12. Review exact bytes remaining and safe Mac capacity, then explicitly choose
+12. Optionally inspect **Final-quality originals** on the followed library to
+    compare every attached camera day against the active Mac's aggregate safe
+    capacity. Incomplete, unattached packages remain visibly excluded.
+13. Review exact bytes remaining and safe Mac capacity, then explicitly choose
     **Prepare … on this Mac**.
-13. Transfers resume by byte range and bind MD5 plus SHA-256 before the package
+14. Transfers resume by byte range and bind MD5 plus SHA-256 before the package
     becomes render-ready. Nest and the local editor then resolve the same
     immutable source-set identity.
+
+The library manifest is deliberately read-only. It is bounded to 50 attached
+segments, exposes source-unit titles and capture keys but no provider IDs,
+source-revision IDs, Drive locators, local paths, or credentials, and cannot
+queue a bulk original download. A creator must still open one segment's
+preflight and approve its stale-checked byte total. This keeps large-archive
+planning transparent without turning one innocent click into hundreds of
+gigabytes of transfer.
 
 ### Episode assembly from Story selects
 
