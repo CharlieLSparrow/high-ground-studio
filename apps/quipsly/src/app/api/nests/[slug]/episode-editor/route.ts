@@ -31,6 +31,8 @@ import {
 import {
   EpisodeMasterConformError,
   planEpisodeMasterConform,
+  queueEpisodeMasterConform,
+  registerEpisodeMasterConform,
 } from "@/lib/server/episode-master-conform";
 
 export const dynamic = "force-dynamic";
@@ -214,6 +216,26 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         reviewJobId: String(body.jobId ?? ""),
         approvalReceiptId: String(body.approvalReceiptId ?? ""),
       });
+    } else if (action === "queue-master-conform") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required to queue a master conform." }, { status: 400 });
+      operationResult = await queueEpisodeMasterConform({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        reviewJobId: String(body.jobId ?? ""),
+        approvalReceiptId: String(body.approvalReceiptId ?? ""),
+        clientRequestId: String(body.clientRequestId ?? crypto.randomUUID()),
+        actor: { email: actor.email },
+      });
+    } else if (action === "register-master-conform") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required to verify a master candidate." }, { status: 400 });
+      operationResult = await registerEpisodeMasterConform({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        jobId: String(body.jobId ?? ""),
+        actor: { email: actor.email },
+      });
     } else {
       return NextResponse.json({ error: "Unknown editor action." }, { status: 400 });
     }
@@ -227,7 +249,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         || action === "register-program-render"
         || action === "read-program-review"
         || action === "review-program-render"
-        || action === "plan-master-conform",
+        || action === "plan-master-conform"
+        || action === "queue-master-conform"
+        || action === "register-master-conform",
       selectedMediaAssetId,
     }), operationResult }, {
       headers: { "Cache-Control": "no-store" },

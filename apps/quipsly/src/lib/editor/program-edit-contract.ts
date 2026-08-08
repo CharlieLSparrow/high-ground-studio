@@ -174,6 +174,7 @@ export type EpisodeEditProcessingJob = {
   renderProfile:
     | EpisodeRenderProfileId
     | "episode-program-review-1280x720-24fps-v1"
+    | "episode-master-3840x2160-24fps-h264-v1"
     | null;
   branchRevision: number | null;
   proofStartSeconds: number | null;

@@ -470,7 +470,31 @@ describe("Advanced Studio render readiness", () => {
       .mockImplementationOnce(() => response({ ...completedDesk, operationResult: plan }))
       .mockImplementationOnce(() => response({ ...completedDesk, operationResult: emptyReview }))
       .mockImplementationOnce(() => response({ ...completedDesk, operationResult: { review: approvedReview } }))
-      .mockImplementationOnce(() => response({ ...completedDesk, operationResult: masterConformPlan }));
+      .mockImplementationOnce(() => response({ ...completedDesk, operationResult: masterConformPlan }))
+      .mockImplementationOnce(() => response({
+        ...completedDesk,
+        executionInspection: {
+          ...completedDesk.executionInspection,
+          jobs: [...completedDesk.executionInspection.jobs, {
+            id: "episode_master_job_12345678",
+            type: "episode-master-conform",
+            status: "processing",
+            lane: "local-worker",
+            provider: "local",
+            updatedAt: "2026-08-08T12:30:00.000Z",
+            completedAt: null,
+            error: null,
+            manifestSha256: "f".repeat(64),
+            renderProfile: "episode-master-3840x2160-24fps-h264-v1",
+            branchRevision: 7,
+            proofStartSeconds: null,
+            proofEndSeconds: null,
+            progress: { completedUnits: 1, totalUnits: 4, fraction: 0.25, unit: "chunks" },
+            playbackUrl: null,
+          }],
+        },
+        operationResult: { job: { id: "episode_master_job_12345678", status: "processing" } },
+      }));
     const rendered = subject();
 
     const video = await waitFor(() => {
@@ -519,6 +543,15 @@ describe("Advanced Studio render readiness", () => {
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(4));
     expect(JSON.parse((global.fetch as jest.Mock).mock.calls[3][1].body)).toEqual(expect.objectContaining({
       action: "plan-master-conform",
+      jobId: "episode_program_completed_12345678",
+      approvalReceiptId: "program_review_receipt_1",
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Render 4K master candidate on this Mac" }));
+    expect(await screen.findByText("1 of 4 exact chunks complete.")).toBeInTheDocument();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(5));
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[4][1].body)).toEqual(expect.objectContaining({
+      action: "queue-master-conform",
       jobId: "episode_program_completed_12345678",
       approvalReceiptId: "program_review_receipt_1",
     }));

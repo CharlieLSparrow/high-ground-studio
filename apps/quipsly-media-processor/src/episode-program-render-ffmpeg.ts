@@ -10,6 +10,7 @@ import type {
 import {
   FfmpegEpisodeRenderProofRenderer,
   type EpisodeRenderProofTechnical,
+  type EpisodeRenderOutputProfile,
 } from "./episode-render-proof-ffmpeg.js";
 
 const execFileAsync = promisify(execFile);
@@ -25,15 +26,21 @@ export type EpisodeProgramRenderTechnical = EpisodeRenderProofTechnical & {
   renderedChunkCount: number;
 };
 
+export type EpisodeProgramComposition = Pick<
+  EpisodeProgramRenderJob,
+  "sources" | "chunks" | "program"
+>;
+
 export class FfmpegEpisodeProgramRenderer {
   constructor(
-    private readonly chunkRenderer = new FfmpegEpisodeRenderProofRenderer(),
+    private readonly chunkRenderer: FfmpegEpisodeRenderProofRenderer = new FfmpegEpisodeRenderProofRenderer(),
     private readonly ffmpeg = "ffmpeg",
     private readonly ffprobe = "ffprobe",
+    private readonly outputProfile: Pick<EpisodeRenderOutputProfile, "width" | "height"> = { width: 1280, height: 720 },
   ) {}
 
   async render(
-    job: EpisodeProgramRenderJob,
+    job: EpisodeProgramComposition,
     outputPath: string,
     afterChunk: (renderedChunkCount: number) => Promise<void> = async () => undefined,
   ): Promise<EpisodeProgramRenderTechnical> {
@@ -91,14 +98,14 @@ export class FfmpegEpisodeProgramRenderer {
       const durationSeconds = Number(output.format.duration ?? video?.duration ?? audio?.duration);
       if (
         !video
-        || video.width !== 1280
-        || video.height !== 720
+        || video.width !== this.outputProfile.width
+        || video.height !== this.outputProfile.height
         || !Number.isFinite(durationSeconds)
         || Math.abs(durationSeconds - job.program.outputDurationSeconds) > 0.25
       ) {
         throw new EpisodeProgramRenderFfmpegError(
           "episode-program-render-output-invalid",
-          "The assembled program review does not match its frozen duration or 1280x720 output profile.",
+          `The assembled program does not match its frozen duration or ${this.outputProfile.width}x${this.outputProfile.height} output profile.`,
           false,
         );
       }
@@ -110,8 +117,8 @@ export class FfmpegEpisodeProgramRenderer {
       );
       return {
         durationSeconds,
-        width: 1280,
-        height: 720,
+        width: this.outputProfile.width,
+        height: this.outputProfile.height,
         fps: frameRate(video.avg_frame_rate || video.r_frame_rate),
         videoCodec: String(video.codec_name || "unknown"),
         audioCodec: audio?.codec_name ? String(audio.codec_name) : null,

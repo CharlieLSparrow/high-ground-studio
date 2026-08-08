@@ -124,6 +124,29 @@ describe("Episode edit inspection projections", () => {
     }));
   });
 
+  it("projects approval-bound 4K master progress from the embedded program clock", () => {
+    const job = projectEpisodeEditProcessingJob({
+      id: "master-job-1",
+      type: "episode-master-conform",
+      status: "processing",
+      inputJson: {
+        renderProfile: "episode-master-3840x2160-24fps-h264-v1",
+        approval: { branchRevision: 12 },
+        approvedProgram: { program: { chunkCount: 8 } },
+        executionTarget: { provider: "local" },
+      },
+      resultJson: { progress: { renderedChunkCount: 5, chunkCount: 8 } },
+      updatedAt: new Date("2026-08-08T13:00:00.000Z"),
+      completedAt: null,
+      error: null,
+    });
+    expect(job).toEqual(expect.objectContaining({
+      renderProfile: "episode-master-3840x2160-24fps-h264-v1",
+      branchRevision: 12,
+      progress: { completedUnits: 5, totalUnits: 8, fraction: 0.625, unit: "chunks" },
+    }));
+  });
+
   it("treats only a current capability heartbeat as an observed local executor", () => {
     const worker = projectEpisodeEditExecutionWorker({
       id: "worker-1",

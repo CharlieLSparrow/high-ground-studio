@@ -8718,3 +8718,12 @@ source upload verified` blocked `Rough cut ready for review` until complete;
 - Next: implement the generation-locked master contract and local 4K worker,
   then separately review the master and promote approved bytes to portable
   object storage. Publication remains another explicit action.
+### Checkpoint — approval-bound local 4K master conform (2026-08-08)
+
+- Added a canonical `quipsly-episode-master-conform-job-v1` contract that freezes the latest exact program approval, full approved edit/source manifest, reviewed-output provenance, one executor/storage scope, and the 3840×2160/24 production profile.
+- Added transactional master queueing that re-checks the current branch, latest decision, and exact registered review bytes before creating work.
+- Added a local master worker with per-chunk lease progress, pre/post original hashing, source-drift deletion, fast-start assembly, technical probing, complete decode, and an approval-bound result receipt.
+- Generalized the deterministic composition renderer so review and master profiles share layout/edit behavior while retaining distinct encode settings.
+- Added server registration and protected executor-local playback for an explicitly unapproved `episode-master-candidate`; upload, delivery, master approval, and publication remain separate.
+- Corrected the render-root boundary to support dedicated internal/external durable media volumes while still rejecting filesystem, home, and temporary roots.
+- Proved the path with contract, worker, server, UI, custody, TypeScript, and real 4K FFmpeg tests. Live retained-database dogfood remains pending a responsive local database runtime and a current worker restart.

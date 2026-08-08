@@ -67,6 +67,10 @@ import {
   runOneLocalEpisodeProgramRenderJob,
 } from "./local-episode-program-render-worker.js";
 import {
+  newLocalEpisodeMasterConformRuntime,
+  runOneLocalEpisodeMasterConformJob,
+} from "./local-episode-master-conform-worker.js";
+import {
   newLocalSpatialReframeRuntime,
   runOneLocalSpatialReframeJob,
 } from "./local-spatial-reframe-worker.js";
@@ -703,6 +707,15 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const episodeMasterConform = newLocalEpisodeMasterConformRuntime({
+    pool,
+    executionId,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   const spatialVaultRoot = path.resolve(
     process.env.QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT ||
       path.join(homedir(), "Movies", "Quipsly Media Vault"),
@@ -922,14 +935,22 @@ async function main() {
               episodeProgramRender.options,
             )
           : episodeProofResult;
-      const spatialResult =
+      const masterResult =
         workResult.disposition === "idle"
+          ? await runOneLocalEpisodeMasterConformJob(
+              episodeMasterConform.store,
+              episodeMasterConform.renderer,
+              episodeMasterConform.options,
+            )
+          : workResult;
+      const spatialResult =
+        masterResult.disposition === "idle"
           ? await runOneLocalSpatialReframeJob(
               spatialReframe.store,
               spatialReframe.renderer,
               spatialReframe.options,
             )
-          : workResult;
+          : masterResult;
       const result =
         spatialResult.disposition === "idle"
           ? await localMediaReconciler.maybeRun(once)

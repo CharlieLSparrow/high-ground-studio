@@ -6,6 +6,7 @@ import type {
   EpisodeEditTranscriptSegment,
 } from "@/lib/editor/program-edit-contract";
 import {
+  EPISODE_MASTER_4K_H264_PROFILE,
   EPISODE_PROGRAM_REVIEW_PROFILE,
   episodeRenderProfile,
 } from "@high-ground/quipsly-media-processing";
@@ -169,6 +170,9 @@ export function projectEpisodeEditProcessingJob(row: {
   const input = record(row.inputJson);
   const proof = record(input.proof);
   const program = record(input.program);
+  const approvedProgram = record(input.approvedProgram);
+  const approvedProgramClock = record(approvedProgram.program);
+  const approval = record(input.approval);
   const result = record(row.resultJson);
   const progress = record(result.progress);
   const receiptWorker = record(record(result.receipt).worker);
@@ -185,13 +189,18 @@ export function projectEpisodeEditProcessingJob(row: {
     && input.renderProfile === EPISODE_PROGRAM_REVIEW_PROFILE
   ) {
     renderProfile = EPISODE_PROGRAM_REVIEW_PROFILE;
+  } else if (
+    row.type === "episode-master-conform"
+    && input.renderProfile === EPISODE_MASTER_4K_H264_PROFILE
+  ) {
+    renderProfile = EPISODE_MASTER_4K_H264_PROFILE;
   }
-  const totalChunks = number(progress.chunkCount, program.chunkCount);
+  const totalChunks = number(progress.chunkCount, program.chunkCount, approvedProgramClock.chunkCount);
   const renderedChunks = number(
     progress.renderedChunkCount,
     receiptWorker.renderedChunkCount,
   );
-  const programProgress = row.type === "episode-program-render"
+  const programProgress = (row.type === "episode-program-render" || row.type === "episode-master-conform")
     && totalChunks !== null
     && totalChunks > 0
     && renderedChunks !== null
@@ -215,7 +224,7 @@ export function projectEpisodeEditProcessingJob(row: {
     error: row.error,
     manifestSha256: text(input.manifestSha256),
     renderProfile,
-    branchRevision: number(input.branchRevision),
+    branchRevision: number(input.branchRevision, approval.branchRevision),
     proofStartSeconds: number(proof.sequenceStartSeconds),
     proofEndSeconds: number(proof.sequenceEndSeconds),
     progress: programProgress,

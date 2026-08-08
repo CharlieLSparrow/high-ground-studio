@@ -310,6 +310,7 @@ export async function authorizeStudioMediaSource(input: {
   if (
     source.provider === "local-episode-render-proof-worker"
     || source.provider === "local-episode-program-render-worker"
+    || source.provider === "local-episode-master-conform-worker"
   ) {
     const assets = await sourceLinkedStudioAssets(input.prisma, source.id);
     const authorities = assets.flatMap((asset: any) =>
@@ -320,6 +321,7 @@ export async function authorizeStudioMediaSource(input: {
         return (
           metadata.schema === "quipsly-episode-render-proof-registration-v2"
           || metadata.schema === "quipsly-episode-program-render-registration-v1"
+          || metadata.schema === "quipsly-episode-master-conform-registration-v1"
         )
           && metadata.artifactPortability === "executor-local"
           && /^[A-Za-z0-9:_-]{8,200}$/.test(custodianNodeId)

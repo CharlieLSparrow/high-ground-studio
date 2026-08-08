@@ -17,8 +17,8 @@ export class EpisodeRenderProofFfmpegError extends Error {
 
 export type EpisodeRenderProofTechnical = {
   durationSeconds: number;
-  width: 1280;
-  height: 720;
+  width: number;
+  height: number;
   fps: number;
   videoCodec: string;
   audioCodec: string | null;
@@ -32,10 +32,31 @@ export type EpisodeRenderComposition = {
   proof: EpisodeRenderProofJob["proof"];
 };
 
+export type EpisodeRenderOutputProfile = {
+  width: number;
+  height: number;
+  fps: number;
+  videoPreset: "veryfast" | "medium";
+  videoCrf: number;
+  audioBitrate: "160k" | "320k";
+  audioSampleRateHz: 48_000;
+};
+
+const REVIEW_PROFILE: EpisodeRenderOutputProfile = {
+  width: 1280,
+  height: 720,
+  fps: 24,
+  videoPreset: "veryfast",
+  videoCrf: 21,
+  audioBitrate: "160k",
+  audioSampleRateHz: 48_000,
+};
+
 export class FfmpegEpisodeRenderProofRenderer {
   constructor(
     private readonly ffmpeg = "ffmpeg",
     private readonly ffprobe = "ffprobe",
+    private readonly profile: EpisodeRenderOutputProfile = REVIEW_PROFILE,
   ) {}
 
   async render(job: EpisodeRenderComposition, outputPath: string): Promise<EpisodeRenderProofTechnical> {
@@ -56,14 +77,14 @@ export class FfmpegEpisodeRenderProofRenderer {
       "-map", "[vout]",
       "-map", "[aout]",
       "-t", duration.toFixed(6),
-      "-r", "24",
+      "-r", String(this.profile.fps),
       "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-crf", "21",
+      "-preset", this.profile.videoPreset,
+      "-crf", String(this.profile.videoCrf),
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
-      "-b:a", "160k",
-      "-ar", "48000",
+      "-b:a", this.profile.audioBitrate,
+      "-ar", String(this.profile.audioSampleRateHz),
       "-movflags", "+faststart",
       outputPath,
     );
@@ -72,15 +93,15 @@ export class FfmpegEpisodeRenderProofRenderer {
     const video = output.streams.find((stream) => stream.codec_type === "video");
     const audio = output.streams.find((stream) => stream.codec_type === "audio");
     const outputDuration = Number(output.format.duration ?? video?.duration ?? audio?.duration);
-    if (!video || video.width !== 1280 || video.height !== 720 || !Number.isFinite(outputDuration)) {
-      throw new EpisodeRenderProofFfmpegError("episode-render-proof-output-invalid", "The rendered proof does not have the required 1280x720 video stream.", false);
+    if (!video || video.width !== this.profile.width || video.height !== this.profile.height || !Number.isFinite(outputDuration)) {
+      throw new EpisodeRenderProofFfmpegError("episode-render-proof-output-invalid", `The rendered composition does not have the required ${this.profile.width}x${this.profile.height} video stream.`, false);
     }
     await this.execute(this.ffmpeg, ["-v", "error", "-i", outputPath, "-f", "null", "-"], 60_000, "episode-render-proof-complete-decode-failed");
     const ffmpegVersion = (await this.execute(this.ffmpeg, ["-version"], 10_000, "episode-render-proof-ffmpeg-unavailable")).stdout.split("\n")[0]?.trim() || "ffmpeg";
     return {
       durationSeconds: outputDuration,
-      width: 1280,
-      height: 720,
+      width: this.profile.width,
+      height: this.profile.height,
       fps: frameRate(video.avg_frame_rate || video.r_frame_rate),
       videoCodec: String(video.codec_name || "unknown"),
       audioCodec: audio?.codec_name ? String(audio.codec_name) : null,
@@ -96,6 +117,7 @@ export class FfmpegEpisodeRenderProofRenderer {
     probes: ProbeResult[],
     duration: number,
   ) {
+    const { width, height, fps, audioSampleRateHz } = this.profile;
     const filters: string[] = [];
     const visualIds = job.proof.visualLaneIds.filter((id) => {
       const index = indexes.get(id);
@@ -107,21 +129,24 @@ export class FfmpegEpisodeRenderProofRenderer {
     const hostIds = visualIds.filter((id) => id !== clipId).slice(0, 2);
     if (clipId && hostIds.length) {
       const clipIndex = indexes.get(clipId)!;
-      filters.push(`[${clipIndex}:v]setpts=PTS-STARTPTS,scale=922:720:force_original_aspect_ratio=increase,crop=922:720,setsar=1[vclip]`);
+      const clipWidth = Math.round(width * 0.72);
+      const hostWidth = width - clipWidth;
+      filters.push(`[${clipIndex}:v]setpts=PTS-STARTPTS,scale=${clipWidth}:${height}:force_original_aspect_ratio=increase,crop=${clipWidth}:${height},setsar=1[vclip]`);
       hostIds.forEach((id, index) => {
-        const height = Math.floor(720 / hostIds.length);
-        filters.push(`[${indexes.get(id)!}:v]setpts=PTS-STARTPTS,scale=358:${height}:force_original_aspect_ratio=increase,crop=358:${height},setsar=1[vhost${index}]`);
+        const hostHeight = Math.floor(height / hostIds.length);
+        filters.push(`[${indexes.get(id)!}:v]setpts=PTS-STARTPTS,scale=${hostWidth}:${hostHeight}:force_original_aspect_ratio=increase,crop=${hostWidth}:${hostHeight},setsar=1[vhost${index}]`);
       });
       const inputs = ["[vclip]", ...hostIds.map((_, index) => `[vhost${index}]`)].join("");
-      const layout = ["0_0", ...hostIds.map((_, index) => `922_${index * Math.floor(720 / hostIds.length)}`)].join("|");
+      const layout = ["0_0", ...hostIds.map((_, index) => `${clipWidth}_${index * Math.floor(height / hostIds.length)}`)].join("|");
       filters.push(`${inputs}xstack=inputs=${1 + hostIds.length}:layout=${layout}:fill=black[vout]`);
     } else if (hostIds.length >= 2) {
-      hostIds.forEach((id, index) => filters.push(`[${indexes.get(id)!}:v]setpts=PTS-STARTPTS,scale=640:720:force_original_aspect_ratio=increase,crop=640:720,setsar=1[v${index}]`));
+      const halfWidth = Math.floor(width / 2);
+      hostIds.forEach((id, index) => filters.push(`[${indexes.get(id)!}:v]setpts=PTS-STARTPTS,scale=${halfWidth}:${height}:force_original_aspect_ratio=increase,crop=${halfWidth}:${height},setsar=1[v${index}]`));
       filters.push("[v0][v1]hstack=inputs=2[vout]");
     } else if (visualIds.length) {
-      filters.push(`[${indexes.get(visualIds[0]!)!}:v]setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1[vout]`);
+      filters.push(`[${indexes.get(visualIds[0]!)!}:v]setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1[vout]`);
     } else {
-      filters.push(`color=c=0x07110d:s=1280x720:r=24:d=${duration.toFixed(6)},format=yuv420p[vout]`);
+      filters.push(`color=c=0x07110d:s=${width}x${height}:r=${fps}:d=${duration.toFixed(6)},format=yuv420p[vout]`);
     }
 
     const audibleIds = job.proof.audioLaneIds.filter((id) => {
@@ -129,9 +154,9 @@ export class FfmpegEpisodeRenderProofRenderer {
       return index !== undefined && probes[index]?.streams.some((stream) => stream.codec_type === "audio");
     });
     if (!audibleIds.length) {
-      filters.push(`anullsrc=r=48000:cl=stereo:d=${duration.toFixed(6)}[aout]`);
+      filters.push(`anullsrc=r=${audioSampleRateHz}:cl=stereo:d=${duration.toFixed(6)}[aout]`);
     } else {
-      audibleIds.forEach((id, index) => filters.push(`[${indexes.get(id)!}:a]atrim=duration=${duration.toFixed(6)},asetpts=PTS-STARTPTS,aresample=48000,apad=whole_dur=${duration.toFixed(6)}[a${index}]`));
+      audibleIds.forEach((id, index) => filters.push(`[${indexes.get(id)!}:a]atrim=duration=${duration.toFixed(6)},asetpts=PTS-STARTPTS,aresample=${audioSampleRateHz},apad=whole_dur=${duration.toFixed(6)}[a${index}]`));
       if (audibleIds.length === 1) filters.push("[a0]anull[aout]");
       else filters.push(`${audibleIds.map((_, index) => `[a${index}]`).join("")}amix=inputs=${audibleIds.length}:duration=longest:normalize=0,alimiter=limit=0.95[aout]`);
     }

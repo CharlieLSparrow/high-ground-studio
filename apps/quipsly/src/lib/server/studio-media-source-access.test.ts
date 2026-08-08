@@ -38,6 +38,13 @@ const programSource = {
   url: "/api/ingest/media/source_episode_program_001",
   title: "Episode program review",
 };
+const masterSource = {
+  id: "source_episode_master_001",
+  provider: "local-episode-master-conform-worker",
+  providerSourceId: "/tmp/quipsly-media-ingest/master-candidate.mp4",
+  url: "/api/ingest/media/source_episode_master_001",
+  title: "Episode 4K master candidate",
+};
 const ownerAsset = {
   id: "asset_raw_001",
   isGlobal: false,
@@ -52,6 +59,7 @@ function prismaForVariant(options: {
   heldRaw?: boolean;
   proofMetadata?: Record<string, unknown>;
   programMetadata?: Record<string, unknown>;
+  masterMetadata?: Record<string, unknown>;
 } = {}) {
   const proofOwnerAsset = {
     ...ownerAsset,
@@ -71,6 +79,15 @@ function prismaForVariant(options: {
       project: { slug: "high-ground-odyssey" },
     }],
   };
+  const masterOwnerAsset = {
+    ...ownerAsset,
+    id: "asset_episode_master_001",
+    url: masterSource.url,
+    assetAttachments: [{
+      metadataJson: options.masterMetadata ?? {},
+      project: { slug: "high-ground-odyssey" },
+    }],
+  };
   return {
     studioVideoSource: {
       findUnique: jest.fn(async ({ where }: any) => where.id === derivedSource.id
@@ -81,6 +98,8 @@ function prismaForVariant(options: {
             ? proofSource
             : where.id === programSource.id
               ? programSource
+              : where.id === masterSource.id
+                ? masterSource
             : null),
     },
     studioMediaAsset: {
@@ -94,6 +113,8 @@ function prismaForVariant(options: {
           ? [{ asset: proofOwnerAsset }]
           : where.url === programSource.url
             ? [{ asset: programOwnerAsset }]
+            : where.url === masterSource.url
+              ? [{ asset: masterOwnerAsset }]
           : []),
     },
     mobileCaptureFinalizationReceipt: {
@@ -210,6 +231,32 @@ describe("studio media variant authorization", () => {
           portability: "executor-local",
           custodianNodeId: "execution_worker_program_test",
           storageScopeId: "storage_scope_program_test",
+        },
+      },
+    });
+  });
+
+  it("returns exact custody for a registered 4K master candidate", async () => {
+    const result = await authorizeStudioMediaSource({
+      prisma: prismaForVariant({
+        masterMetadata: {
+          schema: "quipsly-episode-master-conform-registration-v1",
+          artifactPortability: "executor-local",
+          custodianNodeId: "execution_worker_master_test",
+          storageScopeId: "storage_scope_master_test",
+        },
+      }),
+      actor,
+      sourceId: masterSource.id,
+    });
+    expect(result).toMatchObject({
+      allowed: true,
+      source: {
+        id: masterSource.id,
+        localArtifactAuthority: {
+          portability: "executor-local",
+          custodianNodeId: "execution_worker_master_test",
+          storageScopeId: "storage_scope_master_test",
         },
       },
     });

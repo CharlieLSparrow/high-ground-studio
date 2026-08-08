@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, realpath, rename, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -407,14 +407,18 @@ export function newLocalEpisodeProgramRenderRuntime(input: {
 }
 
 async function authorizedRoot(configuredRoot: string) {
-  const temporaryRoot = await realpath(tmpdir());
   const resolved = path.resolve(configuredRoot);
   await mkdir(resolved, { recursive: true, mode: 0o700 });
   const root = await realpath(resolved);
-  if (root === temporaryRoot || !inside(temporaryRoot, root)) {
+  const forbidden = new Set([
+    path.parse(root).root,
+    await realpath(tmpdir()),
+    await realpath(homedir()),
+  ]);
+  if (forbidden.has(root)) {
     throw new TerminalEpisodeProgramRenderError(
       "episode-program-render-root-rejected",
-      "Local program render root must be a dedicated directory below the operating-system temporary directory.",
+      "Local program render root must be a dedicated workspace, not a filesystem, home, or temporary root.",
     );
   }
   return root;

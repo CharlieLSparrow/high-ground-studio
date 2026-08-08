@@ -141,6 +141,7 @@ export function ExportQueueModule({
   const [programReview, setProgramReview] = useState<ProgramReviewSummary | null>(null);
   const [programReviewJobId, setProgramReviewJobId] = useState<string | null>(null);
   const [masterPlan, setMasterPlan] = useState<EpisodeMasterConformPlan | null>(null);
+  const [masterQueueJobId, setMasterQueueJobId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [programPlayback, setProgramPlayback] = useState<ProgramPlaybackEvidence>(emptyProgramPlaybackEvidence);
   const registeringRef = useRef(new Set<string>());
@@ -158,7 +159,9 @@ export function ExportQueueModule({
       | "register-program-render"
       | "read-program-review"
       | "review-program-render"
-      | "plan-master-conform",
+      | "plan-master-conform"
+      | "queue-master-conform"
+      | "register-master-conform",
     body: Record<string, unknown>,
   ) => {
     if (!verifiedHandoff) return null;
@@ -227,6 +230,15 @@ export function ExportQueueModule({
       } else if (action === "plan-master-conform") {
         setMasterPlan(payload.operationResult as EpisodeMasterConformPlan);
         setMessage("4K master readiness checked. No render job, upload, cloud compute, or publication was started.");
+      } else if (action === "queue-master-conform") {
+        const receipt = payload.operationResult as QueueReceipt;
+        const jobId = receipt.job?.id ?? null;
+        setMasterQueueJobId(jobId);
+        setMessage(jobId
+          ? "The exact approval, original source generations, edit manifest, 4K profile, and Mac custody are frozen. Local master conform is underway."
+          : "The master request was accepted, but its durable job receipt was not returned.");
+      } else if (action === "register-master-conform") {
+        setMessage("The 4K candidate passed byte, profile, and complete-decode verification. It remains unapproved and unpublished.");
       } else {
         setMessage(action === "register-program-render"
           ? "The complete program output passed server verification and is ready to watch. Approval remains separate."
@@ -251,6 +263,7 @@ export function ExportQueueModule({
     setProgramReview(null);
     setProgramReviewJobId(null);
     setMasterPlan(null);
+    setMasterQueueJobId(null);
     setReviewNote("");
     setProgramPlayback(emptyProgramPlaybackEvidence());
     setMessage("");
@@ -281,11 +294,23 @@ export function ExportQueueModule({
       ?? null,
     [desk?.executionInspection.jobs, handoffRevision, programQueueJobId],
   );
-  const activeJob = programQueueJob ?? queueJob;
-  const activeJobId = programQueueJob?.id ?? queueJob?.id ?? null;
-  const activeRegistrationAction = programQueueJob
-    ? "register-program-render" as const
-    : "register-render-proof" as const;
+  const masterQueueJob = useMemo(
+    () => desk?.executionInspection.jobs.find((job) => job.id === masterQueueJobId)
+      ?? desk?.executionInspection.jobs.find((job) => (
+        job.type === "episode-master-conform"
+        && job.branchRevision === handoffRevision
+        && ["queued", "processing", "output-ready", "completed"].includes(job.status)
+      ))
+      ?? null,
+    [desk?.executionInspection.jobs, handoffRevision, masterQueueJobId],
+  );
+  const activeJob = masterQueueJob ?? programQueueJob ?? queueJob;
+  const activeJobId = masterQueueJob?.id ?? programQueueJob?.id ?? queueJob?.id ?? null;
+  const activeRegistrationAction = masterQueueJob
+    ? "register-master-conform" as const
+    : programQueueJob
+      ? "register-program-render" as const
+      : "register-render-proof" as const;
 
   useEffect(() => {
     if (!isOpen || !verifiedHandoff || !activeJobId || !activeJob) return;
@@ -324,6 +349,9 @@ export function ExportQueueModule({
     : null;
   const completedProgram = programQueueJob?.status === "completed" && programQueueJob.playbackUrl
     ? programQueueJob
+    : null;
+  const completedMaster = masterQueueJob?.status === "completed" && masterQueueJob.playbackUrl
+    ? masterQueueJob
     : null;
 
   useEffect(() => {
@@ -731,6 +759,33 @@ export function ExportQueueModule({
                           <p className="mt-2 text-[11px] font-bold text-sky-900/70">
                             Readiness only: the production master will re-render exact originals and require its own full review before any portable upload or publication.
                           </p>
+                          {masterPlan.executor.canQueue && !masterQueueJob ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void post("queue-master-conform", {
+                                jobId: completedProgram.id,
+                                approvalReceiptId: masterPlan.approvedReview.receiptId,
+                              })}
+                              className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-sky-950 px-5 text-xs font-black text-white disabled:opacity-40"
+                            >
+                              Render 4K master candidate on this Mac
+                            </button>
+                          ) : null}
+                          {masterQueueJob ? (
+                            <div className="mt-3 rounded-xl border border-sky-200 bg-white p-3 text-xs">
+                              <strong>{masterQueueJob.status === "completed" ? "4K candidate verified" : masterQueueJob.status === "processing" ? "Rendering 4K candidate" : "4K candidate queued"}</strong>
+                              {masterQueueJob.progress ? (
+                                <p className="mt-1 text-sky-900/70">{masterQueueJob.progress.completedUnits} of {masterQueueJob.progress.totalUnits} exact chunks complete.</p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {completedMaster ? (
+                            <div className="mt-3 rounded-xl bg-slate-950 p-3 text-white">
+                              <video controls preload="metadata" src={completedMaster.playbackUrl ?? undefined} className="aspect-video w-full rounded-lg bg-black" />
+                              <p className="mt-2 text-[11px] text-white/70">Local protected playback of the verified 4K candidate. Watching does not approve, upload, or publish it.</p>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
