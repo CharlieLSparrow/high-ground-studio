@@ -7,12 +7,12 @@ import { sourceAudioNavigationIdentity } from "@high-ground/quipsly-media-proces
 import { sourceAudioNavigationJobId } from "@high-ground/quipsly-media-processing/source-navigation-identity";
 
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
+import type { ExternalMediaLibraryNavigationHealth } from "@/lib/external-media-library-contract";
 import { preferPreparedByteEquivalentRevision } from "@/lib/server/external-media-byte-identity";
 import { selectGoogleDriveBrowsePreparationBatch } from "@/lib/server/google-drive-navigation-batch";
 import {
   localExecutorStorageShortfall,
   readLocalExecutorStorage,
-  type PublicLocalExecutorStorage,
 } from "@/lib/server/local-executor-storage";
 import type { GoogleDriveMediaLibraryPlan } from "@/lib/google-drive-media-package";
 
@@ -40,28 +40,7 @@ type PublicHeldSegment = {
   observedMemberCount: number;
 };
 
-type PublicLibraryNavigationHealth = {
-  eligibleSourceCount: number;
-  retainedBrowseCount: number;
-  proxyReadyCount: number;
-  visualReadyCount: number;
-  audioReadyCount: number;
-  browseReadyCount: number;
-  remainingCount: number;
-  nextBatchCount: number;
-  nextBatchTransferBytes: string;
-  nextBatchFits: boolean | null;
-  nextBatchShortfallBytes: string;
-  pendingTransferBytes: string;
-  executorStorage: PublicLocalExecutorStorage;
-  inventoryTruncated: boolean;
-  captureDays: Array<{
-    date: string | null;
-    eligibleSourceCount: number;
-    browseReadyCount: number;
-    pendingTransferBytes: string;
-  }>;
-};
+type PublicLibraryNavigationHealth = ExternalMediaLibraryNavigationHealth;
 
 type LibraryNavigationRevision = {
   id: string;

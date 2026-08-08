@@ -43,6 +43,7 @@ import type {
   SpatialExecutorReadiness,
 } from "@high-ground/quipsly-media-processing";
 
+import type { ExternalMediaLibraryProjection } from "@/lib/external-media-library-contract";
 import {
   storyCardPurposes,
   storyCardStatuses,
@@ -317,24 +318,7 @@ type SourceStoryWorkspace = {
   externalMediaLibraries: ExternalMediaLibrary[];
 };
 
-type ExternalMediaLibrary = {
-  id: string;
-  name: string;
-  provider: "google-drive";
-  status: string;
-  revision: number;
-  totalFileCount: number;
-  totalSizeBytes: string;
-  readySegmentCount: number;
-  heldSegmentCount: number;
-  notObservedCount: number;
-  lastCheckedAt: string;
-  lastSuccessfulRefreshAt: string;
-  canRefresh: boolean;
-  connectionState: string;
-  connectedByCurrentUser: boolean;
-  discoveryMode?: "folder-scan" | "selected-files";
-};
+type ExternalMediaLibrary = ExternalMediaLibraryProjection;
 
 type SourceCollection = {
   schema: "quipsly-source-collection-v1";
@@ -550,6 +534,7 @@ type GoogleDriveConformPlan = {
       availableBytes: string | null;
       reserveBytes: string | null;
       measuredAt: string | null;
+      workspaceMode: "durable" | "temporary" | "unknown";
       localPathWithheld: true;
     };
   };
@@ -615,6 +600,34 @@ function formatBytes(value: string | null) {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
   if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
   return `${Math.round(bytes / 1024).toLocaleString()} KB`;
+}
+
+export function driveBrowsePreparationShortfall(
+  sourceSizeBytes: string | null,
+  libraries: ExternalMediaLibrary[],
+) {
+  if (!sourceSizeBytes || !/^\d+$/.test(sourceSizeBytes)) return null;
+  const measured = libraries
+    .map((library) => library.navigationHealth?.executorStorage)
+    .filter(
+      (
+        storage,
+      ): storage is NonNullable<
+        ExternalMediaLibrary["navigationHealth"]
+      >["executorStorage"] =>
+        storage?.status === "measured" &&
+        storage.safeAvailableBytes !== null &&
+        /^\d+$/.test(storage.safeAvailableBytes),
+    );
+  if (!measured.length) return null;
+  const safeAvailableBytes = measured.reduce((minimum, storage) => {
+    const available = BigInt(storage.safeAvailableBytes!);
+    return available < minimum ? available : minimum;
+  }, BigInt(measured[0]!.safeAvailableBytes!));
+  const requiredBytes = BigInt(sourceSizeBytes);
+  return (
+    requiredBytes > safeAvailableBytes ? requiredBytes - safeAvailableBytes : 0n
+  ).toString();
 }
 
 function dbfsPercent(value: number) {
@@ -3207,6 +3220,16 @@ export function SourceStoryClient({
                     const job = packageSource?.latestSourceRevision?.proxyJob;
                     const materializationJob =
                       packageSource?.latestSourceRevision?.materializationJob;
+                    const driveBrowseShortfallBytes = packageSource
+                      ? driveBrowsePreparationShortfall(
+                          packageSource.latestSourceRevision?.sizeBytes ?? null,
+                          workspace.externalMediaLibraries ?? [],
+                        )
+                      : null;
+                    const driveBrowseStorageHeld =
+                      !packageSource?.latestSourceRevision?.exactReplica &&
+                      driveBrowseShortfallBytes !== null &&
+                      driveBrowseShortfallBytes !== "0";
                     const driveConformPlan =
                       packageSource?.sourceUnit?.id === conformSourceUnitId
                         ? conformPlan
@@ -3665,7 +3688,9 @@ export function SourceStoryClient({
                           ) : materializationJob?.status === "failed" ? (
                             <button
                               type="button"
-                              disabled={pending || !canWrite}
+                              disabled={
+                                pending || !canWrite || driveBrowseStorageHeld
+                              }
                               onClick={() =>
                                 void requestProxy(packageSource, true)
                               }
@@ -3711,7 +3736,8 @@ export function SourceStoryClient({
                               disabled={
                                 pending ||
                                 !canWrite ||
-                                !packageSource.latestSourceRevision
+                                !packageSource.latestSourceRevision ||
+                                driveBrowseStorageHeld
                               }
                               onClick={() => void requestProxy(packageSource)}
                               className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-2 text-[9px] font-black text-white disabled:opacity-45"
@@ -3728,7 +3754,8 @@ export function SourceStoryClient({
                               disabled={
                                 pending ||
                                 !canWrite ||
-                                !packageSource.latestSourceRevision
+                                !packageSource.latestSourceRevision ||
+                                driveBrowseStorageHeld
                               }
                               onClick={() => void requestProxy(packageSource)}
                               className="mt-2 min-h-11 w-full rounded-xl bg-cyan-950 px-2 text-[9px] font-black text-white disabled:opacity-45"
@@ -3741,6 +3768,18 @@ export function SourceStoryClient({
                               approved provider execution.
                             </p>
                           )
+                        ) : null}
+                        {packageSource?.provider === "google-drive" &&
+                        !packageSource.latestSourceRevision?.exactReplica &&
+                        driveBrowseStorageHeld ? (
+                          <p
+                            role="status"
+                            className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[8px] font-black leading-4 text-rose-950"
+                          >
+                            Needs {formatBytes(driveBrowseShortfallBytes)} more
+                            safe storage on this Mac. No transfer will be
+                            queued.
+                          </p>
                         ) : null}
                         {packageSource?.provider === "google-drive" &&
                         !packageSource.latestSourceRevision

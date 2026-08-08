@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import type { ExternalMediaLibraryProjection } from "@/lib/external-media-library-contract";
+
 type DriveConnection = {
   id: string;
   accountLabel: string | null;
@@ -72,62 +74,7 @@ type LibraryConformPlan = {
   }>;
 };
 
-type ExternalMediaLibrary = {
-  id: string;
-  name: string;
-  status: string;
-  revision: number;
-  totalFileCount: number;
-  totalSizeBytes: string;
-  readySegmentCount: number;
-  heldSegmentCount: number;
-  heldSegments?: Array<{
-    batchName: string;
-    displayName: string;
-    segment: string;
-    status: string;
-    reasons: string[];
-    observedMemberCount: number;
-  }>;
-  heldSegmentsOmittedCount?: number;
-  notObservedCount: number;
-  lastCheckedAt: string;
-  canRefresh: boolean;
-  connectionState: string;
-  connectedByCurrentUser: boolean;
-  connectionId?: string | null;
-  discoveryMode?: "folder-scan" | "selected-files";
-  navigationHealth?: {
-    eligibleSourceCount: number;
-    retainedBrowseCount: number;
-    proxyReadyCount: number;
-    visualReadyCount: number;
-    audioReadyCount: number;
-    browseReadyCount: number;
-    remainingCount: number;
-    nextBatchCount: number;
-    nextBatchTransferBytes: string;
-    nextBatchFits: boolean | null;
-    nextBatchShortfallBytes: string;
-    pendingTransferBytes: string;
-    inventoryTruncated: boolean;
-    executorStorage: {
-      status: "measured" | "unavailable";
-      safeAvailableBytes: string | null;
-      availableBytes: string | null;
-      reserveBytes: string | null;
-      measuredAt: string | null;
-      workspaceMode: "durable" | "temporary" | "unknown";
-      localPathWithheld: true;
-    };
-    captureDays: Array<{
-      date: string | null;
-      eligibleSourceCount: number;
-      browseReadyCount: number;
-      pendingTransferBytes: string;
-    }>;
-  };
-};
+type ExternalMediaLibrary = ExternalMediaLibraryProjection;
 
 type PickerDocument = {
   id?: string;

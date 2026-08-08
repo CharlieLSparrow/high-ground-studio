@@ -2,15 +2,9 @@ import "server-only";
 
 import type { PrismaClient } from "@prisma/client";
 
-export type PublicLocalExecutorStorage = {
-  status: "measured" | "unavailable";
-  safeAvailableBytes: string | null;
-  availableBytes: string | null;
-  reserveBytes: string | null;
-  measuredAt: string | null;
-  workspaceMode: "durable" | "temporary" | "unknown";
-  localPathWithheld: true;
-};
+import type { LocalExecutorStorageProjection } from "@/lib/external-media-library-contract";
+
+export type PublicLocalExecutorStorage = LocalExecutorStorageProjection;
 
 const UNAVAILABLE_LOCAL_EXECUTOR_STORAGE: PublicLocalExecutorStorage = {
   status: "unavailable",
