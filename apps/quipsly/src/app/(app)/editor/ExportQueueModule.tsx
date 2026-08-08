@@ -16,6 +16,7 @@ import type { EpisodeRenderProfileId } from "@high-ground/quipsly-media-processi
 
 import type {
   EpisodeEditDeskPayload,
+  EpisodeMasterConformPlan,
   EpisodeProgramRenderPlan,
   EpisodeRenderPlan,
 } from "@/lib/editor/program-edit-contract";
@@ -139,6 +140,7 @@ export function ExportQueueModule({
   const [programQueueJobId, setProgramQueueJobId] = useState<string | null>(null);
   const [programReview, setProgramReview] = useState<ProgramReviewSummary | null>(null);
   const [programReviewJobId, setProgramReviewJobId] = useState<string | null>(null);
+  const [masterPlan, setMasterPlan] = useState<EpisodeMasterConformPlan | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [programPlayback, setProgramPlayback] = useState<ProgramPlaybackEvidence>(emptyProgramPlaybackEvidence);
   const registeringRef = useRef(new Set<string>());
@@ -155,7 +157,8 @@ export function ExportQueueModule({
       | "queue-program-render"
       | "register-program-render"
       | "read-program-review"
-      | "review-program-render",
+      | "review-program-render"
+      | "plan-master-conform",
     body: Record<string, unknown>,
   ) => {
     if (!verifiedHandoff) return null;
@@ -175,7 +178,7 @@ export function ExportQueueModule({
       });
       const result = await response.json().catch(() => null) as
         | (EpisodeEditDeskPayload & {
-            operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | QueueReceipt | ProgramReviewSummary | { review: ProgramReviewSummary };
+            operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | EpisodeMasterConformPlan | QueueReceipt | ProgramReviewSummary | { review: ProgramReviewSummary };
           })
         | { error?: string; payload?: EpisodeEditDeskPayload }
         | null;
@@ -188,7 +191,7 @@ export function ExportQueueModule({
         );
       }
       const payload = result as EpisodeEditDeskPayload & {
-        operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | QueueReceipt | ProgramReviewSummary | { review: ProgramReviewSummary };
+        operationResult?: EpisodeRenderPlan | EpisodeProgramRenderPlan | EpisodeMasterConformPlan | QueueReceipt | ProgramReviewSummary | { review: ProgramReviewSummary };
       };
       setDesk(payload);
       if (action === "plan-render-proof") {
@@ -221,6 +224,9 @@ export function ExportQueueModule({
         setMessage(body.decision === "rejected"
           ? "Change request saved against these exact review bytes. The canonical edit and source media remain unchanged."
           : "Full-program approval saved against this exact generation. No master, upload, or publication was created.");
+      } else if (action === "plan-master-conform") {
+        setMasterPlan(payload.operationResult as EpisodeMasterConformPlan);
+        setMessage("4K master readiness checked. No render job, upload, cloud compute, or publication was started.");
       } else {
         setMessage(action === "register-program-render"
           ? "The complete program output passed server verification and is ready to watch. Approval remains separate."
@@ -244,6 +250,7 @@ export function ExportQueueModule({
     setProgramQueueJobId(null);
     setProgramReview(null);
     setProgramReviewJobId(null);
+    setMasterPlan(null);
     setReviewNote("");
     setProgramPlayback(emptyProgramPlaybackEvidence());
     setMessage("");
@@ -323,6 +330,7 @@ export function ExportQueueModule({
     if (!isOpen || !completedProgram || programReviewJobId === completedProgram.id) return;
     setProgramPlayback(emptyProgramPlaybackEvidence());
     setReviewNote("");
+    setMasterPlan(null);
     void post("read-program-review", { jobId: completedProgram.id });
   }, [completedProgram, isOpen, post, programReviewJobId]);
 
@@ -678,6 +686,55 @@ export function ExportQueueModule({
                       Request changes
                     </button>
                   </div>
+                  {programReview?.latest?.decision === "approved" ? (
+                    <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-950">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="max-w-lg">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700">Next exact boundary</p>
+                          <h4 className="mt-1 text-base font-black">4K master conform readiness</h4>
+                          <p className="mt-2 text-xs leading-5 text-sky-900/75">
+                            Check original source resolution, exact Mac custody, durable free space, and the latest approval. The 720p review will never be used as master input.
+                          </p>
+                        </div>
+                        {!masterPlan ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void post("plan-master-conform", {
+                              jobId: completedProgram.id,
+                              approvalReceiptId: programReview.latest!.id,
+                            })}
+                            className="inline-flex min-h-10 items-center rounded-xl bg-sky-950 px-4 text-xs font-black text-white disabled:opacity-40"
+                          >
+                            Check 4K master
+                          </button>
+                        ) : null}
+                      </div>
+                      {masterPlan ? (
+                        <div className="mt-4">
+                          <dl className="grid gap-3 rounded-xl bg-white p-3 text-xs sm:grid-cols-3">
+                            <div><dt className="font-black uppercase text-sky-700">Profile</dt><dd className="mt-1 font-black">3840×2160 · 24 fps</dd></div>
+                            <div><dt className="font-black uppercase text-sky-700">Estimated master</dt><dd className="mt-1 font-black">{formatBytes(masterPlan.masterProfile.estimatedBytesLow)}–{formatBytes(masterPlan.masterProfile.estimatedBytesHigh)}</dd></div>
+                            <div><dt className="font-black uppercase text-sky-700">Safe local space</dt><dd className="mt-1 font-black">{masterPlan.executor.storageSafeAvailableBytes === null ? "Not measured" : formatBytes(masterPlan.executor.storageSafeAvailableBytes)}</dd></div>
+                          </dl>
+                          <div className="mt-3 space-y-2">
+                            {masterPlan.sources.video.map((source) => (
+                              <div key={source.laneId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-xs">
+                                <strong>{source.label}</strong>
+                                <span>{source.width && source.height ? `${source.width}×${source.height}` : "Resolution unknown"}{source.fps ? ` · ${source.fps} fps` : " · fps unknown"} · {source.relationshipToOutput.replaceAll("-", " ")}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <p className={`mt-3 rounded-xl p-3 text-xs font-bold ${masterPlan.executor.canQueue ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}>
+                            {masterPlan.executor.detail}
+                          </p>
+                          <p className="mt-2 text-[11px] font-bold text-sky-900/70">
+                            Readiness only: the production master will re-render exact originals and require its own full review before any portable upload or publication.
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </section>
             ) : null}

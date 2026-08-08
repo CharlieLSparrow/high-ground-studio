@@ -267,6 +267,60 @@ export type EpisodeProgramRenderPlan = {
   };
 };
 
+export type EpisodeMasterConformPlan = {
+  schema: "quipsly-episode-master-conform-plan-v1";
+  branchRevision: number;
+  approvedReview: {
+    receiptId: string;
+    reviewJobId: string;
+    approvedByEmail: string;
+    approvedAt: string;
+    reviewedOutputSha256: string;
+  };
+  masterProfile: {
+    id: "episode-master-3840x2160-24fps-h264-v1";
+    label: "4K 24 fps production master";
+    width: 3840;
+    height: 2160;
+    fps: 24;
+    videoCodec: "h264";
+    audioCodec: "aac";
+    audioSampleRateHz: 48000;
+    outputDurationSeconds: number;
+    estimatedBytesLow: number;
+    estimatedBytesHigh: number;
+  };
+  sources: {
+    requiredCount: number;
+    totalBytes: number;
+    allExactOnExecutor: boolean;
+    allVideoMetadataMeasured: boolean;
+    video: Array<{
+      laneId: string;
+      label: string;
+      width: number | null;
+      height: number | null;
+      fps: number | null;
+      relationshipToOutput: "native-or-larger" | "upscaled" | "unknown";
+    }>;
+  };
+  executor: EpisodeRenderExecutorPlan & {
+    storageSafeAvailableBytes: number | null;
+    estimatedBytesHigh: number;
+  };
+  holds: string[];
+  boundaries: {
+    createsNoJob: true;
+    originalSourcesWillBeUsed: true;
+    reviewCandidateWillNotBeUpscaled: true;
+    sourceMediaRemainsImmutable: true;
+    approvalDoesNotAuthorizePublication: true;
+    renderedMasterWillRequireSeparateReview: true;
+    portableUploadNotStarted: true;
+    publicationNotStarted: true;
+  };
+};
+
 export type EpisodeEditExecutionWorker = {
   id: string;
   label: string;

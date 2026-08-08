@@ -28,6 +28,10 @@ import {
   EpisodeProgramReviewError,
   readAuthorizedEpisodeProgramReviewSummary,
 } from "@/lib/server/episode-program-review";
+import {
+  EpisodeMasterConformError,
+  planEpisodeMasterConform,
+} from "@/lib/server/episode-master-conform";
 
 export const dynamic = "force-dynamic";
 
@@ -202,6 +206,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         playbackEvidence: body.playbackEvidence,
         note: typeof body.note === "string" ? body.note : null,
       });
+    } else if (action === "plan-master-conform") {
+      operationResult = await planEpisodeMasterConform({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        reviewJobId: String(body.jobId ?? ""),
+        approvalReceiptId: String(body.approvalReceiptId ?? ""),
+      });
     } else {
       return NextResponse.json({ error: "Unknown editor action." }, { status: 400 });
     }
@@ -214,7 +226,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         || action === "queue-program-render"
         || action === "register-program-render"
         || action === "read-program-review"
-        || action === "review-program-render",
+        || action === "review-program-render"
+        || action === "plan-master-conform",
       selectedMediaAssetId,
     }), operationResult }, {
       headers: { "Cache-Control": "no-store" },
@@ -227,6 +240,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
       return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
     }
     if (error instanceof EpisodeProgramReviewError) {
+      return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+    }
+    if (error instanceof EpisodeMasterConformError) {
       return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
     }
     if (error instanceof EpisodeEditConflict) {

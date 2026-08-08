@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type {
   EpisodeEditDeskPayload,
+  EpisodeMasterConformPlan,
   EpisodeProgramRenderPlan,
   EpisodeRenderPlan,
 } from "@/lib/editor/program-edit-contract";
@@ -172,6 +173,70 @@ const programPlan: EpisodeProgramRenderPlan = {
     createsNoJob: true,
     sourceMediaRemainsImmutable: true,
     outputIsNotApprovedMaster: true,
+    publicationNotStarted: true,
+  },
+};
+
+const masterConformPlan: EpisodeMasterConformPlan = {
+  schema: "quipsly-episode-master-conform-plan-v1",
+  branchRevision: 7,
+  approvedReview: {
+    receiptId: "program_review_receipt_1",
+    reviewJobId: "episode_program_completed_12345678",
+    approvedByEmail: "editor@example.test",
+    approvedAt: "2026-08-08T12:20:00.000Z",
+    reviewedOutputSha256: "f".repeat(64),
+  },
+  masterProfile: {
+    id: "episode-master-3840x2160-24fps-h264-v1",
+    label: "4K 24 fps production master",
+    width: 3840,
+    height: 2160,
+    fps: 24,
+    videoCodec: "h264",
+    audioCodec: "aac",
+    audioSampleRateHz: 48000,
+    outputDurationSeconds: 110,
+    estimatedBytesLow: 500_000_000,
+    estimatedBytesHigh: 1_000_000_000,
+  },
+  sources: {
+    requiredCount: 2,
+    totalBytes: 50_000_000_000,
+    allExactOnExecutor: true,
+    allVideoMetadataMeasured: true,
+    video: [{
+      laneId: "canon-r8",
+      label: "Canon R8",
+      width: 3840,
+      height: 2160,
+      fps: 24,
+      relationshipToOutput: "native-or-larger",
+    }],
+  },
+  executor: {
+    id: "local-mac",
+    label: "Wall-E Mac",
+    executorNodeId: "execution_worker_test",
+    artifactPortability: "executor-local",
+    status: "ready",
+    canQueue: true,
+    detail: "This Mac owns every approved original generation and has measured durable workspace capacity.",
+    costKind: "none",
+    costDetail: "No cloud render",
+    qualityDetail: "Uses exact originals",
+    storageSafeAvailableBytes: 100_000_000_000,
+    estimatedBytesHigh: 1_000_000_000,
+  },
+  holds: [],
+  boundaries: {
+    createsNoJob: true,
+    originalSourcesWillBeUsed: true,
+    reviewCandidateWillNotBeUpscaled: true,
+    sourceMediaRemainsImmutable: true,
+    approvalDoesNotAuthorizePublication: true,
+    renderedMasterWillRequireSeparateReview: true,
+    portableUploadNotStarted: true,
     publicationNotStarted: true,
   },
 };
@@ -404,7 +469,8 @@ describe("Advanced Studio render readiness", () => {
     global.fetch = jest.fn()
       .mockImplementationOnce(() => response({ ...completedDesk, operationResult: plan }))
       .mockImplementationOnce(() => response({ ...completedDesk, operationResult: emptyReview }))
-      .mockImplementationOnce(() => response({ ...completedDesk, operationResult: { review: approvedReview } }));
+      .mockImplementationOnce(() => response({ ...completedDesk, operationResult: { review: approvedReview } }))
+      .mockImplementationOnce(() => response({ ...completedDesk, operationResult: masterConformPlan }));
     const rendered = subject();
 
     const video = await waitFor(() => {
@@ -444,6 +510,17 @@ describe("Advanced Studio render readiness", () => {
         playthroughEnded: true,
         mutedAtDecision: false,
       }),
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Check 4K master" }));
+    expect(await screen.findByText("3840×2160 · 24 fps")).toBeInTheDocument();
+    expect(screen.getByText(/Canon R8/)).toBeInTheDocument();
+    expect(screen.getByText(/will never be used as master input/i)).toBeInTheDocument();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(4));
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[3][1].body)).toEqual(expect.objectContaining({
+      action: "plan-master-conform",
+      jobId: "episode_program_completed_12345678",
+      approvalReceiptId: "program_review_receipt_1",
     }));
   });
 });

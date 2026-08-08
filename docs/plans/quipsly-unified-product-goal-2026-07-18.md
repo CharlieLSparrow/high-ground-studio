@@ -8694,3 +8694,27 @@ source upload verified` blocked `Rough cut ready for review` until complete;
   `docs/coordination/2026-08-08-episode-program-approval-ledger.md`.
 - Next: use only the latest exact approval to plan a separate original-source
   master conform. Never upscale or relabel the 720p review as a master.
+
+# 2026-08-08 checkpoint: 4K master conform readiness
+
+- The latest exact full-program approval can now produce a no-side-effect
+  3840×2160/24 H.264/AAC master conform plan in Advanced Studio.
+- The 720p review is permanently evidence only. The plan requires the future
+  master to re-render the approved decisions from immutable exact originals;
+  it never upscales or relabels the review candidate.
+- Planning revalidates the registered review bytes and current branch, then
+  requires the latest APPROVED receipt with identical branch, timeline, source,
+  edit, manifest, output generation, checksum, and byte identities.
+- Source resolution/frame rate and its relationship to the 4K canvas are
+  visible per video lane. Queue readiness holds on unknown video metadata,
+  changed executor/storage custody, temporary workspace, or insufficient safe
+  capacity for the conservative 35–80 Mbps output estimate.
+- Advanced Studio shows the profile, estimated master bytes, safe local space,
+  source quality, and exact hold/ready explanation after **Check 4K master**.
+- Three planner tests, five Advanced Studio tests, strict TypeScript, and diff
+  checks pass. No job, upload, cloud action, migration, or deployment ran.
+- Detailed evidence is in
+  `docs/coordination/2026-08-08-episode-master-conform-plan.md`.
+- Next: implement the generation-locked master contract and local 4K worker,
+  then separately review the master and promote approved bytes to portable
+  object storage. Publication remains another explicit action.
