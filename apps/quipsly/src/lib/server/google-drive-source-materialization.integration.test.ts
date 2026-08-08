@@ -15,6 +15,7 @@ import {
   planGoogleDriveSourceUnitConform,
   requestGoogleDriveSourceUnitConform,
 } from "./google-drive-source-conform";
+import { createMediaSourceSet } from "./source-story";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
@@ -137,6 +138,7 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
           headRevisionKey: `head-${memberRole}-${key}`,
           checksumMd5:
             memberRole === "browse-proxy" ? "a".repeat(32) : "b".repeat(32),
+          durationSeconds: memberRole === "browse-proxy" ? 60 : null,
           mediaProjection: "dual-fisheye",
           projectionMetadata: { memberRole, segment: key },
           accessState: "available",
@@ -350,7 +352,7 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
     });
   });
 
-  it("binds one render-ready source set only after every package member has an exact replica", async () => {
+  it("binds provider revisions for browse work before exact originals upgrade render readiness", async () => {
     const packageKey = `package-${nonce}`;
     const captureKey = `VID_20260507_180459_${nonce}`;
     const sourceUnit = await prisma.studioSourceUnit.create({
@@ -379,6 +381,35 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
       sourceUnitId: sourceUnit.id,
       key: packageKey,
     });
+    const attachedSet = await createMediaSourceSet({
+      prisma,
+      actorUserId,
+      value: {
+        projectId,
+        clientRequestId: randomUUID(),
+        kind: "insta360-360",
+        captureKey,
+        displayName: sourceUnit.title,
+        sourceClockRevisionId: browse.sourceRevisionId,
+        members: [
+          {
+            sourceRevisionId: browse.sourceRevisionId,
+            role: "browse-proxy",
+            requiredForRender: false,
+          },
+          {
+            sourceRevisionId: original.sourceRevisionId,
+            role: "primary-original",
+            requiredForRender: true,
+          },
+        ],
+        metadata: {
+          providerRevisionsPinned: true,
+          exactMembersVerifiedLocally: false,
+          originalRemainsInDrive: true,
+        },
+      },
+    });
     const initial = await planGoogleDriveSourceUnitConform({
       prisma,
       projectId,
@@ -388,7 +419,7 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
     expect(initial).toMatchObject({
       status: "needs-preparation",
       storage: { remainingBytes: "10240" },
-      sourceSet: null,
+      sourceSet: { id: attachedSet.sourceSet.id, completeness: "complete" },
     });
     const queued = await requestGoogleDriveSourceUnitConform({
       prisma,
@@ -399,7 +430,10 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
       clientRequestId: randomUUID(),
       expectedRemainingBytes: initial.storage.remainingBytes,
     });
-    expect(queued).toMatchObject({ status: "preparing", sourceSet: null });
+    expect(queued).toMatchObject({
+      status: "preparing",
+      sourceSet: { id: attachedSet.sourceSet.id },
+    });
 
     for (const [index, attached] of [browse, original].entries()) {
       const revision = await prisma.studioMediaSourceRevision.findUniqueOrThrow(
@@ -464,9 +498,9 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
       actorUserId,
     });
     expect(prepared).toMatchObject({
-      status: "ready-to-bind",
+      status: "render-ready",
       storage: { remainingBytes: "0" },
-      sourceSet: null,
+      sourceSet: { id: attachedSet.sourceSet.id },
     });
     const renderReady = await requestGoogleDriveSourceUnitConform({
       prisma,

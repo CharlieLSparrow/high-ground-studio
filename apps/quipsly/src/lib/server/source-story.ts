@@ -120,6 +120,7 @@ export async function createMediaSourceSet(input: {
           sizeBytes: true,
           durationSeconds: true,
           sourceState: true,
+          verificationJson: true,
         },
       });
       if (revisions.length !== value.members.length) {
@@ -167,14 +168,21 @@ export async function createMediaSourceSet(input: {
       }
       for (const member of value.members) {
         const revision = revisionById.get(member.sourceRevisionId)!;
-        if (
-          !revision.contentSha256 ||
-          !revision.sizeBytes ||
-          revision.sizeBytes <= BigInt(0)
-        ) {
+        const verification = jsonRecord(revision.verificationJson);
+        const providerRevisionBound =
+          value.kind === "insta360-360" &&
+          revision.sourceState === "provider-revision-bound" &&
+          verification?.providerRevisionBound === true;
+        if (!revision.sizeBytes || revision.sizeBytes <= BigInt(0)) {
           throw new SourceStoryContractError(
             "source-set-member-unverified",
-            "Every source-set member needs an exact checksum and byte count.",
+            "Every source-set member needs a verified byte count.",
+          );
+        }
+        if (!revision.contentSha256 && !providerRevisionBound) {
+          throw new SourceStoryContractError(
+            "source-set-member-unverified",
+            "Every source-set member needs either an exact content checksum or an immutable provider-revision receipt.",
           );
         }
       }
@@ -190,7 +198,8 @@ export async function createMediaSourceSet(input: {
           return {
             ...member,
             revisionIdentitySha256: revision.identitySha256,
-            contentSha256: revision.contentSha256,
+            contentSha256: revision.contentSha256 ?? null,
+            verificationState: revision.sourceState,
             sizeBytes: revision.sizeBytes!.toString(),
           };
         }),
@@ -239,7 +248,8 @@ export async function createMediaSourceSet(input: {
                     setIdentitySha256: identitySha256,
                     ...member,
                     revisionIdentitySha256: revision.identitySha256,
-                    contentSha256: revision.contentSha256,
+                    contentSha256: revision.contentSha256 ?? null,
+                    verificationState: revision.sourceState,
                   }),
                 ),
                 metadataJson: { sourceState: revision.sourceState },
@@ -2786,7 +2796,26 @@ export async function promoteSourceStoryCardToEpisode(input: {
           "The retained Story source has no resolvable asset or provider reference.",
         );
       }
-      if (range.sourceSet && range.sourceSet.completeness !== "complete") {
+      const effectiveSourceSet =
+        range.sourceSet ??
+        (await tx.studioMediaSourceSet.findFirst({
+          where: {
+            projectId: value.projectId,
+            sourceClockRevisionId: revision.id,
+            members: { some: { sourceRevisionId: revision.id } },
+          },
+          select: {
+            id: true,
+            kind: true,
+            identitySha256: true,
+            completeness: true,
+          },
+          orderBy: { createdAt: "desc" },
+        }));
+      if (
+        effectiveSourceSet &&
+        effectiveSourceSet.completeness !== "complete"
+      ) {
         throw new SourceStoryContractError(
           "source-set-incomplete",
           "Complete the multi-file camera package before timeline promotion.",
@@ -2851,8 +2880,8 @@ export async function promoteSourceStoryCardToEpisode(input: {
         sourceRevisionId: revision.id,
         sourceIdentitySha256: revision.identitySha256,
         sourceContentSha256: revision.contentSha256,
-        sourceSetId: range.sourceSet?.id ?? null,
-        sourceSetIdentitySha256: range.sourceSet?.identitySha256 ?? null,
+        sourceSetId: effectiveSourceSet?.id ?? null,
+        sourceSetIdentitySha256: effectiveSourceSet?.identitySha256 ?? null,
         externalReferenceId: revision.externalReference?.id ?? null,
         browseDerivative: derivative
           ? {

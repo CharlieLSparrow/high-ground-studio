@@ -2581,6 +2581,13 @@ export function SourceStoryClient({
       return { kind: "asset" as const, id: range.sourceRevision.mediaAsset.id };
     if (range.sourceSet)
       return { kind: "source-set" as const, id: range.sourceSet.id };
+    const inferredSourceSet = workspace.sourceSets.find((sourceSet) =>
+      sourceSet.members.some(
+        (member) => member.sourceRevision.id === range.sourceRevision.id,
+      ),
+    );
+    if (inferredSourceSet)
+      return { kind: "source-set" as const, id: inferredSourceSet.id };
     if (
       range.sourceRevision.externalReference &&
       range.sourceRevision.collaborationProxy
@@ -3053,11 +3060,20 @@ export function SourceStoryClient({
                             (candidate) => candidate.id === item.id,
                           ) ?? null)
                         : null;
-                    const externalPackageMembers = externalSource?.sourceUnit
+                    const sourceSetClockExternal = sourceSet
+                      ? (workspace.externalSources.find(
+                          (candidate) =>
+                            candidate.id ===
+                            sourceSet.sourceClockRevision.externalReference?.id,
+                        ) ?? null)
+                      : null;
+                    const packageSource =
+                      externalSource ?? sourceSetClockExternal;
+                    const externalPackageMembers = packageSource?.sourceUnit
                       ? workspace.externalSources.filter(
                           (candidate) =>
                             candidate.sourceUnit?.id ===
-                            externalSource.sourceUnit?.id,
+                            packageSource.sourceUnit?.id,
                         )
                       : [];
                     const asset =
@@ -3084,16 +3100,16 @@ export function SourceStoryClient({
                         : item.kind === "external"
                           ? chooseExternalSource(item.id)
                           : chooseAsset(item.id);
-                    const job = externalSource?.latestSourceRevision?.proxyJob;
+                    const job = packageSource?.latestSourceRevision?.proxyJob;
                     const materializationJob =
-                      externalSource?.latestSourceRevision?.materializationJob;
+                      packageSource?.latestSourceRevision?.materializationJob;
                     const driveConformPlan =
-                      externalSource?.sourceUnit?.id === conformSourceUnitId
+                      packageSource?.sourceUnit?.id === conformSourceUnitId
                         ? conformPlan
                         : null;
                     const visualRevision =
                       sourceSet?.sourceClockRevision ??
-                      externalSource?.latestSourceRevision ??
+                      packageSource?.latestSourceRevision ??
                       null;
                     const visualOverview =
                       visualRevision?.visualOverview ?? null;
@@ -3219,7 +3235,7 @@ export function SourceStoryClient({
                             </p>
                           </details>
                         ) : null}
-                        {externalSource &&
+                        {packageSource &&
                         selected &&
                         externalPackageMembers.length > 1 ? (
                           <details className="mt-2 rounded-xl border border-cyan-200 bg-white/75 px-2 py-2 text-[9px]">
@@ -3393,7 +3409,7 @@ export function SourceStoryClient({
                                     disabled={conformPending}
                                     onClick={() =>
                                       void inspectOrPrepareDriveConform(
-                                        externalSource.sourceUnit!.id,
+                                        packageSource.sourceUnit!.id,
                                       )
                                     }
                                     className="mt-3 min-h-11 w-full rounded-xl border border-violet-300 bg-white px-3 font-black disabled:opacity-45"
@@ -3408,7 +3424,7 @@ export function SourceStoryClient({
                                     }
                                     onClick={() =>
                                       void inspectOrPrepareDriveConform(
-                                        externalSource.sourceUnit!.id,
+                                        packageSource.sourceUnit!.id,
                                         {
                                           prepare: true,
                                           expectedRemainingBytes:
@@ -3448,7 +3464,7 @@ export function SourceStoryClient({
                                 disabled={conformPending || !canWrite}
                                 onClick={() =>
                                   void inspectOrPrepareDriveConform(
-                                    externalSource.sourceUnit!.id,
+                                    packageSource.sourceUnit!.id,
                                   )
                                 }
                                 className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 font-black text-violet-950 disabled:opacity-45"
@@ -3513,8 +3529,8 @@ export function SourceStoryClient({
                             </div>
                           </details>
                         ) : null}
-                        {externalSource &&
-                        !externalSource.latestSourceRevision
+                        {packageSource &&
+                        !packageSource.latestSourceRevision
                           ?.collaborationProxy ? (
                           materializationJob &&
                           ["queued", "processing"].includes(
@@ -3541,7 +3557,7 @@ export function SourceStoryClient({
                               type="button"
                               disabled={pending || !canWrite}
                               onClick={() =>
-                                void requestProxy(externalSource, true)
+                                void requestProxy(packageSource, true)
                               }
                               className="mt-2 min-h-11 w-full rounded-xl border border-rose-300 bg-white px-2 text-[9px] font-black text-rose-950 disabled:opacity-45"
                             >
@@ -3569,42 +3585,42 @@ export function SourceStoryClient({
                               type="button"
                               disabled={pending || !canWrite}
                               onClick={() =>
-                                void requestProxy(externalSource, true)
+                                void requestProxy(packageSource, true)
                               }
                               className="mt-2 min-h-11 w-full rounded-xl border border-rose-300 bg-white px-2 text-[9px] font-black text-rose-950 disabled:opacity-45"
                             >
                               Retry proxy ·{" "}
                               {job.failureCode ?? "worker failure"}
                             </button>
-                          ) : externalSource.provider === "local-file-vault" ||
-                            (externalSource.provider === "google-drive" &&
-                              externalSource.latestSourceRevision
+                          ) : packageSource.provider === "local-file-vault" ||
+                            (packageSource.provider === "google-drive" &&
+                              packageSource.latestSourceRevision
                                 ?.exactReplica) ? (
                             <button
                               type="button"
                               disabled={
                                 pending ||
                                 !canWrite ||
-                                !externalSource.latestSourceRevision
+                                !packageSource.latestSourceRevision
                               }
-                              onClick={() => void requestProxy(externalSource)}
+                              onClick={() => void requestProxy(packageSource)}
                               className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-2 text-[9px] font-black text-white disabled:opacity-45"
                             >
-                              {externalSource.provider === "google-drive"
+                              {packageSource.provider === "google-drive"
                                 ? "Build from verified LRV"
                                 : "Create browse proxy"}
                             </button>
-                          ) : externalSource.provider === "google-drive" &&
-                            externalSource.latestSourceRevision?.memberRole ===
+                          ) : packageSource.provider === "google-drive" &&
+                            packageSource.latestSourceRevision?.memberRole ===
                               "browse-proxy" ? (
                             <button
                               type="button"
                               disabled={
                                 pending ||
                                 !canWrite ||
-                                !externalSource.latestSourceRevision
+                                !packageSource.latestSourceRevision
                               }
-                              onClick={() => void requestProxy(externalSource)}
+                              onClick={() => void requestProxy(packageSource)}
                               className="mt-2 min-h-11 w-full rounded-xl bg-cyan-950 px-2 text-[9px] font-black text-white disabled:opacity-45"
                             >
                               Prepare 360 browse copy
@@ -3616,11 +3632,11 @@ export function SourceStoryClient({
                             </p>
                           )
                         ) : null}
-                        {externalSource?.provider === "google-drive" &&
-                        !externalSource.latestSourceRevision
+                        {packageSource?.provider === "google-drive" &&
+                        !packageSource.latestSourceRevision
                           ?.collaborationProxy ? (
                           <p className="mt-2 text-[8px] font-semibold leading-4 text-[#765f40]">
-                            {externalSource.latestSourceRevision?.memberRole ===
+                            {packageSource.latestSourceRevision?.memberRole ===
                             "browse-proxy"
                               ? "Only this segment's LRV is cached and verified. Full-resolution INSV originals stay in Drive until conform or export."
                               : "This full-resolution original stays in Drive until conform or export; use its paired LRV to browse and organize the segment."}

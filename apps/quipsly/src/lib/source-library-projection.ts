@@ -87,6 +87,7 @@ export type SourceLibraryCard = {
   sourceRange: null | {
     sourceSet: null | { id: string };
     sourceRevision: {
+      id: string;
       mediaAsset: null | { id: string };
       externalReference: null | { id: string };
     };
@@ -163,10 +164,15 @@ function humanize(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function sourceIdentity(card: SourceLibraryCard) {
+function sourceIdentity(
+  card: SourceLibraryCard,
+  sourceSetKeyByRevisionId: Map<string, string>,
+) {
   const range = card.sourceRange;
   if (!range) return null;
   if (range.sourceSet) return `source-set:${range.sourceSet.id}`;
+  const inferredSet = sourceSetKeyByRevisionId.get(range.sourceRevision.id);
+  if (inferredSet) return inferredSet;
   if (range.sourceRevision.mediaAsset)
     return `asset:${range.sourceRevision.mediaAsset.id}`;
   if (range.sourceRevision.externalReference)
@@ -177,7 +183,16 @@ function sourceIdentity(card: SourceLibraryCard) {
 function usageBySource(
   cards: SourceLibraryCard[],
   boards: SourceLibraryBoard[],
+  sourceSets: SourceLibrarySet[],
 ) {
+  const sourceSetKeyByRevisionId = new Map(
+    sourceSets.flatMap((sourceSet) =>
+      sourceSet.members.map(
+        (member) =>
+          [member.sourceRevision.id, `source-set:${sourceSet.id}`] as const,
+      ),
+    ),
+  );
   const boardIdsByCard = new Map<string, Set<string>>();
   for (const board of boards) {
     for (const placement of board.placements) {
@@ -192,7 +207,7 @@ function usageBySource(
     { selectCount: number; selectedCount: number; boardIds: Set<string> }
   >();
   for (const card of cards) {
-    const identity = sourceIdentity(card);
+    const identity = sourceIdentity(card, sourceSetKeyByRevisionId);
     if (!identity) continue;
     const current = usage.get(identity) ?? {
       selectCount: 0,
@@ -234,7 +249,7 @@ export function buildSourceLibraryItems(input: {
   cards: SourceLibraryCard[];
   boards: SourceLibraryBoard[];
 }) {
-  const usage = usageBySource(input.cards, input.boards);
+  const usage = usageBySource(input.cards, input.boards, input.sourceSets);
   const packagedRevisionIds = new Set(
     input.sourceSets.flatMap((sourceSet) =>
       sourceSet.members.map((member) => member.sourceRevision.id),

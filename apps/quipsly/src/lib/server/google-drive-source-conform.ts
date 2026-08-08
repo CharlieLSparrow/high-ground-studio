@@ -374,15 +374,16 @@ export async function planGoogleDriveSourceUnitConform(input: {
   const activeJobs = jobs.some((job) =>
     ["queued", "processing"].includes(job.status),
   );
-  const status = sourceSet
-    ? "render-ready"
-    : holds.length > 0
-      ? "held"
-      : allExact
-        ? "ready-to-bind"
-        : activeJobs
-          ? "preparing"
-          : "needs-preparation";
+  const status =
+    sourceSet && allExact
+      ? "render-ready"
+      : holds.length > 0
+        ? "held"
+        : allExact
+          ? "ready-to-bind"
+          : activeJobs
+            ? "preparing"
+            : "needs-preparation";
   return {
     schema: GOOGLE_DRIVE_SOURCE_CONFORM_PLAN_SCHEMA,
     sourceUnit: {

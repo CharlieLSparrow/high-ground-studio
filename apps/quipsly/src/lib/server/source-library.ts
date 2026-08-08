@@ -488,12 +488,27 @@ export async function readSourceLibraryPage(input: {
   const emittedExternal = externalSources.filter((row) =>
     emittedKeys.has(`external:${row.id}`),
   );
+  const emittedExternalIds = new Set(emittedExternal.map((row) => row.id));
+  const missingClockReferenceIds = emittedSets.flatMap((sourceSet) => {
+    const id = sourceSet.sourceClockRevision.externalReference?.id;
+    return id && !emittedExternalIds.has(id) ? [id] : [];
+  });
+  const clockExternalSources = missingClockReferenceIds.length
+    ? await input.prisma.studioExternalMediaReference.findMany({
+        where: {
+          projectId: input.projectId,
+          id: { in: missingClockReferenceIds },
+        },
+        select: externalSelect,
+      })
+    : [];
+  const projectedExternal = [...emittedExternal, ...clockExternalSources];
   const emittedAssets = assets.filter((row) =>
     emittedKeys.has(`asset:${row.id}`),
   );
   const revisionIds = [
     ...emittedSets.map((sourceSet) => sourceSet.sourceClockRevision.id),
-    ...emittedExternal.flatMap((source) =>
+    ...projectedExternal.flatMap((source) =>
       source.revisions[0]?.id ? [source.revisions[0].id] : [],
     ),
   ];
@@ -647,7 +662,7 @@ export async function readSourceLibraryPage(input: {
         },
       })),
     })),
-    externalSources: emittedExternal.map(({ revisions, ...source }) => ({
+    externalSources: projectedExternal.map(({ revisions, ...source }) => ({
       ...source,
       sizeBytes: source.sizeBytes?.toString() ?? null,
       providerCreatedAt: source.providerCreatedAt?.toISOString() ?? null,

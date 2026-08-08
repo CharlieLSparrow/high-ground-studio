@@ -126,6 +126,7 @@ describe("source library projection", () => {
       sourceRange: {
         sourceSet: { id: "set-1" },
         sourceRevision: {
+          id: "revision-lrv",
           mediaAsset: null,
           externalReference: { id: "external-lrv" },
         },
@@ -204,6 +205,33 @@ describe("source library projection", () => {
         sort: "newest",
       }).map((item) => item.id),
     ).toEqual(["drive-1"]);
+  });
+
+  it("keeps legacy clock-revision selects with the source set after provider attachment", () => {
+    const legacyCards = [
+      {
+        ...cards[0],
+        sourceRange: {
+          ...cards[0].sourceRange!,
+          sourceSet: null,
+        },
+      },
+    ];
+    const items = buildSourceLibraryItems({
+      assets: [],
+      externalSources,
+      sourceSets,
+      cards: legacyCards,
+      boards,
+    });
+
+    expect(items[0]).toMatchObject({
+      key: "source-set:set-1",
+      selectCount: 1,
+      selectedCount: 1,
+      boardCount: 1,
+      isWorking: true,
+    });
   });
 
   it("groups capture dates deterministically in UTC", () => {

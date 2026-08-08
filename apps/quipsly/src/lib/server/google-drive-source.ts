@@ -15,6 +15,7 @@ import { attachVerifiedExternalMediaSource } from "@/lib/server/external-media-s
 import { recordGoogleDriveLibraryObservation } from "@/lib/server/external-media-library";
 import { getGoogleDriveAccess } from "@/lib/server/google-drive-connection";
 import { GoogleDriveOAuthError } from "@/lib/server/google-drive-oauth";
+import { createMediaSourceSet } from "@/lib/server/source-story";
 
 type GoogleDriveFile = {
   id?: string;
@@ -781,6 +782,7 @@ async function attachGoogleDriveMediaPlanToNest(input: {
     sourceUnitId: string;
     replayed: boolean;
   }> = [];
+  const sourceSetIds = new Set<string>();
   for (const batch of input.plan.batches) {
     for (const segment of batch.segments.filter(
       (candidate) => candidate.members.length > 0,
@@ -827,6 +829,10 @@ async function attachGoogleDriveMediaPlanToNest(input: {
           createdByEmail: input.actorEmail,
         },
       });
+      const attachedSegmentMembers: Array<{
+        sourceRevisionId: string;
+        role: (typeof segment.members)[number]["role"];
+      }> = [];
       for (const member of segment.members) {
         const result = await attachVerifiedExternalMediaSource({
           prisma: input.prisma,
@@ -896,6 +902,55 @@ async function attachGoogleDriveMediaPlanToNest(input: {
           sourceUnitId: sourceUnit.id,
           replayed: result.replayed,
         });
+        attachedSegmentMembers.push({
+          sourceRevisionId: result.sourceRevisionId,
+          role: member.role,
+        });
+      }
+      const browse = attachedSegmentMembers.find(
+        (member) => member.role === "browse-proxy",
+      );
+      const browsePlan = segment.members.find(
+        (member) => member.role === "browse-proxy",
+      );
+      if (
+        segment.status === "ready-to-attach" &&
+        browse &&
+        browsePlan?.durationSeconds &&
+        browsePlan.durationSeconds > 0
+      ) {
+        const sourceSet = await createMediaSourceSet({
+          prisma: input.prisma,
+          actorUserId: input.actorUserId,
+          value: {
+            projectId: input.projectId,
+            clientRequestId: stableUuid(
+              `drive-source-set:${sourceUnit.id}:${attachedSegmentMembers
+                .map((member) => member.sourceRevisionId)
+                .sort()
+                .join(":")}`,
+            ),
+            kind: "insta360-360",
+            captureKey: segment.captureKey,
+            displayName: segment.displayName,
+            sourceClockRevisionId: browse.sourceRevisionId,
+            members: attachedSegmentMembers.map((member, ordinal) => ({
+              sourceRevisionId: member.sourceRevisionId,
+              role: member.role,
+              ordinal,
+              requiredForRender: member.role !== "browse-proxy",
+            })),
+            metadata: {
+              schema: "quipsly-google-drive-source-set-v1",
+              provider: "google-drive",
+              sourceUnitId: sourceUnit.id,
+              providerRevisionsPinned: true,
+              exactMembersVerifiedLocally: false,
+              originalRemainsInDrive: true,
+            },
+          },
+        });
+        sourceSetIds.add(sourceSet.sourceSet.id);
       }
     }
   }
@@ -904,6 +959,8 @@ async function attachGoogleDriveMediaPlanToNest(input: {
     attachedCount: attached.length,
     sourceUnitCount: new Set(attached.map((value) => value.sourceUnitId)).size,
     replayedCount: attached.filter((value) => value.replayed).length,
+    sourceSetCount: sourceSetIds.size,
+    sourceSetIds: [...sourceSetIds],
     attachments: attached.map((value) => ({
       externalFileId: value.externalFileId,
       externalReferenceId: value.referenceId,

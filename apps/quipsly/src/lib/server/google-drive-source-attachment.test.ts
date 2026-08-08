@@ -6,6 +6,7 @@ import { attachVerifiedExternalMediaSource } from "./external-media-source";
 import { getGoogleDriveAccess } from "./google-drive-connection";
 import { recordGoogleDriveLibraryObservation } from "./external-media-library";
 import { attachGoogleDriveFilesToNest } from "./google-drive-source";
+import { createMediaSourceSet } from "./source-story";
 
 jest.mock("./external-media-source", () => ({
   attachVerifiedExternalMediaSource: jest.fn(),
@@ -16,10 +17,14 @@ jest.mock("./google-drive-connection", () => ({
 jest.mock("./external-media-library", () => ({
   recordGoogleDriveLibraryObservation: jest.fn(),
 }));
+jest.mock("./source-story", () => ({
+  createMediaSourceSet: jest.fn(),
+}));
 
 const getAccess = jest.mocked(getGoogleDriveAccess);
 const attachExternal = jest.mocked(attachVerifiedExternalMediaSource);
 const recordLibrary = jest.mocked(recordGoogleDriveLibraryObservation);
+const createSourceSet = jest.mocked(createMediaSourceSet);
 
 describe("Google Drive selected-file package attachment", () => {
   const originalFetch = global.fetch;
@@ -27,6 +32,13 @@ describe("Google Drive selected-file package attachment", () => {
   afterEach(() => {
     global.fetch = originalFetch;
     jest.resetAllMocks();
+  });
+
+  beforeEach(() => {
+    createSourceSet.mockResolvedValue({
+      sourceSet: { id: "source_set_01" },
+      replayed: false,
+    } as Awaited<ReturnType<typeof createMediaSourceSet>>);
   });
 
   it("creates one source-clock unit and binds every explicitly verified package member", async () => {
@@ -59,6 +71,7 @@ describe("Google Drive selected-file package attachment", () => {
           name: "LRV_20260402_080506_01_001.lrv",
           size: "1911738680",
           md5Checksum: "b".repeat(32),
+          videoMediaMetadata: { durationMillis: "120000" },
         },
       } as const;
       const file = files[id as keyof typeof files];
@@ -120,6 +133,30 @@ describe("Google Drive selected-file package attachment", () => {
       }),
     );
     expect(attachExternal).toHaveBeenCalledTimes(2);
+    expect(createSourceSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: "user_01",
+        value: expect.objectContaining({
+          kind: "insta360-360",
+          sourceClockRevisionId: "revision_lrv_01",
+          members: expect.arrayContaining([
+            expect.objectContaining({
+              sourceRevisionId: "revision_insv_01",
+              requiredForRender: true,
+            }),
+            expect.objectContaining({
+              sourceRevisionId: "revision_lrv_01",
+              requiredForRender: false,
+            }),
+          ]),
+          metadata: expect.objectContaining({
+            providerRevisionsPinned: true,
+            exactMembersVerifiedLocally: false,
+            originalRemainsInDrive: true,
+          }),
+        }),
+      }),
+    );
     expect(recordLibrary).toHaveBeenCalledWith(
       expect.objectContaining({
         externalRootId: "drive_root_01",

@@ -350,6 +350,13 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     do {
       const page = await readSourceLibraryPage({ prisma, projectId, limit: 1, cursor });
       keys.push(...page.orderedKeys);
+      if (page.orderedKeys.includes(`source-set:${spatialSourceSetId}`)) {
+        expect(page.externalSources).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            latestSourceRevision: expect.objectContaining({ id: spatialClockRevisionId }),
+          }),
+        ]));
+      }
       cursor = page.pageInfo.nextCursor;
       if (keys.length > 20) throw new Error("The mixed source cursor did not converge.");
     } while (cursor);

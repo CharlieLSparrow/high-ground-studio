@@ -174,4 +174,32 @@ describe("Google Drive source package conform planning", () => {
       sourceSet: { id: "source_set_12345678", completeness: "complete" },
     });
   });
+
+  it("keeps an attached provider package browse-first until every exact member is local", async () => {
+    const source = sourceUnit({ durationSeconds: 60 });
+    const plan = await planGoogleDriveSourceUnitConform({
+      prisma: prismaFixture({
+        source,
+        sourceSets: [
+          {
+            id: "source_set_12345678",
+            identitySha256: "c".repeat(64),
+            completeness: "complete",
+            members: source.externalMediaReferences.map((reference) => ({
+              sourceRevisionId: reference.revisions[0]!.id,
+            })),
+          },
+        ],
+      }),
+      projectId: "project_12345678",
+      sourceUnitId: "source_unit_12345678",
+      actorUserId: "user_12345678",
+    });
+
+    expect(plan).toMatchObject({
+      status: "needs-preparation",
+      storage: { cachedBytes: "0", remainingBytes: "1100" },
+      sourceSet: { id: "source_set_12345678", completeness: "complete" },
+    });
+  });
 });
