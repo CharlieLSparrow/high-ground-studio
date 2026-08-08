@@ -449,16 +449,16 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByText(/Shift\+Click a block/i)).toBeInTheDocument();
   });
 
-  it("shows the honest render-worker boundary without queuing a fake job", async () => {
+  it("refuses to guess render authority when Advanced Studio lacks a verified Episode handoff", async () => {
     const user = userEvent.setup();
     render(<CloudEditor />);
 
     await screen.findByRole("heading", { name: /Episode Editor/i });
-    await user.click(screen.getByRole("button", { name: "Render & Export..." }));
+    await user.click(screen.getByRole("button", { name: "Review render..." }));
 
-    expect(screen.getByRole("dialog", { name: "Web rendering is not connected yet" })).toBeInTheDocument();
-    expect(screen.getByText(/Quipsly will not pretend this timeline was packaged or rendered/i)).toBeInTheDocument();
-    expect(screen.getByText("No job queued")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Open this Studio from the Episode workspace" })).toBeInTheDocument();
+    expect(screen.getByText(/has no verified Episode handoff/i)).toBeInTheDocument();
+    expect(screen.getByText("No revision guessed")).toBeInTheDocument();
     expect(screen.queryByText("Render Package Ready")).not.toBeInTheDocument();
   });
 

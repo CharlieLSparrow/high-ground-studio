@@ -65,13 +65,27 @@ or publication package.
 - The cache-disabled production Next.js build passed all 194 routes and the
   bundled media-processor build passed. The isolated 250 MB Next build output
   was removed afterward; no source or retained media was deleted.
+- After the Advanced Studio integration, 30 focused handoff, UI, contract,
+  authorization, and worker tests pass. Strict web TypeScript passes, and a
+  second cache-disabled production build emitted its build ID, standalone
+  server, static assets, 110 page modules, and 222 route modules. Its isolated
+  70 MB build directory was removed afterward.
 
 ## Next boundary
 
-Advanced Studio and final conform can now compose portable edit intent over
-ordinary camera/audio sources and local 360 reframes without pretending those
-bytes exist on every Mac. The next product slice should project the same
-authority into Advanced Studio source choice and then define explicit,
-generation-locked promotion for portable object-storage artifacts and cloud
-rendering. Google Drive remains an external source vault, not the authority for
+Advanced Studio now receives the entire freshly authenticated Episode payload
+only after its branch revision, branch fingerprint, timeline fingerprint, and
+source-projection fingerprint match the handoff. Its former generic export
+dead end is replaced by the same side-effect-free exact-source plan used by the
+Episode workspace. The playhead is frozen when the creator opens readiness;
+the plan names the Mac, source count and bytes, quality, cost, and locality.
+Only an explicit action queues the exact planned executor, and Advanced Studio
+follows the durable job through server verification to protected playback.
+
+This remains deliberately a review-render boundary. Advanced Studio states
+that unsaved experiments are not silently included and that a proof is not a
+final master. The next product slice is final conform: a generation-locked full
+source manifest, verified promotion where portable object storage is selected,
+complete output and sync validation, explicit approval, and a distinct publish
+action. Google Drive remains an external source vault, not the authority for
 mutable in-progress render outputs.

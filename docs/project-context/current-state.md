@@ -3219,3 +3219,25 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   authorization alone cannot make a local path globally readable.
 - Detailed architecture and proof:
   `docs/coordination/2026-08-08-episode-render-artifact-portability.md`.
+
+### 2026-08-08 Advanced Studio render authority
+
+- Advanced Studio now retains the authenticated Episode payload only after the
+  shared branch revision/fingerprint, canonical timeline fingerprint, and
+  canonical source-projection fingerprint all match the incoming handoff.
+- The former static `Web rendering is not connected yet` dialog is replaced by
+  the real Episode proof plan. Opening it freezes the current playhead, performs
+  a no-side-effect readiness inspection, names the executor, and shows exact
+  source count, bytes, output quality, locality, and cost boundaries.
+- An explicit render action queues only the named Mac and follows the durable
+  job through output-ready registration and protected verified playback. A
+  stale branch or absent verified handoff fails closed instead of guessing.
+- The UX calls this a review render, never a final export. It explicitly says
+  that unsaved Advanced Studio experiments are not silently included and lists
+  the remaining final-conform requirements.
+- The 30-test focused handoff/UI/server/worker set, strict web TypeScript, and a
+  cache-disabled production build pass. The build emitted a build ID,
+  standalone server, static assets, 110 page modules, and 222 route modules;
+  its isolated 70 MB output was removed afterward. The retained
+  database/browser journey remains pending because Docker Desktop's engine was
+  not responsive during this checkpoint.

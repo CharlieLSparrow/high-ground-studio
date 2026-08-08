@@ -51,7 +51,12 @@ describe("AdvancedStudioHandoffBanner", () => {
 
     expect(screen.getByText(/Checking the exact shared-edit revision/)).toBeInTheDocument();
     expect(await screen.findByText("Episode handoff verified")).toBeInTheDocument();
-    await waitFor(() => expect(onVerified).toHaveBeenCalledWith(request));
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith(expect.objectContaining({
+      request,
+      payload: expect.objectContaining({
+        selectedEpisode: { slug: "episode-9" },
+      }),
+    })));
     expect(screen.getByRole("link", { name: "Return to Episode editor" })).toHaveAttribute(
       "href",
       "/nests/high-ground-odyssey/episodes/episode-9?mode=edit&storyCard=card-curious&storyPlacement=placement-1",

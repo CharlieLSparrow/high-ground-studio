@@ -13,8 +13,14 @@ import {
 
 type HandoffState =
   | { status: "checking" }
-  | AdvancedStudioHandoffValidation
+  | { status: "verified"; request: AdvancedStudioHandoffRequest; payload: EpisodeEditDeskPayload }
+  | Exclude<AdvancedStudioHandoffValidation, { status: "verified" }>
   | { status: "error"; reason: string };
+
+export type VerifiedAdvancedStudioHandoff = {
+  request: AdvancedStudioHandoffRequest;
+  payload: EpisodeEditDeskPayload;
+};
 
 export function AdvancedStudioHandoffBanner({
   request,
@@ -25,7 +31,7 @@ export function AdvancedStudioHandoffBanner({
   request: AdvancedStudioHandoffRequest | null;
   malformed?: boolean;
   fallbackReturnHref?: string;
-  onVerified(request: AdvancedStudioHandoffRequest): void;
+  onVerified(context: VerifiedAdvancedStudioHandoff): void;
 }) {
   const [state, setState] = useState<HandoffState>({ status: "checking" });
   const deliveredRef = useRef("");
@@ -51,10 +57,14 @@ export function AdvancedStudioHandoffBanner({
               : "The canonical Episode handoff could not be checked.";
           throw new Error(reason);
         }
-        return validateAdvancedStudioHandoff(
+        const episodePayload = payload as EpisodeEditDeskPayload;
+        const validation = validateAdvancedStudioHandoff(
           request,
-          payload as EpisodeEditDeskPayload,
+          episodePayload,
         );
+        return validation.status === "verified"
+          ? { ...validation, payload: episodePayload }
+          : validation;
       })
       .then((validation) => {
         if (!controller.signal.aborted) setState(validation);
@@ -84,7 +94,7 @@ export function AdvancedStudioHandoffBanner({
     ].join(":");
     if (deliveredRef.current === key) return;
     deliveredRef.current = key;
-    onVerified(request);
+    onVerified({ request, payload: state.payload });
   }, [onVerified, request, state]);
 
   if (!request && !malformed) return null;

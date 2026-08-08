@@ -8613,3 +8613,24 @@ source upload verified` blocked `Rough cut ready for review` until complete;
   then implement explicit generation-locked promotion to portable object
   storage instead of treating local files or mutable Drive documents as
   globally durable render outputs.
+
+# 2026-08-08 checkpoint: Advanced Studio review-render authority
+
+- Replaced Advanced Studio's generic non-working export modal with the real
+  authenticated Episode proof planner and executor-local queue.
+- The Episode handoff now delivers its freshly fetched canonical payload only
+  after exact branch, timeline, and source fingerprints pass. A direct or
+  malformed Advanced Studio URL cannot guess a revision or similarly named
+  source.
+- Opening readiness freezes the playhead and creates no job. The creator sees
+  the named Mac, exact source counts and bytes, output quality, locality, and
+  cost before explicitly queueing that executor.
+- Advanced Studio follows the durable job to server-side result registration
+  and protected playback, while keeping a bright boundary between review proof,
+  unsaved Studio experiments, final master approval, and publication.
+- The 30-test focused handoff/UI/server/worker set, strict web TypeScript, and
+  a cache-disabled production build with standalone output pass. The isolated
+  70 MB build directory was removed after verification.
+- Next: define and implement the separate generation-locked full-program
+  conform contract, portable object-storage promotion, complete sync/decode
+  verification, approval receipt, and explicit publish handoff.

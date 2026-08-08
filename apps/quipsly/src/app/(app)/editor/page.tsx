@@ -39,7 +39,10 @@ import { SourceSyncEvidenceMap } from "./SourceSyncEvidenceMap";
 import { CaptureTakeMaterializationPanel } from "./CaptureTakeMaterializationPanel";
 import { CaptureSourceRecoveryPanel } from "./CaptureSourceRecoveryPanel";
 import { SourceStoryProvenanceCard } from "./SourceStoryProvenanceCard";
-import { AdvancedStudioHandoffBanner } from "./AdvancedStudioHandoffBanner";
+import {
+  AdvancedStudioHandoffBanner,
+  type VerifiedAdvancedStudioHandoff,
+} from "./AdvancedStudioHandoffBanner";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import {
   buildEpisodeArtifactPayload as buildCanonicalEpisodeArtifactPayload,
@@ -3244,11 +3247,13 @@ function CloudEditorContent() {
   const malformedAdvancedStudioHandoff =
     searchParams.get("handoff") === ADVANCED_STUDIO_HANDOFF_SCHEMA &&
     !advancedStudioHandoff;
-  const [verifiedAdvancedStudioHandoff, setVerifiedAdvancedStudioHandoff] =
-    useState<AdvancedStudioHandoffRequest | null>(null);
+  const [verifiedAdvancedStudioContext, setVerifiedAdvancedStudioContext] =
+    useState<VerifiedAdvancedStudioHandoff | null>(null);
+  const verifiedAdvancedStudioHandoff =
+    verifiedAdvancedStudioContext?.request ?? null;
   const handleVerifiedAdvancedStudioHandoff = useCallback(
-    (request: AdvancedStudioHandoffRequest) => {
-      setVerifiedAdvancedStudioHandoff(request);
+    (context: VerifiedAdvancedStudioHandoff) => {
+      setVerifiedAdvancedStudioContext(context);
     },
     [],
   );
@@ -3256,6 +3261,7 @@ function CloudEditorContent() {
   const [isAddAtPlayheadPickerOpen, setIsAddAtPlayheadPickerOpen] = useState(false);
   const [isReplaceSourcePickerOpen, setIsReplaceSourcePickerOpen] = useState(false);
   const [isExportQueueOpen, setIsExportQueueOpen] = useState(false);
+  const [renderReviewAtSeconds, setRenderReviewAtSeconds] = useState(0);
 
   // The new NLE timeline reducer
   const {
@@ -7890,10 +7896,13 @@ function CloudEditorContent() {
             Refresh DB State
           </button>
           <button
-            onClick={() => setIsExportQueueOpen(true)}
+            onClick={() => {
+              setRenderReviewAtSeconds(currentTime);
+              setIsExportQueueOpen(true);
+            }}
             className={`px-4 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm rounded-md transition-colors ${realEditingMode || !isAdvancedToolsVisible ? "hidden" : ""}`}
           >
-            Render & Export...
+            Review render...
           </button>
         </div>
       </header>
@@ -7963,7 +7972,8 @@ function CloudEditorContent() {
         totalClips={productionDiagnostics.totalClips}
         projectSlug={resolvedProjectSlug}
         episodeSlug={episodeSlug}
-        timelineState={timelineState}
+        sequenceAtSeconds={renderReviewAtSeconds}
+        verifiedHandoff={verifiedAdvancedStudioContext}
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-visible lg:min-h-0 lg:flex-row lg:overflow-hidden">
