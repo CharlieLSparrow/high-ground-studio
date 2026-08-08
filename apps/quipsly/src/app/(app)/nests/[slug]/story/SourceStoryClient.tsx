@@ -65,6 +65,12 @@ import { GoogleDriveSourcePicker } from "./GoogleDriveSourcePicker";
 import { SourceQuickSelectComposer } from "./SourceQuickSelectComposer";
 import { SourceLibraryVisualMap } from "./SourceLibraryVisualMap";
 import {
+  copySourceSelectionDraft,
+  emptySourceSelectionDraft,
+  sourceSelectionDraftFor,
+  type SourceSelectionDraft,
+} from "./source-selection-drafts";
+import {
   EquirectangularVideoViewer,
   type SpatialView,
 } from "./EquirectangularVideoViewer";
@@ -1314,6 +1320,9 @@ export function SourceStoryClient({
   initialCardId: string | null;
 }) {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
+  const sourceSelectionDraftsRef = useRef(
+    new Map<string, SourceSelectionDraft>(),
+  );
   const pendingPlaybackRef = useRef<{
     sourceKey: string;
     startSeconds: number;
@@ -1391,6 +1400,14 @@ export function SourceStoryClient({
   const [discussionCardId, setDiscussionCardId] = useState<string | null>(
     initialCardId,
   );
+
+  const selectedSourceKey = selectedAssetId
+    ? `asset:${selectedAssetId}`
+    : selectedExternalReferenceId
+      ? `external:${selectedExternalReferenceId}`
+      : selectedSourceSetId
+        ? `source-set:${selectedSourceSetId}`
+        : null;
 
   const selectedAsset =
     sourceAssets.find((asset) => asset.id === selectedAssetId) ?? null;
@@ -1973,6 +1990,58 @@ export function SourceStoryClient({
     }
   }
 
+  function currentSourceSelectionDraft(): SourceSelectionDraft {
+    return copySourceSelectionDraft({
+      inPoint,
+      outPoint,
+      title,
+      synopsis,
+      notes,
+      purpose,
+      groupKey,
+      selectedTagIds,
+      preserve360,
+      spatialView,
+      reframeKeyframes,
+      reframeAspectRatio,
+    });
+  }
+
+  function applySourceSelectionDraft(draft: SourceSelectionDraft) {
+    setInPoint(draft.inPoint);
+    setOutPoint(draft.outPoint);
+    setTitle(draft.title);
+    setSynopsis(draft.synopsis);
+    setNotes(draft.notes);
+    setPurpose(draft.purpose);
+    setGroupKey(draft.groupKey);
+    setSelectedTagIds(draft.selectedTagIds);
+    setPreserve360(draft.preserve360);
+    setSpatialView(draft.spatialView);
+    setReframeKeyframes(draft.reframeKeyframes);
+    setReframeAspectRatio(draft.reframeAspectRatio);
+  }
+
+  function moveSelectionDraftToSource(
+    targetSourceKey: string,
+    defaults: { preserve360?: boolean } = {},
+  ) {
+    if (selectedSourceKey === targetSourceKey) return;
+    if (selectedSourceKey) {
+      sourceSelectionDraftsRef.current.set(
+        selectedSourceKey,
+        currentSourceSelectionDraft(),
+      );
+    }
+    applySourceSelectionDraft(
+      sourceSelectionDraftFor(
+        sourceSelectionDraftsRef.current,
+        targetSourceKey,
+        defaults,
+      ),
+    );
+  }
+
   function chooseAsset(
     assetId: string,
     pendingPlayback: {
@@ -1981,14 +2050,13 @@ export function SourceStoryClient({
       endSeconds: number;
     } | null = null,
   ) {
+    moveSelectionDraftToSource(`asset:${assetId}`);
     pendingPlaybackRef.current = pendingPlayback;
     playbackBoundaryRef.current = null;
     mediaRef.current?.pause();
     setSelectedAssetId(assetId);
     setSelectedExternalReferenceId(null);
     setSelectedSourceSetId(null);
-    setInPoint(null);
-    setOutPoint(null);
     setPlaybackSeconds(0);
     setMessage(null);
     setError(null);
@@ -2011,14 +2079,13 @@ export function SourceStoryClient({
       endSeconds: number;
     } | null = null,
   ) {
+    moveSelectionDraftToSource(`external:${referenceId}`);
     pendingPlaybackRef.current = pendingPlayback;
     playbackBoundaryRef.current = null;
     mediaRef.current?.pause();
     setSelectedAssetId(null);
     setSelectedExternalReferenceId(referenceId);
     setSelectedSourceSetId(null);
-    setInPoint(null);
-    setOutPoint(null);
     setPlaybackSeconds(0);
     setMessage(null);
     setError(null);
@@ -2041,18 +2108,19 @@ export function SourceStoryClient({
       endSeconds: number;
     } | null = null,
   ) {
+    const sourceSet = workspace.sourceSets.find(
+      (candidate) => candidate.id === sourceSetId,
+    );
+    moveSelectionDraftToSource(`source-set:${sourceSetId}`, {
+      preserve360: sourceSet?.kind === "insta360-360",
+    });
     pendingPlaybackRef.current = pendingPlayback;
     playbackBoundaryRef.current = null;
     mediaRef.current?.pause();
     setSelectedAssetId(null);
     setSelectedExternalReferenceId(null);
     setSelectedSourceSetId(sourceSetId);
-    setInPoint(null);
-    setOutPoint(null);
     setPlaybackSeconds(0);
-    setPreserve360(true);
-    setReframeKeyframes([]);
-    setSpatialView({ panDegrees: 0, tiltDegrees: 0, fieldOfViewDegrees: 75 });
     setMessage(null);
     setError(null);
     window.history.replaceState(
@@ -2167,14 +2235,14 @@ export function SourceStoryClient({
         : "Saved an unfiled source-backed card.",
     );
     if (next) {
-      setTitle("");
-      setSynopsis("");
-      setNotes("");
-      setInPoint(null);
-      setOutPoint(null);
-      setSelectedTagIds([]);
-      setPreserve360(false);
-      setReframeKeyframes([]);
+      if (selectedSourceKey) {
+        sourceSelectionDraftsRef.current.delete(selectedSourceKey);
+      }
+      applySourceSelectionDraft(
+        emptySourceSelectionDraft({
+          preserve360: Boolean(selectedViewerSource.is360),
+        }),
+      );
     }
   }
 

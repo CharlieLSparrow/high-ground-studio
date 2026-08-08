@@ -2937,6 +2937,12 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   second I/O panel below it. Focused interaction tests, the 16-case PostgreSQL
   source-story suite, TypeScript, and the complete 194-route production build
   pass after the change.
+- Unfinished select fields are retained by canonical source key for the
+  lifetime of the open Source Room tab. Comparing another segment restores that
+  segment's own range, title, notes, purpose, tags, and 360 framing instead of
+  silently carrying metadata across originals or discarding work. The drafts
+  are intentionally memory-only: nothing is written to browser storage before
+  the creator explicitly saves the canonical card.
 - Retained HGO operation proved exact replay and unchanged input bytes. It also
   found the retained 0.34-second proxy audio to be near digital silence at
   -160 dBFS; the UI reports that limitation instead of presenting a decorative

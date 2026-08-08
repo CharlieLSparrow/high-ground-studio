@@ -79,6 +79,10 @@ export function SourceQuickSelectComposer({
             direction can be added here or refined later without changing the
             original source.
           </p>
+          <p className="mt-1 max-w-xl text-[10px] font-bold leading-4 text-[#8a653d]">
+            Unsaved fields stay with this source while you compare other clips
+            in this tab. They are not written to browser storage.
+          </p>
         </div>
         <div
           className={`rounded-2xl border px-3 py-2 text-right ${
