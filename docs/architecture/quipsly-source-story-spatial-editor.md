@@ -92,6 +92,15 @@ retried silently. Withdrawal requires an explicit confirmation in the editor;
 it removes the canonical clip while retaining the placement history, Story
 card, source range, and original package.
 
+When a board contributes more than one active clip, the Episode source bin
+also projects an editable sequence draft. Pointer users can drag; keyboard and
+switch users receive equivalent named Move earlier/later controls. The draft
+previews every destination source span but changes no canonical state until
+Apply sequence. Apply walks the reviewed order through the same reposition
+contract, carries each returned Episode fingerprint forward, skips exact
+no-ops, and stops on the first collaboration conflict. Partial success is
+reported explicitly and the remaining draft stays reviewable.
+
 ## Board sections and writing
 
 A section label cannot be the identity of a Scrivener-style binder item. `StudioStoryBoardSection` is therefore the durable board-owned section behind each placement `groupKey`. Its stable ID, board-scoped key, title, synopsis, order, revision, and optional writing document survive even when every card is moved elsewhere.

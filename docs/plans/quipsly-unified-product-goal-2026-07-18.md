@@ -8397,7 +8397,13 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   idempotent request identity, expected placement revision, exact Episode
   fingerprint, and append-only before/after receipt. No drag-only truth was
   introduced.
-- Twenty-one focused Episode UI tests, sixteen local PostgreSQL Source Story
+- Added an accessible Episode sequence composer for two or more active board
+  cards. Drag/drop and named Move earlier/later buttons change the same local
+  review draft, destination spans are visible before saving, and Apply emits
+  individual canonical reposition receipts with freshly returned fingerprints.
+  Exact no-ops are skipped; a mid-sequence collaboration conflict stops before
+  the next placement and reports the precise partial result.
+- Twenty-three focused Episode UI tests, sixteen local PostgreSQL Source Story
   integration tests, and the full Quipsly TypeScript check pass. The retained
   Episode 5 operation proved the exact eight-sample visual receipt reaches the
   board card projection, the authenticated Story/Writing/Editor surfaces

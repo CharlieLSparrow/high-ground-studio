@@ -167,6 +167,8 @@ export function EpisodeStoryBin({
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [audition, setAudition] = useState<SourceAudition | null>(null);
   const [confirmWithdrawPlacementId, setConfirmWithdrawPlacementId] = useState<string | null>(null);
+  const [reflowOrderIds, setReflowOrderIds] = useState<string[]>([]);
+  const [draggedPlacementId, setDraggedPlacementId] = useState<string | null>(null);
   const [message, setMessage] = useState("Browse retained selects without copying their originals.");
   const auditionRef = useRef<HTMLVideoElement>(null);
 
@@ -215,6 +217,8 @@ export function EpisodeStoryBin({
     auditionRef.current?.pause();
     setAudition(null);
     setConfirmWithdrawPlacementId(null);
+    setReflowOrderIds([]);
+    setDraggedPlacementId(null);
   }, [selectedBoardId]);
   const groups = useMemo(() => {
     if (!selectedBoard) return [];
@@ -259,10 +263,86 @@ export function EpisodeStoryBin({
     0,
   );
 
+  const activeBoardSequence = useMemo(() => {
+    if (!workspace) return [];
+    return groups
+      .flatMap((group) => group.placements)
+      .map((boardPlacement) => {
+        const timelinePlacement = workspace.timelinePlacements.find((candidate) => (
+          candidate.episodeProductionId === episode.id &&
+          candidate.cardId === boardPlacement.card.id &&
+          candidate.status === "active"
+        ));
+        return timelinePlacement ? { boardPlacement, timelinePlacement } : null;
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((left, right) => (
+        left.timelinePlacement.episodeStartSeconds - right.timelinePlacement.episodeStartSeconds ||
+        left.timelinePlacement.trackId.localeCompare(right.timelinePlacement.trackId) ||
+        left.boardPlacement.sortOrder - right.boardPlacement.sortOrder
+      ));
+  }, [episode.id, groups, workspace]);
+
+  const activeSequenceIdentity = activeBoardSequence
+    .map((item) => item.timelinePlacement.id)
+    .join(":");
+  useEffect(() => {
+    const activeIds = activeBoardSequence.map((item) => item.timelinePlacement.id);
+    setReflowOrderIds((current) => [
+      ...current.filter((id) => activeIds.includes(id)),
+      ...activeIds.filter((id) => !current.includes(id)),
+    ]);
+  }, [activeSequenceIdentity]);
+
+  const orderedActiveSequence = useMemo(() => {
+    const byId = new Map(activeBoardSequence.map((item) => [item.timelinePlacement.id, item]));
+    return reflowOrderIds
+      .map((id) => byId.get(id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  }, [activeBoardSequence, reflowOrderIds]);
+
+  const reflowDestinations = useMemo(() => {
+    let cursor = playhead;
+    return orderedActiveSequence.map((item) => {
+      const startSeconds = cursor;
+      cursor = Math.round((cursor + Math.max(0.05, item.timelinePlacement.durationSeconds)) * 1_000) / 1_000;
+      return { ...item, destinationStartSeconds: startSeconds, destinationEndSeconds: cursor };
+    });
+  }, [orderedActiveSequence, playhead]);
+  const reflowEndSeconds = reflowDestinations.at(-1)?.destinationEndSeconds ?? playhead;
+  const reflowDirty = reflowDestinations.some((item, index) => (
+    activeBoardSequence[index]?.timelinePlacement.id !== item.timelinePlacement.id ||
+    item.timelinePlacement.trackId !== trackId ||
+    Math.abs(item.timelinePlacement.episodeStartSeconds - item.destinationStartSeconds) >= 0.0005
+  ));
+
   function toggleSelected(cardId: string) {
     setSelectedCardIds((current) => current.includes(cardId)
       ? current.filter((candidate) => candidate !== cardId)
       : [...current, cardId]);
+  }
+
+  function moveReflowPlacement(placementId: string, destinationIndex: number) {
+    setReflowOrderIds((current) => {
+      const fromIndex = current.indexOf(placementId);
+      if (fromIndex < 0) return current;
+      const boundedIndex = Math.max(0, Math.min(current.length - 1, destinationIndex));
+      if (fromIndex === boundedIndex) return current;
+      const next = current.slice();
+      next.splice(fromIndex, 1);
+      next.splice(boundedIndex, 0, placementId);
+      return next;
+    });
+  }
+
+  function dropReflowPlacement(targetPlacementId: string) {
+    if (!draggedPlacementId || draggedPlacementId === targetPlacementId) {
+      setDraggedPlacementId(null);
+      return;
+    }
+    const destinationIndex = reflowOrderIds.indexOf(targetPlacementId);
+    if (destinationIndex >= 0) moveReflowPlacement(draggedPlacementId, destinationIndex);
+    setDraggedPlacementId(null);
   }
 
   function playAudition(next: SourceAudition) {
@@ -453,6 +533,71 @@ export function EpisodeStoryBin({
     }
   }
 
+  async function applySequenceReflow() {
+    if (!workspace || reflowDestinations.length < 2 || !reflowDirty) return;
+    let currentWorkspace = workspace;
+    let revisedCount = 0;
+    setPendingCardId("__reflow__");
+    setMessage(`Applying ${reflowDestinations.length} Story placements from ${clock(playhead)} in the reviewed order…`);
+    try {
+      for (const item of reflowDestinations) {
+        const projectedEpisode = currentWorkspace.episodes.find((candidate) => candidate.id === episode.id);
+        const currentPlacement = currentWorkspace.timelinePlacements.find((candidate) => (
+          candidate.id === item.timelinePlacement.id && candidate.status === "active"
+        ));
+        if (!projectedEpisode || !currentPlacement) {
+          throw new Error("A Story placement left the current Episode projection during reflow.");
+        }
+        if (
+          currentPlacement.trackId === trackId &&
+          Math.abs(currentPlacement.episodeStartSeconds - item.destinationStartSeconds) < 0.0005
+        ) continue;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "reposition-timeline-placement",
+            placementId: currentPlacement.id,
+            expectedRevision: currentPlacement.revision,
+            expectedTimelineFingerprint: projectedEpisode.timelineFingerprint,
+            clientRequestId: requestId(),
+            episodeStartSeconds: item.destinationStartSeconds,
+            trackId,
+          }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          const refreshWarning = revisedCount ? await refreshEditorProjection() : "";
+          await loadWorkspace(
+            `${revisedCount} placement${revisedCount === 1 ? " was" : "s were"} revised before another timeline change was detected. The rest were not moved; review the refreshed Episode before continuing.${refreshWarning}`,
+          );
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(errorMessage(body, `Could not reposition ${item.boardPlacement.card.title}.`));
+        }
+        const next = (body as { workspace?: StoryWorkspace }).workspace;
+        if (!next) throw new Error("A placement changed without a refreshed Story projection.");
+        currentWorkspace = next;
+        setWorkspace(next);
+        revisedCount += 1;
+      }
+      const refreshWarning = revisedCount ? await refreshEditorProjection() : "";
+      setMessage(
+        revisedCount
+          ? `Reflowed ${revisedCount} placement${revisedCount === 1 ? "" : "s"} onto ${trackId} from ${clock(playhead)}–${clock(reflowEndSeconds)}. Every source range and original remain unchanged.${refreshWarning}`
+          : "The Episode sequence already matches that track, playhead, and order.",
+      );
+    } catch (error) {
+      const refreshWarning = revisedCount ? await refreshEditorProjection() : "";
+      setMessage(
+        `${revisedCount ? `${revisedCount} placement${revisedCount === 1 ? " was" : "s were"} revised. ` : ""}${error instanceof Error ? error.message : "The remaining sequence could not be reflowed."}${refreshWarning}`,
+      );
+    } finally {
+      setPendingCardId(null);
+    }
+  }
+
   return (
     <section className="rounded-2xl border border-violet-700/50 bg-[#11131d] p-4" aria-labelledby="episode-story-bin-heading">
       <div className="flex items-start justify-between gap-3">
@@ -521,6 +666,62 @@ export function EpisodeStoryBin({
                   </div>
                   <p className="mt-2 text-[10px] leading-4 text-[#cabb99]">Each select receives its own reversible placement receipt. If collaboration changes the timeline, Quipsly stops before the next select and refreshes instead of guessing.</p>
                 </div>
+              ) : null}
+
+              {reflowDestinations.length > 1 ? (
+                <section className="rounded-xl border border-sky-700/60 bg-sky-950/20 p-3" aria-labelledby="episode-story-sequence-heading">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 id="episode-story-sequence-heading" className="text-sm font-black text-sky-100">Episode Story sequence</h3>
+                      <p className="mt-1 font-mono text-[10px] text-sky-200">{trackId} · {clock(playhead)}–{clock(reflowEndSeconds)} · no gaps</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!canEdit || pendingCardId !== null || !reflowDirty}
+                      onClick={() => void applySequenceReflow()}
+                      className="min-h-10 rounded-lg bg-sky-200 px-3 text-xs font-black text-sky-950 disabled:opacity-35"
+                    >
+                      {pendingCardId === "__reflow__" ? "Applying sequence…" : reflowDirty ? "Apply sequence" : "Sequence matches destination"}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[10px] leading-4 text-sky-100/75">Drag to reorder, or use Move earlier/later for the same keyboard-accessible operation. Nothing changes until Apply sequence; each changed clip then receives its own canonical reposition receipt.</p>
+                  <ol className="mt-3 space-y-2" aria-label="Story placement order">
+                    {reflowDestinations.map((item, index) => (
+                      <li
+                        key={item.timelinePlacement.id}
+                        aria-label={`Sequence item ${item.boardPlacement.card.title}`}
+                        draggable={pendingCardId === null}
+                        onDragStart={() => setDraggedPlacementId(item.timelinePlacement.id)}
+                        onDragEnd={() => setDraggedPlacementId(null)}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={() => dropReflowPlacement(item.timelinePlacement.id)}
+                        className={`flex flex-wrap items-center gap-2 rounded-lg border bg-[#07121b] p-2 ${draggedPlacementId === item.timelinePlacement.id ? "border-sky-200 opacity-60" : "border-sky-900/80"}`}
+                      >
+                        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-sky-900 font-mono text-[10px] font-black text-sky-100">{index + 1}</span>
+                        <span className="min-w-40 flex-1">
+                          <strong className="block truncate text-xs text-white">{item.boardPlacement.card.title}</strong>
+                          <span className="font-mono text-[9px] text-sky-200">{clock(item.destinationStartSeconds)}–{clock(item.destinationEndSeconds)} · {item.timelinePlacement.durationSeconds.toFixed(2)}s</span>
+                        </span>
+                        <button
+                          type="button"
+                          disabled={index === 0 || pendingCardId !== null}
+                          onClick={() => moveReflowPlacement(item.timelinePlacement.id, index - 1)}
+                          className="min-h-9 rounded-md border border-sky-800 px-2 text-[10px] font-black text-sky-100 disabled:opacity-30"
+                        >
+                          Move {item.boardPlacement.card.title} earlier
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === reflowDestinations.length - 1 || pendingCardId !== null}
+                          onClick={() => moveReflowPlacement(item.timelinePlacement.id, index + 1)}
+                          className="min-h-9 rounded-md border border-sky-800 px-2 text-[10px] font-black text-sky-100 disabled:opacity-30"
+                        >
+                          Move {item.boardPlacement.card.title} later
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
               ) : null}
 
               {selectedBoard && !selectedBoard.placements.length ? (

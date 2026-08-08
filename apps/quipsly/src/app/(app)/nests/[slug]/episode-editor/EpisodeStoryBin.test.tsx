@@ -228,6 +228,108 @@ describe("EpisodeStoryBin", () => {
     expect(screen.getByRole("button", { name: "Cue V3 · 01:42.26" })).toBeInTheDocument();
   });
 
+  it("reorders an active sequence by drag or keyboard and applies fresh reposition receipts", async () => {
+    const { bothPlaced } = sequenceFixtures();
+    const payoffMoved = {
+      ...bothPlaced,
+      episodes: [{ id: "episode-9", timelineFingerprint: "fingerprint-12" }],
+      timelinePlacements: bothPlaced.timelinePlacements.map((placement) => (
+        placement.id === "timeline-placement-2"
+          ? { ...placement, episodeStartSeconds: 42.25, revision: 2 }
+          : placement
+      )),
+    };
+    const sequenceReflowed = {
+      ...payoffMoved,
+      episodes: [{ id: "episode-9", timelineFingerprint: "fingerprint-13" }],
+      timelinePlacements: payoffMoved.timelinePlacements.map((placement) => (
+        placement.id === "timeline-placement-1"
+          ? { ...placement, episodeStartSeconds: 57.75, revision: 2 }
+          : placement
+      )),
+    };
+    const fetchMock = jest.fn()
+      .mockImplementationOnce(() => response({ ok: true, workspace: bothPlaced }))
+      .mockImplementationOnce(() => response({ ok: true, workspace: payoffMoved }))
+      .mockImplementationOnce(() => response({ ok: true, workspace: sequenceReflowed }));
+    global.fetch = fetchMock;
+    const user = userEvent.setup();
+    const { onPromoted } = renderBin();
+
+    await user.click(screen.getByRole("button", { name: "Browse" }));
+    const payoffItem = await screen.findByLabelText("Sequence item The payoff");
+    const curiousItem = screen.getByLabelText("Sequence item Be Curious");
+    expect(payoffItem).toHaveAttribute("draggable", "true");
+    expect(screen.getByRole("button", { name: "Move The payoff earlier" })).toBeEnabled();
+    fireEvent.dragStart(payoffItem);
+    fireEvent.dragOver(curiousItem);
+    fireEvent.drop(curiousItem);
+    await user.click(screen.getByRole("button", { name: "Apply sequence" }));
+
+    await waitFor(() => expect(onPromoted).toHaveBeenCalledTimes(1));
+    const payoffBody = JSON.parse((fetchMock.mock.calls[1]![1] as RequestInit).body as string);
+    const curiousBody = JSON.parse((fetchMock.mock.calls[2]![1] as RequestInit).body as string);
+    expect(payoffBody).toMatchObject({
+      action: "reposition-timeline-placement",
+      placementId: "timeline-placement-2",
+      expectedRevision: 1,
+      expectedTimelineFingerprint: "fingerprint-11",
+      episodeStartSeconds: 42.25,
+      trackId: "V3",
+    });
+    expect(curiousBody).toMatchObject({
+      action: "reposition-timeline-placement",
+      placementId: "timeline-placement-1",
+      expectedRevision: 1,
+      expectedTimelineFingerprint: "fingerprint-12",
+      episodeStartSeconds: 57.75,
+      trackId: "V3",
+    });
+    expect(screen.getByText(/Reflowed 2 placements onto V3 from 00:42.25–01:57.76/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sequence matches destination" })).toBeDisabled();
+  });
+
+  it("stops a sequence reflow after a collaboration conflict and reports partial success", async () => {
+    const { bothPlaced } = sequenceFixtures();
+    const payoffMoved = {
+      ...bothPlaced,
+      episodes: [{ id: "episode-9", timelineFingerprint: "fingerprint-12" }],
+      timelinePlacements: bothPlaced.timelinePlacements.map((placement) => (
+        placement.id === "timeline-placement-2"
+          ? { ...placement, episodeStartSeconds: 42.25, revision: 2 }
+          : placement
+      )),
+    };
+    const externallyRefreshed = {
+      ...payoffMoved,
+      episodes: [{ id: "episode-9", timelineFingerprint: "fingerprint-13" }],
+    };
+    const fetchMock = jest.fn()
+      .mockImplementationOnce(() => response({ ok: true, workspace: bothPlaced }))
+      .mockImplementationOnce(() => response({ ok: true, workspace: payoffMoved }))
+      .mockImplementationOnce(() => response({ error: "Timeline changed" }, 409))
+      .mockImplementationOnce(() => response({ ok: true, workspace: externallyRefreshed }));
+    global.fetch = fetchMock;
+    const user = userEvent.setup();
+    const { onPromoted } = renderBin();
+
+    await user.click(screen.getByRole("button", { name: "Browse" }));
+    await user.click(await screen.findByRole("button", { name: "Move The payoff earlier" }));
+    await user.click(screen.getByRole("button", { name: "Apply sequence" }));
+
+    expect(await screen.findByText(/1 placement was revised before another timeline change/i)).toBeInTheDocument();
+    expect(screen.getByText(/rest were not moved/i)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(onPromoted).toHaveBeenCalledTimes(1);
+    const conflictedBody = JSON.parse((fetchMock.mock.calls[2]![1] as RequestInit).body as string);
+    expect(conflictedBody).toMatchObject({
+      placementId: "timeline-placement-1",
+      expectedTimelineFingerprint: "fingerprint-12",
+      episodeStartSeconds: 57.75,
+    });
+    expect(screen.getByRole("button", { name: "Apply sequence" })).toBeEnabled();
+  });
+
   it("keeps partial sequence success explicit and stops after a collaboration conflict", async () => {
     const { sequenceWorkspace, firstPlaced } = sequenceFixtures();
     const refreshed = {
