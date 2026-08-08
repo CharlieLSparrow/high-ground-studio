@@ -55,6 +55,27 @@ private struct DeviceFolderPreparationRegistrationResponse: Decodable {
     let errorCode: String?
 }
 
+private struct DeviceFolderVerificationRegistrationRequest: Encodable {
+    let action = "register-device-media-verification"
+    let clientRequestId: String
+    let receipt: DeviceMediaVerificationReceipt
+}
+
+private struct DeviceFolderVerificationRegistrationResponse: Decodable {
+    struct Operation: Decodable {
+        struct SourceSet: Decodable {
+            let state: String
+            let id: String?
+            let completeness: String?
+        }
+        let sourceSet: SourceSet
+    }
+    let ok: Bool
+    let operation: Operation?
+    let error: String?
+    let errorCode: String?
+}
+
 private struct DeviceFolderFollowResponse: Decodable {
     struct Operation: Decodable {
         struct Plan: Decodable {
@@ -73,6 +94,12 @@ private struct DeviceFolderFollowResponse: Decodable {
             let proxyReadyCount: Int
             let candidates: [DeviceMediaPreparationCandidate]
         }
+        struct Verification: Decodable {
+            let totalCandidates: Int
+            let exactVerifiedCount: Int
+            let sourceSetCount: Int
+            let candidates: [DeviceMediaVerificationCandidate]
+        }
         let plan: Plan
         let attachedCount: Int
         let sourceUnitCount: Int
@@ -80,6 +107,7 @@ private struct DeviceFolderFollowResponse: Decodable {
         let exactByteVerificationPending: Bool
         let library: Library
         let preparation: Preparation
+        let verification: Verification
         let localPathWithheld: Bool
     }
 
@@ -312,11 +340,15 @@ struct DeviceMediaFolderFollowView: View {
     private var selectedNestSlug = ""
     @State private var isFollowing = false
     @State private var isPreparing = false
+    @State private var isVerifying = false
     @State private var status =
         "Follow this folder to make its 360 packages visible in Nest without uploading originals."
     @State private var lastLibraryId = ""
     @State private var preparationCandidates: [DeviceMediaPreparationCandidate] = []
     @State private var preparationProgress = 0.0
+    @State private var verificationCandidates: [DeviceMediaVerificationCandidate] = []
+    @State private var verificationProgress = 0.0
+    @State private var verificationTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -353,6 +385,28 @@ struct DeviceMediaFolderFollowView: View {
                         .foregroundStyle(.green)
                         .accessibilityLabel("Nest library observation saved")
                 }
+            }
+
+            HStack(spacing: 8) {
+                Button(isVerifying ? "Verifying…" : verificationButtonTitle) {
+                    verificationTask = Task { await verifySourceBytes() }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(
+                    isVerifying ||
+                    isPreparing ||
+                    isFollowing ||
+                    verificationCandidates.allSatisfy(\.exactBytesVerified)
+                )
+                .accessibilityIdentifier("quipsly.storage.verifySourceBytes")
+
+                if isVerifying {
+                    Button("Pause verification") {
+                        verificationTask?.cancel()
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("quipsly.storage.pauseSourceVerification")
+                }
 
                 Button(isPreparing ? "Preparing…" : preparationButtonTitle) {
                     Task { await prepareBrowseMedia() }
@@ -364,6 +418,11 @@ struct DeviceMediaFolderFollowView: View {
                     preparationCandidates.allSatisfy(\.exactReplicaReady)
                 )
                 .accessibilityIdentifier("quipsly.storage.prepareBrowseMedia")
+            }
+            if isVerifying {
+                ProgressView(value: verificationProgress)
+                    .progressViewStyle(.linear)
+                    .accessibilityLabel("Verifying source bytes")
             }
             if isPreparing {
                 ProgressView(value: preparationProgress)
@@ -379,9 +438,19 @@ struct DeviceMediaFolderFollowView: View {
         .onChange(of: accountStore.visibleProjects.map(\.slug)) { _, _ in
             chooseDefaultNestIfNeeded()
         }
+        .onDisappear { verificationTask?.cancel() }
+    }
+
+    private var verificationButtonTitle: String {
+        guard !verificationCandidates.isEmpty else { return "Verify source bytes" }
+        let remaining = verificationCandidates.filter {
+            !$0.exactBytesVerified
+        }.count
+        return remaining > 0 ? "Verify source bytes (\(remaining))" : "Source identity verified"
     }
 
     private var preparationButtonTitle: String {
+        guard !preparationCandidates.isEmpty else { return "Prepare browse media" }
         let remaining = preparationCandidates.filter { !$0.exactReplicaReady }.count
         return remaining > 0 ? "Prepare browse media (\(remaining))" : "Browse media ready"
     }
@@ -455,10 +524,123 @@ struct DeviceMediaFolderFollowView: View {
             try DeviceMediaFolderLocatorLedger.persist(scan: scan)
             lastLibraryId = operation.library.id
             preparationCandidates = operation.preparation.candidates
+            verificationCandidates = operation.verification.candidates
             status =
-                "Nest saved revision \(operation.library.revision): \(operation.plan.totalFiles) files, \(operation.plan.readySegmentCount) ready packages, \(operation.plan.heldSegmentCount) held for attention, and \(operation.attachedCount) canonical source members. \(operation.preparation.exactReplicaReadyCount) of \(operation.preparation.totalCandidates) lightweight browse files are exact locally; originals stay where they are."
+                "Nest saved revision \(operation.library.revision): \(operation.plan.totalFiles) files, \(operation.plan.readySegmentCount) ready packages, \(operation.plan.heldSegmentCount) held for attention, and \(operation.attachedCount) canonical source members. \(operation.verification.exactVerifiedCount) of \(operation.verification.totalCandidates) exact identities and \(operation.verification.sourceSetCount) camera sets are bound; \(operation.preparation.exactReplicaReadyCount) of \(operation.preparation.totalCandidates) lightweight browse files are retained locally. Originals stay where they are."
         } catch {
             status = "Could not follow this folder: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func verifySourceBytes() async {
+        guard let baseURL = accountStore.normalizedBaseURL else {
+            status = "Restore the native Quipsly account before verifying media."
+            return
+        }
+        let pending = verificationCandidates.filter { !$0.exactBytesVerified }
+        guard !pending.isEmpty else { return }
+        isVerifying = true
+        verificationProgress = 0
+        defer {
+            isVerifying = false
+            verificationTask = nil
+        }
+        do {
+            let rootURL = try externalMediaAccess.withGrantedFolderURL { $0 }
+            var boundSourceSets = Set<String>()
+            let totalCount = pending.count
+            for (index, candidate) in pending.enumerated() {
+                try Task.checkCancellation()
+                let relativeLocator = try DeviceMediaFolderLocatorLedger.relativeLocator(
+                    folderGrantId: candidate.folderGrantId,
+                    externalFileId: candidate.externalFileId
+                )
+                status =
+                    "Reading \(candidate.fileName) in place to bind an immutable SHA-256 identity. Nothing is copied or uploaded…"
+                let verifier = Task.detached(priority: .userInitiated) {
+                    try await DeviceMediaVerification.verify(
+                        candidate: candidate,
+                        sourceRoot: rootURL,
+                        relativeLocator: relativeLocator
+                    ) { read, total in
+                        let fileProgress = total > 0 ? Double(read) / Double(total) : 0
+                        Task { @MainActor in
+                            verificationProgress =
+                                (Double(index) + fileProgress) / Double(totalCount)
+                        }
+                    }
+                }
+                let receipt = try await withTaskCancellationHandler {
+                    try await verifier.value
+                } onCancel: {
+                    verifier.cancel()
+                }
+                var request = URLRequest(
+                    url: baseURL.appending(
+                        path: "/api/nests/\(selectedNestSlug)/source-story"
+                    )
+                )
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONEncoder().encode(
+                    DeviceFolderVerificationRegistrationRequest(
+                        clientRequestId: UUID().uuidString.lowercased(),
+                        receipt: receipt
+                    )
+                )
+                let (data, response) = try await accountStore.authenticatedData(
+                    for: request
+                )
+                let payload = try JSONDecoder().decode(
+                    DeviceFolderVerificationRegistrationResponse.self,
+                    from: data
+                )
+                guard (200 ..< 300).contains(response.statusCode),
+                      payload.ok,
+                      let operation = payload.operation else {
+                    throw NSError(
+                        domain: "QuipslyDeviceMediaVerification",
+                        code: response.statusCode,
+                        userInfo: [NSLocalizedDescriptionKey:
+                            payload.error ?? "Nest did not accept the in-place exact-byte receipt."]
+                    )
+                }
+                if operation.sourceSet.state == "bound",
+                   let sourceSetID = operation.sourceSet.id {
+                    boundSourceSets.insert(sourceSetID)
+                }
+                if let candidateIndex = verificationCandidates.firstIndex(where: {
+                    $0.sourceRevisionId == candidate.sourceRevisionId
+                }) {
+                    let current = verificationCandidates[candidateIndex]
+                    verificationCandidates[candidateIndex] = .init(
+                        libraryId: current.libraryId,
+                        deviceId: current.deviceId,
+                        folderGrantId: current.folderGrantId,
+                        sourceUnitId: current.sourceUnitId,
+                        externalFileId: current.externalFileId,
+                        externalReferenceId: current.externalReferenceId,
+                        sourceRevisionId: current.sourceRevisionId,
+                        observedRevisionKey: current.observedRevisionKey,
+                        expectedSizeBytes: current.expectedSizeBytes,
+                        fileName: current.fileName,
+                        captureKey: current.captureKey,
+                        capturedAt: current.capturedAt,
+                        memberRole: current.memberRole,
+                        channel: current.channel,
+                        exactBytesVerified: true
+                    )
+                }
+            }
+            verificationProgress = 1
+            status =
+                "Every selected source member now has an immutable SHA-256 identity. \(boundSourceSets.count) camera packages became complete source sets. Originals were read in place and were not copied, uploaded, renamed, or modified."
+        } catch is CancellationError {
+            status =
+                "Source verification paused. Completed checksums and source sets remain reusable; no source file was changed."
+        } catch {
+            status = "Could not verify source bytes: \(error.localizedDescription)"
         }
     }
 
@@ -541,6 +723,28 @@ struct DeviceMediaFolderFollowView: View {
                         targetLocator: current.targetLocator,
                         exactReplicaReady: true,
                         proxyReady: current.proxyReady
+                    )
+                }
+                if let verificationIndex = verificationCandidates.firstIndex(where: {
+                    $0.sourceRevisionId == candidate.sourceRevisionId
+                }) {
+                    let current = verificationCandidates[verificationIndex]
+                    verificationCandidates[verificationIndex] = .init(
+                        libraryId: current.libraryId,
+                        deviceId: current.deviceId,
+                        folderGrantId: current.folderGrantId,
+                        sourceUnitId: current.sourceUnitId,
+                        externalFileId: current.externalFileId,
+                        externalReferenceId: current.externalReferenceId,
+                        sourceRevisionId: current.sourceRevisionId,
+                        observedRevisionKey: current.observedRevisionKey,
+                        expectedSizeBytes: current.expectedSizeBytes,
+                        fileName: current.fileName,
+                        captureKey: current.captureKey,
+                        capturedAt: current.capturedAt,
+                        memberRole: current.memberRole,
+                        channel: current.channel,
+                        exactBytesVerified: true
                     )
                 }
             }

@@ -29,11 +29,16 @@ import {
 } from "@/lib/server/external-media-library";
 import { DeviceMediaFolderContractError } from "@/lib/device-media-folder-contract";
 import { DeviceMediaPreparationContractError } from "@/lib/device-media-preparation-contract";
+import { DeviceMediaVerificationContractError } from "@/lib/device-media-verification-contract";
 import { observeDeviceMediaFolderForNest } from "@/lib/server/device-media-folder";
 import {
   DeviceMediaPreparationError,
   registerDeviceMediaPreparation,
 } from "@/lib/server/device-media-preparation";
+import {
+  DeviceMediaVerificationError,
+  registerDeviceMediaVerification,
+} from "@/lib/server/device-media-verification";
 import {
   ExternalSourceProxyRequestError,
   requestExternalSourceProxy,
@@ -251,6 +256,18 @@ function errorResponse(error: unknown) {
       { status: error.status },
     );
   }
+  if (error instanceof DeviceMediaVerificationContractError) {
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: 400 },
+    );
+  }
+  if (error instanceof DeviceMediaVerificationError) {
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: error.status },
+    );
+  }
   if (error instanceof SourceStoryContractError) {
     return NextResponse.json(
       { error: error.message, errorCode: error.code },
@@ -445,6 +462,15 @@ export async function POST(
       });
     } else if (action === "register-device-media-preparation") {
       operation = await registerDeviceMediaPreparation({
+        prisma,
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        clientRequestId: text(body.clientRequestId),
+        receipt: body.receipt,
+      });
+    } else if (action === "register-device-media-verification") {
+      operation = await registerDeviceMediaVerification({
         prisma,
         projectId: actor.projectId,
         actorUserId: actor.userId,

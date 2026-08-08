@@ -24,6 +24,7 @@
 		44C9485B3342C8629EA61576 /* ShortsRecipeRepairProofPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3315ACD42976DE388399833D /* ShortsRecipeRepairProofPanel.swift */; };
 		45218FE4E79377301B9D069F /* ShortsReviewBriefPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB43B2DABEA30F30FCB92FBF /* ShortsReviewBriefPanel.swift */; };
 		46FDB464AEEFD6D987EE0FD3 /* RightSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 424FC79127149FCAD010AAAE /* RightSidebarView.swift */; };
+		48CD410A25EAD14699574B1C /* DeviceMediaVerification.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2A6CDEA8A34332305072E96 /* DeviceMediaVerification.swift */; };
 		5017CEF4F2B29AE676DC557F /* ExternalMediaAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A460FF7FBCC077EA753487B /* ExternalMediaAccess.swift */; };
 		57474812238A64135269AFB5 /* NativeTransportControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADCF44A870C4546F2BDF83D /* NativeTransportControls.swift */; };
 		580B69FFE4E356A63F3A7051 /* TimelineEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39245425D6374B5E32BFC281 /* TimelineEditorView.swift */; };
@@ -31,6 +32,7 @@
 		60E095898C3519A9223E6C0F /* AudioDetailAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31732569DB6E494F1F66872 /* AudioDetailAnalysis.swift */; };
 		667B6E758FF53AB4B3915713 /* DeviceMediaPreparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00AB9811CEE27ECC420D4DE6 /* DeviceMediaPreparation.swift */; };
 		697410343FE5BB9BCC5AB84C /* ProfessionalDecisionTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAFCF579A967784847F72C5E /* ProfessionalDecisionTimelineView.swift */; };
+		754E39BF1312CF23BF4DE57C /* DeviceMediaVerification.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2A6CDEA8A34332305072E96 /* DeviceMediaVerification.swift */; };
 		79DDF6787B938B8CFF7A41A6 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 19CB3C3C1BA8DA49B6467712 /* FirebaseAuth */; };
 		82E400A3ED5C0DB696513B8B /* QuipslyNativeAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6DB451F15CEDA1D550460AD /* QuipslyNativeAccount.swift */; };
 		8672145C65A54107AE1FCED7 /* ShortCreatorQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F41F4FA2319A5D7495CF0C /* ShortCreatorQuality.swift */; };
@@ -95,6 +97,7 @@
 		BAFCF579A967784847F72C5E /* ProfessionalDecisionTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfessionalDecisionTimelineView.swift; sourceTree = "<group>"; };
 		C133C1F743D90A328814DCAD /* ShortsTranscriptConfidencePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsTranscriptConfidencePanel.swift; sourceTree = "<group>"; };
 		C6DB451F15CEDA1D550460AD /* QuipslyNativeAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuipslyNativeAccount.swift; sourceTree = "<group>"; };
+		D2A6CDEA8A34332305072E96 /* DeviceMediaVerification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMediaVerification.swift; sourceTree = "<group>"; };
 		D31732569DB6E494F1F66872 /* AudioDetailAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDetailAnalysis.swift; sourceTree = "<group>"; };
 		D3F4B056B7835E61AB2A8BBB /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		FB43B2DABEA30F30FCB92FBF /* ShortsReviewBriefPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsReviewBriefPanel.swift; sourceTree = "<group>"; };
@@ -186,6 +189,7 @@
 				962E70862EE8723DBB2271E4 /* CaptureSourceSyncReviewSheet.swift */,
 				7056563F8515EF444201A350 /* DeviceMediaFolderFollowView.swift */,
 				00AB9811CEE27ECC420D4DE6 /* DeviceMediaPreparation.swift */,
+				D2A6CDEA8A34332305072E96 /* DeviceMediaVerification.swift */,
 				17A0747BA3E8F7658062A88E /* Episode4CutIntelligenceBoardView.swift */,
 				9A460FF7FBCC077EA753487B /* ExternalMediaAccess.swift */,
 				B58E53B06D44AC3CA4E0338F /* InspectorSidebarView.swift */,
@@ -264,6 +268,14 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					076429C1C9536643A6AC5E18 = {
+						DevelopmentTeam = 585GUXMY5M;
+						ProvisioningStyle = Automatic;
+					};
+					A7EF46111DAAEAFDFF40F73E = {
+						DevelopmentTeam = 585GUXMY5M;
+						ProvisioningStyle = Automatic;
+					};
 				};
 			};
 			buildConfigurationList = 47ADF73DCFD20C1D70DD4DFA /* Build configuration list for PBXProject "QuipslyStudio" */;
@@ -302,6 +314,7 @@
 				FF5D8CE53806ADC760CE1605 /* CaptureSourceSyncReviewSheet.swift in Sources */,
 				0082BFB9BAD2730ADF23A0AC /* DeviceMediaFolderFollowView.swift in Sources */,
 				F73B13269F0A619DDEF6F1C0 /* DeviceMediaPreparation.swift in Sources */,
+				48CD410A25EAD14699574B1C /* DeviceMediaVerification.swift in Sources */,
 				C3A5B6D5E9694674D8D7613E /* Episode4CutIntelligenceBoardView.swift in Sources */,
 				BB83C5C675E2F786C5B650BF /* EpisodeCaptureSetupView.swift in Sources */,
 				5017CEF4F2B29AE676DC557F /* ExternalMediaAccess.swift in Sources */,
@@ -334,6 +347,7 @@
 				DCA9C2C16A93A0A8F8C3807E /* CaptureSourceSyncReviewSheet.swift in Sources */,
 				B70C50B1FA30E384F507B405 /* DeviceMediaFolderFollowView.swift in Sources */,
 				667B6E758FF53AB4B3915713 /* DeviceMediaPreparation.swift in Sources */,
+				754E39BF1312CF23BF4DE57C /* DeviceMediaVerification.swift in Sources */,
 				BCEBABA86C6286052246204F /* Episode4CutIntelligenceBoardView.swift in Sources */,
 				8C0D12FB4B3F44C3DF18F2BB /* ExternalMediaAccess.swift in Sources */,
 				3E7A257B3B98B51EA06E6638 /* InspectorSidebarView.swift in Sources */,
@@ -361,7 +375,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 585GUXMY5M;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -441,7 +457,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/QuipslyMac/QuipslyMac.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = 585GUXMY5M;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Sources/QuipslyMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quipsly Studio";
@@ -470,7 +489,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/QuipslyMac/QuipslyMac.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = 585GUXMY5M;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Sources/QuipslyMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quipsly Studio";
@@ -552,7 +574,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 585GUXMY5M;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (

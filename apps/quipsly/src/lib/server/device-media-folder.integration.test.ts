@@ -7,6 +7,7 @@ import { DEVICE_MEDIA_FOLDER_OBSERVATION_SCHEMA } from "@/lib/device-media-folde
 
 import { observeDeviceMediaFolderForNest } from "./device-media-folder";
 import { registerDeviceMediaPreparation } from "./device-media-preparation";
+import { registerDeviceMediaVerification } from "./device-media-verification";
 import { listExternalMediaLibraries } from "./external-media-library";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
@@ -99,6 +100,8 @@ runDatabaseSmoke("device media folder canonical observation", () => {
 
   afterAll(async () => {
     try {
+      if (projectId)
+        await prisma.studioMediaSourceSet.deleteMany({ where: { projectId } });
       if (workspaceId)
         await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
       if (actorUserId)
@@ -137,6 +140,13 @@ runDatabaseSmoke("device media folder canonical observation", () => {
         totalCandidates: 1,
         exactReplicaReadyCount: 0,
         proxyReadyCount: 0,
+        originalBytesWillBeCopied: false,
+        localPathsWithheld: true,
+      },
+      verification: {
+        totalCandidates: 2,
+        exactVerifiedCount: 0,
+        sourceSetCount: 0,
         originalBytesWillBeCopied: false,
         localPathsWithheld: true,
       },
@@ -251,10 +261,88 @@ runDatabaseSmoke("device media folder canonical observation", () => {
         expect.objectContaining({
           id: candidate.libraryId,
           navigationHealth: expect.objectContaining({
+            eligibleMemberCount: 2,
+            exactVerifiedMemberCount: 1,
+            sourceUnitCount: 1,
+            completeSourceSetCount: 0,
             eligibleSourceCount: 1,
             retainedBrowseCount: 1,
             proxyReadyCount: 0,
             browseReadyCount: 0,
+          }),
+        }),
+      ]),
+    );
+
+    const originalCandidate = first.verification.candidates.find(
+      (item) => item.memberRole === "primary-original",
+    )!;
+    const verified = await registerDeviceMediaVerification({
+      prisma,
+      projectId,
+      actorUserId,
+      actorEmail,
+      clientRequestId: randomUUID(),
+      receipt: {
+        schema: "quipsly-device-media-verification-receipt-v1",
+        libraryId: originalCandidate.libraryId,
+        deviceId: originalCandidate.deviceId,
+        folderGrantId: originalCandidate.folderGrantId,
+        externalFileId: originalCandidate.externalFileId,
+        externalReferenceId: originalCandidate.externalReferenceId,
+        sourceRevisionId: originalCandidate.sourceRevisionId,
+        observedRevisionKey: originalCandidate.observedRevisionKey,
+        expectedSizeBytes: originalCandidate.expectedSizeBytes,
+        contentSha256: "f".repeat(64),
+        completedAt: "2026-08-08T09:05:00.000Z",
+        technical: {
+          durationSeconds: 180,
+          widthPixels: 7680,
+          heightPixels: 3840,
+          framesPerSecond: 29.97,
+        },
+        worker: {
+          executionId: `device-verify:${nonce}`,
+          buildId: "integration-test",
+        },
+      },
+    });
+    expect(verified).toMatchObject({
+      state: "verified",
+      sourceSet: { state: "bound", completeness: "complete" },
+      exactSourceVerifiedInPlace: true,
+      originalRemainsOnAuthorizedDevice: true,
+      localPathWithheld: true,
+    });
+    const [sourceSet, originalRevision, originalReplicas, verifiedLibraries] =
+      await Promise.all([
+        prisma.studioMediaSourceSet.findFirstOrThrow({
+          where: { projectId },
+          include: { members: true },
+        }),
+        prisma.studioMediaSourceRevision.findUniqueOrThrow({
+          where: { id: originalCandidate.sourceRevisionId },
+        }),
+        prisma.studioMediaSourceReplica.count({
+          where: { sourceRevisionId: originalCandidate.sourceRevisionId },
+        }),
+        listExternalMediaLibraries({ prisma, projectId, actorUserId }),
+      ]);
+    expect(sourceSet.members).toHaveLength(2);
+    expect(sourceSet.sourceClockRevisionId).toBe(candidate.sourceRevisionId);
+    expect(originalRevision.contentSha256).toBe("f".repeat(64));
+    expect(originalRevision.verificationJson).toMatchObject({
+      exactSourceVerifiedInPlace: true,
+      localPathWithheld: true,
+    });
+    expect(originalReplicas).toBe(0);
+    expect(verifiedLibraries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: candidate.libraryId,
+          navigationHealth: expect.objectContaining({
+            exactVerifiedMemberCount: 2,
+            completeSourceSetCount: 1,
           }),
         }),
       ]),

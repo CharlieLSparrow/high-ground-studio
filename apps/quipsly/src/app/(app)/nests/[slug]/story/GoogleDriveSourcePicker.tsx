@@ -462,13 +462,33 @@ function FollowedDriveLibraries({
                   </dl>
                 </>
               ) : null}
+              {library.navigationHealth?.eligibleMemberCount ? (
+                <div className="mt-3 rounded-lg border border-emerald-100 bg-white p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[9px] font-black uppercase tracking-wide text-emerald-800">
+                      Exact source identity
+                    </p>
+                    <span className="text-[10px] font-black text-emerald-950">
+                      {library.navigationHealth.exactVerifiedMemberCount} /{" "}
+                      {library.navigationHealth.eligibleMemberCount} members
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[9px] font-semibold leading-4 text-emerald-900">
+                    {library.navigationHealth.completeSourceSetCount} of{" "}
+                    {library.navigationHealth.sourceUnitCount} camera packages
+                    are bound as complete immutable source sets. Verification
+                    reads originals in place; it does not copy or upload them.
+                  </p>
+                </div>
+              ) : null}
               <p className="mt-1 text-[9px] font-semibold leading-4 text-emerald-900">
-                Nest has safe package identities and health, but no local path
-                and no permission to fetch these bytes. Open Quipsly Studio on
-                the Mac that granted this folder, choose Prepare browse media,
-                and leave it open while the local worker builds proxies, visual
-                maps, and waveforms. Full-resolution INSV originals stay where
-                they are until an explicit conform or render.
+                Nest never receives a local path and cannot fetch these bytes.
+                Open Quipsly Studio on the Mac that granted this folder: Verify
+                source bytes binds immutable package identity, while Prepare
+                browse media retains only lightweight LRV companions for
+                proxies, visual maps, and waveforms. Full-resolution INSV
+                originals stay where they are until an explicit conform or
+                render.
               </p>
               {library.navigationHealth?.remainingCount ? (
                 <p className="mt-2 rounded-lg bg-white p-2 text-[9px] font-bold leading-4 text-emerald-950">

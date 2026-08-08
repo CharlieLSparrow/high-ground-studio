@@ -108,6 +108,22 @@ export async function observeDeviceMediaFolderForNest(input: {
     capturedAt: string;
     targetLocator: string;
   }> = [];
+  const verificationCandidates: Array<{
+    libraryId?: string;
+    deviceId: string;
+    folderGrantId: string;
+    sourceUnitId: string;
+    externalFileId: string;
+    externalReferenceId: string;
+    sourceRevisionId: string;
+    observedRevisionKey: string;
+    expectedSizeBytes: string;
+    fileName: string;
+    captureKey: string;
+    capturedAt: string;
+    memberRole: "browse-proxy" | "primary-original" | "secondary-original";
+    channel: string | null;
+  }> = [];
 
   for (const batch of plan.batches) {
     for (const segment of batch.segments.filter(
@@ -215,6 +231,21 @@ export async function observeDeviceMediaFolderForNest(input: {
           sourceUnitId: sourceUnit.id,
           replayed: result.replayed,
         });
+        verificationCandidates.push({
+          deviceId: observation.deviceId,
+          folderGrantId: observation.folderGrantId,
+          sourceUnitId: sourceUnit.id,
+          externalFileId: member.id,
+          externalReferenceId: result.reference.id,
+          sourceRevisionId: result.canonicalSourceRevisionId,
+          observedRevisionKey: member.headRevisionId!,
+          expectedSizeBytes: member.sizeBytes!,
+          fileName: member.name,
+          captureKey: segment.captureKey,
+          capturedAt: segment.capturedAt,
+          memberRole: member.role,
+          channel: member.channel,
+        });
         if (member.role === "browse-proxy") {
           preparationCandidates.push({
             deviceId: observation.deviceId,
@@ -253,13 +284,14 @@ export async function observeDeviceMediaFolderForNest(input: {
   const readiness = await input.prisma.studioMediaSourceRevision.findMany({
     where: {
       id: {
-        in: preparationCandidates.map(
+        in: verificationCandidates.map(
           (candidate) => candidate.sourceRevisionId,
         ),
       },
     },
     select: {
       id: true,
+      contentSha256: true,
       replicas: {
         where: { storageProvider: "local-cache", status: "ready" },
         select: { id: true },
@@ -275,13 +307,34 @@ export async function observeDeviceMediaFolderForNest(input: {
   const readinessByRevision = new Map(
     readiness.map((revision) => [revision.id, revision]),
   );
+  const verifiedRevisionIds = verificationCandidates
+    .filter((candidate) =>
+      Boolean(
+        readinessByRevision.get(candidate.sourceRevisionId)?.contentSha256,
+      ),
+    )
+    .map((candidate) => candidate.sourceRevisionId);
+  const sourceSetCount = verifiedRevisionIds.length
+    ? await input.prisma.studioMediaSourceSet.count({
+        where: {
+          projectId: input.projectId,
+          members: {
+            some: { sourceRevisionId: { in: verifiedRevisionIds } },
+          },
+        },
+      })
+    : 0;
+  const exactVerifiedCount = verificationCandidates.filter((candidate) =>
+    Boolean(readinessByRevision.get(candidate.sourceRevisionId)?.contentSha256),
+  ).length;
   return {
     plan: publicPlan(plan),
     attachedCount: attached.length,
     sourceUnitCount: new Set(attached.map((item) => item.sourceUnitId)).size,
     replayedCount: attached.filter((item) => item.replayed).length,
-    sourceSetCount: 0,
-    exactByteVerificationPending: attached.length > 0,
+    sourceSetCount,
+    exactByteVerificationPending:
+      verificationCandidates.length > exactVerifiedCount,
     library: library.library,
     libraryReplayed: library.replayed,
     preparation: {
@@ -306,6 +359,22 @@ export async function observeDeviceMediaFolderForNest(input: {
         proxyReady: Boolean(
           readinessByRevision.get(candidate.sourceRevisionId)?.derivatives
             .length,
+        ),
+      })),
+      originalBytesWillBeCopied: false as const,
+      localPathsWithheld: true as const,
+    },
+    verification: {
+      schema: "quipsly-device-media-verification-plan-v1" as const,
+      mode: "in-place-read-only" as const,
+      totalCandidates: verificationCandidates.length,
+      exactVerifiedCount,
+      sourceSetCount,
+      candidates: verificationCandidates.map((candidate) => ({
+        ...candidate,
+        libraryId: library.library.id,
+        exactBytesVerified: Boolean(
+          readinessByRevision.get(candidate.sourceRevisionId)?.contentSha256,
         ),
       })),
       originalBytesWillBeCopied: false as const,

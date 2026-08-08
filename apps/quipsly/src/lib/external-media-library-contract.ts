@@ -9,6 +9,10 @@ export type LocalExecutorStorageProjection = {
 };
 
 export type ExternalMediaLibraryNavigationHealth = {
+  eligibleMemberCount: number;
+  exactVerifiedMemberCount: number;
+  sourceUnitCount: number;
+  completeSourceSetCount: number;
   eligibleSourceCount: number;
   retainedBrowseCount: number;
   proxyReadyCount: number;

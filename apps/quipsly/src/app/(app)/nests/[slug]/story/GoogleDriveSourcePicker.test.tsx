@@ -188,6 +188,27 @@ describe("Google Drive source picker entry", () => {
             connectedByCurrentUser: true,
             connectionId: null,
             discoveryMode: "device-folder-scan",
+            navigationHealth: {
+              eligibleMemberCount: 26,
+              exactVerifiedMemberCount: 12,
+              sourceUnitCount: 13,
+              completeSourceSetCount: 6,
+              eligibleSourceCount: 13,
+              retainedBrowseCount: 0,
+              proxyReadyCount: 0,
+              visualReadyCount: 0,
+              audioReadyCount: 0,
+              browseReadyCount: 0,
+              remainingCount: 13,
+              nextBatchCount: 0,
+              nextBatchTransferBytes: "0",
+              nextBatchFits: true,
+              nextBatchShortfallBytes: "0",
+              pendingTransferBytes: "0",
+              inventoryTruncated: false,
+              executorStorage: null,
+              captureDays: [],
+            },
           },
         ]}
         onAttached={async () => undefined}
@@ -198,7 +219,8 @@ describe("Google Drive source picker entry", () => {
       await screen.findByText("Homer Drive for desktop"),
     ).toBeInTheDocument();
     expect(screen.getByText("Mac folder")).toBeInTheDocument();
-    expect(screen.getByText(/Nest has safe package identities/i)).toBeInTheDocument();
+    expect(screen.getByText(/12 \/ 26 members/i)).toBeInTheDocument();
+    expect(screen.getByText(/6 of 13 camera packages/i)).toBeInTheDocument();
     expect(screen.getByText(/Refresh in Quipsly Studio/i)).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /prepare next/i }),
@@ -251,6 +273,10 @@ describe("Google Drive source picker entry", () => {
             connectionId: "drive-connection-1",
             discoveryMode: "selected-files",
             navigationHealth: {
+              eligibleMemberCount: 6,
+              exactVerifiedMemberCount: 2,
+              sourceUnitCount: 3,
+              completeSourceSetCount: 1,
               eligibleSourceCount: 3,
               retainedBrowseCount: 2,
               proxyReadyCount: 2,
@@ -356,6 +382,10 @@ describe("Google Drive source picker entry", () => {
             connectionState: "verified",
             connectedByCurrentUser: true,
             navigationHealth: {
+              eligibleMemberCount: 14,
+              exactVerifiedMemberCount: 8,
+              sourceUnitCount: 7,
+              completeSourceSetCount: 4,
               eligibleSourceCount: 7,
               retainedBrowseCount: 1,
               proxyReadyCount: 4,

@@ -31,6 +31,9 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         SWIFT_VERSION: "5.9"
         PRODUCT_BUNDLE_IDENTIFIER: com.highground.QuipslyMac
+        DEVELOPMENT_TEAM: 585GUXMY5M
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_ENTITLEMENTS: Sources/QuipslyMac/QuipslyMac.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: Quipsly Studio
@@ -61,4 +64,7 @@ targets:
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
         SWIFT_VERSION: "5.9"
         PRODUCT_BUNDLE_IDENTIFIER: com.highground.QuipslyiOS
+        DEVELOPMENT_TEAM: 585GUXMY5M
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
         GENERATE_INFOPLIST_FILE: YES

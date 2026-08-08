@@ -44,7 +44,10 @@ type PublicLibraryNavigationHealth = ExternalMediaLibraryNavigationHealth;
 
 type LibraryNavigationRevision = {
   id: string;
+  revisionKey: string;
+  sourceUnitId: string | null;
   identitySha256: string;
+  contentSha256: string | null;
   sizeBytes: bigint | null;
   projectionJson: unknown;
   provenanceJson: unknown;
@@ -57,6 +60,10 @@ type LibraryNavigationRevision = {
 };
 
 const EMPTY_LIBRARY_NAVIGATION_HEALTH: PublicLibraryNavigationHealth = {
+  eligibleMemberCount: 0,
+  exactVerifiedMemberCount: 0,
+  sourceUnitCount: 0,
+  completeSourceSetCount: 0,
   eligibleSourceCount: 0,
   retainedBrowseCount: 0,
   proxyReadyCount: 0,
@@ -363,7 +370,8 @@ export async function listExternalMediaLibraries(input: {
           take: 500,
           select: {
             state: true,
-            sourceUnit: { select: { capturedAt: true } },
+            observedRevisionKey: true,
+            sourceUnit: { select: { id: true, capturedAt: true } },
             externalReference: {
               select: {
                 connectionId: true,
@@ -372,7 +380,10 @@ export async function listExternalMediaLibraries(input: {
                   take: 12,
                   select: {
                     id: true,
+                    revisionKey: true,
+                    sourceUnitId: true,
                     identitySha256: true,
+                    contentSha256: true,
                     sizeBytes: true,
                     projectionJson: true,
                     provenanceJson: true,
@@ -489,6 +500,15 @@ export async function listExternalMediaLibraries(input: {
         ).map((job) => job.id)
       : [],
   );
+  const completeSourceSets = await input.prisma.studioMediaSourceSet.findMany({
+    where: { projectId: input.projectId, completeness: "complete" },
+    select: {
+      id: true,
+      members: {
+        select: { sourceRevision: { select: { sourceUnitId: true } } },
+      },
+    },
+  });
   return libraries.map((library) => {
     const candidates = candidatesByLibrary.get(library.id) ?? [];
     const states = candidates.map(({ revision, proxy, capturedAt }) => {
@@ -529,7 +549,36 @@ export async function listExternalMediaLibraries(input: {
       executorStorage,
       nextBatch.selectedTransferBytes,
     );
+    const eligibleMembers = library.items.flatMap((item) => {
+      const revision = item.externalReference?.revisions.find(
+        (candidate) =>
+          candidate.revisionKey === item.observedRevisionKey &&
+          candidate.sourceUnitId === item.sourceUnit?.id &&
+          externalMediaMemberRole(
+            jsonRecord(candidate.projectionJson).memberRole,
+          ),
+      );
+      return revision ? [revision] : [];
+    });
+    const sourceUnitIds = new Set(
+      eligibleMembers.flatMap((revision) =>
+        revision.sourceUnitId ? [revision.sourceUnitId] : [],
+      ),
+    );
+    const completeSourceSetCount = completeSourceSets.filter((sourceSet) =>
+      sourceSet.members.some(({ sourceRevision }) =>
+        sourceRevision.sourceUnitId
+          ? sourceUnitIds.has(sourceRevision.sourceUnitId)
+          : false,
+      ),
+    ).length;
     const navigationHealth: PublicLibraryNavigationHealth = {
+      eligibleMemberCount: eligibleMembers.length,
+      exactVerifiedMemberCount: eligibleMembers.filter((revision) =>
+        Boolean(revision.contentSha256),
+      ).length,
+      sourceUnitCount: sourceUnitIds.size,
+      completeSourceSetCount,
       eligibleSourceCount: candidates.length,
       retainedBrowseCount,
       proxyReadyCount,
