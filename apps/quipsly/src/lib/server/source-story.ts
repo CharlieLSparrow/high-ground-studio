@@ -3449,9 +3449,14 @@ export async function readSourceStoryWorkspace(
                   },
                 },
                 derivatives: {
-                  where: { kind: "collaboration-proxy", status: "ready" },
+                  where: {
+                    kind: {
+                      in: ["collaboration-proxy", "source-contact-sheet"],
+                    },
+                    status: "ready",
+                  },
                   orderBy: { createdAt: "desc" },
-                  take: 1,
+                  take: 4,
                   select: derivativeSelect,
                 },
               },
@@ -3904,7 +3909,14 @@ export async function readSourceStoryWorkspace(
                 }
               : null,
             collaborationProxy: publicDerivative(
-              card.sourceRange.sourceRevision.derivatives[0],
+              card.sourceRange.sourceRevision.derivatives.find(
+                (derivative) => derivative.kind === "collaboration-proxy",
+              ),
+            ),
+            visualOverview: publicDerivative(
+              card.sourceRange.sourceRevision.derivatives.find(
+                (derivative) => derivative.kind === "source-contact-sheet",
+              ),
             ),
           },
         }

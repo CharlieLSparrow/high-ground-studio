@@ -420,9 +420,16 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
     }
     if (profileName === "episode5-segment4") {
       const navigationFrames = projectedSourceSet.sourceClockRevision.visualOverview.navigationFrames;
+      const cardVisualOverview = projectedBoardPlacement?.card?.sourceRange?.sourceRevision?.visualOverview;
       const audioEvidence = projectedSourceSet.sourceClockRevision.audioNavigation.evidence;
       if (navigationFrames?.sampleTimesSeconds?.length !== 8) {
         throw new Error("The real Episode 5 visual overview did not project all eight retained source-time samples.");
+      }
+      if (
+        cardVisualOverview?.id !== projectedSourceSet.sourceClockRevision.visualOverview.id ||
+        cardVisualOverview?.navigationFrames?.sampleTimesSeconds?.length !== 8
+      ) {
+        throw new Error("The Story card did not carry its exact visual-overview receipt into the Episode source bin projection.");
       }
       if (!audioEvidence?.waveform?.length || !audioEvidence?.frequencyBands?.length) {
         throw new Error("The real Episode 5 audio navigation did not project its measured waveform and frequency bands.");
@@ -508,6 +515,7 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       boardSection: projectedBoardPlacement.groupKey,
       boardLane: projectedBoardPlacement.laneKey,
       sourceCardVisible: true,
+      sourceCardVisualOverviewReady: Boolean(projectedBoardPlacement.card.sourceRange?.sourceRevision?.visualOverview),
       timelinePlacementVisible: true,
       sourceStoryApiStatus: sourceStoryReadback.status,
       writingPageStatus: writingPage.status,

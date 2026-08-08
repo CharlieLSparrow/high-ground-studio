@@ -60,6 +60,23 @@ The `arrange-board` operation replaces one board's complete placement projection
 
 The web surface exposes both a detailed card view and a compact sectioned outline. Up/down controls remain keyboard-operable and move within a section. Section/lane changes, filing an existing card, and unfiling are explicit controls rather than drag-only interactions. A later drag surface must call the same operation and cannot introduce a second ordering truth.
 
+The canonical Episode editor now consumes the same board as a lazy visual
+source bin. Each card projects the checksum-bound contact-sheet receipt from
+its exact source revision and chooses the sample nearest the retained range
+midpoint as a compact representative frame. No new thumbnail, copied still,
+or untracked image identity is created.
+
+Creators can select several unplaced cards and add them consecutively in board
+order on one video track. The browser advances the cursor at millisecond
+precision and carries the newly returned Episode fingerprint into each next
+placement. Every card still receives its own reversible promotion receipt. If
+another collaborator changes the timeline, Quipsly stops before the next card,
+refreshes the canonical projection, reports how many placements succeeded,
+and leaves the rest selected for deliberate review. It never retries or
+repositions the remainder silently. A projection-refresh failure is also
+reported separately from placement success so a saved edit is never described
+as failed merely because the browser needs reloading.
+
 ## Board sections and writing
 
 A section label cannot be the identity of a Scrivener-style binder item. `StudioStoryBoardSection` is therefore the durable board-owned section behind each placement `groupKey`. Its stable ID, board-scoped key, title, synopsis, order, revision, and optional writing document survive even when every card is moved elsewhere.

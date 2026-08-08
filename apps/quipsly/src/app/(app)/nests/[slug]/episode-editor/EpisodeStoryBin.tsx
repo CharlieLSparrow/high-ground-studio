@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+type VisualOverview = {
+  playbackUrl: string;
+  navigationFrames: null | {
+    columns: number;
+    rows: number;
+    sampleTimesSeconds: number[];
+  };
+};
 
 type StoryCard = {
   id: string;
@@ -24,6 +33,7 @@ type StoryCard = {
         capabilityState: string;
       };
       collaborationProxy: null | { id: string };
+      visualOverview: VisualOverview | null;
       sourceState: string;
       verifiedAt: string | null;
     };
@@ -96,6 +106,38 @@ function requestId() {
     : `story-placement-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function representativeFrame(
+  overview: VisualOverview | null,
+  startSeconds: number,
+  endSeconds: number,
+) {
+  const frames = overview?.navigationFrames;
+  if (
+    !overview ||
+    !frames?.sampleTimesSeconds.length ||
+    frames.columns < 1 ||
+    frames.rows < 1
+  ) return null;
+  const midpoint = startSeconds + (endSeconds - startSeconds) / 2;
+  let index = 0;
+  frames.sampleTimesSeconds.forEach((sample, candidate) => {
+    if (
+      Math.abs(sample - midpoint) <
+      Math.abs(frames.sampleTimesSeconds[index]! - midpoint)
+    ) index = candidate;
+  });
+  const column = index % frames.columns;
+  const row = Math.floor(index / frames.columns);
+  return {
+    sampleSeconds: frames.sampleTimesSeconds[index]!,
+    style: {
+      backgroundImage: `url(${overview.playbackUrl})`,
+      backgroundSize: `${frames.columns * 100}% ${frames.rows * 100}%`,
+      backgroundPosition: `${frames.columns === 1 ? 0 : (column / (frames.columns - 1)) * 100}% ${frames.rows === 1 ? 0 : (row / (frames.rows - 1)) * 100}%`,
+    },
+  };
+}
+
 export function EpisodeStoryBin({
   projectSlug,
   episode,
@@ -110,6 +152,7 @@ export function EpisodeStoryBin({
   const [trackId, setTrackId] = useState("V3");
   const [loading, setLoading] = useState(false);
   const [pendingCardId, setPendingCardId] = useState<string | null>(null);
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [message, setMessage] = useState("Browse retained selects without copying their originals.");
 
   const endpoint = `/api/nests/${encodeURIComponent(projectSlug)}/source-story`;
@@ -142,7 +185,17 @@ export function EpisodeStoryBin({
     if (next && !workspace && !loading) await loadWorkspace();
   }
 
+  async function refreshEditorProjection() {
+    try {
+      await onPromoted();
+      return "";
+    } catch {
+      return " The placement is saved, but the editor projection did not refresh; reload before making another edit.";
+    }
+  }
+
   const selectedBoard = workspace?.boards.find((board) => board.id === selectedBoardId) ?? null;
+  useEffect(() => setSelectedCardIds([]), [selectedBoardId]);
   const groups = useMemo(() => {
     if (!selectedBoard) return [];
     const sectionKeys = new Set(selectedBoard.sections.map((section) => section.key));
@@ -163,6 +216,34 @@ export function EpisodeStoryBin({
       ? [...sectionGroups, { key: "__unsectioned", title: "Other selects", placements: unsectioned }]
       : sectionGroups;
   }, [selectedBoard]);
+
+  const selectedSequence = useMemo(() => {
+    if (!selectedBoard || !workspace) return [];
+    const active = new Set(
+      workspace.timelinePlacements
+        .filter((placement) => placement.episodeProductionId === episode.id && placement.status === "active")
+        .map((placement) => placement.cardId),
+    );
+    return groups
+      .flatMap((group) => group.placements)
+      .filter((placement) => selectedCardIds.includes(placement.cardId))
+      .filter((placement) => placement.card.sourceRange && !active.has(placement.cardId));
+  }, [episode.id, groups, selectedBoard, selectedCardIds, workspace]);
+
+  const selectedDuration = selectedSequence.reduce(
+    (total, placement) => total + Math.max(
+      0.05,
+      (placement.card.sourceRange?.endSeconds ?? 0) -
+        (placement.card.sourceRange?.startSeconds ?? 0),
+    ),
+    0,
+  );
+
+  function toggleSelected(cardId: string) {
+    setSelectedCardIds((current) => current.includes(cardId)
+      ? current.filter((candidate) => candidate !== cardId)
+      : [...current, cardId]);
+  }
 
   async function promote(board: StoryBoard, placement: StoryBoard["placements"][number]) {
     const projectedEpisode = workspace?.episodes.find((candidate) => candidate.id === episode.id);
@@ -197,10 +278,80 @@ export function EpisodeStoryBin({
       if (!response.ok) throw new Error(errorMessage(body, "The Story card could not be added."));
       const next = (body as { workspace?: StoryWorkspace }).workspace;
       if (next) setWorkspace(next);
-      await onPromoted();
-      setMessage(`Added ${placement.card.title} to ${trackId} at ${clock(playhead)}. Its original and Story card remain unchanged.`);
+      const refreshWarning = await refreshEditorProjection();
+      setMessage(`Added ${placement.card.title} to ${trackId} at ${clock(playhead)}. Its original and Story card remain unchanged.${refreshWarning}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The Story card could not be added.");
+    } finally {
+      setPendingCardId(null);
+    }
+  }
+
+  async function promoteSequence() {
+    if (!selectedBoard || !workspace || !selectedSequence.length) return;
+    let currentWorkspace = workspace;
+    let cursor = playhead;
+    const promotedIds: string[] = [];
+    setPendingCardId("__sequence__");
+    setMessage(`Adding ${selectedSequence.length} retained selects in board order…`);
+    try {
+      for (const placement of selectedSequence) {
+        const projectedEpisode = currentWorkspace.episodes.find(
+          (candidate) => candidate.id === episode.id,
+        );
+        if (!projectedEpisode) throw new Error("The Episode left the current Story projection.");
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "promote-card-to-episode",
+            episodeProductionId: episode.id,
+            cardId: placement.card.id,
+            originBoardId: selectedBoard.id,
+            originBoardPlacementId: placement.id,
+            clientRequestId: requestId(),
+            expectedTimelineFingerprint: projectedEpisode.timelineFingerprint,
+            placementMode: "at-time",
+            episodeStartSeconds: cursor,
+            trackId,
+          }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          const refreshWarning = promotedIds.length
+            ? await refreshEditorProjection()
+            : "";
+          setSelectedCardIds((current) => current.filter((id) => !promotedIds.includes(id)));
+          await loadWorkspace(
+            `${promotedIds.length} select${promotedIds.length === 1 ? " was" : "s were"} added before another timeline change was detected. The remaining sequence was not placed; review the refreshed timeline before continuing.${refreshWarning}`,
+          );
+          return;
+        }
+        if (!response.ok) throw new Error(errorMessage(body, `Could not add ${placement.card.title}.`));
+        const next = (body as { workspace?: StoryWorkspace }).workspace;
+        if (!next) throw new Error("The placement succeeded without a refreshed Story projection.");
+        currentWorkspace = next;
+        setWorkspace(next);
+        promotedIds.push(placement.card.id);
+        const range = placement.card.sourceRange!;
+        cursor = Math.round(
+          (cursor + Math.max(0.05, range.endSeconds - range.startSeconds)) *
+            1_000,
+        ) / 1_000;
+      }
+      const refreshWarning = await refreshEditorProjection();
+      setSelectedCardIds([]);
+      setMessage(
+        `Added ${promotedIds.length} selects to ${trackId} from ${clock(playhead)}–${clock(cursor)} in board order. Every original and Story card remains unchanged.${refreshWarning}`,
+      );
+    } catch (error) {
+      const refreshWarning = promotedIds.length
+        ? await refreshEditorProjection()
+        : "";
+      setSelectedCardIds((current) => current.filter((id) => !promotedIds.includes(id)));
+      setMessage(
+        `${promotedIds.length ? `${promotedIds.length} select${promotedIds.length === 1 ? " was" : "s were"} added. ` : ""}${error instanceof Error ? error.message : "The remaining sequence could not be added."}${refreshWarning}`,
+      );
     } finally {
       setPendingCardId(null);
     }
@@ -254,6 +405,28 @@ export function EpisodeStoryBin({
                 </label>
               </div>
 
+              {selectedSequence.length ? (
+                <div className="rounded-xl border border-[#d8ad56]/50 bg-[#2a2415] p-3" aria-label="Selected Story sequence">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <strong className="text-sm text-[#f2ead8]">{selectedSequence.length} selected in board order</strong>
+                      <p className="mt-1 font-mono text-[10px] text-[#d8c79d]">
+                        {trackId} · {clock(playhead)}–{clock(playhead + selectedDuration)} · no gaps
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!canEdit || pendingCardId !== null}
+                      onClick={() => void promoteSequence()}
+                      className="min-h-10 rounded-lg bg-[#d8ad56] px-3 text-xs font-black text-[#172018] disabled:opacity-40"
+                    >
+                      {pendingCardId === "__sequence__" ? "Adding sequence…" : "Add sequence"}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[10px] leading-4 text-[#cabb99]">Each select receives its own reversible placement receipt. If collaboration changes the timeline, Quipsly stops before the next select and refreshes instead of guessing.</p>
+                </div>
+              ) : null}
+
               {selectedBoard && !selectedBoard.placements.length ? (
                 <p className="rounded-xl border border-dashed border-violet-700/60 p-3 text-xs text-[#a9a6b9]">This board has no retained cards yet.</p>
               ) : null}
@@ -265,6 +438,11 @@ export function EpisodeStoryBin({
                     const card = placement.card;
                     const source = card.sourceRange;
                     const recipe = recipeKeyframes(source?.reframeRecipe);
+                    const frame = source ? representativeFrame(
+                      source.sourceRevision.visualOverview,
+                      source.startSeconds,
+                      source.endSeconds,
+                    ) : null;
                     const activePlacement = workspace.timelinePlacements.find((candidate) => (
                       candidate.episodeProductionId === episode.id
                       && candidate.cardId === card.id
@@ -276,6 +454,14 @@ export function EpisodeStoryBin({
                     else if (source?.sourceRevision.mediaAsset?.id) storyParams.set("asset", source.sourceRevision.mediaAsset.id);
                     return (
                       <article key={placement.id} id={`episode-story-card-${card.id}`} className="rounded-xl border border-violet-800/60 bg-[#090b13] p-3">
+                        {frame ? (
+                          <div
+                            role="img"
+                            aria-label={`Representative source frame for ${card.title} at ${clock(frame.sampleSeconds)}`}
+                            className="mb-3 aspect-video w-full rounded-lg border border-violet-700/50 bg-black bg-cover bg-no-repeat"
+                            style={frame.style}
+                          />
+                        ) : null}
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <strong className="block truncate text-sm text-[#f2ead8]">{card.title}</strong>
@@ -291,6 +477,19 @@ export function EpisodeStoryBin({
                           </div>
                         ) : <p className="mt-2 text-[10px] font-bold text-amber-200">No exact source range is attached.</p>}
                         <div className="mt-3 flex flex-wrap items-center gap-2">
+                          {!activePlacement && source ? (
+                            <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-violet-700/70 px-3 text-xs font-black text-violet-100">
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${card.title} for sequence`}
+                                checked={selectedCardIds.includes(card.id)}
+                                disabled={pendingCardId !== null}
+                                onChange={() => toggleSelected(card.id)}
+                                className="size-4 accent-violet-500"
+                              />
+                              Sequence
+                            </label>
+                          ) : null}
                           {activePlacement ? (
                             <button
                               type="button"

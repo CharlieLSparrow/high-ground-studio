@@ -139,6 +139,7 @@ type SourceStoryCard = {
         lastVerifiedAt: string | null;
       };
       collaborationProxy: MediaDerivative | null;
+      visualOverview: MediaDerivative | null;
     };
   };
 };

@@ -8371,3 +8371,26 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   one zero-byte observation. No files were downloaded or changed. This
   validates the ready/held/not-observed model and the need for incremental
   batch grants; it is not represented as an in-app OAuth attachment.
+
+## 2026-08-08 visual Story-to-Episode assembly checkpoint
+
+- Projected each Story card's existing checksum-bound source contact sheet into
+  the Episode source bin and show the sample nearest the retained range
+  midpoint. The UI creates no second thumbnail or copied-still authority.
+- Added keyboard-accessible multi-selection and consecutive placement in board
+  order on V1–V9. The editor previews the exact destination span before the
+  operation and retains individual cue controls after placement.
+- Sequence placement carries the returned canonical Episode fingerprint into
+  every next request and rounds cursor arithmetic to source/timeline
+  millisecond precision. A collaboration conflict stops before the next card,
+  reports partial success, refreshes, and never guesses or auto-retries.
+- Placement success and client refresh are now distinct outcomes. If the
+  projection refresh fails, Quipsly tells the creator that the edit is saved
+  and requires a reload instead of misreporting the durable placement as a
+  failure.
+- Eighteen focused Episode UI tests, sixteen local PostgreSQL Source Story
+  integration tests, and the full Quipsly TypeScript check pass. The retained
+  Episode 5 operation proved the exact eight-sample visual receipt reaches the
+  board card projection, the authenticated Story/Writing/Editor surfaces
+  return HTTP 200, protected proxy range playback works, unauthenticated media
+  returns 404, and the real INSV/LRV package remains unchanged.
