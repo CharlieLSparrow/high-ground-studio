@@ -22549,69 +22549,76 @@ struct WorkspaceView: View {
     }
 
     private var externalMediaAccessPanel: some View {
-        HStack(spacing: 12) {
-            Image(systemName: externalMediaAccess.hasExplicitFolderGrant ? "externaldrive.fill.badge.checkmark" : "externaldrive.badge.questionmark")
-                .foregroundStyle(externalMediaAccess.hasExplicitFolderGrant ? Color.green : Color.orange)
-                .font(.title3)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: externalMediaAccess.hasExplicitFolderGrant ? "externaldrive.fill.badge.checkmark" : "externaldrive.badge.questionmark")
+                    .foregroundStyle(externalMediaAccess.hasExplicitFolderGrant ? Color.green : Color.orange)
+                    .font(.title3)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("External originals access")
-                    .font(.subheadline)
-                    .bold()
-                Text(externalMediaAccess.status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                if !externalMediaAccess.rootPath.isEmpty {
-                    Text(externalMediaAccess.rootPath)
-                        .font(.caption2.monospaced())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("External originals access")
+                        .font(.subheadline)
+                        .bold()
+                    Text(externalMediaAccess.status)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 6) {
-                Text("Originals stay external. Proxies power playback.")
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-
-                HStack(spacing: 8) {
-                    #if os(macOS)
-                    Button(externalMediaAccess.rootPath.isEmpty ? "Grant folder access" : "Change folder") {
-                        isShowingExternalMediaAccessImporter = true
+                        .lineLimit(2)
+                    if !externalMediaAccess.rootPath.isEmpty {
+                        Text(externalMediaAccess.rootPath)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
-                    .buttonStyle(.bordered)
+                }
 
-                    Button("Restore") {
-                        if externalMediaAccess.restoreAccess() {
-                            resetVideoProxyValidation()
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 6) {
+                    Text("Originals stay external. Proxies power playback.")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+
+                    HStack(spacing: 8) {
+                        #if os(macOS)
+                        Button(externalMediaAccess.rootPath.isEmpty ? "Grant folder access" : "Change folder") {
+                            isShowingExternalMediaAccessImporter = true
                         }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(externalMediaAccess.rootPath.isEmpty)
-                    #endif
+                        .buttonStyle(.bordered)
 
-                    Button(isRelinkingExternalFolder ? "Matching..." : "Match lanes") {
-                        relinkExpectedMediaFromExternalFolder()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isRelinkingExternalFolder || externalMediaAccess.rootPath.isEmpty || projectStore.activeSequence == nil)
-                    .help("Relink missing or stale lanes by filename from this folder. Video lanes still play from generated proxies.")
+                        Button("Restore") {
+                            if externalMediaAccess.restoreAccess() {
+                                resetVideoProxyValidation()
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(externalMediaAccess.rootPath.isEmpty)
+                        #endif
 
-                    Button("Clear") {
-                        externalMediaAccess.clearAccess()
-                        resetVideoProxyValidation()
-                        lastMediaAction = "External media access cleared"
-                        updateAgentState()
+                        Button(isRelinkingExternalFolder ? "Matching..." : "Match lanes") {
+                            relinkExpectedMediaFromExternalFolder()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isRelinkingExternalFolder || externalMediaAccess.rootPath.isEmpty || projectStore.activeSequence == nil)
+                        .help("Relink missing or stale lanes by filename from this folder. Video lanes still play from generated proxies.")
+
+                        Button("Clear") {
+                            externalMediaAccess.clearAccess()
+                            resetVideoProxyValidation()
+                            lastMediaAction = "External media access cleared"
+                            updateAgentState()
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(externalMediaAccess.rootPath.isEmpty)
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(externalMediaAccess.rootPath.isEmpty)
                 }
             }
+
+            #if os(macOS)
+            Divider()
+            DeviceMediaFolderFollowView(accountStore: nativeAccountStore)
+            #endif
         }
         .padding(10)
         .background(.thinMaterial)

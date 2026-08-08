@@ -96,6 +96,7 @@ describe("Google Drive source picker entry", () => {
           {
             id: "library-1",
             name: "Homer 360 Library",
+            provider: "google-drive",
             status: "attention",
             revision: 2,
             totalFileCount: 30,
@@ -133,7 +134,7 @@ describe("Google Drive source picker entry", () => {
       screen.getByText(/previously seen file was not observed/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/neither mode deletes source history/i),
+      screen.getByText(/neither mode treats a missing observation/i),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/refresh rechecks only the exact files you selected/i),
@@ -147,7 +148,9 @@ describe("Google Drive source picker entry", () => {
     expect(
       screen.getByText(/10 additional held segments/i),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^refresh$/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /refresh from drive/i }),
+    ).toBeDisabled();
     expect(
       screen.queryByRole("button", { name: /authorize more 360 files/i }),
     ).not.toBeInTheDocument();
@@ -157,6 +160,55 @@ describe("Google Drive source picker entry", () => {
     expect(
       screen.getByRole("link", { name: /connect google drive/i }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps a Mac folder collaborative without offering Drive or server transfer actions", async () => {
+    global.fetch = jest.fn(async () =>
+      jsonResponse({ ok: true, pickerConfigured: true, connections: [] }),
+    ) as unknown as typeof fetch;
+    render(
+      <GoogleDriveSourcePicker
+        projectSlug="high-ground-odyssey"
+        canWrite
+        libraries={[
+          {
+            id: "device-library-1",
+            name: "Homer Drive for desktop",
+            provider: "quipsly-device-folder",
+            status: "attention",
+            revision: 4,
+            totalFileCount: 27,
+            totalSizeBytes: "355000000000",
+            readySegmentCount: 13,
+            heldSegmentCount: 6,
+            notObservedCount: 0,
+            lastCheckedAt: "2026-08-08T20:00:00.000Z",
+            canRefresh: true,
+            connectionState: "device-authorized",
+            connectedByCurrentUser: true,
+            connectionId: null,
+            discoveryMode: "device-folder-scan",
+          },
+        ]}
+        onAttached={async () => undefined}
+      />,
+    );
+
+    expect(
+      await screen.findByText("Homer Drive for desktop"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Mac folder")).toBeInTheDocument();
+    expect(screen.getByText(/Nest has safe package identities/i)).toBeInTheDocument();
+    expect(screen.getByText(/Refresh in Quipsly Studio/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /prepare next/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /plan final-quality storage/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /refresh from drive/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("gives the connection owner a direct add-to-library action", async () => {
@@ -184,6 +236,7 @@ describe("Google Drive source picker entry", () => {
           {
             id: "library-1",
             name: "Insta360",
+            provider: "google-drive",
             status: "ready",
             revision: 3,
             totalFileCount: 6,
@@ -290,6 +343,7 @@ describe("Google Drive source picker entry", () => {
           {
             id: "library-storage-pressure",
             name: "Insta360",
+            provider: "google-drive",
             status: "ready",
             revision: 3,
             totalFileCount: 14,
@@ -394,6 +448,7 @@ describe("Google Drive source picker entry", () => {
           {
             id: "library-1",
             name: "Insta360",
+            provider: "google-drive",
             status: "attention",
             revision: 3,
             totalFileCount: 30,
@@ -412,7 +467,9 @@ describe("Google Drive source picker entry", () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /^refresh$/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /refresh from drive/i }),
+    );
     expect(
       await screen.findByText(
         /32 files \(\+2\), 14 ready \(\+1\), 10 held \(-1\)/i,
@@ -513,6 +570,7 @@ describe("Google Drive source picker entry", () => {
           {
             id: "library-1",
             name: "Insta360",
+            provider: "google-drive",
             status: "attention",
             revision: 3,
             totalFileCount: 30,

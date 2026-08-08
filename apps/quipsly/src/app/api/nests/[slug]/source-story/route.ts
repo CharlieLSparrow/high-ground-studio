@@ -27,6 +27,8 @@ import {
   ExternalMediaLibraryError,
   listExternalMediaLibraries,
 } from "@/lib/server/external-media-library";
+import { DeviceMediaFolderContractError } from "@/lib/device-media-folder-contract";
+import { observeDeviceMediaFolderForNest } from "@/lib/server/device-media-folder";
 import {
   ExternalSourceProxyRequestError,
   requestExternalSourceProxy,
@@ -226,6 +228,12 @@ function errorResponse(error: unknown) {
       { status: error.status },
     );
   }
+  if (error instanceof DeviceMediaFolderContractError) {
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: 400 },
+    );
+  }
   if (error instanceof SourceStoryContractError) {
     return NextResponse.json(
       { error: error.message, errorCode: error.code },
@@ -408,6 +416,15 @@ export async function POST(
         libraryId: text(body.libraryId),
         clientRequestId: text(body.clientRequestId),
         requestUrl: request.url,
+      });
+    } else if (action === "observe-device-media-folder") {
+      operation = await observeDeviceMediaFolderForNest({
+        prisma,
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        clientRequestId: text(body.clientRequestId),
+        observation: body.observation,
       });
     } else if (action === "request-external-proxy") {
       operation = await requestExternalSourceProxy({

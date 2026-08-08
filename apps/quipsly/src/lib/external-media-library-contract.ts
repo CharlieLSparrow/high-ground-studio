@@ -34,7 +34,7 @@ export type ExternalMediaLibraryNavigationHealth = {
 export type ExternalMediaLibraryProjection = {
   id: string;
   name: string;
-  provider?: "google-drive";
+  provider?: "google-drive" | "quipsly-device-folder";
   status: string;
   revision: number;
   totalFileCount: number;
@@ -57,6 +57,6 @@ export type ExternalMediaLibraryProjection = {
   connectionId?: string | null;
   connectionState: string;
   connectedByCurrentUser: boolean;
-  discoveryMode?: "folder-scan" | "selected-files";
+  discoveryMode?: "folder-scan" | "selected-files" | "device-folder-scan";
   navigationHealth?: ExternalMediaLibraryNavigationHealth;
 };

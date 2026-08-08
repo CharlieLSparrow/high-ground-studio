@@ -8409,3 +8409,36 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   board card projection, the authenticated Story/Writing/Editor surfaces
   return HTTP 200, protected proxy range playback works, unauthenticated media
   returns 404, and the real INSV/LRV package remains unchanged.
+
+## 2026-08-08 device-folder and Drive-for-desktop bridge checkpoint
+
+- Generalized the followed external-media library projection at its actual
+  provider boundary. Google Drive and a user-authorized Mac folder now share
+  one additive, non-deleting inventory ledger instead of creating parallel
+  databases or widening Google OAuth to restricted whole-Drive access.
+- Quipsly Studio now performs a bounded, metadata-only scan beneath an explicit
+  security-scoped folder grant and can follow that library into a selected
+  writable Nest. Opaque identities, names, sizes, timestamps, and package
+  health reach Nest; absolute paths never do.
+- The native locator ledger retains only relative paths under Application
+  Support with restrictive permissions. **Follow in Nest** and **Match lanes**
+  are intentionally separate: collaboration does not silently resolve or
+  download local media.
+- Nest labels the provider **Mac folder** and suppresses Drive refresh,
+  preparation, transfer, and conform controls. Exact bytes must be prepared on
+  the granting Mac; web collaboration remains useful from metadata and later
+  proxies.
+- PostgreSQL dogfood caught and rejected an attempted metadata-only source-set
+  binding. The implementation now retains the canonical source unit/reference
+  but waits for SHA-256 or an immutable provider revision before source-set
+  creation. This keeps cheap browsing compatible with exact render provenance.
+- Read-only inspection of the supplied shared parent now sees eight capture
+  folders, 33 files, 440,033,618,057 bytes, 16 complete non-zero pairs, two
+  empty folders, one zero-byte LRV, and eight expected held segments. No media
+  was transferred or mutated. The changing inventory validates incremental,
+  in-flight observation rather than snapshot replacement.
+- Focused contract/UI tests, strict TypeScript, provider-neutral PostgreSQL
+  operation, and the signed Quipsly Studio Debug build pass. Native hands-on
+  acceptance remains one account callback click plus the explicit folder
+  grant. Detailed architecture and evidence:
+  `docs/coordination/2026-08-08-device-folder-drive-bridge.md`.

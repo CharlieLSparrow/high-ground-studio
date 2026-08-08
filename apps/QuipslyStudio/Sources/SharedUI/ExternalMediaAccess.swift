@@ -10,6 +10,7 @@ public final class ExternalMediaAccess: ObservableObject {
     private let bookmarkKey = "quipsly.nativeEditor.externalMediaRootBookmark"
     private let pathKey = "quipsly.nativeEditor.externalMediaRootPath"
     private let grantedAtKey = "quipsly.nativeEditor.externalMediaRootGrantedAt"
+    private let grantIdKey = "quipsly.nativeEditor.externalMediaRootGrantId"
 
     @Published public private(set) var rootPath: String
     @Published public private(set) var status: String
@@ -24,6 +25,11 @@ public final class ExternalMediaAccess: ObservableObject {
 
     public var protectedOriginalAccessRootPath: String? {
         hasExplicitFolderGrant ? rootPath : nil
+    }
+
+    public var folderGrantID: String? {
+        guard hasExplicitFolderGrant else { return nil }
+        return UserDefaults.standard.string(forKey: grantIdKey)
     }
 
     public init() {
@@ -67,6 +73,7 @@ public final class ExternalMediaAccess: ObservableObject {
             #endif
             UserDefaults.standard.set(folderURL.path, forKey: pathKey)
             UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: grantedAtKey)
+            UserDefaults.standard.set(UUID().uuidString.lowercased(), forKey: grantIdKey)
             activeURL = folderURL
             rootPath = folderURL.path
             hasActiveAccess = scoped || FileManager.default.isReadableFile(atPath: folderURL.path)
@@ -102,6 +109,10 @@ public final class ExternalMediaAccess: ObservableObject {
             UserDefaults.standard.set(url.path, forKey: pathKey)
             hasActiveAccess = scoped || FileManager.default.isReadableFile(atPath: url.path)
             hasExplicitProtectedOriginalAccess = hasActiveAccess && !url.path.isEmpty
+            if hasExplicitProtectedOriginalAccess,
+               UserDefaults.standard.string(forKey: grantIdKey) == nil {
+                UserDefaults.standard.set(UUID().uuidString.lowercased(), forKey: grantIdKey)
+            }
             if stale {
                 status = "External folder access restored, but the bookmark is stale. Re-grant it when convenient."
             } else {
@@ -179,6 +190,7 @@ public final class ExternalMediaAccess: ObservableObject {
         UserDefaults.standard.removeObject(forKey: bookmarkKey)
         UserDefaults.standard.removeObject(forKey: pathKey)
         UserDefaults.standard.removeObject(forKey: grantedAtKey)
+        UserDefaults.standard.removeObject(forKey: grantIdKey)
         rootPath = ""
         if Self.hasDirectFilesystemAccess {
             hasActiveAccess = true
@@ -196,6 +208,26 @@ public final class ExternalMediaAccess: ObservableObject {
         let root = URL(fileURLWithPath: rootPath, isDirectory: true).standardizedFileURL.path
         let path = url.standardizedFileURL.path
         return path == root || path.hasPrefix(root + "/")
+    }
+
+    /// Runs an explicit, user-initiated operation against the security-scoped
+    /// folder without publishing the local path to Nest or agent status.
+    public func withGrantedFolderURL<T>(
+        _ operation: (URL) throws -> T
+    ) throws -> T {
+        guard hasExplicitFolderGrant,
+              let activeURL,
+              !rootPath.isEmpty else {
+            throw NSError(
+                domain: "QuipslyExternalMediaAccess",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Grant or restore the external media folder before following it in Nest."
+                ]
+            )
+        }
+        return try operation(activeURL.standardizedFileURL)
     }
 
     public func hasReadableAccess(to url: URL) -> Bool {

@@ -273,6 +273,7 @@ function publicLibrary(
     lastCheckedAt: Date;
     lastSuccessfulRefreshAt: Date;
     createdByUserId: string;
+    provider: string;
     connectionId: string | null;
     providerLocatorJson: unknown;
     healthJson: unknown;
@@ -297,7 +298,10 @@ function publicLibrary(
   return {
     id: library.id,
     name: library.name,
-    provider: "google-drive" as const,
+    provider:
+      library.provider === "quipsly-device-folder"
+        ? ("quipsly-device-folder" as const)
+        : ("google-drive" as const),
     status: library.status,
     revision: library.revision,
     totalFileCount: library.totalFileCount,
@@ -309,19 +313,26 @@ function publicLibrary(
     lastCheckedAt: library.lastCheckedAt.toISOString(),
     lastSuccessfulRefreshAt: library.lastSuccessfulRefreshAt.toISOString(),
     canRefresh:
-      library.connection?.userId === actorUserId &&
-      library.connection.status === "verified",
+      library.provider === "quipsly-device-folder"
+        ? library.createdByUserId === actorUserId
+        : library.connection?.userId === actorUserId &&
+          library.connection.status === "verified",
     connectionId:
       library.connection?.userId === actorUserId &&
       library.connection.status === "verified"
         ? library.connectionId
         : null,
-    connectionState: library.connection?.status ?? "unavailable",
+    connectionState:
+      library.provider === "quipsly-device-folder"
+        ? "device-authorized"
+        : (library.connection?.status ?? "unavailable"),
     connectedByCurrentUser: library.createdByUserId === actorUserId,
     discoveryMode:
-      locator.mode === "selection-manifest"
-        ? ("selected-files" as const)
-        : ("folder-scan" as const),
+      library.provider === "quipsly-device-folder"
+        ? ("device-folder-scan" as const)
+        : locator.mode === "selection-manifest"
+          ? ("selected-files" as const)
+          : ("folder-scan" as const),
     navigationHealth,
   };
 }
@@ -412,6 +423,13 @@ export async function listExternalMediaLibraries(input: {
   >();
   const expectedAudioJobs = new Map<string, string>();
   for (const library of libraries) {
+    if (library.provider !== "google-drive") {
+      // A device-folder library is metadata-only in Nest. Exact bytes and
+      // proxies resolve through its originating Mac; a Cloud Run or local web
+      // executor must never estimate or begin a Google Drive transfer for it.
+      candidatesByLibrary.set(library.id, []);
+      continue;
+    }
     const seenRevisionIds = new Set<string>();
     const candidates = library.items.flatMap((item) => {
       const reference = item.externalReference;
@@ -602,29 +620,94 @@ export async function recordGoogleDriveLibraryObservation(input: {
   plan: GoogleDriveMediaLibraryPlan;
   attachments: LibraryAttachment[];
 }) {
+  return recordExternalMediaLibraryObservation({
+    ...input,
+    provider: "google-drive",
+    connectionId: input.connectionId,
+    providerLocatorJson: input.selectionManifest
+      ? ({
+          schema: "quipsly-google-drive-library-locator-v2",
+          mode: "selection-manifest",
+          resourceKey: input.resourceKey,
+          selections: [...input.selectionManifest]
+            .map((item) => ({
+              externalFileId: item.externalFileId,
+              resourceKey: item.resourceKey,
+            }))
+            .sort((left, right) =>
+              left.externalFileId.localeCompare(right.externalFileId),
+            ),
+        } satisfies Prisma.InputJsonValue)
+      : ({
+          schema: "quipsly-google-drive-library-locator-v1",
+          mode: "folder-scan",
+          resourceKey: input.resourceKey,
+        } satisfies Prisma.InputJsonValue),
+    discoveryMode: input.selectionManifest ? "selected-files" : "folder-scan",
+    connectionOwnerRequired: true,
+  });
+}
+
+export async function recordDeviceFolderLibraryObservation(input: {
+  prisma: PrismaClient;
+  projectId: string;
+  actorUserId: string;
+  actorEmail: string;
+  externalRootId: string;
+  deviceId: string;
+  folderGrantId: string;
+  clientRequestId: string;
+  plan: GoogleDriveMediaLibraryPlan;
+  attachments: LibraryAttachment[];
+}) {
+  return recordExternalMediaLibraryObservation({
+    ...input,
+    provider: "quipsly-device-folder",
+    connectionId: null,
+    sharedDriveId: null,
+    resourceKey: null,
+    providerLocatorJson: {
+      schema: "quipsly-device-folder-library-locator-v1",
+      mode: "device-folder-scan",
+      deviceId: input.deviceId,
+      folderGrantId: input.folderGrantId,
+      localPathWithheld: true,
+    },
+    discoveryMode: "device-folder-scan",
+    connectionOwnerRequired: false,
+  });
+}
+
+async function recordExternalMediaLibraryObservation(input: {
+  prisma: PrismaClient;
+  projectId: string;
+  actorUserId: string;
+  actorEmail: string;
+  provider: "google-drive" | "quipsly-device-folder";
+  connectionId: string | null;
+  externalRootId: string;
+  sharedDriveId: string | null;
+  resourceKey: string | null;
+  selectionManifest?: Array<{
+    externalFileId: string;
+    resourceKey: string | null;
+  }>;
+  discoveryEvidence?: {
+    state: "upgraded-to-folder-scan" | "retained-selection-fallback";
+    previousMode: "selected-files";
+    retainedSelectionCount: number;
+    discoveredFileCount: number;
+    reasonCode?: string;
+  };
+  providerLocatorJson: Prisma.InputJsonValue;
+  discoveryMode: "folder-scan" | "selected-files" | "device-folder-scan";
+  connectionOwnerRequired: boolean;
+  clientRequestId: string;
+  plan: GoogleDriveMediaLibraryPlan;
+  attachments: LibraryAttachment[];
+}) {
   const normalizedRequestId = requestId(input.clientRequestId);
-  const selectionManifest = input.selectionManifest
-    ? [...input.selectionManifest]
-        .map((item) => ({
-          externalFileId: item.externalFileId,
-          resourceKey: item.resourceKey,
-        }))
-        .sort((left, right) =>
-          left.externalFileId.localeCompare(right.externalFileId),
-        )
-    : null;
-  const providerLocatorJson = selectionManifest
-    ? ({
-        schema: "quipsly-google-drive-library-locator-v2",
-        mode: "selection-manifest",
-        resourceKey: input.resourceKey,
-        selections: selectionManifest,
-      } satisfies Prisma.InputJsonValue)
-    : ({
-        schema: "quipsly-google-drive-library-locator-v1",
-        mode: "folder-scan",
-        resourceKey: input.resourceKey,
-      } satisfies Prisma.InputJsonValue);
+  const providerLocatorJson = input.providerLocatorJson;
   const inventory = libraryInventory(input.plan);
   const fingerprint = sha256(
     inventory.map((item) => ({
@@ -638,6 +721,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
     schema: "quipsly-external-media-library-observation-request-v1",
     projectId: input.projectId,
     actorUserId: input.actorUserId,
+    provider: input.provider,
     connectionId: input.connectionId,
     externalRootId: input.externalRootId,
     inventoryFingerprintSha256: fingerprint,
@@ -650,16 +734,18 @@ export async function recordGoogleDriveLibraryObservation(input: {
 
   return input.prisma.$transaction(
     async (tx) => {
-      const actorConnection = await tx.studioMediaProviderConnection.findFirst({
-        where: {
-          id: input.connectionId,
-          userId: input.actorUserId,
-          provider: "google-drive",
-          status: "verified",
-        },
-        select: { id: true },
-      });
-      if (!actorConnection) {
+      const actorConnection = input.connectionOwnerRequired
+        ? await tx.studioMediaProviderConnection.findFirst({
+            where: {
+              id: input.connectionId ?? "",
+              userId: input.actorUserId,
+              provider: input.provider,
+              status: "verified",
+            },
+            select: { id: true },
+          })
+        : null;
+      if (input.connectionOwnerRequired && !actorConnection) {
         throw new ExternalMediaLibraryError(
           "The current user does not own a verified Drive connection for this library operation.",
           "library-connection-owner-required",
@@ -670,7 +756,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
         where: {
           projectId_provider_externalRootId: {
             projectId: input.projectId,
-            provider: "google-drive",
+            provider: input.provider,
             externalRootId: input.externalRootId,
           },
         },
@@ -700,7 +786,11 @@ export async function recordGoogleDriveLibraryObservation(input: {
           replayed: true,
         };
       }
-      if (existing && existing.connectionId !== input.connectionId) {
+      if (
+        existing &&
+        input.connectionOwnerRequired &&
+        existing.connectionId !== input.connectionId
+      ) {
         throw new ExternalMediaLibraryError(
           "That folder is already followed through another collaborator's Drive connection. Quipsly will not silently transfer refresh authority.",
           "library-connection-conflict",
@@ -748,7 +838,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
         unchangedCount,
         notObservedCount: notObserved.length,
         noAutomaticDeletion: true,
-        discoveryMode: selectionManifest ? "selected-files" : "folder-scan",
+        discoveryMode: input.discoveryMode,
         ...(input.discoveryEvidence
           ? { discoveryEvidence: input.discoveryEvidence }
           : {}),
@@ -779,7 +869,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
             data: {
               projectId: input.projectId,
               connectionId: input.connectionId,
-              provider: "google-drive",
+              provider: input.provider,
               externalRootId: input.externalRootId,
               sharedDriveId: input.sharedDriveId,
               name: input.plan.root.name,
@@ -862,7 +952,7 @@ export async function recordGoogleDriveLibraryObservation(input: {
             totalSizeBytes: input.plan.totalSizeBytes,
             readySegmentCount: input.plan.readySegmentCount,
             heldSegmentCount: input.plan.heldSegmentCount,
-            discoveryMode: selectionManifest ? "selected-files" : "folder-scan",
+            discoveryMode: input.discoveryMode,
             health: healthJson,
           },
         },

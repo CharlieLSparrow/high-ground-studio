@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0082BFB9BAD2730ADF23A0AC /* DeviceMediaFolderFollowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7056563F8515EF444201A350 /* DeviceMediaFolderFollowView.swift */; };
 		13AFFB028ED0F260950C1411 /* ShortsRecipeRepairProofPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3315ACD42976DE388399833D /* ShortsRecipeRepairProofPanel.swift */; };
 		150103483E1B28D556776A44 /* AgentServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A26C85B53E7F56A319EB618 /* AgentServer.swift */; };
 		2019552FF64725B1D459CA80 /* AudioRoomCommandRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EBABDDD4253CD4CC3535F7 /* AudioRoomCommandRouter.swift */; };
@@ -40,6 +41,7 @@
 		A05CBA3EE6AEF91FF5A9A6FC /* FirebaseVertexAI in Frameworks */ = {isa = PBXBuildFile; productRef = 06726C116455D611844E7EA6 /* FirebaseVertexAI */; };
 		B0B8A3A87191FF6BFDBA519A /* MacAudioRoomController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA9847F6A86C52079F4C9F1 /* MacAudioRoomController.swift */; };
 		B1ADD30CA80428D8E1800D93 /* InspectorSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B58E53B06D44AC3CA4E0338F /* InspectorSidebarView.swift */; };
+		B70C50B1FA30E384F507B405 /* DeviceMediaFolderFollowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7056563F8515EF444201A350 /* DeviceMediaFolderFollowView.swift */; };
 		B7AA63B0A029E59FDFC0460A /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = C763722EE9E903C33A75FD6E /* FirebaseFirestore */; };
 		BB83C5C675E2F786C5B650BF /* EpisodeCaptureSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 511429179AF61AC9018DB385 /* EpisodeCaptureSetupView.swift */; };
 		BCEBABA86C6286052246204F /* Episode4CutIntelligenceBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A0747BA3E8F7658062A88E /* Episode4CutIntelligenceBoardView.swift */; };
@@ -76,6 +78,7 @@
 		511429179AF61AC9018DB385 /* EpisodeCaptureSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeCaptureSetupView.swift; sourceTree = "<group>"; };
 		5ADCF44A870C4546F2BDF83D /* NativeTransportControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTransportControls.swift; sourceTree = "<group>"; };
 		6CFC18BAF1EAC8031F92AA69 /* ShortsRefinementQueuePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsRefinementQueuePanel.swift; sourceTree = "<group>"; };
+		7056563F8515EF444201A350 /* DeviceMediaFolderFollowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMediaFolderFollowView.swift; sourceTree = "<group>"; };
 		76EBABDDD4253CD4CC3535F7 /* AudioRoomCommandRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRoomCommandRouter.swift; sourceTree = "<group>"; };
 		85155FDE1F47C53C01D2DCEC /* QuipslyiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuipslyiOSApp.swift; sourceTree = "<group>"; };
 		91807D671EF7E97843DCE553 /* QuipslyMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = QuipslyMac.entitlements; sourceTree = "<group>"; };
@@ -178,6 +181,7 @@
 				D31732569DB6E494F1F66872 /* AudioDetailAnalysis.swift */,
 				76EBABDDD4253CD4CC3535F7 /* AudioRoomCommandRouter.swift */,
 				962E70862EE8723DBB2271E4 /* CaptureSourceSyncReviewSheet.swift */,
+				7056563F8515EF444201A350 /* DeviceMediaFolderFollowView.swift */,
 				17A0747BA3E8F7658062A88E /* Episode4CutIntelligenceBoardView.swift */,
 				9A460FF7FBCC077EA753487B /* ExternalMediaAccess.swift */,
 				B58E53B06D44AC3CA4E0338F /* InspectorSidebarView.swift */,
@@ -292,6 +296,7 @@
 				60E095898C3519A9223E6C0F /* AudioDetailAnalysis.swift in Sources */,
 				2019552FF64725B1D459CA80 /* AudioRoomCommandRouter.swift in Sources */,
 				FF5D8CE53806ADC760CE1605 /* CaptureSourceSyncReviewSheet.swift in Sources */,
+				0082BFB9BAD2730ADF23A0AC /* DeviceMediaFolderFollowView.swift in Sources */,
 				C3A5B6D5E9694674D8D7613E /* Episode4CutIntelligenceBoardView.swift in Sources */,
 				BB83C5C675E2F786C5B650BF /* EpisodeCaptureSetupView.swift in Sources */,
 				5017CEF4F2B29AE676DC557F /* ExternalMediaAccess.swift in Sources */,
@@ -322,6 +327,7 @@
 				D50913AD2A67213F6A589BFF /* AudioDetailAnalysis.swift in Sources */,
 				2F41D9F270FD16EBABBAA2BB /* AudioRoomCommandRouter.swift in Sources */,
 				DCA9C2C16A93A0A8F8C3807E /* CaptureSourceSyncReviewSheet.swift in Sources */,
+				B70C50B1FA30E384F507B405 /* DeviceMediaFolderFollowView.swift in Sources */,
 				BCEBABA86C6286052246204F /* Episode4CutIntelligenceBoardView.swift in Sources */,
 				8C0D12FB4B3F44C3DF18F2BB /* ExternalMediaAccess.swift in Sources */,
 				3E7A257B3B98B51EA06E6638 /* InspectorSidebarView.swift in Sources */,

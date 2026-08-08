@@ -270,18 +270,17 @@ function FollowedDriveLibraries({
   if (!libraries?.length) return null;
   return (
     <section
-      aria-label="Drive source libraries"
+      aria-label="External source libraries"
       className="mt-3 space-y-2 rounded-xl border border-teal-200 bg-white p-3"
     >
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-teal-900">
-          Drive source libraries
+          External source libraries
         </p>
         <p className="mt-1 text-[10px] font-semibold leading-4 text-[#5f684f]">
-          Folder libraries discover new or completed camera files. A
-          least-privilege selected-file library rechecks only files you
-          authorized and lets you add another batch. Neither mode deletes source
-          history from a provider listing.
+          Drive libraries and user-authorized Mac folders discover camera
+          packages without moving originals into Quipsly. Neither mode treats a
+          missing observation as permission to delete source history.
         </p>
       </div>
       {libraries.map((library) => (
@@ -310,7 +309,9 @@ function FollowedDriveLibraries({
               <span className="rounded-full border border-teal-200 bg-white px-2 py-1 text-[8px] font-black uppercase text-teal-900">
                 {library.discoveryMode === "selected-files"
                   ? "Selected files"
-                  : "Folder scan"}
+                  : library.discoveryMode === "device-folder-scan"
+                    ? "Mac folder"
+                    : "Drive folder"}
               </span>
             </div>
           </div>
@@ -326,9 +327,9 @@ function FollowedDriveLibraries({
             <>
               <p className="mt-2 text-[9px] font-semibold leading-4 text-amber-900">
                 Held packages are observed but not attached as usable Studio
-                sources. Refresh after Drive finishes syncing or missing camera
-                companions arrive; complete packages attach without disturbing
-                existing cards.
+                sources. Refresh from the owning surface after syncing finishes
+                or missing camera companions arrive; complete packages attach
+                without disturbing existing cards.
               </p>
               {library.heldSegments?.length ? (
                 <details className="mt-2 rounded-xl border border-amber-200 bg-amber-50/70 px-2">
@@ -393,7 +394,20 @@ function FollowedDriveLibraries({
               ) : null}
             </div>
           ) : null}
-          {library.navigationHealth?.eligibleSourceCount ? (
+          {library.provider === "quipsly-device-folder" ? (
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
+              <p className="text-[9px] font-black uppercase tracking-wide text-emerald-950">
+                Mac-resolved originals
+              </p>
+              <p className="mt-1 text-[9px] font-semibold leading-4 text-emerald-900">
+                Nest has safe package identities and health, but no local path
+                and no permission to fetch these bytes. Open Quipsly Studio on
+                the Mac that granted this folder to refresh it, verify exact
+                bytes, build proxies, or render. Drive for desktop may keep the
+                originals streamed until one of those explicit operations.
+              </p>
+            </div>
+          ) : library.navigationHealth?.eligibleSourceCount ? (
             <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -600,7 +614,8 @@ function FollowedDriveLibraries({
                 </button>
               </div>
             </div>
-          ) : library.connectedByCurrentUser &&
+          ) : library.provider === "google-drive" &&
+            library.connectedByCurrentUser &&
             library.readySegmentCount > 0 ? (
             <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
               <p className="text-[9px] font-black uppercase tracking-wide text-sky-950">
@@ -630,7 +645,8 @@ function FollowedDriveLibraries({
               </button>
             </div>
           ) : null}
-          {library.readySegmentCount > 0 ? (
+          {library.provider === "google-drive" &&
+          library.readySegmentCount > 0 ? (
             <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/70 p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -784,21 +800,27 @@ function FollowedDriveLibraries({
                 ? " · connected by a collaborator"
                 : ""}
             </p>
-            <button
-              type="button"
-              disabled={!canWrite || pending || !library.canRefresh}
-              onClick={() => onRefresh(library)}
-              className="flex min-h-9 shrink-0 items-center gap-1 rounded-lg border border-teal-300 bg-white px-3 text-[10px] font-black text-teal-950 disabled:opacity-50"
-            >
-              <RefreshCw
-                size={12}
-                className={pending ? "animate-spin" : ""}
-                aria-hidden="true"
-              />
-              Refresh
-            </button>
+            {library.provider === "google-drive" ? (
+              <button
+                type="button"
+                disabled={!canWrite || pending || !library.canRefresh}
+                onClick={() => onRefresh(library)}
+                className="flex min-h-9 shrink-0 items-center gap-1 rounded-lg border border-teal-300 bg-white px-3 text-[10px] font-black text-teal-950 disabled:opacity-50"
+              >
+                <RefreshCw
+                  size={12}
+                  className={pending ? "animate-spin" : ""}
+                  aria-hidden="true"
+                />
+                Refresh from Drive
+              </button>
+            ) : (
+              <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[9px] font-black text-emerald-950">
+                Refresh in Quipsly Studio
+              </span>
+            )}
           </div>
-          {!library.canRefresh ? (
+          {!library.canRefresh && library.provider === "google-drive" ? (
             <p className="mt-2 text-[9px] font-semibold leading-4 text-[#806a4d]">
               The connected account owner can refresh this library;
               collaborators can keep reviewing the existing sources.
