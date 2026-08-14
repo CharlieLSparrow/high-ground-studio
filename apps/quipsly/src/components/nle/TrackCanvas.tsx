@@ -3,9 +3,10 @@
 import React, { useRef, MouseEvent, useState, useCallback } from 'react';
 import { useTimelineStore, Clip } from './useTimelineStore';
 import { useDroppable } from '@dnd-kit/core';
+import { calculateSnap } from './snapping';
 
 export function TrackCanvas({ projectId }: { projectId: string }) {
-  const { playheadFrame, zoom, setPlayheadFrame, clips } = useTimelineStore();
+  const { playheadFrame, zoom, setPlayheadFrame, clips, clearSelection } = useTimelineStore();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
 
@@ -26,8 +27,13 @@ export function TrackCanvas({ projectId }: { projectId: string }) {
     if (!isScrubbing || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const x = Math.max(0, e.clientX - rect.left + canvasRef.current.scrollLeft);
-    setPlayheadFrame(pxToFrame(x));
-  }, [isScrubbing, zoom, setPlayheadFrame]);
+    let targetFrame = pxToFrame(x);
+    
+    // Snap playhead (pass targetFrame as playhead to ignore itself)
+    targetFrame = calculateSnap(targetFrame, clips, targetFrame, undefined, 10, zoom);
+    
+    setPlayheadFrame(targetFrame);
+  }, [isScrubbing, zoom, setPlayheadFrame, clips]);
 
   const handlePointerUp = () => {
     setIsScrubbing(false);
@@ -47,6 +53,7 @@ export function TrackCanvas({ projectId }: { projectId: string }) {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
+      onClick={() => clearSelection()}
       style={{ touchAction: 'none' }}
     >
       {/* Time Ruler */}
@@ -110,9 +117,78 @@ function TrackRow({ trackId, children }: { trackId: string; children: React.Reac
 }
 
 function ClipNode({ clip, zoom }: { clip: Clip, zoom: number }) {
+  const { updateClip, selectedClipIds, toggleClipSelection, clips, playheadFrame } = useTimelineStore();
+  const isSelected = selectedClipIds.includes(clip.id);
+
+  // Left Trim
+  const handleLeftTrimDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    const startX = e.clientX;
+    const initialStart = clip.startFrame;
+    const initialDuration = clip.durationFrames;
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const deltaPx = moveEvent.clientX - startX;
+      let deltaFrames = Math.floor(deltaPx / zoom);
+      
+      let newStart = initialStart + deltaFrames;
+      let newDuration = initialDuration - deltaFrames;
+      
+      if (newDuration < 1) {
+        newStart = initialStart + initialDuration - 1;
+        newDuration = 1;
+      }
+      
+      // Snapping
+      const snappedStart = calculateSnap(newStart, clips, playheadFrame, clip.id, 10, zoom);
+      newDuration += (newStart - snappedStart);
+      newStart = snappedStart;
+
+      updateClip(clip.id, { startFrame: Math.max(0, newStart), durationFrames: Math.max(1, newDuration) });
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  // Right Trim
+  const handleRightTrimDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    const startX = e.clientX;
+    const initialDuration = clip.durationFrames;
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const deltaPx = moveEvent.clientX - startX;
+      let deltaFrames = Math.floor(deltaPx / zoom);
+      
+      let newDuration = Math.max(1, initialDuration + deltaFrames);
+      
+      // Snapping right edge
+      const targetEnd = clip.startFrame + newDuration;
+      const snappedEnd = calculateSnap(targetEnd, clips, playheadFrame, clip.id, 10, zoom);
+      newDuration = snappedEnd - clip.startFrame;
+
+      updateClip(clip.id, { durationFrames: Math.max(1, newDuration) });
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
   return (
     <div 
-      className={`absolute top-0 bottom-0 rounded-md border border-white/20 shadow-sm overflow-hidden flex items-center px-2 cursor-grab hover:brightness-110 active:cursor-grabbing ${clip.color}`}
+      onClick={(e) => { e.stopPropagation(); toggleClipSelection(clip.id, e.metaKey || e.ctrlKey || e.shiftKey); }}
+      className={`absolute top-0 bottom-0 rounded-md border shadow-sm overflow-hidden flex items-center px-2 cursor-grab active:cursor-grabbing transition-colors ${clip.color} ${isSelected ? 'ring-2 ring-white border-transparent z-10' : 'border-white/20'}`}
       style={{
         left: clip.startFrame * zoom,
         width: clip.durationFrames * zoom,
@@ -121,6 +197,18 @@ function ClipNode({ clip, zoom }: { clip: Clip, zoom: number }) {
       <span className="text-[10px] font-medium text-white truncate pointer-events-none">
         {clip.name}
       </span>
+
+      {/* Left Trim Handle */}
+      <div 
+        onPointerDown={handleLeftTrimDown}
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/40 transition-colors"
+      />
+
+      {/* Right Trim Handle */}
+      <div 
+        onPointerDown={handleRightTrimDown}
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/40 transition-colors"
+      />
     </div>
   );
 }

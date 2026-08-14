@@ -22,12 +22,18 @@ interface TimelineState {
   zoom: number; // Pixels per frame
   isPlaying: boolean;
   clips: Clip[];
+  selectedClipIds: string[];
   
   // Actions
   setPlayheadFrame: (frame: number) => void;
   setZoom: (zoom: number) => void;
   setIsPlaying: (playing: boolean) => void;
   addClip: (clip: Clip) => void;
+  updateClip: (id: string, partial: Partial<Clip>) => void;
+  deleteClip: (id: string) => void;
+  splitClip: (id: string, frame: number) => void;
+  toggleClipSelection: (id: string, multi: boolean) => void;
+  clearSelection: () => void;
   
   // Playback loop integration
   advanceFrame: () => void;
@@ -38,6 +44,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   zoom: 10, // Default to 10px per frame
   isPlaying: false,
   clips: INITIAL_CLIPS,
+  selectedClipIds: [],
 
   setPlayheadFrame: (frame) => set({ playheadFrame: Math.max(0, frame) }),
   
@@ -46,6 +53,44 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   setIsPlaying: (playing) => set({ isPlaying: playing }),
 
   addClip: (clip) => set((state) => ({ clips: [...state.clips, clip] })),
+  
+  updateClip: (id, partial) => set((state) => ({
+    clips: state.clips.map(c => c.id === id ? { ...c, ...partial } : c)
+  })),
+
+  deleteClip: (id) => set((state) => ({
+    clips: state.clips.filter(c => c.id !== id),
+    selectedClipIds: state.selectedClipIds.filter(selectedId => selectedId !== id)
+  })),
+
+  splitClip: (id, frame) => set((state) => {
+    const clip = state.clips.find(c => c.id === id);
+    if (!clip || frame <= clip.startFrame || frame >= clip.startFrame + clip.durationFrames) return state;
+
+    const firstDuration = frame - clip.startFrame;
+    const secondDuration = clip.durationFrames - firstDuration;
+    
+    const firstClip = { ...clip, durationFrames: firstDuration };
+    const secondClip = { ...clip, id: `${clip.id}-split-${Date.now()}`, startFrame: frame, durationFrames: secondDuration, name: `${clip.name} (2)` };
+
+    return {
+      clips: [...state.clips.filter(c => c.id !== id), firstClip, secondClip]
+    };
+  }),
+
+  toggleClipSelection: (id, multi) => set((state) => {
+    if (multi) {
+      return {
+        selectedClipIds: state.selectedClipIds.includes(id) 
+          ? state.selectedClipIds.filter(s => s !== id)
+          : [...state.selectedClipIds, id]
+      };
+    } else {
+      return { selectedClipIds: [id] };
+    }
+  }),
+
+  clearSelection: () => set({ selectedClipIds: [] }),
   
   advanceFrame: () => {
     if (get().isPlaying) {

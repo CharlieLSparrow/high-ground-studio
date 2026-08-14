@@ -33,6 +33,39 @@ export function NLETimeline({ projectId }: { projectId: string }) {
     return () => cancelAnimationFrame(animationFrameId);
   }, [isPlaying, advanceFrame]);
 
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // Splitting (Cmd+B or S)
+      if ((e.metaKey && e.key.toLowerCase() === 'b') || e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        const state = useTimelineStore.getState();
+        
+        if (state.selectedClipIds.length > 0) {
+          state.selectedClipIds.forEach(id => state.splitClip(id, state.playheadFrame));
+        } else {
+          state.clips.forEach(clip => {
+            if (state.playheadFrame > clip.startFrame && state.playheadFrame < clip.startFrame + clip.durationFrames) {
+              state.splitClip(clip.id, state.playheadFrame);
+            }
+          });
+        }
+      }
+
+      // Deleting
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        const state = useTimelineStore.getState();
+        state.selectedClipIds.forEach(id => state.deleteClip(id));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleWheel = useCallback((e: React.WheelEvent) => {
     // CMD/CTRL + Scroll to zoom
     if (e.ctrlKey || e.metaKey) {
