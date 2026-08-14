@@ -10,6 +10,8 @@ export * from "./episode-render-proof.js";
 export * from "./episode-program-render.js";
 export * from "./episode-program-review.js";
 export * from "./episode-master-conform.js";
+export * from "./episode-master-promotion.js";
+export * from "./episode-delivery-package.js";
 export * from "./spatial-render.js";
 export * from "./external-source-proxy.js";
 export * from "./source-visual-overview.js";

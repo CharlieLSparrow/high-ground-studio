@@ -1,18 +1,11 @@
 'use client';
 
 import React, { useRef, MouseEvent, useState, useCallback } from 'react';
-import { useTimelineStore } from './useTimelineStore';
-
-const MOCK_CLIPS = [
-  { id: 'c1', trackId: 't1', name: 'Intro_Shot_01.mp4', startFrame: 30, durationFrames: 120, color: 'bg-blue-600' },
-  { id: 'c2', trackId: 't1', name: 'B_Roll_Park.mp4', startFrame: 160, durationFrames: 240, color: 'bg-blue-700' },
-  { id: 'c3', trackId: 't2', name: 'Logo_Overlay.png', startFrame: 60, durationFrames: 60, color: 'bg-purple-600' },
-  { id: 'c4', trackId: 't3', name: 'SFX_Whoosh.wav', startFrame: 55, durationFrames: 30, color: 'bg-emerald-600' },
-  { id: 'c5', trackId: 't3', name: 'Background_Music.wav', startFrame: 0, durationFrames: 1000, color: 'bg-emerald-700' },
-];
+import { useTimelineStore, Clip } from './useTimelineStore';
+import { useDroppable } from '@dnd-kit/core';
 
 export function TrackCanvas({ projectId }: { projectId: string }) {
-  const { playheadFrame, zoom, setPlayheadFrame } = useTimelineStore();
+  const { playheadFrame, zoom, setPlayheadFrame, clips } = useTimelineStore();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
 
@@ -76,24 +69,13 @@ export function TrackCanvas({ projectId }: { projectId: string }) {
       <div className="absolute top-8 bottom-0 w-full" style={gridBackground}>
         {/* Tracks Container */}
         <div className="flex flex-col py-2 gap-1 px-2 relative z-0 pointer-events-none">
-          {/* T1 */}
-          <div className="h-24 relative pointer-events-auto">
-            {MOCK_CLIPS.filter(c => c.trackId === 't1').map(clip => (
-              <ClipNode key={clip.id} clip={clip} zoom={zoom} />
-            ))}
-          </div>
-          {/* T2 */}
-          <div className="h-24 relative pointer-events-auto">
-            {MOCK_CLIPS.filter(c => c.trackId === 't2').map(clip => (
-              <ClipNode key={clip.id} clip={clip} zoom={zoom} />
-            ))}
-          </div>
-          {/* T3 */}
-          <div className="h-24 relative pointer-events-auto">
-            {MOCK_CLIPS.filter(c => c.trackId === 't3').map(clip => (
-              <ClipNode key={clip.id} clip={clip} zoom={zoom} />
-            ))}
-          </div>
+          {['t1', 't2', 't3'].map((trackId) => (
+            <TrackRow key={trackId} trackId={trackId}>
+              {clips.filter((c) => c.trackId === trackId).map((clip) => (
+                <ClipNode key={clip.id} clip={clip} zoom={zoom} />
+              ))}
+            </TrackRow>
+          ))}
         </div>
       </div>
 
@@ -108,7 +90,26 @@ export function TrackCanvas({ projectId }: { projectId: string }) {
   );
 }
 
-function ClipNode({ clip, zoom }: { clip: any, zoom: number }) {
+function TrackRow({ trackId, children }: { trackId: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `track-${trackId}`,
+    data: {
+      type: 'Track',
+      trackId,
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`h-24 relative pointer-events-auto transition-colors ${isOver ? 'bg-amber-500/10 border-dashed border-amber-500/50 border' : ''}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ClipNode({ clip, zoom }: { clip: Clip, zoom: number }) {
   return (
     <div 
       className={`absolute top-0 bottom-0 rounded-md border border-white/20 shadow-sm overflow-hidden flex items-center px-2 cursor-grab hover:brightness-110 active:cursor-grabbing ${clip.color}`}

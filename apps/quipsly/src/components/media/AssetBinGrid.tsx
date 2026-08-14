@@ -1,6 +1,7 @@
 "use client";
 
 import { Folder, Film, Image as ImageIcon, Music, FileText, PlayCircle } from "lucide-react";
+import { useDraggable } from "@dnd-kit/core";
 import { AssetItem, FolderItem } from "./asset-types";
 
 type AssetBinGridProps = {
@@ -58,43 +59,59 @@ export function AssetBinGrid({ assets, folders, onFolderClick }: AssetBinGridPro
 
       {/* Then assets */}
       {assets.map((asset) => (
-        <div
-          key={asset.id}
-          className="group relative flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-all hover:border-blue-400 hover:shadow-md"
-        >
-          {/* Thumbnail Area */}
-          <div className="relative aspect-square w-full bg-gray-50 flex items-center justify-center border-b border-gray-100">
-            {asset.thumbnailUrl ? (
-              <img src={asset.thumbnailUrl} alt={asset.name} className="h-full w-full object-cover" />
-            ) : (
-              getAssetIcon(asset.type)
-            )}
-            
-            {/* Hover overlay */}
-            <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 flex items-center justify-center backdrop-blur-[1px]">
-              <button className="rounded-full bg-white/20 p-3 text-white backdrop-blur-md transition hover:bg-white/40 hover:scale-110">
-                <PlayCircle size={28} />
-              </button>
-            </div>
-
-            {/* Duration badge */}
-            {asset.duration && (
-              <div className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-md">
-                {asset.duration}
-              </div>
-            )}
-          </div>
-
-          {/* Details Area */}
-          <div className="p-3">
-            <h4 className="truncate text-xs font-semibold text-gray-900" title={asset.name}>{asset.name}</h4>
-            <div className="mt-1 flex items-center justify-between text-[10px] text-gray-500">
-              <span className="uppercase">{asset.type}</span>
-              <span>{formatBytes(asset.sizeBytes)}</span>
-            </div>
-          </div>
-        </div>
+        <DraggableGridAsset key={asset.id} asset={asset} />
       ))}
+    </div>
+  );
+}
+
+function DraggableGridAsset({ asset }: { asset: AssetItem }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `asset-${asset.id}`,
+    data: {
+      type: "Asset",
+      asset,
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`group relative flex flex-col overflow-hidden rounded-xl border bg-white transition-all hover:border-blue-400 hover:shadow-md cursor-grab active:cursor-grabbing ${isDragging ? "opacity-50 border-blue-500 shadow-lg" : "border-gray-200"}`}
+    >
+      {/* Thumbnail Area */}
+      <div className="relative aspect-square w-full bg-gray-50 flex items-center justify-center border-b border-gray-100">
+        {asset.thumbnailUrl ? (
+          <img src={asset.thumbnailUrl} alt={asset.name} className="h-full w-full object-cover pointer-events-none" />
+        ) : (
+          getAssetIcon(asset.type)
+        )}
+        
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 flex items-center justify-center backdrop-blur-[1px]">
+          <button className="rounded-full bg-white/20 p-3 text-white backdrop-blur-md transition hover:bg-white/40 hover:scale-110">
+            <PlayCircle size={28} />
+          </button>
+        </div>
+
+        {/* Duration badge */}
+        {asset.duration && (
+          <div className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-md">
+            {asset.duration}
+          </div>
+        )}
+      </div>
+
+      {/* Details Area */}
+      <div className="p-3">
+        <h4 className="truncate text-xs font-semibold text-gray-900" title={asset.name}>{asset.name}</h4>
+        <div className="mt-1 flex items-center justify-between text-[10px] text-gray-500">
+          <span className="uppercase">{asset.type}</span>
+          <span>{formatBytes(asset.sizeBytes)}</span>
+        </div>
+      </div>
     </div>
   );
 }

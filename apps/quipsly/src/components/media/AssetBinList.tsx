@@ -1,6 +1,7 @@
 "use client";
 
 import { Folder, Film, Image as ImageIcon, Music, FileText, MoreHorizontal } from "lucide-react";
+import { useDraggable } from "@dnd-kit/core";
 import { AssetItem, FolderItem } from "./asset-types";
 
 type AssetBinListProps = {
@@ -77,29 +78,48 @@ export function AssetBinList({ assets, folders, onFolderClick }: AssetBinListPro
 
           {/* Then assets */}
           {assets.map((asset) => (
-            <tr key={asset.id} className="group transition-colors hover:bg-blue-50">
-              <td className="px-6 py-3">
-                <div className="flex items-center gap-3 font-medium text-gray-900">
-                  {getAssetIcon(asset.type)}
-                  <span className="truncate max-w-[200px] md:max-w-sm lg:max-w-md xl:max-w-lg" title={asset.name}>
-                    {asset.name}
-                  </span>
-                </div>
-              </td>
-              <td className="px-6 py-3 text-gray-500 capitalize">{asset.type}</td>
-              <td className="px-6 py-3 text-right text-gray-500">{formatBytes(asset.sizeBytes)}</td>
-              <td className="px-6 py-3 text-right text-gray-500">
-                {new Date(asset.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-              </td>
-              <td className="px-6 py-3 text-right">
-                <button className="text-gray-400 opacity-0 transition-opacity hover:text-gray-700 group-hover:opacity-100">
-                  <MoreHorizontal size={16} />
-                </button>
-              </td>
-            </tr>
+            <DraggableListAsset key={asset.id} asset={asset} />
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+function DraggableListAsset({ asset }: { asset: AssetItem }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `asset-${asset.id}`,
+    data: {
+      type: "Asset",
+      asset,
+    },
+  });
+
+  return (
+    <tr
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`group transition-colors hover:bg-blue-50 cursor-grab active:cursor-grabbing ${isDragging ? "bg-blue-100 opacity-50" : ""}`}
+    >
+      <td className="px-6 py-3">
+        <div className="flex items-center gap-3 font-medium text-gray-900">
+          {getAssetIcon(asset.type)}
+          <span className="truncate max-w-[200px] md:max-w-sm lg:max-w-md xl:max-w-lg pointer-events-none" title={asset.name}>
+            {asset.name}
+          </span>
+        </div>
+      </td>
+      <td className="px-6 py-3 text-gray-500 capitalize">{asset.type}</td>
+      <td className="px-6 py-3 text-right text-gray-500">{formatBytes(asset.sizeBytes)}</td>
+      <td className="px-6 py-3 text-right text-gray-500">
+        {new Date(asset.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+      </td>
+      <td className="px-6 py-3 text-right">
+        <button className="text-gray-400 opacity-0 transition-opacity hover:text-gray-700 group-hover:opacity-100">
+          <MoreHorizontal size={16} />
+        </button>
+      </td>
+    </tr>
   );
 }

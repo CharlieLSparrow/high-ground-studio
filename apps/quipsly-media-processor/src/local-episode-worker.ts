@@ -71,6 +71,10 @@ import {
   runOneLocalEpisodeMasterConformJob,
 } from "./local-episode-master-conform-worker.js";
 import {
+  newLocalEpisodeMasterPromotionRuntime,
+  runOneLocalEpisodeMasterPromotionJob,
+} from "./local-episode-master-promotion-worker.js";
+import {
   newLocalSpatialReframeRuntime,
   runOneLocalSpatialReframeJob,
 } from "./local-spatial-reframe-worker.js";
@@ -716,6 +720,15 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const episodeMasterPromotion = newLocalEpisodeMasterPromotionRuntime({
+    pool,
+    executionId,
+    custodianNodeId: executionIdentity.nodeId,
+    storageScopeId: executionIdentity.storageScopeId,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   const spatialVaultRoot = path.resolve(
     process.env.QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT ||
       path.join(homedir(), "Movies", "Quipsly Media Vault"),
@@ -943,8 +956,15 @@ async function main() {
               episodeMasterConform.options,
             )
           : workResult;
-      const spatialResult =
+      const promotionResult =
         masterResult.disposition === "idle"
+          ? await runOneLocalEpisodeMasterPromotionJob(
+              episodeMasterPromotion.store,
+              episodeMasterPromotion.options,
+            )
+          : masterResult;
+      const spatialResult =
+        promotionResult.disposition === "idle"
           ? await runOneLocalSpatialReframeJob(
               spatialReframe.store,
               spatialReframe.renderer,
