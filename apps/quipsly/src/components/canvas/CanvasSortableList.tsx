@@ -8,14 +8,14 @@ export const CanvasSortableList: React.FC = () => {
 
   return (
     <div 
-      className="flex-1 overflow-y-auto p-6 bg-gray-50 min-h-[500px]"
+      className="flex-1 overflow-y-auto p-6 bg-slate-50 min-h-[500px]"
       onClick={() => selectField(null)}
     >
       <div className="max-w-2xl mx-auto">
         {fields.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-gray-300 rounded-lg text-gray-500">
-            <p>Your form is empty.</p>
-            <p className="text-sm mt-1">Add fields from the toolbar on the left.</p>
+          <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 bg-white shadow-sm">
+            <p className="font-medium text-slate-700">Your form is empty.</p>
+            <p className="text-sm mt-1 text-slate-400">Drag or click fields from the toolbar to start.</p>
           </div>
         ) : (
           <SortableContext 

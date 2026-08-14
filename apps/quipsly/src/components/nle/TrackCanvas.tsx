@@ -45,6 +45,13 @@ export function TrackCanvas({ projectId }: { projectId: string }) {
     backgroundSize: `${zoom * 10}px 100%`, // Vertical line every 10 frames
   };
 
+  const formatTimecode = (frames: number) => {
+    const totalSeconds = Math.floor(frames / 60);
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div 
       className="relative min-w-[5000px] h-full"
@@ -57,18 +64,23 @@ export function TrackCanvas({ projectId }: { projectId: string }) {
       style={{ touchAction: 'none' }}
     >
       {/* Time Ruler */}
-      <div className="h-8 border-b border-[#333333] bg-[#1e1e1e] sticky top-0 z-10 w-full" style={gridBackground}>
-        {/* Render some time ticks */}
+      <div className="h-8 border-b border-[#333333] bg-[#1a1a1a] sticky top-0 z-10 w-full" style={gridBackground}>
+        {/* Render time ticks */}
         <div className="absolute top-0 bottom-0 pointer-events-none w-full">
-          {Array.from({ length: 50 }).map((_, i) => (
-            <div 
-              key={i} 
-              className="absolute text-[9px] text-neutral-500 pl-1 border-l border-neutral-700/50 h-full"
-              style={{ left: frameToPx(i * 60) }} // Tick every 60 frames (1 second at 60fps)
-            >
-              00:0{i}
-            </div>
-          ))}
+          {Array.from({ length: 100 }).map((_, i) => {
+            const frame = i * 60;
+            return (
+              <div 
+                key={i} 
+                className="absolute flex flex-col h-full"
+                style={{ left: frameToPx(frame) }}
+              >
+                <div className="flex-1 border-l border-neutral-700/50 pl-1 pt-0.5">
+                  <span className="text-[10px] font-mono text-neutral-400 select-none">{formatTimecode(frame)}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -188,7 +200,7 @@ function ClipNode({ clip, zoom }: { clip: Clip, zoom: number }) {
   return (
     <div 
       onClick={(e) => { e.stopPropagation(); toggleClipSelection(clip.id, e.metaKey || e.ctrlKey || e.shiftKey); }}
-      className={`absolute top-0 bottom-0 rounded-md border shadow-sm overflow-hidden flex items-center px-2 cursor-grab active:cursor-grabbing transition-colors ${clip.color} ${isSelected ? 'ring-2 ring-white border-transparent z-10' : 'border-white/20'}`}
+      className={`absolute top-0 bottom-0 rounded-md border shadow-sm overflow-hidden flex items-center px-2 cursor-grab active:cursor-grabbing transition-all duration-200 ease-out ${clip.color} ${isSelected ? 'ring-2 ring-white border-transparent z-10' : 'border-white/20'}`}
       style={{
         left: clip.startFrame * zoom,
         width: clip.durationFrames * zoom,

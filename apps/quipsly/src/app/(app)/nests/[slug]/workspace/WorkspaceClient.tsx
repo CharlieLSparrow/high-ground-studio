@@ -92,29 +92,41 @@ export function WorkspaceClient({ projectId, projectSlug, projectName, actorUser
         </div>
 
         {/* Studio Panel (Right) */}
-        <div className={`flex flex-1 flex-col bg-gray-50 ${activeTab === "storyboard" ? "flex" : "hidden md:flex"}`}>
+        <div className={`flex flex-1 flex-col bg-slate-50 ${activeTab === "storyboard" ? "flex" : "hidden md:flex"}`}>
           <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-            <div className="flex h-1/2 flex-col border-b border-gray-200">
-              <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3 shadow-sm">
-                <h2 className="font-semibold text-gray-800">Studio & Media</h2>
-                <div className="flex gap-2 text-sm text-gray-500">
-                  <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500"></span> Media Connected</span>
+            <div className="flex flex-1 overflow-hidden">
+              
+              {/* Asset Bin Sidebar */}
+              <div className="flex flex-col border-r border-slate-200 w-80 flex-shrink-0 bg-white shadow-sm z-10 transition-all duration-300">
+                <div className="flex items-center justify-between border-b border-slate-100 bg-white px-4 py-3">
+                  <h2 className="font-semibold text-slate-800 text-sm">Asset Bin</h2>
+                  <div className="flex gap-2 text-xs text-slate-500">
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500"></span> Connected</span>
+                  </div>
+                </div>
+                
+                <div className="flex-1 overflow-auto">
+                  <AssetBin />
                 </div>
               </div>
               
-              <div className="flex-1 overflow-auto">
-                <AssetBin />
+              {/* NLE Timeline */}
+              <div className="flex-1 flex flex-col min-w-0">
+                <NLETimeline projectId={projectId} />
               </div>
             </div>
-            
-            <div className="flex h-1/2 flex-col">
-              <NLETimeline projectId={projectId} />
-            </div>
 
-            <DragOverlay>
+            <DragOverlay dropAnimation={{
+              duration: 200,
+              easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+            }}>
               {activeDragAsset ? (
-                <div className="p-3 bg-white border border-blue-400 rounded-xl shadow-2xl opacity-90 scale-105 pointer-events-none">
-                  <span className="text-xs font-semibold text-gray-900">{activeDragAsset.name}</span>
+                <div className="p-3 bg-white border-2 border-blue-500 rounded-xl shadow-2xl opacity-100 scale-105 rotate-2 pointer-events-none flex items-center gap-3 w-64">
+                  <div className="w-10 h-10 bg-slate-100 rounded flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-slate-900 truncate">{activeDragAsset.name}</h4>
+                    <p className="text-xs text-slate-500 truncate uppercase tracking-widest">{activeDragAsset.type}</p>
+                  </div>
                 </div>
               ) : null}
             </DragOverlay>
