@@ -97,3 +97,25 @@ export async function getGoalData(projectId: string, goalId: string) {
   });
 }
 
+/**
+ * Deletes a Kanban stage. Because of onDelete: SetNull in Prisma (if configured)
+ * or via an explicit update here, all Goals in this stage fall back to Uncategorized.
+ */
+export async function deleteGoalStage(projectId: string, stageId: string) {
+  await requireProjectAccess(projectId, "write");
+  const prisma = getPrismaClient();
+
+  // First gracefully fallback any Goals that were in this stage
+  await prisma.goal.updateMany({
+    where: { projectId, stageId },
+    data: { stageId: null },
+  });
+
+  // Then delete the stage itself
+  await prisma.studioWorkflowStage.delete({
+    where: { id: stageId, projectId },
+  });
+
+  revalidatePath(`/nests/${projectId}`);
+  return true;
+}
