@@ -495,11 +495,22 @@ export async function GET(request: NextRequest) {
     }
 
     const cursor = request.nextUrl.searchParams.get("cursor");
+    const filterMode = request.nextUrl.searchParams.get("filterMode") || "all";
     const limit = 50;
+
+    const where: any = { threadId: loaded.thread.id };
+    if (filterMode === "tasks") {
+      where.linkedGoalId = { not: null };
+    } else if (filterMode === "decisions") {
+      where.body = { contains: "#decision", mode: "insensitive" };
+    } else if (filterMode !== "all") {
+      // Custom tag filter
+      where.body = { contains: `#${filterMode}`, mode: "insensitive" };
+    }
 
     const prisma = getPrismaClient();
     const rawMessages = await prisma.studioNestChatMessage.findMany({
-      where: { threadId: loaded.thread.id },
+      where,
       orderBy: { createdAt: "desc" },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

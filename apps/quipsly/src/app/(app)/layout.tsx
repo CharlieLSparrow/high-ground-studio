@@ -10,6 +10,7 @@ import { canAccessStudio } from "@/lib/studio-authz";
 import { MAC_WEB_SESSION_COOKIE_NAME, verifyMacWebSessionToken } from "@/lib/server/mac-session-token";
 import { cookies } from "next/headers";
 import { hasAnyActiveStudioProjectAccessGrantForEmail } from "@/lib/server/studio-project-access";
+import { Providers } from "@/app/providers";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const merriweather = Merriweather({ weight: ["300", "400", "700", "900"], subsets: ["latin"], variable: "--font-merriweather" });
@@ -138,9 +139,11 @@ export default async function RootLayout({
               : null
           }
         >
-          <LiveSessionDockProvider>
-            {children}
-          </LiveSessionDockProvider>
+          <Providers>
+            <LiveSessionDockProvider>
+              {children}
+            </LiveSessionDockProvider>
+          </Providers>
         </SidebarLayout>
       </body>
     </html>
