@@ -940,6 +940,8 @@ model User {
   feedbackTickets                  FeedbackTicket[]
   userEvents                       UserEvent[]
   accountDeletionRequests          UserAccountDeletionRequest[] @relation("UserAccountDeletionRequestUser")
+  canvasFormsCreated               CanvasForm[]                 @relation("CanvasFormCreatedBy")
+  canvasFormSubmissions            CanvasFormSubmission[]       @relation("CanvasFormSubmissionUser")
 }
 
 model Account {
@@ -3436,19 +3438,19 @@ model Goal {
   updatedAt    DateTime   @updatedAt
   stageId      String?
 
-  owner            User                  @relation("GoalOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
-  room             CallRoom?             @relation(fields: [roomId], references: [id], onDelete: SetNull)
-  booking          CoachingBooking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  project          StudioProject?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  engagement       CoachingEngagement?   @relation(fields: [engagementId], references: [id], onDelete: SetNull)
-  parent           Goal?                 @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: SetNull)
-  children         Goal[]                @relation("GoalHierarchy")
+  owner            User                    @relation("GoalOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  room             CallRoom?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  booking          CoachingBooking?        @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  project          StudioProject?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  engagement       CoachingEngagement?     @relation(fields: [engagementId], references: [id], onDelete: SetNull)
+  parent           Goal?                   @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: SetNull)
+  children         Goal[]                  @relation("GoalHierarchy")
   taskLinks        GoalTaskLink[]
   progressReceipts GoalProgressReceipt[]
   planBlocks       WorkPlanBlock[]
   tagLinks         GoalTagLink[]
   chatMessages     StudioNestChatMessage[]
-  stage            StudioWorkflowStage?  @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  stage            StudioWorkflowStage?    @relation(fields: [stageId], references: [id], onDelete: SetNull)
 
   @@index([ownerUserId, status, updatedAt])
   @@index([roomId, status])
@@ -3958,7 +3960,7 @@ model StudioProject {
   calendarCollections           CalendarCollection[]
 
   // NLE Timeline Engine
-  nleProjects         StudioNLEProject[]
+  nleProjects StudioNLEProject[]
 
   // QuipLore Relations
   quipLoreWorks       QuipLoreWork[]
@@ -7872,9 +7874,9 @@ model StudioNestChatMessage {
   updatedAt    DateTime @updatedAt
   linkedGoalId String?
 
-  project StudioProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  thread  StudioNestChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  linkedGoal Goal?             @relation(fields: [linkedGoalId], references: [id], onDelete: SetNull)
+  project    StudioProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  thread     StudioNestChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  linkedGoal Goal?                @relation(fields: [linkedGoalId], references: [id], onDelete: SetNull)
 
   @@index([projectId, createdAt])
   @@index([threadId, createdAt])
@@ -8414,44 +8416,44 @@ model StudioTimelineAnnotation {
 // --- PHASE 5: NLE Timeline Core --- //
 
 model StudioNLEProject {
-  id              String   @id @default(cuid())
-  projectId       String
-  name            String
-  fps             Int      @default(60)
-  width           Int      @default(1920)
-  height          Int      @default(1080)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  fps       Int      @default(60)
+  width     Int      @default(1920)
+  height    Int      @default(1080)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tracks          StudioNLETrack[]
-  
+  tracks StudioNLETrack[]
+
   // Relates to the core StudioProject
-  project         StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model StudioNLETrack {
-  id              String   @id @default(cuid())
-  nleProjectId    String
-  name            String
-  trackType       String   // "VIDEO" or "AUDIO"
-  orderIndex      Int
-  isHidden        Boolean  @default(false)
-  isMuted         Boolean  @default(false)
-  isSoloed        Boolean  @default(false)
-  isLocked        Boolean  @default(false)
-  volume          Float    @default(1.0)
-  opacity         Float    @default(1.0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String   @id @default(cuid())
+  nleProjectId String
+  name         String
+  trackType    String // "VIDEO" or "AUDIO"
+  orderIndex   Int
+  isHidden     Boolean  @default(false)
+  isMuted      Boolean  @default(false)
+  isSoloed     Boolean  @default(false)
+  isLocked     Boolean  @default(false)
+  volume       Float    @default(1.0)
+  opacity      Float    @default(1.0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  nleProject      StudioNLEProject @relation(fields: [nleProjectId], references: [id], onDelete: Cascade)
-  clips           StudioNLEClip[]
+  nleProject StudioNLEProject @relation(fields: [nleProjectId], references: [id], onDelete: Cascade)
+  clips      StudioNLEClip[]
 }
 
 model StudioNLEClip {
   id              String   @id @default(cuid())
   trackId         String
-  assetId         String?  // Reference to media (null if it's a generated clip like a solid color)
+  assetId         String? // Reference to media (null if it's a generated clip like a solid color)
   name            String
   startFrame      Int
   durationFrames  Int
@@ -8461,7 +8463,7 @@ model StudioNLEClip {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  track           StudioNLETrack @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  track StudioNLETrack @relation(fields: [trackId], references: [id], onDelete: Cascade)
 }
 
 model StudioWorkflowStage {
@@ -8477,4 +8479,62 @@ model StudioWorkflowStage {
   goals   Goal[]
 
   @@index([projectId, order])
+}
+
+enum InstitutionalWorkflowState {
+  DRAFT
+  SUBMITTED
+  AUDITING
+  VERIFIED
+  REJECTED
+}
+
+enum CanvasFormFieldType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  SELECT
+  MULTI_SELECT
+}
+
+model CanvasForm {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  fields      CanvasFormField[]
+  submissions CanvasFormSubmission[]
+
+  createdBy User @relation("CanvasFormCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+}
+
+model CanvasFormField {
+  id       String              @id @default(cuid())
+  formId   String
+  name     String
+  label    String
+  type     CanvasFormFieldType
+  required Boolean             @default(false)
+  options  Json? // For SELECT or MULTI_SELECT types (e.g., ["Option A", "Option B"])
+  order    Int                 @default(0)
+
+  form CanvasForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId, order])
+}
+
+model CanvasFormSubmission {
+  id            String                     @id @default(cuid())
+  formId        String
+  submittedById String
+  state         InstitutionalWorkflowState @default(SUBMITTED)
+  data          Json // The actual submitted field values
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  form        CanvasForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  submittedBy User       @relation("CanvasFormSubmissionUser", fields: [submittedById], references: [id], onDelete: Restrict)
 }
