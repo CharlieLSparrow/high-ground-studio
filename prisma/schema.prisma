@@ -703,6 +703,14 @@ enum StudioTagCandidateStatus {
   REJECTED
 }
 
+enum StudioTagUICategory {
+  TASK
+  NOTE
+  IDEA
+  DECISION
+  ASSET
+}
+
 enum StudioKnowledgeNodeType {
   principle
   story
@@ -3426,6 +3434,7 @@ model Goal {
   sourceJson   Json       @default("{}")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+  stageId      String?
 
   owner            User                  @relation("GoalOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   room             CallRoom?             @relation(fields: [roomId], references: [id], onDelete: SetNull)
@@ -3438,6 +3447,8 @@ model Goal {
   progressReceipts GoalProgressReceipt[]
   planBlocks       WorkPlanBlock[]
   tagLinks         GoalTagLink[]
+  chatMessages     StudioNestChatMessage[]
+  stage            StudioWorkflowStage?  @relation(fields: [stageId], references: [id], onDelete: SetNull)
 
   @@index([ownerUserId, status, updatedAt])
   @@index([roomId, status])
@@ -3903,6 +3914,7 @@ model StudioProject {
   chatMessages                  StudioNestChatMessage[]
   accessGrants                  StudioProjectAccessGrant[]
   nestInvites                   StudioNestInvite[]
+  workflowStages                StudioWorkflowStage[]
   assetAttachments              StudioAssetAttachment[]
   assetProcessingJobs           StudioAssetProcessingJob[]
   audioMasterReviews            StudioAudioMasterReviewReceipt[]
@@ -3944,6 +3956,9 @@ model StudioProject {
   coachingEngagements           CoachingEngagement[]
   calendarConnections           CalendarConnection[]
   calendarCollections           CalendarCollection[]
+
+  // NLE Timeline Engine
+  nleProjects         StudioNLEProject[]
 
   // QuipLore Relations
   quipLoreWorks       QuipLoreWork[]
@@ -6460,6 +6475,9 @@ model StudioTag {
   mergedAt        DateTime?
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
+  hexColor        String?
+  iconName        String?
+  uiCategory      StudioTagUICategory?
 
   project               StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   taggedSpans           StudioTaggedSpan[]
@@ -7852,9 +7870,11 @@ model StudioNestChatMessage {
   metadataJson Json     @default("{}")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  linkedGoalId String?
 
   project StudioProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   thread  StudioNestChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  linkedGoal Goal?             @relation(fields: [linkedGoalId], references: [id], onDelete: SetNull)
 
   @@index([projectId, createdAt])
   @@index([threadId, createdAt])
@@ -8389,4 +8409,72 @@ model StudioTimelineAnnotation {
   @@unique([branchId, clientRequestId])
   @@index([branchId, startSeconds])
   @@index([branchId, status, createdAt])
+}
+
+// --- PHASE 5: NLE Timeline Core --- //
+
+model StudioNLEProject {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  fps             Int      @default(60)
+  width           Int      @default(1920)
+  height          Int      @default(1080)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tracks          StudioNLETrack[]
+  
+  // Relates to the core StudioProject
+  project         StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model StudioNLETrack {
+  id              String   @id @default(cuid())
+  nleProjectId    String
+  name            String
+  trackType       String   // "VIDEO" or "AUDIO"
+  orderIndex      Int
+  isHidden        Boolean  @default(false)
+  isMuted         Boolean  @default(false)
+  isSoloed        Boolean  @default(false)
+  isLocked        Boolean  @default(false)
+  volume          Float    @default(1.0)
+  opacity         Float    @default(1.0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  nleProject      StudioNLEProject @relation(fields: [nleProjectId], references: [id], onDelete: Cascade)
+  clips           StudioNLEClip[]
+}
+
+model StudioNLEClip {
+  id              String   @id @default(cuid())
+  trackId         String
+  assetId         String?  // Reference to media (null if it's a generated clip like a solid color)
+  name            String
+  startFrame      Int
+  durationFrames  Int
+  trimStartFrame  Int      @default(0)
+  speedMultiplier Float    @default(1.0)
+  colorHex        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  track           StudioNLETrack @relation(fields: [trackId], references: [id], onDelete: Cascade)
+}
+
+model StudioWorkflowStage {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  hexColor  String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  goals   Goal[]
+
+  @@index([projectId, order])
 }
