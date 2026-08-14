@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { HybridStream } from "@/components/workspace/HybridStream";
 import { PanelsTopLeft, MessageSquare, LayoutDashboard, Settings } from "lucide-react";
+import { AssetBin } from "@/components/media/AssetBin";
 
 type WorkspaceClientProps = {
   projectId: string;
@@ -68,15 +69,8 @@ export function WorkspaceClient({ projectId, projectSlug, projectName, actorUser
             </div>
           </div>
           
-          <div className="flex-1 overflow-auto p-6">
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {/* Stub for Media Bins / Storyboard */}
-              <div className="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-center text-gray-500">
-                <PanelsTopLeft className="mx-auto mb-2 h-8 w-8 text-gray-400" />
-                <h3 className="font-medium text-gray-700">Storyboard (Coming Soon)</h3>
-                <p className="mt-1 text-xs">Drag and drop verified media here.</p>
-              </div>
-            </div>
+          <div className="flex-1 overflow-auto">
+            <AssetBin />
           </div>
         </div>
 
