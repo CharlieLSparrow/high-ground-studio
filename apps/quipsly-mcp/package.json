@@ -1,0 +1,23 @@
+{
+  "name": "quipsly-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server for Quipsly Workspace",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@high-ground/quipsly-domain": "workspace:*",
+    "@modelcontextprotocol/sdk": "latest",
+    "@prisma/client": "^7.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "tsx": "^4.0.0"
+  }
+}
