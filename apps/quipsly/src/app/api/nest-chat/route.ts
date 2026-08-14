@@ -40,6 +40,7 @@ type ChatMessageRow = {
   metadataJson: unknown;
   createdAt: Date;
   updatedAt: Date;
+  linkedGoalId: string | null;
 };
 
 function cleanMessage(input: unknown) {
@@ -192,6 +193,7 @@ function serializeMessage(message: ChatMessageRow) {
     metadataJson: message.metadataJson,
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
+    linkedGoalId: message.linkedGoalId,
   };
 }
 
@@ -492,15 +494,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: loaded.error }, { status: loaded.status });
     }
 
+    const cursor = request.nextUrl.searchParams.get("cursor");
+    const limit = 50;
+
     const prisma = getPrismaClient();
-    const messages = await prisma.studioNestChatMessage.findMany({
+    const rawMessages = await prisma.studioNestChatMessage.findMany({
       where: { threadId: loaded.thread.id },
-      orderBy: { createdAt: "asc" },
-      take: 200,
+      orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
+
+    const hasMore = rawMessages.length > limit;
+    const messagesToReturn = rawMessages.slice(0, limit).reverse();
 
     return NextResponse.json({
       ok: true,
+      hasMore,
+      nextCursor: hasMore ? rawMessages[limit].id : null,
       project: {
         id: loaded.project.id,
         slug: loaded.project.slug,
@@ -520,7 +531,7 @@ export async function GET(request: NextRequest) {
         name: actor.name,
         role: loaded.access.role,
       },
-      messages: messages.map(serializeMessage),
+      messages: messagesToReturn.map(serializeMessage),
     });
   } catch (error) {
     if (isPrismaConnectionPressure(error)) return chatUnavailableResponse();

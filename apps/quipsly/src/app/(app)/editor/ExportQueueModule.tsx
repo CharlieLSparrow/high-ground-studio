@@ -220,7 +220,11 @@ export function ExportQueueModule({
       | "queue-master-conform"
       | "register-master-conform"
       | "read-master-review"
-      | "review-master-conform",
+      | "review-master-conform"
+      | "queue-master-promotion"
+      | "read-master-promotion"
+      | "create-delivery-package"
+      | "read-delivery-package",
     body: Record<string, unknown>,
   ) => {
     if (!verifiedHandoff) return null;
@@ -857,6 +861,29 @@ export function ExportQueueModule({
                                   Request master changes
                                 </button>
                               </div>
+                              {masterReview?.latest?.decision === "approved" ? (
+                                <div className="mt-4 border-t border-white/10 pt-4">
+                                  <p className="text-xs font-bold text-emerald-300">✓ Master approved. Ready for GCS promotion and canonical delivery packaging.</p>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => void post("queue-master-promotion", { masterReviewReceiptId: masterReview?.latest?.id ?? "" })}
+                                      className="inline-flex min-h-9 items-center rounded-xl bg-sky-600 px-4 text-xs font-black text-white disabled:opacity-40"
+                                    >
+                                      Promote Master to GCS
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => void post("create-delivery-package", { promotionReceiptId: masterReview?.latest?.id ?? "", title: "Episode Delivery Package", summary: "Canonical 4K GCS master delivery bundle" })}
+                                      className="inline-flex min-h-9 items-center rounded-xl border border-sky-300/40 bg-white/10 px-4 text-xs font-black text-white hover:bg-white/20 disabled:opacity-40"
+                                    >
+                                      Create Delivery Package
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : null}
                               <p className="mt-3 text-[11px] font-bold text-white/60">Approval records the exact bytes only. Portable promotion, delivery encoding, and publication remain separate actions.</p>
                             </div>
                           ) : null}

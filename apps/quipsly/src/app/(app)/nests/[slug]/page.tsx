@@ -56,6 +56,7 @@ import {
   type EpisodeRoomDirectoryEpisode,
   type EpisodeRoomSourceCandidate,
 } from "./EpisodeRoomDirectory";
+import { NLETimeline } from "@/components/nle/NLETimeline";
 import {
   sourceEpisodeNumber,
   suggestedEpisodeSlug,
@@ -500,6 +501,18 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                       <EmptyState title="This project has a clean slate." body="Capture the first note, task, or goal above. Quipsly will keep it attached to this project." />
                     </div>
                   ) : null}
+                </div>
+              </section>
+
+              <section aria-labelledby="nle-timeline-heading" className="rounded-3xl border border-neutral-800 bg-[#1e1e1e] shadow-xl overflow-hidden mb-8 h-[600px] flex flex-col">
+                <div className="p-4 border-b border-neutral-800 flex items-center justify-between bg-[#252526]">
+                  <div>
+                    <h2 id="nle-timeline-heading" className="text-sm font-black tracking-wide text-neutral-300">Storyboard NLE Sandbox</h2>
+                    <p className="text-xs text-neutral-500 mt-1">Experimental core timeline rendering engine (Phase 5 Slice)</p>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-hidden relative">
+                  <NLETimeline projectId={project.id} />
                 </div>
               </section>
 

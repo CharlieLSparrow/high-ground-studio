@@ -453,6 +453,7 @@ export function StudioWorkbenchClient({
               token={collabToken}
               collabUrl={collabUrl}
               userName={actor.primaryEmail}
+              projectTags={tags}
               onSelectTagging={handleSelectTagging}
               onSelectBreakdown={handleSelectBreakdown}
               onSelectVideo={handleSelectVideo}

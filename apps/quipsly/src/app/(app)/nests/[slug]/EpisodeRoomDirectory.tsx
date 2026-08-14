@@ -15,6 +15,7 @@ export type EpisodeRoomDirectoryEpisode = {
   completedMilestoneCount: number;
   sourceDocumentTitle: string | null;
   sourceBlockCount: number | null;
+  mediaVerificationState?: "VERIFIED" | "PENDING" | "NONE";
 };
 
 export type EpisodeRoomSourceCandidate = {
@@ -28,6 +29,8 @@ export type EpisodeRoomSourceCandidate = {
   updatedAt: string;
   existingEpisodeSlug: string | null;
 };
+
+// ... skipping to the map ...
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -155,7 +158,15 @@ export function EpisodeRoomDirectory({
             <Link key={episode.id} href={`/nests/${encodeURIComponent(projectSlug)}/episodes/${encodeURIComponent(episode.slug)}`} className="group rounded-2xl border border-orange-200 bg-white p-5 outline-none transition hover:-translate-y-0.5 hover:border-orange-400 hover:shadow-md focus-visible:ring-4 focus-visible:ring-orange-100">
               <div className="flex items-start justify-between gap-3">
                 <Film size={18} className="shrink-0 text-orange-800" aria-hidden="true" />
-                <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[9px] font-black uppercase text-orange-900">{episode.status}</span>
+                <div className="flex items-center gap-2">
+                  {episode.mediaVerificationState === "VERIFIED" && (
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-black uppercase text-emerald-900 border border-emerald-200">4K Verified</span>
+                  )}
+                  {episode.mediaVerificationState === "PENDING" && (
+                    <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[9px] font-black uppercase text-amber-900 border border-amber-200">Syncing Media</span>
+                  )}
+                  <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[9px] font-black uppercase text-orange-900">{episode.status}</span>
+                </div>
               </div>
               <h3 className="mt-3 font-serif text-xl font-black">{episode.title}</h3>
               <p className="mt-2 line-clamp-2 text-xs font-semibold leading-5 text-[#806a4d]">{episode.sourceDocumentTitle || episode.documentTitle}</p>

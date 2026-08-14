@@ -32,7 +32,10 @@ export function KanbanCard({ goal, stageColor }: KanbanCardProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative group bg-white dark:bg-zinc-950 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-3 hover:shadow-md transition-shadow cursor-default overflow-hidden`}
+      {...attributes}
+      {...listeners}
+      className={`relative group bg-white dark:bg-zinc-950 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-3 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500`}
+      aria-label={`Kanban card: ${goal.title}`}
     >
       <div 
         className="absolute left-0 top-0 bottom-0 w-1" 
@@ -41,9 +44,7 @@ export function KanbanCard({ goal, stageColor }: KanbanCardProps) {
 
       <div className="flex items-start gap-2 pl-2">
         <div 
-          {...attributes} 
-          {...listeners}
-          className="mt-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-grab active:cursor-grabbing"
+          className="mt-0.5 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"
         >
           <GripVertical className="w-4 h-4" />
         </div>
@@ -58,6 +59,12 @@ export function KanbanCard({ goal, stageColor }: KanbanCardProps) {
             {hasThreadLink && (
               <Link 
                 href={`/nests/${goal.projectId}/chat?threadId=${goal.sourceJson.threadId}&messageId=${goal.sourceJson.messageId}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                  }
+                }}
                 className="inline-flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-blue-600 dark:text-blue-400 hover:underline bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-sm"
               >
                 <MessageSquare className="w-3 h-3" />

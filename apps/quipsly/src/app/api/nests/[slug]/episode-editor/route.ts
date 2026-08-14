@@ -39,6 +39,16 @@ import {
   EpisodeMasterReviewError,
   readAuthorizedEpisodeMasterReviewSummary,
 } from "@/lib/server/episode-master-review";
+import {
+  EpisodeMasterPromotionError,
+  queueEpisodeMasterPromotion,
+  readEpisodeMasterPromotionSummary,
+} from "@/lib/server/episode-master-promotion";
+import {
+  createEpisodeDeliveryPackage,
+  EpisodeDeliveryPackageError,
+  readEpisodeDeliveryPackageSummary,
+} from "@/lib/server/episode-delivery-package";
 
 export const dynamic = "force-dynamic";
 
@@ -262,6 +272,38 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         playbackEvidence: body.playbackEvidence,
         note: typeof body.note === "string" ? body.note : null,
       });
+    } else if (action === "queue-master-promotion") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required for promotion." }, { status: 400 });
+      operationResult = await queueEpisodeMasterPromotion({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        masterReviewReceiptId: String(body.masterReviewReceiptId ?? ""),
+        actor: { email: actor.email },
+        clientRequestId: String(body.clientRequestId ?? crypto.randomUUID()),
+      });
+    } else if (action === "read-master-promotion") {
+      operationResult = await readEpisodeMasterPromotionSummary({
+        prisma: getPrismaClient(),
+        masterReviewReceiptId: String(body.masterReviewReceiptId ?? ""),
+      });
+    } else if (action === "create-delivery-package") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required for delivery packaging." }, { status: 400 });
+      operationResult = await createEpisodeDeliveryPackage({
+        prisma: getPrismaClient(),
+        promotionReceiptId: String(body.promotionReceiptId ?? ""),
+        actor: { userId: actor.userId, email: actor.email },
+        clientRequestId: String(body.clientRequestId ?? crypto.randomUUID()),
+        title: String(body.title ?? ""),
+        summary: String(body.summary ?? ""),
+        captions: Array.isArray(body.captions) ? body.captions : [],
+        chapters: Array.isArray(body.chapters) ? body.chapters : [],
+      });
+    } else if (action === "read-delivery-package") {
+      operationResult = await readEpisodeDeliveryPackageSummary({
+        prisma: getPrismaClient(),
+        promotionReceiptId: String(body.promotionReceiptId ?? ""),
+      });
     } else {
       return NextResponse.json({ error: "Unknown editor action." }, { status: 400 });
     }
@@ -279,7 +321,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         || action === "queue-master-conform"
         || action === "register-master-conform"
         || action === "read-master-review"
-        || action === "review-master-conform",
+        || action === "review-master-conform"
+        || action === "queue-master-promotion"
+        || action === "read-master-promotion"
+        || action === "create-delivery-package"
+        || action === "read-delivery-package",
       selectedMediaAssetId,
     }), operationResult }, {
       headers: { "Cache-Control": "no-store" },
@@ -298,6 +344,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
       return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
     }
     if (error instanceof EpisodeMasterReviewError) {
+      return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+    }
+    if (error instanceof EpisodeMasterPromotionError) {
+      return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+    }
+    if (error instanceof EpisodeDeliveryPackageError) {
       return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
     }
     if (error instanceof EpisodeEditConflict) {

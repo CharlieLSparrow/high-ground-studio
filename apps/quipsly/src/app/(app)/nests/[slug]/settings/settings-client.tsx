@@ -60,7 +60,7 @@ export function SettingsClient({
   const openNewStageModal = () => {
     setEditingStage(null);
     setStageName("");
-    setStageColor("bg-slate-200");
+    setStageColor("#e2e8f0");
     setStageOrder(stages.length);
     setIsStageModalOpen(true);
   };
@@ -173,7 +173,7 @@ export function SettingsClient({
               {stages.map((stage) => (
                 <div key={stage.id} className="flex justify-between items-center p-4 bg-[#062d2a]/30 border border-studio-line rounded-xl">
                   <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${stage.hexColor}`} />
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.hexColor || "#e2e8f0" }} />
                     <span className="font-bold text-sm text-studio-ink">{stage.name}</span>
                     <span className="text-[10px] bg-black/20 px-2 py-0.5 rounded text-studio-dim">Order: {stage.order}</span>
                   </div>
@@ -278,10 +278,10 @@ export function SettingsClient({
                 className="bg-[#062d2a] border border-studio-line rounded-xl px-4 py-3 text-sm text-studio-ink outline-none"
               />
               <input
-                placeholder="Tailwind Color Class (e.g., bg-emerald-500)"
+                type="color"
                 value={stageColor}
                 onChange={(e) => setStageColor(e.target.value)}
-                className="bg-[#062d2a] border border-studio-line rounded-xl px-4 py-3 text-sm text-studio-ink outline-none"
+                className="bg-[#062d2a] border border-studio-line rounded-xl h-12 w-full outline-none"
               />
               <input
                 type="number"
