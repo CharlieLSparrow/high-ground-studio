@@ -13,16 +13,19 @@ type NestChatMessage = {
   body: string;
   gifUrl: string | null;
   createdAt: string;
+  linkedGoalId?: string | null;
 };
 
 type NestChatResponse = {
   ok: boolean;
   error?: string;
   project?: {
+    id: string;
     slug: string;
     name: string;
   };
   thread?: {
+    id: string;
     title: string;
   };
   actor?: {
@@ -92,12 +95,21 @@ export function NestChatPanel() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<NestChatMessage[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [filterMode, setFilterMode] = useState<"all" | "tasks">("all");
+
+  const [projectId, setProjectId] = useState("");
+  const [threadId, setThreadId] = useState("");
   const [projectName, setProjectName] = useState("");
   const [threadTitle, setThreadTitle] = useState("Nest Chat");
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "sending" | "error">("idle");
   const [error, setError] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const observerTarget = useRef<HTMLDivElement>(null);
 
   const routeSupportsChat = useMemo(() => routeCanUseNestChat(pathname), [pathname]);
   const episodeRoomEmbedsChat = useMemo(
@@ -113,45 +125,94 @@ export function NestChatPanel() {
     return draft.match(GIF_URL_PATTERN)?.[0] ?? "";
   }, [draft]);
 
+  const loadMessages = async (cursor: string | null = null) => {
+    if (!projectSlug) return;
+    
+    try {
+      const url = new URL(`/api/nest-chat`, window.location.origin);
+      url.searchParams.set("projectSlug", projectSlug);
+      if (cursor) url.searchParams.set("cursor", cursor);
+
+      const response = await fetch(url.toString());
+      const payload = (await response.json().catch(() => ({}))) as NestChatResponse & { hasMore?: boolean; nextCursor?: string | null };
+      
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Nest chat could not load.");
+      
+      if (cursor) {
+        setMessages(prev => [...(payload.messages ?? []), ...prev]);
+      } else {
+        setMessages(payload.messages ?? []);
+        setProjectId(payload.project?.id ?? "");
+        setThreadId(payload.thread?.id ?? "");
+        setProjectName(payload.project?.name ?? projectSlug);
+        setThreadTitle(payload.thread?.title ?? "Nest Chat");
+      }
+      
+      setHasMore(payload.hasMore ?? false);
+      setNextCursor(payload.nextCursor ?? null);
+      
+    } catch (err) {
+      throw err;
+    }
+  };
+
   useEffect(() => {
     if (!projectSlug) {
       setMessages([]);
       setProjectName("");
       setThreadTitle("Nest Chat");
+      setProjectId("");
+      setThreadId("");
       setCopiedId(null);
+      setHasMore(false);
+      setNextCursor(null);
       return;
     }
 
-    const controller = new AbortController();
     setStatus("loading");
     setError("");
     setCopiedId(null);
 
-    fetch(`/api/nest-chat?projectSlug=${encodeURIComponent(projectSlug)}`, {
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const payload = (await response.json().catch(() => ({}))) as NestChatResponse;
-        if (!response.ok || !payload.ok) throw new Error(payload.error || "Nest chat could not load.");
-        setMessages(payload.messages ?? []);
-        setProjectName(payload.project?.name ?? projectSlug);
-        setThreadTitle(payload.thread?.title ?? "Nest Chat");
-        setStatus("idle");
-      })
-      .catch((nextError: Error) => {
-        if (controller.signal.aborted) return;
+    loadMessages()
+      .then(() => setStatus("idle"))
+      .catch((err: Error) => {
         setMessages([]);
-        setError(nextError.message || "Nest chat could not load.");
+        setError(err.message || "Nest chat could not load.");
         setStatus("error");
       });
-
-    return () => controller.abort();
   }, [projectSlug]);
 
   useEffect(() => {
-    if (!open) return;
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, open]);
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore && nextCursor) {
+          setIsLoadingMore(true);
+          const oldScrollHeight = scrollRef.current?.scrollHeight || 0;
+          loadMessages(nextCursor).finally(() => {
+            setIsLoadingMore(false);
+            // Maintain scroll position after loading older messages
+            setTimeout(() => {
+              if (scrollRef.current) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight - oldScrollHeight;
+              }
+            }, 0);
+          });
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (observerTarget.current) observer.observe(observerTarget.current);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, nextCursor, projectSlug]);
+
+  useEffect(() => {
+    if (!open || isLoadingMore) return;
+    if (messages.length > 0 && !hasMore) {
+      // scroll to bottom on initial open
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [open]);
 
   async function sendMessage() {
     const body = draft.trim();
@@ -218,8 +279,35 @@ export function NestChatPanel() {
             </button>
           </header>
 
-          <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#fdf6ea] p-4">
-            {status === "loading" ? (
+            <div ref={scrollRef} className="min-h-0 flex-1 flex-col space-y-3 overflow-y-auto bg-[#fdf6ea] p-4 relative">
+            {/* Sticky Filter Bar */}
+            <div className="sticky top-0 z-10 -mx-4 -mt-4 px-4 py-2 mb-4 bg-[#fdf6ea]/90 backdrop-blur-md border-b border-[#eadbc5] flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setFilterMode("all")}
+                  className={cn(
+                    "text-[10px] font-black uppercase tracking-[0.1em] px-3 py-1.5 rounded-full transition-all border",
+                    filterMode === "all" ? "bg-[#3d3122] text-white border-[#3d3122]" : "bg-white text-[#8c6b4a] border-[#eadbc5] hover:bg-[#fffaf0]"
+                  )}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setFilterMode("tasks")}
+                  className={cn(
+                    "text-[10px] font-black uppercase tracking-[0.1em] px-3 py-1.5 rounded-full transition-all border",
+                    filterMode === "tasks" ? "bg-[#3d3122] text-white border-[#3d3122]" : "bg-white text-[#8c6b4a] border-[#eadbc5] hover:bg-[#fffaf0]"
+                  )}
+                >
+                  Tasks Only
+                </button>
+              </div>
+              {isLoadingMore && <Loader2 size={14} className="animate-spin text-[#8c6b4a]" />}
+            </div>
+
+            <div ref={observerTarget} className="h-1 w-full" />
+
+            {status === "loading" && messages.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm font-semibold text-[#8c6b4a]">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Loading the Nest thread...
@@ -243,11 +331,49 @@ export function NestChatPanel() {
               </div>
             ) : null}
 
-            {messages.map((message) => (
-              <article key={message.id} className="rounded-2xl border border-[#eadbc5] bg-white p-3 shadow-sm">
+            {messages
+              .filter(msg => filterMode === "all" || msg.linkedGoalId)
+              .map((message) => (
+              <article key={message.id} className={cn("rounded-2xl border bg-white p-3 shadow-sm transition-all", message.linkedGoalId ? "border-emerald-300 shadow-emerald-500/10" : "border-[#eadbc5]")}>
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-black text-[#3d3122]">{displayAuthor(message)}</p>
                   <div className="flex items-center gap-2">
+                    {message.linkedGoalId ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-emerald-800">
+                        Kanban Task
+                      </span>
+                    ) : (
+                      <select
+                        className="inline-flex items-center rounded-full border border-emerald-200 bg-white px-2 py-1 pr-6 text-[10px] font-black uppercase tracking-[0.1em] text-emerald-700 transition hover:bg-emerald-50 outline-none appearance-none cursor-pointer"
+                        style={{
+                          backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23047857%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")`,
+                          backgroundRepeat: "no-repeat",
+                          backgroundPosition: "right 0.5rem top 50%",
+                          backgroundSize: "0.5rem auto",
+                        }}
+                        onChange={async (e) => {
+                          const val = e.target.value;
+                          e.target.value = "";
+                          if (!val || !projectId || !threadId) return;
+                          
+                          if (val === "task") {
+                            try {
+                              const kanbanActions = await import("@/app/actions/kanban-actions");
+                              await kanbanActions.createGoalFromMessage(projectId, threadId, message.id, message.body || "New Task");
+                              setMessages(current => current.map(m => m.id === message.id ? { ...m, linkedGoalId: "optimistic" } : m));
+                            } catch (err) {
+                              console.error("Failed to convert", err);
+                            }
+                          }
+                        }}
+                        value=""
+                      >
+                        <option value="" disabled>Convert / Tag As...</option>
+                        <option value="task">Kanban Task</option>
+                        <option value="note">Study Note</option>
+                        <option value="idea">Idea</option>
+                      </select>
+                    )}
                     <time className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9f835a]">
                       {formatTime(message.createdAt)}
                     </time>

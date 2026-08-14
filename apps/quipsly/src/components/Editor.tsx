@@ -8,6 +8,8 @@ import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { SnippetExtension } from "../lib/SnippetExtension";
+import { TaskExtension } from "./editor/TaskExtension";
+import { TagSuggestionExtension } from "./editor/TagSuggestionExtension";
 import { cn } from "@/app/(app)/studio-ui";
 import {
   Bold,
@@ -28,6 +30,7 @@ interface EditorProps {
   collabUrl?: string;
   userName?: string;
   userColor?: string;
+  projectTags?: { id: string; label: string; hexColor?: string | null }[];
   onSelectTagging?: (text: string) => void;
   onSelectBreakdown?: (text: string) => void;
   onSelectVideo?: () => void;
@@ -42,6 +45,7 @@ export default function Editor({
   collabUrl = "",
   userName = "Anonymous",
   userColor = "#f97316", // Default orange
+  projectTags = [],
   onSelectTagging,
   onSelectBreakdown,
   onSelectVideo,
@@ -114,6 +118,10 @@ export default function Editor({
         })
       ]),
       SnippetExtension,
+      TaskExtension,
+      TagSuggestionExtension.configure({
+        projectTags,
+      }),
       ...additionalExtensions
     ],
     editorProps: {
