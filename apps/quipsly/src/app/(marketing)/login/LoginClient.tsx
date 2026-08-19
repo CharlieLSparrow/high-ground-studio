@@ -77,6 +77,23 @@ export function LoginClient({
   initialError?: string;
 }) {
   const safeCallbackUrl = cleanQuipslyCallbackUrl(callbackUrl);
+  const loginContext = safeCallbackUrl.startsWith("/sessions/")
+    ? {
+        eyebrow: "Private Quipsly Session",
+        signInTitle: "Open your Session",
+        description: "Use the invited account to return to the exact lobby, consent choices, call, recording, transcript, and follow-up you opened.",
+      }
+    : safeCallbackUrl.startsWith("/coaching")
+      ? {
+          eyebrow: "Quipsly Coaching",
+          signInTitle: "Continue to coaching",
+          description: "One account keeps your coaching relationships, schedule, Sessions, recordings, transcripts, notes, goals, and tasks together.",
+        }
+      : {
+          eyebrow: "Quipsly",
+          signInTitle: "Welcome back",
+          description: "One account opens your Quipsly Home Nest, projects, notes, and Capture sessions.",
+        };
   const safeInviteToken = cleanQuipslyInviteToken(inviteToken);
   const inviteMessage = safeInviteToken
     ? "Sign in with the invited email. Quipsly connects the invite only after Firebase proves the address."
@@ -280,11 +297,12 @@ export function LoginClient({
           Quipsly
         </a>
 
-        <h1 className="mt-7 font-serif text-4xl font-black tracking-tight">
-          {passwordMode === "create" ? "Create your account" : "Welcome back"}
+        <p className="mt-7 text-[10px] font-black uppercase tracking-[0.2em] text-[#315d4e]">{loginContext.eyebrow}</p>
+        <h1 className="mt-2 font-serif text-4xl font-black tracking-tight">
+          {passwordMode === "create" ? "Create your account" : loginContext.signInTitle}
         </h1>
         <p className="mt-2 text-sm leading-6 text-[#715840]">
-          One account opens your Quipsly Home Nest, projects, notes, and Capture sessions.
+          {loginContext.description}
         </p>
 
         {safeInviteToken ? (

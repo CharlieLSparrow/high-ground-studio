@@ -111,4 +111,18 @@ describe("Quipsly direct login", () => {
       screen.getByRole("button", { name: "Continue with Google" }),
     ).toBeInTheDocument();
   });
+
+  it("explains the exact coaching destination instead of dropping a new coach into generic Nest copy", () => {
+    render(<LoginClient callbackUrl="/coaching" />);
+
+    expect(screen.getByRole("heading", { name: "Continue to coaching" })).toBeInTheDocument();
+    expect(screen.getByText(/relationships, schedule, Sessions, recordings, transcripts, notes, goals, and tasks/)).toBeInTheDocument();
+  });
+
+  it("keeps a client oriented to the private Session they opened", () => {
+    render(<LoginClient callbackUrl="/sessions/join?token=qsinv_safe-token" />);
+
+    expect(screen.getByRole("heading", { name: "Open your Session" })).toBeInTheDocument();
+    expect(screen.getByText(/return to the exact lobby/)).toBeInTheDocument();
+  });
 });
