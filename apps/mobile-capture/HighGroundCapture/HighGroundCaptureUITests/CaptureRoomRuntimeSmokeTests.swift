@@ -531,14 +531,25 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let button = tabBar.buttons[title].firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 8), "Capture should expose the \(title) root tab.")
         button.tap()
-        let selected = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "selected == true"),
-            object: button
-        )
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [selected], timeout: 5),
-            .completed,
-            "Capture should visibly select the \(title) root tab."
+        let destination: XCUIElement
+        switch title {
+        case "Today":
+            destination = app.descendants(matching: .any)["CaptureTodayView"].firstMatch
+        case "Record":
+            destination = app.scrollViews["CaptureRecorderView"].firstMatch
+        case "Work":
+            destination = app.descendants(matching: .any)["CaptureWorkView"].firstMatch
+        case "Library":
+            destination = app.scrollViews["CaptureLibraryView"].firstMatch
+        case "Account":
+            destination = app.descendants(matching: .any)["CaptureAccountView"].firstMatch
+        default:
+            XCTFail("Capture runtime test has no destination proof for the \(title) root tab.")
+            return
+        }
+        XCTAssertTrue(
+            destination.waitForExistence(timeout: 8),
+            "Capture should render the \(title) destination after its root tab is tapped."
         )
     }
 
@@ -4746,36 +4757,44 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         tapRootTab("Record", in: app)
         selectRequestedSession(in: app, credentials: credentials)
-        let attachToStudio = app.buttons["CaptureAttachToStudioButton_\(sessionID)"].firstMatch
+        let handoffCard = app.descendants(matching: .any)["CaptureStudioHandoffCard_\(sessionID)"].firstMatch
         XCTAssertTrue(
-            waitForRuntimeElement(attachToStudio, in: app, timeout: 45, swipeAttempts: 10),
-            "A server-verified recording should expose one explicit Studio handoff action."
+            waitForRuntimeElement(handoffCard, in: app, timeout: 45, swipeAttempts: 10),
+            "A server-verified recording should keep its Studio handoff state reachable beside the recorder."
         )
-        let attachEnabled = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "enabled == true"),
-            object: attachToStudio
-        )
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [attachEnabled], timeout: 45),
-            .completed,
-            "The verified source should become attachable without changing or deleting the local original."
-        )
-        attachToStudio.tap()
-
         let promotionStatusIdentifier = "CaptureStudioPromotionStatus_\(sessionID)"
+        let attachToStudio = app.buttons["CaptureAttachToStudioButton_\(sessionID)"].firstMatch
+        let openStudioReview = app.links["CaptureOpenStudioReviewLink_\(sessionID)"].firstMatch
+
+        if attachToStudio.exists {
+            let attachEnabled = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "enabled == true"),
+                object: attachToStudio
+            )
+            XCTAssertEqual(
+                XCTWaiter.wait(for: [attachEnabled], timeout: 45),
+                .completed,
+                "The verified source should become attachable without changing or deleting the local original."
+            )
+            attachToStudio.tap()
+        }
+
         let promotionDeadline = Date().addingTimeInterval(45)
-        var studioAttached = false
+        var durableStudioHandoff = false
         while Date() < promotionDeadline {
             let promotionStatus = app.descendants(matching: .any)[promotionStatusIdentifier].firstMatch
-            if promotionStatus.exists && promotionStatus.label.localizedCaseInsensitiveContains("Studio media ready") {
-                studioAttached = true
+            let normalizedStatus = promotionStatus.label.lowercased()
+            if promotionStatus.exists
+                && (normalizedStatus.contains("in studio") || normalizedStatus.contains("studio media ready"))
+                && openStudioReview.exists {
+                durableStudioHandoff = true
                 break
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         XCTAssertTrue(
-            studioAttached,
-            "Attach to Studio should return durable same-project handoff truth before the operated journey succeeds."
+            durableStudioHandoff,
+            "Studio handoff should either attach now or read back an earlier idempotent attachment with the exact review action."
         )
     }
 }

@@ -221,6 +221,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
     private var sharedAudioLeaseActive = false
     private var endedAssetID: String?
     private var consecutivePollFailures = 0
+    private var loadingRequestID: UUID?
     private var serverClockOffsetSeconds: TimeInterval = 0
     private var serverClockUncertaintySeconds: TimeInterval?
 
@@ -474,8 +475,16 @@ final class MobileEpisodeWatchClient: ObservableObject {
             currentContextKey = context.key
             currentSession = session
         }
+        guard loadingRequestID == nil else { return }
+        let requestID = UUID()
+        loadingRequestID = requestID
         if !quiet { isLoading = true }
-        defer { if !quiet { isLoading = false } }
+        defer {
+            if loadingRequestID == requestID {
+                loadingRequestID = nil
+                if !quiet { isLoading = false }
+            }
+        }
 
         do {
             var components = URLComponents(
@@ -490,11 +499,19 @@ final class MobileEpisodeWatchClient: ObservableObject {
             guard let url = components?.url else { throw URLError(.badURL) }
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
+            request.timeoutInterval = 20
             request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
             let requestStartedAt = Date()
-            let (data, response) = try await AuthManager.shared.authenticatedData(
-                for: request
-            )
+            let (data, response) = try await withTaskCancellationHandler {
+                try await AuthManager.shared.authenticatedData(for: request)
+            } onCancel: {
+                Task { @MainActor [weak self] in
+                    guard self?.loadingRequestID == requestID else { return }
+                    self?.loadingRequestID = nil
+                    if !quiet { self?.isLoading = false }
+                }
+            }
+            try Task.checkCancellation()
             let payload = try JSONDecoder().decode(
                 MobileEpisodeWatchResponse.self,
                 from: data
@@ -511,14 +528,26 @@ final class MobileEpisodeWatchClient: ObservableObject {
             }
             let recoveredFromStaleConnection =
                 quiet && (consecutivePollFailures >= 3 || !sharedConnectionReady)
-            canEdit = payload.canEdit == true
+            let nextCanEdit = payload.canEdit == true
+            if canEdit != nextCanEdit {
+                canEdit = nextCanEdit
+            }
             consecutivePollFailures = 0
-            sharedConnectionReady = true
+            if !sharedConnectionReady {
+                sharedConnectionReady = true
+            }
             updateServerClock(
                 serverNow: payload.serverNow,
                 requestStartedAt: requestStartedAt
             )
-            apply(nextRoom)
+            // A one-second collaboration poll should not invalidate the whole
+            // SwiftUI tree when the canonical room is unchanged. Apart from
+            // wasting battery, unconditional @Published writes can keep the
+            // accessibility tree perpetually non-quiescent for VoiceOver and
+            // UI automation.
+            if room != nextRoom {
+                apply(nextRoom)
+            }
             if !quiet {
                 statusMessage = selectedClip.map {
                     "\($0.title) is ready in the shared episode room."
@@ -529,14 +558,22 @@ final class MobileEpisodeWatchClient: ObservableObject {
                 errorMessage = nil
             }
         } catch {
+            if Task.isCancelled || error is CancellationError {
+                return
+            }
             if quiet {
                 consecutivePollFailures += 1
                 if consecutivePollFailures >= 3 {
-                    sharedConnectionReady = false
-                    player?.pause()
-                    endSharedAudioLease()
-                    errorMessage =
+                    if sharedConnectionReady {
+                        sharedConnectionReady = false
+                        player?.pause()
+                        endSharedAudioLease()
+                    }
+                    let disconnectedMessage =
                         "Shared Watch lost contact with Nest. Local media is preserved and playback is paused while Quipsly reconnects."
+                    if errorMessage != disconnectedMessage {
+                        errorMessage = disconnectedMessage
+                    }
                 }
             } else {
                 sharedConnectionReady = false
@@ -548,7 +585,11 @@ final class MobileEpisodeWatchClient: ObservableObject {
     func poll(session: MobileCaptureSession) async {
         while !Task.isCancelled {
             do {
-                try await Task.sleep(for: .seconds(1))
+                // Poll tightly while connected for responsive shared control,
+                // then back off after repeated failures. LiveKit hints still
+                // trigger an immediate permission-checked refresh.
+                let delaySeconds = consecutivePollFailures >= 3 ? 5.0 : 1.0
+                try await Task.sleep(for: .seconds(delaySeconds))
             } catch {
                 return
             }
@@ -1234,6 +1275,8 @@ final class MobileEpisodeWatchClient: ObservableObject {
     }
 
     private func resetForContextChange() {
+        loadingRequestID = nil
+        isLoading = false
         stopPlayer()
         room = nil
         outboundLiveHint = nil
@@ -1540,7 +1583,7 @@ struct MobileEpisodeWatchCard: View {
                 }
             }
 
-            if client.isLoading && client.room == nil {
+            if client.isLoading && client.room == nil && client.errorMessage == nil {
                 ProgressView("Loading episode Watch…")
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if let clip = client.selectedClip {

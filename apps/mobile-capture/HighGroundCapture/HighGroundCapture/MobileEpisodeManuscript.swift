@@ -68,6 +68,7 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
     @Published private(set) var protectedCacheSavedAt: Date?
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
+    private var loadingRequestID: UUID?
 
     private let baseURL: URL
     private var currentContextKey: String?
@@ -174,7 +175,7 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
             currentContextKey = context.key
             _ = restoreProtectedCache(context: context)
         }
-        guard !isLoading else { return }
+        guard loadingRequestID == nil else { return }
         guard AuthManager.shared.networkActionsAllowed else {
             if hasReadableCopy {
                 isUsingProtectedCache = true
@@ -186,8 +187,15 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
             return
         }
 
+        let requestID = UUID()
+        loadingRequestID = requestID
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if loadingRequestID == requestID {
+                loadingRequestID = nil
+                isLoading = false
+            }
+        }
         do {
             var components = URLComponents(
                 url: context.endpoint,
@@ -204,10 +212,18 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
             guard let url = components?.url else { throw URLError(.badURL) }
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
+            request.timeoutInterval = 20
             request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-            let (data, response) = try await AuthManager.shared.authenticatedData(
-                for: request
-            )
+            let (data, response) = try await withTaskCancellationHandler {
+                try await AuthManager.shared.authenticatedData(for: request)
+            } onCancel: {
+                Task { @MainActor [weak self] in
+                    guard self?.loadingRequestID == requestID else { return }
+                    self?.loadingRequestID = nil
+                    self?.isLoading = false
+                }
+            }
+            try Task.checkCancellation()
             guard Self.isSameOrigin(response.url, baseURL) else {
                 throw NSError(
                     domain: "MobileEpisodeManuscript",
@@ -280,6 +296,9 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
                 : "\(nextWriting.blockCount) blocks · protected on this iPhone"
             persist(context: context)
         } catch {
+            if Task.isCancelled || error is CancellationError {
+                return
+            }
             if !hasReadableCopy {
                 _ = restoreProtectedCache(context: context)
             }
@@ -311,6 +330,7 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
     }
 
     private func reset() {
+        loadingRequestID = nil
         currentContextKey = nil
         episode = nil
         writing = nil
@@ -557,7 +577,7 @@ struct MobileEpisodeManuscriptCard: View {
                 Text(summary)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-            } else if client.isLoading {
+            } else if client.isLoading && client.errorMessage == nil {
                 ProgressView("Loading canonical episode script…")
             } else {
                 Text("Keep the canonical episode text beside the recorder, including when the network drops.")

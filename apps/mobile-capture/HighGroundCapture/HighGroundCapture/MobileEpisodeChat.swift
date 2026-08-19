@@ -264,18 +264,37 @@ final class MobileEpisodeChatClient: ObservableObject {
                 )
             }
 
-            messages = Array((payload.messages ?? []).suffix(200))
-            threadTitle = payload.thread?.title ?? scope.title
+            let nextMessages = Array((payload.messages ?? []).suffix(200))
+            let messagesChanged = messages != nextMessages
+            if messagesChanged {
+                messages = nextMessages
+            }
+            let nextThreadTitle = payload.thread?.title ?? scope.title
+            if threadTitle != nextThreadTitle {
+                threadTitle = nextThreadTitle
+            }
             let actorRole = payload.actor?.role?.uppercased() ?? ""
-            canEdit = scope == .episode
+            let nextCanEdit = scope == .episode
                 ? ["OWNER", "EDITOR"].contains(actorRole)
                 : !actorRole.isEmpty && !["OBSERVER", "VIEWER"].contains(actorRole)
-            isUsingProtectedCache = false
-            errorMessage = nil
-            statusMessage = messages.isEmpty
+            if canEdit != nextCanEdit {
+                canEdit = nextCanEdit
+            }
+            if isUsingProtectedCache {
+                isUsingProtectedCache = false
+            }
+            if errorMessage != nil {
+                errorMessage = nil
+            }
+            let nextStatusMessage = nextMessages.isEmpty
                 ? "Start the \(scope == .episode ? "episode" : "Session") conversation"
-                : "\(messages.count) \(messages.count == 1 ? "message" : "messages")"
-            persist(context: context)
+                : "\(nextMessages.count) \(nextMessages.count == 1 ? "message" : "messages")"
+            if statusMessage != nextStatusMessage {
+                statusMessage = nextStatusMessage
+            }
+            if !quietly || messagesChanged {
+                persist(context: context)
+            }
         } catch {
             let responseCode = (error as NSError).code
             if messages.isEmpty {

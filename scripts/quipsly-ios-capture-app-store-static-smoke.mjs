@@ -27,6 +27,7 @@ const files = {
   mobileCapturePreflight: path.join(root, "scripts/quipsly-mobile-capture-preflight.sh"),
   generatedMobileCaptureAuthSmoke: path.join(root, "scripts/quipsly-mobile-capture-generated-auth-smoke.mjs"),
   contentView: path.join(sourceRoot, "ContentView.swift"),
+  captureApp: path.join(sourceRoot, "HighGroundCaptureApp.swift"),
   appDelegate: path.join(sourceRoot, "AppDelegate.swift"),
   authManager: path.join(sourceRoot, "AuthManager.swift"),
   loginView: path.join(sourceRoot, "LoginView.swift"),
@@ -43,6 +44,7 @@ const files = {
   videoCaptureService: path.join(sourceRoot, "VideoCaptureService.swift"),
   captureAudioSessionCoordinator: path.join(sourceRoot, "CaptureAudioSessionCoordinator.swift"),
   episodeWatch: path.join(sourceRoot, "MobileEpisodeWatch.swift"),
+  episodeManuscript: path.join(sourceRoot, "MobileEpisodeManuscript.swift"),
   episodeChat: path.join(sourceRoot, "MobileEpisodeChat.swift"),
   uploadManager: path.join(sourceRoot, "UploadManager.swift"),
   uploadLedgerStore: path.join(sourceRoot, "UploadLedgerStore.swift"),
@@ -170,6 +172,7 @@ const appStoreCommittedDraftRunnerText = read(files.appStoreCommittedDraftRunner
 const mobileCapturePreflightText = read(files.mobileCapturePreflight);
 const generatedMobileCaptureAuthSmokeText = read(files.generatedMobileCaptureAuthSmoke);
 const contentViewText = read(files.contentView);
+const captureAppText = read(files.captureApp);
 const appDelegateText = read(files.appDelegate);
 const authText = read(files.authManager);
 const loginText = read(files.loginView);
@@ -179,6 +182,7 @@ const videoCaptureControllerText = read(files.videoCaptureController);
 const videoCaptureServiceText = read(files.videoCaptureService);
 const captureAudioSessionCoordinatorText = read(files.captureAudioSessionCoordinator);
 const episodeWatchText = read(files.episodeWatch);
+const episodeManuscriptText = read(files.episodeManuscript);
 const episodeChatText = read(files.episodeChat);
 const uploadText = read(files.uploadManager);
 const uploadLedgerText = read(files.uploadLedgerStore);
@@ -387,6 +391,7 @@ requireIncludes(runtimeUISmokeRunnerText, 'skipped !== 0', "runtime UI smoke fai
 requireIncludes(runtimeUISmokeRunnerText, 'total !== 1', "runtime UI smoke requires exactly one executed bounded test");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"', "runtime UI smoke retains the non-mutating signed-in surface proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testConsentedCapturePlaybackAndCrashRecovery"', "runtime UI smoke can select the consented recovery proof mode");
+requireIncludes(runtimeUISmokeRunnerText, 'SDK_STAT_CACHE_ENABLE_VALUE="${QUIPSLY_CAPTURE_UI_TEST_SDK_STAT_CACHE_ENABLE:-NO}"', "runtime UI smoke avoids the observed Xcode SDK stat-cache deadlock by default");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence"', "runtime UI smoke can select the signed-in recurrence-authoring proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testIPhoneRecurrenceOutboxSurvivesOfflineRelaunchAndConverges"', "runtime UI smoke can select the offline/relaunch recurrence-authoring proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'recurrence-edit)', "runtime UI smoke can select the immutable-history recurrence-edit proof mode");
@@ -403,6 +408,8 @@ requireIncludes(runtimeUISmokeRunnerText, 'coach-follow-up-authoring)', "runtime
 requireIncludes(runtimeUISmokeRunnerText, 'coaching-follow-through-work)', "runtime UI smoke can select the exact next-Session follow-through to Work proof mode");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInCaptureRoomSurfacesAreVisible", "runtime UI smoke implements the signed-in surface proof");
 requireIncludes(runtimeUISmokeTestsText, "func testConsentedCapturePlaybackAndCrashRecovery", "runtime UI smoke implements real consented capture, playback, and crash recovery");
+requireIncludes(runtimeUISmokeTestsText, 'destination = app.scrollViews["CaptureRecorderView"].firstMatch', "runtime UI smoke proves rendered recorder navigation instead of trusting stale tab-selection metadata");
+requireIncludes(runtimeUISmokeTestsText, "earlier idempotent attachment", "runtime UI recovery proof accepts only a durable existing Studio handoff when a retained source was already attached");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence", "runtime UI smoke authors recurrence through signed-in iPhone controls and reads it back from Today");
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneRecurrenceOutboxSurvivesOfflineRelaunchAndConverges", "runtime UI smoke proves recurrence survives an unreachable Nest plus process relaunch before canonical convergence");
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneVersionsThisAndFutureRecurrenceWithoutRewritingHistory", "runtime UI smoke versions this-and-future recurrence through the signed-in iPhone controls");
@@ -616,6 +623,13 @@ requireIncludes(episodeWatchText, '"expectedRevision": room.revision', "shared W
 requireIncludes(episodeWatchText, 'type: "START_SESSION"', "shared Watch binds to an authoritative Capture clock");
 requireIncludes(episodeWatchText, "serverClockOffsetSeconds", "shared Watch projects the server clock instead of trusting device wall time");
 requireIncludes(episodeWatchText, "Shared Watch lost contact with Nest.", "shared Watch exposes stale connectivity");
+requireIncludes(episodeWatchText, "if room != nextRoom", "shared Watch does not republish an unchanged canonical room every second");
+requireIncludes(episodeWatchText, "consecutivePollFailures >= 3 ? 5.0 : 1.0", "shared Watch backs off after repeated connectivity failures");
+requireIncludes(episodeWatchText, "loadingRequestID == requestID", "shared Watch cancellation cannot strand or clear a newer loading request");
+requireIncludes(episodeWatchText, "try Task.checkCancellation()", "shared Watch refuses a stale response after its UI task is cancelled");
+requireIncludes(episodeManuscriptText, "loadingRequestID == requestID", "episode manuscript cancellation cannot strand or clear a newer loading request");
+requireIncludes(capturePhoneShellText, "guard visibleTab == .record else { return }", "episode collaboration polling runs only while Record is the visible root surface");
+requireIncludes(episodeChatText, "let messagesChanged = messages != nextMessages", "collaboration chat does not republish an unchanged thread on every poll");
 requireIncludes(episodeWatchText, "CaptureEpisodeWatchPlayPauseButton", "shared Watch has a reachable native play and pause control");
 requireIncludes(episodeChatText, "authenticatedData(", "episode chat uses the verified native account request boundary");
 requireIncludes(episodeChatText, "FileProtectionType.complete", "episode chat cache is protected while the iPhone is locked");
@@ -1600,6 +1614,12 @@ requireIncludes(mobileText, "Goals", "native session context exposes goals");
 requireIncludes(mobileText, "Tasks", "native session context exposes tasks");
 requireIncludes(capturePhoneShellText, "UploadSummaryCard(model: model)", "shipping recorder reaches visible upload state");
 requireIncludes(capturePhoneShellText, "StudioHandoffCard(", "shipping recorder reaches the Studio handoff");
+assert(
+  capturePhoneShellText.indexOf("StudioHandoffCard(")
+    < capturePhoneShellText.indexOf("CaptureSessionTranscriptReviewCard("),
+  "Verified-source Studio handoff remains in the immediate recorder outcome before long-form Session work.",
+  { label: "shipping recorder keeps recovery and Studio handoff reachable before transcript, manuscript, and clip work" },
+);
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureStudioHandoffCard_', "shipping Studio handoff has a stable automation identity");
 requireIncludes(capturePhoneShellText, "without deleting or changing any original", "shipping Studio handoff preserves immutable originals");
 requireIncludes(capturePhoneShellText, "CaptureSourceTruthFootnote", "shipping recorder reaches source-truth guidance");

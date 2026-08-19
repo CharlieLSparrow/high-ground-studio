@@ -6426,6 +6426,19 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
+                    // Keep the recording outcome beside the recorder. A
+                    // recovered or freshly verified source should never make
+                    // someone traverse transcript, manuscript, clip-watch,
+                    // notes, and follow-through work just to confirm upload
+                    // safety or hand the immutable group to Studio.
+                    UploadSummaryCard(model: model)
+
+                    StudioHandoffCard(
+                        model: model,
+                        session: session,
+                        captureIsActive: captureIsActive
+                    )
+
                     CaptureRehearsalReadinessCard(
                         audioCapture: audioCapture,
                         soundCheck: soundCheck,
@@ -6461,8 +6474,9 @@ private struct CaptureRecorderView: View {
                         )
                         .task(
                             id:
-                                "manuscript|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+                                "manuscript|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
                         ) {
+                            guard visibleTab == .record else { return }
                             if model.usesPreviewData {
                                 episodeManuscript.loadPreview(session: session)
                             } else {
@@ -6478,8 +6492,9 @@ private struct CaptureRecorderView: View {
                         )
                         .task(
                             id:
-                                "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+                                "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
                         ) {
+                            guard visibleTab == .record else { return }
                             if model.usesPreviewData {
                                 episodeWatch.loadPreview(session: session)
                             } else {
@@ -6536,14 +6551,6 @@ private struct CaptureRecorderView: View {
                                 .accessibilityIdentifier("CaptureSourcePlanStatus")
                         }
                     }
-
-                    UploadSummaryCard(model: model)
-
-                    StudioHandoffCard(
-                        model: model,
-                        session: session,
-                        captureIsActive: captureIsActive
-                    )
 
                     CaptureQuickEntryBar(session: session) { kind in
                         quickEntryKind = kind
@@ -6688,8 +6695,12 @@ private struct CaptureRecorderView: View {
                         )
                         .task(
                             id:
-                                "session-chat|\(session.id)|\(session.callRoomId)|\(session.projectSlug ?? "")"
+                                "session-chat|\(session.id)|\(session.callRoomId)|\(session.projectSlug ?? "")|active=\(visibleTab == .record)"
                         ) {
+                            guard visibleTab == .record else {
+                                sessionChat.stopPolling()
+                                return
+                            }
                             if model.usesPreviewData {
                                 sessionChat.loadPreview(session: session)
                             } else {
@@ -6724,8 +6735,12 @@ private struct CaptureRecorderView: View {
                         )
                         .task(
                             id:
-                                "chat|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+                                "chat|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
                         ) {
+                            guard visibleTab == .record else {
+                                episodeChat.stopPolling()
+                                return
+                            }
                             if model.usesPreviewData {
                                 episodeChat.loadPreview(session: session)
                             } else {

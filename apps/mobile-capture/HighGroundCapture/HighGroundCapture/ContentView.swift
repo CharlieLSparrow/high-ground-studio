@@ -154,6 +154,31 @@ private struct ProtectedOfflineLibraryShell: View {
                         .foregroundStyle(.secondary)
                 }
 
+                Section("Local Library") {
+                    if library.recordings.isEmpty {
+                        ContentUnavailableView(
+                            "No local recordings",
+                            systemImage: "waveform",
+                            description: Text("Nothing has been saved in this iPhone's protected recording library yet.")
+                        )
+                    } else {
+                        ForEach(library.recordings) { recording in
+                            ProtectedOfflineRecordingRow(
+                                recording: recording,
+                                isPlaying: playback.playingRecordingID == recording.id,
+                                onPlay: { playback.toggle(recording: recording, library: library) }
+                            )
+                        }
+                    }
+                }
+
+                if let playbackError = playback.errorMessage {
+                    Section("Playback") {
+                        Label(playbackError, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    }
+                }
+
                 Section("Continue transcript review") {
                     if offlineTranscriptRecordings.isEmpty {
                         Label {
@@ -263,30 +288,6 @@ private struct ProtectedOfflineLibraryShell: View {
                     )
                 }
 
-                Section("Local Library") {
-                    if library.recordings.isEmpty {
-                        ContentUnavailableView(
-                            "No local recordings",
-                            systemImage: "waveform",
-                            description: Text("Nothing has been saved in this iPhone's protected recording library yet.")
-                        )
-                    } else {
-                        ForEach(library.recordings) { recording in
-                            ProtectedOfflineRecordingRow(
-                                recording: recording,
-                                isPlaying: playback.playingRecordingID == recording.id,
-                                onPlay: { playback.toggle(recording: recording, library: library) }
-                            )
-                        }
-                    }
-                }
-
-                if let playbackError = playback.errorMessage {
-                    Section("Playback") {
-                        Label(playbackError, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
-                    }
-                }
             }
             .navigationTitle("Local Library")
             .toolbar {
