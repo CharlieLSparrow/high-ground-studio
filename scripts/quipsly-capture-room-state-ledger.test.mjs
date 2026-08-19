@@ -303,7 +303,7 @@ for (const code of ["P2002", "P2034", "23505", "40001", "40P01"]) {
 }
 assert.equal(isRetryableCaptureRoomTransactionError({ code: "P2025" }), false);
 
-const [schema, route, additiveSql, schemaSync, swiftClient, receiptStore, captureModel] = await Promise.all([
+const [schema, route, additiveSql, schemaSync, swiftClient, receiptStore, captureModel, browserRecorder] = await Promise.all([
   readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
   readFile(new URL("../apps/quipsly/src/app/api/mobile/capture/rooms/state/route.ts", import.meta.url), "utf8"),
   readFile(new URL("../ops/quipsly-coaching-capture-additive.sql", import.meta.url), "utf8"),
@@ -311,6 +311,7 @@ const [schema, route, additiveSql, schemaSync, swiftClient, receiptStore, captur
   readFile(new URL("../apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift", import.meta.url), "utf8"),
   readFile(new URL("../apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureRoomReceiptStore.swift", import.meta.url), "utf8"),
   readFile(new URL("../apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureExperienceModel.swift", import.meta.url), "utf8"),
+  readFile(new URL("../apps/quipsly/src/components/browser-source-recorder.tsx", import.meta.url), "utf8"),
 ]);
 
 assert.match(schema, /model CaptureRoomStateReceipt \{/);
@@ -338,6 +339,16 @@ assert.match(route, /staffCrashCompensationReason\.length < 12/);
 assert.match(route, /allPartyConsentVersions/);
 assert.doesNotMatch(route, /mobileCaptureRoomReceipts:\s*\[\.\.\./);
 assert.doesNotMatch(route, /slice\(-50\)/);
+assert.doesNotMatch(
+  browserRecorder,
+  /postRoomReceipt\(\{\s*callRoomId,\s*action:\s*"OPEN"/,
+  "a participant-local browser recording must not require room-control OPEN authority",
+);
+assert.match(
+  browserRecorder,
+  /postRoomReceipt\(\{\s*callRoomId,\s*action:\s*"START_RECORDING"/,
+  "the browser source must begin with its participant-owned START receipt",
+);
 
 assert.match(swiftClient, /"receiptId": roomStateReceipt\.receiptID\.uuidString\.lowercased\(\)/);
 assert.match(swiftClient, /"captureId"\] = captureID\.uuidString\.lowercased\(\)/);

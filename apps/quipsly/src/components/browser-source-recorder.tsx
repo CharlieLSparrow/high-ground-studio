@@ -907,7 +907,6 @@ export function BrowserSourceRecorder({
     try {
       monotonicStoppedNanosecondsRef.current = null;
       stopClockBurstRef.current = null;
-      await postRoomReceipt({ callRoomId, action: "OPEN", receiptId: crypto.randomUUID(), occurredAt: new Date().toISOString() });
       const clockSamples = await measureBrowserCaptureClockBurst({
         callRoomId,
         captureGroupId,

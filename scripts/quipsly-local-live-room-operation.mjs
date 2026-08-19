@@ -175,16 +175,138 @@ try {
   await journeys[0].page.getByRole("button", { name: "Send collaboration message", exact: true }).click();
   await journeys[1].page.getByText(receiptText, { exact: true }).waitFor({ timeout: 20_000 });
 
+  const saveRenderedConsent = async (journey) => {
+    const [response] = await Promise.all([
+      journey.page.waitForResponse((candidate) => (
+        candidate.request().method() === "POST"
+        && new URL(candidate.url()).pathname === "/api/mobile/capture/consent"
+      )),
+      journey.page.getByRole("button", { name: "Save my consent receipt", exact: true }).click(),
+    ]);
+    const packet = await response.json().catch(() => null);
+    assert(response.ok() && packet?.ok === true, `${journey.identity.role} consent receipt was rejected.`);
+    return packet;
+  };
+  for (const journey of journeys) {
+    const audibleConsent = journey.page.getByLabel(
+      "Every audible participant was notified and agreed to the selected recording.",
+      { exact: true },
+    );
+    await audibleConsent.waitFor({ timeout: 20_000 });
+    if (!(await audibleConsent.isChecked())) await audibleConsent.check();
+    await saveRenderedConsent(journey);
+  }
+  // Refresh each actor's receipt after both independent choices exist so both
+  // rendered recorders hold current all-party readiness, not inferred consent.
+  for (const journey of journeys) {
+    const packet = await saveRenderedConsent(journey);
+    assert(
+      packet?.session?.allRegisteredParticipantConsentGranted === true,
+      `${journey.identity.role} did not receive current all-party audio consent.`,
+    );
+    await journey.page.getByText(
+      "All currently signed-in participants are ready for this source.",
+      { exact: true },
+    ).waitFor({ timeout: 20_000 });
+    const headphones = journey.page.getByLabel(
+      "I am monitoring through headphones, so the retained mic source will not capture speaker echo.",
+      { exact: true },
+    );
+    if (!(await headphones.isChecked())) await headphones.check();
+  }
+
+  const recordButtons = journeys.map((journey) => journey.page.getByRole(
+    "button",
+    { name: "Record local source", exact: true },
+  ));
+  for (const recordButton of recordButtons) {
+    await recordButton.waitFor({ state: "visible", timeout: 20_000 });
+    for (let attempt = 0; attempt < 40 && !(await recordButton.isEnabled()); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    assert(await recordButton.isEnabled(), "A consented browser endpoint did not become ready to retain its source.");
+  }
+  const recordingWindowStartedAt = new Date();
+  await Promise.all(recordButtons.map((button) => button.click()));
+  const stopButtons = journeys.map((journey) => journey.page.getByRole(
+    "button",
+    { name: "Stop local source", exact: true },
+  ));
+  for (let index = 0; index < stopButtons.length; index += 1) {
+    await stopButtons[index].waitFor({ timeout: 20_000 }).catch(async (error) => {
+      const recorder = journeys[index].page.locator(
+        `[aria-labelledby="browser-source-${ROOM_ID}"]`,
+      );
+      const statusMessages = await recorder.getByRole("status").allTextContents();
+      throw new Error(
+        `${journeys[index].identity.role} browser source did not start. `
+        + `Status: ${JSON.stringify(statusMessages)}. ${error instanceof Error ? error.message : ""}`,
+      );
+    });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
+  await Promise.all(stopButtons.map((button) => button.click()));
+  await Promise.all(journeys.map((journey) => journey.page.getByText(
+    "Exact bytes verified. The local source remains protected and the editor evidence is ready.",
+    { exact: true },
+  ).waitFor({ timeout: 90_000 })));
+
+  const participantIds = await prisma.callParticipant.findMany({
+    where: {
+      roomId: ROOM_ID,
+      userId: { in: identities.map((identity) => userByUid.get(identity.uid)) },
+    },
+    select: { id: true, userId: true },
+  });
+  const verifiedSources = await prisma.recordingAsset.findMany({
+    where: {
+      roomId: ROOM_ID,
+      participantId: { in: participantIds.map((participant) => participant.id) },
+      kind: "LOCAL_AUDIO",
+      status: "VERIFIED",
+      createdAt: { gte: recordingWindowStartedAt },
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      participantId: true,
+      byteSize: true,
+      checksum: true,
+      recordedStartedAt: true,
+      recordedStoppedAt: true,
+      verifiedAt: true,
+    },
+  });
+  assert(verifiedSources.length === 2, `Expected two verified browser masters, observed ${verifiedSources.length}.`);
+  assert(
+    new Set(verifiedSources.map((source) => source.participantId)).size === 2,
+    "The verified browser masters did not belong to two independent participants.",
+  );
+  for (const source of verifiedSources) {
+    assert(
+      source.byteSize > 0n && source.checksum && source.recordedStartedAt && source.recordedStoppedAt && source.verifiedAt,
+      `Verified browser source ${source.id} is missing immutable-byte or timing evidence.`,
+    );
+  }
+  const overlapStartedAt = new Date(Math.max(...verifiedSources.map((source) => source.recordedStartedAt.getTime())));
+  const overlapStoppedAt = new Date(Math.min(...verifiedSources.map((source) => source.recordedStoppedAt.getTime())));
+  const overlapMilliseconds = overlapStoppedAt.getTime() - overlapStartedAt.getTime();
+  assert(overlapMilliseconds >= 2_000, `Independent browser masters overlapped by only ${overlapMilliseconds} ms.`);
+
   console.log(JSON.stringify({
     ok: true,
     localOnly: true,
     roomId: ROOM_ID,
     providerRoomId: PROVIDER_ROOM_ID,
     participantsConnected: journeys.length,
-    retainedSourceStarted: false,
+    retainedSourceStarted: true,
     providerRecordingStarted: false,
     chatRoundTrip: "passed",
     browserToBrowserLiveKit: "passed",
+    independentBrowserSourcesVerified: 2,
+    independentParticipantSourcesVerified: new Set(verifiedSources.map((source) => source.participantId)).size,
+    browserSourceOverlapMilliseconds: overlapMilliseconds,
+    allPartyConsentReceipts: "passed",
     secretsPrinted: false,
   }, null, 2));
 } finally {
