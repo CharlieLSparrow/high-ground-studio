@@ -685,8 +685,8 @@ export default function CoachingPage() {
     offeringDescription:
       "A one-to-one coaching session with booking, payment evidence, consent-aware capture, transcript review, and a follow-up packet in Quipsly.",
     defaultDurationMinutes: "60",
-    defaultAmountDollars: "150",
-    timezone: "America/Los_Angeles",
+    defaultAmountDollars: "",
+    timezone: "",
     currency: "USD",
   });
 
@@ -1226,6 +1226,15 @@ export default function CoachingPage() {
     }));
   }, [runway?.user?.email, runway?.user?.name]);
 
+  useEffect(() => {
+    const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!detectedTimezone) return;
+    setSetupForm((current) => ({
+      ...current,
+      timezone: current.timezone || detectedTimezone,
+    }));
+  }, []);
+
   async function setupCoachProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSettingUpCoach(true);
@@ -1248,7 +1257,7 @@ export default function CoachingPage() {
         ...current,
         title: setupForm.offeringTitle || current.title,
         durationMinutes: setupForm.defaultDurationMinutes || current.durationMinutes,
-        paymentPolicy: "PAID_ONE_TO_ONE",
+        paymentPolicy: dollarsToCents(setupForm.defaultAmountDollars) ? "PAID_ONE_TO_ONE" : "MANUAL",
         amountDollars: setupForm.defaultAmountDollars || current.amountDollars,
         currency: setupForm.currency || current.currency,
       }));
@@ -1364,6 +1373,11 @@ export default function CoachingPage() {
           <p className="mt-6 rounded-2xl border border-[#eadbc6] bg-[#fffaf1] p-4 text-sm font-bold leading-relaxed text-[#6f5c42]">
             The coaching path is left to right: prepare the relationship, schedule the Session, invite the client, confirm consent, capture the call, then review and share follow-up. These cards show evidence Quipsly can see, not judgment. If something is not ready, the next panel should say what to do next.
           </p>
+          {!isLoading && runway?.user && !canManageCoaching ? (
+            <a href="#coach-setup" className="mt-4 inline-flex min-h-11 items-center rounded-full bg-emerald-800 px-5 py-3 text-sm font-black text-white shadow-sm">
+              Start here · finish coach setup
+            </a>
+          ) : null}
           <div className="mt-4 grid gap-3 md:grid-cols-5">
             <FriendlyStepCard
               step="1"
@@ -2001,8 +2015,8 @@ export default function CoachingPage() {
           </div>
         </section>
 
-        <aside className="space-y-6">
-          <div className="rounded-[1.7rem] border border-emerald-100 bg-emerald-50/80 p-6 shadow-sm">
+        <aside className={`space-y-6 ${!canManageCoaching ? "order-first xl:order-last" : ""}`}>
+          <div id="coach-setup" className="scroll-mt-6 rounded-[1.7rem] border border-emerald-100 bg-emerald-50/80 p-6 shadow-sm">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="flex items-center gap-2 text-xl font-black text-[#214531]"><Users className="text-emerald-700" /> Coach setup</h2>
@@ -2057,6 +2071,18 @@ export default function CoachingPage() {
                   className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
                 />
               </label>
+              <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
+                Timezone
+                <input
+                  type="text"
+                  value={setupForm.timezone}
+                  onChange={(event) => setSetupForm((current) => ({ ...current, timezone: event.target.value }))}
+                  placeholder="America/Denver"
+                  className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
+                  required
+                />
+                <span className="mt-1 block text-[11px] normal-case tracking-normal text-[#315641]">Detected from this device. Change it if your coaching calendar uses another timezone.</span>
+              </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
                   Minutes
@@ -2079,6 +2105,7 @@ export default function CoachingPage() {
                     onChange={(event) => setSetupForm((current) => ({ ...current, defaultAmountDollars: event.target.value }))}
                     className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
                   />
+                  <span className="mt-1 block text-[11px] normal-case tracking-normal text-[#315641]">Optional. Leave blank to start without a payment link.</span>
                 </label>
               </div>
               <button

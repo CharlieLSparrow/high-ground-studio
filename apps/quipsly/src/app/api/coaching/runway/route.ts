@@ -7,6 +7,7 @@ import {
 } from "@high-ground/quipsly-domain/coaching-packet";
 
 import { coachingClientEntryPaths } from "@/lib/coaching-client-entry";
+import { coachingSetupPaymentPolicy } from "@/lib/coaching-setup";
 import { projectProviderRecordingState } from "@/lib/provider-recording-state";
 import { getPrismaClient } from "@/lib/prisma";
 import {
@@ -1315,6 +1316,7 @@ export async function POST(request: Request) {
         typeof defaultAmountCents === "number" && defaultAmountCents > 0
           ? defaultAmountCents
           : null;
+      const paymentPolicy = coachingSetupPaymentPolicy(priceCents);
       const offering = await tx.serviceOffering.upsert({
         where: { slug: offeringSlug },
         update: {
@@ -1322,7 +1324,7 @@ export async function POST(request: Request) {
           title: offeringTitle,
           description: offeringDescription,
           kind: "ONE_TO_ONE_COACHING",
-          paymentPolicy: "PAID_ONE_TO_ONE",
+          paymentPolicy,
           durationMinutes: defaultDurationMinutes,
           priceCents,
           currency: text(body.currency) || "USD",
@@ -1340,7 +1342,7 @@ export async function POST(request: Request) {
           title: offeringTitle,
           description: offeringDescription,
           kind: "ONE_TO_ONE_COACHING",
-          paymentPolicy: "PAID_ONE_TO_ONE",
+          paymentPolicy,
           durationMinutes: defaultDurationMinutes,
           priceCents,
           currency: text(body.currency) || "USD",
@@ -1385,8 +1387,9 @@ export async function POST(request: Request) {
         offeringId: offering.id,
         availabilityWindowId: availability.id,
         role: "COACH",
-        nextAction:
-          "Coach setup is ready. Create a paid appointment with a custom client price, then create/copy the Stripe Checkout link when the details are correct.",
+        nextAction: priceCents
+          ? "Coach setup is ready. Create a Session; payment remains separate until you send a Stripe Checkout link."
+          : "Coach setup is ready. Create a Session and invite a client. You can add paid booking later if you need it.",
       };
     });
 
