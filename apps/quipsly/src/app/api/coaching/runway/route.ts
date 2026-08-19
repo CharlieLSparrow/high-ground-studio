@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { buildQuipslyCoachingLifecycle } from "@high-ground/quipsly-domain/coaching-lifecycle";
 import {
   isTranscriptPacketSource,
   isUnreviewedTranscriptActionItemSource,
 } from "@high-ground/quipsly-domain/coaching-packet";
 
+import { coachingClientEntryPaths } from "@/lib/coaching-client-entry";
 import { projectProviderRecordingState } from "@/lib/provider-recording-state";
 import { getPrismaClient } from "@/lib/prisma";
 import {
@@ -148,6 +150,20 @@ function parseDate(value: unknown) {
 
 function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + Math.max(15, minutes) * 60_000);
+}
+
+/**
+ * LiveKit creates a room when the first participant joins, so booking a
+ * Quipsly session only needs a durable, opaque room name. Keeping the desired
+ * provider on CallRoom makes the same appointment joinable from browser,
+ * iPhone, or both; missing deployment credentials remain visible readiness
+ * evidence at join time instead of silently downgrading the room to local-only.
+ */
+function newCoachingProviderBinding() {
+  return {
+    provider: "livekit",
+    providerRoomId: `quipsly-${randomUUID()}`,
+  } as const;
 }
 
 function minutesBetween(start: unknown, end: unknown) {
@@ -999,6 +1015,7 @@ export async function GET(request: Request) {
     return {
       id: booking.id,
       clientUserId: booking.clientUserId,
+      coachingEngagementId: booking.engagementId || booking.callRoom?.coachingEngagementId || null,
       title: booking.offering?.title || "Coaching session",
       status: booking.status,
       scheduledStart: booking.scheduledStart,
@@ -1013,6 +1030,10 @@ export async function GET(request: Request) {
       coach: person(booking.coachUser),
       callRoomId: booking.callRoom?.id || null,
       callRoomStatus: booking.callRoom?.status || null,
+      ...coachingClientEntryPaths({
+        roomId: booking.callRoom?.id,
+        engagementId: booking.engagementId || booking.callRoom?.coachingEngagementId,
+      }),
       calendarStatus: calendarPacket.status,
       calendarReadyPacket: calendarPacket,
       checkoutSessionCount: safeCount(booking.paymentRecord?.checkoutSessionLedgers?.length),
@@ -2088,6 +2109,7 @@ export async function POST(request: Request) {
         },
       });
 
+      const providerBinding = newCoachingProviderBinding();
       const room = await tx.callRoom.create({
         data: {
           bookingId: booking.id,
@@ -2096,8 +2118,7 @@ export async function POST(request: Request) {
           coachingEngagementId: engagement?.id || null,
           purpose,
           status: "PLANNED",
-          provider: "planned",
-          providerRoomId: `quipsly:${booking.id}`,
+          ...providerBinding,
           title,
           scheduledStart: hold.scheduledStart,
           scheduledEnd: hold.scheduledEnd,
@@ -2203,6 +2224,7 @@ export async function POST(request: Request) {
         bookingId: booking.id,
         callRoomId: room.id,
         engagementId: engagement?.id || null,
+        ...coachingClientEntryPaths({ roomId: room.id, engagementId: engagement?.id }),
         clientUserId: client.id,
         paymentRecordId: paymentRecord?.id || null,
         status: booking.status,
@@ -2423,6 +2445,7 @@ export async function POST(request: Request) {
       },
     });
 
+    const providerBinding = newCoachingProviderBinding();
     const room = await tx.callRoom.create({
       data: {
         bookingId: booking.id,
@@ -2431,8 +2454,7 @@ export async function POST(request: Request) {
         coachingEngagementId: engagement?.id || null,
         purpose,
         status: "PLANNED",
-        provider: "planned",
-        providerRoomId: `quipsly:${booking.id}`,
+        ...providerBinding,
         title,
         scheduledStart,
         scheduledEnd,
@@ -2520,6 +2542,7 @@ export async function POST(request: Request) {
       bookingId: booking.id,
       callRoomId: room.id,
       engagementId: engagement?.id || null,
+      ...coachingClientEntryPaths({ roomId: room.id, engagementId: engagement?.id }),
       clientUserId: client.id,
       paymentRecordId: paymentRecord?.id || null,
       status: booking.status,

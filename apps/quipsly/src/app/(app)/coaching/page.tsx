@@ -12,6 +12,7 @@ import {
   Mic,
   RefreshCw,
   Receipt,
+  Share2,
   ShieldCheck,
   Sparkles,
   Users,
@@ -24,6 +25,20 @@ type Person = {
   email: string | null;
   image?: string | null;
 } | null;
+
+type CoachingCreatedHandoff = {
+  bookingId: string;
+  callRoomId: string;
+  engagementId: string | null;
+  clientEntryPath: string;
+  engagementPath: string | null;
+  liveSessionPath: string;
+  sessionWorkspacePath: string;
+  clientEmail: string;
+  clientName: string | null;
+  title: string;
+  scheduledStart: string;
+};
 
 type JourneySummary = {
   stage?: string | null;
@@ -203,6 +218,7 @@ type CoachingRunway = {
   upcomingBookings?: Array<{
     id: string;
     clientUserId: string;
+    coachingEngagementId: string | null;
     title: string;
     status: string;
     scheduledStart: string;
@@ -217,6 +233,10 @@ type CoachingRunway = {
     coach: Person;
     callRoomId: string | null;
     callRoomStatus: string | null;
+    clientEntryPath: string | null;
+    engagementPath: string | null;
+    liveSessionPath: string | null;
+    sessionWorkspacePath: string | null;
     calendarStatus: string | null;
     calendarReadyPacket?: CalendarReadyPacket | null;
     checkoutSessionCount: number;
@@ -630,6 +650,7 @@ export default function CoachingPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [createStatus, setCreateStatus] = useState<string | null>(null);
+  const [createdHandoff, setCreatedHandoff] = useState<CoachingCreatedHandoff | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [checkoutStatusByBooking, setCheckoutStatusByBooking] = useState<Record<string, string>>({});
   const [checkoutBusyByBooking, setCheckoutBusyByBooking] = useState<Record<string, boolean>>({});
@@ -741,23 +762,55 @@ export default function CoachingPage() {
     }
   }
 
-  async function copyClientSessionLink(bookingId: string, roomId?: string | null) {
+  function clientEntryUrl(path: string | null | undefined) {
+    if (!path || typeof window === "undefined") return "";
+    return new URL(path, window.location.origin).toString();
+  }
+
+  async function copyClientSessionLink(bookingId: string, path?: string | null) {
     setLinkCopyStatusByBooking((current) => ({ ...current, [bookingId]: "Copying client session link..." }));
     try {
-      const params = new URLSearchParams({ bookingId });
-      if (roomId) params.set("roomId", roomId);
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      await navigator.clipboard.writeText(`${origin}/coaching/sessions?${params.toString()}`);
+      const url = clientEntryUrl(path);
+      if (!url) throw new Error("This booking does not have a live Session path yet.");
+      await navigator.clipboard.writeText(url);
       setLinkCopyStatusByBooking((current) => ({
         ...current,
         [bookingId]:
-          "Client session link copied. It helps the client find payment, consent, recording, and follow-up details; it does not grant access by itself.",
+          "Client entry copied. Their verified invited email—not possession of the URL—controls access.",
       }));
     } catch {
       setLinkCopyStatusByBooking((current) => ({
         ...current,
         [bookingId]: "Copy failed. Open the coachee view and copy the URL from the browser instead.",
       }));
+    }
+  }
+
+  async function shareClientSessionLink(input: {
+    bookingId: string;
+    title: string;
+    clientEmail: string | null | undefined;
+    clientEntryPath: string | null | undefined;
+  }) {
+    const url = clientEntryUrl(input.clientEntryPath);
+    if (!url) {
+      setLinkCopyStatusByBooking((current) => ({ ...current, [input.bookingId]: "This booking does not have a live Session path yet." }));
+      return;
+    }
+    if (!navigator.share) {
+      await copyClientSessionLink(input.bookingId, input.clientEntryPath);
+      return;
+    }
+    try {
+      await navigator.share({
+        title: input.title,
+        text: `Join your private Quipsly coaching Session. Sign in with ${input.clientEmail || "the invited email"}.`,
+        url,
+      });
+      setLinkCopyStatusByBooking((current) => ({ ...current, [input.bookingId]: "Client entry opened in the system share sheet." }));
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setLinkCopyStatusByBooking((current) => ({ ...current, [input.bookingId]: "The system share sheet could not open. Copy the client entry instead." }));
     }
   }
 
@@ -1234,6 +1287,8 @@ export default function CoachingPage() {
     event.preventDefault();
     setIsCreating(true);
     setCreateStatus(null);
+    setCreatedHandoff(null);
+    const submitted = { ...createForm };
     try {
       const response = await fetch("/api/coaching/runway", {
         method: "POST",
@@ -1248,6 +1303,26 @@ export default function CoachingPage() {
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || `Runway returned HTTP ${response.status}.`);
       setCreateStatus(payload.result?.nextAction || "Session created.");
+      if (
+        submitted.runwayAction === "create-booking-room"
+        && payload.result?.bookingId
+        && payload.result?.callRoomId
+        && payload.result?.clientEntryPath
+      ) {
+        setCreatedHandoff({
+          bookingId: payload.result.bookingId,
+          callRoomId: payload.result.callRoomId,
+          engagementId: payload.result.engagementId || null,
+          clientEntryPath: payload.result.clientEntryPath,
+          engagementPath: payload.result.engagementPath || null,
+          liveSessionPath: payload.result.liveSessionPath || payload.result.clientEntryPath,
+          sessionWorkspacePath: payload.result.sessionWorkspacePath || `/sessions/${encodeURIComponent(payload.result.callRoomId)}`,
+          clientEmail: submitted.clientEmail.trim().toLowerCase(),
+          clientName: submitted.clientName.trim() || null,
+          title: submitted.title,
+          scheduledStart: submitted.scheduledStart,
+        });
+      }
       setCreateForm((current) => ({
         ...current,
         clientEmail: "",
@@ -1483,7 +1558,7 @@ export default function CoachingPage() {
                             {holdStatusById[hold.id]}
                           </p>
                         )}
-                        {runway?.user?.isStaff === true && hold.status === "ACTIVE" && (
+                        {canManageCoaching && hold.status === "ACTIVE" && (
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             <button
                               type="button"
@@ -1529,10 +1604,10 @@ export default function CoachingPage() {
                 bookings.map((booking) => {
                   const draft = bookingDraft(booking);
                   const canChangeSchedule =
-                    runway?.user?.isStaff === true &&
+                    canManageCoaching &&
                     !["CANCELED", "COMPLETED", "NO_SHOW"].includes(booking.status) &&
                     !["RECORDING", "ENDED", "CANCELED"].includes(booking.callRoomStatus || "");
-                  const canSyncCalendar = runway?.user?.isStaff === true && !["CANCELED"].includes(booking.status);
+                  const canSyncCalendar = canManageCoaching && !["CANCELED"].includes(booking.status);
 
                   return (
                     <article key={booking.id} className="rounded-2xl border border-[#e8dcc4] bg-[#fdfaf6] p-4">
@@ -1596,7 +1671,7 @@ export default function CoachingPage() {
                           >
                             <CalendarIcon size={14} /> Add with iCalendar
                           </a>
-                          {runway?.user?.isStaff === true && (
+                          {canManageCoaching && (
                             <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
                               <p className="text-[11px] font-black uppercase tracking-wide text-sky-700">Google Calendar</p>
                               <p className="mt-1 text-xs font-bold text-[#3d3122]">
@@ -1633,7 +1708,7 @@ export default function CoachingPage() {
                                   ? "Paid. Stripe receipt evidence is attached."
                                   : booking.latestCheckoutUrl
                                     ? "Ready for the client to pay in Stripe Checkout."
-                                    : runway?.user?.isStaff === true
+                                    : canManageCoaching
                                       ? "Create a payment link when the appointment details are correct."
                                       : "Homer is preparing the payment link for this session."}
                             </p>
@@ -1641,7 +1716,7 @@ export default function CoachingPage() {
                               Stripe handles the card form. Quipsly keeps the appointment, room, and receipt trail together.
                             </p>
                           </div>
-                          {runway?.user?.isStaff === true && booking.paymentPolicy === "PAID_ONE_TO_ONE" && booking.paymentStatus !== "PAID" && (
+                          {canManageCoaching && booking.paymentPolicy === "PAID_ONE_TO_ONE" && booking.paymentStatus !== "PAID" && (
                             <button
                               type="button"
                               onClick={() => void createCheckoutSession(booking.id)}
@@ -1661,7 +1736,7 @@ export default function CoachingPage() {
                               >
                                 <ExternalLink size={14} /> {booking.paymentStatus === "PAID" ? "Open receipt link" : "Pay for this session"}
                               </a>
-                              {runway?.user?.isStaff === true && (
+                              {canManageCoaching && (
                                 <button
                                   type="button"
                                   onClick={() => void copyCheckoutLink(booking.id, booking.latestCheckoutUrl || "")}
@@ -1672,17 +1747,24 @@ export default function CoachingPage() {
                               )}
                             </div>
                           )}
-                          {runway?.user?.isStaff === true && (
+                          {canManageCoaching && (
                             <div className="mt-2 rounded-xl border border-[#e8dcc4] bg-white/80 p-2">
                               <button
                                 type="button"
-                                onClick={() => void copyClientSessionLink(booking.id, booking.callRoomId)}
+                                onClick={() => void copyClientSessionLink(booking.id, booking.clientEntryPath)}
                                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-[#fffaf1] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-white"
                               >
-                                <Copy size={14} /> Copy client session link
+                                <Copy size={14} /> Copy client entry
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void shareClientSessionLink({ bookingId: booking.id, title: booking.title, clientEmail: booking.client?.email, clientEntryPath: booking.clientEntryPath })}
+                                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-violet-800 transition hover:bg-violet-100"
+                              >
+                                <Share2 size={14} /> Share client entry
                               </button>
                               <p className="mt-2 text-[11px] font-bold leading-relaxed text-[#7b5c3b]">
-                                Send this when the client needs one calm place for payment, consent, recording status, and follow-up notes.
+                                Send this when the client is ready. Quipsly checks the verified invited email before opening their live room and private coaching work.
                               </p>
                             </div>
                           )}
@@ -1704,7 +1786,7 @@ export default function CoachingPage() {
                           )}
                         </div>
                       </div>
-                      {runway?.user?.isStaff === true && (
+                      {canManageCoaching && (
                         <div className="mt-4 rounded-2xl border border-[#e8dcc4] bg-white/80 p-3">
                           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                             <div>
@@ -1838,7 +1920,7 @@ export default function CoachingPage() {
                           {packetStatusByRoom[room.id]}
                         </p>
                       )}
-                      {runway?.user?.isStaff === true && (
+                      {canManageCoaching && (
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           <button
                             type="button"
@@ -2178,6 +2260,35 @@ export default function CoachingPage() {
                 <p className="text-xs font-bold text-amber-700">Set up your coach profile first, then this appointment form unlocks.</p>
               )}
               {createStatus && <p className="rounded-xl bg-[#f8f3e6] p-3 text-xs font-bold text-[#7b5c3b]">{createStatus}</p>}
+              {createdHandoff ? (
+                <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4" aria-labelledby="created-coaching-handoff-heading">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Appointment ready</p>
+                  <h3 id="created-coaching-handoff-heading" className="mt-1 text-lg font-black text-emerald-950">Invite {createdHandoff.clientName || createdHandoff.clientEmail}</h3>
+                  <p className="mt-2 text-xs font-bold leading-5 text-emerald-950">
+                    One private coaching relationship and one exact Session now exist. Send the client entry below; Quipsly will require {createdHandoff.clientEmail} to sign in with Google or a verified Quipsly email before anything opens.
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => void copyClientSessionLink(createdHandoff.bookingId, createdHandoff.clientEntryPath)}
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white"
+                    >
+                      <Copy size={14} /> Copy client entry
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void shareClientSessionLink({ bookingId: createdHandoff.bookingId, title: createdHandoff.title, clientEmail: createdHandoff.clientEmail, clientEntryPath: createdHandoff.clientEntryPath })}
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900"
+                    >
+                      <Share2 size={14} /> Share from this device
+                    </button>
+                    <a href={createdHandoff.liveSessionPath} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"><Video size={14} /> Open live room</a>
+                    {createdHandoff.engagementPath ? <a href={createdHandoff.engagementPath} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"><Users size={14} /> Open coaching home</a> : null}
+                  </div>
+                  {linkCopyStatusByBooking[createdHandoff.bookingId] ? <p role="status" className="mt-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-950">{linkCopyStatusByBooking[createdHandoff.bookingId]}</p> : null}
+                  <p className="mt-3 text-[11px] font-semibold leading-5 text-emerald-900">The URL is navigation, not a bearer key. Booking, participant, and engagement access stay bound to the verified account, and the client never receives access to your surrounding Nest or private coach notes.</p>
+                </section>
+              ) : null}
             </form>
           </div>
 

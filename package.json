@@ -74,6 +74,7 @@
     "quipsly:local:session-topology-dogfood": "QUIPSLY_LOCAL_SESSION_TOPOLOGY_DOGFOOD=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-session-topology-dogfood.mjs",
     "quipsly:local:endpoint-queue": "QUIPSLY_LOCAL_ENDPOINT_QUEUE_OPERATION=1 node scripts/quipsly-local-endpoint-queue-operation.mjs",
     "quipsly:local:native-session-preflight": "QUIPSLY_LOCAL_NATIVE_PREFLIGHT_OPERATION=1 node scripts/quipsly-local-native-session-preflight-operation.mjs",
+    "quipsly:local:mobile-coaching": "QUIPSLY_LOCAL_MOBILE_COACHING_OPERATION=1 node scripts/quipsly-local-mobile-coaching-operation.mjs",
     "quipsly:local:native-session-preflight:test": "node --test scripts/quipsly-local-native-session-preflight-operation.test.mjs",
     "quipsly:local:hgo-collaboration:converge": "node scripts/quipsly-local-hgo-collaboration-converge.mjs",
     "quipsly:capture:access-preflight": "node scripts/quipsly-capture-session-access-preflight.mjs",

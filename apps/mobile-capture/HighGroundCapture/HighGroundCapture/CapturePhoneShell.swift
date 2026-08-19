@@ -262,6 +262,22 @@ private struct CaptureTodayView: View {
                         .accessibilityIdentifier("CapturePreviewModeBadge")
                 }
 
+                NavigationLink {
+                    CaptureCoachingHomeView(
+                        model: model,
+                        visibleTab: $visibleTab
+                    )
+                } label: {
+                    CaptureCoachingHomeCard(
+                        isCoach: model.coachingRunwayClient.isCoach,
+                        isClient: model.coachingRunwayClient.isCoachingClient,
+                        upcomingCount: model.coachingRunwayClient.upcomingBookings.count,
+                        isLoading: model.coachingRunwayClient.isLoading
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("CaptureOpenCoachingHome")
+
                 if let next = model.nextSession {
                     NextCaptureCard(
                         session: next,

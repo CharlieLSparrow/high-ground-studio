@@ -75,7 +75,7 @@ export default function PrivacyPage() {
             <KeyRound className="mb-3 h-6 w-6 text-[#a96735]" />
             <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Google connection control and revocation</h2>
             <p className="leading-relaxed text-[#7a604c]">
-              You can disconnect Google Calendar or Google Drive from Quipsly. Quipsly asks Google to revoke the credential, deletes the encrypted credential from the active connection, and stops future provider access. Existing Calendar events remain under your control. Existing Drive-backed cards retain their source intent but new proxy and exact-source render work is held until you reconnect. You can also review or revoke Quipsly from your Google Account&apos;s third-party access settings.
+              You can disconnect Google Calendar from Quipsly at any time, and you can disconnect Google Drive independently. Quipsly asks Google to revoke the credential, deletes the encrypted credential from the active connection, and stops future provider access. Existing Calendar events remain under your control. Existing Drive-backed cards retain their source intent but new proxy and exact-source render work is held until you reconnect. You can also review or revoke Quipsly from your Google Account&apos;s third-party access settings.
             </p>
             <a
               href="https://myaccount.google.com/connections"

@@ -279,6 +279,7 @@ final class CaptureExperienceModel: ObservableObject {
     let todayClient = CaptureTodayClient()
     let workClient = CaptureWorkClient()
     let calendarSubscriptionClient = CaptureCalendarSubscriptionClient()
+    let coachingRunwayClient = MobileCoachingRunwayClient()
     let sourceInboxClient = CaptureSourceInboxClient()
     let providerRoom = ProviderRoomController()
     let readinessClient = CaptureReadinessClient()
@@ -323,6 +324,10 @@ final class CaptureExperienceModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         calendarSubscriptionClient.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        coachingRunwayClient.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -537,9 +542,22 @@ final class CaptureExperienceModel: ObservableObject {
                     ]
                 ),
             ]
+            sessionClient.coachingEngagements = [
+                MobileCaptureCoachingEngagement(
+                    id: "preview-engagement",
+                    title: "Leadership coaching with Homer",
+                    status: "ACTIVE",
+                    projectId: "preview-high-ground",
+                    projectSlug: "preview-high-ground",
+                    projectName: "High Ground Odyssey",
+                    clientLabel: "Homer",
+                    coachLabel: "Charlie Sparrow"
+                ),
+            ]
             todayClient.loadPreview()
             workClient.loadPreview()
             calendarSubscriptionClient.loadPreview()
+            coachingRunwayClient.loadPreview()
             sourceInboxClient.loadPreview()
             reviewDigestClient.loadPreview()
             sessionClient.status = "Preview ready"
@@ -563,10 +581,20 @@ final class CaptureExperienceModel: ObservableObject {
         async let todayLoad: Void = todayClient.load()
         async let workLoad: Void = workClient.load(projectID: workClient.selectedProjectID)
         async let calendarLoad: Void = calendarSubscriptionClient.load()
+        async let coachingLoad: Void = coachingRunwayClient.load()
         async let sourceInboxLoad: Void = sourceInboxClient.load()
         async let readinessLoad: Void = readinessClient.load()
         async let reviewDigestLoad: Void = reviewDigestClient.load()
-        _ = await (sessionLoad, todayLoad, workLoad, calendarLoad, sourceInboxLoad, readinessLoad, reviewDigestLoad)
+        _ = await (
+            sessionLoad,
+            todayLoad,
+            workLoad,
+            calendarLoad,
+            coachingLoad,
+            sourceInboxLoad,
+            readinessLoad,
+            reviewDigestLoad
+        )
         sourcePlanOutbox.resume(client: sessionClient)
         await taskReminderScheduler.reconcile(
             drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)

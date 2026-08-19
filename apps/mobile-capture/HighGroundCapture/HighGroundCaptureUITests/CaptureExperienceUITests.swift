@@ -86,6 +86,45 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
     }
 
+    func testCoachingHomeMakesThePhoneOnlyWorkflowConcrete() {
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(
+            coaching.waitForExistence(timeout: 5),
+            "Today should make the complete coaching workflow a first-class destination."
+        )
+        coaching.tap()
+
+        XCTAssertTrue(
+            app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 5),
+            "Coaching should open as a native iPhone surface, not a web handoff."
+        )
+        XCTAssertTrue(app.staticTexts["Coach from this iPhone"].exists)
+        let newAppointment = app.buttons["CaptureCoachingNewAppointmentButton"]
+        XCTAssertTrue(newAppointment.exists)
+        XCTAssertFalse(
+            newAppointment.isEnabled,
+            "Deterministic preview must show scheduling without pretending to create canonical records."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingBooking_preview-booking"].exists,
+            "The native home should expose upcoming appointments with exact client continuity."
+        )
+        // ShareLink's generated type varies between iOS releases. Its
+        // explicit accessibility label is the operated user contract.
+        let shareInvite = app.descendants(matching: .any)["Share coaching invitation"]
+        reveal(shareInvite)
+        XCTAssertTrue(
+            shareInvite.exists && shareInvite.isHittable,
+            "A coach should be able to open the system share sheet for the verified-email client entry."
+        )
+        let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"]
+        reveal(relationship)
+        XCTAssertTrue(
+            relationship.exists,
+            "The phone should expose the durable client space rather than reducing coaching to a call."
+        )
+    }
+
     func testConsentNeededNextEpisodeOpensRecorderWithoutCrashing() {
         let next = app.buttons["CaptureOpenNextSessionButton"]
         XCTAssertTrue(next.waitForExistence(timeout: 5))
