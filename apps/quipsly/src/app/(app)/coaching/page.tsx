@@ -1354,7 +1354,7 @@ export default function CoachingPage() {
                 href="/coaching/sessions"
                 className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800 shadow-sm transition hover:bg-emerald-100"
               >
-                <Users size={15} /> Coachee view
+                <Users size={15} /> All Sessions
               </a>
               <button
                 onClick={() => void loadRunway()}

@@ -334,7 +334,7 @@ export default function CoachingSessionsPage() {
   const [createdRoomId, setCreatedRoomId] = useState<string | null>(null);
   const [createDraft, setCreateDraft] = useState({
     title: "",
-    purpose: "PODCAST",
+    purpose: "COACHING",
     projectSlug: "",
     episodeSlug: "",
     coachingEngagementId: "",

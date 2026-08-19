@@ -13,4 +13,11 @@ describe("coaching release surfaces", () => {
 
     expect(source).not.toMatch(/\bHomer\b|\bCharlie\b|High Ground Odyssey Episode|reviewer-capture@dev\.test|Reviewer preset/);
   });
+
+  it("defaults the Coaching Session planner to coaching rather than podcast fixtures", () => {
+    const source = readFileSync(join(coachingRoot, "sessions/page.tsx"), "utf8");
+
+    expect(source).toContain('purpose: "COACHING"');
+    expect(source).not.toContain('purpose: "PODCAST",');
+  });
 });
