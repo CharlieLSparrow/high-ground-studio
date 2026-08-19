@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AudioLines, Check, CircleAlert, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, ShieldCheck, Sparkles, Target, TriangleAlert, X } from "lucide-react";
+import { AudioLines, Check, CircleAlert, Download, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, ShieldCheck, Share2, Sparkles, Target, TriangleAlert, X } from "lucide-react";
 
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
 import { AudibleEventQualificationLab } from "@/components/audio/AudibleEventQualificationLab";
@@ -122,6 +122,58 @@ type Segment = {
     };
   }>;
 };
+
+type TranscriptExportSegment = Pick<
+  Segment,
+  | "speakerLabel"
+  | "startSeconds"
+  | "endSeconds"
+  | "text"
+  | "acceptedCorrection"
+  | "acceptedVerification"
+>;
+
+export function reviewedTranscriptFileName(title: string, transcriptJobId: string) {
+  const slug = title
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase()
+    .slice(0, 80) || "quipsly-session";
+  return `${slug}-transcript-${transcriptJobId.slice(0, 10)}.txt`;
+}
+
+export function reviewedTranscriptText(input: {
+  title: string;
+  transcriptJobId: string;
+  segments: TranscriptExportSegment[];
+}) {
+  const reviewed = input.segments.filter(
+    (segment) => segment.acceptedCorrection || segment.acceptedVerification,
+  ).length;
+  const lines = [
+    input.title.trim() || "Quipsly Session transcript",
+    `Transcript job: ${input.transcriptJobId}`,
+    `Playback-reviewed turns: ${reviewed}/${input.segments.length}`,
+    "",
+  ];
+  for (const segment of input.segments) {
+    const status = segment.acceptedCorrection || segment.acceptedVerification
+      ? "playback-reviewed"
+      : "provider-only";
+    lines.push(
+      `[${timestampForSeconds(segment.startSeconds)}-${timestampForSeconds(segment.endSeconds)}] ${segment.speakerLabel || "Speaker not attributed"} (${status})`,
+      segment.text.trim(),
+      "",
+    );
+  }
+  lines.push(
+    "---",
+    "This file uses Quipsly's effective transcript overlay. Provider evidence remains immutable; corrections and speaker attribution remain separately reviewable.",
+    "",
+  );
+  return lines.join("\n");
+}
 
 type Desk = {
   ok: boolean;
@@ -1529,10 +1581,12 @@ function CorrectionEditor({
 
 export function TranscriptCorrectionDesk({
   roomId,
+  sessionTitle = "Quipsly Session",
   recordingAssetId = null,
   canUseProjectTeamNotes = false,
 }: {
   roomId: string;
+  sessionTitle?: string;
   recordingAssetId?: string | null;
   canUseProjectTeamNotes?: boolean;
 }) {
@@ -1541,6 +1595,10 @@ export function TranscriptCorrectionDesk({
   const [busy, setBusy] = useState(false);
   const [preparingPlayback, setPreparingPlayback] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [preparedTranscript, setPreparedTranscript] = useState<{
+    url: string;
+    filename: string;
+  } | null>(null);
   const [listenedSecondBins, setListenedSecondBins] = useState<Set<number>>(() => new Set());
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [playbackState, setPlaybackState] = useState<"absent" | "loading" | "ready" | "error">("absent");
@@ -1567,6 +1625,10 @@ export function TranscriptCorrectionDesk({
   }, [recordingAssetId, roomId]);
 
   useEffect(() => { void load(false); }, [load]);
+
+  useEffect(() => () => {
+    if (preparedTranscript?.url) URL.revokeObjectURL(preparedTranscript.url);
+  }, [preparedTranscript?.url]);
 
   useEffect(() => {
     setListenedSecondBins(new Set());
@@ -1707,6 +1769,45 @@ export function TranscriptCorrectionDesk({
     }
   }
 
+  async function prepareTranscriptFile() {
+    if (!desk?.transcriptJobId || !desk.segments.length || !desk.gate.allowed) return;
+    if (preparedTranscript?.url) URL.revokeObjectURL(preparedTranscript.url);
+    const filename = reviewedTranscriptFileName(
+      sessionTitle,
+      desk.transcriptJobId,
+    );
+    const file = new File([
+      reviewedTranscriptText({
+        title: sessionTitle,
+        transcriptJobId: desk.transcriptJobId,
+        segments: desk.segments,
+      }),
+    ], filename, { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(file);
+    setPreparedTranscript({ url, filename });
+    const shareData = {
+      title: "Reviewed Quipsly transcript",
+      text: `${reviewedSegmentCount} of ${desk.segments.length} turns playback-reviewed`,
+      files: [file],
+    };
+    if (
+      typeof navigator.share === "function" &&
+      (typeof navigator.canShare !== "function" || navigator.canShare(shareData))
+    ) {
+      try {
+        await navigator.share(shareData);
+        setMessage("The system share sheet accepted the effective transcript file. Quipsly does not claim who received it.");
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          setMessage("Sharing was canceled. The prepared transcript remains available below.");
+          return;
+        }
+      }
+    }
+    setMessage("The transcript file is prepared below. This embedded browser did not open a system share sheet.");
+  }
+
   if (loading) return <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Loading protected playback and correction history…</section>;
   if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{message || "No transcript text is substituted and no evidence was changed."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
 
@@ -1722,9 +1823,13 @@ export function TranscriptCorrectionDesk({
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">Corrections sit above provider output as reviewable revisions. Media timing never moves, and AI proposals never become transcript truth without a person listening here.</p>
             {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{reviewedSegmentCount} of {desk.segments.length} segments playback-reviewed</p>}
           </div>
-          <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh truth</button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => void prepareTranscriptFile()} disabled={busy || !desk.gate.allowed || !desk.segments.length} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Share2 size={15} aria-hidden="true" />Prepare transcript file</button>
+            <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh truth</button>
+          </div>
         </div>
         {message && <p role="status" className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-900">{message}</p>}
+        {preparedTranscript ? <a href={preparedTranscript.url} download={preparedTranscript.filename} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"><Download size={15} aria-hidden="true" />Download prepared transcript</a> : null}
         {desk.processing && (
           <div className="mt-5 grid gap-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4 sm:grid-cols-[1fr_auto] sm:items-center">
             <div>

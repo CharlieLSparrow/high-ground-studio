@@ -2,7 +2,11 @@
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { TranscriptCorrectionDesk } from "./transcript-correction-desk";
+import {
+  reviewedTranscriptFileName,
+  reviewedTranscriptText,
+  TranscriptCorrectionDesk,
+} from "./transcript-correction-desk";
 import { buildAudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
 const segment: any = {
@@ -92,6 +96,26 @@ async function markProtectedPlaybackReady() {
 }
 
 describe("TranscriptCorrectionDesk", () => {
+  it("exports effective text while preserving reviewed versus provider-only truth", () => {
+    const text = reviewedTranscriptText({
+      title: "Coaching Session 9",
+      transcriptJobId: "job-reviewed-123456789",
+      segments: [
+        { ...segment, speakerLabel: "Client", text: "I will bring the evidence.", acceptedVerification: { id: "verification-1" } },
+        { ...segment, startSeconds: 8, endSeconds: 10, speakerLabel: null, text: "What would make that repeatable?" },
+      ],
+    });
+
+    expect(reviewedTranscriptFileName("Coaching Session 9", "job-reviewed-123456789")).toBe(
+      "coaching-session-9-transcript-job-review.txt",
+    );
+    expect(text).toContain("Playback-reviewed turns: 1/2");
+    expect(text).toContain("Client (playback-reviewed)");
+    expect(text).toContain("Speaker not attributed (provider-only)");
+    expect(text).toContain("I will bring the evidence.");
+    expect(text).toContain("Provider evidence remains immutable");
+  });
+
   beforeEach(() => {
     Object.defineProperty(HTMLMediaElement.prototype, "play", {
       configurable: true,

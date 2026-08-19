@@ -6549,6 +6549,7 @@ export function SessionReviewClient({
 
             <TranscriptCorrectionDesk
               roomId={roomId}
+              sessionTitle={sessionTitle}
               recordingAssetId={focusedRecordingAssetId}
               canUseProjectTeamNotes={canUseProjectTeamNotes}
             />
