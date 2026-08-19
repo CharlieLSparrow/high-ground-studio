@@ -112,3 +112,24 @@ A green build or seeded script is not enough. The release note must name:
 
 The retained regression lane should continue to run. It complements this gate;
 it never replaces it.
+
+## Implementation checkpoint — 2026-08-19
+
+- Ordinary Coaching and Session surfaces no longer name retained people,
+  retained Episodes, or the `.dev.test` reviewer preset.
+- Unsigned coaching and Session links preserve the exact destination through
+  sign-in; Session invitation review is outside the general beta gate.
+- Active Session or coaching-engagement grants can enter their narrow product
+  surface without a Patreon or broad Nest grant. Route-level authorization
+  continues to enforce the actual Session and relationship boundary.
+- Administrators can prepare up to 100 coach identities in one idempotent batch
+  without creating shared passwords. A dedicated admin-only test-login card
+  remains separate from this cohort path.
+- First-time coach setup is first on narrow screens, detects the device timezone,
+  and does not require a price or Stripe configuration.
+- The full optimized Quipsly production build passed after repairing the Nest
+  settings page to await Next.js 16 route parameters.
+
+This checkpoint proves source, route, and build readiness. It does not yet claim
+the fresh coach/client journey or real call/capture/share journey has passed;
+those still require the operated evidence listed above.

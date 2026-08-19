@@ -7,14 +7,15 @@ import { SettingsClient } from "./settings-client";
 export default async function NestSettingsPage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
+  const { slug } = await params;
   const session = await getQuipslySession();
   if (!session?.user?.email) return notFound();
 
   const prisma = getPrismaClient();
   const access = await resolveStudioProjectAccess({
-    projectSlug: params.slug,
+    projectSlug: slug,
     email: session.user.email,
     action: "write",
     prisma,
