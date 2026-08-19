@@ -8,7 +8,7 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { authorizeStudioMediaSource } from "@/lib/server/studio-media-source-access";
 import {
   authorizeConfiguredMediaVaultLocation,
-  resolveAllowedLocalStudioMediaPath,
+  classifyLocalStudioMediaPath,
 } from "@/lib/server/studio-media-location-security";
 import {
   readCurrentLocalExecutorIdentity,
@@ -18,7 +18,8 @@ import {
 function inferContentType(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".webm") return "audio/webm";
-  if (ext === ".mp4" || ext === ".mov" || ext === ".m4v" || ext === ".insv") return "video/mp4";
+  if (ext === ".mp4" || ext === ".mov" || ext === ".m4v" || ext === ".insv")
+    return "video/mp4";
   if (ext === ".mkv" || ext === ".avi") return "video/x-msvideo";
   if (ext === ".m4a") return "audio/m4a";
   if (ext === ".wav") return "audio/wav";
@@ -40,8 +41,16 @@ function parseRangeHeader(rangeHeader: string | null, size: number) {
   const rawStart = match[1];
   const rawEnd = match[2];
   const suffixLength = !rawStart && rawEnd ? Number.parseInt(rawEnd, 10) : null;
-  const start = suffixLength ? Math.max(size - suffixLength, 0) : rawStart ? Number.parseInt(rawStart, 10) : 0;
-  const end = suffixLength ? size - 1 : rawEnd ? Number.parseInt(rawEnd, 10) : size - 1;
+  const start = suffixLength
+    ? Math.max(size - suffixLength, 0)
+    : rawStart
+      ? Number.parseInt(rawStart, 10)
+      : 0;
+  const end = suffixLength
+    ? size - 1
+    : rawEnd
+      ? Number.parseInt(rawEnd, 10)
+      : size - 1;
 
   if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
   if (start < 0 || end < start || start >= size) return null;
@@ -52,12 +61,21 @@ function parseRangeHeader(rangeHeader: string | null, size: number) {
   };
 }
 
-async function readFileRange(file: Awaited<ReturnType<typeof fs.open>>, start: number, end: number) {
+async function readFileRange(
+  file: Awaited<ReturnType<typeof fs.open>>,
+  start: number,
+  end: number,
+) {
   const length = end - start + 1;
   const buffer = Buffer.alloc(length);
   let offset = 0;
   while (offset < length) {
-    const { bytesRead } = await file.read(buffer, offset, length - offset, start + offset);
+    const { bytesRead } = await file.read(
+      buffer,
+      offset,
+      length - offset,
+      start + offset,
+    );
     if (bytesRead === 0) break;
     offset += bytesRead;
   }
@@ -80,7 +98,10 @@ function createMediaHeaders(args: {
   };
 }
 
-async function createGcsMediaResponse(request: NextRequest, providerSourceId: string) {
+async function createGcsMediaResponse(
+  request: NextRequest,
+  providerSourceId: string,
+) {
   const location = authorizeConfiguredMediaVaultLocation(providerSourceId);
   if (location.kind === "not-gcs") return null;
   if (location.kind === "rejected-gcs") {
@@ -92,18 +113,26 @@ async function createGcsMediaResponse(request: NextRequest, providerSourceId: st
 
   const file = getMediaBucket(location.bucketName).file(
     location.objectName,
-    location.generation ? { generation: location.generation as any } : undefined,
+    location.generation
+      ? { generation: location.generation as any }
+      : undefined,
   );
   const [metadata] = await file.getMetadata();
   const size = Number(metadata.size ?? 0);
 
   if (!Number.isFinite(size) || size <= 0) {
-    return NextResponse.json({ error: "GCS media is empty or unavailable" }, { status: 404 });
+    return NextResponse.json(
+      { error: "GCS media is empty or unavailable" },
+      { status: 404 },
+    );
   }
 
-  const contentType = metadata.contentType || inferContentType(location.objectName);
+  const contentType =
+    metadata.contentType || inferContentType(location.objectName);
   const range = parseRangeHeader(request.headers.get("range"), size);
-  const stream = file.createReadStream(range ? { start: range.start, end: range.end } : undefined);
+  const stream = file.createReadStream(
+    range ? { start: range.start, end: range.end } : undefined,
+  );
   const body = Readable.toWeb(stream as Readable) as ReadableStream;
 
   if (range) {
@@ -128,7 +157,10 @@ async function createGcsMediaResponse(request: NextRequest, providerSourceId: st
   });
 }
 
-export async function GET(request: NextRequest, context: { params: Promise<{ sourceId: string }> }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ sourceId: string }> },
+) {
   const { sourceId } = await context.params;
 
   const prisma = getPrismaClient();
@@ -170,17 +202,19 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sou
       readCurrentLocalExecutorIdentity(),
     ]);
     if (
-      !executor
-      || executor.storageScopeId !==
-        source.localArtifactAuthority.storageScopeId
-      || !currentExecutor
-      || currentExecutor.nodeId !==
-        source.localArtifactAuthority.custodianNodeId
-      || currentExecutor.storageScopeId !==
+      !executor ||
+      executor.storageScopeId !==
+        source.localArtifactAuthority.storageScopeId ||
+      !currentExecutor ||
+      currentExecutor.nodeId !==
+        source.localArtifactAuthority.custodianNodeId ||
+      currentExecutor.storageScopeId !==
         source.localArtifactAuthority.storageScopeId
     ) {
       return NextResponse.json(
-        { error: "This local media artifact is not available on this executor." },
+        {
+          error: "This local media artifact is not available on this executor.",
+        },
         { status: 404, headers: { "Cache-Control": "private, no-store" } },
       );
     }
@@ -195,26 +229,47 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sou
 
   const localPath = source.providerSourceId;
   if (!localPath) {
-    return NextResponse.json({ error: "No local media available for source" }, { status: 404 });
+    return NextResponse.json(
+      { error: "No local media available for source" },
+      { status: 404 },
+    );
   }
 
   try {
     const gcsResponse = await createGcsMediaResponse(request, localPath);
     if (gcsResponse) return gcsResponse;
 
-    const allowedLocalPath = await resolveAllowedLocalStudioMediaPath(localPath);
-    if (!allowedLocalPath) {
+    const localPathResolution = await classifyLocalStudioMediaPath(localPath);
+    if (localPathResolution.kind === "missing") {
       return NextResponse.json(
-        { error: "This source is outside Quipsly's configured local ingest roots." },
+        {
+          error:
+            "The retained source file is no longer present on this executor. Restore or relink the exact verified bytes before playback.",
+          errorCode: "LOCAL_SOURCE_MISSING",
+        },
+        { status: 404, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
+    if (localPathResolution.kind === "rejected") {
+      return NextResponse.json(
+        {
+          error:
+            "This source is outside Quipsly's configured local ingest roots.",
+          errorCode: "LOCAL_SOURCE_OUTSIDE_ALLOWED_ROOTS",
+        },
         { status: 409, headers: { "Cache-Control": "private, no-store" } },
       );
     }
+    const allowedLocalPath = localPathResolution.path;
 
     const file = await fs.open(allowedLocalPath, "r");
     try {
       const stat = await file.stat();
       if (!stat.isFile() || stat.size <= 0) {
-        return NextResponse.json({ error: "Source media is empty or is not a regular file." }, { status: 404 });
+        return NextResponse.json(
+          { error: "Source media is empty or is not a regular file." },
+          { status: 404 },
+        );
       }
       const contentType = inferContentType(allowedLocalPath);
       const range = parseRangeHeader(request.headers.get("range"), stat.size);
@@ -244,6 +299,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sou
     }
   } catch (error: unknown) {
     console.error("[ingest media] failed", error);
-    return NextResponse.json({ error: "Unable to read source media" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Unable to read source media" },
+      { status: 404 },
+    );
   }
 }

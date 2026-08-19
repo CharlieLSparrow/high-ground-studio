@@ -58,6 +58,49 @@ export function configuredLocalStudioMediaRoots(extraEnvNames: string[] = []) {
     );
 }
 
+export type LocalStudioMediaPathResolution =
+  | { kind: "allowed"; path: string }
+  | { kind: "missing" }
+  | { kind: "rejected" };
+
+/**
+ * Classifies a persisted local source path without collapsing a missing
+ * artifact into a security rejection. That distinction matters operationally:
+ * a missing retained file needs recovery or relinking, while a rejected path
+ * is outside the executor's explicitly authorized storage roots.
+ */
+export async function classifyLocalStudioMediaPath(
+  candidate: string,
+  extraEnvNames: string[] = [],
+): Promise<LocalStudioMediaPathResolution> {
+  if (!path.isAbsolute(candidate)) return { kind: "rejected" };
+
+  let realCandidate: string;
+  try {
+    realCandidate = await fs.realpath(candidate);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return { kind: "missing" };
+    }
+    return { kind: "rejected" };
+  }
+
+  for (const configuredRoot of configuredLocalStudioMediaRoots(extraEnvNames)) {
+    const realRoot = await fs
+      .realpath(configuredRoot)
+      .catch(() => configuredRoot);
+    if (pathIsInside(realRoot, realCandidate)) {
+      return { kind: "allowed", path: realCandidate };
+    }
+  }
+  return { kind: "rejected" };
+}
+
 /**
  * Returns the canonical on-disk path only when it is inside an explicit local
  * ingest root. realpath checks prevent a symlink in an allowed folder from
@@ -67,22 +110,11 @@ export async function resolveAllowedLocalStudioMediaPath(
   candidate: string,
   extraEnvNames: string[] = [],
 ) {
-  if (!path.isAbsolute(candidate)) return null;
-
-  let realCandidate: string;
-  try {
-    realCandidate = await fs.realpath(candidate);
-  } catch {
-    return null;
-  }
-
-  for (const configuredRoot of configuredLocalStudioMediaRoots(extraEnvNames)) {
-    const realRoot = await fs
-      .realpath(configuredRoot)
-      .catch(() => configuredRoot);
-    if (pathIsInside(realRoot, realCandidate)) return realCandidate;
-  }
-  return null;
+  const resolution = await classifyLocalStudioMediaPath(
+    candidate,
+    extraEnvNames,
+  );
+  return resolution.kind === "allowed" ? resolution.path : null;
 }
 
 export type AuthorizedMediaVaultLocation =

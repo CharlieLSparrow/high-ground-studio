@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  classifyLocalStudioMediaPath,
   configuredLocalStudioMediaRoots,
   resolveAllowedLocalStudioMediaPath,
 } from "./studio-media-location-security";
@@ -84,5 +85,16 @@ describe("local media workspace authorization", () => {
         "QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT",
       ]),
     ).resolves.toBeNull();
+  });
+
+  it("distinguishes missing retained media from rejected paths", async () => {
+    const missing = path.join(root, "missing", "retained.wav");
+
+    await expect(classifyLocalStudioMediaPath(missing)).resolves.toEqual({
+      kind: "missing",
+    });
+    await expect(
+      classifyLocalStudioMediaPath("relative/retained.wav"),
+    ).resolves.toEqual({ kind: "rejected" });
   });
 });
