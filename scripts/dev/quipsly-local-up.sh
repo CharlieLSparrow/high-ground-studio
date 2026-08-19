@@ -44,6 +44,19 @@ load_google_drive_local_secrets() {
   load_google_drive_local_secret GOOGLE_DRIVE_PICKER_APP_ID quipsly-google-drive-picker-app-id
 }
 
+if [[ "${1:-}" == "--run-livekit" ]]; then
+  livekit_bin="${QUIPSLY_LOCAL_LIVEKIT_BIN:?Missing local LiveKit server executable}"
+  livekit_bind="${QUIPSLY_LOCAL_LIVEKIT_BIND:-127.0.0.1}"
+  livekit_node_ip="${QUIPSLY_LOCAL_LIVEKIT_NODE_IP:-127.0.0.1}"
+  livekit_api_key="${QUIPSLY_LOCAL_LIVEKIT_KEY:-devkey}"
+  livekit_api_secret="${QUIPSLY_LOCAL_LIVEKIT_SECRET:-secret}"
+  exec "${livekit_bin}" \
+    --dev \
+    --bind "${livekit_bind}" \
+    --node-ip "${livekit_node_ip}" \
+    --keys "${livekit_api_key}: ${livekit_api_secret}"
+fi
+
 if [[ "${1:-}" == "--run-firebase" ]]; then
   cd "${script_repo_root}"
   exec "${QUIPSLY_LOCAL_PNPM_BIN:?Missing launcher pnpm path}" exec firebase emulators:start \
@@ -68,6 +81,9 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     "QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=${QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-}"
     "QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN=${QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-http://127.0.0.1:3012}"
     "QUIPSLY_APP_HOST=${QUIPSLY_LOCAL_APP_HOST:-http://127.0.0.1:3012}"
+    "LIVEKIT_URL=${QUIPSLY_LOCAL_LIVEKIT_URL:-ws://127.0.0.1:7880}"
+    "LIVEKIT_API_KEY=${QUIPSLY_LOCAL_LIVEKIT_KEY:-devkey}"
+    "LIVEKIT_API_SECRET=${QUIPSLY_LOCAL_LIVEKIT_SECRET:-secret}"
     "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=${QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE:-0}"
     "QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT=${QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT:-}"
     GCLOUD_PROJECT=quipsly-reef
@@ -189,6 +205,7 @@ firebase_label="com.quipsly.local.firebase"
 nest_label="com.quipsly.local.nest"
 media_worker_label="com.quipsly.local.media-worker"
 transcript_worker_label="com.quipsly.local.transcript-worker"
+livekit_label="com.quipsly.local.livekit"
 local_whisper_executable="${QUIPSLY_LOCAL_WHISPER_EXECUTABLE:-}"
 if [[ -z "${local_whisper_executable}" ]]; then
   local_whisper_executable="$(command -v whisper 2>/dev/null || true)"
@@ -203,6 +220,20 @@ local_transcript_worker_available=0
 if [[ -n "${local_whisper_executable}" && -x "${local_whisper_executable}" ]]; then
   local_transcript_worker_available=1
 fi
+local_livekit_url="${QUIPSLY_LOCAL_LIVEKIT_URL:-ws://127.0.0.1:7880}"
+local_livekit_http_url="${QUIPSLY_LOCAL_LIVEKIT_HTTP_URL:-http://127.0.0.1:7880}"
+local_livekit_bind="${QUIPSLY_LOCAL_LIVEKIT_BIND:-127.0.0.1}"
+local_livekit_node_ip="${QUIPSLY_LOCAL_LIVEKIT_NODE_IP:-127.0.0.1}"
+local_livekit_key="${QUIPSLY_LOCAL_LIVEKIT_KEY:-devkey}"
+local_livekit_secret="${QUIPSLY_LOCAL_LIVEKIT_SECRET:-secret}"
+local_livekit_bin="${QUIPSLY_LOCAL_LIVEKIT_BIN:-$(command -v livekit-server 2>/dev/null || true)}"
+if [[ -z "${local_livekit_bin}" || ! -x "${local_livekit_bin}" ]]; then
+  echo "Local coaching requires the LiveKit server executable." >&2
+  echo "Install livekit-server or set QUIPSLY_LOCAL_LIVEKIT_BIN to an executable path." >&2
+  exit 1
+fi
+local_livekit_version="$(${local_livekit_bin} --version 2>/dev/null | head -1)"
+local_livekit_secret_revision="$(printf '%s' "${local_livekit_secret}" | shasum -a 256 | awk '{print $1}')"
 worker_source_paths=(
   apps/quipsly-media-processor
   packages/quipsly-media-processing
@@ -277,8 +308,21 @@ local_nest_runtime_revision="$(
     "app-host=${local_app_host}" \
     "spatial-vault=${local_spatial_vault_root}" \
     "transcript-worker=${local_transcript_worker_available}" \
+    "livekit-url=${local_livekit_url}" \
+    "livekit-key=${local_livekit_key}" \
+    "livekit-secret-revision=${local_livekit_secret_revision}" \
     "drive-secret-project=${local_google_drive_secret_project}" \
     "gcloud=${local_gcloud_bin}"
+)"
+local_livekit_runtime_revision="$(
+  quipsly_local_runtime_revision "${repo_root}" \
+    "binary=${local_livekit_bin}" \
+    "version=${local_livekit_version}" \
+    "url=${local_livekit_url}" \
+    "bind=${local_livekit_bind}" \
+    "node-ip=${local_livekit_node_ip}" \
+    "key=${local_livekit_key}" \
+    "secret-revision=${local_livekit_secret_revision}"
 )"
 local_media_worker_runtime_revision="$(
   quipsly_local_runtime_revision "${repo_root}" \
@@ -385,7 +429,7 @@ wait_for_port_release() {
 
 replace_macos_jobs() {
   local label
-  for label in "${nest_label}" "${firebase_label}" "${media_worker_label}" "${transcript_worker_label}"; do
+  for label in "${nest_label}" "${firebase_label}" "${media_worker_label}" "${transcript_worker_label}" "${livekit_label}"; do
     if launchctl_job_exists "${label}"; then
       launchctl remove "${label}"
       printf "STOP  %-24s job %s\n" "Existing local service" "${label}"
@@ -393,17 +437,20 @@ replace_macos_jobs() {
   done
   wait_for_port_release 3012 "${nest_label}"
   wait_for_port_release 9099 "${firebase_label}"
+  wait_for_port_release 7880 "${livekit_label}"
   rm -f \
     "${state_dir}/nest.label" \
     "${state_dir}/firebase.label" \
     "${state_dir}/media-worker.label" \
     "${state_dir}/transcript-worker.label" \
+    "${state_dir}/livekit.label" \
     "${state_dir}/transcript-worker.enabled" \
     "${state_dir}/media-worker.source-revision" \
     "${state_dir}/transcript-worker.source-revision" \
     "${state_dir}/nest.runtime-revision" \
     "${state_dir}/media-worker.runtime-revision" \
     "${state_dir}/transcript-worker.runtime-revision" \
+    "${state_dir}/livekit.runtime-revision" \
     "${state_dir}/repo-root" \
     "${state_dir}/source-revision"
 }
@@ -424,6 +471,8 @@ start_macos_job() {
     fi
     if [[ "${name}" == "nest" ]]; then
       wait_for_port_release 3012 "${label}"
+    elif [[ "${name}" == "livekit" ]]; then
+      wait_for_port_release 7880 "${label}"
     fi
   fi
 
@@ -451,6 +500,13 @@ start_macos_job() {
       "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=${local_transcript_worker_available}" \
       "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID=${local_transcript_worker_build_id}" \
       "QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID=${local_worker_source_revision}" \
+      "QUIPSLY_LOCAL_LIVEKIT_BIN=${local_livekit_bin}" \
+      "QUIPSLY_LOCAL_LIVEKIT_URL=${local_livekit_url}" \
+      "QUIPSLY_LOCAL_LIVEKIT_HTTP_URL=${local_livekit_http_url}" \
+      "QUIPSLY_LOCAL_LIVEKIT_BIND=${local_livekit_bind}" \
+      "QUIPSLY_LOCAL_LIVEKIT_NODE_IP=${local_livekit_node_ip}" \
+      "QUIPSLY_LOCAL_LIVEKIT_KEY=${local_livekit_key}" \
+      "QUIPSLY_LOCAL_LIVEKIT_SECRET=${local_livekit_secret}" \
       "QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT=${local_google_drive_secret_project}" \
       "QUIPSLY_LOCAL_GCLOUD_BIN=${local_gcloud_bin}" \
       "PATH=${launcher_path}" \
@@ -468,6 +524,9 @@ start_macos_job() {
       ;;
     transcript-worker)
       runtime_revision="${local_transcript_worker_runtime_revision}"
+      ;;
+    livekit)
+      runtime_revision="${local_livekit_runtime_revision}"
       ;;
     *)
       runtime_revision=""
@@ -527,6 +586,54 @@ printf "PASS  %-24s current worktree schema\n" "Prisma client"
 echo "Applying committed local database migrations..."
 DATABASE_URL="${local_database_url}" pnpm exec prisma migrate deploy
 printf "PASS  %-24s committed schema current\n" "PostgreSQL migrations"
+
+livekit_status="$(http_status "${local_livekit_http_url%/}/")"
+recorded_livekit_runtime_revision="$(sed -n '1p' "${state_dir}/livekit.runtime-revision" 2>/dev/null || true)"
+if [[ "${livekit_status}" == "200" ]]; then
+  if [[ "$(uname -s)" == "Darwin" ]] \
+    && launchctl_job_exists "${livekit_label}" \
+    && [[ "$(sed -n '1p' "${state_dir}/livekit.label" 2>/dev/null || true)" == "${livekit_label}" ]]; then
+    if [[ "${recorded_livekit_runtime_revision}" == "${local_livekit_runtime_revision}" ]]; then
+      printf "REUSE %-24s %s\n" "LiveKit conversation" "${local_livekit_url}"
+    else
+      printf "RELOAD %-23s runtime %s -> %s\n" \
+        "LiveKit conversation" \
+        "${recorded_livekit_runtime_revision:-unknown}" \
+        "${local_livekit_runtime_revision}"
+      start_macos_job "livekit" "${livekit_label}" "--run-livekit"
+    fi
+  else
+    livekit_listener="$(quipsly_local_port_listener_pid 7880)"
+    echo "Port 7880 is serving LiveKit from PID ${livekit_listener:-unknown}, but it is not an exact launcher-owned job." >&2
+    echo "Stop that process or run this launcher with --replace after removing the foreign listener." >&2
+    exit 1
+  fi
+else
+  livekit_listener="$(quipsly_local_port_listener_pid 7880)"
+  if [[ -n "${livekit_listener}" ]]; then
+    echo "Port 7880 is occupied by PID ${livekit_listener}, but it is not a healthy LiveKit server." >&2
+    exit 1
+  fi
+  rm -f "${state_dir}/livekit.pid" "${state_dir}/livekit.cwd"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    start_macos_job "livekit" "${livekit_label}" "--run-livekit"
+  else
+    (
+      cd "${repo_root}"
+      nohup env \
+        QUIPSLY_LOCAL_LIVEKIT_BIN="${local_livekit_bin}" \
+        QUIPSLY_LOCAL_LIVEKIT_BIND="${local_livekit_bind}" \
+        QUIPSLY_LOCAL_LIVEKIT_NODE_IP="${local_livekit_node_ip}" \
+        QUIPSLY_LOCAL_LIVEKIT_KEY="${local_livekit_key}" \
+        QUIPSLY_LOCAL_LIVEKIT_SECRET="${local_livekit_secret}" \
+        bash "${repo_root}/scripts/dev/quipsly-local-up.sh" --run-livekit \
+        >"${state_dir}/livekit.log" 2>&1 &
+      record_process "livekit" "$!" "${repo_root}"
+    )
+  fi
+fi
+wait_for_http "LiveKit conversation" "${local_livekit_http_url%/}/" "200" "${state_dir}/livekit.log"
+printf "%s\n" "${local_livekit_runtime_revision}" >"${state_dir}/livekit.runtime-revision"
 
 rm -f \
   "${state_dir}/transcript-worker.pid" \

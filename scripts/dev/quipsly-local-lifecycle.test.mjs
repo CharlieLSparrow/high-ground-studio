@@ -113,6 +113,13 @@ test("machine-wide services use machine-wide ownership state", () => {
   );
   assert.match(up, /--run-media-worker/);
   assert.match(up, /--run-transcript-worker/);
+  assert.match(up, /--run-livekit/);
+  assert.match(up, /livekit-server/);
+  assert.match(up, /LIVEKIT_URL=/);
+  assert.match(up, /LIVEKIT_API_KEY=/);
+  assert.match(up, /LIVEKIT_API_SECRET=/);
+  assert.match(up, /livekit-secret-revision=/);
+  assert.doesNotMatch(up, /livekit-secret=\$\{local_livekit_secret\}/);
   assert.match(up, /local-episode-worker\.ts/);
   assert.match(up, /quipsly-local-transcript-worker\.mjs/);
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT/);
@@ -452,6 +459,21 @@ test("macOS worker startup waits for launchd readiness instead of racing a fixed
   assert.doesNotMatch(up, /start_macos_job "media-worker"[\s\S]{0,150}sleep 1/);
 });
 
+test("local LiveKit is an owned, health-checked lifecycle dependency", () => {
+  assert.match(up, /com\.quipsly\.local\.livekit/);
+  assert.match(up, /start_macos_job "livekit"/);
+  assert.match(up, /wait_for_port_release 7880/);
+  assert.match(up, /"LiveKit conversation"/);
+  assert.match(up, /livekit\.runtime-revision/);
+  assert.match(up, /Port 7880 is serving LiveKit.*not an exact launcher-owned job/s);
+  assert.match(down, /stop_macos_job "livekit" "com\.quipsly\.local\.livekit"/);
+  assert.match(down, /stop_owned_process "livekit"/);
+  assert.match(down, /livekit\.runtime-revision/);
+  assert.match(doctor, /LiveKit conversation/);
+  assert.match(doctor, /LiveKit ownership/);
+  assert.match(doctor, /LiveKit runtime state/);
+});
+
 test("the local lane generates the Prisma client before applying migrations", () => {
   const generateIndex = up.indexOf("pnpm db:generate");
   const migrateIndex = up.indexOf("pnpm exec prisma migrate deploy");
@@ -497,6 +519,7 @@ test("replacement and shutdown remain confined to Quipsly app jobs", () => {
     assert.match(script, /com\.quipsly\.local\.firebase/);
     assert.match(script, /com\.quipsly\.local\.media-worker/);
     assert.match(script, /com\.quipsly\.local\.transcript-worker/);
+    assert.match(script, /com\.quipsly\.local\.livekit/);
   }
   assert.match(doctor, /Episode media worker/);
   assert.match(doctor, /Transcript worker/);

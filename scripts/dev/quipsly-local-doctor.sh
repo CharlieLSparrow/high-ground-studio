@@ -7,6 +7,7 @@ Usage: scripts/dev/quipsly-local-doctor.sh
 
 Inspect the local Quipsly development lane:
   - Nest health and signed-out shell
+  - LiveKit coaching conversation service
   - durable local transcript worker
   - durable local episode media worker
   - Firebase Auth emulator
@@ -16,6 +17,7 @@ Inspect the local Quipsly development lane:
 
 Environment overrides:
   TARGET_URL                         Nest base URL
+  QUIPSLY_LOCAL_LIVEKIT_HTTP_URL     LiveKit health URL
   QUIPSLY_LOCAL_FIREBASE_AUTH_URL    Firebase Auth emulator URL
   QUIPSLY_LOCAL_DATABASE_CONTAINER   PostgreSQL container name
   QUIPSLY_LOCAL_DOCKER_TIMEOUT_SECONDS
@@ -53,6 +55,7 @@ source "${script_dir}/quipsly-local-state.sh"
 state_dir="$(quipsly_local_state_dir)"
 nest_url="${TARGET_URL:-http://127.0.0.1:3012}"
 firebase_url="${QUIPSLY_LOCAL_FIREBASE_AUTH_URL:-http://127.0.0.1:9099}"
+livekit_http_url="${QUIPSLY_LOCAL_LIVEKIT_HTTP_URL:-http://127.0.0.1:7880}"
 database_container="${QUIPSLY_LOCAL_DATABASE_CONTAINER:-high-ground-db}"
 docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
 failed=0
@@ -87,6 +90,40 @@ untracked_changes="$(printf "%s\n" "${status_output}" | awk 'substr($0,1,2) == "
 echo "Quipsly local services"
 report_http "Nest health" "${nest_url%/}/api/health" "200"
 report_http "Nest signed-out shell" "${nest_url%/}/login?callbackUrl=%2Fprojects" "200"
+report_http "LiveKit conversation" "${livekit_http_url%/}/" "200"
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  livekit_label="com.quipsly.local.livekit"
+  recorded_livekit_label=""
+  if [[ -f "${state_dir}/livekit.label" ]]; then
+    recorded_livekit_label="$(tr -d '[:space:]' <"${state_dir}/livekit.label")"
+  fi
+  if [[ "${recorded_livekit_label}" == "${livekit_label}" ]] \
+    && launchctl print "gui/$(id -u)/${livekit_label}" 2>/dev/null | rg -q "state = running"; then
+    printf "PASS  %-24s job %s\n" "LiveKit ownership" "${livekit_label}"
+  else
+    printf "FAIL  %-24s job %s is not launcher-owned and running\n" "LiveKit ownership" "${livekit_label}"
+    failed=1
+  fi
+else
+  livekit_pid=""
+  if [[ -f "${state_dir}/livekit.pid" ]]; then
+    livekit_pid="$(tr -d '[:space:]' <"${state_dir}/livekit.pid")"
+  fi
+  if [[ "${livekit_pid}" =~ ^[0-9]+$ ]] && kill -0 "${livekit_pid}" 2>/dev/null; then
+    printf "PASS  %-24s PID %s\n" "LiveKit ownership" "${livekit_pid}"
+  else
+    printf "FAIL  %-24s launcher-owned process is not running\n" "LiveKit ownership"
+    failed=1
+  fi
+fi
+
+if [[ -s "${state_dir}/livekit.runtime-revision" ]]; then
+  printf "PASS  %-24s recorded without credential values\n" "LiveKit runtime state"
+else
+  printf "FAIL  %-24s runtime fingerprint missing\n" "LiveKit runtime state"
+  failed=1
+fi
 
 transcript_worker_enabled=""
 if [[ -f "${state_dir}/transcript-worker.enabled" ]]; then

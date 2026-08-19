@@ -8,6 +8,8 @@ const requireFromQuipsly = createRequire(
 );
 const { deleteApp, initializeApp } = requireFromQuipsly("firebase-admin/app");
 const { getAuth } = requireFromQuipsly("firebase-admin/auth");
+const { chromium } = requireFromQuipsly("playwright");
+const livekitBundle = requireFromQuipsly.resolve("livekit-client");
 
 const COACH_EMAIL = "quipsly-mobile-coach@dev.test";
 const CLIENT_EMAIL = "quipsly-mobile-client@dev.test";
@@ -26,6 +28,127 @@ function loopbackOrigin(value, label) {
   );
   assert(!url.username && !url.password, `${label} must not include URL credentials.`);
   return url.origin;
+}
+
+function loopbackLiveKitUrl(value) {
+  const url = new URL(String(value || "").trim());
+  assert(["ws:", "wss:"].includes(url.protocol), "LiveKit must use WebSocket transport.");
+  assert(
+    ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname),
+    "This local operation refuses a non-loopback LiveKit server.",
+  );
+  assert(!url.username && !url.password, "LiveKit URL must not contain credentials.");
+  return url.toString();
+}
+
+async function proveProviderRoom({ origin, coachJoin, clientJoin }) {
+  assert(coachJoin.body?.canJoin === true, "Coach join was not authorized.");
+  assert(clientJoin.body?.canJoin === true, "Client join was not authorized.");
+  assert(
+    typeof coachJoin.body?.participantToken === "string" && coachJoin.body.participantToken.length > 100,
+    "Coach join did not return a participant token.",
+  );
+  assert(
+    typeof clientJoin.body?.participantToken === "string" && clientJoin.body.participantToken.length > 100,
+    "Client join did not return a participant token.",
+  );
+  const serverUrl = loopbackLiveKitUrl(coachJoin.body?.serverUrl);
+  assert(
+    loopbackLiveKitUrl(clientJoin.body?.serverUrl) === serverUrl,
+    "Coach and client were routed to different LiveKit servers.",
+  );
+  assert(
+    coachJoin.body?.roomName === clientJoin.body?.roomName,
+    "Coach and client were routed to different provider rooms.",
+  );
+
+  const browser = await chromium.launch({ headless: true });
+  const contexts = await Promise.all([browser.newContext(), browser.newContext()]);
+  const pages = [];
+  const topic = `quipsly.coaching.operated.${randomUUID()}`;
+  try {
+    for (const context of contexts) {
+      const page = await context.newPage();
+      await page.goto(origin, { waitUntil: "domcontentloaded" });
+      await page.addScriptTag({ path: livekitBundle });
+      pages.push(page);
+    }
+
+    await Promise.all([
+      pages[0].evaluate(async ({ url, token }) => {
+        const room = new globalThis.LivekitClient.Room();
+        await room.connect(url, token);
+        globalThis.__quipslyOperatedRoom = room;
+      }, { url: serverUrl, token: coachJoin.body.participantToken }),
+      pages[1].evaluate(async ({ url, token, packetTopic }) => {
+        const room = new globalThis.LivekitClient.Room();
+        globalThis.__quipslyOperatedReceipt = new Promise((resolve) => {
+          room.on(
+            globalThis.LivekitClient.RoomEvent.DataReceived,
+            (bytes, participant, _kind, receivedTopic) => {
+              if (receivedTopic !== packetTopic) return;
+              resolve({
+                body: JSON.parse(new TextDecoder().decode(bytes)),
+                participantIdentity: participant?.identity || null,
+              });
+            },
+          );
+        });
+        await room.connect(url, token);
+        globalThis.__quipslyOperatedRoom = room;
+      }, { url: serverUrl, token: clientJoin.body.participantToken, packetTopic: topic }),
+    ]);
+
+    for (const page of pages) {
+      await page.waitForFunction(
+        () => globalThis.__quipslyOperatedRoom?.remoteParticipants?.size === 1,
+        null,
+        { timeout: 10_000 },
+      );
+    }
+
+    const receipt = {
+      schema: "quipsly-coaching-room-proof.v1",
+      callRoomId: coachJoin.body.callRoomId,
+      roomName: coachJoin.body.roomName,
+      sentAt: new Date().toISOString(),
+      nonce: randomUUID(),
+    };
+    await pages[0].evaluate(async ({ body, packetTopic }) => {
+      await globalThis.__quipslyOperatedRoom.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify(body)),
+        { reliable: true, topic: packetTopic },
+      );
+    }, { body: receipt, packetTopic: topic });
+
+    const received = await Promise.race([
+      pages[1].evaluate(() => globalThis.__quipslyOperatedReceipt),
+      new Promise((_, reject) => setTimeout(
+        () => reject(new Error("Timed out waiting for the coach-to-client room receipt.")),
+        10_000,
+      )),
+    ]);
+    assert(received?.body?.nonce === receipt.nonce, "Client received the wrong room receipt.");
+    assert(
+      received?.participantIdentity === coachJoin.body?.tokenBoundary?.safeClaims?.identity,
+      "Client did not receive the receipt from the API-authorized coach identity.",
+    );
+
+    return {
+      participantsConnected: 2,
+      mutualPresence: true,
+      reliableCoachToClientData: true,
+      providerRoomMatches: true,
+      participantIdentityMatchesGrant: true,
+      serverUrlIsLoopback: true,
+    };
+  } finally {
+    await Promise.all(pages.map((page) => page.evaluate(() => {
+      globalThis.__quipslyOperatedRoom?.disconnect();
+    }).catch(() => undefined)));
+    await Promise.all(contexts.map((context) => context.close()));
+    await browser.close();
+  }
 }
 
 async function upsertAuthUser(auth, { email, name, password }) {
@@ -236,6 +359,10 @@ async function main() {
     assert(clientJoin.status === 200 && clientJoin.body?.ok === true, "Client join preparation failed.");
     assert(coachJoin.body?.provider === "livekit", "Coach join did not preserve the LiveKit provider.");
     assert(clientJoin.body?.provider === "livekit", "Client join did not preserve the LiveKit provider.");
+    assert(coachJoin.body?.providerReadiness === "livekit-ready", "Coach provider was not ready.");
+    assert(clientJoin.body?.providerReadiness === "livekit-ready", "Client provider was not ready.");
+
+    const providerProof = await proveProviderRoom({ origin, coachJoin, clientJoin });
 
     console.log(JSON.stringify({
       ok: true,
@@ -253,6 +380,7 @@ async function main() {
       joinTokensReturned: Boolean(
         coachJoin.body?.participantToken && clientJoin.body?.participantToken
       ),
+      providerProof,
       consentStarted: false,
       recordingStarted: false,
       calendarMutated: false,

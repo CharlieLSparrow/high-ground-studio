@@ -106,11 +106,13 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   stop_macos_job "transcript-worker" "com.quipsly.local.transcript-worker"
   stop_macos_job "media-worker" "com.quipsly.local.media-worker"
   stop_macos_job "firebase" "com.quipsly.local.firebase"
+  stop_macos_job "livekit" "com.quipsly.local.livekit"
 else
   stop_owned_process "nest"
   stop_owned_process "transcript-worker"
   stop_owned_process "media-worker"
   stop_owned_process "firebase"
+  stop_owned_process "livekit"
 fi
 
 rm -f \
@@ -121,6 +123,7 @@ rm -f \
   "${state_dir}/nest.runtime-revision" \
   "${state_dir}/media-worker.runtime-revision" \
   "${state_dir}/transcript-worker.runtime-revision" \
+  "${state_dir}/livekit.runtime-revision" \
   "${state_dir}/transcript-worker.enabled"
 
 echo

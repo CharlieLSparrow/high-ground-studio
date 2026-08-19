@@ -37,6 +37,16 @@ function assert(condition, message) {
 
 assert(enabled, "Set QUIPSLY_LOCAL_LIVE_ROOM_OPERATION=1 to authorize retained local call and chat artifacts.");
 
+// Firebase emulator accounts are intentionally ephemeral. Restore the same
+// reserved .test identities from macOS Keychain on every operated rehearsal so
+// a clean emulator boot cannot masquerade as a product login or call failure.
+process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
+process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE = "keychain";
+const { main: restoreRetainedAuthIdentities } = await import(
+  "./quipsly-retained-coaching-auth-seed.mjs"
+);
+await restoreRetainedAuthIdentities();
+
 const databaseURL = new URL(
   process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio",
 );
@@ -144,13 +154,25 @@ try {
   }
 
   for (const journey of journeys) {
-    await journey.page.getByText("In this room · 2", { exact: true }).waitFor({ timeout: 20_000 });
+    await journey.page.waitForFunction(
+      () => document.body.innerText.toLowerCase().includes("in this room · 2"),
+      null,
+      { timeout: 20_000 },
+    ).catch(async (error) => {
+      const rosterLines = (await journey.page.locator("body").innerText())
+        .split("\n")
+        .filter((line) => line.toLowerCase().includes("in this room"));
+      throw new Error(
+        `${journey.identity.role} rendered roster did not reach two participants. `
+        + `Observed: ${JSON.stringify(rosterLines)}. ${error instanceof Error ? error.message : ""}`,
+      );
+    });
   }
 
   const receiptText = `Retained local call rehearsal passed for two browser participants on ${new Date().toISOString()}.`;
   const coachComposer = journeys[0].page.getByPlaceholder("Write to everyone in this Session…");
   await coachComposer.fill(receiptText);
-  await journeys[0].page.getByRole("button", { name: "Send Session message", exact: true }).click();
+  await journeys[0].page.getByRole("button", { name: "Send collaboration message", exact: true }).click();
   await journeys[1].page.getByText(receiptText, { exact: true }).waitFor({ timeout: 20_000 });
 
   console.log(JSON.stringify({
