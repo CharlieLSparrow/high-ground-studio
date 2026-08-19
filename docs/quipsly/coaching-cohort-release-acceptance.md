@@ -206,7 +206,32 @@ staff-only operations disclosure. The coach-facing cards retain durable primary
 actions after reload: Open Session, Coaching home, client invite, iCalendar,
 Transcript & notes, Review & share, and collapsed reschedule/cancel controls.
 
+A third disposable coach/client run operated the account-bound client entry as
+the product actually presents it today:
+
+- the coach created a fresh appointment and copied the client entry from the
+  rendered confirmation;
+- the signed-out client entry explained the private Session and preserved its
+  exact callback through public account creation and mailbox verification;
+- the invited client returned to that exact Session, ran browser audio
+  preflight, joined the local LiveKit room, and disconnected cleanly;
+- the client explicitly saved a recording/transcription consent receipt and
+  opened the shared coaching home with its Session, shared goals, and shared
+  commitments visible;
+- exact-suffix cleanup removed one room, booking, appointment, engagement,
+  calendar link, two narrow grants, two Home Nests, two memberships, two local
+  users, and both local Firebase Auth identities. No human identity was
+  eligible.
+
+The operated preflight found one transcription-consent checkbox selected by
+default. It is now opt-in. A fresh reload proved headphones attestation,
+all-audible-participant consent, and transcription consent all begin unchecked.
+Joining a conversation remains separate from starting or consenting to a
+recording.
+
 This is stronger evidence than an API smoke but still does not satisfy the
 novice-human gate. It did not prove invitation-token acceptance, a two-endpoint
 media call, local high-quality capture, upload/sync, transcript generation and
 correction, light editing, sharing/revocation, accessibility, or 50-coach load.
+The account-bound booking entry is proven locally; the separate reusable
+engagement-invitation-token path and real mailbox delivery are not.

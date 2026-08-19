@@ -183,7 +183,7 @@ export function BrowserSourceRecorder({
   const [sourceType, setSourceType] = useState<BrowserSourceKind>(sessionKind === "episode" ? "video" : "audio");
   const [headphonesAttested, setHeadphonesAttested] = useState(false);
   const [audibleConsentAttested, setAudibleConsentAttested] = useState(false);
-  const [transcriptionAllowed, setTranscriptionAllowed] = useState(true);
+  const [transcriptionAllowed, setTranscriptionAllowed] = useState(false);
   const [policy, setPolicy] = useState<ConsentPolicy | null>(null);
   const [consentId, setConsentId] = useState<string | null>(null);
   const [participantId, setParticipantId] = useState<string | null>(null);
