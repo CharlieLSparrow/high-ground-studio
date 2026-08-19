@@ -51,7 +51,10 @@ export async function GET(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user) {
     return NextResponse.json(
-      { ok: false, error: "Sign in before reading the recording consent policy." },
+      {
+        ok: false,
+        error: "Sign in before reading the recording consent policy.",
+      },
       { status: 401 },
     );
   }
@@ -63,25 +66,37 @@ export async function GET(request: Request) {
     surface: "quipsly-capture-consent-v2",
     presentationVersion: 1,
   };
-  const callRoomId = new URL(request.url).searchParams.get("callRoomId")?.trim() || "";
-  if (!callRoomId) return NextResponse.json({
-    ok: true,
-    currentPolicy,
-    effects: {
-      recordingStarted: false,
-      providerJoined: false,
-      externalMutated: false,
-    },
-  }, { headers: { "Cache-Control": "private, no-store" } });
+  const callRoomId =
+    new URL(request.url).searchParams.get("callRoomId")?.trim() || "";
+  if (!callRoomId)
+    return NextResponse.json(
+      {
+        ok: true,
+        currentPolicy,
+        effects: {
+          recordingStarted: false,
+          providerJoined: false,
+          externalMutated: false,
+        },
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
 
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
   const room = await prisma.callRoom.findFirst({
     where: captureRoomAccessWhere(callRoomId, session.user),
-    include: { participants: { where: { accessStatus: "ACTIVE" } }, recordingConsents: true },
+    include: {
+      booking: true,
+      participants: { where: { accessStatus: "ACTIVE" } },
+      recordingConsents: true,
+    },
   });
   if (!room) {
-    return NextResponse.json({ ok: false, error: "You do not have access to this capture session." }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "You do not have access to this capture session." },
+      { status: 404 },
+    );
   }
   const registeredParticipants = room.participants.filter(
     (item: any) => item?.role !== "OBSERVER" && Boolean(item?.userId),
@@ -90,35 +105,63 @@ export async function GET(request: Request) {
     participants: registeredParticipants,
     consents: room.recordingConsents,
   });
-  const participant = registeredParticipants.find((item: any) => item.userId === userId) ?? null;
+  const participant =
+    registeredParticipants.find((item: any) => item.userId === userId) ?? null;
+  const canControlRoom =
+    session.user.isStaff ||
+    room.createdByUserId === userId ||
+    room.booking?.coachUserId === userId ||
+    ["HOST", "COACH", "PRODUCER"].includes(participant?.role ?? "");
   const consent = participant
-    ? room.recordingConsents
-      .filter((item: any) => item.participantId === participant.id || item.userId === userId)
-      .sort((left: any, right: any) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())[0] ?? null
+    ? (room.recordingConsents
+        .filter(
+          (item: any) =>
+            item.participantId === participant.id || item.userId === userId,
+        )
+        .sort(
+          (left: any, right: any) =>
+            new Date(right.updatedAt).getTime() -
+            new Date(left.updatedAt).getTime(),
+        )[0] ?? null)
     : null;
 
-  return NextResponse.json({
-    ok: true,
-    currentPolicy,
-    session: {
-      callRoomId: room.id,
-      roomStatus: room.status,
-      participantId: participant?.id ?? null,
-      recordingConsentId: consent?.id ?? null,
-      recordingConsentStatus: consent?.status ?? "not-created",
-      allRegisteredParticipantConsentGranted: mobileCaptureAllPartiesReady(versions, "audio"),
-      allRegisteredParticipantVideoConsentGranted: mobileCaptureAllPartiesReady(versions, "video"),
-      allRegisteredParticipantTranscriptionConsentGranted: versions.length > 0 && versions.every((version) => (
-        version.status === "GRANTED"
-        && version.canTranscribe
-        && Boolean(version.consentedAt)
-        && !version.revokedAt
-        && mobileCaptureConsentHasCurrentPolicyEvidence(version)
-      )),
-      consentRequiredParticipantCount: registeredParticipants.length,
+  return NextResponse.json(
+    {
+      ok: true,
+      currentPolicy,
+      session: {
+        callRoomId: room.id,
+        roomStatus: room.status,
+        canControlRoom,
+        participantId: participant?.id ?? null,
+        recordingConsentId: consent?.id ?? null,
+        recordingConsentStatus: consent?.status ?? "not-created",
+        allRegisteredParticipantConsentGranted: mobileCaptureAllPartiesReady(
+          versions,
+          "audio",
+        ),
+        allRegisteredParticipantVideoConsentGranted:
+          mobileCaptureAllPartiesReady(versions, "video"),
+        allRegisteredParticipantTranscriptionConsentGranted:
+          versions.length > 0 &&
+          versions.every(
+            (version) =>
+              version.status === "GRANTED" &&
+              version.canTranscribe &&
+              Boolean(version.consentedAt) &&
+              !version.revokedAt &&
+              mobileCaptureConsentHasCurrentPolicyEvidence(version),
+          ),
+        consentRequiredParticipantCount: registeredParticipants.length,
+      },
+      effects: {
+        recordingStarted: false,
+        providerJoined: false,
+        externalMutated: false,
+      },
     },
-    effects: { recordingStarted: false, providerJoined: false, externalMutated: false },
-  }, { headers: { "Cache-Control": "private, no-store" } });
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }
 
 export async function POST(request: Request) {
@@ -135,32 +178,36 @@ export async function POST(request: Request) {
   const callRoomId = text(body.callRoomId);
   const participantId = text(body.participantId);
   const consentAction = consentActionFromBody(body);
-  const canRecordAudioChoice = typeof body.canRecordAudio === "boolean"
-    ? body.canRecordAudio
-    : null;
-  const canRecordVideoChoice = typeof body.canRecordVideo === "boolean"
-    ? body.canRecordVideo
-    : null;
-  const canTranscribeChoice = typeof body.canTranscribe === "boolean"
-    ? body.canTranscribe
-    : false;
+  const canRecordAudioChoice =
+    typeof body.canRecordAudio === "boolean" ? body.canRecordAudio : null;
+  const canRecordVideoChoice =
+    typeof body.canRecordVideo === "boolean" ? body.canRecordVideo : null;
+  const canTranscribeChoice =
+    typeof body.canTranscribe === "boolean" ? body.canTranscribe : false;
   const transcriptionChoiceExplicit = typeof body.canTranscribe === "boolean";
   const presentationEvidence = isObject(body.presentationEvidence)
     ? body.presentationEvidence
     : {};
-  const clientKind = text(body.clientKind).toLowerCase() === "web" ? "web" : "ios";
+  const clientKind =
+    text(body.clientKind).toLowerCase() === "web" ? "web" : "ios";
   const requestedDeviceLabel = text(body.deviceLabel).slice(0, 160);
 
   if (!callRoomId) {
     return NextResponse.json(
-      { ok: false, error: "Choose a Quipsly capture session before recording." },
+      {
+        ok: false,
+        error: "Choose a Quipsly capture session before recording.",
+      },
       { status: 400 },
     );
   }
 
   if (!consentAction) {
     return NextResponse.json(
-      { ok: false, error: "Choose whether to grant, decline, or revoke recording consent." },
+      {
+        ok: false,
+        error: "Choose whether to grant, decline, or revoke recording consent.",
+      },
       { status: 400 },
     );
   }
@@ -168,43 +215,53 @@ export async function POST(request: Request) {
   if (consentAction === "GRANT") {
     const presentedAt = new Date(text(presentationEvidence.presentedAt));
     const presentationValid =
-      presentationEvidence.version === 1
-      && text(presentationEvidence.surface) === "quipsly-capture-consent-v2"
-      && presentationEvidence.recordingChoicePresented === true
-      && presentationEvidence.transcriptionChoicePresented === true
-      && presentationEvidence.audibleParticipantAttestationPresented === true
-      && body.allAudibleParticipantsNotifiedAndAgreed === true
-      && Number.isFinite(presentedAt.getTime())
-      && presentedAt.getTime() >= Date.now() - 30 * 60 * 1_000
-      && presentedAt.getTime() <= Date.now() + 5 * 60 * 1_000;
+      presentationEvidence.version === 1 &&
+      text(presentationEvidence.surface) === "quipsly-capture-consent-v2" &&
+      presentationEvidence.recordingChoicePresented === true &&
+      presentationEvidence.transcriptionChoicePresented === true &&
+      presentationEvidence.audibleParticipantAttestationPresented === true &&
+      body.allAudibleParticipantsNotifiedAndAgreed === true &&
+      Number.isFinite(presentedAt.getTime()) &&
+      presentedAt.getTime() >= Date.now() - 30 * 60 * 1_000 &&
+      presentedAt.getTime() <= Date.now() + 5 * 60 * 1_000;
     const policyValid =
-      text(body.consentPolicyVersion) === MOBILE_CAPTURE_CONSENT_POLICY_VERSION
-      && text(body.consentText) === MOBILE_CAPTURE_CONSENT_TEXT
-      && text(body.consentTextHash).toLowerCase() === MOBILE_CAPTURE_CONSENT_TEXT_SHA256;
+      text(body.consentPolicyVersion) ===
+        MOBILE_CAPTURE_CONSENT_POLICY_VERSION &&
+      text(body.consentText) === MOBILE_CAPTURE_CONSENT_TEXT &&
+      text(body.consentTextHash).toLowerCase() ===
+        MOBILE_CAPTURE_CONSENT_TEXT_SHA256;
     if (!policyValid || !presentationValid) {
-      return NextResponse.json({
-        ok: false,
-        error: "Present the current Quipsly consent policy and separate recording/transcription choices before granting consent.",
-        errorCode: "CURRENT_CONSENT_PRESENTATION_REQUIRED",
-        currentPolicy: {
-          version: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
-          text: MOBILE_CAPTURE_CONSENT_TEXT,
-          sha256: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
-          surface: "quipsly-capture-consent-v2",
-          presentationVersion: 1,
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Present the current Quipsly consent policy and separate recording/transcription choices before granting consent.",
+          errorCode: "CURRENT_CONSENT_PRESENTATION_REQUIRED",
+          currentPolicy: {
+            version: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+            text: MOBILE_CAPTURE_CONSENT_TEXT,
+            sha256: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+            surface: "quipsly-capture-consent-v2",
+            presentationVersion: 1,
+          },
         },
-      }, { status: 409 });
+        { status: 409 },
+      );
     }
     if (
-      canRecordAudioChoice === null
-      || canRecordVideoChoice === null
-      || (canRecordAudioChoice !== true && canRecordVideoChoice !== true)
+      canRecordAudioChoice === null ||
+      canRecordVideoChoice === null ||
+      (canRecordAudioChoice !== true && canRecordVideoChoice !== true)
     ) {
-      return NextResponse.json({
-        ok: false,
-        error: "Choose explicitly whether this consent covers audio and video recording.",
-        errorCode: "EXPLICIT_RECORDING_CHOICES_REQUIRED",
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Choose explicitly whether this consent covers audio and video recording.",
+          errorCode: "EXPLICIT_RECORDING_CHOICES_REQUIRED",
+        },
+        { status: 400 },
+      );
     }
   }
 
@@ -226,7 +283,10 @@ export async function POST(request: Request) {
     );
   }
 
-  if (consentAction === "GRANT" && !["PLANNED", "OPEN", "RECORDING"].includes(room.status)) {
+  if (
+    consentAction === "GRANT" &&
+    !["PLANNED", "OPEN", "RECORDING"].includes(room.status)
+  ) {
     return NextResponse.json(
       { ok: false, error: "This capture session is not open for recording." },
       { status: 409 },
@@ -235,19 +295,31 @@ export async function POST(request: Request) {
 
   let participant =
     (participantId &&
-      room.participants.find((item: any) => item.id === participantId && item.userId === userId)) ||
+      room.participants.find(
+        (item: any) => item.id === participantId && item.userId === userId,
+      )) ||
     room.participants.find((item: any) => item.userId === userId);
 
   if (!participant) {
-    const role = room.booking?.coachUserId === userId ? "COACH" : room.booking?.clientUserId === userId ? "CLIENT" : "GUEST";
+    const role =
+      room.booking?.coachUserId === userId
+        ? "COACH"
+        : room.booking?.clientUserId === userId
+          ? "CLIENT"
+          : "GUEST";
     participant = await prisma.callParticipant.create({
       data: {
         roomId: room.id,
         userId,
-        displayName: session.user.name || session.user.primaryEmail || "Quipsly participant",
+        displayName:
+          session.user.name ||
+          session.user.primaryEmail ||
+          "Quipsly participant",
         email: session.user.primaryEmail,
         role,
-        deviceLabel: requestedDeviceLabel || (clientKind === "web" ? "Quipsly Web" : "Quipsly iOS Capture"),
+        deviceLabel:
+          requestedDeviceLabel ||
+          (clientKind === "web" ? "Quipsly Web" : "Quipsly iOS Capture"),
       },
     });
   }
@@ -267,7 +339,8 @@ export async function POST(request: Request) {
           status: "GRANTED",
           canRecordAudio: canRecordAudioChoice === true,
           canRecordVideo: canRecordVideoChoice === true,
-          canTranscribe: transcriptionChoiceExplicit && canTranscribeChoice === true,
+          canTranscribe:
+            transcriptionChoiceExplicit && canTranscribeChoice === true,
           consentedAt: now,
           declinedAt: null,
           revokedAt: null,
@@ -315,62 +388,69 @@ export async function POST(request: Request) {
       consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
       consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
       recordingChoiceExplicit:
-        consentAction === "GRANT"
-        && canRecordAudioChoice !== null
-        && canRecordVideoChoice !== null,
+        consentAction === "GRANT" &&
+        canRecordAudioChoice !== null &&
+        canRecordVideoChoice !== null,
       transcriptionChoiceExplicit:
         consentAction === "GRANT" && transcriptionChoiceExplicit,
       allAudibleParticipantsNotifiedAndAgreed:
+        consentAction === "GRANT" &&
+        body.allAudibleParticipantsNotifiedAndAgreed === true,
+      presentationEvidence:
         consentAction === "GRANT"
-        && body.allAudibleParticipantsNotifiedAndAgreed === true,
-      presentationEvidence: consentAction === "GRANT"
-        ? {
-            version: 1,
-            surface: "quipsly-capture-consent-v2",
-            presentedAt: text(presentationEvidence.presentedAt),
-            serverConfirmedAt: now.toISOString(),
-            recordingChoicePresented: true,
-            transcriptionChoicePresented: true,
-            audibleParticipantAttestationPresented: true,
-          }
-        : null,
+          ? {
+              version: 1,
+              surface: "quipsly-capture-consent-v2",
+              presentedAt: text(presentationEvidence.presentedAt),
+              serverConfirmedAt: now.toISOString(),
+              recordingChoicePresented: true,
+              transcriptionChoicePresented: true,
+              audibleParticipantAttestationPresented: true,
+            }
+          : null,
       attestationKind: "participant-recording-and-transcription-choices-v2",
       independentParticipantReceiptsRequiredForProviderEgress: true,
     },
   };
 
   const shouldQuarantineTranscripts =
-    consentAction !== "GRANT"
-    || consentState.canTranscribe !== true;
-  const mutation = await prisma.$transaction(async (tx: any) => {
-    const consent = existing
-      ? await tx.recordingConsent.update({
-          where: { id: existing.id },
-          data,
-        })
-      : await tx.recordingConsent.create({ data });
-    const transcriptPrivacy = shouldQuarantineTranscripts
-      ? await quarantineRoomTranscriptsForConsentChange({
-          prisma: tx,
-          roomId: room.id,
-          changedByUserId: userId,
-          consentAction: consentAction as "GRANT" | "DECLINE" | "REVOKE",
-        })
-      : {
-          transcriptJobCount: 0,
-          projectedTranscriptCount: 0,
-          transcriptRowsDeleted: false,
-          sourceMediaMutated: false,
-        };
-    return { consent, transcriptPrivacy };
-  }, { isolationLevel: "Serializable" });
+    consentAction !== "GRANT" || consentState.canTranscribe !== true;
+  const mutation = await prisma.$transaction(
+    async (tx: any) => {
+      const consent = existing
+        ? await tx.recordingConsent.update({
+            where: { id: existing.id },
+            data,
+          })
+        : await tx.recordingConsent.create({ data });
+      const transcriptPrivacy = shouldQuarantineTranscripts
+        ? await quarantineRoomTranscriptsForConsentChange({
+            prisma: tx,
+            roomId: room.id,
+            changedByUserId: userId,
+            consentAction: consentAction as "GRANT" | "DECLINE" | "REVOKE",
+          })
+        : {
+            transcriptJobCount: 0,
+            projectedTranscriptCount: 0,
+            transcriptRowsDeleted: false,
+            sourceMediaMutated: false,
+          };
+      return { consent, transcriptPrivacy };
+    },
+    { isolationLevel: "Serializable" },
+  );
   const { consent, transcriptPrivacy } = mutation;
 
-  const participants = room.participants.some((item: any) => item.id === participant.id)
+  const participants = room.participants.some(
+    (item: any) => item.id === participant.id,
+  )
     ? room.participants
     : [...room.participants, participant];
   const currentConsents = existing
-    ? room.recordingConsents?.map?.((item: any) => item.id === consent.id ? consent : item) ?? [consent]
+    ? (room.recordingConsents?.map?.((item: any) =>
+        item.id === consent.id ? consent : item,
+      ) ?? [consent])
     : [...(room.recordingConsents ?? []), consent];
   const registeredParticipants = participants.filter(
     (item: any) => item?.role !== "OBSERVER" && Boolean(item?.userId),
@@ -379,37 +459,43 @@ export async function POST(request: Request) {
     participants: registeredParticipants,
     consents: currentConsents,
   });
-  const consentGrantedParticipantCount = consentVersions.filter((receipt) => (
-    receipt.status === "GRANTED"
-    && receipt.canRecordAudio
-    && Boolean(receipt.consentedAt)
-    && !receipt.revokedAt
-    && mobileCaptureConsentHasCurrentPolicyEvidence(receipt)
-  )).length;
+  const consentGrantedParticipantCount = consentVersions.filter(
+    (receipt) =>
+      receipt.status === "GRANTED" &&
+      receipt.canRecordAudio &&
+      Boolean(receipt.consentedAt) &&
+      !receipt.revokedAt &&
+      mobileCaptureConsentHasCurrentPolicyEvidence(receipt),
+  ).length;
   const allRegisteredParticipantConsentGranted = mobileCaptureAllPartiesReady(
     consentVersions,
     "audio",
   );
-  const videoConsentGrantedParticipantCount = consentVersions.filter((receipt) => (
-    receipt.status === "GRANTED"
-    && receipt.canRecordVideo
-    && Boolean(receipt.consentedAt)
-    && !receipt.revokedAt
-    && mobileCaptureConsentHasCurrentPolicyEvidence(receipt)
-  )).length;
-  const allRegisteredParticipantVideoConsentGranted = mobileCaptureAllPartiesReady(
-    consentVersions,
-    "video",
-  );
+  const videoConsentGrantedParticipantCount = consentVersions.filter(
+    (receipt) =>
+      receipt.status === "GRANTED" &&
+      receipt.canRecordVideo &&
+      Boolean(receipt.consentedAt) &&
+      !receipt.revokedAt &&
+      mobileCaptureConsentHasCurrentPolicyEvidence(receipt),
+  ).length;
+  const allRegisteredParticipantVideoConsentGranted =
+    mobileCaptureAllPartiesReady(consentVersions, "video");
   const selectedSourceConsentsReady =
-    (!consent.canRecordAudio || allRegisteredParticipantConsentGranted)
-    && (!consent.canRecordVideo || allRegisteredParticipantVideoConsentGranted);
+    (!consent.canRecordAudio || allRegisteredParticipantConsentGranted) &&
+    (!consent.canRecordVideo || allRegisteredParticipantVideoConsentGranted);
 
   return NextResponse.json({
     ok: true,
     session: {
       id: room.id,
       callRoomId: room.id,
+      roomStatus: room.status,
+      canControlRoom:
+        session.user.isStaff ||
+        room.createdByUserId === userId ||
+        room.booking?.coachUserId === userId ||
+        ["HOST", "COACH", "PRODUCER"].includes(participant.role ?? ""),
       participantId: participant.id,
       recordingConsentId: consent.id,
       recordingConsentStatus: consent.status,
