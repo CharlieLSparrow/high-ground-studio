@@ -102,17 +102,31 @@ await prisma.callRoom.upsert({
     endedAt: null,
   },
 });
-await prisma.callParticipant.deleteMany({ where: { roomId: ROOM_ID } });
-await prisma.callParticipant.createMany({
-  data: identities.map((identity) => ({
-    roomId: ROOM_ID,
-    userId: userByUid.get(identity.uid),
+// Keep one durable participant identity per retained actor. Recreating these
+// rows made prior source artifacts lose their participant owner through the
+// RecordingAsset participant relation's SetNull policy. A regression rerun may
+// append evidence, but it must not damage the evidence from the previous run.
+for (const identity of identities) {
+  const userId = userByUid.get(identity.uid);
+  const existing = await prisma.callParticipant.findFirst({
+    where: { roomId: ROOM_ID, userId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  const data = {
+    userId,
     email: identity.email,
     displayName: identity.displayName,
     role: identity.role === "coach" ? "COACH" : "CLIENT",
+    accessStatus: "ACTIVE",
     deviceLabel: `Retained ${identity.role} browser`,
-  })),
-});
+  };
+  if (existing) {
+    await prisma.callParticipant.update({ where: { id: existing.id }, data });
+  } else {
+    await prisma.callParticipant.create({ data: { roomId: ROOM_ID, ...data } });
+  }
+}
 
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({
@@ -163,9 +177,17 @@ try {
       const rosterLines = (await journey.page.locator("body").innerText())
         .split("\n")
         .filter((line) => line.toLowerCase().includes("in this room"));
+      const statusLines = (await journey.page.locator('[role="status"]').allInnerTexts())
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const visibleButtons = await journey.page.getByRole("button").allInnerTexts();
       throw new Error(
         `${journey.identity.role} rendered roster did not reach two participants. `
-        + `Observed: ${JSON.stringify(rosterLines)}. ${error instanceof Error ? error.message : ""}`,
+        + `Observed: ${JSON.stringify(rosterLines)}. `
+        + `Statuses: ${JSON.stringify(statusLines)}. `
+        + `Buttons: ${JSON.stringify(visibleButtons)}. `
+        + `URL: ${journey.page.url()}. `
+        + `${error instanceof Error ? error.message : ""}`,
       );
     });
   }
@@ -297,6 +319,9 @@ try {
   console.log(JSON.stringify({
     ok: true,
     localOnly: true,
+    testLane: "retained-regression",
+    fixtureIdentifiersUsed: true,
+    humanAcceptanceSatisfied: false,
     roomId: ROOM_ID,
     providerRoomId: PROVIDER_ROOM_ID,
     participantsConnected: journeys.length,
@@ -306,6 +331,7 @@ try {
     browserToBrowserLiveKit: "passed",
     independentBrowserSourcesVerified: 2,
     independentParticipantSourcesVerified: new Set(verifiedSources.map((source) => source.participantId)).size,
+    verifiedSourceIds: verifiedSources.map((source) => source.id),
     browserSourceOverlapMilliseconds: overlapMilliseconds,
     allPartyConsentReceipts: "passed",
     roomLeftOpenForInterop: keepRoomOpenForInterop,

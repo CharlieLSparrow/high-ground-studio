@@ -294,3 +294,41 @@ Session, correctly selected **Call and record** as the next action, held older
 transcript and follow-up evidence behind the current source gate, and fit a
 390-pixel viewport without horizontal overflow. This remains regression-lane
 evidence; a minimally instructed fresh coach still must complete all four jobs.
+
+## Two-endpoint call and retained-capture checkpoint — 2026-08-19
+
+Test lane: `retained-regression`
+
+Human acceptance satisfied: **no**
+
+The rendered browser operation now exercises two separately authenticated
+participants at the same time instead of treating two API grants as a call. It
+uses one desktop-sized coach context and one phone-sized client context, joins
+both to the same local LiveKit room, requires both rendered rosters to show two
+participants, sends a collaboration message from coach to client, saves each
+participant's own consent receipt, and starts two independent local-source
+recorders concurrently. The operation then verifies exact bytes, checksum,
+participant ownership, start/stop times, and at least two seconds of source
+overlap in canonical PostgreSQL records. It never starts provider recording.
+
+One cold operation exposed a clean client-requested disconnect of the coach
+endpoint before the client arrived; a second cold operation repeated it. The
+next four warm operations passed the complete call/chat/consent/capture path,
+with independently owned source overlap of 3.652, 3.182, 3.248, and 3.247
+seconds. This is recorded as lifecycle flakiness until a cold-start repetition
+passes; warm success does not erase the failure.
+
+The operation's result now always names its boundary with
+`testLane: retained-regression`, `fixtureIdentifiersUsed: true`, and
+`humanAcceptanceSatisfied: false`, and returns the exact verified source IDs.
+Failure output includes the rendered roster, live status text, buttons, and URL
+instead of only a timeout. It also reuses durable participant rows across runs.
+The earlier delete-and-recreate behavior silently detached old source evidence
+from its participant through the schema's `SetNull` policy; rerunning the
+regression no longer damages prior ownership evidence.
+
+This checkpoint proves repeatable local call and source mechanics after warmup.
+It does not prove real speech quality, device routing, cold-start stability,
+transcript generation from these two sources, light editing, delivery,
+revocation, physical iPhone behavior, or novice discoverability. Those remain
+fresh-user and physical-device acceptance work.
