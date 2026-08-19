@@ -2,7 +2,11 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { SessionClientFollowUpCard } from "./session-client-follow-up-card";
+import {
+  clientFollowUpExportFileName,
+  clientFollowUpMarkdown,
+  SessionClientFollowUpCard,
+} from "./session-client-follow-up-card";
 
 function response(value: unknown, status = 200) {
   return {
@@ -152,6 +156,22 @@ describe("SessionClientFollowUpCard", () => {
   afterEach(() => {
     global.fetch = originalFetch;
     jest.restoreAllMocks();
+  });
+
+  it("builds a deterministic client-safe file with source ranges and no private material", () => {
+    expect(clientFollowUpExportFileName(releasedOutput as never)).toBe(
+      "your-coaching-follow-up-r2.md",
+    );
+    const markdown = clientFollowUpMarkdown(releasedOutput as never);
+    expect(markdown).toContain("# Your coaching follow-up");
+    expect(markdown).toContain("For: Client Test");
+    expect(markdown).toContain("## Notes");
+    expect(markdown).toContain("## Goals");
+    expect(markdown).toContain("## Commitments");
+    expect(markdown).toContain("Source: 01:03-01:08");
+    expect(markdown).toContain(`Content SHA-256: ${"a".repeat(64)}`);
+    expect(markdown).toContain("Private notes and unreviewed transcript candidates are excluded.");
+    expect(markdown).not.toContain("coach-private");
   });
 
   it("defaults only eligible canonical records into a private coach draft", async () => {

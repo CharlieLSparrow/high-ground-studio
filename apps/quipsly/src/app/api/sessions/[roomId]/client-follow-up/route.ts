@@ -6,6 +6,7 @@ import {
   acknowledgeClientFollowUp,
   ClientFollowUpError,
   createClientFollowUpDraft,
+  exportClientFollowUp,
   parseClientFollowUpDraft,
   readClientFollowUp,
   releaseClientFollowUp,
@@ -230,6 +231,38 @@ export async function POST(
         },
       });
     }
+    if (action === "EXPORT") {
+      const expectedRevision = integer(body.expectedRevision);
+      const expectedContentSha256 = text(body.expectedContentSha256, 64).toLowerCase();
+      if (!expectedRevision || !/^[a-f0-9]{64}$/.test(expectedContentSha256)) {
+        return privateJson(
+          {
+            ok: false,
+            code: "EXPORT_SNAPSHOT_REQUIRED",
+            error: "Refresh the exact client-safe snapshot before preparing its file.",
+          },
+          400,
+        );
+      }
+      const result = await exportClientFollowUp(prisma, {
+        roomId,
+        outputId,
+        actor: signedInActor,
+        clientRequestId,
+        expectedRevision,
+        expectedContentSha256,
+      });
+      return privateJson({
+        ok: true,
+        ...result,
+        boundaries: {
+          localFilePrepared: true,
+          externalDeliveryConfirmed: false,
+          externalMessageSent: false,
+          sourceRecordsChanged: false,
+        },
+      });
+    }
 
     const expectedRevision = integer(body.expectedRevision);
     if (!expectedRevision) {
@@ -285,7 +318,7 @@ export async function POST(
         ok: false,
         code: "INVALID_ACTION",
         error:
-          "Choose create draft, revise draft, release, revoke, or confirm-open for this client follow-up.",
+          "Choose create draft, revise draft, release, revoke, export, or confirm-open for this client follow-up.",
       },
       400,
     );

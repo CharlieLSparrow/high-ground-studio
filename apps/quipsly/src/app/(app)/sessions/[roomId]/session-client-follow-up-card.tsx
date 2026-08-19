@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   ClipboardCheck,
+  Download,
   Eye,
   LockKeyhole,
   Play,
   RotateCcw,
   Send,
+  Share2,
   ShieldCheck,
   Target,
 } from "lucide-react";
@@ -196,6 +198,64 @@ function readinessChangeLabel(reason: NonNullable<FollowUpResponse["readiness"]>
 
 function normalizedDraftText(value: string | null | undefined) {
   return (value ?? "").replace(/\r\n/g, "\n").trim();
+}
+
+function markdownText(value: string | null | undefined) {
+  return (value ?? "").replace(/\r\n/g, "\n").trim();
+}
+
+export function clientFollowUpExportFileName(output: Pick<FollowUpOutput, "title" | "revision">) {
+  const slug = output.title
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase()
+    .slice(0, 80) || "quipsly-coaching-follow-up";
+  return `${slug}-r${output.revision}.md`;
+}
+
+export function clientFollowUpMarkdown(output: FollowUpOutput) {
+  const notes = Array.isArray(output.body.notes) ? output.body.notes : [];
+  const goals = Array.isArray(output.body.goals) ? output.body.goals : [];
+  const tasks = Array.isArray(output.body.tasks) ? output.body.tasks : [];
+  const lines = [
+    `# ${markdownText(output.title)}`,
+    "",
+    `For: ${markdownText(output.recipient.label)}`,
+    `Revision: ${output.revision}`,
+    `Status: ${output.status}`,
+    `Content SHA-256: ${output.contentSha256}`,
+  ];
+  if (output.releasedAt) lines.push(`Released: ${output.releasedAt}`);
+  if (markdownText(output.intro)) lines.push("", markdownText(output.intro));
+  if (notes.length) {
+    lines.push("", "## Notes");
+    for (const note of notes) {
+      lines.push("", `### ${markdownText(note.title) || "Session note"}`, "", markdownText(note.body));
+      if (note.sourceAnchor) lines.push(`Source: ${formatMediaTime(note.sourceAnchor.startSeconds)}-${formatMediaTime(note.sourceAnchor.endSeconds)}`);
+    }
+  }
+  if (goals.length) {
+    lines.push("", "## Goals");
+    for (const goal of goals) {
+      lines.push("", `- [${goal.status === "ACHIEVED" ? "x" : " "}] ${markdownText(goal.title)}${goal.targetAt ? ` (target ${goal.targetAt})` : ""}`);
+      if (markdownText(goal.description)) lines.push(`  ${markdownText(goal.description)}`);
+      if (goal.sourceAnchor) lines.push(`  Source: ${formatMediaTime(goal.sourceAnchor.startSeconds)}-${formatMediaTime(goal.sourceAnchor.endSeconds)}`);
+    }
+  }
+  if (tasks.length) {
+    lines.push("", "## Commitments");
+    for (const task of tasks) {
+      lines.push("", `- [${task.status === "DONE" ? "x" : " "}] ${markdownText(task.title)}${task.dueAt ? ` (due ${task.dueAt})` : ""}`);
+      if (markdownText(task.detail)) lines.push(`  ${markdownText(task.detail)}`);
+      if (task.sourceAnchor) lines.push(`  Source: ${formatMediaTime(task.sourceAnchor.startSeconds)}-${formatMediaTime(task.sourceAnchor.endSeconds)}`);
+    }
+  }
+  if (markdownText(output.nextSessionFocus)) {
+    lines.push("", "## Bring into the next session", "", markdownText(output.nextSessionFocus));
+  }
+  lines.push("", "---", "Prepared from a reviewed Quipsly client-safe snapshot. Private notes and unreviewed transcript candidates are excluded.", "");
+  return lines.join("\n");
 }
 
 function selectionMatches(
@@ -587,6 +647,80 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
     }
   }
 
+  async function exportFollowUp() {
+    const output = snapshot?.output;
+    if (!output) return;
+    setBusy("EXPORT");
+    setNotice(null);
+    const filename = clientFollowUpExportFileName(output);
+    const file = new File([clientFollowUpMarkdown(output)], filename, {
+      type: "text/markdown;charset=utf-8",
+    });
+    const shareData = {
+      title: output.title,
+      text: `Quipsly coaching follow-up for ${output.recipient.label}`,
+      files: [file],
+    };
+    let handoffNotice = "The exact client-safe file was prepared.";
+    try {
+      if (
+        typeof navigator.share === "function" &&
+        (typeof navigator.canShare !== "function" || navigator.canShare(shareData))
+      ) {
+        try {
+          await navigator.share(shareData);
+          handoffNotice = "The system share sheet accepted the exact client-safe file. Quipsly does not claim who received it.";
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            setNotice("Sharing was canceled. The client-safe file and source records remain unchanged.");
+            return;
+          }
+          handoffNotice = "The exact client-safe file was prepared, but this embedded browser blocked the system share sheet. Open Quipsly in Safari or Chrome and choose this action again.";
+        }
+      } else {
+        try {
+          const url = URL.createObjectURL(file);
+          const anchor = document.createElement("a");
+          anchor.href = url;
+          anchor.download = filename;
+          anchor.click();
+          window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+          handoffNotice = "The exact client-safe follow-up file was downloaded. External delivery is not confirmed.";
+        } catch {
+          handoffNotice = "The exact client-safe file was prepared, but this embedded browser blocked the download. Open Quipsly in Safari or Chrome and choose this action again.";
+        }
+      }
+      const response = await fetch(
+        `/api/sessions/${encodeURIComponent(roomId)}/client-follow-up`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "EXPORT",
+            clientRequestId: crypto.randomUUID(),
+            outputId: output.id,
+            expectedRevision: output.revision,
+            expectedContentSha256: output.contentSha256,
+          }),
+        },
+      );
+      const payload = (await response.json()) as FollowUpResponse;
+      if (!response.ok || !payload.ok || !payload.output) {
+        throw new Error(payload.error || "Quipsly could not record the exact file export receipt.");
+      }
+      await load();
+      setNotice(`${handoffNotice} The export receipt is bound to revision ${output.revision} and content hash ${output.contentSha256.slice(0, 12)}….`);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setNotice("Sharing was canceled. The client-safe file and source records remain unchanged.");
+      } else {
+        setNotice(`${handoffNotice} ${error instanceof Error ? error.message : "Quipsly could not record the exact file export receipt."}`);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (loading && !snapshot)
     return (
       <section className="rounded-2xl border border-emerald-200 bg-white p-6 text-sm font-bold text-emerald-950">
@@ -661,6 +795,15 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
         snapshot.output ? (
           <div className="mt-5 space-y-4">
             <FollowUpArtifact output={snapshot.output} />
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void exportFollowUp()}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950 disabled:opacity-45"
+            >
+              <Share2 size={15} aria-hidden="true" />
+              {busy === "EXPORT" ? "Preparing file…" : "Share follow-up file"}
+            </button>
             <div className="rounded-xl border border-emerald-200 bg-white p-4">
               <p className="text-xs font-bold leading-5 text-emerald-950">
                 {opened
@@ -915,7 +1058,18 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
 
           <div className="space-y-4">
             {snapshot.output ? (
-              <FollowUpArtifact output={snapshot.output} />
+              <>
+                <FollowUpArtifact output={snapshot.output} />
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void exportFollowUp()}
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950 disabled:opacity-45"
+                >
+                  <Download size={15} aria-hidden="true" />
+                  {busy === "EXPORT" ? "Preparing file…" : "Download or share follow-up"}
+                </button>
+              </>
             ) : (
               <div className="rounded-2xl border border-dashed border-emerald-300 bg-white/65 p-6">
                 <LockKeyhole className="text-emerald-700" aria-hidden="true" />

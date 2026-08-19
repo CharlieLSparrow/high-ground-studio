@@ -1390,3 +1390,99 @@ export async function acknowledgeClientFollowUp(
     idempotentReplay: false,
   };
 }
+
+export async function exportClientFollowUp(
+  client: RestoreClient,
+  input: {
+    roomId: string;
+    outputId: string;
+    actor: SessionAccessActor;
+    clientRequestId: string;
+    expectedRevision: number;
+    expectedContentSha256: string;
+  },
+) {
+  const boundary = await loadBoundary(client, input.roomId, input.actor);
+  const output = await client.sessionOutput.findFirst({
+    where: boundary.isCoach
+      ? {
+          id: input.outputId,
+          roomId: boundary.room.id,
+          createdByUserId: input.actor.id,
+          kind: "CLIENT_FOLLOW_UP",
+          status: { in: ["DRAFT", "RELEASED"] },
+        }
+      : {
+          id: input.outputId,
+          roomId: boundary.room.id,
+          recipientUserId: input.actor.id,
+          kind: "CLIENT_FOLLOW_UP",
+          status: "RELEASED",
+        },
+    select: OUTPUT_SELECT,
+  });
+  if (!output) {
+    throw new ClientFollowUpError(
+      404,
+      "FOLLOW_UP_NOT_FOUND",
+      "That client follow-up is unavailable for file export.",
+    );
+  }
+  if (
+    output.revision !== input.expectedRevision ||
+    output.contentSha256 !== input.expectedContentSha256
+  ) {
+    throw new ClientFollowUpError(
+      409,
+      "FOLLOW_UP_CHANGED",
+      "The client-safe snapshot changed before Quipsly could record this file export. Refresh and try again.",
+    );
+  }
+  const existing = await client.deliveryEvent.findUnique({
+    where: {
+      actorUserId_clientRequestId: {
+        actorUserId: input.actor.id,
+        clientRequestId: input.clientRequestId,
+      },
+    },
+  });
+  if (existing) {
+    if (existing.outputId !== output.id || existing.kind !== "EXPORTED") {
+      throw new ClientFollowUpError(
+        409,
+        "REQUEST_ID_CONFLICT",
+        "That export request identity belongs to a different operation.",
+      );
+    }
+    return { output: serializeRequiredOutput(output), idempotentReplay: true };
+  }
+  await client.deliveryEvent.create({
+    data: {
+      id: randomUUID(),
+      outputId: output.id,
+      roomId: output.roomId,
+      actorUserId: input.actor.id,
+      recipientUserId: output.recipientUserId,
+      kind: "EXPORTED",
+      destination: "local-file",
+      status: "CONFIRMED",
+      contentSha256: output.contentSha256,
+      clientRequestId: input.clientRequestId,
+      occurredAt: new Date(),
+      metadataJson: {
+        format: "text/markdown",
+        localFilePrepared: true,
+        externalDeliveryConfirmed: false,
+        sourceRecordsChanged: false,
+      },
+    },
+  });
+  const refreshed = await client.sessionOutput.findUnique({
+    where: { id: output.id },
+    select: OUTPUT_SELECT,
+  });
+  return {
+    output: serializeRequiredOutput(refreshed),
+    idempotentReplay: false,
+  };
+}

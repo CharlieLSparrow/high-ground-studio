@@ -10,6 +10,7 @@ jest.mock("@/lib/server/session-client-follow-up", () => {
     ...actual,
     acknowledgeClientFollowUp: jest.fn(),
     createClientFollowUpDraft: jest.fn(),
+    exportClientFollowUp: jest.fn(),
     readClientFollowUp: jest.fn(),
     releaseClientFollowUp: jest.fn(),
     revokeClientFollowUp: jest.fn(),
@@ -23,6 +24,7 @@ import {
   acknowledgeClientFollowUp,
   ClientFollowUpError,
   createClientFollowUpDraft,
+  exportClientFollowUp,
   readClientFollowUp,
   releaseClientFollowUp,
   revokeClientFollowUp,
@@ -35,6 +37,7 @@ const mockedPrisma = jest.mocked(getPrismaClient);
 const mockedSession = jest.mocked(getQuipslySessionFromRequest);
 const mockedRead = jest.mocked(readClientFollowUp);
 const mockedCreate = jest.mocked(createClientFollowUpDraft);
+const mockedExport = jest.mocked(exportClientFollowUp);
 const mockedRelease = jest.mocked(releaseClientFollowUp);
 const mockedRevoke = jest.mocked(revokeClientFollowUp);
 const mockedAcknowledge = jest.mocked(acknowledgeClientFollowUp);
@@ -207,6 +210,46 @@ describe("Session client follow-up route", () => {
       }),
     );
     expect(mockedRevoke).not.toHaveBeenCalled();
+  });
+
+  it("records a local-file export without claiming external delivery", async () => {
+    mockedExport.mockResolvedValue({
+      output: { id: "follow-up-1", status: "RELEASED", revision: 2 },
+      idempotentReplay: false,
+    } as never);
+
+    const response = await POST(
+      request("POST", {
+        action: "EXPORT",
+        clientRequestId: REQUEST_ID,
+        expectedRevision: 2,
+        expectedContentSha256: "a".repeat(64),
+        outputId: "follow-up-1",
+      }),
+      context(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      boundaries: {
+        localFilePrepared: true,
+        externalDeliveryConfirmed: false,
+        externalMessageSent: false,
+        sourceRecordsChanged: false,
+      },
+    });
+    expect(mockedExport).toHaveBeenCalledWith(
+      { marker: "prisma" },
+      {
+        roomId: "room-1",
+        outputId: "follow-up-1",
+        actor: ACTOR,
+        clientRequestId: REQUEST_ID,
+        expectedRevision: 2,
+        expectedContentSha256: "a".repeat(64),
+      },
+    );
   });
 
   it("revises only the current private draft without claiming release", async () => {
