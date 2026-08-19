@@ -148,3 +148,44 @@ it never replaces it.
 This checkpoint proves source, route, and build readiness. It does not yet claim
 the fresh coach/client journey or real call/capture/share journey has passed;
 those still require the operated evidence listed above.
+
+## Rendered UI automation checkpoint — 2026-08-19
+
+Test lane: `ui-automation`
+
+Human acceptance satisfied: **no**
+
+An isolated ordinary coach and separate client were created with generated,
+verified credentials and operated through the rendered local product. No staff
+role, known Session ID, retained project, database mutation, or QA login shortcut
+was used after sign-in.
+
+The operated run proved:
+
+- the new coach signed in through the ordinary coaching callback;
+- coach setup was completed from the rendered first-run form;
+- the coach scheduled a real coaching Session for the separate client;
+- Quipsly returned the exact private Session handoff and both identities could
+  open the same room without surrounding staff or Nest authority;
+- the live room now places microphone/camera/call controls first, keeps iPhone
+  handoff visible, and collapses source-retention diagnostics behind an explicit
+  troubleshooting disclosure;
+- the client created a Session-shared task and goal through the rendered Work
+  surface;
+- the coach read the same task as work created by another participant and could
+  not open it as if they owned it;
+- the coach created a client-safe note and the client read the same canonical
+  note as read-only with the coach attribution intact;
+- ordinary accounts no longer see staff test lanes, Admin Users, or auth
+  diagnostics on the account-switch surface.
+
+The operation also found and repaired first-run friction that contract tests did
+not reveal: Quipsly now pre-fills the known coach identity, proposes a useful
+next-day Session time, treats payment as optional rather than a mandatory-looking
+journey step, and keeps the appointment controls ahead of diagnostics on narrow
+screens.
+
+This is stronger evidence than an API smoke but still does not satisfy the
+novice-human gate. It did not prove invitation-token acceptance, a two-endpoint
+media call, local high-quality capture, upload/sync, transcript generation and
+correction, light editing, sharing/revocation, accessibility, or 50-coach load.

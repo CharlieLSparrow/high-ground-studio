@@ -65,6 +65,17 @@ describe("AccountSwitchClient provider continuity", () => {
     );
   });
 
+  it("keeps staff test lanes and operator shortcuts out of an ordinary coach account", async () => {
+    render(
+      <AccountSwitchClient callbackUrl="/coaching" currentUser={currentUser} />,
+    );
+
+    await screen.findByText("Quipsly Person");
+    expect(screen.queryByLabelText("Staff test lanes")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Admin users" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Diagnostics" })).not.toBeInTheDocument();
+  });
+
   it("shows an already-connected Google credential without a duplicate link action", async () => {
     (auth as any).currentUser = firebaseUser({
       providers: [{ providerId: "google.com", email: "person@example.com" }],

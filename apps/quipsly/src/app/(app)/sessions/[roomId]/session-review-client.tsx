@@ -238,6 +238,8 @@ export type SessionQuickEntry = {
   createdAt: string;
   updatedAt: string;
   tags: Array<{ id: string; label: string; slug: string }>;
+  visibility?: "AUTHOR_PRIVATE" | "SESSION_SHARED";
+  ownedByCurrentActor?: boolean;
 };
 
 export type SessionCaptureReceipts = {
@@ -900,20 +902,25 @@ function SessionSourceEvidenceCard({
 }
 
 function SessionQuickEntryCard({
+  roomId,
   entries,
   taxonomy,
   scope,
 }: {
+  roomId: string;
   entries: SessionQuickEntry[];
   taxonomy: SessionTaxonomy | null;
   scope: "notes" | "work";
 }) {
+  const router = useRouter();
   const entriesForScope = entries.filter((entry) => (
     scope === "notes" ? entry.kind === "NOTE" : entry.kind === "TASK" || entry.kind === "GOAL"
   ));
   const [currentEntries, setCurrentEntries] = useState(entriesForScope);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [createKind, setCreateKind] = useState<"TASK" | "GOAL">("TASK");
+  const createWorkFormRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
     setCurrentEntries(entries.filter((entry) => (
       scope === "notes" ? entry.kind === "NOTE" : entry.kind === "TASK" || entry.kind === "GOAL"
@@ -922,6 +929,37 @@ function SessionQuickEntryCard({
   const icon = (kind: SessionQuickEntry["kind"]) => kind === "NOTE" ? MessageSquareText : kind === "TASK" ? ListTodo : Target;
   function updateEntry(noteId: string, update: Partial<SessionQuickEntry>) {
     setCurrentEntries((current) => current.map((entry) => entry.id === noteId ? { ...entry, ...update } : entry));
+  }
+  async function createWork(formData: FormData) {
+    const requestId = crypto.randomUUID();
+    setBusyId("create-work");
+    setNotice(null);
+    try {
+      const rawTargetAt = String(formData.get("targetAt") || "");
+      const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/work`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientRequestId: requestId,
+          kind: createKind,
+          title: String(formData.get("title") || ""),
+          body: String(formData.get("body") || ""),
+          visibility: String(formData.get("visibility") || "SESSION_SHARED"),
+          targetAt: rawTargetAt ? new Date(`${rawTargetAt}T12:00:00`).toISOString() : null,
+        }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; entry?: SessionQuickEntry; nextAction?: string };
+      if (!response.ok || !payload.ok || !payload.entry) throw new Error(payload.error || "The Session work was not saved.");
+      setCurrentEntries((current) => [payload.entry!, ...current.filter((entry) => entry.id !== payload.entry!.id)]);
+      createWorkFormRef.current?.reset();
+      setCreateKind("TASK");
+      setNotice(payload.nextAction || `The ${createKind.toLowerCase()} is saved in this Session.`);
+      router.refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The Session work was not saved.");
+    } finally {
+      setBusyId(null);
+    }
   }
   async function saveNote(entry: SessionQuickEntry, formData: FormData) {
     setBusyId(entry.id);
@@ -988,16 +1026,28 @@ function SessionQuickEntryCard({
   }
   const noteScope = scope === "notes";
   const title = noteScope
-    ? `${currentEntries.length} deliberate iPhone Session note${currentEntries.length === 1 ? "" : "s"}`
-    : `${currentEntries.length} deliberate iPhone work capture${currentEntries.length === 1 ? "" : "s"}`;
+    ? `${currentEntries.length} deliberate Session note${currentEntries.length === 1 ? "" : "s"}`
+    : `${currentEntries.length} committed task${currentEntries.length === 1 ? " or goal" : "s and goals"}`;
   return <section className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5" aria-labelledby={`quick-entry-${scope}-heading`}>
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">{noteScope ? "Actor-owned Session context" : "Committed Session work"}</p><h2 id={`quick-entry-${scope}-heading`} className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{title}</h2><p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">{noteScope ? "These notes were deliberately captured for this Session. They are not transcript suggestions or copied phone drafts." : "These iPhone-created tasks and goals remain distinct from transcript candidates. Canonical work created through other reviewed paths appears in continuity below; every identity, owner, status, and tag remains unchanged here."}</p></div>{noteScope ? null : <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-900">Open Work</Link>}</div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">{noteScope ? "Actor-owned Session context" : "Committed Session work"}</p><h2 id={`quick-entry-${scope}-heading`} className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{title}</h2><p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">{noteScope ? "These notes were deliberately captured for this Session. They are not transcript suggestions or copied phone drafts." : "Create the next task or goal here, or continue work captured from Quipsly Capture. Transcript suggestions stay separate until a person reviews and accepts them."}</p></div>{noteScope ? null : <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-900">Open my Work</Link>}</div>
+    {!noteScope && <details open={currentEntries.length === 0} className="mt-4 rounded-xl border border-emerald-200 bg-white p-4">
+      <summary className="cursor-pointer text-sm font-black text-emerald-950">Add a task or goal</summary>
+      <form ref={createWorkFormRef} action={(formData) => void createWork(formData)} className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">Type<select name="kind" value={createKind} onChange={(event) => setCreateKind(event.target.value as "TASK" | "GOAL")} className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal"><option value="TASK">Task</option><option value="GOAL">Goal</option></select></label>
+        <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">Who can see it<select name="visibility" defaultValue="SESSION_SHARED" className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal"><option value="SESSION_SHARED">Everyone in this Session</option><option value="AUTHOR_PRIVATE">Only me</option></select></label>
+        <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900 md:col-span-2">{createKind === "TASK" ? "Task" : "Goal"} title<input name="title" required maxLength={500} placeholder={createKind === "TASK" ? "What happens next?" : "What are we working toward?"} className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+        <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900 md:col-span-2">Context <span className="normal-case tracking-normal text-emerald-700">(optional)</span><textarea name="body" maxLength={5_000} rows={3} placeholder="Add enough detail that this still makes sense next time." className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+        <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">{createKind === "TASK" ? "Due date" : "Target date"} <span className="normal-case tracking-normal text-emerald-700">(optional)</span><input name="targetAt" type="date" className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal" /></label>
+        <button type="submit" disabled={busyId === "create-work"} className="min-h-11 self-end rounded-full bg-emerald-800 px-5 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{busyId === "create-work" ? "Saving…" : `Save ${createKind.toLowerCase()}`}</button>
+      </form>
+      <p className="mt-3 text-[11px] font-semibold leading-5 text-emerald-900">This saves canonical Quipsly work. It does not send a message, schedule a reminder, change a calendar, or publish anything.</p>
+    </details>}
     {notice && <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-950">{notice}</p>}
     {currentEntries.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2">{currentEntries.map((entry) => {
       const Icon = icon(entry.kind);
-      const href = entry.kind === "TASK" ? `/work?task=${encodeURIComponent(entry.id)}` : entry.kind === "GOAL" ? `/work?goal=${encodeURIComponent(entry.id)}` : null;
+      const href = entry.ownedByCurrentActor === false ? null : entry.kind === "TASK" ? `/work?task=${encodeURIComponent(entry.id)}` : entry.kind === "GOAL" ? `/work?goal=${encodeURIComponent(entry.id)}` : null;
       return <article id={`quick-entry-${entry.id}`} key={entry.id} tabIndex={-1} className="scroll-mt-24 rounded-xl border border-emerald-200 bg-white p-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
-        <div className="flex items-start gap-3"><span className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><Icon className="h-4 w-4" aria-hidden="true" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><p className="font-black text-[#3d3122]">{entry.title || (entry.kind === "NOTE" ? "Quick note" : `Untitled ${entry.kind.toLowerCase()}`)}</p><span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusTone(entry.status)}`}>{humanize(entry.status)}</span></div>{entry.body && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#765f40]">{entry.body}</p>}<p className="mt-3 text-[10px] font-black uppercase tracking-wide text-[#8a7354]">{humanize(entry.kind)} · {new Date(entry.createdAt).toLocaleString()}</p>{href && <Link href={href} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900">Open same {entry.kind.toLowerCase()} in Work</Link>}</div></div>
+        <div className="flex items-start gap-3"><span className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><Icon className="h-4 w-4" aria-hidden="true" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><p className="font-black text-[#3d3122]">{entry.title || (entry.kind === "NOTE" ? "Quick note" : `Untitled ${entry.kind.toLowerCase()}`)}</p><span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusTone(entry.status)}`}>{humanize(entry.status)}</span></div>{entry.body && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#765f40]">{entry.body}</p>}<p className="mt-3 text-[10px] font-black uppercase tracking-wide text-[#8a7354]">{humanize(entry.kind)} · {entry.visibility === "SESSION_SHARED" ? "Everyone in this Session" : "Only me"} · {entry.ownedByCurrentActor === false ? "Created by another participant" : "Mine"} · {new Date(entry.createdAt).toLocaleString()}</p>{href && <Link href={href} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900">Open same {entry.kind.toLowerCase()} in Work</Link>}</div></div>
         <TagSearchChips tags={entry.tags} label={`${entry.title || entry.kind} tags`} />
         {entry.kind === "NOTE" && <details className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
           <summary className="cursor-pointer text-xs font-black text-emerald-950">Edit note and tags</summary>
@@ -1018,7 +1068,7 @@ function SessionQuickEntryCard({
           </div>}
         </details>}
       </article>;
-    })}</div> : <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-900">{noteScope ? "No deliberate iPhone Session note has synced yet. Quipsly does not substitute transcript text or an Inbox count." : "No deliberate iPhone task or goal is bound to this Session. Transcript candidates stay out until a person accepts them."}</div>}
+    })}</div> : <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-900">{noteScope ? "No deliberate Session note has been added yet. Quipsly does not substitute transcript text or an Inbox count." : "No task or goal has been added to this Session yet. Transcript candidates stay separate until a person accepts them."}</div>}
   </section>;
 }
 
@@ -2271,7 +2321,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
       <SessionWorkspaceNavigation roomId={roomId} mode={mode} purpose={purpose} />
 
-      {mode === "overview" || mode === "live" ? <SessionCollaborationScopes
+      {mode === "overview" ? <SessionCollaborationScopes
         roomId={roomId}
         purpose={purpose}
         context={collaborationContext}
@@ -2298,15 +2348,19 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       </> : null}
 
       {mode === "live" ? <div className="space-y-5">
-        <SessionReadinessTopologyCard roomId={roomId} topology={readinessTopology} canManageSourcePlan={canManageSourcePlan} />
-        <CaptureAppHandoff roomId={roomId} joinedFromInvitation={joinedFromInvitation} />
-        <SessionInvitations roomId={roomId} purpose={preparation?.purpose || "COACHING"} />
         <LiveSessionDockLauncher
           config={liveDockConfig}
           autoOpen
           label="Open mic, camera & call"
-          description="The browser call and its durable Session thread now live in a persistent dock. Use an external mic, camera, and headphones, then open transcript, notes, goals, or the connected Episode or Coaching workspace without dropping the room."
+          description="Choose the microphone, camera, and headphones you want, confirm consent, then join this Session. The call stays available while you move between notes, goals, and follow-up."
         />
+        <SessionInvitations roomId={roomId} purpose={preparation?.purpose || "COACHING"} />
+        <CaptureAppHandoff roomId={roomId} joinedFromInvitation={joinedFromInvitation} />
+        <details className="rounded-2xl border border-[#ded1bb] bg-white/75 p-4">
+          <summary className="cursor-pointer text-sm font-black text-[#5b472f]">Recording confidence and source details</summary>
+          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Use this when checking planned devices, retained masters, upload safety, or a recording problem. It does not control the call.</p>
+          <div className="mt-4"><SessionReadinessTopologyCard roomId={roomId} topology={readinessTopology} canManageSourcePlan={canManageSourcePlan} /></div>
+        </details>
       </div> : null}
 
       {mode === "recordings" ? <>
@@ -2329,7 +2383,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       /> : null}
 
       {mode === "work" ? <>
-        <SessionQuickEntryCard entries={sessionQuickEntries} taxonomy={sessionTaxonomy} scope="work" />
+        <SessionQuickEntryCard roomId={roomId} entries={sessionQuickEntries} taxonomy={sessionTaxonomy} scope="work" />
         {sessionContinuity ? <SessionContinuityCard roomId={roomId} initial={sessionContinuity} /> : <WorkspaceEmptyState title="No continuity snapshot" detail="No actor-owned Session notes, committed tasks, goals, or focus blocks are available to carry forward." />}
       </> : null}
 

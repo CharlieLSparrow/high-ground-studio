@@ -438,6 +438,55 @@ describe("Session review goal candidates", () => {
     ).toBe(false);
   });
 
+  it("creates explicitly shared canonical Session work from the browser", async () => {
+    const createdAt = "2026-08-19T20:30:00.000Z";
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse({
+      ok: true,
+      entry: {
+        id: "session-task-request-1",
+        kind: "TASK",
+        title: "Send the reflection worksheet",
+        body: "Share it before Friday.",
+        status: "OPEN",
+        createdAt,
+        updatedAt: createdAt,
+        tags: [],
+        visibility: "SESSION_SHARED",
+        ownedByCurrentActor: true,
+      },
+      nextAction: "The task is visible to permitted Session participants. No message, reminder, calendar event, or delivery occurred.",
+    }));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="work"
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
+    />);
+
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Send the reflection worksheet");
+    await user.type(screen.getByRole("textbox", { name: /Context/ }), "Share it before Friday.");
+    await user.click(screen.getByRole("button", { name: "Save task" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/sessions/room-1/work");
+    const request = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(request).toMatchObject({
+      kind: "TASK",
+      title: "Send the reflection worksheet",
+      body: "Share it before Friday.",
+      visibility: "SESSION_SHARED",
+      targetAt: null,
+    });
+    expect(request.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(await screen.findByText("Send the reflection worksheet")).toBeInTheDocument();
+    expect(screen.getByText(/Everyone in this Session · Mine/)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("No message, reminder, calendar event, or delivery occurred");
+    expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
+  });
+
   it("starts the durable released transcript job from the Session workspace", async () => {
     const queued = packetReadyToBuild();
     queued.transcriptJob = {
@@ -1462,11 +1511,11 @@ describe("Session review goal candidates", () => {
       ]}
     />);
 
-    expect(await screen.findByRole("heading", { name: "2 deliberate iPhone work captures" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "2 committed tasks and goals" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open same task in Work" })).toHaveAttribute("href", "/work?task=mobile-task-1");
     expect(screen.getByRole("link", { name: "Open same goal in Work" })).toHaveAttribute("href", "/work?goal=mobile-goal-1");
     expect(screen.queryByText("Quick note")).not.toBeInTheDocument();
-    expect(screen.getByText(/distinct from transcript candidates/i)).toBeInTheDocument();
+    expect(screen.getByText(/Transcript suggestions stay separate until a person reviews and accepts them/i)).toBeInTheDocument();
   });
 
   it("edits the same iPhone note and replaces its canonical Nest tags with optimistic revisions", async () => {

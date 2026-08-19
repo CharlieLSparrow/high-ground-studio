@@ -698,6 +698,11 @@ export default function CoachingPage() {
       const payload = (await response.json()) as CoachingRunway;
       if (!response.ok || !payload.ok) throw new Error(payload.error || `Runway returned HTTP ${response.status}.`);
       setRunway(payload);
+      setSetupForm((current) => ({
+        ...current,
+        coachEmail: current.coachEmail || payload.user?.email || "",
+        coachName: current.coachName || payload.user?.name || "",
+      }));
       setStatus("Coaching runway ready");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Coaching runway could not load.");
@@ -1228,10 +1233,18 @@ export default function CoachingPage() {
 
   useEffect(() => {
     const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (!detectedTimezone) return;
-    setSetupForm((current) => ({
+    if (detectedTimezone) {
+      setSetupForm((current) => ({
+        ...current,
+        timezone: current.timezone || detectedTimezone,
+      }));
+    }
+    const nextStart = new Date();
+    nextStart.setDate(nextStart.getDate() + 1);
+    nextStart.setMinutes(0, 0, 0);
+    setCreateForm((current) => ({
       ...current,
-      timezone: current.timezone || detectedTimezone,
+      scheduledStart: current.scheduledStart || localDateTimeInputValue(nextStart),
     }));
   }, []);
 
@@ -1342,7 +1355,7 @@ export default function CoachingPage() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-[#b98036]">Quipsly coaching runway</p>
-              <h1 className="max-w-3xl text-4xl font-black leading-tight text-[#3d3122]">Book, bill, record, transcribe, and follow up without dashboard chaos.</h1>
+              <h1 className="max-w-3xl text-4xl font-black leading-tight text-[#3d3122]">Schedule the next session. Quipsly keeps the rest together.</h1>
               <p className="mt-3 max-w-3xl text-[#7b5c3b]">
                 Coaches get one calm place to create sessions, invite clients, record only after consent, and review follow-up. Clients get the simple version: time, consent, join, shared notes, goals, and tasks. Payment stays optional while a coach is getting started.
               </p>
@@ -1378,7 +1391,7 @@ export default function CoachingPage() {
               Start here · finish coach setup
             </a>
           ) : null}
-          <div className="mt-4 grid gap-3 md:grid-cols-5">
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
             <FriendlyStepCard
               step="1"
               title="Set coach profile"
@@ -1393,20 +1406,14 @@ export default function CoachingPage() {
             />
             <FriendlyStepCard
               step="3"
-              title="Request payment"
-              detail="Stripe hosts the card page. Quipsly keeps the amount, checkout link, and receipt trail together."
-              ready={readiness?.stripeConfigured === true}
-            />
-            <FriendlyStepCard
-              step="4"
-              title="Get consent and record"
-              detail="Recording stays locked until participants can see the consent state and choose clearly."
+              title="Meet and record"
+              detail="Open the room, choose each device, confirm consent, and record only when everyone is ready."
               ready={(counts?.captureRooms ?? 0) > 0}
             />
             <FriendlyStepCard
-              step="5"
-              title="Review the packet"
-              detail="Transcript, highlights, notes, goals, and action items stay reviewable before they are shared."
+              step="4"
+              title="Review and share"
+              detail="Review the transcript, notes, goals, tasks, and recording before sharing follow-up."
               ready={(counts?.roomsWithPackets ?? 0) > 0}
             />
           </div>
@@ -2015,7 +2022,7 @@ export default function CoachingPage() {
           </div>
         </section>
 
-        <aside className={`space-y-6 ${!canManageCoaching ? "order-first xl:order-last" : ""}`}>
+        <aside className="order-first space-y-6 xl:order-last">
           <div id="coach-setup" className="scroll-mt-6 rounded-[1.7rem] border border-emerald-100 bg-emerald-50/80 p-6 shadow-sm">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>

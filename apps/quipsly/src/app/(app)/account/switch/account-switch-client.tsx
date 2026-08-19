@@ -275,7 +275,7 @@ export function AccountSwitchClient({
           </div>
         </section>
 
-        <div className="mt-7 grid gap-3 lg:grid-cols-3">
+        {currentUser?.isStaff ? <div className="mt-7 grid gap-3 lg:grid-cols-3" aria-label="Staff test lanes">
           {safeLanes.map((lane) => (
             <div
               key={lane.label}
@@ -288,7 +288,7 @@ export function AccountSwitchClient({
               <p className="mt-2 text-sm leading-6 opacity-80">{lane.description}</p>
             </div>
           ))}
-        </div>
+        </div> : null}
 
         <div className="mt-7 grid gap-3 sm:grid-cols-2">
           <button
@@ -324,7 +324,7 @@ export function AccountSwitchClient({
             This is not impersonation. It changes the real signed-in account, so permissions, Home Nest uploads,
             private fiction access, shared research Nests, and beta entitlements all stay honest.
           </p>
-          <div className="rounded-2xl border border-[#ead8ba] bg-[#fffaf3] px-4 py-3 text-sm leading-6 text-[#6f5a43]">
+          {currentUser?.isStaff ? <div className="rounded-2xl border border-[#ead8ba] bg-[#fffaf3] px-4 py-3 text-sm leading-6 text-[#6f5a43]">
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-[#8c6b4a]">
               <KeyRound className="h-4 w-4" />
               Operator shortcuts
@@ -345,7 +345,7 @@ export function AccountSwitchClient({
                 Diagnostics
               </Link>
             </div>
-          </div>
+          </div> : null}
         </div>
       </div>
     </section>
