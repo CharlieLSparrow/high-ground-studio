@@ -229,6 +229,15 @@ all-audible-participant consent, and transcription consent all begin unchecked.
 Joining a conversation remains separate from starting or consenting to a
 recording.
 
+Separate regression-lane proof then used the fixed local mobile-coaching QA
+identities. Both independently obtained room-scoped join authorization, reached
+the same loopback LiveKit room, observed mutual presence, and delivered one
+reliable coach-to-client data receipt with the authorized participant identity.
+That operation retained its QA artifacts for inspection and explicitly reported
+`consentStarted: false`, `recordingStarted: false`, no calendar/payment mutation,
+and no external invitation. It proves two-endpoint signaling and authorization;
+it does not prove human audio/video quality or replace fresh-user acceptance.
+
 This is stronger evidence than an API smoke but still does not satisfy the
 novice-human gate. It did not prove invitation-token acceptance, a two-endpoint
 media call, local high-quality capture, upload/sync, transcript generation and
