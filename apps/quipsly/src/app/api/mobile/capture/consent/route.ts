@@ -38,6 +38,19 @@ function consentActionFromBody(body: Record<string, unknown>) {
   return "";
 }
 
+function allParticipantsAllowTranscription(
+  versions: ReturnType<typeof buildMobileCaptureConsentVersions>,
+) {
+  return versions.length > 0 && versions.every(
+    (version) =>
+      version.status === "GRANTED" &&
+      version.canTranscribe &&
+      Boolean(version.consentedAt) &&
+      !version.revokedAt &&
+      mobileCaptureConsentHasCurrentPolicyEvidence(version),
+  );
+}
+
 async function readJson(request: Request) {
   try {
     const value = await request.json();
@@ -143,15 +156,7 @@ export async function GET(request: Request) {
         allRegisteredParticipantVideoConsentGranted:
           mobileCaptureAllPartiesReady(versions, "video"),
         allRegisteredParticipantTranscriptionConsentGranted:
-          versions.length > 0 &&
-          versions.every(
-            (version) =>
-              version.status === "GRANTED" &&
-              version.canTranscribe &&
-              Boolean(version.consentedAt) &&
-              !version.revokedAt &&
-              mobileCaptureConsentHasCurrentPolicyEvidence(version),
-          ),
+          allParticipantsAllowTranscription(versions),
         consentRequiredParticipantCount: registeredParticipants.length,
       },
       effects: {
@@ -481,6 +486,16 @@ export async function POST(request: Request) {
   ).length;
   const allRegisteredParticipantVideoConsentGranted =
     mobileCaptureAllPartiesReady(consentVersions, "video");
+  const transcriptionConsentGrantedParticipantCount = consentVersions.filter(
+    (receipt) =>
+      receipt.status === "GRANTED" &&
+      receipt.canTranscribe &&
+      Boolean(receipt.consentedAt) &&
+      !receipt.revokedAt &&
+      mobileCaptureConsentHasCurrentPolicyEvidence(receipt),
+  ).length;
+  const allRegisteredParticipantTranscriptionConsentGranted =
+    allParticipantsAllowTranscription(consentVersions);
   const selectedSourceConsentsReady =
     (!consent.canRecordAudio || allRegisteredParticipantConsentGranted) &&
     (!consent.canRecordVideo || allRegisteredParticipantVideoConsentGranted);
@@ -522,6 +537,8 @@ export async function POST(request: Request) {
       allRegisteredParticipantConsentGranted,
       videoConsentGrantedParticipantCount,
       allRegisteredParticipantVideoConsentGranted,
+      transcriptionConsentGrantedParticipantCount,
+      allRegisteredParticipantTranscriptionConsentGranted,
       nextAction:
         consent.status === "GRANTED"
           ? selectedSourceConsentsReady

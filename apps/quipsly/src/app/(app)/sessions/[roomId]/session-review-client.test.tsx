@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionReviewClient } from "./session-review-client";
@@ -284,6 +284,7 @@ function heldSourceEvidence(): SessionSourceEvidence {
 describe("Session review goal candidates", () => {
   const originalFetch = global.fetch;
   afterEach(() => {
+    jest.useRealTimers();
     global.fetch = originalFetch;
     mockRouterRefresh.mockReset();
     jest.restoreAllMocks();
@@ -533,6 +534,38 @@ describe("Session review goal candidates", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/Transcription started from the released immutable source/i);
     expect(screen.getByText("Running")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start transcription" })).not.toBeInTheDocument();
+  });
+
+  it("updates a running transcript to completed without a manual refresh", async () => {
+    jest.useFakeTimers();
+    const running = packetReadyToBuild();
+    running.transcriptJob = {
+      ...running.transcriptJob!,
+      status: "RUNNING",
+      segmentCount: 0,
+    };
+    running.packet = {
+      ...running.packet!,
+      status: "NOT_READY",
+      safeActions: [],
+    };
+    const completed = packetReadyToBuild();
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(running))
+      .mockResolvedValueOnce(jsonResponse(completed));
+    global.fetch = fetchMock as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+    expect(await screen.findByText("Running")).toBeInTheDocument();
+
+    await act(async () => {
+      jest.advanceTimersByTime(2_500);
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("Completed")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/Loading transcript packet/i)).not.toBeInTheDocument();
   });
 
   it("retries a failed transcript from its immutable recording binding", async () => {

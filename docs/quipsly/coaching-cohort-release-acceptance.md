@@ -313,10 +313,13 @@ overlap in canonical PostgreSQL records. It never starts provider recording.
 
 One cold operation exposed a clean client-requested disconnect of the coach
 endpoint before the client arrived; a second cold operation repeated it. The
-next four warm operations passed the complete call/chat/consent/capture path,
-with independently owned source overlap of 3.652, 3.182, 3.248, and 3.247
-seconds. This is recorded as lifecycle flakiness until a cold-start repetition
-passes; warm success does not erase the failure.
+failure was traced to the local Next development server compiling the second
+device route and remounting the already joined first page. The operation now
+finishes both rendered device lobbies before either endpoint joins the measured
+call. A fresh cold run then passed call, chat, both consent receipts, and two
+independently owned sources with 4.133 seconds of overlap. This is a local
+development warm-up boundary, not a reconnect retry and not evidence that
+production disconnect recovery has passed.
 
 The operation's result now always names its boundary with
 `testLane: retained-regression`, `fixtureIdentifiersUsed: true`, and
@@ -327,8 +330,38 @@ The earlier delete-and-recreate behavior silently detached old source evidence
 from its participant through the schema's `SetNull` policy; rerunning the
 regression no longer damages prior ownership evidence.
 
-This checkpoint proves repeatable local call and source mechanics after warmup.
-It does not prove real speech quality, device routing, cold-start stability,
-transcript generation from these two sources, light editing, delivery,
-revocation, physical iPhone behavior, or novice discoverability. Those remain
-fresh-user and physical-device acceptance work.
+This checkpoint proves repeatable local call and source mechanics. It does not
+prove real speech quality, physical device routing, production disconnect
+recovery, light editing, delivery, revocation, physical iPhone behavior, or
+novice discoverability. Those remain fresh-user and physical-device acceptance
+work.
+
+## Participant-attributed transcript checkpoint — 2026-08-19
+
+Test lane: `retained-regression`
+
+Human acceptance satisfied: **no**
+
+A fresh two-endpoint capture produced two transcription-released sources owned
+by different participants. The ordinary rendered Session transcript surface
+observed both background jobs transition to **Completed** without a manual
+refresh, selected each exact recording source, and exposed the source-routing
+explanation in the correction desk. Both jobs preserved their immutable local
+Whisper provider evidence while separately recording that the source topology
+was `participant-isolated` and speaker authority was `source-binding`. The
+projected transcript therefore identified one source as the retained client and
+the other as the retained coach without inventing diarization evidence.
+
+The exact operated sources were `cmt0p0kq6002dlnxllr3ra1pi` and
+`cmt0p0krm002ilnxlqbgvdy8g`; their transcript jobs were
+`cmt0p0kq8002flnxl7da0o13e` and `cmt0p0krq002klnxl8ylwt21w`. Both contained one
+timed segment. The Playwright fake audio source caused local Whisper to emit a
+short `Thank you.` hallucination, so this run proves routing, lifecycle, source
+selection, and visible attribution—not real-speech accuracy. It also does not
+prove playback review, correction acceptance, light editing, sharing,
+revocation, or novice discoverability.
+
+The retained scripts remain deliberately fixture-based. Their output reports
+`fixtureIdentifiersUsed: true` and `humanAcceptanceSatisfied: false`; these
+checks catch regressions quickly but cannot release the 50-coach cohort. The
+numbered fresh coach/client journey above remains the human acceptance gate.

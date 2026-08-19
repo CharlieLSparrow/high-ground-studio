@@ -41,6 +41,37 @@ function object(value) {
     : {};
 }
 
+export function localWhisperRoutingSummary(asset, options = {}) {
+  const participantLabel = text(asset?.participant?.displayName)
+    || text(asset?.participant?.email)
+    || (asset?.participantId ? String(asset.participantId) : "");
+  const participantIsolated =
+    ["LOCAL_AUDIO", "LOCAL_VIDEO"].includes(String(asset?.kind)) &&
+    Boolean(asset?.participantId) &&
+    Boolean(participantLabel);
+  const sourceTopology = participantIsolated
+    ? "participant-isolated"
+    : String(asset?.kind) === "SERVER_MIX"
+      ? "mixed-room"
+      : "unknown";
+  return {
+    schema: "quipsly-transcript-routing-summary-v1",
+    sourceTopology,
+    participantLabel: participantIsolated ? participantLabel.slice(0, 160) : null,
+    speakerAuthority: participantIsolated ? "source-binding" : "unresolved",
+    provider: PROVIDER,
+    model: text(options.model) || "large-v3-turbo",
+    modelRevisionPolicy: "installed-local-model-name",
+    language: text(options.language) || "en",
+    diarizationRequested: false,
+    timingGranularity: "segment",
+    terminologySnapshotSha256: null,
+    terminologyKeytermCount: 0,
+    manifestBacked: false,
+    providerOutputRemainsImmutable: true,
+  };
+}
+
 export function requireLocalDatabase(value) {
   const url = new URL(value);
   if (!["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
@@ -213,7 +244,7 @@ async function nextLocalJob(prisma) {
     },
     orderBy: [{ createdAt: "asc" }],
     include: {
-      asset: true,
+      asset: { include: { participant: true } },
       room: {
         include: {
           participants: true,
@@ -225,7 +256,7 @@ async function nextLocalJob(prisma) {
   });
 }
 
-async function claimLocalJob(prisma, candidate, workerBuildId) {
+async function claimLocalJob(prisma, candidate, options) {
   if (!candidate.asset || !candidate.room || candidate._count.segments || candidate._count.words) {
     await prisma.transcriptJob.update({
       where: { id: candidate.id },
@@ -272,10 +303,16 @@ async function claimLocalJob(prisma, candidate, workerBuildId) {
       startedAt,
       completedAt: null,
       errorMessage: null,
-      workerBuildId,
+      workerBuildId: options.workerBuildId,
       resultJson: {
         ...priorResult,
         source: "local-durable-transcript-worker",
+        processingControl: {
+          ...object(priorResult.processingControl),
+          routing: object(object(priorResult.processingControl).routing).schema
+            ? object(priorResult.processingControl).routing
+            : localWhisperRoutingSummary(candidate.asset, options),
+        },
         localProcessing: {
           schema: RESULT_SCHEMA,
           status: "RUNNING",
@@ -583,7 +620,11 @@ async function runWorker() {
         await new Promise((resolve) => setTimeout(resolve, pollMilliseconds));
         continue;
       }
-      const claimed = await claimLocalJob(prisma, candidate, workerBuildId);
+      const claimed = await claimLocalJob(prisma, candidate, {
+        workerBuildId,
+        model,
+        language,
+      });
       if (!claimed) {
         if (runOnce) return;
         continue;

@@ -161,6 +161,26 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
     );
   }
   if (evidence.storageBackend === "local-development") {
+    const priorResult = jsonObject(job.resultJson);
+    const priorControl = jsonObject(priorResult.processingControl);
+    await input.prisma.transcriptJob.update({
+      where: { id: job.id },
+      data: {
+        resultJson: {
+          ...priorResult,
+          source: "capture-transcript-local-worker-queue",
+          processingControl: {
+            ...priorControl,
+            version: 1,
+            sourceGeneration: evidence.generation,
+            sourceSha256: sha256,
+            consentGateCheckedAt: new Date().toISOString(),
+            reconciliationRequiresFreshConsentGate: true,
+            routing: localCaptureTranscriptRoutingSummary(job.asset),
+          },
+        },
+      },
+    });
     return {
       status: localCaptureTranscriptWorkerEnabled()
         ? "queued"
@@ -404,6 +424,30 @@ export function captureTranscriptSourceTopology(asset: any) {
     return { kind: "mixed-room" as const, expectedSpeakerCount: null };
   }
   return { kind: "unknown" as const };
+}
+
+export function localCaptureTranscriptRoutingSummary(asset: any) {
+  const topology = captureTranscriptSourceTopology(asset);
+  return {
+    schema: "quipsly-transcript-routing-summary-v1",
+    sourceTopology: topology.kind,
+    participantLabel: topology.kind === "participant-isolated"
+      ? topology.participantLabel
+      : null,
+    speakerAuthority: topology.kind === "participant-isolated"
+      ? "source-binding"
+      : "unresolved",
+    provider: "openai-whisper-local",
+    model: process.env.QUIPSLY_LOCAL_WHISPER_MODEL?.trim() || "large-v3-turbo",
+    modelRevisionPolicy: "installed-local-model-name",
+    language: process.env.QUIPSLY_LOCAL_WHISPER_LANGUAGE?.trim() || "en",
+    diarizationRequested: false,
+    timingGranularity: "segment",
+    terminologySnapshotSha256: null,
+    terminologyKeytermCount: 0,
+    manifestBacked: false,
+    providerOutputRemainsImmutable: true,
+  } as const;
 }
 
 export function captureTranscriptProviderRequest(input: {

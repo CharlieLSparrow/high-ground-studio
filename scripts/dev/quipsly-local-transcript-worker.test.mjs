@@ -5,6 +5,7 @@ import {
   currentConsentAllowsLocalTranscription,
   captureParticipantIds,
   localTranscriptReleaseDecision,
+  localWhisperRoutingSummary,
   normalizeWhisperTranscript,
   requireLocalDatabase,
   safeLocalSourcePath,
@@ -162,6 +163,29 @@ test("Whisper normalization preserves timed provider evidence without inventing 
     ],
   });
   assert.throws(() => normalizeWhisperTranscript({ segments: [] }), /no usable/);
+});
+
+test("local Whisper routing preserves participant-owned speaker authority", () => {
+  assert.deepEqual(localWhisperRoutingSummary({
+    kind: "LOCAL_AUDIO",
+    participantId: "participant-1",
+    participant: { displayName: "Scott Sparrow", email: "shomers@icloud.com" },
+  }, { model: "large-v3-turbo", language: "en" }), {
+    schema: "quipsly-transcript-routing-summary-v1",
+    sourceTopology: "participant-isolated",
+    participantLabel: "Scott Sparrow",
+    speakerAuthority: "source-binding",
+    provider: "openai-whisper-local",
+    model: "large-v3-turbo",
+    modelRevisionPolicy: "installed-local-model-name",
+    language: "en",
+    diarizationRequested: false,
+    timingGranularity: "segment",
+    terminologySnapshotSha256: null,
+    terminologyKeytermCount: 0,
+    manifestBacked: false,
+    providerOutputRemainsImmutable: true,
+  });
 });
 
 test("local transcription requires current explicit consent from every audible participant", () => {

@@ -442,6 +442,52 @@ describe("transcript correction desk", () => {
     }));
   });
 
+  it("projects isolated source ownership as speaker identity without rewriting provider evidence", async () => {
+    const room: any = accessibleRoom();
+    room.transcriptJobs[0].resultJson = {
+      processingControl: {
+        routing: {
+          schema: "quipsly-transcript-routing-summary-v1",
+          sourceTopology: "participant-isolated",
+          participantLabel: "Scott Sparrow",
+          speakerAuthority: "source-binding",
+          providerOutputRemainsImmutable: true,
+        },
+      },
+    };
+    room.transcriptJobs[0]._count = { words: 1 };
+    room.transcriptJobs[0].segments = [{
+      ...segment(),
+      speakerLabel: null,
+      words: [{ ...segment().words[0], speakerLabel: null }],
+    }];
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => room),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+
+    const result = await readTranscriptCorrectionDesk({
+      prisma,
+      roomId: "room-1",
+      recordingAssetId: "asset-1",
+      actor,
+    });
+
+    expect(result.segments[0]).toMatchObject({
+      speakerLabel: "Scott Sparrow",
+      providerSpeakerLabel: null,
+    });
+    expect(result.processing?.routing).toMatchObject({
+      sourceTopology: "participant-isolated",
+      participantLabel: "Scott Sparrow",
+      speakerAuthority: "source-binding",
+      providerOutputRemainsImmutable: true,
+    });
+  });
+
   it("projects correction impact from accessible canonical provenance without exposing private notes", async () => {
     const accepted = correctionRecord({
       id: "correction-current",

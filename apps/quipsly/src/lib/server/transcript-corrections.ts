@@ -638,6 +638,12 @@ export async function readTranscriptCorrectionDesk(input: {
     };
   }
 
+  const processing = transcriptProcessingSummary(job);
+  const sourceParticipantLabel =
+    processing?.routing?.sourceTopology === "participant-isolated" &&
+    processing.routing.speakerAuthority === "source-binding"
+      ? text(processing.routing.participantLabel) || null
+      : null;
   const projectedSpeakerGroups = speakerGroups(job);
   const playback = playbackFromAsset(job.asset);
   const spectralContext = await spectralContextForPlayback(
@@ -658,6 +664,7 @@ export async function readTranscriptCorrectionDesk(input: {
       id: segment.id,
       speakerLabel: accepted?.correctedSpeakerLabel
         ?? attribution?.participantDisplaySnapshot
+        ?? sourceParticipantLabel
         ?? segment.speakerLabel
         ?? null,
       providerSpeakerLabel: segment.speakerLabel ?? null,
@@ -706,7 +713,7 @@ export async function readTranscriptCorrectionDesk(input: {
     projectId: room.projectId ?? null,
     transcriptJobId: job.id,
     transcriptStatus: job.status,
-    processing: transcriptProcessingSummary(job),
+    processing,
     gate,
     recording: recordingForPlaybackPreparation(job.asset, true),
     playback,

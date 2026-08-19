@@ -5295,9 +5295,12 @@ export function SessionReviewClient({
   const [busyLaneId, setBusyLaneId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setMessage(null);
+  const load = useCallback(async (options?: { background?: boolean }) => {
+    const background = options?.background === true;
+    if (!background) {
+      setLoading(true);
+      setMessage(null);
+    }
     try {
       const packetParams = new URLSearchParams({ callRoomId: roomId });
       if (focusedRecordingAssetId)
@@ -5313,14 +5316,14 @@ export function SessionReviewClient({
         );
       setPacket(body);
     } catch (error) {
-      setPacket(null);
+      if (!background) setPacket(null);
       setMessage(
         error instanceof Error
           ? error.message
           : "Quipsly could not read this session packet.",
       );
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [focusedRecordingAssetId, roomId]);
 
@@ -5331,6 +5334,20 @@ export function SessionReviewClient({
     }
     void load();
   }, [load, mode]);
+
+  const transcriptJobStatus = packet?.transcriptJob?.status || "";
+  useEffect(() => {
+    if (
+      mode !== "transcript" ||
+      !["QUEUED", "RUNNING", "PROCESSING"].includes(transcriptJobStatus)
+    ) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void load({ background: true });
+    }, 2_500);
+    return () => window.clearInterval(interval);
+  }, [load, mode, transcriptJobStatus]);
 
   async function buildPacket() {
     const transcriptJobId = packet?.transcriptJob?.id;
@@ -5405,7 +5422,7 @@ export function SessionReviewClient({
           ? "This exact transcript job was already complete; Quipsly created no duplicate transcript."
           : body.status === "COMPLETED"
             ? "Transcription completed. Review every segment against playback before relying on derived notes or work."
-            : "Transcription started from the released immutable source. Refresh while the durable worker runs.",
+            : "Transcription started from the released immutable source. This page updates automatically while the durable worker runs.",
       );
     } catch (error) {
       setMessage(

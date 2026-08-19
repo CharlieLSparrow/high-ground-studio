@@ -163,9 +163,16 @@ try {
       await join.isEnabled(),
       `${identity.role} live-room join did not become ready. Microphones: ${JSON.stringify(microphoneOptions)}`,
     );
-    await join.click();
-    await page.getByRole("button", { name: "Leave", exact: true }).waitFor({ timeout: 20_000 });
-    journeys.push({ identity, context, page });
+    journeys.push({ identity, context, page, join });
+  }
+
+  // Finish both rendered lobbies before either endpoint joins. In local Next
+  // development, the first request can compile and remount a page; allowing
+  // that warm-up inside a measured call creates a development-server failure
+  // that production users never cause by signing in on another device.
+  for (const journey of journeys) {
+    await journey.join.click();
+    await journey.page.getByRole("button", { name: "Leave", exact: true }).waitFor({ timeout: 20_000 });
   }
 
   for (const journey of journeys) {
@@ -217,6 +224,12 @@ try {
     );
     await audibleConsent.waitFor({ timeout: 20_000 });
     if (!(await audibleConsent.isChecked())) await audibleConsent.check();
+    const transcriptionConsent = journey.page.getByLabel(
+      "I separately agree to transcription and transcript-derived notes/tasks.",
+      { exact: true },
+    );
+    await transcriptionConsent.waitFor({ timeout: 20_000 });
+    if (!(await transcriptionConsent.isChecked())) await transcriptionConsent.check();
     await saveRenderedConsent(journey);
   }
   // Refresh each actor's receipt after both independent choices exist so both
@@ -226,6 +239,10 @@ try {
     assert(
       packet?.session?.allRegisteredParticipantConsentGranted === true,
       `${journey.identity.role} did not receive current all-party audio consent.`,
+    );
+    assert(
+      packet?.session?.allRegisteredParticipantTranscriptionConsentGranted === true,
+      `${journey.identity.role} did not receive current all-party transcription consent.`,
     );
     await journey.page.getByText(
       "All currently signed-in participants are ready for this source.",
@@ -334,6 +351,7 @@ try {
     verifiedSourceIds: verifiedSources.map((source) => source.id),
     browserSourceOverlapMilliseconds: overlapMilliseconds,
     allPartyConsentReceipts: "passed",
+    allPartyTranscriptionConsentReceipts: "passed",
     roomLeftOpenForInterop: keepRoomOpenForInterop,
     secretsPrinted: false,
   }, null, 2));

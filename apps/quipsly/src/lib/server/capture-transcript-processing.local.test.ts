@@ -4,6 +4,7 @@ import {
   captureTranscriptSourceTopology,
   captureTranscriptProviderRequest,
   captureTranscriptRoutingSummary,
+  localCaptureTranscriptRoutingSummary,
   localCaptureTranscriptWorkerEnabled,
 } from "./capture-transcript-processing";
 
@@ -152,5 +153,22 @@ describe("local Capture transcript worker availability", () => {
       manifestBacked: true,
     });
     expect(JSON.stringify(summary)).not.toContain("apiKey");
+  });
+
+  it("preserves isolated speaker authority in the local Whisper route", () => {
+    expect(localCaptureTranscriptRoutingSummary({
+      kind: "LOCAL_AUDIO",
+      participantId: "participant-001",
+      participant: { displayName: "Scott Sparrow", email: "shomers@icloud.com" },
+    })).toMatchObject({
+      sourceTopology: "participant-isolated",
+      participantLabel: "Scott Sparrow",
+      speakerAuthority: "source-binding",
+      provider: "openai-whisper-local",
+      diarizationRequested: false,
+      timingGranularity: "segment",
+      manifestBacked: false,
+      providerOutputRemainsImmutable: true,
+    });
   });
 });
