@@ -6,6 +6,8 @@ ARTIFACT_REPOSITORY="${ARTIFACT_REPOSITORY:-high-ground-studio}"
 IMAGE_NAME="${IMAGE_NAME:-studio}"
 SERVICE_NAME="${SERVICE_NAME:-studio}"
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
+MIN_INSTANCES="${MIN_INSTANCES:-0}"
+MAX_INSTANCES="${MAX_INSTANCES:-2}"
 REQUESTED_IMAGE_TAG="${IMAGE_TAG:-}"
 REUSE_EXISTING_IMAGE="${REUSE_EXISTING_IMAGE:-1}"
 CLOUD_BUILD_MACHINE_TYPE="${CLOUD_BUILD_MACHINE_TYPE:-e2-highcpu-32}"
@@ -56,6 +58,12 @@ GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME="${GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "PROJECT_ID is required or gcloud must have a default project." >&2
+  exit 2
+fi
+
+if [[ ! "${MIN_INSTANCES}" =~ ^[0-9]+$ ]] || [[ ! "${MAX_INSTANCES}" =~ ^[0-9]+$ ]] \
+  || (( MIN_INSTANCES > MAX_INSTANCES )) || (( MAX_INSTANCES < 2 )) || (( MAX_INSTANCES > 10 )); then
+  echo "MIN_INSTANCES and MAX_INSTANCES must be integers with 0 <= MIN_INSTANCES <= MAX_INSTANCES, and MAX_INSTANCES from 2 through 10." >&2
   exit 2
 fi
 
@@ -629,6 +637,8 @@ echo "Deploying no-traffic preview revision for ${SERVICE_NAME}"
 gcloud run deploy "${SERVICE_NAME}" \
   --image="${IMAGE_URI}" \
   --region="${REGION}" \
+  --min-instances="${MIN_INSTANCES}" \
+  --max-instances="${MAX_INSTANCES}" \
   --no-traffic \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \

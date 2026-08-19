@@ -7,6 +7,8 @@ REGION="${REGION:-us-central1}"
 ARTIFACT_REPOSITORY="${ARTIFACT_REPOSITORY:-high-ground-studio}"
 IMAGE_NAME="${IMAGE_NAME:-studio}"
 SERVICE_NAME="${SERVICE_NAME:-studio}"
+MIN_INSTANCES="${MIN_INSTANCES:-0}"
+MAX_INSTANCES="${MAX_INSTANCES:-2}"
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 IMAGE_TAG="${IMAGE_TAG:-hotfix-$(date +%Y%m%d-%H%M%S)}"
 export PREVIEW_TAG="${PREVIEW_TAG:-quipsly-hotfix}"
@@ -40,6 +42,12 @@ QUIPSLY_ADMIN_EMAILS="${QUIPSLY_ADMIN_EMAILS:-}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "PROJECT_ID is required or gcloud must have a default project." >&2
+  exit 2
+fi
+
+if [[ ! "${MIN_INSTANCES}" =~ ^[0-9]+$ ]] || [[ ! "${MAX_INSTANCES}" =~ ^[0-9]+$ ]] \
+  || (( MIN_INSTANCES > MAX_INSTANCES )) || (( MAX_INSTANCES < 2 )) || (( MAX_INSTANCES > 10 )); then
+  echo "MIN_INSTANCES and MAX_INSTANCES must be integers with 0 <= MIN_INSTANCES <= MAX_INSTANCES, and MAX_INSTANCES from 2 through 10." >&2
   exit 2
 fi
 
@@ -504,6 +512,8 @@ deploy_args=(
   "${SERVICE_NAME}"
   "--image=${IMAGE_URI}"
   "--region=${REGION}"
+  "--min-instances=${MIN_INSTANCES}"
+  "--max-instances=${MAX_INSTANCES}"
   "--no-traffic"
   "--tag=${PREVIEW_TAG}"
   "--update-env-vars=${UPDATE_ENV_VARS}"

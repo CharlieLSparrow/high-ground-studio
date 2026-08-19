@@ -33,3 +33,10 @@ test("production readback remains non-mutating", () => {
   assert.doesNotMatch(script, /gcloud run deploy/);
   assert.doesNotMatch(script, /curl .*(?:-X|--request) ['"]?(?:POST|PUT|PATCH|DELETE)/);
 });
+
+test("production readback detects a one-instance global availability trap", () => {
+  assert.match(script, /autoscaling\.knative\.dev\/minScale/);
+  assert.match(script, /autoscaling\.knative\.dev\/maxScale/);
+  assert.match(script, /max_instances >= 2/);
+  assert.match(script, /one unavailable instance cannot cause global HTTP 429 responses/);
+});

@@ -6,6 +6,21 @@ import test from "node:test";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const deployScript = fileURLToPath(new URL("./quipsly-deploy-preview.sh", import.meta.url));
+const hotfixScript = fileURLToPath(new URL("./quipsly-hotfix-deploy.sh", import.meta.url));
+
+test("Nest release lanes preserve zero idle instances but allow one replacement instance", () => {
+  for (const scriptPath of [deployScript, hotfixScript]) {
+    execFileSync("bash", ["-n", scriptPath], { cwd: repoRoot, stdio: "pipe" });
+    const source = readFileSync(scriptPath, "utf8");
+
+    assert.match(source, /MIN_INSTANCES="\$\{MIN_INSTANCES:-0\}"/);
+    assert.match(source, /MAX_INSTANCES="\$\{MAX_INSTANCES:-2\}"/);
+    assert.match(source, /MIN_INSTANCES > MAX_INSTANCES/);
+    assert.match(source, /MAX_INSTANCES < 2/);
+    assert.match(source, /--min-instances=(?:"\$\{MIN_INSTANCES\}"|\$\{MIN_INSTANCES\})/);
+    assert.match(source, /--max-instances=(?:"\$\{MAX_INSTANCES\}"|\$\{MAX_INSTANCES\})/);
+  }
+});
 
 test("preview deploy mounts the required secrets and privately validates the release-smoke signing key", () => {
   execFileSync("bash", ["-n", deployScript], { cwd: repoRoot, stdio: "pipe" });

@@ -172,6 +172,7 @@ if gcloud run services describe "${SERVICE_NAME}" \
 const fs = require("fs");
 const service = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const status = service.status || {};
+const annotations = service.spec?.template?.metadata?.annotations || {};
 const ready = (status.conditions || []).find((condition) => condition.type === "Ready");
 const traffic = status.traffic || [];
 const live = traffic.find((entry) => Number(entry.percent || 0) === 100);
@@ -180,6 +181,8 @@ const result = {
   latestReady: status.latestReadyRevisionName || "",
   latestCreated: status.latestCreatedRevisionName || "",
   liveRevision: live?.revisionName || "",
+  minInstances: Number(annotations["autoscaling.knative.dev/minScale"] || 0),
+  maxInstances: Number(annotations["autoscaling.knative.dev/maxScale"] || 0),
 };
 process.stdout.write(JSON.stringify(result));
 NODE
@@ -188,6 +191,8 @@ NODE
   latest_ready="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.latestReady)' "${service_gate}")"
   latest_created="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.latestCreated)' "${service_gate}")"
   live_revision="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.liveRevision)' "${service_gate}")"
+  min_instances="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(String(x.minInstances))' "${service_gate}")"
+  max_instances="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(String(x.maxInstances))' "${service_gate}")"
 
   if [[ "${service_ready}" == "true" ]]; then
     pass "Cloud Run Ready condition is true."
@@ -203,6 +208,11 @@ NODE
     pass "Production traffic is pinned 100% to ${live_revision}."
   else
     fail "No Cloud Run revision has 100% production traffic."
+  fi
+  if [[ "${max_instances}" =~ ^[0-9]+$ ]] && (( max_instances >= 2 )); then
+    pass "Cloud Run may scale from ${min_instances} idle instance(s) to ${max_instances}, so one unavailable instance does not exhaust the service."
+  else
+    fail "Cloud Run maximum instances is ${max_instances:-unreadable}; production requires at least 2 so one unavailable instance cannot cause global HTTP 429 responses."
   fi
 else
   fail "Cloud Run service ${SERVICE_NAME} could not be described."
