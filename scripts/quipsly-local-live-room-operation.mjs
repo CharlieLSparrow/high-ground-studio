@@ -16,6 +16,7 @@ const baseURL = requireLoopbackOrigin(
 const ROOM_ID = "retained-browser-live-room-20260804";
 const PROVIDER_ROOM_ID = "quipsly-retained-browser-live-room-20260804";
 const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
+const keepRoomOpenForInterop = process.env.QUIPSLY_LOCAL_LIVE_ROOM_KEEP_OPEN === "1";
 const identities = [
   {
     role: "coach",
@@ -307,6 +308,7 @@ try {
     independentParticipantSourcesVerified: new Set(verifiedSources.map((source) => source.participantId)).size,
     browserSourceOverlapMilliseconds: overlapMilliseconds,
     allPartyConsentReceipts: "passed",
+    roomLeftOpenForInterop: keepRoomOpenForInterop,
     secretsPrinted: false,
   }, null, 2));
 } finally {
@@ -316,9 +318,11 @@ try {
     await journey.context.close();
   }
   await browser.close();
-  await prisma.callRoom.update({
-    where: { id: ROOM_ID },
-    data: { status: "ENDED", endedAt: new Date() },
-  }).catch(() => undefined);
+  if (!keepRoomOpenForInterop) {
+    await prisma.callRoom.update({
+      where: { id: ROOM_ID },
+      data: { status: "ENDED", endedAt: new Date() },
+    }).catch(() => undefined);
+  }
   await prisma.$disconnect();
 }
