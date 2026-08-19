@@ -214,7 +214,7 @@ const localCheckRunners = [
     ["scripts/quipsly-capture-reviewer-runway-static-smoke.mjs"],
     {
       summary:
-        "Local reviewer setup path is coherent: admin login setup, coaching reviewer preset, visible-session smoke, review digest, and App Store checklist agree.",
+        "Local reviewer setup is isolated: the admin-only QA login path, ordinary coaching scheduling UX, visible-session smoke, review digest, and App Store checklist agree without leaking reviewer fixtures into the product journey.",
       maxOutput: 8000,
       parseJson: true,
     },

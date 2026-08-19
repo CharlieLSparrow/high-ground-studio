@@ -71,14 +71,19 @@ const appStoreReadiness = read(paths.appStoreReadiness);
 ].forEach((marker) => assertIncludes(adminActions, marker, paths.adminActions));
 
 [
-  "Reviewer-safe capture session preset loaded",
-  "reviewer-capture@dev.test",
-  "Reviewer test capture session",
+  "Start here · finish coach setup",
+  "Optional. Leave blank to start without a payment link.",
   "create-booking-room",
   "Create booking and capture room",
   "/coaching/sessions",
   "It does not charge, invite, publish, or create an external calendar event.",
 ].forEach((marker) => assertIncludes(coachingPage, marker, paths.coachingPage));
+
+[
+  "Reviewer-safe capture session preset loaded",
+  "reviewer-capture@dev.test",
+  "Reviewer test capture session",
+].forEach((marker) => assertNotIncludes(coachingPage, marker, paths.coachingPage));
 
 [
   "Your sessions",
@@ -257,9 +262,9 @@ const setupSequence = [
   {
     step: "create-visible-session",
     route: "/coaching",
-    card: "Reviewer preset",
+    card: "Ordinary coach appointment form",
     action: "Create booking and capture room",
-    outcome: "Quipsly booking, capture room, participant, requested consent, and calendar receipt slot.",
+    outcome: "A coach enters the dedicated reviewer identity through the same booking, capture-room, participant, requested-consent, and calendar-receipt workflow used for a real client.",
   },
   {
     step: "prove-native-visibility",
@@ -283,7 +288,7 @@ process.stdout.write(JSON.stringify({
   ok: true,
   checked: paths,
   invariant:
-    "Reviewer capture readiness requires both login evidence and a visible app-owned session. Setup must not charge, invite, publish, create external calendar events, or start recording.",
+    "Reviewer capture readiness uses a dedicated admin-only QA identity but the ordinary coaching Session workflow. Shipping coach/client UI must not contain reviewer presets. Setup must not charge, externally deliver an invitation, publish, create external calendar events, or start recording.",
   setupSequence,
 }, null, 2));
 process.stdout.write("\n");

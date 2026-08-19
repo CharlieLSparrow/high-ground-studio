@@ -134,6 +134,10 @@ function requireIncludes(text, needle, label) {
   assert(text.includes(needle), "Required App Store/capture invariant is missing.", { label, missing: needle });
 }
 
+function requireExcludes(text, needle, label) {
+  assert(!text.includes(needle), "A QA-only marker leaked into a shipping App Store surface.", { label, forbidden: needle });
+}
+
 function requireAnyIncludes(text, needles, label) {
   assert(needles.some((needle) => text.includes(needle)), "Required App Store/capture invariant is missing.", { label, expectedOneOf: needles });
 }
@@ -1705,11 +1709,12 @@ requireIncludes(privacyPageText, "Google API Services User Data Policy", "public
 requireIncludes(privacyPageText, "Limited Use requirements", "public privacy Google Limited Use disclosure");
 requireIncludes(privacyPageText, "disconnect Google Calendar from Quipsly at any time", "public privacy calendar revocation disclosure");
 requireIncludes(deletionPageText, "account deletion", "public account deletion page");
-requireIncludes(coachingPageText, "Reviewer-safe capture session preset loaded.", "reviewer capture preset status");
-requireIncludes(coachingPageText, "reviewer-capture@dev.test", "reviewer capture preset email");
-requireIncludes(coachingPageText, "Reviewer test capture session", "reviewer capture preset title");
-requireIncludes(coachingPageText, "Create booking and capture room", "reviewer capture session creation action");
-requireIncludes(coachingPageText, "It does not charge, invite, publish, or create an external calendar event.", "reviewer capture session side-effect boundary");
+requireIncludes(coachingPageText, "Start here · finish coach setup", "first-time coach setup entry");
+requireIncludes(coachingPageText, "Create booking and capture room", "ordinary coaching Session creation action");
+requireIncludes(coachingPageText, "It does not charge, invite, publish, or create an external calendar event.", "coaching Session side-effect boundary");
+requireExcludes(coachingPageText, "Reviewer-safe capture session preset loaded.", "reviewer preset status");
+requireExcludes(coachingPageText, "reviewer-capture@dev.test", "reviewer preset email");
+requireExcludes(coachingPageText, "Reviewer test capture session", "reviewer preset title");
 requireIncludes(readinessDocText, "Review notes draft", "App Store review notes draft");
 requireIncludes(readinessDocText, "RUN_NATIVE_AUTH_CONTRACT_SMOKE=1", "App Store readiness native-auth smoke");
 requireIncludes(readinessDocText, "quipsly-mobile-capture-native-auth-smoke.mjs", "App Store readiness direct native-auth smoke reference");
