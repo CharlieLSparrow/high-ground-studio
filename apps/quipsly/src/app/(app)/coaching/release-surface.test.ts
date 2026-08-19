@@ -9,15 +9,53 @@ const shippingSurfaces = [
 
 describe("coaching release surfaces", () => {
   it("does not leak retained people, Episodes, or reviewer shortcuts into the ordinary journey", () => {
-    const source = shippingSurfaces.map((path) => readFileSync(path, "utf8")).join("\n");
+    const source = shippingSurfaces
+      .map((path) => readFileSync(path, "utf8"))
+      .join("\n");
 
-    expect(source).not.toMatch(/\bHomer\b|\bCharlie\b|High Ground Odyssey Episode|reviewer-capture@dev\.test|Reviewer preset/);
+    expect(source).not.toMatch(
+      /\bHomer\b|\bCharlie\b|High Ground Odyssey Episode|reviewer-capture@dev\.test|Reviewer preset/,
+    );
   });
 
   it("defaults the Coaching Session planner to coaching rather than podcast fixtures", () => {
-    const source = readFileSync(join(coachingRoot, "sessions/page.tsx"), "utf8");
+    const source = readFileSync(
+      join(coachingRoot, "sessions/page.tsx"),
+      "utf8",
+    );
 
     expect(source).toContain('purpose: "COACHING"');
     expect(source).not.toContain('purpose: "PODCAST",');
+  });
+
+  it("carries the coach timezone into the ordinary appointment form and request", () => {
+    const source = readFileSync(join(coachingRoot, "page.tsx"), "utf8");
+    const compact = source.replace(/\s+/g, " ");
+
+    expect(source).toMatch(
+      /timezone:\s*payload\.user\?\.isStaff\s*\?\s*current\.timezone\s*:\s*payload\.coaches\?\.\[0\]\?\.timezone\s*\|\|\s*current\.timezone/,
+    );
+    expect(source).toContain(
+      "timezone: setupForm.timezone || current.timezone",
+    );
+    expect(source).toContain("value={createForm.timezone}");
+    expect(compact).toContain(
+      "The time above is interpreted in this timezone and shown to both participants.",
+    );
+  });
+
+  it("keeps operator evidence out of the ordinary coach journey and preserves durable session actions", () => {
+    const source = readFileSync(join(coachingRoot, "page.tsx"), "utf8");
+    const compact = source.replace(/\s+/g, " ");
+
+    expect(source).toContain("Operations and provider diagnostics");
+    expect(compact).toContain(
+      "This is not part of the coach or client acceptance journey.",
+    );
+    expect(source).toContain("const isStaff = runway?.user?.isStaff === true");
+    expect(source).toContain("href={booking.liveSessionPath}");
+    expect(source).toContain("href={booking.engagementPath}");
+    expect(source).toContain("?mode=transcript");
+    expect(source).toContain("?mode=outputs");
   });
 });

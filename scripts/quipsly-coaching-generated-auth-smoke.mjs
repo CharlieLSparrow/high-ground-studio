@@ -132,6 +132,10 @@ function firebaseProjectId(env) {
 }
 
 function ensureFirebaseAdmin(env) {
+  const emulatorHost = String(env.FIREBASE_AUTH_EMULATOR_HOST || "").trim();
+  if (emulatorHost && !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = emulatorHost;
+  }
   if (!getApps().length) initializeApp({ projectId: firebaseProjectId(env) });
   return getAuth();
 }

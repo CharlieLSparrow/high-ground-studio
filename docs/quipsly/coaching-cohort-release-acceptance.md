@@ -162,7 +162,8 @@ was used after sign-in.
 
 The operated run proved:
 
-- the new coach signed in through the ordinary coaching callback;
+- the new coach created an account through the public email/password form and
+  signed in through the ordinary coaching callback;
 - coach setup was completed from the rendered first-run form;
 - the coach scheduled a real coaching Session for the separate client;
 - Quipsly returned the exact private Session handoff and both identities could
@@ -179,11 +180,31 @@ The operated run proved:
 - ordinary accounts no longer see staff test lanes, Admin Users, or auth
   diagnostics on the account-switch surface.
 
+Because the generated `dev.test` mailbox cannot receive mail, the local Firebase
+Auth emulator marked that one disposable address verified after the public
+signup completed. That is an explicitly recorded test-lane adapter, not a
+product shortcut and not evidence that real mailbox delivery has passed.
+The exact-suffix recovery command now honors `FIREBASE_AUTH_EMULATOR_HOST`; a
+separate auth-only probe proved it deletes the matching emulator identity
+without making any human account eligible.
+
 The operation also found and repaired first-run friction that contract tests did
 not reveal: Quipsly now pre-fills the known coach identity, proposes a useful
 next-day Session time, treats payment as optional rather than a mandatory-looking
 journey step, and keeps the appointment controls ahead of diagnostics on narrow
-screens.
+screens. A follow-up readback caught the new appointment falling back to
+`America/Los_Angeles` even after the coach selected `America/Denver`; the
+ordinary appointment form now carries the coach-profile timezone explicitly,
+shows it beside the local time, and sends it with the booking request. A second
+fresh rendered run then created an appointment that displayed
+`America/Denver` in the ordinary Upcoming Sessions card.
+
+That second run also exposed acceptance-fixture language and provider internals
+on the ordinary coach home. Staff readiness, receipt, Stripe, calendar-provider,
+tentative-hold, lifecycle, and safety-copy evidence is now isolated behind a
+staff-only operations disclosure. The coach-facing cards retain durable primary
+actions after reload: Open Session, Coaching home, client invite, iCalendar,
+Transcript & notes, Review & share, and collapsed reschedule/cancel controls.
 
 This is stronger evidence than an API smoke but still does not satisfy the
 novice-human gate. It did not prove invitation-token acceptance, a two-endpoint
