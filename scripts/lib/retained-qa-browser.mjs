@@ -9,13 +9,13 @@ function loopbackHost(hostname) {
 export function requireLoopbackOrigin(value, label) {
   const url = new URL(value);
   assert(
-    url.protocol === "http:"
-      && loopbackHost(url.hostname)
-      && !url.username
-      && !url.password
-      && url.pathname === "/"
-      && !url.search
-      && !url.hash,
+    url.protocol === "http:" &&
+      loopbackHost(url.hostname) &&
+      !url.username &&
+      !url.password &&
+      url.pathname === "/" &&
+      !url.search &&
+      !url.hash,
     `${label} must be a credential-free loopback HTTP origin.`,
   );
   return url.origin;
@@ -41,7 +41,12 @@ export async function assertNoHorizontalOverflow(locator, role) {
       );
       break;
     } catch (error) {
-      if (attempt > 0 || !String(error?.message || "").includes("Execution context was destroyed")) {
+      if (
+        attempt > 0 ||
+        !String(error?.message || "").includes(
+          "Execution context was destroyed",
+        )
+      ) {
         throw error;
       }
     }
@@ -66,13 +71,23 @@ export async function signInThroughRenderedLogin({
   page.on("pageerror", (error) => clientErrors.push(error.message));
   page.on("response", (response) => {
     const url = new URL(response.url());
-    if (url.pathname.includes("identitytoolkit") || url.pathname === "/api/auth/session") {
-      authEvents.push({ host: url.host, path: url.pathname, status: response.status() });
+    if (
+      url.pathname.includes("identitytoolkit") ||
+      url.pathname === "/api/auth/session"
+    ) {
+      authEvents.push({
+        host: url.host,
+        path: url.pathname,
+        status: response.status(),
+      });
     }
   });
   page.on("requestfailed", (request) => {
     const url = new URL(request.url());
-    if (url.pathname.includes("identitytoolkit") || url.pathname === "/api/auth/session") {
+    if (
+      url.pathname.includes("identitytoolkit") ||
+      url.pathname === "/api/auth/session"
+    ) {
       authEvents.push({ host: url.host, path: url.pathname, failed: true });
     }
   });
@@ -82,20 +97,30 @@ export async function signInThroughRenderedLogin({
     { waitUntil: "domcontentloaded" },
   );
   await page.waitForLoadState("load");
-  await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+  // The ordinary login heading is intentionally contextual (for example,
+  // "Continue to coaching"). Regression operation must locate the real form,
+  // not require a fixture-only heading from the generic login journey.
+  await page.getByLabel("Email").waitFor();
   const submit = page.getByRole("button", { name: "Sign in with email" });
   await submit.waitFor({ timeout: 20_000 });
-  assert(await submit.isEnabled(), `${identity.role} secure sign-in handler never became ready.`);
+  assert(
+    await submit.isEnabled(),
+    `${identity.role} secure sign-in handler never became ready.`,
+  );
   await page.getByLabel("Email").fill(identity.email);
   await page.getByLabel("Password").fill(password);
   await submit.click();
   try {
     await page.waitForURL(
-      (url) => url.pathname === callbackURL.pathname && url.search === callbackURL.search,
+      (url) =>
+        url.pathname === callbackURL.pathname &&
+        url.search === callbackURL.search,
       { timeout: 20_000 },
     );
   } catch {
-    const status = await page.getByTestId("quipsly-login-status").innerText()
+    const status = await page
+      .getByTestId("quipsly-login-status")
+      .innerText()
       .catch(() => "No login status was rendered.");
     throw new Error(
       `${identity.role} rendered login did not navigate. ${status} Auth events: ${JSON.stringify(authEvents)} Browser errors: ${JSON.stringify(clientErrors)}`,
@@ -105,7 +130,9 @@ export async function signInThroughRenderedLogin({
 
 export async function clearRenderedSession(page, baseURL, role) {
   const cleared = await page.evaluate(async (origin) => {
-    const response = await fetch(`${origin}/api/auth/session`, { method: "DELETE" });
+    const response = await fetch(`${origin}/api/auth/session`, {
+      method: "DELETE",
+    });
     const body = await response.json().catch(() => null);
     return { status: response.status, success: body?.success === true };
   }, baseURL);

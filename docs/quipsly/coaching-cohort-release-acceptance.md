@@ -244,3 +244,31 @@ media call, local high-quality capture, upload/sync, transcript generation and
 correction, light editing, sharing/revocation, accessibility, or 50-coach load.
 The account-bound booking entry is proven locally; the separate reusable
 engagement-invitation-token path and real mailbox delivery are not.
+
+## Relationship-work checkpoint — 2026-08-19
+
+The shared coaching home now operates as a relationship workspace instead of
+only displaying work that originated elsewhere:
+
+- a coach, client, or support member can create a note, task, or goal without
+  knowing a Session or database identifier;
+- tasks and goals are explicitly assigned to an active relationship member and
+  cannot be assigned to an unrelated account;
+- shared notes persist at the coaching-engagement boundary across Sessions;
+  private notes are returned only to their author;
+- permitted members can edit and reassign shared work, complete and reopen
+  tasks, and achieve and reopen goals;
+- mutations use stable request identities, optimistic concurrency, append-only
+  edit receipts, and make no messaging, reminder, calendar, or publication
+  claim;
+- the empty-state form asks only the choices relevant to the selected item:
+  note audience for notes, or owner and optional target date for tasks/goals.
+
+The retained browser operation created one shared note, one client-owned task,
+and one client-owned goal through the rendered coaching home, completed the
+task, read the exact canonical records back, preserved the engagement chat, and
+confirmed a separate account received HTTP 404 without seeing the relationship
+title. It reports `testLane: retained-regression`,
+`humanAcceptanceSatisfied: false`, and `fixtureIdentifiersUsed: true`. This is
+durable regression evidence only. A fresh, minimally instructed coach/client
+pair still needs to repeat the workflow for release acceptance.

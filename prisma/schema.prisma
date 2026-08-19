@@ -1535,6 +1535,7 @@ model CoachingEngagement {
   memberReceipts CoachingEngagementMemberReceipt[]
   bookings       CoachingBooking[]
   callRooms      CallRoom[]
+  notes          CoachingNote[]
   actionItems    ActionItem[]
   goals          Goal[]
 
@@ -3154,6 +3155,7 @@ model CoachingNote {
   id           String                 @id @default(cuid())
   roomId       String?
   bookingId    String?
+  engagementId String?
   authorUserId String?
   kind         CoachingNoteKind       @default(SESSION_NOTE)
   visibility   CoachingNoteVisibility @default(AUTHOR_PRIVATE)
@@ -3165,6 +3167,7 @@ model CoachingNote {
 
   room        CallRoom?              @relation(fields: [roomId], references: [id], onDelete: Cascade)
   booking     CoachingBooking?       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  engagement  CoachingEngagement?    @relation(fields: [engagementId], references: [id], onDelete: Cascade)
   authorUser  User?                  @relation("CoachingNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
   actionItems ActionItem[]
   tagLinks    CoachingNoteTagLink[]
@@ -3173,6 +3176,8 @@ model CoachingNote {
   @@index([roomId, createdAt])
   @@index([roomId, visibility, updatedAt])
   @@index([bookingId, createdAt])
+  @@index([engagementId, visibility, updatedAt])
+  @@index([engagementId, authorUserId, updatedAt])
   @@index([authorUserId, createdAt])
   @@index([kind, createdAt])
 }

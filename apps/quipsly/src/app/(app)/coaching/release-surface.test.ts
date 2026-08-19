@@ -5,6 +5,8 @@ const coachingRoot = join(process.cwd(), "src/app/(app)/coaching");
 const shippingSurfaces = [
   join(coachingRoot, "page.tsx"),
   join(coachingRoot, "sessions/page.tsx"),
+  join(coachingRoot, "engagements/[engagementId]/page.tsx"),
+  join(process.cwd(), "src/components/coaching-engagement-workspace.tsx"),
 ];
 
 describe("coaching release surfaces", () => {
@@ -57,5 +59,19 @@ describe("coaching release surfaces", () => {
     expect(source).toContain("href={booking.engagementPath}");
     expect(source).toContain("?mode=transcript");
     expect(source).toContain("?mode=outputs");
+  });
+
+  it("labels retained browser operation as regression evidence instead of human acceptance", () => {
+    const source = readFileSync(
+      join(
+        process.cwd(),
+        "../../scripts/quipsly-retained-coaching-engagement-browser-operation.mjs",
+      ),
+      "utf8",
+    );
+
+    expect(source).toContain('testLane: "retained-regression"');
+    expect(source).toContain("humanAcceptanceSatisfied: false");
+    expect(source).toContain("fixtureIdentifiersUsed: true");
   });
 });
