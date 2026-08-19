@@ -20,7 +20,8 @@ function configuredAdminEmails() {
  * Currently grants access to:
  * 1. Studio Staff (Admins, Owners, Coaches)
  * 2. Anyone explicitly invited to at least one StudioProject/Nest
- * 3. Anyone with an ACTIVE Quipsly beta Patreon membership in the database
+ * 3. Anyone with an active coaching engagement or Session participant grant
+ * 4. Anyone with an ACTIVE Quipsly beta Patreon membership in the database
  */
 export async function hasQuipslyBetaAccess(email: string): Promise<boolean> {
   if (!email) return false;
@@ -52,7 +53,11 @@ export async function hasQuipslyBetaAccess(email: string): Promise<boolean> {
     console.error("[Authz] Failed to check project access grants", error);
   }
 
-  // 3. Check Active Memberships
+  // 3 + 4. Collaboration grants and plan membership are both canonical
+  // Quipsly access. A client who accepted a narrow coaching/Session invite
+  // must be able to reach that exact workspace without also buying Patreon or
+  // receiving a broad Nest grant. Individual routes still enforce their own
+  // engagement, Session, and project boundaries.
   try {
     const prisma = getPrismaClient();
     const now = new Date();
@@ -64,6 +69,16 @@ export async function hasQuipslyBetaAccess(email: string): Promise<boolean> {
         ]
       },
       include: {
+        coachingEngagementMemberships: {
+          where: { status: "ACTIVE" },
+          select: { id: true },
+          take: 1,
+        },
+        callParticipants: {
+          where: { accessStatus: "ACTIVE" },
+          select: { id: true },
+          take: 1,
+        },
         memberships: {
           where: {
             status: "ACTIVE",
@@ -83,7 +98,11 @@ export async function hasQuipslyBetaAccess(email: string): Promise<boolean> {
       }
     });
 
-    if (user && user.memberships.length > 0) {
+    if (user && (
+      user.coachingEngagementMemberships.length > 0
+      || user.callParticipants.length > 0
+      || user.memberships.length > 0
+    )) {
       return true;
     }
   } catch (error) {

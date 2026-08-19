@@ -33,7 +33,7 @@ export function BetaAccessView({ email }: { email: string }) {
           </div>
 
           <div className="text-center space-y-2">
-            <h1 className="text-2xl font-black text-[#3d3122] tracking-tight font-serif">Welcome, Supporter!</h1>
+            <h1 className="text-2xl font-black text-[#3d3122] tracking-tight font-serif">Your Quipsly access is being prepared</h1>
             <p className="text-sm font-bold text-[#8a7659]">{email}</p>
           </div>
 
@@ -41,9 +41,9 @@ export function BetaAccessView({ email }: { email: string }) {
             <div className="flex gap-3">
               <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-bold text-[#342618]">1. Authentication Successful</p>
-                <p className="text-xs text-[#6b5b45] mt-1 leading-relaxed">
-                  You’ve successfully signed in with Patreon. We securely verified your identity.
+                  <p className="text-sm font-bold text-[#342618]">1. Sign-in worked</p>
+                  <p className="text-xs text-[#6b5b45] mt-1 leading-relaxed">
+                    Quipsly recognizes this Google or email identity. You do not need to create a second account.
                 </p>
               </div>
             </div>
@@ -51,9 +51,9 @@ export function BetaAccessView({ email }: { email: string }) {
             <div className="flex gap-3">
               <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-bold text-[#342618]">2. Waiting on Patreon</p>
-                <p className="text-xs text-[#6b5b45] mt-1 leading-relaxed">
-                  Any active paid Patreon tier qualifies for the Quipsly beta. If you just pledged, Patreon's servers might take a minute or two to securely send us your membership confirmation.
+                  <p className="text-sm font-bold text-[#342618]">2. Workspace access is not active yet</p>
+                  <p className="text-xs text-[#6b5b45] mt-1 leading-relaxed">
+                    A coach role, Nest invitation, coaching engagement, Session invitation, or active beta membership opens only the work it is meant to share. If you just accepted an invitation, refresh once.
                 </p>
               </div>
             </div>
@@ -61,7 +61,7 @@ export function BetaAccessView({ email }: { email: string }) {
 
           <div className="text-center">
             <p className="text-xs text-[#8a7659] leading-relaxed">
-              To keep your workspace completely safe, Quipsly only grants access after receiving an official, verified signal from Patreon. If you’re stuck here, you can click below to refresh or request a manual review.
+              Quipsly will not guess which private coaching relationship or project belongs to you. Refresh after accepting an invitation, or request a review and we will check the exact account and access record.
             </p>
           </div>
 
@@ -94,7 +94,7 @@ export function BetaAccessView({ email }: { email: string }) {
               href="https://quipsly.com/support"
               className="w-full py-3 rounded-xl bg-[#fff1f2] hover:bg-[#ffe4e6] border border-[#ffc0c5] text-[#a32631] font-bold text-sm shadow-sm transition-colors flex items-center justify-center gap-2"
             >
-              Join or review Patreon beta access
+              Review beta access options
             </a>
 
             <Link

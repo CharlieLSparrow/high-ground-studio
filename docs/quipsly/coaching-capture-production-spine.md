@@ -4,6 +4,11 @@ Date: 2026-07-04
 Status: implementation spine active; live public loop promoted; Stripe is configured with live charging intentionally held
 Primary surfaces: HighGroundOdyssey coaching pages, Nest/Quipsly coaching tools, iOS capture app, future Tower review and receipt surfaces
 
+Fresh-user cohort acceptance is defined separately in
+[`coaching-cohort-release-acceptance.md`](./coaching-cohort-release-acceptance.md).
+Retained IDs and seeded dogfood records remain regression evidence only; they
+cannot satisfy the 50-coach release gate.
+
 Public loop deploy and proof ladder:
 
 `docs/quipsly/public-loop-proof-runbook.md`

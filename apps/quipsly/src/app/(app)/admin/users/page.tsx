@@ -10,6 +10,7 @@ import {
 } from "@/lib/server/user-management";
 import {
   grantProjectAccessFromAdminAction,
+  provisionCoachCohortAction,
   repairManagedUserStarterStateAction,
   revokeProjectAccessFromAdminAction,
   upsertManagedUserAction,
@@ -32,6 +33,9 @@ type PageSearchParams = {
   callbackPath?: string;
   inviteToken?: string;
   homeNest?: string;
+  cohortReady?: string;
+  cohortCreated?: string;
+  cohortUpdated?: string;
 };
 
 function valueFromQuery(value?: string | string[]) {
@@ -86,6 +90,9 @@ export default async function UserManagementPage({
   const starter = valueFromQuery(query.starter);
   const repairedHomeNest = valueFromQuery(query.homeNest);
   const error = valueFromQuery(query.error);
+  const cohortReady = Number(valueFromQuery(query.cohortReady) || 0);
+  const cohortCreated = Number(valueFromQuery(query.cohortCreated) || 0);
+  const cohortUpdated = Number(valueFromQuery(query.cohortUpdated) || 0);
   const callbackPath = valueFromQuery(query.callbackPath);
   const inviteToken = valueFromQuery(query.inviteToken);
   const { email: invitedEmail, projectSlug: invitedProjectSlug } = splitInviteValue(invited);
@@ -95,6 +102,7 @@ export default async function UserManagementPage({
   const protocol = requestHeaders.get("x-forwarded-proto") || "https";
   const origin = `${protocol}://${host}`;
   const inviteLink = `${origin}/login?callbackUrl=${encodeURIComponent("/projects")}`;
+  const coachCohortSignInLink = `${origin}/login?callbackUrl=${encodeURIComponent("/coaching")}`;
   const safeCallbackPath = callbackPath?.startsWith("/") && !callbackPath.startsWith("//") ? callbackPath : "";
   const successInviteLink = inviteToken
     ? `${origin}/login?callbackUrl=${encodeURIComponent(safeCallbackPath || "/projects")}&inviteToken=${encodeURIComponent(inviteToken)}`
@@ -134,6 +142,19 @@ export default async function UserManagementPage({
               <p className="mt-2 text-xs font-bold uppercase tracking-[0.12em] text-rose-800">
                 No access was changed. Adjust the form and try again.
               </p>
+            </section>
+          ) : null}
+
+          {cohortReady > 0 ? (
+            <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-violet-950 shadow-sm">
+              <h2 className="font-serif text-lg font-black">Coach cohort ready</h2>
+              <p className="mt-1 text-sm leading-6">
+                {cohortReady} coach account{cohortReady === 1 ? " is" : "s are"} ready: {cohortCreated} created and {cohortUpdated} refreshed. Each has the COACH role, free starter state, and a Home Nest.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <CopyInviteLinkButton inviteLink={coachCohortSignInLink} />
+                <code className="max-w-full overflow-x-auto rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs">{coachCohortSignInLink}</code>
+              </div>
             </section>
           ) : null}
 
@@ -319,6 +340,35 @@ export default async function UserManagementPage({
                   </code>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-violet-200 bg-violet-50 p-5 text-violet-950 shadow-sm md:p-6">
+            <div className="grid gap-5 lg:grid-cols-[1.05fr_1fr]">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.22em] text-violet-700">Coach cohort onboarding</div>
+                <h2 className="mt-2 font-serif text-3xl font-black">Prepare up to 100 coaches before sending one link</h2>
+                <p className="mt-3 text-sm leading-6 text-violet-900">
+                  This is the real cohort path, not a test-user shortcut. Quipsly creates or repairs each app-owned user, assigns the COACH role, and prepares free starter state plus a private Home Nest. Coaches then sign in with Google or their own Quipsly email—no shared password and no staff intervention after entry.
+                </p>
+                <div className="mt-4 rounded-2xl border border-violet-200 bg-white/80 p-4 text-xs leading-5 text-violet-900">
+                  One row per person: <code>coach@example.com,Coach Name</code>. The name is optional. Quipsly validates the entire list before changing access and reports exactly how far a failed batch progressed.
+                </div>
+              </div>
+              <form action={provisionCoachCohortAction} className="grid gap-3 rounded-3xl border border-violet-200 bg-white p-4 shadow-sm">
+                <label htmlFor="coach-cohort" className="text-xs font-black uppercase tracking-[0.14em] text-violet-800">Coach emails</label>
+                <textarea
+                  id="coach-cohort"
+                  name="coaches"
+                  rows={9}
+                  required
+                  placeholder={"coach1@example.com,Coach One\ncoach2@example.com,Coach Two"}
+                  className="w-full rounded-2xl border border-violet-200 bg-violet-50/40 px-4 py-3 font-mono text-sm outline-none focus:border-violet-600"
+                />
+                <button className="rounded-2xl bg-violet-900 px-5 py-3 text-sm font-black uppercase tracking-[0.14em] text-white shadow-lg transition hover:-translate-y-0.5">
+                  Prepare coach cohort
+                </button>
+              </form>
             </div>
           </section>
 

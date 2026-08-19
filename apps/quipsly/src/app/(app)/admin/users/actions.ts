@@ -13,8 +13,9 @@ import {
   parseProjectAccessRole,
   requireQuipslyAdminActor,
 } from "@/lib/server/user-management";
+import { parseCoachCohortRows } from "@/lib/user-management-cohort";
 
-function redirectBack(params: URLSearchParams) {
+function redirectBack(params: URLSearchParams): never {
   redirect(`/admin/users?${params.toString()}`);
 }
 
@@ -68,6 +69,64 @@ async function upsertFirebasePasswordUser(input: {
   }
 }
 
+async function ensureManagedUserRecord(input: {
+  email: string;
+  name?: string;
+  role: ReturnType<typeof parseAppRole>;
+  firebaseUid?: string;
+  prisma: ReturnType<typeof getPrismaClient>;
+}) {
+  const existingUser = await input.prisma.user.findFirst({
+    where: {
+      OR: [
+        { primaryEmail: input.email },
+        { aliases: { some: { email: input.email } } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  const savedUser = !existingUser
+    ? await input.prisma.user.create({
+        data: {
+          primaryEmail: input.email,
+          name: input.name || null,
+          emailVerified: new Date(),
+          firebaseUid: input.firebaseUid || undefined,
+          ...(input.role ? { roles: { create: [{ role: input.role }] } } : {}),
+        },
+        select: { id: true, primaryEmail: true },
+      })
+    : await input.prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: existingUser.id },
+          data: {
+            name: input.name || undefined,
+            emailVerified: new Date(),
+            firebaseUid: input.firebaseUid || undefined,
+          },
+        });
+        if (input.role) {
+          await tx.userRole.createMany({
+            data: [{ userId: existingUser.id, role: input.role }],
+            skipDuplicates: true,
+          });
+        }
+        return tx.user.findUniqueOrThrow({
+          where: { id: existingUser.id },
+          select: { id: true, primaryEmail: true },
+        });
+      });
+
+  await ensureQuipslyStarterStateForUser({
+    userId: savedUser.id,
+    email: savedUser.primaryEmail,
+    prisma: input.prisma,
+  });
+
+  return { ...savedUser, created: !existingUser };
+}
+
 export async function upsertManagedUserAction(formData: FormData) {
   const actor = await requireQuipslyAdminActor();
 
@@ -93,63 +152,15 @@ export async function upsertManagedUserAction(formData: FormData) {
         })
       : null;
 
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { primaryEmail: targetEmail },
-          { aliases: { some: { email: targetEmail } } },
-        ],
-      },
-      select: { id: true },
-    });
-
-    const savedUser = !existingUser
-      ? await prisma.user.create({
-        data: {
-            primaryEmail: targetEmail,
-            name: name || null,
-            emailVerified: new Date(),
-            firebaseUid: firebaseLogin?.user.uid || undefined,
-            ...(role
-              ? {
-                roles: {
-                  create: [{ role }],
-                },
-              }
-            : {}),
-        },
-        select: { id: true, primaryEmail: true },
-      })
-      : await prisma.$transaction(async (tx) => {
-          await tx.user.update({
-            where: { id: existingUser.id },
-            data: {
-              name: name || undefined,
-              emailVerified: new Date(),
-              firebaseUid: firebaseLogin?.user.uid || undefined,
-            },
-          });
-
-          if (role) {
-            await tx.userRole.createMany({
-              data: [{ userId: existingUser.id, role }],
-              skipDuplicates: true,
-            });
-          }
-
-          return tx.user.findUniqueOrThrow({
-            where: { id: existingUser.id },
-            select: { id: true, primaryEmail: true },
-          });
-        });
-
-    await ensureQuipslyStarterStateForUser({
-      userId: savedUser.id,
-      email: savedUser.primaryEmail,
+    const savedUser = await ensureManagedUserRecord({
+      email: targetEmail,
+      name,
+      role,
+      firebaseUid: firebaseLogin?.user.uid,
       prisma,
     });
 
-    if (!existingUser) {
+    if (savedUser.created) {
       params.set("created", targetEmail);
     } else {
       params.set("updated", targetEmail);
@@ -161,6 +172,45 @@ export async function upsertManagedUserAction(formData: FormData) {
     params.set("actor", actor.email);
   } catch (error) {
     setError(params, error instanceof Error ? error.message : "Unable to save managed user.");
+  }
+
+  revalidatePath("/admin/users");
+  redirectBack(params);
+}
+
+export async function provisionCoachCohortAction(formData: FormData) {
+  const actor = await requireQuipslyAdminActor();
+  const raw = String(formData.get("coaches") || "");
+  const params = new URLSearchParams();
+  const parsed = parseCoachCohortRows(raw);
+  if (!parsed.ok) {
+    setError(params, parsed.error);
+    redirectBack(params);
+  }
+  const rows = parsed.rows;
+
+  const prisma = getPrismaClient();
+  let created = 0;
+  let updated = 0;
+  try {
+    for (const row of rows) {
+      const saved = await ensureManagedUserRecord({
+        email: row.email,
+        name: row.name,
+        role: "COACH",
+        prisma,
+      });
+      if (saved.created) created += 1;
+      else updated += 1;
+    }
+    params.set("cohortReady", String(rows.length));
+    params.set("cohortCreated", String(created));
+    params.set("cohortUpdated", String(updated));
+    params.set("actor", actor.email);
+  } catch (error) {
+    setError(params, error instanceof Error
+      ? `Cohort stopped after ${created + updated} of ${rows.length}: ${error.message}`
+      : `Cohort stopped after ${created + updated} of ${rows.length}.`);
   }
 
   revalidatePath("/admin/users");
