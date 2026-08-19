@@ -352,14 +352,22 @@ was `participant-isolated` and speaker authority was `source-binding`. The
 projected transcript therefore identified one source as the retained client and
 the other as the retained coach without inventing diarization evidence.
 
+The same rendered path then prepared protected playback for each exact source,
+decoded and advanced both media streams through Quipsly's authenticated media
+route, and downloaded an effective transcript file for each source. Each file
+retained the transcript job identity and source-bound participant label and
+explicitly disclosed `Playback-reviewed turns: 0/1`. The operation did not
+check the human confirmation box or create a correction receipt, because a
+headless browser decoding audio is not evidence that a person heard it.
+
 The exact operated sources were `cmt0p0kq6002dlnxllr3ra1pi` and
 `cmt0p0krm002ilnxlqbgvdy8g`; their transcript jobs were
 `cmt0p0kq8002flnxl7da0o13e` and `cmt0p0krq002klnxl8ylwt21w`. Both contained one
 timed segment. The Playwright fake audio source caused local Whisper to emit a
 short `Thank you.` hallucination, so this run proves routing, lifecycle, source
 selection, and visible attribution—not real-speech accuracy. It also does not
-prove playback review, correction acceptance, light editing, sharing,
-revocation, or novice discoverability.
+prove human playback review, correction acceptance, light recording editing,
+sharing, revocation, or novice discoverability.
 
 The retained scripts remain deliberately fixture-based. Their output reports
 `fixtureIdentifiersUsed: true` and `humanAcceptanceSatisfied: false`; these

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
+
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import {
   clearRenderedSession,
@@ -109,7 +111,11 @@ const password = readRetainedQAPassword({ service: KEYCHAIN_SERVICE, account: id
 assert(password, "Retained coach Keychain password is unavailable.");
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
+const context = await browser.newContext({
+  viewport: { width: 1440, height: 1000 },
+  reducedMotion: "reduce",
+  acceptDownloads: true,
+});
 const page = await context.newPage();
 const results = [];
 
@@ -164,6 +170,57 @@ try {
     const routingDisclosure = correctionDesk.getByText("Why Quipsly chose this transcript route", { exact: true });
     await routingDisclosure.click();
     await correctionDesk.getByText(sourceParticipantLabel, { exact: false }).first().waitFor({ state: "visible", timeout: 20_000 });
+
+    const preparePlayback = correctionDesk.getByRole("button", { name: "Prepare protected playback", exact: true });
+    if (await preparePlayback.count()) {
+      const [response] = await Promise.all([
+        page.waitForResponse((candidate) => (
+          candidate.request().method() === "POST" &&
+          new URL(candidate.url()).pathname === "/api/mobile/capture/recordings/promote"
+        )),
+        preparePlayback.click(),
+      ]);
+      const body = await response.json().catch(() => null);
+      assert(response.ok() && body?.ok === true, `Protected playback preparation failed for ${source.id}.`);
+    }
+    const protectedMedia = correctionDesk.locator("audio, video").first();
+    await protectedMedia.waitFor({ state: "visible", timeout: 20_000 });
+    const playbackProbe = await protectedMedia.evaluate(async (element) => {
+      const media = element;
+      if (media.readyState < 1) {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("protected-media-metadata-timeout")), 20_000);
+          media.addEventListener("loadedmetadata", () => { clearTimeout(timeout); resolve(); }, { once: true });
+          media.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("protected-media-decode-error")); }, { once: true });
+          media.load();
+        });
+      }
+      await media.play();
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      media.pause();
+      return {
+        durationSeconds: Number.isFinite(media.duration) ? media.duration : null,
+        currentTimeSeconds: media.currentTime,
+        readyState: media.readyState,
+      };
+    });
+    assert(playbackProbe.readyState >= 1 && playbackProbe.currentTimeSeconds > 0, `Protected playback did not decode and advance for ${source.id}.`);
+
+    await correctionDesk.getByRole("button", { name: "Prepare transcript file", exact: true }).click();
+    const downloadLink = correctionDesk.getByRole("link", { name: "Download prepared transcript", exact: true });
+    await downloadLink.waitFor({ state: "visible", timeout: 20_000 });
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      downloadLink.click(),
+    ]);
+    const stream = await download.createReadStream();
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+    const transcriptFile = Buffer.concat(chunks);
+    const transcriptText = transcriptFile.toString("utf8");
+    assert(transcriptText.includes(`Transcript job: ${transcript.id}`), `Prepared transcript omitted job identity for ${source.id}.`);
+    assert(transcriptText.includes(sourceParticipantLabel), `Prepared transcript omitted source-bound participant label for ${source.id}.`);
+    assert(transcriptText.includes(`Playback-reviewed turns: 0/${transcript.segments?.length || 0}`), `Prepared transcript did not disclose its unreviewed provider-only state for ${source.id}.`);
     const packetReadback = await page.evaluate(async ({ roomId, recordingAssetId }) => {
       const params = new URLSearchParams({ callRoomId: roomId, recordingAssetId });
       const response = await fetch(`/api/mobile/capture/transcripts/packet?${params.toString()}`, { cache: "no-store" });
@@ -183,6 +240,12 @@ try {
       renderedCompletionStateObserved: true,
       renderedAutomaticCompletionObserved,
       renderedRoutingExplanationObserved: true,
+      protectedPlaybackDecoded: true,
+      protectedPlaybackDurationSeconds: playbackProbe.durationSeconds,
+      transcriptFileDownloaded: true,
+      transcriptFileByteSize: transcriptFile.length,
+      transcriptFileSha256: createHash("sha256").update(transcriptFile).digest("hex"),
+      humanPlaybackReviewRecorded: false,
     });
   }
 
