@@ -194,11 +194,17 @@ const appStoreReadiness = read(paths.appStoreReadiness);
 ].forEach((marker) => assertIncludes(nativeAuthSmoke, marker, paths.nativeAuthSmoke));
 
 [
-  "codex-coaching-staff-",
+  "codex-coaching-coach-",
   "codex-coaching-client-",
+  'testLane: "api-regression"',
+  "humanAcceptanceSatisfied: false",
+  "freshUserStartedWithoutStaffAccess",
+  "selfServiceCoachSetupCompleted",
+  "ordinaryCoachRunwayLoaded",
   "convertedRoomVisibleToClient",
   "coacheeSessionsRouteReachable",
   "requestedConsentVisible",
+  "usableCaptureRouteVisible",
   "recordingHeldUntilConsent",
   "consentDeclineRecorded",
   "consentGrantRecorded",

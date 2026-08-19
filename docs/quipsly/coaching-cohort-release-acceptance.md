@@ -129,6 +129,21 @@ it never replaces it.
   and does not require a price or Stripe configuration.
 - The full optimized Quipsly production build passed after repairing the Nest
   settings page to await Next.js 16 route parameters.
+- The generated coaching API regression now begins as a non-staff user, uses
+  the ordinary self-service coach setup action, labels itself
+  `api-regression`, and reports `humanAcceptanceSatisfied: false`. It no longer
+  elevates its generated coach to OWNER or silently stands in for this gate.
+- That regression exposed and repaired a cohort-blocking role leak: `COACH`
+  had been included in the broad Studio authority helper, which made every
+  coach `isStaff` and exposed cross-coach runway data. Product entry is now
+  intentionally broader than Studio/staff authority. A coach can enter
+  Quipsly, while only OWNER and TEAM_SCHEDULER retain the global Studio bypass.
+- A local canonical-data run passed for an ordinary generated coach and a
+  separate client: self-service setup, hold/release, booking conversion,
+  client visibility, payment hold, private calendar export, consent
+  decline/grant, recording unlock, reschedule, cancel, and exact generated
+  artifact cleanup. The runner also has a narrowly validated interrupted-run
+  recovery command for eight-character generated suffixes.
 
 This checkpoint proves source, route, and build readiness. It does not yet claim
 the fresh coach/client journey or real call/capture/share journey has passed;

@@ -6,7 +6,7 @@ import { SidebarLayout } from "@/components/SidebarLayout";
 import { LiveSessionDockProvider } from "@/components/live-session-dock";
 import { BetaAccessView } from "@/components/beta/BetaAccessView";
 import { isUserManagementAdminEmail } from "@/lib/server/user-management";
-import { canAccessStudio } from "@/lib/studio-authz";
+import { canAccessQuipslyProduct } from "@/lib/studio-authz";
 import { MAC_WEB_SESSION_COOKIE_NAME, verifyMacWebSessionToken } from "@/lib/server/mac-session-token";
 import { cookies } from "next/headers";
 import { hasAnyActiveStudioProjectAccessGrantForEmail } from "@/lib/server/studio-project-access";
@@ -57,7 +57,7 @@ export default async function RootLayout({
   const hasAccess =
     isAdminBypass
     || Boolean(session?.user && (session.user as any).hasBetaAccess)
-    || Boolean(session?.user && canAccessStudio(actorRoles as any))
+    || Boolean(session?.user && canAccessQuipslyProduct(actorRoles as any))
     || hasProjectAccessGrant;
 
   // If they aren't logged in, redirect to the marketing/login page

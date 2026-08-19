@@ -61,11 +61,19 @@ function applyCloudSqlProxyRewrite(env) {
 }
 
 function mergedEnv() {
+  const extraEnvFiles = String(
+    args.get("env-files") || process.env.QUIPSLY_SMOKE_ENV_FILES || "",
+  )
+    .split(path.delimiter)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => path.resolve(repoRoot, value));
   const env = {
     ...readDotEnv(path.join(repoRoot, ".env")),
     ...readDotEnv(path.join(repoRoot, ".env.local")),
     ...readDotEnv(path.join(repoRoot, "apps/quipsly/.env")),
     ...readDotEnv(path.join(repoRoot, "apps/quipsly/.env.local")),
+    ...Object.assign({}, ...extraEnvFiles.map(readDotEnv)),
     ...process.env,
   };
 
@@ -139,11 +147,11 @@ function slugifyEmailForHomeNest(email) {
 }
 
 function isGeneratedCoachingEmail(email) {
-  return /^codex-coaching-(staff|client)-[a-f0-9]{8}@dev\.test$/i.test(String(email || "").trim());
+  return /^codex-coaching-(coach|client)-[a-f0-9]{8}@dev\.test$/i.test(String(email || "").trim());
 }
 
 function redactGeneratedEmail(email) {
-  return String(email || "").replace(/^codex-coaching-(staff|client)-([a-f0-9]{4})[a-f0-9]{4}/i, "codex-coaching-$1-$2****");
+  return String(email || "").replace(/^codex-coaching-(coach|client)-([a-f0-9]{4})[a-f0-9]{4}/i, "codex-coaching-$1-$2****");
 }
 
 async function requestJson(url, options = {}) {
@@ -324,28 +332,12 @@ async function deleteFirebaseUserWithRest(env, baseUrl, idToken) {
   throw new Error(`Firebase REST cleanup failed with HTTP ${response.status}: ${code || "unknown error"}`);
 }
 
-async function promoteGeneratedStaffUser(env, email) {
-  const prisma = createPrisma(env);
-  try {
-    const user = await prisma.user.findFirst({ where: { primaryEmail: email }, select: { id: true } });
-    assert(user?.id, "Generated staff user was not created by session exchange.");
-    await prisma.userRole.upsert({
-      where: { userId_role: { userId: user.id, role: "OWNER" } },
-      update: {},
-      create: { userId: user.id, role: "OWNER" },
-    });
-    return user.id;
-  } finally {
-    await prisma.$disconnect();
-  }
-}
-
-async function cleanupGeneratedCoachingArtifacts(env, baseUrl, staffEmail, clientEmail, firebaseDeleteIdTokens) {
+async function cleanupGeneratedCoachingArtifacts(env, baseUrl, coachEmail, clientEmail, firebaseDeleteIdTokens) {
   if (env.QUIPSLY_COACHING_SMOKE_KEEP_ARTIFACTS === "1" || args.get("keep-artifacts") === "1") {
     return { skipped: "QUIPSLY_COACHING_SMOKE_KEEP_ARTIFACTS=1 or --keep-artifacts" };
   }
 
-  for (const email of [staffEmail, clientEmail]) {
+  for (const email of [coachEmail, clientEmail]) {
     if (!isGeneratedCoachingEmail(email)) {
       throw new Error(`Refusing to clean up non-generated coaching smoke email: ${email}`);
     }
@@ -359,6 +351,7 @@ async function cleanupGeneratedCoachingArtifacts(env, baseUrl, staffEmail, clien
     deletedBookings: 0,
     deletedAppointments: 0,
     deletedPaymentRecords: 0,
+    deletedEngagements: 0,
     deletedInvites: 0,
     deletedGrants: 0,
     deletedHomeProjects: 0,
@@ -366,16 +359,30 @@ async function cleanupGeneratedCoachingArtifacts(env, baseUrl, staffEmail, clien
     deletedUsers: 0,
     deletedFirebaseUserViaRest: false,
     deletedFirebaseUsersViaRest: 0,
+    deletedFirebaseUsersViaAdmin: 0,
   };
 
   const prisma = createPrisma(env);
   try {
-    const generatedEmails = [staffEmail, clientEmail];
+    const generatedEmails = [coachEmail, clientEmail];
     const users = await prisma.user.findMany({
       where: { OR: generatedEmails.map((email) => ({ primaryEmail: email })) },
       select: { id: true, primaryEmail: true },
     });
     const userIds = users.map((user) => user.id);
+    const engagements = userIds.length
+      ? await prisma.coachingEngagement.findMany({
+          where: {
+            OR: [
+              { createdByUserId: { in: userIds } },
+              { primaryClientUserId: { in: userIds } },
+              { primaryCoachUserId: { in: userIds } },
+            ],
+          },
+          select: { id: true },
+        })
+      : [];
+    const engagementIds = engagements.map((engagement) => engagement.id);
     const bookings = userIds.length
       ? await prisma.coachingBooking.findMany({
           where: {
@@ -449,10 +456,14 @@ async function cleanupGeneratedCoachingArtifacts(env, baseUrl, staffEmail, clien
       },
     })).count;
 
+    cleanup.deletedEngagements = (await prisma.coachingEngagement.deleteMany({
+      where: { id: { in: engagementIds } },
+    })).count;
+
     cleanup.deletedInvites = (await prisma.studioNestInvite.deleteMany({ where: { email: { in: generatedEmails } } })).count;
     cleanup.deletedGrants = (await prisma.studioProjectAccessGrant.deleteMany({ where: { email: { in: generatedEmails } } })).count;
 
-    for (const email of [staffEmail, clientEmail]) {
+    for (const email of [coachEmail, clientEmail]) {
       const homeSlug = `home-${slugifyEmailForHomeNest(email)}`;
       const homeProjects = await prisma.studioProject.findMany({
         where: {
@@ -485,6 +496,17 @@ async function cleanupGeneratedCoachingArtifacts(env, baseUrl, staffEmail, clien
     }
   }
   cleanup.deletedFirebaseUserViaRest = cleanup.deletedFirebaseUsersViaRest > 0;
+
+  const firebaseAdmin = ensureFirebaseAdmin(env);
+  for (const email of [coachEmail, clientEmail]) {
+    try {
+      const firebaseUser = await firebaseAdmin.getUserByEmail(email);
+      await firebaseAdmin.deleteUser(firebaseUser.uid);
+      cleanup.deletedFirebaseUsersViaAdmin += 1;
+    } catch (error) {
+      if (error?.code !== "auth/user-not-found") throw error;
+    }
+  }
   return cleanup;
 }
 
@@ -493,11 +515,32 @@ async function main() {
   requiredEnv(env, "DATABASE_URL");
 
   const baseUrl = baseUrlFromEnv(env);
+  const cleanupSuffix = String(args.get("cleanup-generated-suffix") || "").trim().toLowerCase();
+  if (cleanupSuffix) {
+    assert(
+      /^[a-f0-9]{8}$/.test(cleanupSuffix),
+      "--cleanup-generated-suffix must be the exact eight-character generated hex suffix.",
+    );
+    const coachEmail = `codex-coaching-coach-${cleanupSuffix}@dev.test`;
+    const clientEmail = `codex-coaching-client-${cleanupSuffix}@dev.test`;
+    const cleanup = await cleanupGeneratedCoachingArtifacts(env, baseUrl, coachEmail, clientEmail, []);
+    console.log(JSON.stringify({
+      ok: true,
+      baseUrl,
+      testLane: "generated-regression-recovery",
+      humanAcceptanceSatisfied: false,
+      generatedCoachEmail: redactGeneratedEmail(coachEmail),
+      generatedClientEmail: redactGeneratedEmail(clientEmail),
+      cleanup,
+      note: "Recovered only exact generated coaching smoke identities and their canonical artifacts. No human account was eligible.",
+    }, null, 2));
+    return;
+  }
   const includeStripeCheckoutSmoke =
     args.get("include-stripe-checkout") === "1" ||
     env.QUIPSLY_COACHING_SMOKE_CREATE_STRIPE_CHECKOUT === "1";
   const suffix = crypto.randomBytes(4).toString("hex");
-  const staffEmail = `codex-coaching-staff-${suffix}@dev.test`;
+  const coachEmail = `codex-coaching-coach-${suffix}@dev.test`;
   const clientEmail = `codex-coaching-client-${suffix}@dev.test`;
   const password = `Qp-${crypto.randomBytes(18).toString("base64url")}!26`;
   const scheduledStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -518,6 +561,8 @@ async function main() {
   let clientMobileSessionsAfterDeclineBody = null;
   let clientMobileSessionsAfterConsentBody = null;
   let clientCoacheeSessionsRouteReachable = false;
+  let runwayBeforeCoachSetup = null;
+  let coachSetupResult = null;
   let runwayBefore = null;
   let runwayAfter = null;
   let runwayAfterRelease = null;
@@ -541,7 +586,7 @@ async function main() {
 
   try {
     await assertServerFirebaseAdminPreflight(baseUrl);
-    const firebaseBody = await firebaseVerifiedTestSignup(env, baseUrl, staffEmail, password);
+    const firebaseBody = await firebaseVerifiedTestSignup(env, baseUrl, coachEmail, password);
     firebaseDeleteIdToken = firebaseBody.idToken;
 
     const sessionStart = await requestJson(`${baseUrl}/api/auth/session`, {
@@ -550,21 +595,63 @@ async function main() {
       body: JSON.stringify({ idToken: firebaseBody.idToken }),
     });
     assert(
-      sessionStart.response.status === 200 && sessionStart.body?.user?.email === staffEmail,
+      sessionStart.response.status === 200 && sessionStart.body?.user?.email === coachEmail,
       `Session exchange failed with HTTP ${sessionStart.response.status}: ${sessionStart.text.slice(0, 240)}`,
       { body: sessionStart.body },
     );
     assert(sessionStart.body?.homeNest?.slug, "Session exchange did not create or return Home Nest truth.");
     sessionBody = sessionStart.body;
 
-    await promoteGeneratedStaffUser(env, staffEmail);
+    const runwayBeforeSetup = await requestJson(`${baseUrl}/api/coaching/runway`, {
+      headers: { authorization: `Bearer ${firebaseBody.idToken}` },
+    });
+    assert(
+      runwayBeforeSetup.response.status === 200 &&
+        runwayBeforeSetup.body?.ok === true &&
+        runwayBeforeSetup.body?.user?.isStaff === false &&
+        runwayBeforeSetup.body?.user?.isCoach === false,
+      `Fresh generated user did not reach the ordinary pre-setup coaching runway. HTTP ${runwayBeforeSetup.response.status}`,
+      { body: runwayBeforeSetup.body },
+    );
+    runwayBeforeCoachSetup = runwayBeforeSetup.body;
+
+    const setup = await requestJson(`${baseUrl}/api/coaching/runway`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${firebaseBody.idToken}`,
+      },
+      body: JSON.stringify({
+        action: "setup-coach-profile",
+        coachEmail,
+        coachName: "Codex Generated Coaching Coach",
+        timezone: "America/Denver",
+        defaultDurationMinutes: 45,
+        defaultAmountCents: null,
+        currency: "USD",
+        offeringTitle: "Generated one-to-one coaching",
+        offeringDescription: "Generated ordinary-coach regression evidence. Safe to delete.",
+      }),
+    });
+    assert(
+      setup.response.status === 200 &&
+        setup.body?.ok === true &&
+        setup.body?.result?.role === "COACH" &&
+        setup.body?.result?.coachEmail === coachEmail,
+      `Fresh generated user could not complete ordinary self-service coach setup. HTTP ${setup.response.status}`,
+      { body: setup.body },
+    );
+    coachSetupResult = setup.body.result;
 
     const firstRunway = await requestJson(`${baseUrl}/api/coaching/runway`, {
       headers: { authorization: `Bearer ${firebaseBody.idToken}` },
     });
     assert(
-      firstRunway.response.status === 200 && firstRunway.body?.ok === true && firstRunway.body?.user?.isStaff === true,
-      `Generated staff could not load coaching runway. HTTP ${firstRunway.response.status}`,
+      firstRunway.response.status === 200 &&
+        firstRunway.body?.ok === true &&
+        firstRunway.body?.user?.isStaff === false &&
+        firstRunway.body?.user?.isCoach === true,
+      `Ordinary generated coach could not load the post-setup coaching runway. HTTP ${firstRunway.response.status}`,
       { body: firstRunway.body },
     );
     runwayBefore = firstRunway.body;
@@ -684,7 +771,7 @@ async function main() {
       { headers: { authorization: `Bearer ${firebaseBody.idToken}` } },
     );
     calendarBeforeReschedule = assertPrivateCalendarExport(calendarBeforeRescheduleResponse, {
-      forbiddenValues: [staffEmail, clientEmail],
+      forbiddenValues: [coachEmail, clientEmail],
     });
 
     const fourthRunway = await requestJson(`${baseUrl}/api/coaching/runway`, {
@@ -822,7 +909,7 @@ async function main() {
       { headers: { authorization: `Bearer ${clientFirebaseBody.idToken}` } },
     );
     calendarForClient = assertPrivateCalendarExport(clientCalendarResponse, {
-      forbiddenValues: [staffEmail, clientEmail],
+      forbiddenValues: [coachEmail, clientEmail],
     });
     assert(
       calendarForClient.uid === calendarBeforeReschedule.uid &&
@@ -883,10 +970,14 @@ async function main() {
       consentStatus: convertedMobileSession.recordingConsentStatus,
       consentGranted: convertedMobileSession.recordingConsentGranted,
     });
-    assert(convertedMobileSession.providerReadiness === "local-fallback", "Converted mobile session should advertise local fallback until provider room is prepared.", {
+    assert(
+      ["local-fallback", "livekit-ready"].includes(convertedMobileSession.providerReadiness),
+      "Converted mobile session did not expose a usable local or LiveKit capture route.",
+      {
       providerReadiness: convertedMobileSession.providerReadiness,
       providerCanJoin: convertedMobileSession.providerCanJoin,
-    });
+      },
+    );
     assert(convertedMobileSession.bookingStatus === "CONFIRMED", "Converted mobile session should carry confirmed booking truth.", {
       bookingStatus: convertedMobileSession.bookingStatus,
     });
@@ -1114,7 +1205,7 @@ async function main() {
       { headers: { authorization: `Bearer ${firebaseBody.idToken}` } },
     );
     calendarAfterReschedule = assertPrivateCalendarExport(calendarAfterRescheduleResponse, {
-      forbiddenValues: [staffEmail, clientEmail],
+      forbiddenValues: [coachEmail, clientEmail],
     });
     assert(
       calendarAfterReschedule.uid === calendarBeforeReschedule.uid,
@@ -1194,7 +1285,7 @@ async function main() {
     );
     calendarAfterCancel = assertPrivateCalendarExport(calendarAfterCancelResponse, {
       expectedStatus: "CANCELLED",
-      forbiddenValues: [staffEmail, clientEmail],
+      forbiddenValues: [coachEmail, clientEmail],
     });
     assert(
       calendarAfterCancel.uid === calendarBeforeReschedule.uid,
@@ -1207,7 +1298,7 @@ async function main() {
     let cleanupWarning = null;
     if (firebaseDeleteIdToken) {
       try {
-        cleanup = await cleanupGeneratedCoachingArtifacts(env, baseUrl, staffEmail, clientEmail, [
+        cleanup = await cleanupGeneratedCoachingArtifacts(env, baseUrl, coachEmail, clientEmail, [
           firebaseDeleteIdToken,
           clientFirebaseDeleteIdToken,
         ]);
@@ -1219,7 +1310,9 @@ async function main() {
     console.log(JSON.stringify({
       ok: smokeSucceeded,
       baseUrl,
-      generatedStaffEmail: redactGeneratedEmail(staffEmail),
+      testLane: "api-regression",
+      humanAcceptanceSatisfied: false,
+      generatedCoachEmail: redactGeneratedEmail(coachEmail),
       generatedClientEmail: redactGeneratedEmail(clientEmail),
       session: sessionBody
         ? {
@@ -1237,7 +1330,10 @@ async function main() {
         }
         : null,
       coachingRunway: {
-        staffRunwayLoaded: Boolean(runwayBefore?.user?.isStaff),
+        freshUserStartedWithoutStaffAccess: runwayBeforeCoachSetup?.user?.isStaff === false,
+        freshUserStartedWithoutCoachProfile: runwayBeforeCoachSetup?.user?.isCoach === false,
+        selfServiceCoachSetupCompleted: Boolean(coachSetupResult?.coachProfileId && coachSetupResult?.offeringId),
+        ordinaryCoachRunwayLoaded: runwayBefore?.user?.isCoach === true && runwayBefore?.user?.isStaff === false,
         holdIdPresent: Boolean(holdId),
         beforeHoldCount: Array.isArray(runwayBefore?.bookingHolds) ? runwayBefore.bookingHolds.length : null,
         afterHoldCount: Array.isArray(runwayAfter?.bookingHolds) ? runwayAfter.bookingHolds.length : null,
@@ -1347,9 +1443,9 @@ async function main() {
             (candidate) => candidate.callRoomId === convertCallRoomId && candidate.recordingConsentStatus === "REQUESTED",
           )
           : false,
-        providerFallbackVisible: Array.isArray(clientMobileSessionsBody?.sessions)
+        usableCaptureRouteVisible: Array.isArray(clientMobileSessionsBody?.sessions)
           ? clientMobileSessionsBody.sessions.some(
-            (candidate) => candidate.callRoomId === convertCallRoomId && candidate.providerReadiness === "local-fallback",
+            (candidate) => candidate.callRoomId === convertCallRoomId && ["local-fallback", "livekit-ready"].includes(candidate.providerReadiness),
           )
           : false,
         plannedCalendarVisible: Array.isArray(clientMobileSessionsBody?.sessions)
@@ -1415,7 +1511,7 @@ async function main() {
       },
       cleanup,
       cleanupWarning,
-      note: "Generated password, Firebase token, session cookie, database URL, and bearer token were not printed.",
+      note: "This operates canonical APIs as a generated ordinary coach and client. It is regression evidence, not fresh-human UX acceptance. Generated password, Firebase token, session cookie, database URL, and bearer token were not printed.",
     }, null, 2));
   }
 
