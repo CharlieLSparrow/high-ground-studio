@@ -15,6 +15,7 @@ import {
   mobileCaptureAllPartiesAllowTranscription,
   mobileCaptureAllPartiesReady,
 } from "../../apps/quipsly/src/lib/server/mobile-capture-consent-readiness.js";
+import { mobileCaptureProcessingGateFromEvidence } from "../../apps/quipsly/src/lib/server/mobile-capture-processing-policy.js";
 
 const requireFromQuipsly = createRequire(
   new URL("../../apps/quipsly/package.json", import.meta.url),
@@ -195,23 +196,13 @@ function sourceTypeForAsset(asset) {
     : "audio";
 }
 
-export function durableReleasePresent(receipt, asset) {
-  const binding = object(object(receipt?.metadataJson).immutableUploadBinding);
-  return Boolean(
-    receipt?.recordingAssetId === asset?.id
-    && receipt?.processingDisposition === "RELEASED"
-    && receipt?.transcriptDisposition === "RELEASED"
-    && receipt?.releasedAt
-    && text(receipt?.releaseReason).length >= 20
-    && receipt?.transcriptReleasedAt
-    && text(receipt?.transcriptReleaseReason).length >= 20
-    && text(binding.uploadSessionId) === text(receipt?.uploadSessionId)
-    && text(binding.roomId) === text(asset?.roomId)
-    && text(binding.sha256).toLowerCase() === text(asset?.checksum).toLowerCase()
-    && text(binding.bucketName) === text(asset?.storageBucket)
-    && text(binding.objectName) === text(asset?.storageObjectPath)
-    && Number(binding.sizeBytes) === Number(asset?.byteSize)
-  );
+export function localTranscriptReleaseDecision(receipts, asset, room) {
+  return mobileCaptureProcessingGateFromEvidence({
+    recordingAsset: asset,
+    receipts,
+    room,
+    transcript: true,
+  });
 }
 
 async function nextLocalJob(prisma) {
@@ -246,21 +237,27 @@ async function claimLocalJob(prisma, candidate, workerBuildId) {
     where: { recordingAssetId: candidate.asset.id },
     orderBy: { updatedAt: "desc" },
   });
-  // A release authorizes processing of one immutable RecordingAsset, not only
-  // its first transcript version. Versioned retries remain safe when the
-  // receipt still matches the exact bucket, object, size, and SHA-256 binding.
-  const receipt = receipts.find((candidateReceipt) => durableReleasePresent(candidateReceipt, candidate.asset));
+  // Use the same canonical privacy and release policy as the web/API boundary.
+  // Naturally eligible all-party-consented captures do not need a redundant
+  // staff override. A capture that was actually held can become RELEASED only
+  // through the separately audited staff release mutation.
+  const releaseDecision = localTranscriptReleaseDecision(
+    receipts,
+    candidate.asset,
+    candidate.room,
+  );
+  const receipt = releaseDecision.receipt;
   const consent = currentConsentAllowsLocalTranscription(
     candidate.room,
     sourceTypeForAsset(candidate.asset),
     captureParticipantIds(receipt),
   );
-  if (!receipt || !consent.allowed) {
+  if (!releaseDecision.allowed || !receipt || !consent.allowed) {
     await prisma.transcriptJob.updateMany({
       where: { id: candidate.id, status: "QUEUED" },
       data: {
         status: "HELD",
-        errorMessage: "Local transcription is held because current all-party consent or the durable staff release audit is incomplete.",
+        errorMessage: releaseDecision.error || "Local transcription is held because current all-party recording and transcription consent is incomplete.",
       },
     });
     return null;

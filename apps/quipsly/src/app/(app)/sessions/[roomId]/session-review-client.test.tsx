@@ -430,6 +430,12 @@ describe("Session review goal candidates", () => {
       expect(
         await screen.findByRole("heading", { name: "Client follow-up unavailable" }),
       ).toBeInTheDocument();
+      const followUp = screen.getByRole("heading", { name: "Client follow-up unavailable" });
+      const advancedEvidence = screen.getByText("Advanced production evidence and recovery");
+      expect(
+        followUp.compareDocumentPosition(advancedEvidence) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(advancedEvidence.closest("details")).not.toHaveAttribute("open");
     } else {
       expect(fetchMock).not.toHaveBeenCalled();
     }
@@ -564,6 +570,45 @@ describe("Session review goal candidates", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ recordingAssetId: "asset-1" });
     expect(await screen.findByRole("status")).toHaveTextContent(/Transcription started from the released immutable source/i);
+  });
+
+  it("retries a released transcript that was held before current consent became ready", async () => {
+    const held = packetReadyToBuild();
+    held.transcriptJob = {
+      ...held.transcriptJob!,
+      status: "HELD",
+      segmentCount: 0,
+    };
+    held.packet = {
+      ...held.packet!,
+      status: "NOT_READY",
+      safeActions: [{
+        id: "repair-transcript-first",
+        label: "Repair transcript first",
+        enabled: true,
+        risk: "medium",
+        why: "The source is currently held.",
+        boundary: "Rechecks consent and release against the immutable recording.",
+      }],
+    };
+    const running = JSON.parse(JSON.stringify(held)) as SessionReviewPacket;
+    running.transcriptJob!.status = "RUNNING";
+    running.packet!.safeActions = [];
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(held))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, status: "RUNNING", executionRequested: true }, 202))
+      .mockResolvedValueOnce(jsonResponse(running));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} focusedRecordingAssetId="asset-1" />);
+    await user.click(await screen.findByRole("button", { name: "Retry transcription" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/transcripts/run");
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      recordingAssetId: "asset-1",
+    });
   });
 
   it("starts the first transcript job for the exact source selected by the source journey", async () => {

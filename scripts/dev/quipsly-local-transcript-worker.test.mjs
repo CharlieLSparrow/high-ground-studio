@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   currentConsentAllowsLocalTranscription,
   captureParticipantIds,
-  durableReleasePresent,
+  localTranscriptReleaseDecision,
   normalizeWhisperTranscript,
   requireLocalDatabase,
   safeLocalSourcePath,
@@ -64,7 +64,7 @@ test("local source receipt binds generation, exact bytes, hash, and type", () =>
   }, expected), /generation/);
 });
 
-test("recording-level release authorizes a later transcript version only for the exact source binding", () => {
+test("canonical release accepts naturally eligible media and still enforces the exact source binding", () => {
   const asset = {
     id: "asset-1",
     roomId: "room-1",
@@ -78,11 +78,12 @@ test("recording-level release authorizes a later transcript version only for the
     recordingAssetId: asset.id,
     processingDisposition: "RELEASED",
     transcriptDisposition: "RELEASED",
-    releasedAt: new Date("2026-08-06T12:00:00Z"),
-    releaseReason: "Reviewed recovery source is authorized for processing.",
-    transcriptReleasedAt: new Date("2026-08-06T12:00:00Z"),
-    transcriptReleaseReason: "Reviewed recovery source is authorized for transcription.",
     metadataJson: {
+      originalDecision: {
+        initialRoomReadiness: {
+          consentVersions: [{ participantId: "participant-1" }],
+        },
+      },
       immutableUploadBinding: {
         uploadSessionId: "9d8c0c81-847f-4e16-96d0-26b494c890aa",
         roomId: asset.roomId,
@@ -93,8 +94,32 @@ test("recording-level release authorizes a later transcript version only for the
       },
     },
   };
-  assert.equal(durableReleasePresent(receipt, asset), true);
-  assert.equal(durableReleasePresent({
+  const room = {
+    participants: [{ id: "participant-1", userId: "user-1", role: "COACH" }],
+    recordingConsents: [{
+      id: "consent-1",
+      participantId: "participant-1",
+      userId: "user-1",
+      status: "GRANTED",
+      policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+      canRecordAudio: true,
+      canRecordVideo: false,
+      canTranscribe: true,
+      consentedAt: new Date("2026-08-02T20:00:00Z"),
+      revokedAt: null,
+      updatedAt: new Date("2026-08-02T20:00:00Z"),
+      metadataJson: {
+        consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+        consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+        recordingChoiceExplicit: true,
+        transcriptionChoiceExplicit: true,
+        allAudibleParticipantsNotifiedAndAgreed: true,
+        presentationEvidence: { surface: "quipsly-capture-consent-v2", version: 1 },
+      },
+    }],
+  };
+  assert.equal(localTranscriptReleaseDecision([receipt], asset, room).allowed, true);
+  assert.equal(localTranscriptReleaseDecision([{
     ...receipt,
     metadataJson: {
       immutableUploadBinding: {
@@ -102,7 +127,9 @@ test("recording-level release authorizes a later transcript version only for the
         objectName: "media-vault/recordings/other.wav",
       },
     },
-  }, asset), false);
+  }], asset, room).allowed, false);
+  room.recordingConsents[0].canTranscribe = false;
+  assert.equal(localTranscriptReleaseDecision([receipt], asset, room).allowed, false);
 });
 
 test("Whisper normalization preserves timed provider evidence without inventing speakers", () => {

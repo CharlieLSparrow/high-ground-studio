@@ -5372,7 +5372,8 @@ export function SessionReviewClient({
     const recordingAssetId =
       packet?.transcriptJob?.asset?.id ?? packet?.selectedRecordingAsset?.id;
     const runFromRecording =
-      !transcriptJobId || packet?.transcriptJob?.status === "FAILED";
+      !transcriptJobId ||
+      ["FAILED", "HELD"].includes(packet?.transcriptJob?.status || "");
     if (runFromRecording && !recordingAssetId) {
       setMessage("This transcript action has no immutable recording binding.");
       return;
@@ -6055,30 +6056,71 @@ export function SessionReviewClient({
 
       {mode === "outputs" ? (
         <div className="space-y-5">
-          <SessionFinishingCockpitCard
-            roomId={roomId}
-            topology={readinessTopology}
-            sourceEvidence={sourceEvidence}
-            contentReadiness={contentReadiness}
-            studioHandoff={studioHandoff}
-            finishingEvidence={finishingEvidence}
-          />
-          {versionedOutputGraph ? (
-            <SessionVersionedOutputGraphCard graph={versionedOutputGraph} />
-          ) : null}
           {purpose === "COACHING" ? (
             <SessionClientFollowUpCard roomId={roomId} />
           ) : null}
-          {studioHandoff ? (
-            <SessionStudioHandoffCard
-              handoff={studioHandoff}
-              contentReadiness={contentReadiness}
-            />
+          {purpose === "COACHING" ? (
+            <details className="rounded-3xl border border-[#ddcdaf] bg-[#fffdf8] p-4 shadow-sm sm:p-5">
+              <summary className="cursor-pointer text-sm font-black text-[#5b472f]">
+                Advanced production evidence and recovery
+              </summary>
+              <p className="mt-2 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
+                Inspect source provenance, recovery warnings, Studio handoff,
+                and delivery history when something needs investigation. These
+                diagnostics do not block drafting a client-safe follow-up.
+              </p>
+              <div className="mt-5 space-y-5">
+                <SessionFinishingCockpitCard
+                  roomId={roomId}
+                  topology={readinessTopology}
+                  sourceEvidence={sourceEvidence}
+                  contentReadiness={contentReadiness}
+                  studioHandoff={studioHandoff}
+                  finishingEvidence={finishingEvidence}
+                />
+                {versionedOutputGraph ? (
+                  <SessionVersionedOutputGraphCard
+                    graph={versionedOutputGraph}
+                  />
+                ) : null}
+                {studioHandoff ? (
+                  <SessionStudioHandoffCard
+                    handoff={studioHandoff}
+                    contentReadiness={contentReadiness}
+                  />
+                ) : (
+                  <WorkspaceEmptyState
+                    title="No Studio output context"
+                    detail="This Session has no accessible Nest Studio boundary. Quipsly will not invent a media handoff or publication receipt."
+                  />
+                )}
+              </div>
+            </details>
           ) : (
-            <WorkspaceEmptyState
-              title="No Studio output context"
-              detail="This Session has no accessible Nest Studio boundary. Quipsly will not invent a media handoff or publication receipt."
-            />
+            <>
+              <SessionFinishingCockpitCard
+                roomId={roomId}
+                topology={readinessTopology}
+                sourceEvidence={sourceEvidence}
+                contentReadiness={contentReadiness}
+                studioHandoff={studioHandoff}
+                finishingEvidence={finishingEvidence}
+              />
+              {versionedOutputGraph ? (
+                <SessionVersionedOutputGraphCard graph={versionedOutputGraph} />
+              ) : null}
+              {studioHandoff ? (
+                <SessionStudioHandoffCard
+                  handoff={studioHandoff}
+                  contentReadiness={contentReadiness}
+                />
+              ) : (
+                <WorkspaceEmptyState
+                  title="No Studio output context"
+                  detail="This Session has no accessible Nest Studio boundary. Quipsly will not invent a media handoff or publication receipt."
+                />
+              )}
+            </>
           )}
         </div>
       ) : null}
@@ -6172,7 +6214,10 @@ export function SessionReviewClient({
                     Focused RecordingAsset · {packet.selectedRecordingAsset.id}
                   </p>
                 ) : null}
-                {packet.packet?.safeActions?.find(
+                {!["RUNNING", "PROCESSING"].includes(
+                  packet.transcriptJob?.status || "",
+                ) &&
+                packet.packet?.safeActions?.find(
                   (action) =>
                     action.id === "repair-transcript-first" && action.enabled,
                 ) ? (
@@ -6194,7 +6239,9 @@ export function SessionReviewClient({
                       )}
                       {runningTranscript
                         ? "Starting durable worker…"
-                        : packet.transcriptJob?.status === "FAILED"
+                        : ["FAILED", "HELD"].includes(
+                              packet.transcriptJob?.status || "",
+                            )
                           ? "Retry transcription"
                           : "Start transcription"}
                     </button>
