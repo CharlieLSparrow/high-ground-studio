@@ -272,3 +272,25 @@ title. It reports `testLane: retained-regression`,
 `humanAcceptanceSatisfied: false`, and `fixtureIdentifiersUsed: true`. This is
 durable regression evidence only. A fresh, minimally instructed coach/client
 pair still needs to repeat the workflow for release acceptance.
+
+## Minimal-instruction Session path — 2026-08-19
+
+The coaching Session overview now leads with the four jobs most coaches need:
+
+1. invite the client and check devices;
+2. hold the call and record retained local sources;
+3. review the source-backed transcript;
+4. assemble and release the client-safe follow-up.
+
+One primary action points to the first incomplete job. Completion is projected
+from canonical participant, substantial-recording, transcript, and released
+follow-up evidence. Downstream historical artifacts cannot make the path appear
+complete while the retained recording is still below the production-readiness
+gate. The eight deeper Session modes remain available as optional review and
+troubleshooting tools.
+
+A rendered local regression confirmed the path on the retained coaching
+Session, correctly selected **Call and record** as the next action, held older
+transcript and follow-up evidence behind the current source gate, and fit a
+390-pixel viewport without horizontal overflow. This remains regression-lane
+evidence; a minimally instructed fresh coach still must complete all four jobs.
