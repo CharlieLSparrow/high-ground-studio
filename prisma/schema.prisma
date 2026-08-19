@@ -464,6 +464,7 @@ enum CoachingNoteVisibility {
 
 enum SessionOutputKind {
   CLIENT_FOLLOW_UP
+  RECORDING_SHARE
 }
 
 enum SessionOutputStatus {

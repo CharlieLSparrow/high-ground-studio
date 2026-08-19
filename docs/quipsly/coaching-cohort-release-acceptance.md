@@ -373,3 +373,60 @@ The retained scripts remain deliberately fixture-based. Their output reports
 `fixtureIdentifiersUsed: true` and `humanAcceptanceSatisfied: false`; these
 checks catch regressions quickly but cannot release the 50-coach cohort. The
 numbered fresh coach/client journey above remains the human acceptance gate.
+
+## Recipient-bound recording share checkpoint — 2026-08-19
+
+Test lane: `retained-regression`
+
+Human acceptance satisfied: **no**
+
+The ordinary Session Outputs surface now provides a mobile-first light-edit
+journey for coaching recordings. It chooses the newest time-coherent take,
+defaults to one local master per participant, names the intended client, lets
+the coach set a common start/end range, and queues a non-destructive derived
+AAC copy. The coach can preview or download the private draft, must explicitly
+confirm that they listened and intend to release it to the named client, and
+can later revoke access. The client can play or download only a released copy.
+
+The derived-file worker binds its job to the exact source IDs, sizes, SHA-256
+digests, storage generations, Session-clock offsets, edit range, output
+revision, and recipient-bound output. FFmpeg aligns the sources, mixes and
+levels the selected window, verifies AAC-LC stereo at 48 kHz, performs a full
+decode, and writes an immutable receipt. A crash after file creation can reuse
+only an exact matching file and receipt; it cannot overwrite an existing
+target. Reconciliation creates a deterministic derived RecordingAsset and an
+append-only output revision before release is allowed.
+
+The operated run used the two retained participant sources from the preceding
+call checkpoint. It created a 28,083-byte derived recording with SHA-256
+`7bf9916f89654e5f1f9ce2fd0c72c0f48f59345cd2bc752eb9e081a00282d16d`,
+decoded and advanced it in a desktop coach context and phone-width client
+context, returned HTTP 200 to the exact recipient after release, and returned
+HTTP 404 after revocation. Release and revocation created separate durable
+delivery events. Repeating either visibility request with the same request ID
+returned an idempotent replay and did not duplicate either event. The browser
+retains a request ID after an uncertain network failure so a person's retry
+converges on the same decision. Both original source checksums remained
+unchanged.
+
+The run also repaired three product-path faults that source-level tests did not
+expose: repeated calls in one room were initially merged because a room-level
+capture group is not a take identity; macOS `/var` and `/private/var` aliases
+were initially treated as different authorized roots; and PostgreSQL required
+explicit parameter casts in the worker lease and failure receipts. Regression
+coverage now keeps repeated calls separated by a bounded source-start cluster,
+and path normalization retains both configured-root and canonical-root
+confinement checks.
+
+This proves the local audio light-edit, private preview, recipient release, and
+revocation mechanics. It does not prove a cloud renderer, video conform,
+waveform editing, real human listening, physical iPhone sharing, real-speech
+quality, accessibility, or novice discoverability. The operation reports
+`testLane: retained-regression`, `fixtureIdentifiersUsed: true`,
+`humanAcceptanceSatisfied: false`, `realSpeechAccuracyProven: false`, and
+`freshNoviceJourneyProven: false`. It cannot satisfy the 50-coach release gate.
+
+Regression labels and cohort-gate language remain in this evidence report and
+machine-readable operation output only. The ordinary recording card explains
+the coach/client privacy boundary in product language and does not expose test
+fixtures, test lanes, or internal release bureaucracy to either participant.

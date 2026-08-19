@@ -33,6 +33,7 @@ export * from "./transcript-evaluation.js";
 export * from "./transcript-evaluation-report-html.js";
 export * from "./transcript-provider-adapters.js";
 export * from "./transcript-routing.js";
+export * from "./session-recording-share.js";
 export const CAPTURE_PROXY_MANIFEST_KIND =
   "quipsly-capture-proxy-manifest-v1" as const;
 export const CAPTURE_PROXY_QUEUE_KIND =

@@ -99,6 +99,10 @@ import {
   runOneLocalSourceAudioNavigationJob,
 } from "./local-source-audio-navigation-worker.js";
 import { LocalMediaArtifactReconciler } from "./local-media-artifact-reconciler.js";
+import {
+  newLocalSessionRecordingShareRuntime,
+  runOneLocalSessionRecordingShareJob,
+} from "./local-session-recording-share-worker.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -693,6 +697,13 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const sessionRecordingShare = newLocalSessionRecordingShareRuntime({
+    pool,
+    executionId,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   const episodeRenderProof = newLocalEpisodeRenderProofRuntime({
     pool,
     executionId,
@@ -925,21 +936,29 @@ async function main() {
           : alignmentResult;
       const mixResult =
         pairResult.disposition === "idle"
+          ? await runOneLocalSessionRecordingShareJob(
+              sessionRecordingShare.store,
+              sessionRecordingShare.renderer,
+              sessionRecordingShare.options,
+            )
+          : pairResult;
+      const episodeMixResult =
+        mixResult.disposition === "idle"
           ? await runOneLocalEpisodeAudioMixJob(
               episodeAudioMix.store,
               episodeAudioMix.renderer,
               episodeAudioMix.mastery,
               episodeAudioMix.options,
             )
-          : pairResult;
+          : mixResult;
       const episodeProofResult =
-        mixResult.disposition === "idle"
+        episodeMixResult.disposition === "idle"
           ? await runOneLocalEpisodeRenderProofJob(
               episodeRenderProof.store,
               episodeRenderProof.renderer,
               episodeRenderProof.options,
             )
-          : mixResult;
+          : episodeMixResult;
       const workResult =
         episodeProofResult.disposition === "idle"
           ? await runOneLocalEpisodeProgramRenderJob(

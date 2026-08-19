@@ -74,6 +74,7 @@ import {
 } from "./session-continuity-card";
 import { SessionCoachingQuickPath } from "./session-coaching-quick-path";
 import { SessionClientFollowUpCard } from "./session-client-follow-up-card";
+import { SessionRecordingShareCard } from "./session-recording-share-card";
 import type { SessionContinuityState } from "./session-continuity-model";
 import { SessionEpisodeBindingRepair } from "./session-episode-binding-repair";
 import { SessionFinishingCockpitCard } from "./session-finishing-cockpit-card";
@@ -6073,6 +6074,9 @@ export function SessionReviewClient({
 
       {mode === "outputs" ? (
         <div className="space-y-5">
+          {purpose === "COACHING" ? (
+            <SessionRecordingShareCard roomId={roomId} />
+          ) : null}
           {purpose === "COACHING" ? (
             <SessionClientFollowUpCard roomId={roomId} />
           ) : null}
