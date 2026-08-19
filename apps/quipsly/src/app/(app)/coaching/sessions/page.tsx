@@ -228,7 +228,7 @@ function paymentLine(session: MobileCaptureSession) {
   if (!paymentRequiredFor(session)) return "No Stripe payment is required for this session in Quipsly.";
   if (paymentResolvedFor(session)) return "Payment is recorded. Your session can move forward.";
   if (session.latestCheckoutUrl) return "A secure Stripe payment page is ready for this session.";
-  return "Payment is not recorded yet. Homer may send a secure Stripe link before the session.";
+  return "Payment is not recorded yet. Your coach may send a secure Stripe link before the session.";
 }
 
 function consentLine(session: MobileCaptureSession) {
@@ -242,7 +242,7 @@ function packetLine(session: MobileCaptureSession) {
   if (session.coachingPacketStatus === "READY_FOR_REVIEW") {
     return `${session.coachingPacketTitle || "Follow-up packet"} is ready with ${session.coachingPacketHighlightCount ?? 0} highlight(s) and ${session.coachingPacketActionItemCount ?? 0} action item(s).`;
   }
-  if (session.latestTranscriptStatus === "COMPLETED") return "Transcript is ready. Homer can build the follow-up packet next.";
+  if (session.latestTranscriptStatus === "COMPLETED") return "Transcript is ready. A permitted coach can build the follow-up packet next.";
   if (session.latestTranscriptStatus) return `Transcript is ${normalize(session.latestTranscriptStatus)}. The follow-up packet comes after transcript review.`;
   return "Follow-up notes appear here after recording and transcription.";
 }
@@ -353,7 +353,7 @@ export default function CoachingSessionsPage() {
       setStatus("Session truth loaded");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Your sessions could not load.");
-      setStatus("Sign in or ask Homer to check the session");
+      setStatus("Sign in with the invited account or ask your coach to check the Session");
     } finally {
       setIsLoading(false);
     }
@@ -469,11 +469,11 @@ export default function CoachingSessionsPage() {
           </div>
           {error && (
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
-              {error} If you expected a session here, sign in with the invited email or ask Homer to resend the session link.
+              {error} If you expected a Session here, sign in with the invited email or ask your coach to resend the invitation.
             </div>
           )}
           <div className="mt-6 grid gap-3 md:grid-cols-4">
-            <HumanStep icon={<CalendarDays size={18} />} title="When" detail={nextSession ? `${formatDateTime(nextSession.scheduledStart)} to ${formatDateTime(nextSession.scheduledEnd)}` : "Your time appears here after Homer creates the session."} tone={nextSession ? "good" : "warm"} />
+            <HumanStep icon={<CalendarDays size={18} />} title="When" detail={nextSession ? `${formatDateTime(nextSession.scheduledStart)} to ${formatDateTime(nextSession.scheduledEnd)}` : "Your time appears here after a Session is scheduled."} tone={nextSession ? "good" : "warm"} />
             <HumanStep
               icon={<Receipt size={18} />}
               title="Payment"
@@ -511,7 +511,7 @@ export default function CoachingSessionsPage() {
             {isPlannerOpen ? <form id="session-planner" onSubmit={createSession} className="mt-5 grid gap-4 border-t border-sky-100 pt-5 md:grid-cols-2">
               <p className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs font-bold leading-5 text-sky-950 md:col-span-2">This creates the room and you as host. It does not invite, charge, join, record, transcribe, send, publish, or update an external calendar.</p>
               <label className="text-sm font-black text-[#3d3122] md:col-span-2">Session title
-                <input required value={createDraft.title} onChange={(event) => setCreateDraft((current) => ({ ...current, title: event.target.value }))} placeholder="High Ground Odyssey Episode 8 recording" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
+                <input required value={createDraft.title} onChange={(event) => setCreateDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Weekly coaching session" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
               </label>
               <label className="text-sm font-black text-[#3d3122]">Purpose
                 <select value={createDraft.purpose} onChange={(event) => setCreateDraft((current) => ({ ...current, purpose: event.target.value, episodeSlug: event.target.value === "PODCAST" ? current.episodeSlug : "", coachingEngagementId: event.target.value === "COACHING" ? current.coachingEngagementId : "" }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500">
@@ -567,7 +567,7 @@ export default function CoachingSessionsPage() {
             </div>
             <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_12rem_12rem]">
               <label className="text-sm font-black text-[#3d3122]">Search Sessions
-                <input type="search" value={sessionQuery} onChange={(event) => setSessionQuery(event.target.value)} placeholder="Episode 9, client, coach, or title" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
+                <input type="search" value={sessionQuery} onChange={(event) => setSessionQuery(event.target.value)} placeholder="Client, coach, purpose, or title" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
               </label>
               <label className="text-sm font-black text-[#3d3122]">Purpose
                 <select value={purposeFilter} onChange={(event) => setPurposeFilter(event.target.value as SessionPurposeFilter)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500">
@@ -597,7 +597,7 @@ export default function CoachingSessionsPage() {
               <h2 className="text-xl font-black">No sessions are visible yet.</h2>
             </div>
             <p className="max-w-2xl text-sm font-bold leading-relaxed">
-              This does not mean anything is broken. Homer may still be choosing a time, preparing a payment link, or inviting the right email address. Once the session is created, this page will show the human version of Quipsly truth.
+              Nothing is broken. Create a Session if you are a coach, or open the invitation your coach sent. Once the Session exists, this page will keep its schedule, consent, recording, transcript, and follow-up together.
             </p>
           </div>
         ) : filteredSessions.length === 0 ? (
@@ -622,7 +622,7 @@ export default function CoachingSessionsPage() {
           <div className="grid gap-3 text-sm font-bold leading-relaxed md:grid-cols-3">
             <p>Stripe handles payment pages. Quipsly keeps the appointment and receipt trail together.</p>
             <p>Recording stays off until consent is visible. Local capture is preserved before anything is pruned.</p>
-            <p>Transcripts and packets are review material. Homer can edit them before anything is sent or published.</p>
+            <p>Transcripts and packets are review material. Permitted participants can correct them before anything is shared or published.</p>
           </div>
         </div>
       </main>

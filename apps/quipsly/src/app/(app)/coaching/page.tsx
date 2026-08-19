@@ -364,13 +364,6 @@ function localDateTimeInputValue(date: Date) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function nextReviewerSessionStart() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(10, 0, 0, 0);
-  return localDateTimeInputValue(date);
-}
-
 function durationMinutesFromRange(start?: string | null, end?: string | null) {
   const startMs = start ? new Date(start).getTime() : Number.NaN;
   const endMs = end ? new Date(end).getTime() : Number.NaN;
@@ -1267,22 +1260,6 @@ export default function CoachingPage() {
     }
   }
 
-  function applyReviewerPreset() {
-    setCreateStatus("Reviewer-safe capture session preset loaded. Change the email/name before creating a real reviewer booking.");
-    setCreateForm({
-      runwayAction: "create-booking-room",
-      clientEmail: "reviewer-capture@dev.test",
-      clientName: "Quipsly Capture Reviewer",
-      title: "Reviewer test capture session",
-      scheduledStart: nextReviewerSessionStart(),
-      durationMinutes: "30",
-      purpose: "COACHING",
-      paymentPolicy: "MANUAL",
-      amountDollars: "",
-      currency: "USD",
-    });
-  }
-
   async function createLocalSession(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsCreating(true);
@@ -1358,7 +1335,7 @@ export default function CoachingPage() {
               <p className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-[#b98036]">Quipsly coaching runway</p>
               <h1 className="max-w-3xl text-4xl font-black leading-tight text-[#3d3122]">Book, bill, record, transcribe, and follow up without dashboard chaos.</h1>
               <p className="mt-3 max-w-3xl text-[#7b5c3b]">
-                Homer gets one calm place to create sessions, set a client-specific price, send a Stripe payment link, record only after consent, and review the follow-up packet. Coachees get the simple version: time, price, payment, consent, join, and notes.
+                Coaches get one calm place to create sessions, invite clients, record only after consent, and review follow-up. Clients get the simple version: time, consent, join, shared notes, goals, and tasks. Payment stays optional while a coach is getting started.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -1385,13 +1362,13 @@ export default function CoachingPage() {
             </div>
           )}
           <p className="mt-6 rounded-2xl border border-[#eadbc6] bg-[#fffaf1] p-4 text-sm font-bold leading-relaxed text-[#6f5c42]">
-            Homer&apos;s happy path is left to right: create the session, request payment if needed, confirm consent, capture the call, then review the packet. These cards show evidence Quipsly can see, not judgment. If something is not ready, the next panel should say what to do next.
+            The coaching path is left to right: prepare the relationship, schedule the Session, invite the client, confirm consent, capture the call, then review and share follow-up. These cards show evidence Quipsly can see, not judgment. If something is not ready, the next panel should say what to do next.
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-5">
             <FriendlyStepCard
               step="1"
               title="Set coach profile"
-              detail="Homer has the coach identity Quipsly uses for sessions, prices, rooms, and packets."
+              detail="Your coach identity connects private relationships, Sessions, recordings, and follow-up."
               ready={canManageCoaching}
             />
             <FriendlyStepCard
@@ -1415,7 +1392,7 @@ export default function CoachingPage() {
             <FriendlyStepCard
               step="5"
               title="Review the packet"
-              detail="Transcript, highlights, notes, and action items become review material Homer can edit."
+              detail="Transcript, highlights, notes, goals, and action items stay reviewable before they are shared."
               ready={(counts?.roomsWithPackets ?? 0) > 0}
             />
           </div>
@@ -1710,7 +1687,7 @@ export default function CoachingPage() {
                                     ? "Ready for the client to pay in Stripe Checkout."
                                     : canManageCoaching
                                       ? "Create a payment link when the appointment details are correct."
-                                      : "Homer is preparing the payment link for this session."}
+                                      : "Your coach is preparing the payment link for this session."}
                             </p>
                             <p className="mt-1 text-[11px] text-[#7b5c3b]">
                               Stripe handles the card form. Quipsly keeps the appointment, room, and receipt trail together.
@@ -2030,13 +2007,13 @@ export default function CoachingPage() {
               <div>
                 <h2 className="flex items-center gap-2 text-xl font-black text-[#214531]"><Users className="text-emerald-700" /> Coach setup</h2>
                 <p className="mt-1 text-xs font-bold uppercase tracking-wide text-emerald-700">
-                  One card to make Homer bookable and billable
+                  Finish your coach workspace once
                 </p>
               </div>
               <StatusPill label={canManageCoaching ? "coach ready" : "needs setup"} tone={canManageCoaching ? "good" : "warn"} />
             </div>
             <p className="mb-4 text-sm leading-6 text-[#315641]">
-              Create the coach role, public offering, and flexible scheduling clue. After this, Homer can create a session, enter a client-specific price, and generate a Stripe-hosted payment link when the details are right.
+              Confirm your coach profile, default offer, and scheduling preferences. After this, you can create Sessions and invite clients; pricing and Stripe links remain optional.
             </p>
             <form className="space-y-3" onSubmit={setupCoachProfile}>
               <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
@@ -2056,7 +2033,7 @@ export default function CoachingPage() {
                   type="text"
                   value={setupForm.coachName}
                   onChange={(event) => setSetupForm((current) => ({ ...current, coachName: event.target.value }))}
-                  placeholder="Homer"
+                  placeholder="Your name"
                   className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
                   required
                 />
@@ -2119,19 +2096,11 @@ export default function CoachingPage() {
             <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="flex items-center gap-2 text-xl font-black text-[#3d3122]"><CalendarIcon className="text-[#b98036]" /> Create appointment</h2>
-                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-[#b98036]">Homer-friendly setup for booking, payment, capture, and review</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-[#b98036]">Schedule, invite, capture, and follow through</p>
               </div>
-              <button
-                type="button"
-                onClick={applyReviewerPreset}
-                disabled={runway?.user?.isStaff !== true}
-                className="inline-flex items-center justify-center rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Reviewer preset
-              </button>
             </div>
             <p className="mb-4 text-sm text-[#7b5c3b]">
-              Hold a slot first, or create the full appointment. Paid sessions prepare an app-owned payment request; nobody is charged until Homer creates/sends the Stripe link and the client pays in Stripe Checkout.
+              Hold a slot first, or create the full appointment. Paid sessions prepare an app-owned payment request; nobody is charged until the coach creates and sends the Stripe link and the client pays in Stripe Checkout.
               {" "}It does not charge, invite, publish, or create an external calendar event.
             </p>
             <form className="space-y-3" onSubmit={createLocalSession}>
