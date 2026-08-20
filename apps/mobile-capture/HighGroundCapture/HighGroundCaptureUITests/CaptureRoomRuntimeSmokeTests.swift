@@ -1222,7 +1222,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             title: "Private phone note \(workSuffix)",
             privateNote: true
         )
-        XCTAssertTrue(app.staticTexts["Only you"].firstMatch.exists)
+        let privateBoundary = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "CaptureCoachingPrivateWorkLabel_"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            privateBoundary.waitForExistence(timeout: 8),
+            "The phone must expose the author-only boundary to sighted and assistive-technology users."
+        )
         attachRuntimeScreenshot(app, name: "Phone-first canonical client workspace")
 
         let back = app.navigationBars.buttons.firstMatch

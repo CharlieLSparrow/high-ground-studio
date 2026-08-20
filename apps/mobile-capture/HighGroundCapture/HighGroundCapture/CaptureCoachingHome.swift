@@ -1207,6 +1207,8 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                     Label("Only you", systemImage: "lock.fill")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.orange)
+                        .accessibilityLabel("Private note, only you can read it")
+                        .accessibilityIdentifier("CaptureCoachingPrivateWorkLabel_\(entry.id)")
                 }
             }
 
