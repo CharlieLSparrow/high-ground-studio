@@ -55,6 +55,17 @@ type Invitation = {
     providerAccessStatus: string;
     providerAccessErrorCode: string | null;
   } | null;
+  delivery?: InvitationDelivery | null;
+};
+
+type InvitationDelivery = {
+  id: string;
+  channel: string;
+  status: "PENDING" | "SENT" | "FAILED";
+  requestedAt: string;
+  completedAt: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
 };
 
 type InvitationPacket = {
@@ -64,6 +75,7 @@ type InvitationPacket = {
   invitations?: Invitation[];
   invitation?: Invitation;
   invitePath?: string;
+  delivery?: InvitationDelivery | null;
   participant?: NonNullable<Invitation["participant"]>;
   provider?: { status?: string; nextAction?: string };
   collaboration?: {
@@ -302,9 +314,12 @@ export function SessionInvitations({
     };
   }, [authorized, loadPresence, managerOpen]);
 
-  async function create(event: FormEvent) {
-    event.preventDefault();
-    if (!email.trim() || status === "creating") return;
+  async function createInvitation(
+    delivery: "EMAIL" | "LINK",
+    target?: Pick<Invitation, "email" | "displayName" | "role">,
+  ) {
+    const recipientEmail = target?.email || email;
+    if (!recipientEmail.trim() || status === "creating") return;
     setStatus("creating");
     setMessage("");
     setCopied(false);
@@ -314,10 +329,12 @@ export function SessionInvitations({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          email,
-          displayName,
-          role,
+          email: recipientEmail,
+          displayName: target?.displayName ?? displayName,
+          role: target?.role || role,
           expiresInHours: Number(expiresInHours),
+          delivery,
+          requestId: delivery === "EMAIL" ? crypto.randomUUID() : undefined,
         }),
       },
     );
@@ -328,7 +345,7 @@ export function SessionInvitations({
       !response.ok ||
       !packet.ok ||
       !packet.invitation ||
-      !packet.invitePath
+      (delivery === "LINK" && !packet.invitePath)
     ) {
       setMessage(packet.error || "The invitation link could not be created.");
       setStatus("idle");
@@ -338,12 +355,27 @@ export function SessionInvitations({
       packet.invitation as Invitation,
       ...current.filter((item) => item.id !== packet.invitation?.id),
     ]);
-    setInviteUrl(new URL(packet.invitePath, window.location.origin).toString());
+    if (packet.invitePath) {
+      setInviteUrl(
+        new URL(packet.invitePath, window.location.origin).toString(),
+      );
+    }
     setInviteUrlInvitationId(packet.invitation.id);
     await load();
-    setMessage(
-      "Session link created. Quipsly has not emailed or messaged anyone; copy or share it when you are ready.",
-    );
+    if (delivery === "EMAIL" && packet.delivery?.status === "SENT") {
+      setMessage(
+        `Invitation email sent to ${recipientEmail}. Quipsly recorded the delivery request; acceptance remains separate.`,
+      );
+    } else if (delivery === "EMAIL") {
+      setMessage(
+        packet.delivery?.errorMessage ||
+          "Invitation email was not sent. Copy or share the private link instead.",
+      );
+    } else {
+      setMessage(
+        "Session link created. Quipsly has not emailed or messaged anyone; copy or share it when you are ready.",
+      );
+    }
   }
 
   async function copy() {
@@ -492,7 +524,10 @@ export function SessionInvitations({
       <div className="mt-3 border-t border-[#eadfc9] px-2 pt-5">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.72fr)]">
           <form
-            onSubmit={create}
+            onSubmit={(event: FormEvent) => {
+              event.preventDefault();
+              void createInvitation("EMAIL");
+            }}
             className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4"
           >
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">
@@ -546,18 +581,29 @@ export function SessionInvitations({
                 </select>
               </label>
             </div>
-            <button
-              type="submit"
-              disabled={status === "creating" || !email.trim()}
-              className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              {status === "creating" ? (
-                <LoaderCircle size={15} className="animate-spin" />
-              ) : (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="submit"
+                disabled={status === "creating" || !email.trim()}
+                className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
+              >
+                {status === "creating" ? (
+                  <LoaderCircle size={15} className="animate-spin" />
+                ) : (
+                  <Send size={15} />
+                )}
+                Send email invitation
+              </button>
+              <button
+                type="button"
+                onClick={() => void createInvitation("LINK")}
+                disabled={status === "creating" || !email.trim()}
+                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-5 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
+              >
                 <Link2 size={15} />
-              )}
-              Create private link
-            </button>
+                Create private link
+              </button>
+            </div>
             <p className="mt-3 text-[11px] font-bold leading-5 text-violet-950">
               The recipient must sign in with this exact verified email. The
               link grants this Session—not the Nest—and never starts recording.
@@ -635,6 +681,36 @@ export function SessionInvitations({
                     <CalendarClock size={12} />
                     {invitationStatus(invitation)}
                   </p>
+                  {invitation.delivery ? (
+                    <p
+                      className={`mt-2 rounded-lg border px-2 py-1.5 text-[10px] font-bold leading-4 ${
+                        invitation.delivery.status === "SENT"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                          : invitation.delivery.status === "FAILED"
+                            ? "border-amber-200 bg-amber-50 text-amber-950"
+                            : "border-sky-200 bg-sky-50 text-sky-950"
+                      }`}
+                    >
+                      Email {invitation.delivery.status.toLowerCase()}
+                      {invitation.delivery.errorMessage
+                        ? ` · ${invitation.delivery.errorMessage}`
+                        : ` · ${new Date(invitation.delivery.requestedAt).toLocaleString()}`}
+                    </p>
+                  ) : null}
+                  {invitation.canRevokeLink &&
+                  invitation.delivery?.status !== "PENDING" ? (
+                    <button
+                      type="button"
+                      onClick={() => void createInvitation("EMAIL", invitation)}
+                      disabled={status === "creating"}
+                      className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 text-[10px] font-black text-violet-900 disabled:opacity-50"
+                    >
+                      <Send size={13} />
+                      {invitation.delivery?.status === "SENT"
+                        ? "Send fresh invitation"
+                        : "Send invitation email"}
+                    </button>
+                  ) : null}
                   {invitation.canRevokeLink ? (
                     <button
                       type="button"

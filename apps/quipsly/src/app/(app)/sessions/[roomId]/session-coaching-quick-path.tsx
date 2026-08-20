@@ -61,7 +61,10 @@ export function buildCoachingQuickPath(input: {
       detail: participantReady
         ? "Coach and client are both attached to this private Session."
         : "Invite your client, then confirm microphone, camera, and headphones.",
-      href: sessionWorkspaceHref(input.roomId, "live"),
+      href: sessionWorkspaceHref(
+        input.roomId,
+        participantReady ? "live" : "prepare",
+      ),
       action: participantReady ? "Open room" : "Invite client",
       state: stateAt(0),
       icon: UserRoundPlus,

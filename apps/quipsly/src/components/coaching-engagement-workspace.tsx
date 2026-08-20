@@ -262,7 +262,10 @@ export function CoachingEngagementWorkspace({
           </summary>
           <form
             ref={createForm}
-            action={(formData) => void createEntry(formData)}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createEntry(new FormData(event.currentTarget));
+            }}
             className="mt-4 grid gap-3"
           >
             <div className="grid gap-3 sm:grid-cols-2">

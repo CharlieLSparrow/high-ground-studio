@@ -9,6 +9,7 @@ import {
   Copy,
   ExternalLink,
   FileText,
+  Mail,
   Mic,
   RefreshCw,
   Receipt,
@@ -832,6 +833,9 @@ export default function CoachingPage() {
   const [linkCopyStatusByBooking, setLinkCopyStatusByBooking] = useState<
     Record<string, string>
   >({});
+  const [invitationBusyByBooking, setInvitationBusyByBooking] = useState<
+    Record<string, boolean>
+  >({});
   const [portalStatusByBooking, setPortalStatusByBooking] = useState<
     Record<string, string>
   >({});
@@ -1069,6 +1073,74 @@ export default function CoachingPage() {
         ...current,
         [input.bookingId]:
           "The system share sheet could not open. Copy the client entry instead.",
+      }));
+    }
+  }
+
+  async function sendClientSessionInvitation(input: {
+    bookingId: string;
+    callRoomId: string | null | undefined;
+    clientEmail: string | null | undefined;
+    clientName: string | null | undefined;
+  }) {
+    if (!input.callRoomId || !input.clientEmail) {
+      setLinkCopyStatusByBooking((current) => ({
+        ...current,
+        [input.bookingId]:
+          "This appointment needs both a private Session and a client email before Quipsly can send an invitation.",
+      }));
+      return;
+    }
+    setInvitationBusyByBooking((current) => ({
+      ...current,
+      [input.bookingId]: true,
+    }));
+    setLinkCopyStatusByBooking((current) => ({
+      ...current,
+      [input.bookingId]: `Sending a private invitation to ${input.clientEmail}...`,
+    }));
+    try {
+      const response = await fetch(
+        `/api/sessions/${encodeURIComponent(input.callRoomId)}/invitations`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: input.clientEmail,
+            displayName: input.clientName,
+            role: "CLIENT",
+            expiresInHours: 24 * 30,
+            delivery: "EMAIL",
+            requestId: crypto.randomUUID(),
+          }),
+        },
+      );
+      const packet = await response.json().catch(() => ({}));
+      if (!response.ok || !packet.ok) {
+        throw new Error(
+          packet.error || "The invitation could not be prepared.",
+        );
+      }
+      setLinkCopyStatusByBooking((current) => ({
+        ...current,
+        [input.bookingId]:
+          packet.delivery?.status === "SENT"
+            ? `Invitation email sent to ${input.clientEmail}. Acceptance will appear separately after the client signs in.`
+            : packet.delivery?.errorMessage ||
+              "The email was not sent. The private client entry is still available to copy or share.",
+      }));
+    } catch (cause) {
+      setLinkCopyStatusByBooking((current) => ({
+        ...current,
+        [input.bookingId]:
+          cause instanceof Error
+            ? cause.message
+            : "The invitation could not be sent. Copy or share the client entry instead.",
+      }));
+    } finally {
+      setInvitationBusyByBooking((current) => ({
+        ...current,
+        [input.bookingId]: false,
       }));
     }
   }
@@ -2522,12 +2594,39 @@ export default function CoachingPage() {
                               <button
                                 type="button"
                                 onClick={() =>
+                                  void sendClientSessionInvitation({
+                                    bookingId: booking.id,
+                                    callRoomId: booking.callRoomId,
+                                    clientEmail: booking.client?.email,
+                                    clientName: booking.client?.name,
+                                  })
+                                }
+                                disabled={
+                                  invitationBusyByBooking[booking.id] ||
+                                  !booking.callRoomId ||
+                                  !booking.client?.email
+                                }
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-800 px-3 py-2 text-xs font-black uppercase tracking-wide text-white transition hover:bg-violet-900 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {invitationBusyByBooking[booking.id] ? (
+                                  <RefreshCw
+                                    size={14}
+                                    className="animate-spin"
+                                  />
+                                ) : (
+                                  <Mail size={14} />
+                                )}
+                                Send invitation email
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
                                   void copyClientSessionLink(
                                     booking.id,
                                     booking.clientEntryPath,
                                   )
                                 }
-                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-[#fffaf1] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-white"
+                                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-[#fffaf1] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-white"
                               >
                                 <Copy size={14} /> Copy client entry
                               </button>
@@ -3064,7 +3163,9 @@ export default function CoachingPage() {
                   <Users className="text-emerald-700" /> Coach profile
                 </h2>
                 <p className="mt-1 text-xs font-bold uppercase tracking-wide text-emerald-700">
-                  {canManageCoaching ? "Ready · open to edit defaults" : "Finish your coach workspace once"}
+                  {canManageCoaching
+                    ? "Ready · open to edit defaults"
+                    : "Finish your coach workspace once"}
                 </p>
               </div>
               <StatusPill
@@ -3078,7 +3179,8 @@ export default function CoachingPage() {
             </p>
             <form className="space-y-3" onSubmit={setupCoachProfile}>
               <p className="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 text-xs font-bold text-[#315641]">
-                Coach account: {setupForm.coachEmail || "your signed-in Quipsly email"}
+                Coach account:{" "}
+                {setupForm.coachEmail || "your signed-in Quipsly email"}
               </p>
               <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
                 Coach name
@@ -3124,7 +3226,12 @@ export default function CoachingPage() {
                   min="15"
                   step="15"
                   value={setupForm.defaultDurationMinutes}
-                  onChange={(event) => setSetupForm((current) => ({ ...current, defaultDurationMinutes: event.target.value }))}
+                  onChange={(event) =>
+                    setSetupForm((current) => ({
+                      ...current,
+                      defaultDurationMinutes: event.target.value,
+                    }))
+                  }
                   className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
                 />
               </label>
@@ -3138,7 +3245,12 @@ export default function CoachingPage() {
                     <input
                       type="text"
                       value={setupForm.offeringTitle}
-                      onChange={(event) => setSetupForm((current) => ({ ...current, offeringTitle: event.target.value }))}
+                      onChange={(event) =>
+                        setSetupForm((current) => ({
+                          ...current,
+                          offeringTitle: event.target.value,
+                        }))
+                      }
                       className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
                       required
                     />
@@ -3147,7 +3259,12 @@ export default function CoachingPage() {
                     Offer description
                     <textarea
                       value={setupForm.offeringDescription}
-                      onChange={(event) => setSetupForm((current) => ({ ...current, offeringDescription: event.target.value }))}
+                      onChange={(event) =>
+                        setSetupForm((current) => ({
+                          ...current,
+                          offeringDescription: event.target.value,
+                        }))
+                      }
                       rows={3}
                       className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
                     />
@@ -3159,7 +3276,12 @@ export default function CoachingPage() {
                       min="0"
                       step="1"
                       value={setupForm.defaultAmountDollars}
-                      onChange={(event) => setSetupForm((current) => ({ ...current, defaultAmountDollars: event.target.value }))}
+                      onChange={(event) =>
+                        setSetupForm((current) => ({
+                          ...current,
+                          defaultAmountDollars: event.target.value,
+                        }))
+                      }
                       className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
                     />
                     <span className="mt-1 block text-[11px] normal-case tracking-normal text-[#315641]">
@@ -3191,7 +3313,10 @@ export default function CoachingPage() {
           >
             <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 id="create-appointment-heading" className="flex items-center gap-2 text-xl font-black text-[#3d3122]">
+                <h2
+                  id="create-appointment-heading"
+                  className="flex items-center gap-2 text-xl font-black text-[#3d3122]"
+                >
                   <CalendarIcon className="text-[#b98036]" /> Create appointment
                 </h2>
                 <p className="mt-1 text-xs font-bold uppercase tracking-wide text-[#b98036]">
@@ -3285,7 +3410,9 @@ export default function CoachingPage() {
                 </label>
               </div>
               <p className="rounded-xl bg-[#f8f3e6] px-3 py-2 text-xs font-bold text-[#7b5c3b]">
-                The time above uses {createForm.timezone || "your detected timezone"}. Both people will see the timezone with the appointment.
+                The time above uses{" "}
+                {createForm.timezone || "your detected timezone"}. Both people
+                will see the timezone with the appointment.
               </p>
               <details className="rounded-xl border border-[#d6c5a5] bg-white p-3">
                 <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
@@ -3296,11 +3423,20 @@ export default function CoachingPage() {
                     Appointment type
                     <select
                       value={createForm.runwayAction}
-                      onChange={(event) => setCreateForm((current) => ({ ...current, runwayAction: event.target.value }))}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          runwayAction: event.target.value,
+                        }))
+                      }
                       className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                     >
-                      <option value="create-booking-room">Schedule and create the private Session</option>
-                      <option value="create-booking-hold">Hold the time without inviting yet</option>
+                      <option value="create-booking-room">
+                        Schedule and create the private Session
+                      </option>
+                      <option value="create-booking-hold">
+                        Hold the time without inviting yet
+                      </option>
                     </select>
                   </label>
                   <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
@@ -3308,7 +3444,12 @@ export default function CoachingPage() {
                     <input
                       type="text"
                       value={createForm.timezone}
-                      onChange={(event) => setCreateForm((current) => ({ ...current, timezone: event.target.value }))}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          timezone: event.target.value,
+                        }))
+                      }
                       placeholder="America/Denver"
                       className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                       required
@@ -3318,12 +3459,19 @@ export default function CoachingPage() {
                     Purpose
                     <select
                       value={createForm.purpose}
-                      onChange={(event) => setCreateForm((current) => ({ ...current, purpose: event.target.value }))}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          purpose: event.target.value,
+                        }))
+                      }
                       className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                     >
                       <option value="COACHING">Coaching</option>
                       <option value="PODCAST">Podcast</option>
-                      <option value="RESEARCH_INTERVIEW">Research interview</option>
+                      <option value="RESEARCH_INTERVIEW">
+                        Research interview
+                      </option>
                       <option value="INTERNAL_MEETING">Internal meeting</option>
                     </select>
                   </label>
@@ -3332,13 +3480,22 @@ export default function CoachingPage() {
                       Payment
                       <select
                         value={createForm.paymentPolicy}
-                        onChange={(event) => setCreateForm((current) => ({ ...current, paymentPolicy: event.target.value }))}
+                        onChange={(event) =>
+                          setCreateForm((current) => ({
+                            ...current,
+                            paymentPolicy: event.target.value,
+                          }))
+                        }
                         className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                       >
                         <option value="MANUAL">Decide payment later</option>
                         <option value="FREE">Free session</option>
-                        <option value="DONATION_SUPPORTED">Contribution supported</option>
-                        <option value="PAID_ONE_TO_ONE">Paid 1:1 coaching</option>
+                        <option value="DONATION_SUPPORTED">
+                          Contribution supported
+                        </option>
+                        <option value="PAID_ONE_TO_ONE">
+                          Paid 1:1 coaching
+                        </option>
                       </select>
                     </label>
                     <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
@@ -3348,14 +3505,21 @@ export default function CoachingPage() {
                         min="0"
                         step="1"
                         value={createForm.amountDollars}
-                        onChange={(event) => setCreateForm((current) => ({ ...current, amountDollars: event.target.value }))}
+                        onChange={(event) =>
+                          setCreateForm((current) => ({
+                            ...current,
+                            amountDollars: event.target.value,
+                          }))
+                        }
                         placeholder="Example: 150"
                         className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                       />
                     </label>
                   </div>
                   <p className="text-[11px] font-semibold leading-5 text-[#7b5c3b]">
-                    Quipsly never charges, emails, or writes an external calendar event just because you create the appointment. Those remain separate, explicit actions.
+                    Quipsly never charges, emails, or writes an external
+                    calendar event just because you create the appointment.
+                    Those remain separate, explicit actions.
                   </p>
                 </div>
               </details>
@@ -3412,6 +3576,28 @@ export default function CoachingPage() {
                     verified Quipsly email before anything opens.
                   </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void sendClientSessionInvitation({
+                          bookingId: createdHandoff.bookingId,
+                          callRoomId: createdHandoff.callRoomId,
+                          clientEmail: createdHandoff.clientEmail,
+                          clientName: createdHandoff.clientName,
+                        })
+                      }
+                      disabled={
+                        invitationBusyByBooking[createdHandoff.bookingId]
+                      }
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
+                    >
+                      {invitationBusyByBooking[createdHandoff.bookingId] ? (
+                        <RefreshCw size={14} className="animate-spin" />
+                      ) : (
+                        <Mail size={14} />
+                      )}
+                      Send invitation email
+                    </button>
                     <button
                       type="button"
                       onClick={() =>

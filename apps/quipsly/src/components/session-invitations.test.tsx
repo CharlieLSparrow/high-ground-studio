@@ -113,6 +113,88 @@ describe("SessionInvitations", () => {
     );
   });
 
+  it("uses explicit email delivery as the primary action and reports provider truth", async () => {
+    const randomUUID = jest
+      .spyOn(crypto, "randomUUID")
+      .mockReturnValue("123e4567-e89b-42d3-a456-426614174000");
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, invitations: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          ok: true,
+          invitation: {
+            id: "invite-email",
+            email: "client@example.test",
+            displayName: "Client",
+            role: "CLIENT",
+            status: "PENDING",
+            expiresAt: "2026-09-19T12:00:00.000Z",
+            acceptedAt: null,
+            createdAt: "2026-08-19T12:00:00.000Z",
+            canRevokeLink: true,
+          },
+          invitePath:
+            "/sessions/join?token=qsinv_test-token________________________________",
+          delivery: {
+            id: "delivery-1",
+            channel: "EMAIL",
+            status: "SENT",
+            requestedAt: "2026-08-19T12:00:00.000Z",
+            completedAt: "2026-08-19T12:00:01.000Z",
+            errorCode: null,
+            errorMessage: null,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, invitations: [] }),
+      }) as typeof fetch;
+
+    await act(async () => {
+      render(<SessionInvitations roomId="room-email" purpose="COACHING" />);
+    });
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: "client@example.test" },
+    });
+    fireEvent.change(screen.getByLabelText("Name, optional"), {
+      target: { value: "Client" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Send email invitation" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Invitation email sent to client@example.test/i),
+      ).toBeInTheDocument(),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/sessions/room-email/invitations",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          email: "client@example.test",
+          displayName: "Client",
+          role: "CLIENT",
+          expiresInHours: 168,
+          delivery: "EMAIL",
+          requestId: "123e4567-e89b-42d3-a456-426614174000",
+        }),
+      }),
+    );
+    randomUUID.mockRestore();
+  });
+
   it("stays absent for an actor without invitation authority", async () => {
     globalThis.fetch = jest.fn().mockResolvedValue({
       ok: false,

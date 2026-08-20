@@ -7,6 +7,7 @@ import type { SessionReviewCandidate, SessionReviewGoalCandidate, SessionReviewN
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 
 jest.mock("./transcript-correction-desk", () => ({ TranscriptCorrectionDesk: () => <div>Exact transcript desk</div> }));
+jest.mock("@/components/session-invitations", () => ({ SessionInvitations: () => <div>Session invitation manager</div> }));
 const mockRouterRefresh = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRouterRefresh }) }));
 
@@ -423,11 +424,7 @@ describe("Session review goal candidates", () => {
     } as const;
     expect(screen.getByRole("link", { name: coachingLabels[mode] })).toHaveAttribute("aria-current", "page");
     if (mode === "outputs") {
-      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/sessions/room-1/client-follow-up",
-        { cache: "no-store" },
-      );
+      await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/sessions/room-1/client-follow-up")).toHaveLength(1));
       expect(
         await screen.findByRole("heading", { name: "Client follow-up unavailable" }),
       ).toBeInTheDocument();

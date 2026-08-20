@@ -16,6 +16,21 @@ const emptyFinishing = {
 };
 
 describe("SessionCoachingQuickPath", () => {
+  it("routes a not-yet-invited coach to preparation instead of opening the call dock", () => {
+    const steps = buildCoachingQuickPath({
+      roomId: "room-1",
+      preparation: { participants: [{ id: "coach" }] } as any,
+      contentReadiness: { status: "none" },
+      finishingEvidence: emptyFinishing,
+    });
+
+    expect(steps[0]).toMatchObject({
+      action: "Invite client",
+      state: "NEXT",
+      href: "/sessions/room-1?mode=prepare",
+    });
+  });
+
   it("makes recording the next action after both people are attached", () => {
     const steps = buildCoachingQuickPath({
       roomId: "room-1",

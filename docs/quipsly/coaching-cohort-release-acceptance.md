@@ -113,6 +113,47 @@ A green build or seeded script is not enough. The release note must name:
 The retained regression lane should continue to run. It complements this gate;
 it never replaces it.
 
+## Invitation delivery checkpoint — 2026-08-19
+
+The ordinary Session and Coaching interfaces now treat delivery as a product
+operation instead of an instruction the coach must remember:
+
+- creating an appointment remains separate from contacting the client;
+- **Send invitation email** is the primary handoff action after creation and on
+  every upcoming coaching card;
+- copy and system share remain visible recovery paths;
+- the existing one-time, expiring, exact-email, Session-only token remains the
+  authority boundary;
+- every email attempt begins with a durable delivery receipt and completes as
+  `SENT` or `FAILED`; acceptance remains a separate state;
+- provider requests use an idempotency key, and a client request ID prevents a
+  network retry from creating another email operation;
+- provider rate limiting becomes a visible retry/fallback state and never
+  pretends the client received mail.
+
+Unit and route tests may stub the delivery provider. That is regression-lane
+evidence only. The fresh-user lane must use two real inboxes, open the delivered
+message, and record delivery, wrong-account, acceptance, resend, expiry, and
+revocation results. A copied local link is useful while developing, but it is
+not mailbox-delivery proof.
+
+The retained invitation operation passed again after its navigation was changed
+to match the product order: prepare and invite first, then enter the live call.
+That run proved wrong-account denial, one-time acceptance, two-browser provider
+presence, Session chat, access removal/provider reconciliation, restoration,
+and append-only history. It still reports `externalInvitationSent: false`.
+
+A subsequent fully fresh browser flight (`8c89bcf4`) passed signup, coach setup,
+appointment creation, two-endpoint call, two independently verified retained
+sources with 4.275 seconds of overlap, participant-attributed transcript and
+protected playback, shared/private relationship work, cross-account task
+completion, light edit, explicit client release/playback, and revocation. The
+first attempt found a real form failure: the relationship-work form used a
+React form action wrapper that could fall through to same-page navigation
+without persisting the note. The form now prevents native submission explicitly
+and the complete fresh flight passed from scratch. This remains automation, not
+novice-human or real-mailbox proof.
+
 ## Implementation checkpoint — 2026-08-19
 
 - Ordinary Coaching and Session surfaces no longer name retained people,
@@ -599,13 +640,13 @@ human flight; it never marks this section complete.
 Every result must name exactly one lane. A passing lower lane never promotes
 itself into a higher claim.
 
-| Lane | Starts from | Proves | Explicitly does not prove |
-| --- | --- | --- | --- |
-| Retained regression | Reserved fixture identities and durable fixture rooms | Known mechanics have not regressed | Discoverability, onboarding, or fresh-account integrity |
-| Fresh UI automation | New `.dev.test` accounts created through rendered public pages | The ordinary product can create and continue a new coaching relationship without copied IDs or database repair | Real inbox delivery, natural speech, physical devices, or human understanding |
-| Fresh audible automation | Fresh UI automation plus two isolated, role-specific audible sources | Each participant owns a distinct recording; Whisper recovers role-specific speech; protected playback and downstream share mechanics operate | Natural speech quality or a human playback-review receipt |
-| Minimally instructed human flight | Real inboxes, ordinary navigation, real devices, and one sentence | A coach and client can understand and complete the end-to-end job without guidance | Fifty-person concurrency or organization-wide support readiness |
-| Cohort operation | Instrumented 2, then 10, then 50-coach release | Recovery, support, privacy, and capacity remain healthy under real use | That future product changes remain safe without rerunning the ladder |
+| Lane                              | Starts from                                                          | Proves                                                                                                                                       | Explicitly does not prove                                                     |
+| --------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Retained regression               | Reserved fixture identities and durable fixture rooms                | Known mechanics have not regressed                                                                                                           | Discoverability, onboarding, or fresh-account integrity                       |
+| Fresh UI automation               | New `.dev.test` accounts created through rendered public pages       | The ordinary product can create and continue a new coaching relationship without copied IDs or database repair                               | Real inbox delivery, natural speech, physical devices, or human understanding |
+| Fresh audible automation          | Fresh UI automation plus two isolated, role-specific audible sources | Each participant owns a distinct recording; Whisper recovers role-specific speech; protected playback and downstream share mechanics operate | Natural speech quality or a human playback-review receipt                     |
+| Minimally instructed human flight | Real inboxes, ordinary navigation, real devices, and one sentence    | A coach and client can understand and complete the end-to-end job without guidance                                                           | Fifty-person concurrency or organization-wide support readiness               |
+| Cohort operation                  | Instrumented 2, then 10, then 50-coach release                       | Recovery, support, privacy, and capacity remain healthy under real use                                                                       | That future product changes remain safe without rerunning the ladder          |
 
 The 2 → 10 → 50 progression is an operational safety valve, not a committee.
 Advancement is automatic when the prior group has no unresolved data-loss,

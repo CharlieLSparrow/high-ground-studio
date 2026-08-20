@@ -345,6 +345,12 @@ enum CallRoomInvitationStatus {
   EXPIRED
 }
 
+enum CallRoomInvitationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 enum RecordingConsentStatus {
   REQUESTED
   GRANTED
@@ -833,6 +839,7 @@ model User {
   callParticipantAccessReceipts     CallParticipantAccessReceipt[]              @relation("CallParticipantAccessReceiptActor")
   callRoomInvitationsCreated        CallRoomInvitation[]                        @relation("CallRoomInvitationCreatedBy")
   callRoomInvitationsAccepted       CallRoomInvitation[]                        @relation("CallRoomInvitationAcceptedBy")
+  callRoomInvitationDeliveries      CallRoomInvitationDeliveryReceipt[]         @relation("CallRoomInvitationDeliveryRequestedBy")
   callExpectedSourcesCreated        CallExpectedSource[]                        @relation("CallExpectedSourceCreatedBy")
   callExpectedSourceRevisions       CallExpectedSourceRevision[]                @relation("CallExpectedSourceRevisionActor")
   recordingConsents                 RecordingConsent[]                          @relation("RecordingConsentUser")
@@ -2374,15 +2381,41 @@ model CallRoomInvitation {
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 
-  room        CallRoom         @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  createdBy   User?            @relation("CallRoomInvitationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  acceptedBy  User?            @relation("CallRoomInvitationAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
-  participant CallParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  room        CallRoom                            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdBy   User?                               @relation("CallRoomInvitationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  acceptedBy  User?                               @relation("CallRoomInvitationAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+  participant CallParticipant?                    @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  deliveries  CallRoomInvitationDeliveryReceipt[]
 
   @@unique([roomId, email])
   @@index([roomId, status, expiresAt])
   @@index([email, status, expiresAt])
   @@index([participantId])
+}
+
+model CallRoomInvitationDeliveryReceipt {
+  id                String                           @id @default(cuid())
+  invitationId      String
+  requestId         String                           @unique
+  channel           String                           @default("EMAIL")
+  status            CallRoomInvitationDeliveryStatus @default(PENDING)
+  recipientEmail    String
+  provider          String                           @default("resend")
+  providerMessageId String?
+  errorCode         String?
+  errorMessage      String?
+  requestedByUserId String?
+  requestedAt       DateTime                         @default(now())
+  completedAt       DateTime?
+  createdAt         DateTime                         @default(now())
+  updatedAt         DateTime                         @updatedAt
+
+  invitation  CallRoomInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  requestedBy User?              @relation("CallRoomInvitationDeliveryRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([invitationId, createdAt])
+  @@index([recipientEmail, status, createdAt])
+  @@index([status, requestedAt])
 }
 
 model RecordingConsent {

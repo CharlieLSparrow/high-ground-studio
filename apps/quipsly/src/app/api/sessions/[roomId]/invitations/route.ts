@@ -9,6 +9,10 @@ import {
   sessionInvitationExpiry,
   sessionInvitationRole,
 } from "@/lib/server/session-invitation";
+import {
+  sendSessionInvitationEmail,
+  sessionInvitationJoinUrl,
+} from "@/lib/server/session-invitation-email";
 import { normalizeEmail } from "@/lib/server/studio-user-identity";
 
 export const runtime = "nodejs";
@@ -80,6 +84,29 @@ function invitationRow(row: any) {
       row.participantCreated === true &&
       participant?.accessStatus === "REMOVED" &&
       ["BLOCKED", "FAILED"].includes(participant.providerAccessStatus),
+    delivery: row.deliveries?.[0]
+      ? {
+          id: row.deliveries[0].id,
+          channel: row.deliveries[0].channel,
+          status: String(row.deliveries[0].status),
+          requestedAt: row.deliveries[0].requestedAt.toISOString(),
+          completedAt: row.deliveries[0].completedAt?.toISOString() ?? null,
+          errorCode: row.deliveries[0].errorCode || null,
+          errorMessage: row.deliveries[0].errorMessage || null,
+        }
+      : null,
+  };
+}
+
+function deliveryRow(row: any) {
+  return {
+    id: row.id,
+    channel: row.channel,
+    status: String(row.status),
+    requestedAt: row.requestedAt.toISOString(),
+    completedAt: row.completedAt?.toISOString() ?? null,
+    errorCode: row.errorCode || null,
+    errorMessage: row.errorMessage || null,
   };
 }
 
@@ -99,7 +126,14 @@ async function authorizedRoom(request: Request, roomId: string) {
   const prisma = getPrismaClient();
   const room = await prisma.callRoom.findFirst({
     where: sessionInvitationAccessWhere(roomId, session.user),
-    select: { id: true, title: true, purpose: true, status: true },
+    select: {
+      id: true,
+      title: true,
+      purpose: true,
+      status: true,
+      scheduledStart: true,
+      createdByUser: { select: { name: true } },
+    },
   });
   if (!room)
     return {
@@ -139,6 +173,7 @@ export async function GET(
         },
         createdBy: { select: { name: true, primaryEmail: true } },
         acceptedBy: { select: { name: true, primaryEmail: true } },
+        deliveries: { orderBy: { createdAt: "desc" }, take: 1 },
       },
     }),
     access.prisma.callParticipantAccessReceipt.findMany({
@@ -191,7 +226,7 @@ export async function GET(
       emailBound: true,
       expiring: true,
       linkReturnedOnlyWhenCreated: true,
-      emailSent: false,
+      emailDeliveryRecorded: true,
     },
   });
 }
@@ -217,6 +252,9 @@ export async function POST(
   const email = normalizeEmail(text(input.email));
   const displayName = text(input.displayName, 160) || null;
   const role = sessionInvitationRole(input.role, access.room.purpose);
+  const delivery =
+    text(input.delivery, 32).toUpperCase() === "EMAIL" ? "EMAIL" : "LINK";
+  const requestId = text(input.requestId, 120);
   if (!email || !email.includes("@")) {
     return privateJson(
       {
@@ -227,29 +265,65 @@ export async function POST(
       400,
     );
   }
+  if (
+    delivery === "EMAIL" &&
+    !/^[0-9a-f]{8}-[0-9a-f-]{27,36}$/i.test(requestId)
+  ) {
+    return privateJson(
+      {
+        ok: false,
+        code: "DELIVERY_REQUEST_ID_REQUIRED",
+        error:
+          "Create a fresh delivery request before sending this invitation.",
+      },
+      400,
+    );
+  }
+  if (delivery === "EMAIL") {
+    const existingDelivery =
+      await access.prisma.callRoomInvitationDeliveryReceipt.findFirst({
+        where: { requestId, invitation: { roomId: access.room.id } },
+        include: {
+          invitation: {
+            include: {
+              deliveries: { orderBy: { createdAt: "desc" }, take: 1 },
+            },
+          },
+        },
+      });
+    if (existingDelivery) {
+      return privateJson({
+        ok: true,
+        invitation: invitationRow(existingDelivery.invitation),
+        invitePath: null,
+        delivery: deliveryRow(existingDelivery),
+        boundaries: {
+          sessionScoped: true,
+          grantsNestAccess: false,
+          emailBound: true,
+          oneTimeToken: true,
+          emailSent: existingDelivery.status === "SENT",
+          idempotentReplay: true,
+          recordingStarted: false,
+          providerJoined: false,
+        },
+      });
+    }
+  }
   const currentParticipant = await access.prisma.callParticipant.findFirst({
     where: { roomId: access.room.id, email, userId: { not: null } },
     select: { id: true, accessStatus: true },
   });
-  if (currentParticipant) {
-    return currentParticipant.accessStatus === "REMOVED"
-      ? privateJson(
-          {
-            ok: false,
-            code: "PARTICIPANT_ACCESS_REMOVED",
-            error:
-              "That participant was removed from this Session. Restore the existing access record instead of creating another identity.",
-          },
-          409,
-        )
-      : privateJson(
-          {
-            ok: false,
-            code: "ALREADY_PARTICIPANT",
-            error: "That email is already connected to this Session.",
-          },
-          409,
-        );
+  if (currentParticipant?.accessStatus === "REMOVED") {
+    return privateJson(
+      {
+        ok: false,
+        code: "PARTICIPANT_ACCESS_REMOVED",
+        error:
+          "That participant was removed from this Session. Restore the existing access record instead of creating another identity.",
+      },
+      409,
+    );
   }
 
   const { token, tokenHash } = createSessionInvitationToken();
@@ -266,8 +340,8 @@ export async function POST(
       createdByUserId: access.actor.id,
       metadataJson: {
         source: "nest-session-live-room",
-        delivery: "copy-or-system-share",
-        externalMessageSent: false,
+        delivery,
+        deliveryReceiptIsCanonical: true,
         grantsNestAccess: false,
       },
     },
@@ -285,26 +359,72 @@ export async function POST(
       createdByUserId: access.actor.id,
       metadataJson: {
         source: "nest-session-live-room",
-        delivery: "copy-or-system-share",
-        externalMessageSent: false,
+        delivery,
+        deliveryReceiptIsCanonical: true,
         grantsNestAccess: false,
         regenerated: true,
       },
     },
   });
   const invitePath = `/sessions/join?token=${encodeURIComponent(token)}`;
+  let deliveryReceipt: any = null;
+  if (delivery === "EMAIL") {
+    deliveryReceipt =
+      await access.prisma.callRoomInvitationDeliveryReceipt.create({
+        data: {
+          invitationId: invitation.id,
+          requestId,
+          channel: "EMAIL",
+          status: "PENDING",
+          recipientEmail: email,
+          provider: "resend",
+          requestedByUserId: access.actor.id,
+        },
+      });
+    const deliveryResult = await sendSessionInvitationEmail({
+      recipientEmail: email,
+      recipientName: displayName,
+      hostName: access.room.createdByUser?.name || access.actor.name,
+      roomTitle: access.room.title || "Quipsly Session",
+      scheduledStart: access.room.scheduledStart,
+      joinUrl: sessionInvitationJoinUrl({
+        requestUrl: request.url,
+        invitePath,
+      }),
+      idempotencyKey: `session-invitation/${deliveryReceipt.id}`,
+    });
+    deliveryReceipt =
+      await access.prisma.callRoomInvitationDeliveryReceipt.update({
+        where: { id: deliveryReceipt.id },
+        data: deliveryResult.ok
+          ? {
+              status: "SENT",
+              providerMessageId: deliveryResult.providerMessageId,
+              completedAt: new Date(),
+              errorCode: null,
+              errorMessage: null,
+            }
+          : {
+              status: "FAILED",
+              completedAt: new Date(),
+              errorCode: deliveryResult.code,
+              errorMessage: deliveryResult.message,
+            },
+      });
+  }
   return privateJson(
     {
       ok: true,
       invitation: invitationRow(invitation),
       invitePath,
+      delivery: deliveryReceipt ? deliveryRow(deliveryReceipt) : null,
       boundaries: {
         sessionScoped: true,
         grantsNestAccess: false,
         emailBound: true,
         expiresAt: expiresAt.toISOString(),
         oneTimeToken: true,
-        emailSent: false,
+        emailSent: deliveryReceipt?.status === "SENT",
         recordingStarted: false,
         providerJoined: false,
       },

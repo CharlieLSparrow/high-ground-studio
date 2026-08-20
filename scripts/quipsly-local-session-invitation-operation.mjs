@@ -200,7 +200,7 @@ try {
     baseURL,
     identity: host,
     password: hostPassword,
-    callbackPath: `/sessions/${ROOM_ID}?mode=live`,
+    callbackPath: `/sessions/${ROOM_ID}?mode=prepare`,
   });
   journeys.push({ identity: host, context: hostContext, page: hostPage });
 
@@ -215,15 +215,44 @@ try {
     .locator("form")
     .filter({ hasText: "Expiring, email-bound invitation" });
   await invitationForm.locator("select").first().selectOption("CLIENT");
-  const createdResponse = hostPage.waitForResponse(
-    (response) =>
-      response.url().includes(`/api/sessions/${ROOM_ID}/invitations`) &&
-      response.request().method() === "POST",
-  );
+  const invitationRequests = [];
+  hostPage.on("request", (request) => {
+    if (request.url().includes(`/api/sessions/${ROOM_ID}/invitations`)) {
+      invitationRequests.push({ method: request.method(), url: request.url() });
+    }
+  });
+  const createdResponse = hostPage
+    .waitForResponse(
+      (response) =>
+        response.url().includes(`/api/sessions/${ROOM_ID}/invitations`) &&
+        response.request().method() === "POST",
+    )
+    .then((response) => ({ response, error: null }))
+    .catch((error) => ({ response: null, error }));
   await hostPage
     .getByRole("button", { name: "Create private link", exact: true })
     .click();
-  const invitationPacket = await (await createdResponse).json();
+  let invitationResponse;
+  try {
+    const result = await createdResponse;
+    if (result.error || !result.response) throw result.error;
+    invitationResponse = result.response;
+  } catch (error) {
+    const button = hostPage.getByRole("button", {
+      name: "Create private link",
+      exact: true,
+    });
+    const deliveryStatus = await hostPage
+      .getByText("Delivery and status", { exact: true })
+      .locator("..")
+      .innerText()
+      .catch(() => "unavailable");
+    throw new Error(
+      `Rendered invitation did not issue its POST. Requests: ${JSON.stringify(invitationRequests)}. Button disabled: ${await button.isDisabled().catch(() => "unknown")}. Delivery surface: ${deliveryStatus.slice(0, 600)}`,
+      { cause: error },
+    );
+  }
+  const invitationPacket = await invitationResponse.json();
   assert(
     invitationPacket?.ok === true && invitationPacket?.invitePath,
     "Rendered host invitation did not return a private link.",
@@ -321,6 +350,10 @@ try {
   );
   await replayPage.close();
 
+  await hostPage.goto(`${baseURL}/sessions/${ROOM_ID}?mode=live`, {
+    waitUntil: "domcontentloaded",
+  });
+
   for (const journey of journeys) {
     const allowMicrophone = journey.page.getByRole("button", {
       name: "Allow microphone",
@@ -359,7 +392,7 @@ try {
     .getByPlaceholder("Write to everyone in this Session…")
     .fill(receiptText);
   await guestPage
-    .getByRole("button", { name: "Send Session message", exact: true })
+    .getByRole("button", { name: "Send collaboration message", exact: true })
     .click();
   await hostPage
     .getByText(receiptText, { exact: true })
@@ -389,7 +422,7 @@ try {
       response.url().includes(`/api/sessions/${ROOM_ID}/invitations`) &&
       response.request().method() === "GET",
   );
-  await hostManagerPage.goto(`${baseURL}/sessions/${ROOM_ID}?mode=live`, {
+  await hostManagerPage.goto(`${baseURL}/sessions/${ROOM_ID}?mode=prepare`, {
     waitUntil: "domcontentloaded",
   });
   await hostManagerPage
@@ -665,7 +698,7 @@ try {
     "Append-only restoration receipt is missing.",
   );
 
-  const collaborationReadback = await hostManagerPage.evaluate(
+  const collaborationReadback = await hostPage.evaluate(
     async ({ callRoomId }) => {
       const response = await fetch(
         `/api/sessions/${encodeURIComponent(callRoomId)}/invitations`,

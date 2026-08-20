@@ -7,6 +7,7 @@
 - Google OAuth credentials for NextAuth
 
 Repo uses:
+
 - pnpm workspaces
 - Prisma 7
 - Next.js App Router
@@ -89,12 +90,16 @@ Derived from source usage:
 - `HGO_EMAIL_FROM`
 - `RESEND_WEBHOOK_SECRET`
 - `HGO_SITE_URL`
+- `QUIPSLY_SESSION_INVITATION_RESEND_API_KEY`
+- `QUIPSLY_SESSION_INVITATION_EMAIL_FROM`
+- `QUIPSLY_SITE_URL`
 - `ENABLE_EPISODES_FUMADOCS`
 - `QUIPSLY_LOCAL_MEDIA_UPLOADS`
 - `QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT`
 - `QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT`
 
 Notes:
+
 - use the checked-in `.env.example` as the starting point
 - current code prefers `AUTH_SECRET`
 - `NEXTAUTH_SECRET` is a legacy fallback and is only read when `AUTH_SECRET` is unset
@@ -107,6 +112,12 @@ Notes:
   manual coaching tool catalog and client-specific tool access. These grants
   are independent of subscription tiers.
 - `RESEND_API_KEY`, `HGO_EMAIL_FROM`, and `HGO_SITE_URL` enable best-effort internal coaching request email notifications
+- Quipsly Session invitation delivery prefers
+  `QUIPSLY_SESSION_INVITATION_RESEND_API_KEY` and
+  `QUIPSLY_SESSION_INVITATION_EMAIL_FROM`, then falls back to the generic
+  Resend settings. `QUIPSLY_SITE_URL` is the trusted public origin placed in
+  invitation mail. Local acceptance may continue with the rendered copy/share
+  fallback; it must not report that as real mailbox delivery.
 - WorldHub provider env vars are optional readiness inputs for the internal
   `/team/worldhub` command center. The app stores only env names and provider
   connection status, not secret values.
@@ -123,6 +134,7 @@ Notes:
 ```bash
 pnpm quipsly:local:google-calendar-push-dogfood
 ```
+
 - `/team/growth` uses the `WorldHubSeoBrief`, `WorldHubAnalyticsSnapshot`,
   `WorldHubMonetizationPlacement`, and `WorldHubMonetizationResearchNote`
   tables for app-owned SEO briefs, manual analytics snapshots, ad slots,
@@ -267,11 +279,13 @@ pnpm --filter web exec next build --webpack
 ```
 
 Current state:
+
 - both commands pass in the current repo state
 - use the default build first for normal verification
 - use the webpack build as a second confirmation path when investigating build-tool-specific behavior
 
 Historical note:
+
 - earlier session notes captured a temporary Turbopack/PostCSS worker failure during the episodes-loader stabilization pass
 - keep those notes as historical context, not as the current default assumption
 
@@ -290,18 +304,21 @@ node scripts/verify-published-discovery.mjs
 ```
 
 What it checks:
+
 - canonical published episode pages in `apps/web/content/publish`
 - canonical published reading pages in `apps/web/content/publish/book`
 - discovery hrefs in `apps/web/src/lib/site.ts`
 - discovery hrefs in `apps/web/src/lib/reading.ts`
 
 What it reports:
+
 - published pages missing discovery entries
 - discovery hrefs missing published pages
 - pairingId mismatches
 - additional published files that are outside the current canonical comparison set
 
 Use it when changing:
+
 - `content/publish`
 - `src/lib/site.ts`
 - `src/lib/reading.ts`
@@ -318,16 +335,19 @@ Use it when changing:
 ## Common First Checks
 
 If auth is broken:
+
 - verify Google OAuth env vars
 - verify `AUTH_SECRET` / `NEXTAUTH_SECRET`
 - for live-MVP style Studio auth, verify `STUDIO_AUTH_MODE=allowlist` and
   `STUDIO_ALLOWED_EMAILS`
 
 If Prisma is broken:
+
 - verify `DATABASE_URL`
 - run `pnpm db:generate`
 
 If episodes/content behaves oddly:
+
 - check whether `ENABLE_EPISODES_FUMADOCS` is set
 - read `docs/sessions/episodes-build-investigation-result.md`
 - read `docs/sessions/episodes-loader-guard-result.md`

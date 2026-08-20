@@ -5933,6 +5933,10 @@ export function SessionReviewClient({
 
       {mode === "prepare" ? (
         <>
+          <SessionInvitations
+            roomId={roomId}
+            purpose={preparation?.purpose || "COACHING"}
+          />
           {preparation ? (
             <SessionPreparationCard roomId={roomId} preparation={preparation} />
           ) : (
@@ -5965,10 +5969,6 @@ export function SessionReviewClient({
             autoOpen
             label="Open mic, camera & call"
             description="Choose the microphone, camera, and headphones you want, confirm consent, then join this Session. The call stays available while you move between notes, goals, and follow-up."
-          />
-          <SessionInvitations
-            roomId={roomId}
-            purpose={preparation?.purpose || "COACHING"}
           />
           <CaptureAppHandoff
             roomId={roomId}

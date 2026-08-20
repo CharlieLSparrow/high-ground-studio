@@ -2,6 +2,7 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { sendSessionInvitationEmail } from "@/lib/server/session-invitation-email";
 
 import { DELETE, GET, POST } from "./route";
 
@@ -9,6 +10,12 @@ jest.mock("server-only", () => ({}));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({
   getQuipslySessionFromRequest: jest.fn(),
+}));
+jest.mock("@/lib/server/session-invitation-email", () => ({
+  sessionInvitationJoinUrl: jest.fn(
+    () => "http://127.0.0.1:3012/sessions/join?token=qsinv_test",
+  ),
+  sendSessionInvitationEmail: jest.fn(),
 }));
 
 const now = new Date("2026-08-04T18:00:00.000Z");
@@ -20,6 +27,11 @@ const prisma = {
     findMany: jest.fn(),
     upsert: jest.fn(),
     updateMany: jest.fn(),
+  },
+  callRoomInvitationDeliveryReceipt: {
+    findFirst: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
   },
   callParticipantAccessReceipt: { findMany: jest.fn() },
   callParticipantProviderGrantReceipt: { findMany: jest.fn() },
@@ -60,6 +72,34 @@ describe("Session invitation API", () => {
     prisma.callParticipantAccessReceipt.findMany.mockResolvedValue([]);
     prisma.callParticipantProviderGrantReceipt.findMany.mockResolvedValue([]);
     prisma.callRoomInvitation.updateMany.mockResolvedValue({ count: 1 });
+    prisma.callRoomInvitationDeliveryReceipt.findFirst.mockResolvedValue(null);
+    prisma.callRoomInvitationDeliveryReceipt.create.mockResolvedValue({
+      id: "delivery-1",
+      invitationId: "invite-1",
+      requestId: "123e4567-e89b-42d3-a456-426614174000",
+      channel: "EMAIL",
+      status: "PENDING",
+      requestedAt: now,
+      completedAt: null,
+      errorCode: null,
+      errorMessage: null,
+    });
+    prisma.callRoomInvitationDeliveryReceipt.update.mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) => ({
+        id: "delivery-1",
+        channel: "EMAIL",
+        requestedAt: now,
+        completedAt: data.completedAt,
+        errorCode: data.errorCode,
+        errorMessage: data.errorMessage,
+        ...data,
+      }),
+    );
+    jest.mocked(sendSessionInvitationEmail).mockResolvedValue({
+      ok: true,
+      provider: "resend",
+      providerMessageId: "provider-email-1",
+    });
     prisma.callRoomInvitation.upsert.mockImplementation(
       async ({ create }: { create: Record<string, unknown> }) => ({
         id: "invite-1",
@@ -88,7 +128,7 @@ describe("Session invitation API", () => {
       boundaries: {
         sessionScoped: true,
         grantsNestAccess: false,
-        emailSent: false,
+        emailDeliveryRecorded: true,
       },
       collaboration: {
         activity: [],
@@ -210,6 +250,71 @@ describe("Session invitation API", () => {
     );
     const stored = prisma.callRoomInvitation.upsert.mock.calls[0][0].create;
     expect(stored.tokenHash).not.toContain("qsinv_");
+  });
+
+  it("can deliver the handoff to an already provisioned active coaching participant", async () => {
+    prisma.callParticipant.findFirst.mockResolvedValue({
+      id: "client-participant",
+      accessStatus: "ACTIVE",
+    });
+    const response = await POST(
+      request("POST", {
+        email: "client@example.test",
+        displayName: "Client",
+        role: "CLIENT",
+        delivery: "EMAIL",
+        requestId: "123e4567-e89b-42d3-a456-426614174000",
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      delivery: { status: "SENT" },
+    });
+    expect(prisma.callRoomInvitation.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.callParticipant.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends explicitly and records provider delivery separately from acceptance", async () => {
+    const response = await POST(
+      request("POST", {
+        email: "client@example.test",
+        displayName: "Client",
+        role: "CLIENT",
+        expiresInHours: 720,
+        delivery: "EMAIL",
+        requestId: "123e4567-e89b-42d3-a456-426614174000",
+      }),
+      context,
+    );
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      delivery: { status: "SENT", errorCode: null },
+      boundaries: {
+        emailSent: true,
+        emailBound: true,
+        recordingStarted: false,
+      },
+    });
+    expect(
+      prisma.callRoomInvitationDeliveryReceipt.create,
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        invitationId: "invite-1",
+        requestId: "123e4567-e89b-42d3-a456-426614174000",
+        recipientEmail: "client@example.test",
+        status: "PENDING",
+      }),
+    });
+    expect(sendSessionInvitationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientEmail: "client@example.test",
+        idempotencyKey: "session-invitation/delivery-1",
+      }),
+    );
   });
 
   it("revokes only the unused link without claiming participant removal", async () => {
