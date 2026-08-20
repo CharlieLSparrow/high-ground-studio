@@ -8,7 +8,7 @@ import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA } from "@/lib/server/mobile-capture-quick-entry";
 import { recordingContentReadiness } from "@/lib/server/mobile-capture-content-readiness";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
-import { sessionAccessWhere, sessionMutationAccessWhere } from "@/lib/server/session-access";
+import { sessionAccessWhere, sessionInvitationAccessWhere, sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { sessionRelationMatchesProject } from "@/lib/server/session-episode-binding";
 import { loadSessionContinuityState } from "@/lib/server/session-continuity";
 import { readTranscriptCorrectionImpactSummary } from "@/lib/server/transcript-corrections";
@@ -457,6 +457,10 @@ export default async function SessionReviewPage({
       where: sessionMutationAccessWhere(room.id, session.user),
       select: { id: true },
     }));
+    const canViewEntryChoiceMetrics = Boolean(await prisma.callRoom.findFirst({
+      where: sessionInvitationAccessWhere(room.id, session.user),
+      select: { id: true },
+    }));
     const sessionContinuity = await loadSessionContinuityState({
       prisma,
       actor: session.user,
@@ -783,7 +787,7 @@ export default async function SessionReviewPage({
         publicationEligible: versionedOutputGraph.currentPacket?.publicationEligible ?? false,
       } : undefined,
     };
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} versionedOutputGraph={versionedOutputGraph} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} focusedRecordingAssetId={focusedRecordingAssetId} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} canViewEntryChoiceMetrics={canViewEntryChoiceMetrics} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} versionedOutputGraph={versionedOutputGraph} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} focusedRecordingAssetId={focusedRecordingAssetId} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);

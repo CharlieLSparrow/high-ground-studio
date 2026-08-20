@@ -179,7 +179,7 @@ export function SidebarLayout({
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 min-h-0 relative z-10 overflow-hidden bg-[#fdfaf6]">
+      <main className="flex-1 min-h-0 relative overflow-hidden bg-[#fdfaf6]">
         {/* Soft sunlight glow background */}
         <div className="absolute top-0 left-0 w-full h-64 bg-amber-100/30 blur-[100px] pointer-events-none" />
 

@@ -37,6 +37,7 @@ import { CaptureAppHandoff } from "@/components/capture-app-handoff";
 import {
   LiveSessionDockLauncher,
   type LiveSessionDockConfig,
+  useLiveSessionDock,
 } from "@/components/live-session-dock";
 import { SessionInvitations } from "@/components/session-invitations";
 import {
@@ -5226,6 +5227,7 @@ export function SessionReviewClient({
   audibleEventSources = [],
   readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY,
   canManageSourcePlan = false,
+  canViewEntryChoiceMetrics = false,
   canReleaseHeldMedia = false,
   sessionTaxonomy = null,
   studioHandoff = null,
@@ -5273,6 +5275,7 @@ export function SessionReviewClient({
   }>;
   readinessTopology?: SessionReadinessTopology;
   canManageSourcePlan?: boolean;
+  canViewEntryChoiceMetrics?: boolean;
   canReleaseHeldMedia?: boolean;
   sessionTaxonomy?: SessionTaxonomy | null;
   studioHandoff?: SessionStudioHandoff | null;
@@ -5295,6 +5298,7 @@ export function SessionReviewClient({
   const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
   const [busyLaneId, setBusyLaneId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const liveDock = useLiveSessionDock();
 
   const load = useCallback(async (options?: { background?: boolean }) => {
     const background = options?.background === true;
@@ -5964,16 +5968,27 @@ export function SessionReviewClient({
 
       {mode === "live" ? (
         <div className="space-y-5">
+          {joinedFromInvitation ? (
+            <CaptureAppHandoff
+              roomId={roomId}
+              joinedFromInvitation
+              canViewChoiceMetrics={canViewEntryChoiceMetrics}
+              onContinueInBrowser={() => liveDock.open(liveDockConfig)}
+            />
+          ) : null}
           <LiveSessionDockLauncher
             config={liveDockConfig}
-            autoOpen
+            autoOpen={!joinedFromInvitation}
             label="Open mic, camera & call"
             description="Choose the microphone, camera, and headphones you want, confirm consent, then join this Session. The call stays available while you move between notes, goals, and follow-up."
           />
-          <CaptureAppHandoff
-            roomId={roomId}
-            joinedFromInvitation={joinedFromInvitation}
-          />
+          {!joinedFromInvitation ? (
+            <CaptureAppHandoff
+              roomId={roomId}
+              canViewChoiceMetrics={canViewEntryChoiceMetrics}
+              onContinueInBrowser={() => liveDock.open(liveDockConfig)}
+            />
+          ) : null}
           <details className="rounded-2xl border border-[#ded1bb] bg-white/75 p-4">
             <summary className="cursor-pointer text-sm font-black text-[#5b472f]">
               Recording confidence and source details

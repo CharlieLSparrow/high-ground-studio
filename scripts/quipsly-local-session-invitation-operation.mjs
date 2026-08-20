@@ -284,7 +284,7 @@ try {
     .waitFor({ timeout: 20_000 });
   assert(
     (await wrongAccountPage
-      .getByRole("button", { name: "Accept and open lobby", exact: true })
+      .getByRole("button", { name: "Accept and choose how to join", exact: true })
       .count()) === 0,
     "Wrong account was offered invitation acceptance.",
   );
@@ -326,7 +326,7 @@ try {
     .getByText(`Signed in as ${guest.email}`, { exact: true })
     .waitFor();
   await guestPage
-    .getByRole("button", { name: "Accept and open lobby", exact: true })
+    .getByRole("button", { name: "Accept and choose how to join", exact: true })
     .click();
   await guestPage.waitForURL(
     new RegExp(`/sessions/${ROOM_ID}\\?mode=live&joined=1$`),
@@ -344,7 +344,7 @@ try {
     .waitFor({ timeout: 20_000 });
   assert(
     (await replayPage
-      .getByRole("button", { name: "Accept and open lobby", exact: true })
+      .getByRole("button", { name: "Accept and choose how to join", exact: true })
       .count()) === 0,
     "Consumed invitation was offered a second acceptance.",
   );
@@ -355,6 +355,11 @@ try {
   });
 
   for (const journey of journeys) {
+    const continueInBrowser = journey.page.getByRole("button", {
+      name: "Continue in browser",
+      exact: true,
+    });
+    if (await continueInBrowser.count()) await continueInBrowser.click();
     const allowMicrophone = journey.page.getByRole("button", {
       name: "Allow microphone",
       exact: true,

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarClock, Camera, CheckCircle2, Headphones, LockKeyhole, Mic2, ShieldCheck, UserRoundCheck } from "lucide-react";
+import { CalendarClock, Camera, CheckCircle2, Headphones, LockKeyhole, MonitorSmartphone, Mic2, ShieldCheck, Smartphone, UserRoundCheck } from "lucide-react";
 
 import { auth } from "@/auth";
 import {
@@ -99,20 +99,32 @@ export default async function JoinSessionPage({
               <li className="flex gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-emerald-700" size={18} aria-hidden="true" />Joining the conversation does not start recording. Recording and transcription require separate, visible consent.</li>
             </ul>
           </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2" aria-label="Ways to join this Session">
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+              <MonitorSmartphone className="text-sky-800" aria-hidden="true" />
+              <h2 className="mt-3 font-black text-sky-950">Continue in a browser</h2>
+              <p className="mt-1 text-xs font-semibold leading-5 text-sky-900">Use your phone, tablet, or desktop. Quipsly will let you choose the microphone, camera, and headphones available on that device.</p>
+            </div>
+            <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+              <Smartphone className="text-violet-800" aria-hidden="true" />
+              <h2 className="mt-3 font-black text-violet-950">Use the iPhone app</h2>
+              <p className="mt-1 text-xs font-semibold leading-5 text-violet-900">Choose Quipsly Capture after accepting. If it is not installed, Quipsly offers the current public TestFlight beta.</p>
+            </div>
+          </div>
         </section>
 
         <aside className="rounded-2xl border border-[#d8c7a7] bg-[#fffaf0] p-5">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#987443]">Identity check</p>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">This link belongs to <strong className="text-[#3d3122]">{invitation.recipientEmailHint}</strong> and expires {formatted(invitation.expiresAt)}.</p>
           {!session?.user ? <>
-            <p className="mt-4 text-sm font-semibold leading-6 text-[#765f40]">Sign in with the invited Google or Quipsly email. The link alone grants nothing.</p>
-            <Link href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white">Sign in to continue</Link>
+            <p className="mt-4 text-sm font-semibold leading-6 text-[#765f40]">Sign in with the invited Google or Quipsly email. The link alone grants nothing. After acceptance, choose the browser or Quipsly Capture on iPhone.</p>
+            <Link href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white">Sign in to choose how to join</Link>
           </> : emailMatches ? <>
             <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-950"><CheckCircle2 className="mr-2 inline" size={17} aria-hidden="true" />Signed in as {actorEmail}</div>
             {errorCode && ERROR_MESSAGES[errorCode] ? <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-900">{ERROR_MESSAGES[errorCode]}</p> : null}
             <form action={acceptSessionInvitationAction} className="mt-4">
               <input type="hidden" name="token" value={token} />
-              <button className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white">Accept and open lobby</button>
+              <button className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white">Accept and choose how to join</button>
             </form>
           </> : <>
             <p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-950">You’re signed in as {actorEmail}. Switch to the invited account before accepting.</p>

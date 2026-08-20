@@ -338,7 +338,7 @@ try {
     waitUntil: "domcontentloaded",
   });
   const clientSignInGate = clientPage.getByRole("link", {
-    name: "Sign in to continue",
+    name: "Sign in to choose how to join",
     exact: true,
   });
   await clientSignInGate.waitFor({ timeout: 20_000 });
@@ -360,7 +360,7 @@ try {
     invitationEntryPath,
   );
   const acceptInvitation = clientPage.getByRole("button", {
-    name: "Accept and open lobby",
+    name: "Accept and choose how to join",
     exact: true,
   });
   await acceptInvitation.waitFor({ timeout: 20_000 });
@@ -378,7 +378,7 @@ try {
     .first()
     .waitFor({ timeout: 30_000 });
   const captureInstallLink = clientPage.getByRole("link", {
-    name: "Install on iPhone",
+    name: "Get iPhone beta",
     exact: true,
   });
   await captureInstallLink.waitFor({ timeout: 30_000 });
@@ -394,6 +394,33 @@ try {
     `quipsly://session/${encodeURIComponent(evidence.roomId)}?mode=live`,
     "Fresh client Session did not hand the exact room to Capture.",
   );
+  const continueInBrowser = clientPage.getByRole("button", {
+    name: "Continue in browser",
+    exact: true,
+  });
+  await continueInBrowser.waitFor({ timeout: 30_000 });
+  const browserChoiceResponse = clientPage.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname ===
+        `/api/sessions/${encodeURIComponent(evidence.roomId)}/entry-choice`,
+    { timeout: 20_000 },
+  );
+  await continueInBrowser.click();
+  const recordedBrowserChoice = await browserChoiceResponse;
+  assert(
+    recordedBrowserChoice.status() === 200,
+    "Fresh client browser choice was not recorded against the exact private Session.",
+  );
+  const liveCallDock = clientPage.locator(
+    `aside[aria-label="${sessionTitle} live call dock"]`,
+  );
+  await liveCallDock.waitFor({ state: "visible", timeout: 30_000 });
+  await liveCallDock
+    .getByRole("button", { name: "Close live call", exact: true })
+    .click();
+  await liveCallDock.waitFor({ state: "detached", timeout: 20_000 });
+  evidence.clientBrowserChoiceOpenedDeviceSetup = true;
   await assertNoHorizontalOverflow(
     clientPage.locator("main").last(),
     "fresh client Session at phone width",

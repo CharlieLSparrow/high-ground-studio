@@ -1026,8 +1026,8 @@ struct CaptureCoachingHomeView: View {
                 subject: Text(title),
                 message: Text(
                     nativeURL.map {
-                        "Join this private Quipsly Session with the invited email. Web: \(entryURL.absoluteString) Open in Quipsly Capture: \($0.absoluteString)"
-                    } ?? "Join this private Quipsly Session with the invited email."
+                        "Join this private Quipsly Session with the invited email. Open it in a browser on your phone, tablet, or desktop: \(entryURL.absoluteString) Or use Quipsly Capture on iPhone: \($0.absoluteString)"
+                    } ?? "Join this private Quipsly Session with the invited email in a browser on your phone, tablet, or desktop."
                 )
             ) {
                 Label("Share invite", systemImage: "square.and.arrow.up")

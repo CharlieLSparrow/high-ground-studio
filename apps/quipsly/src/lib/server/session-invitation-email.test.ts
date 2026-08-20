@@ -88,6 +88,9 @@ describe("Session invitation email", () => {
     expect(body.to).toEqual(["client@example.test"]);
     expect(body.cc).toBeUndefined();
     expect(body.bcc).toBeUndefined();
+    expect(body.text).toContain("phone, tablet, or desktop");
+    expect(body.text).toContain("Quipsly Capture on iPhone");
+    expect(body.text).not.toContain("laptop");
     expect(body.text).toContain("never starts recording");
   });
 
