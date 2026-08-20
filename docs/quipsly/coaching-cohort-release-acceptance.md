@@ -530,3 +530,77 @@ appointment, coaching home, Session, recording, transcript, shared work, and
 recipient visibility state. Automation failures block the candidate before a
 human sees it. Automation success merely makes the candidate eligible for this
 human flight; it never marks this section complete.
+
+## Acceptance lanes are not interchangeable
+
+Every result must name exactly one lane. A passing lower lane never promotes
+itself into a higher claim.
+
+| Lane | Starts from | Proves | Explicitly does not prove |
+| --- | --- | --- | --- |
+| Retained regression | Reserved fixture identities and durable fixture rooms | Known mechanics have not regressed | Discoverability, onboarding, or fresh-account integrity |
+| Fresh UI automation | New `.dev.test` accounts created through rendered public pages | The ordinary product can create and continue a new coaching relationship without copied IDs or database repair | Real inbox delivery, natural speech, physical devices, or human understanding |
+| Fresh audible automation | Fresh UI automation plus two isolated, role-specific audible sources | Each participant owns a distinct recording; Whisper recovers role-specific speech; protected playback and downstream share mechanics operate | Natural speech quality or a human playback-review receipt |
+| Minimally instructed human flight | Real inboxes, ordinary navigation, real devices, and one sentence | A coach and client can understand and complete the end-to-end job without guidance | Fifty-person concurrency or organization-wide support readiness |
+| Cohort operation | Instrumented 2, then 10, then 50-coach release | Recovery, support, privacy, and capacity remain healthy under real use | That future product changes remain safe without rerunning the ladder |
+
+The 2 → 10 → 50 progression is an operational safety valve, not a committee.
+Advancement is automatic when the prior group has no unresolved data-loss,
+privacy, invitation, call-entry, recording-finalization, or recipient-access
+failure and the recovery path has been exercised. Cosmetic friction becomes a
+ranked product fix; it does not silently become a release-blocking approval
+ritual.
+
+## Controlled audible speech checkpoint — 2026-08-19
+
+`pnpm quipsly:fresh:coaching-speech-flight` extends the fresh journey without
+reusing a fixture. It creates two owner-readable audio artifacts in the same
+private acceptance directory as the fresh context, launches one isolated
+Chromium process per participant, records both sources concurrently, and
+requires the local Whisper worker to recover terms spoken only by the matching
+role. The command fails if either participant source is absent, not independently
+owned, does not overlap the other source, cannot be decoded, or loses its
+role-specific terms.
+
+The passing run retained context
+`artifacts/coaching-acceptance/8ff229b4/fresh-start-context.json` and created
+room `cmt0s887r000lrdxl5jch5xhq`, booking
+`cmt0s887h000krdxlgh85iojw`, and engagement
+`cmt0s886t000grdxlt65j81tq`. It verified two participant-owned masters with
+23,241 ms of overlap, two completed source-bound transcripts, protected
+playback, shared/private relationship work, cross-account task completion, and
+preview → release → recipient playback → revoke.
+
+This lane uses macOS text-to-speech and browser fake-media routing. Its result
+therefore keeps `naturalHumanSpeechProven`, `humanListeningProven`,
+`physicalDeviceProven`, `realMailboxDeliveryProven`,
+`minimallyInstructedHumanAcceptanceProven`, and `productionScaleProven` false.
+Automation plays and decodes protected media but does not tick the product's “I
+listened” control or create a `TranscriptSegmentVerification`; that receipt is
+reserved for the person who actually listened.
+
+## Fifty-coach human flight scorecard
+
+Give every coach the same one-sentence mission above and give every client only
+the invitation Quipsly produced. Capture these events without adding hidden
+test-only navigation or observer coaching:
+
+1. invitation requested, delivered, opened, accepted, expired, resent, or
+   recovered;
+2. appointment created, found again, joined, rescheduled, or canceled;
+3. device preflight, consent choices, call join, reconnect, source retention,
+   upload/finalization, and participant ownership;
+4. transcript ready, playback opened, correction accepted, proposal rejected or
+   revised, and speaker attribution reviewed;
+5. shared/private note visibility, task ownership and completion, goal updates,
+   and later return navigation;
+6. edit preview, recipient selection, explicit release, recipient playback or
+   download, revocation, and post-revoke denial;
+7. every point where a person pauses, mispredicts, asks for help, abandons, or
+   cannot explain who can see or hear the current artifact.
+
+The dashboard must separate product failure, infrastructure failure, user
+confusion, observer intervention, and unfinished use. “No event received” is
+unknown, never success. A support workaround can unblock a person, but the run
+remains failed for self-service acceptance until another minimally instructed
+person completes the repaired path unaided.
