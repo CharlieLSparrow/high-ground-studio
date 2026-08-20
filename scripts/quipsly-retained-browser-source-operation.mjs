@@ -153,7 +153,7 @@ try {
     .catch(() => undefined);
 
   const recorder = page.getByRole("region", {
-    name: "Record the selected studio source",
+    name: /Record (?:this coaching Session|the selected studio source)/,
   });
   await recorder.waitFor();
   const reopenButton = recorder.getByRole("button", {
@@ -178,7 +178,7 @@ try {
     .waitFor({ timeout: 20_000 });
 
   const recordButton = recorder.getByRole("button", {
-    name: "Record local source",
+    name: /Record (?:on this device|local source)/,
   });
   await recordButton.waitFor();
   if (!(await recordButton.isEnabled())) {

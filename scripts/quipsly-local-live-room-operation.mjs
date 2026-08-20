@@ -449,8 +449,7 @@ try {
 
   const recordButtons = journeys.map((journey) =>
     journey.page.getByRole("button", {
-      name: "Record local source",
-      exact: true,
+      name: /Record (?:on this device|local source)/,
     }),
   );
   for (const recordButton of recordButtons) {
