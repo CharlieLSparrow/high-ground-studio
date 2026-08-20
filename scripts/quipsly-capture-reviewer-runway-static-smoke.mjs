@@ -9,7 +9,8 @@ function read(relativePath) {
 }
 
 function assertIncludes(text, needle, label) {
-  if (!text.includes(needle)) {
+  const compact = (value) => String(value).replace(/\s+/g, " ").trim();
+  if (!compact(text).includes(compact(needle))) {
     throw new Error(`${label} is missing required marker: ${needle}`);
   }
 }
@@ -74,9 +75,9 @@ const appStoreReadiness = read(paths.appStoreReadiness);
   "Start here · finish coach setup",
   "Optional. Leave blank to start without a payment link.",
   "create-booking-room",
-  "Create booking and capture room",
+  "Schedule and create the private Session",
   "/coaching/sessions",
-  "It does not charge, invite, publish, or create an external calendar event.",
+  "Quipsly never charges, emails, or writes an external calendar event just because you create the appointment. Those remain separate, explicit actions.",
 ].forEach((marker) => assertIncludes(coachingPage, marker, paths.coachingPage));
 
 [
@@ -231,7 +232,7 @@ const appStoreReadiness = read(paths.appStoreReadiness);
 [
   "Capture reviewer setup",
   "Reviewer-safe capture session",
-  "Create booking and capture room",
+  "Schedule and create the private Session",
   "/api/mobile/capture/review-digest",
   "MobileCaptureReviewDigestPanel",
   "quipsly-capture-consent-room-live-proof.sh",
@@ -242,7 +243,7 @@ const appStoreReadiness = read(paths.appStoreReadiness);
   "Reviewer account and visible-session setup",
   "Capture reviewer setup",
   "Reviewer-safe capture session",
-  "Create booking and capture room",
+  "Schedule and create the private Session",
   "It does not charge, invite,",
   "publish, start recording, or create an external calendar event.",
   "quipsly-capture-consent-room-live-proof.sh",
@@ -269,7 +270,7 @@ const setupSequence = [
     step: "create-visible-session",
     route: "/coaching",
     card: "Ordinary coach appointment form",
-    action: "Create booking and capture room",
+    action: "Schedule and create the private Session",
     outcome: "A coach enters the dedicated reviewer identity through the same booking, capture-room, participant, requested-consent, and calendar-receipt workflow used for a real client.",
   },
   {

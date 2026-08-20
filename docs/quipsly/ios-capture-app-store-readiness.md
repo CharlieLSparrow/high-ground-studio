@@ -288,7 +288,7 @@ aligned. It does not sign in, mutate data, charge, invite, publish, or record.
    preset`.
 5. Confirm the account email is `reviewer-capture@dev.test`, or replace it with
    the actual reviewer account.
-6. Use `Create booking and capture room` when the goal is a visible iOS capture
+6. Use `Schedule and create the private Session` when the goal is a visible iOS capture
    session. Do not use a hold-only path for App Review.
 7. Confirm the session appears in authenticated mobile capture sessions before
    claiming the app is review-ready.

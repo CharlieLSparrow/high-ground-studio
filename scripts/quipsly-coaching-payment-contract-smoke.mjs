@@ -59,6 +59,11 @@ function readText(relativePath) {
   return fs.readFileSync(absolutePath, "utf8");
 }
 
+function includesNormalized(source, needle) {
+  const compact = (value) => String(value).replace(/\s+/g, " ").trim();
+  return compact(source).includes(compact(needle));
+}
+
 function parseJson(raw) {
   try {
     return JSON.parse(raw);
@@ -258,18 +263,20 @@ function checkStaticStripeBoundaries() {
   );
   expect(
     texts.runwayPage.includes("function JourneyPanel")
-      && texts.runwayPage.includes("JourneyPanel summary={booking.journeySummary}")
-      && texts.runwayPage.includes("JourneyPanel summary={room.journeySummary}")
+      && includesNormalized(texts.runwayPage, "JourneyPanel summary={booking.journeySummary}")
+      && includesNormalized(texts.runwayPage, "JourneyPanel summary={room.journeySummary}")
       && texts.runwayPage.includes("EvidenceDot"),
     "runwayJourneySummaryUi",
     "Coaching runway UI displays the journey summary and evidence checklist for bookings and capture rooms.",
   );
   expect(
-    texts.runwayPage.includes("Payment evidence boundary")
+    includesNormalized(texts.runwayPage, "Payment evidence boundary")
       && texts.runwayPage.includes("paymentReadiness")
       && texts.runwayPage.includes("Test/internal evidence only")
       && texts.runwayPage.includes("Live guard enabled")
-      && texts.runwayPage.includes("Customer Portal requires existing Stripe customer evidence"),
+      && includesNormalized(texts.runwayPage, "Customer Portal requires existing Stripe customer evidence")
+      && texts.runwayPage.includes("Operations and provider diagnostics")
+      && texts.runwayPage.includes("isStaff ?"),
     "runwayPaymentReadinessUi",
     "Coaching runway UI makes Stripe mode, Customer Portal gate, and eligible one-to-one boundary visible to operators.",
   );
@@ -285,11 +292,11 @@ function checkStaticStripeBoundaries() {
     "Coaching runway can set up a coach profile, role, offer, and flexible scheduling clue before non-staff coaches manage sessions.",
   );
   expect(
-    texts.runwayPage.includes("Coach setup")
-      && texts.runwayPage.includes("One card to make Homer bookable and billable")
+    texts.runwayPage.includes("Coach profile")
+      && texts.runwayPage.includes("Finish your coach workspace once")
       && texts.runwayPage.includes("setupCoachProfile")
       && texts.runwayPage.includes("canManageCoaching")
-      && texts.runwayPage.includes("Set up your coach profile first, then this appointment form unlocks."),
+      && includesNormalized(texts.runwayPage, "Set up your coach profile first, then this appointment form unlocks."),
     "runwayCoachSetupUi",
     "Coaching runway UI exposes a Homer-friendly coach setup card before the appointment and payment form.",
   );

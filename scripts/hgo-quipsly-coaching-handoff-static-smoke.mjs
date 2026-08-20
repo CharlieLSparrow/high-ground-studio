@@ -41,7 +41,8 @@ function read(relativePath) {
 }
 
 function requireIncludes(text, needle, label, file) {
-  if (!text.includes(needle)) {
+  const compact = (value) => String(value).replace(/\s+/g, " ").trim();
+  if (!compact(text).includes(compact(needle))) {
     fail("Required HGO/Quipsly coaching handoff invariant is missing.", { label, file, missing: needle });
   }
 }

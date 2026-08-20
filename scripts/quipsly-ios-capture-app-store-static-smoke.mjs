@@ -131,7 +131,8 @@ function assert(condition, message, details = {}) {
 }
 
 function requireIncludes(text, needle, label) {
-  assert(text.includes(needle), "Required App Store/capture invariant is missing.", { label, missing: needle });
+  const compact = (value) => String(value).replace(/\s+/g, " ").trim();
+  assert(compact(text).includes(compact(needle)), "Required App Store/capture invariant is missing.", { label, missing: needle });
 }
 
 function requireExcludes(text, needle, label) {
@@ -1710,8 +1711,8 @@ requireIncludes(privacyPageText, "Limited Use requirements", "public privacy Goo
 requireIncludes(privacyPageText, "disconnect Google Calendar from Quipsly at any time", "public privacy calendar revocation disclosure");
 requireIncludes(deletionPageText, "account deletion", "public account deletion page");
 requireIncludes(coachingPageText, "Start here · finish coach setup", "first-time coach setup entry");
-requireIncludes(coachingPageText, "Create booking and capture room", "ordinary coaching Session creation action");
-requireIncludes(coachingPageText, "It does not charge, invite, publish, or create an external calendar event.", "coaching Session side-effect boundary");
+requireIncludes(coachingPageText, "Schedule and create the private Session", "ordinary coaching Session creation action");
+requireIncludes(coachingPageText, "Quipsly never charges, emails, or writes an external calendar event just because you create the appointment. Those remain separate, explicit actions.", "coaching Session side-effect boundary");
 requireExcludes(coachingPageText, "Reviewer-safe capture session preset loaded.", "reviewer preset status");
 requireExcludes(coachingPageText, "reviewer-capture@dev.test", "reviewer preset email");
 requireExcludes(coachingPageText, "Reviewer test capture session", "reviewer preset title");

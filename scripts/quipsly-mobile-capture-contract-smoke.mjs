@@ -68,6 +68,11 @@ function sourceText(pathFromRoot) {
   return readFileSync(join(ROOT_DIR, pathFromRoot), "utf8");
 }
 
+function includesNormalized(source, needle) {
+  const compact = (value) => String(value).replace(/\s+/g, " ").trim();
+  return compact(source).includes(compact(needle));
+}
+
 function checkUploadContractSources() {
   const contractText = sourceText("packages/quipsly-domain/src/mobile-capture-upload.ts");
   const chunkRouteText = sourceText("apps/quipsly/src/app/api/ingest/mobile/chunk/route.ts");
@@ -1576,7 +1581,7 @@ function checkTranscriptCorrectionContractSources() {
       && sessionNotesWorkspaceText.includes("No external action occurred")
       && sessionReviewText.includes('scope="work"')
       && sessionReviewText.includes("Committed Session work")
-      && sessionReviewText.includes("distinct from transcript candidates")
+      && sessionReviewText.includes("Transcript suggestions stay separate until a person reviews and accepts them")
       && sessionReviewText.includes("Open same {entry.kind.toLowerCase()} in Work"),
     "canonicalMobileQuickEntryOutbox",
     "iPhone quick Note, Task, Goal, and Source capture journals to an actor-partitioned protected outbox first; Session, Home Nest, and explicit writable-Nest work replay to canonical project records while private URL/text sources enter Inbox with exact readback and no external side effects.",
@@ -1673,7 +1678,7 @@ function checkTranscriptCorrectionContractSources() {
   );
   expect(
     schemaText.includes("model StudioPersonalSourceFiling")
-      && schemaText.includes("personalSourceFiling StudioPersonalSourceFiling?")
+      && /personalSourceFiling\s+StudioPersonalSourceFiling\?/.test(schemaText)
       && personalSourceFilingText.includes('kind: "quipsly-personal-source-filing-v1"')
       && personalSourceFilingText.includes("privateCaptureMutated: false")
       && personalSourceFilingText.includes("collaboratorsReceivePrivateCollectionAccess: false")
@@ -1852,7 +1857,7 @@ function checkTranscriptCorrectionContractSources() {
       && sessionReviewText.includes("Turn this Session into trusted follow-through")
       && sessionReviewText.includes("Review &amp; create goal")
       && sessionReviewText.includes("Add evidence to existing goal")
-      && sessionReviewText.includes("will not rewrite the selected goal")
+      && includesNormalized(sessionReviewText, "will not rewrite the selected goal")
       && sessionReviewText.includes("Add a target date")
       && sessionReviewText.includes("Project tags")
       && sessionReviewText.includes("No task, focus block, calendar event, message, or delivery was added")
@@ -1908,8 +1913,8 @@ function checkTranscriptCorrectionContractSources() {
       && noteMaterializationRouteText.includes("created-from-transcript-packet")
       && sessionReviewModelText.includes("noteCandidateReviewRequest")
       && sessionReviewText.includes("One human review queue")
-      && sessionReviewText.includes("Nothing becomes canonical work until you review that individual candidate")
-      && sessionReviewText.includes("It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication")
+      && includesNormalized(sessionReviewText, "Nothing becomes canonical work until you review that individual candidate")
+      && includesNormalized(sessionReviewText, "It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication")
       && nativeText.includes("CapturePacketCandidateReviewQueue")
       && nativeText.includes("CapturePacketNoteSourceButton_")
       && nativeText.includes("CapturePacketNoteTitleField")

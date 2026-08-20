@@ -21,7 +21,9 @@ function addCheck(id, condition, summary, details = {}) {
 }
 
 function includesAll(text, markers) {
-  return markers.every((marker) => text.includes(marker));
+  const compact = (value) => String(value).replace(/\s+/g, " ").trim();
+  const source = compact(text);
+  return markers.every((marker) => source.includes(compact(marker)));
 }
 
 const files = {
