@@ -34,11 +34,23 @@ test("preview deploy mounts the required secrets and privately validates the rel
   assert.match(source, /!\/\[\\u0000-\\u001f\\u007f\]\//);
   assert.match(
     source,
-    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{livekit_secret_mounts\}\$\{google_calendar_oauth_secrets\}\$\{google_drive_oauth_secrets\}\$\{account_deletion_worker_secret\}"/,
+    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{livekit_secret_mounts\}\$\{google_calendar_oauth_secrets\}\$\{google_drive_oauth_secrets\}\$\{account_deletion_worker_secret\}\$\{session_invitation_email_secret\}"/,
   );
   assert.match(source, /The value was not printed/);
   assert.doesNotMatch(source, /echo "\$\{?QUIPSLY_RELEASE_SMOKE_SECRET/);
   assert.doesNotMatch(source, /set -x/);
+});
+
+test("session invitation email is explicit, Secret Manager backed, and safe to disable", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(source, /ENABLE_SESSION_INVITATION_EMAIL="\$\{ENABLE_SESSION_INVITATION_EMAIL:-0\}"/);
+  assert.match(source, /ENABLE_SESSION_INVITATION_EMAIL must be 0 or 1/);
+  assert.match(source, /SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME/);
+  assert.match(source, /validate_private_secret "\$\{SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME\}" "api-key"/);
+  assert.match(source, /QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=\$\{SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME\}:latest/);
+  assert.match(source, /QUIPSLY_SESSION_INVITATION_EMAIL_FROM=\$\{SESSION_INVITATION_EMAIL_FROM\}/);
+  assert.doesNotMatch(source, /QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=[^$]/);
 });
 
 test("Drive activation is explicit, least-privilege, and entirely Secret Manager backed", () => {

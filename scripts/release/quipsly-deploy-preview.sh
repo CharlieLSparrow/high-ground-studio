@@ -26,6 +26,7 @@ ENABLE_GOOGLE_CALENDAR_OAUTH="${ENABLE_GOOGLE_CALENDAR_OAUTH:-0}"
 ENABLE_GOOGLE_DRIVE_OAUTH="${ENABLE_GOOGLE_DRIVE_OAUTH:-0}"
 ENABLE_TRANSCRIPT_WORKER="${ENABLE_TRANSCRIPT_WORKER:-0}"
 ENABLE_ACCOUNT_DELETION_WORKER="${ENABLE_ACCOUNT_DELETION_WORKER:-0}"
+ENABLE_SESSION_INVITATION_EMAIL="${ENABLE_SESSION_INVITATION_EMAIL:-0}"
 ENABLE_LIVEKIT_PROVIDER="${ENABLE_LIVEKIT_PROVIDER:-1}"
 CONFIGURE_LIVEKIT_EGRESS="${CONFIGURE_LIVEKIT_EGRESS:-1}"
 ENABLE_LIVEKIT_EGRESS="${ENABLE_LIVEKIT_EGRESS:-0}"
@@ -55,6 +56,8 @@ GOOGLE_DRIVE_OAUTH_STATE_SECRET_NAME="${GOOGLE_DRIVE_OAUTH_STATE_SECRET_NAME:-qu
 GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME="${GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME:-quipsly-google-drive-oauth-token-encryption-key}"
 GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME="${GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME:-quipsly-google-drive-picker-api-key}"
 GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME="${GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME:-quipsly-google-drive-picker-app-id}"
+SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME="${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME:-quipsly-session-invitation-resend-api-key}"
+SESSION_INVITATION_EMAIL_FROM="${SESSION_INVITATION_EMAIL_FROM:-invites@quipsly.com}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "PROJECT_ID is required or gcloud must have a default project." >&2
@@ -99,6 +102,11 @@ fi
 
 if [[ "${ENABLE_ACCOUNT_DELETION_WORKER}" != "0" && "${ENABLE_ACCOUNT_DELETION_WORKER}" != "1" ]]; then
   echo "ENABLE_ACCOUNT_DELETION_WORKER must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "${ENABLE_SESSION_INVITATION_EMAIL}" != "0" && "${ENABLE_SESSION_INVITATION_EMAIL}" != "1" ]]; then
+  echo "ENABLE_SESSION_INVITATION_EMAIL must be 0 or 1." >&2
   exit 2
 fi
 
@@ -172,6 +180,8 @@ echo "Release-smoke signing key passed private byte validation."
 google_calendar_oauth_secrets=""
 google_calendar_push_env_vars=""
 google_drive_oauth_secrets=""
+session_invitation_email_secret=""
+session_invitation_email_env_vars=""
 
 require_enabled_secret() {
   local secret_name="$1"
@@ -262,6 +272,18 @@ if [[ "${CONFIGURE_LIVEKIT_EGRESS}" == "1" ]]; then
 fi
 if [[ "${ENABLE_LIVEKIT_EGRESS}" == "1" ]]; then
   livekit_egress_enabled_value="true"
+fi
+
+if [[ "${ENABLE_SESSION_INVITATION_EMAIL}" == "1" ]]; then
+  if [[ ! "${SESSION_INVITATION_EMAIL_FROM}" =~ ^[^[:space:]@,=]+@[^[:space:]@,=]+\.[^[:space:]@,=]+$ ]]; then
+    echo "SESSION_INVITATION_EMAIL_FROM must be one plain email address safe for Cloud Run environment configuration." >&2
+    exit 2
+  fi
+  require_enabled_secret "${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME}"
+  validate_private_secret "${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME}" "api-key"
+  session_invitation_email_secret=",QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME}:latest"
+  session_invitation_email_env_vars=",QUIPSLY_SESSION_INVITATION_EMAIL_FROM=${SESSION_INVITATION_EMAIL_FROM}"
+  echo "Session invitation email secret passed enabled-version and private shape validation."
 fi
 if [[ "${ENABLE_GOOGLE_CALENDAR_OAUTH}" == "1" ]]; then
   if [[ ! "${GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT}" =~ ^[a-z0-9][a-z0-9-]{4,28}@[a-z][a-z0-9-]{4,62}\.iam\.gserviceaccount\.com$ ]]; then
@@ -642,8 +664,8 @@ gcloud run deploy "${SERVICE_NAME}" \
   --no-traffic \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \
-  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${livekit_secret_mounts}${google_calendar_oauth_secrets}${google_drive_oauth_secrets}${account_deletion_worker_secret}" \
-  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=${livekit_egress_enabled_value}${google_calendar_push_env_vars}${transcript_worker_env_vars}${account_deletion_worker_env_vars}" \
+  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${livekit_secret_mounts}${google_calendar_oauth_secrets}${google_drive_oauth_secrets}${account_deletion_worker_secret}${session_invitation_email_secret}" \
+  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=${livekit_egress_enabled_value}${google_calendar_push_env_vars}${transcript_worker_env_vars}${account_deletion_worker_env_vars}${session_invitation_email_env_vars}" \
   --quiet
 
 echo "Preview revision deployed."
