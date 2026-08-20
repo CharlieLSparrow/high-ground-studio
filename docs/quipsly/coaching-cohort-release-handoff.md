@@ -56,8 +56,11 @@ These lanes are complementary and never interchangeable.
 3. **Fresh phone start** — a newly verified ordinary account enters the normal
    iPhone Today surface; the compiled app performs coach setup, client and
    relationship creation, scheduling, invitation attempt, fallback sharing,
-   and exact Session entry. The local adapter verifies only the disposable
-   mailbox identity and is named in the receipt.
+   opens that relationship through ordinary navigation, creates a shared note,
+   assigned task, assigned goal, and author-private note, then enters the exact
+   Session. Independent API readback must find those canonical records and
+   privacy boundaries. The local adapter verifies only the disposable mailbox
+   identity and is named in the receipt.
 4. **Fresh product automation** — the same new relationship continues through
    rendered call, work, and sharing surfaces plus explicitly identified service
    mechanics. Its receipt reports surface coverage and never calls the combined

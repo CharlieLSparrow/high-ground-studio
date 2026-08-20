@@ -50,6 +50,13 @@ const client = {
   displayName: `Phone Client ${suffix.slice(0, 4).toUpperCase()}`,
 };
 const sessionTitle = `Phone-first coaching ${suffix}`;
+const workSuffix = sessionTitle.slice(-12);
+const expectedWork = {
+  sharedNote: `Shared phone note ${workSuffix}`,
+  task: `Phone task ${workSuffix}`,
+  goal: `Phone goal ${workSuffix}`,
+  privateNote: `Private phone note ${workSuffix}`,
+};
 const keychainService = "com.quipsly.qa.fresh-coaching-phone-start";
 
 async function run(command, args, options = {}) {
@@ -175,9 +182,35 @@ const session = sessions.sessions?.find(
 assert(session, "Independent Capture readback omitted the exact phone-created Session.");
 assert.equal(session.title, sessionTitle, "The canonical Session lost its custom phone-entered title.");
 
+const workspace = await authenticatedJSON(
+  `/api/coaching/engagements/${encodeURIComponent(booking.coachingEngagementId)}/work`,
+  token,
+);
+assert.equal(
+  workspace.engagement?.id,
+  booking.coachingEngagementId,
+  "The canonical relationship workspace did not match the phone-created engagement.",
+);
+assert.equal(workspace.engagement?.canWrite, true, "The fresh coach cannot write relationship work.");
+
+function requireWork(title, kind, visibility) {
+  const entry = workspace.engagement?.entries?.find(
+    (candidate) => candidate.title === title,
+  );
+  assert(entry, `Independent readback omitted ${title}.`);
+  assert.equal(entry.kind, kind, `${title} used the wrong canonical work kind.`);
+  assert.equal(entry.visibility, visibility, `${title} crossed its intended privacy boundary.`);
+  return entry;
+}
+
+const sharedNote = requireWork(expectedWork.sharedNote, "NOTE", "SHARED");
+const task = requireWork(expectedWork.task, "TASK", "SHARED");
+const goal = requireWork(expectedWork.goal, "GOAL", "SHARED");
+const privateNote = requireWork(expectedWork.privateNote, "NOTE", "PRIVATE");
+
 const receipt = {
   ok: true,
-  schema: "quipsly-fresh-coaching-phone-start-v1",
+  schema: "quipsly-fresh-coaching-phone-start-v2",
   createdAt: new Date().toISOString(),
   source: {
     sha: sourceSha,
@@ -204,6 +237,11 @@ const receipt = {
     appointmentCreation: true,
     invitationAttemptWithVisibleOutcome: true,
     systemShareFallbackPresent: true,
+    relationshipWorkspaceEntry: true,
+    sharedNoteCreation: true,
+    taskCreation: true,
+    goalCreation: true,
+    authorPrivateNoteCreationWithVisibleBoundary: true,
     exactSessionEntry: true,
   },
   canonicalReadback: {
@@ -213,6 +251,17 @@ const receipt = {
     sessionTitle,
     clientEntryPath: booking.clientEntryPath,
     invitationDelivery: booking.clientInvitationDelivery || null,
+    relationshipWork: {
+      sharedNote: { id: sharedNote.id, title: sharedNote.title, visibility: sharedNote.visibility },
+      task: { id: task.id, title: task.title, visibility: task.visibility },
+      goal: { id: goal.id, title: goal.title, visibility: goal.visibility },
+      privateNote: {
+        id: privateNote.id,
+        title: privateNote.title,
+        visibility: privateNote.visibility,
+        canEdit: privateNote.canEdit,
+      },
+    },
   },
   artifacts: {
     xcresult: resultBundlePath,

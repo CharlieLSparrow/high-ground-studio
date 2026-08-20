@@ -1204,9 +1204,14 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                     .foregroundStyle(entry.visibility == "PRIVATE" ? .orange : .teal)
                 Spacer()
                 if entry.visibility == "PRIVATE" {
-                    Label("Only you", systemImage: "lock.fill")
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.fill")
+                            .accessibilityHidden(true)
+                        Text("Only you")
+                    }
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.orange)
+                        .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Private note, only you can read it")
                         .accessibilityIdentifier("CaptureCoachingPrivateWorkLabel_\(entry.id)")
                 }

@@ -1224,12 +1224,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         let privateBoundary = app.descendants(matching: .any).matching(
             NSPredicate(
-                format: "identifier BEGINSWITH %@",
-                "CaptureCoachingPrivateWorkLabel_"
+                format: "identifier BEGINSWITH %@ OR label == %@",
+                "CaptureCoachingPrivateWorkLabel_",
+                "Private note, only you can read it"
             )
         ).firstMatch
         XCTAssertTrue(
-            privateBoundary.waitForExistence(timeout: 8),
+            waitForRuntimeElement(privateBoundary, in: app, timeout: 8, swipeAttempts: 4),
             "The phone must expose the author-only boundary to sighted and assistive-technology users."
         )
         attachRuntimeScreenshot(app, name: "Phone-first canonical client workspace")

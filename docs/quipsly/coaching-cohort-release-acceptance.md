@@ -339,6 +339,24 @@ title. It reports `testLane: retained-regression`,
 durable regression evidence only. A fresh, minimally instructed coach/client
 pair still needs to repeat the workflow for release acceptance.
 
+### Fresh compiled-iPhone relationship path — 2026-08-20
+
+The iPhone Coaching home no longer ends at an inert client-space card. A coach
+can open the canonical relationship, filter its notes, tasks, and goals, create
+and edit those items, assign tasks and goals to an active member, complete or
+reopen them, and keep an author-private note visibly private. Nest and Capture
+use the same engagement records; the phone does not maintain a parallel task or
+note model.
+
+The fresh-phone operation starts with a generated ordinary identity but then
+uses only the compiled app and ordinary navigation for coach setup, scheduling,
+invitation recovery, relationship entry, work creation, and Session entry. Its
+receipt independently reads the exact relationship, shared note, task, goal,
+private note, and Session from the canonical APIs. The receipt continues to say
+that real mailbox delivery, a physical iPhone, minimally instructed humans, and
+50-coach scale are unproved. Those claims belong only to the separate human
+flight and cohort lanes.
+
 ## Minimal-instruction Session path — 2026-08-19
 
 The coaching Session overview now leads with the four jobs most coaches need:
