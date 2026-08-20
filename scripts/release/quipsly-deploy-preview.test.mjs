@@ -47,6 +47,7 @@ test("session invitation email is explicit, Secret Manager backed, and safe to d
   assert.match(source, /ENABLE_SESSION_INVITATION_EMAIL="\$\{ENABLE_SESSION_INVITATION_EMAIL:-0\}"/);
   assert.match(source, /ENABLE_SESSION_INVITATION_EMAIL must be 0 or 1/);
   assert.match(source, /SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME/);
+  assert.match(source, /SESSION_INVITATION_EMAIL_FROM="\$\{SESSION_INVITATION_EMAIL_FROM:-invites@notify\.quipsly\.com\}"/);
   assert.match(source, /validate_private_secret "\$\{SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME\}" "api-key"/);
   assert.match(source, /QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=\$\{SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME\}:latest/);
   assert.match(source, /QUIPSLY_SESSION_INVITATION_EMAIL_FROM=\$\{SESSION_INVITATION_EMAIL_FROM\}/);
