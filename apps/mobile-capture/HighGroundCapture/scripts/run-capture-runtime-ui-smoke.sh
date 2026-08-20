@@ -77,12 +77,23 @@ TIMEOUT_SECONDS="${QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:-900}"
 TEST_MODE="${QUIPSLY_CAPTURE_UI_TEST_MODE:-surface}"
 DERIVED_DATA_PATH="${QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH:-}"
 SDK_STAT_CACHE_ENABLE_VALUE="${QUIPSLY_CAPTURE_UI_TEST_SDK_STAT_CACHE_ENABLE:-NO}"
+MICROPHONE_PERMISSION_MODE="${QUIPSLY_CAPTURE_UI_TEST_MICROPHONE_PERMISSION_MODE:-unchanged}"
+SIMULATOR_APP_STATE_MODE="${QUIPSLY_CAPTURE_UI_TEST_SIMULATOR_APP_STATE_MODE:-preserve}"
 RESULT_BUNDLE_PATH="${QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH:-/tmp/quipsly-capture-runtime-ui-${TEST_MODE}-$(date -u +%Y%m%dT%H%M%SZ)-$$.xcresult}"
 TEST_CLASS="CaptureRoomRuntimeSmokeTests"
 REQUIRES_PASSWORD_CREDENTIALS=true
 
 if [[ "$SDK_STAT_CACHE_ENABLE_VALUE" != "YES" && "$SDK_STAT_CACHE_ENABLE_VALUE" != "NO" ]]; then
   echo "QUIPSLY_CAPTURE_UI_TEST_SDK_STAT_CACHE_ENABLE must be YES or NO." >&2
+  exit 2
+fi
+
+if [[ "$MICROPHONE_PERMISSION_MODE" != "unchanged" && "$MICROPHONE_PERMISSION_MODE" != "grant" && "$MICROPHONE_PERMISSION_MODE" != "reset" ]]; then
+  echo "QUIPSLY_CAPTURE_UI_TEST_MICROPHONE_PERMISSION_MODE must be unchanged, grant, or reset." >&2
+  exit 2
+fi
+if [[ "$SIMULATOR_APP_STATE_MODE" != "preserve" && "$SIMULATOR_APP_STATE_MODE" != "fresh" ]]; then
+  echo "QUIPSLY_CAPTURE_UI_TEST_SIMULATOR_APP_STATE_MODE must be preserve or fresh." >&2
   exit 2
 fi
 
@@ -588,7 +599,53 @@ export QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_SUPPORT="$TEST_WEEKLY_PLAN_SUPPORT"
 export QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_REFLECTION="$TEST_WEEKLY_PLAN_REFLECTION"
 export DEVELOPER_DIR="$DEVELOPER_DIR_VALUE"
 
-XCODEBUILD_ARGUMENTS=(
+resolve_simulator_destination_id() {
+  if [[ "$DESTINATION" != *"iOS Simulator"* ]]; then
+    echo "Explicit simulator state setup is supported only for an iOS Simulator destination." >&2
+    return 2
+  fi
+
+  local destination_id=""
+  local destination_name=""
+  local part
+  IFS=',' read -r -a destination_parts <<< "$DESTINATION"
+  for part in "${destination_parts[@]}"; do
+    case "$part" in
+      id=*) destination_id="${part#id=}" ;;
+      name=*) destination_name="${part#name=}" ;;
+    esac
+  done
+
+  if [[ -z "$destination_id" && -n "$destination_name" ]]; then
+    destination_id="$(
+      "${XCRUN:-/usr/bin/xcrun}" simctl list devices available -j |
+        node -e '
+          let raw = "";
+          process.stdin.setEncoding("utf8");
+          process.stdin.on("data", (chunk) => { raw += chunk; });
+          process.stdin.on("end", () => {
+            const requestedName = process.argv[1];
+            const payload = JSON.parse(raw);
+            const matches = Object.values(payload.devices || {})
+              .flat()
+              .filter((device) => device?.isAvailable !== false && device?.name === requestedName)
+              .sort((left, right) => Number(right.state === "Booted") - Number(left.state === "Booted"));
+            process.stdout.write(matches[0]?.udid || "");
+          });
+        ' "$destination_name"
+    )"
+  fi
+  if [[ -z "$destination_id" ]]; then
+    echo "Could not resolve one simulator from destination: $DESTINATION" >&2
+    return 2
+  fi
+
+  "${XCRUN:-/usr/bin/xcrun}" simctl boot "$destination_id" >/dev/null 2>&1 || true
+  "${XCRUN:-/usr/bin/xcrun}" simctl bootstatus "$destination_id" -b >/dev/null
+  printf '%s' "$destination_id"
+}
+
+XCODEBUILD_BASE_ARGUMENTS=(
   -project "$PROJECT_PATH"
   -scheme HighGroundCapture
   -destination "$DESTINATION"
@@ -596,19 +653,54 @@ XCODEBUILD_ARGUMENTS=(
   -only-testing:"HighGroundCaptureUITests/$TEST_CLASS/$TEST_CASE"
 )
 if [[ -n "$DERIVED_DATA_PATH" ]]; then
-  XCODEBUILD_ARGUMENTS+=(-derivedDataPath "$DERIVED_DATA_PATH")
+  XCODEBUILD_BASE_ARGUMENTS+=(-derivedDataPath "$DERIVED_DATA_PATH")
 fi
 if [[ -e "$RESULT_BUNDLE_PATH" ]]; then
   echo "Refusing to overwrite existing runtime UI result bundle: $RESULT_BUNDLE_PATH" >&2
   exit 3
 fi
-XCODEBUILD_ARGUMENTS+=(-resultBundlePath "$RESULT_BUNDLE_PATH")
-XCODEBUILD_ARGUMENTS+=("SDK_STAT_CACHE_ENABLE=$SDK_STAT_CACHE_ENABLE_VALUE")
-XCODEBUILD_ARGUMENTS+=(test)
+XCODEBUILD_BASE_ARGUMENTS+=("SDK_STAT_CACHE_ENABLE=$SDK_STAT_CACHE_ENABLE_VALUE")
 
-run_with_timeout "$TIMEOUT_SECONDS" \
-  "$DEVELOPER_DIR_VALUE/usr/bin/xcodebuild" \
-  "${XCODEBUILD_ARGUMENTS[@]}"
+if [[ "$MICROPHONE_PERMISSION_MODE" == "unchanged" && "$SIMULATOR_APP_STATE_MODE" == "preserve" ]]; then
+  run_with_timeout "$TIMEOUT_SECONDS" \
+    "$DEVELOPER_DIR_VALUE/usr/bin/xcodebuild" \
+    "${XCODEBUILD_BASE_ARGUMENTS[@]}" \
+    -resultBundlePath "$RESULT_BUNDLE_PATH" \
+    test
+else
+  if [[ -z "$DERIVED_DATA_PATH" ]]; then
+    echo "Deterministic simulator state setup requires QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH." >&2
+    exit 2
+  fi
+  simulator_id="$(resolve_simulator_destination_id)"
+  if [[ "$SIMULATOR_APP_STATE_MODE" == "fresh" ]]; then
+    "${XCRUN:-/usr/bin/xcrun}" simctl terminate "$simulator_id" com.highgroundodyssey.HighGroundCapture >/dev/null 2>&1 || true
+    "${XCRUN:-/usr/bin/xcrun}" simctl uninstall "$simulator_id" com.highgroundodyssey.HighGroundCapture >/dev/null 2>&1 || true
+    echo "Simulator app container: fresh ($simulator_id)"
+  fi
+
+  run_with_timeout "$TIMEOUT_SECONDS" \
+    "$DEVELOPER_DIR_VALUE/usr/bin/xcodebuild" \
+    "${XCODEBUILD_BASE_ARGUMENTS[@]}" \
+    build-for-testing
+
+  built_app="$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/HighGroundCapture.app"
+  if [[ ! -d "$built_app" ]]; then
+    echo "Built Capture app was not found at the deterministic simulator path: $built_app" >&2
+    exit 3
+  fi
+  "${XCRUN:-/usr/bin/xcrun}" simctl install "$simulator_id" "$built_app"
+  if [[ "$MICROPHONE_PERMISSION_MODE" != "unchanged" ]]; then
+    "${XCRUN:-/usr/bin/xcrun}" simctl privacy "$simulator_id" "$MICROPHONE_PERMISSION_MODE" microphone com.highgroundodyssey.HighGroundCapture
+    echo "Simulator microphone permission: $MICROPHONE_PERMISSION_MODE ($simulator_id)"
+  fi
+
+  run_with_timeout "$TIMEOUT_SECONDS" \
+    "$DEVELOPER_DIR_VALUE/usr/bin/xcodebuild" \
+    "${XCODEBUILD_BASE_ARGUMENTS[@]}" \
+    -resultBundlePath "$RESULT_BUNDLE_PATH" \
+    test-without-building
+fi
 
 cleanup_smoke_credentials
 trap - EXIT

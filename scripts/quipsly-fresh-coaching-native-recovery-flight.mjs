@@ -279,6 +279,7 @@ const receiptPath = path.join(
   artifactDirectory,
   "native-capture-recovery-receipt.json",
 );
+const derivedDataPath = path.join(artifactDirectory, "native-capture-derived-data");
 const destination =
   process.env.QUIPSLY_CAPTURE_UI_TEST_DESTINATION ||
   "platform=iOS Simulator,name=iPhone 17 Pro";
@@ -300,6 +301,9 @@ const status = await runInherited(
       QUIPSLY_CAPTURE_UI_TEST_SESSION_ID: context.roomId,
       QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE: context.sessionTitle,
       QUIPSLY_CAPTURE_UI_TEST_MODE: "capture-recovery",
+      QUIPSLY_CAPTURE_UI_TEST_MICROPHONE_PERMISSION_MODE: "grant",
+      QUIPSLY_CAPTURE_UI_TEST_SIMULATOR_APP_STATE_MODE: "fresh",
+      QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH: derivedDataPath,
       QUIPSLY_CAPTURE_UI_TEST_DESTINATION: destination,
       QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH: resultBundlePath,
       QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:
@@ -372,6 +376,9 @@ const receipt = {
   boundaries: {
     passwordsWrittenToArtifact: false,
     simulatorUsed: destination.includes("Simulator"),
+    simulatorMicrophonePermissionPregrantedByHarness: true,
+    simulatorAppContainerStartedFreshByHarness: true,
+    firstRunMicrophonePermissionUXProven: false,
     physicalDeviceProven: false,
     naturalHumanSpeechProven: false,
     humanListeningProven: false,

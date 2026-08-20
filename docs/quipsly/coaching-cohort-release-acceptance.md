@@ -655,6 +655,11 @@ The failed runs remain useful evidence rather than being hidden:
   person to Today while recording is active. The persistent global recording
   banner already provided recovery; the operation now follows that visible
   affordance instead of assuming the recorder stayed foregrounded.
+- Recovery flights build first, install into a fresh simulator app container,
+  then pregrant microphone access and record both harness boundaries explicitly.
+  They prove recorder interruption and source recovery without stale app state,
+  not first-run permission-prompt comprehension; that remains a physical-device
+  and minimally instructed human-flight requirement.
 - `c18e4114` exposed a real product dead end: ingest had minted media, but the
   Session had no production/editor container, so neither a truthful review
   destination nor a working attach action existed.
