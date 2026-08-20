@@ -489,6 +489,18 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         return element.exists
     }
 
+    private func waitUntilHittable(
+        _ element: XCUIElement,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && element.isHittable { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return element.exists && element.isHittable
+    }
+
     private func jumpToTranscript(in app: XCUIApplication) {
         let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
         XCTAssertTrue(jumpMenu.waitForExistence(timeout: 10))
