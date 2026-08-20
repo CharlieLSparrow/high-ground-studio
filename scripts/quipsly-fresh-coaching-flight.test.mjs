@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+const subject = fileURLToPath(
+  new URL("./quipsly-fresh-coaching-flight.mjs", import.meta.url),
+);
+
+test("fresh coaching flight retains a private receipt without claiming human acceptance", () => {
+  const source = readFileSync(subject, "utf8");
+
+  assert.match(source, /schema: "quipsly-fresh-coaching-flight-receipt-v1"/);
+  assert.match(source, /"fresh-coaching-flight-receipt\.json"/);
+  assert.match(source, /humanAcceptanceSatisfied: false/);
+  assert.match(source, /minimallyInstructedHumanAcceptanceProven: false/);
+  assert.match(source, /writeFile\(receiptPath/);
+  assert.match(source, /mode: 0o600/);
+  assert.match(source, /chmod\(receiptPath, 0o600\)/);
+});

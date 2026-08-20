@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { chmod, rm } from "node:fs/promises";
+import { chmod, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const controlledSpeechFlight =
@@ -74,9 +74,9 @@ const start = await run(
 const continuationEnv = {
   QUIPSLY_COACHING_ACCEPTANCE_CONTEXT: start.contextPath,
 };
+const artifactDirectory = path.dirname(start.contextPath);
 let controlledSpeech = null;
 if (controlledSpeechFlight) {
-  const artifactDirectory = path.dirname(start.contextPath);
   const phrases = {
     coach:
       "Welcome to our coaching session. Today we will clarify your goal and choose one next step. What outcome would make this week feel successful?",
@@ -209,56 +209,61 @@ if (controlledSpeechFlight) {
   );
 }
 
-console.log(
-  JSON.stringify(
-    {
-      ok: true,
-      localOnly: true,
-      testLane: "fresh-ui-automation",
-      fixtureIdentifiersUsed: false,
-      humanAcceptanceSatisfied: false,
-      contextPath: start.contextPath,
-      roomId: start.roomId,
-      bookingId: start.bookingId,
-      engagementId: start.engagementId,
-      freshAccountsCreated: true,
-      exactRenderedClientEntryUsed: true,
-      participantsConnected: call.participantsConnected,
-      independentParticipantSourcesVerified:
-        call.independentParticipantSourcesVerified,
-      sourceOverlapMilliseconds: call.browserSourceOverlapMilliseconds,
-      transcriptSourceCount: transcript.sourceCount,
-      protectedTranscriptPlaybackDecoded:
-        transcript.renderedTranscriptRuns.every(
-          (item) => item.protectedPlaybackDecoded,
-        ),
-      sharedAndPrivateWorkOperated:
-        work.clientCreatedSharedNote &&
-        work.clientCreatedPrivateNote &&
-        work.privateNoteHiddenFromCoach,
-      crossAccountTaskCompletionOperated: work.clientObservedCoachCompletion,
-      lightEditPreviewAndRecipientPlaybackOperated:
-        share.coachPreviewDecoded && share.clientPlaybackDecoded,
-      releaseAndRevokeOperated:
-        share.clientMediaStatusBeforeRevoke === 200 &&
-        share.clientMediaStatusAfterRevoke === 404,
-      controlledAudibleSpeechPipelineOperated:
-        controlledSpeechFlight && transcript.controlledSpeechTermsObserved,
-      boundaries: {
-        localMailboxAdapterUsed: true,
-        realMailboxDeliveryProven: false,
-        fakeBrowserMediaUsed: true,
-        controlledTextToSpeechUsed: controlledSpeechFlight,
-        distinctParticipantSpeechFilesUsed: controlledSpeechFlight,
-        realSpeechQualityProven: false,
-        naturalHumanSpeechProven: false,
-        physicalDeviceProven: false,
-        humanListeningProven: false,
-        minimallyInstructedHumanAcceptanceProven: false,
-        productionScaleProven: false,
-      },
-    },
-    null,
-    2,
-  ),
+const receiptPath = path.join(
+  artifactDirectory,
+  "fresh-coaching-flight-receipt.json",
 );
+const result = {
+  schema: "quipsly-fresh-coaching-flight-receipt-v1",
+  recordedAt: new Date().toISOString(),
+  ok: true,
+  localOnly: true,
+  testLane: "fresh-ui-automation",
+  fixtureIdentifiersUsed: false,
+  humanAcceptanceSatisfied: false,
+  receiptPath,
+  contextPath: start.contextPath,
+  roomId: start.roomId,
+  bookingId: start.bookingId,
+  engagementId: start.engagementId,
+  freshAccountsCreated: true,
+  exactRenderedClientEntryUsed: true,
+  participantsConnected: call.participantsConnected,
+  independentParticipantSourcesVerified:
+    call.independentParticipantSourcesVerified,
+  sourceOverlapMilliseconds: call.browserSourceOverlapMilliseconds,
+  transcriptSourceCount: transcript.sourceCount,
+  protectedTranscriptPlaybackDecoded: transcript.renderedTranscriptRuns.every(
+    (item) => item.protectedPlaybackDecoded,
+  ),
+  sharedAndPrivateWorkOperated:
+    work.clientCreatedSharedNote &&
+    work.clientCreatedPrivateNote &&
+    work.privateNoteHiddenFromCoach,
+  crossAccountTaskCompletionOperated: work.clientObservedCoachCompletion,
+  lightEditPreviewAndRecipientPlaybackOperated:
+    share.coachPreviewDecoded && share.clientPlaybackDecoded,
+  releaseAndRevokeOperated:
+    share.clientMediaStatusBeforeRevoke === 200 &&
+    share.clientMediaStatusAfterRevoke === 404,
+  controlledAudibleSpeechPipelineOperated:
+    controlledSpeechFlight && transcript.controlledSpeechTermsObserved,
+  boundaries: {
+    localMailboxAdapterUsed: true,
+    realMailboxDeliveryProven: false,
+    fakeBrowserMediaUsed: true,
+    controlledTextToSpeechUsed: controlledSpeechFlight,
+    distinctParticipantSpeechFilesUsed: controlledSpeechFlight,
+    realSpeechQualityProven: false,
+    naturalHumanSpeechProven: false,
+    physicalDeviceProven: false,
+    humanListeningProven: false,
+    minimallyInstructedHumanAcceptanceProven: false,
+    productionScaleProven: false,
+  },
+};
+await writeFile(receiptPath, `${JSON.stringify(result, null, 2)}\n`, {
+  mode: 0o600,
+});
+await chmod(receiptPath, 0o600);
+console.log(JSON.stringify(result, null, 2));
