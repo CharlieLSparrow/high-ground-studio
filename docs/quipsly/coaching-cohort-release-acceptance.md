@@ -154,6 +154,19 @@ without persisting the note. The form now prevents native submission explicitly
 and the complete fresh flight passed from scratch. This remains automation, not
 novice-human or real-mailbox proof.
 
+The iPhone Coaching home now uses the same durable Session invitation operation
+as Nest. **Send invitation email** is the primary action on an exact upcoming
+appointment; the iOS share sheet remains a recovery path. A transport-ambiguous
+request ID survives app termination and is reused until the server gives a
+definitive response, so relaunching cannot turn an uncertain response into an
+unrelated second email operation. The Coaching runway projects the exact
+client's latest delivery receipt back to the phone after reload and keeps
+`SENT`, `FAILED`, and acceptance distinct. The current candidate passed an iOS
+simulator build and operated Coaching-home UI test plus the focused server
+delivery/projection suite. Preview mode showed the real primary and fallback
+controls but kept external sending disabled. No physical phone, provider-backed
+mailbox delivery, or human invitation acceptance is claimed by that run.
+
 ## Implementation checkpoint — 2026-08-19
 
 - Ordinary Coaching and Session surfaces no longer name retained people,

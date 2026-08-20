@@ -109,13 +109,26 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureCoachingBooking_preview-booking"].exists,
             "The native home should expose upcoming appointments with exact client continuity."
         )
+        // Newer SwiftUI runtimes omit a custom identifier from the accessibility
+        // snapshot for this disabled control, but retain the visible Button role
+        // and label. Operate the same affordance a coach can actually perceive.
+        let sendInvitation = app.buttons["Send invitation email"]
+        reveal(sendInvitation)
+        XCTAssertTrue(
+            sendInvitation.exists,
+            "Durable email delivery should be the native coach's primary invitation action."
+        )
+        XCTAssertFalse(
+            sendInvitation.isEnabled,
+            "Deterministic preview must expose the action without claiming to send external email."
+        )
         // ShareLink's generated type varies between iOS releases. Its
-        // explicit accessibility label is the operated user contract.
+        // explicit accessibility label is the operated fallback contract.
         let shareInvite = app.descendants(matching: .any)["Share coaching invitation"]
         reveal(shareInvite)
         XCTAssertTrue(
             shareInvite.exists && shareInvite.isHittable,
-            "A coach should be able to open the system share sheet for the verified-email client entry."
+            "A coach should retain the system share sheet as a fallback to durable email delivery."
         )
         let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"]
         reveal(relationship)

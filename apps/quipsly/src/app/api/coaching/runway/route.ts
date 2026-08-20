@@ -20,6 +20,7 @@ import {
 import { getQuipslyLiveKitEgressReadiness } from "@/lib/server/coaching-livekit-egress";
 import { ensureCoachingEngagement, CoachingEngagementError } from "@/lib/server/coaching-engagement";
 import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
+import { projectClientInvitationDeliveryForViewer } from "@/lib/server/coaching-invitation-delivery-projection";
 import {
   buildMobileCaptureConsentVersions,
   mobileCaptureAllPartiesReady,
@@ -710,6 +711,26 @@ export async function GET(request: Request) {
           callRoom: {
             include: {
               calendarLinks: { orderBy: { createdAt: "desc" }, take: 3 },
+              invitations: {
+                orderBy: { createdAt: "desc" },
+                take: 10,
+                select: {
+                  email: true,
+                  deliveries: {
+                    orderBy: { createdAt: "desc" },
+                    take: 1,
+                    select: {
+                      id: true,
+                      channel: true,
+                      status: true,
+                      requestedAt: true,
+                      completedAt: true,
+                      errorCode: true,
+                      errorMessage: true,
+                    },
+                  },
+                },
+              },
               participants: { where: { accessStatus: "ACTIVE" } },
               recordingConsents: true,
               recordingAssets: true,
@@ -958,6 +979,13 @@ export async function GET(request: Request) {
       finalizationReceipts,
     );
     const latestCalendar = latestCalendarLink(booking) || latestCalendarLink(booking.callRoom);
+    const canManageClientInvitation =
+      session.user.isStaff || booking.coachUserId === userId;
+    const clientInvitationDelivery = projectClientInvitationDeliveryForViewer({
+      canManageInvitation: canManageClientInvitation,
+      clientEmail: booking.clientUser?.primaryEmail,
+      invitations: booking.callRoom?.invitations,
+    });
     const calendarPacket = calendarReadyPacket({
       booking,
       room: booking.callRoom,
@@ -1031,6 +1059,7 @@ export async function GET(request: Request) {
       coach: person(booking.coachUser),
       callRoomId: booking.callRoom?.id || null,
       callRoomStatus: booking.callRoom?.status || null,
+      clientInvitationDelivery,
       ...coachingClientEntryPaths({
         roomId: booking.callRoom?.id,
         engagementId: booking.engagementId || booking.callRoom?.coachingEngagementId,

@@ -28,6 +28,7 @@ struct MobileCoachingBooking: Codable, Identifiable, Hashable {
     let coach: MobileCoachingPerson?
     let callRoomId: String?
     let callRoomStatus: String?
+    let clientInvitationDelivery: MobileCoachingInvitationDelivery?
     let clientEntryPath: String?
     let engagementPath: String?
     let liveSessionPath: String?
@@ -83,6 +84,24 @@ private struct MobileCoachingActionResponse: Codable {
     let result: MobileCoachingAppointmentResult?
 }
 
+struct MobileCoachingInvitationDelivery: Codable, Hashable {
+    let id: String
+    let channel: String
+    let status: String
+    let requestedAt: String
+    let completedAt: String?
+    let errorCode: String?
+    let errorMessage: String?
+
+    var wasSent: Bool { status == "SENT" }
+}
+
+private struct MobileCoachingInvitationResponse: Codable {
+    let ok: Bool
+    let error: String?
+    let delivery: MobileCoachingInvitationDelivery?
+}
+
 struct MobileCoachingAppointmentDraft: Equatable {
     var clientEmail = ""
     var clientName = ""
@@ -119,6 +138,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
     @Published private(set) var isMutating = false
     @Published private(set) var status = "Coaching not loaded"
     @Published private(set) var errorMessage: String?
+    @Published private(set) var invitationDeliveries: [String: MobileCoachingInvitationDelivery] = [:]
 
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
@@ -157,6 +177,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
                     coach: MobileCoachingPerson(id: "preview-coach", name: "Charlie Sparrow", email: "charlie@example.test"),
                     callRoomId: "room-preview-coaching-ready",
                     callRoomStatus: "PLANNED",
+                    clientInvitationDelivery: nil,
                     clientEntryPath: "/sessions/room-preview-coaching-ready?mode=live",
                     engagementPath: "/coaching/engagements/preview-engagement",
                     liveSessionPath: "/sessions/room-preview-coaching-ready?mode=live",
@@ -191,6 +212,13 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 throw coachingClientError(payload.error ?? "Quipsly coaching could not load.")
             }
             response = payload
+            invitationDeliveries = Dictionary(
+                uniqueKeysWithValues: (payload.upcomingBookings ?? []).compactMap { booking in
+                    guard let roomID = booking.callRoomId,
+                          let delivery = booking.clientInvitationDelivery else { return nil }
+                    return (roomID, delivery)
+                }
+            )
             status = payload.user?.isCoach == true ? "Coaching ready" : "Coach setup available"
         } catch {
             status = "Coaching needs attention"
@@ -277,6 +305,90 @@ final class MobileCoachingRunwayClient: ObservableObject {
             errorMessage = error.localizedDescription
             return nil
         }
+    }
+
+    @discardableResult
+    func sendInvitationEmail(
+        roomID: String,
+        recipientEmail: String,
+        recipientName: String?
+    ) async -> Bool {
+        guard !isMutating else { return false }
+        let normalizedEmail = recipientEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !roomID.isEmpty, normalizedEmail.contains("@") else {
+            errorMessage = "This appointment does not have a verified client email to invite."
+            return false
+        }
+        guard let encodedRoomID = roomID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(baseURL)/api/sessions/\(encodedRoomID)/invitations") else {
+            errorMessage = "The configured Nest URL is not valid."
+            return false
+        }
+
+        isMutating = true
+        defer { isMutating = false }
+        status = "Sending invitation email"
+        errorMessage = nil
+        let requestID = pendingInvitationRequestID(for: roomID, recipientEmail: normalizedEmail)
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "email": normalizedEmail,
+                "displayName": recipientName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                "role": "CLIENT",
+                "expiresInHours": 24 * 30,
+                "delivery": "EMAIL",
+                "requestId": requestID.uuidString.lowercased(),
+            ])
+            let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCoachingInvitationResponse.self, from: data)
+
+            // A receipt or a client error is definitive. A transport failure or
+            // receipt-less server error can happen after provider acceptance, so
+            // retain the same identity across retry and process death.
+            if payload.delivery != nil || (400..<500).contains(httpResponse.statusCode) {
+                clearPendingInvitationRequestID(for: roomID, recipientEmail: normalizedEmail)
+            }
+            if let delivery = payload.delivery {
+                invitationDeliveries[roomID] = delivery
+            }
+            guard httpResponse.statusCode < 400, payload.ok, payload.delivery?.wasSent == true else {
+                throw coachingClientError(
+                    payload.delivery?.errorMessage
+                        ?? payload.error
+                        ?? "The invitation email was not sent. Share the private link instead or retry."
+                )
+            }
+            status = "Invitation email sent"
+            return true
+        } catch {
+            status = "Invitation needs attention"
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func pendingInvitationRequestID(for roomID: String, recipientEmail: String) -> UUID {
+        let key = invitationRequestDefaultsKey(for: roomID, recipientEmail: recipientEmail)
+        if let raw = UserDefaults.standard.string(forKey: key), let existing = UUID(uuidString: raw) {
+            return existing
+        }
+        let created = UUID()
+        UserDefaults.standard.set(created.uuidString.lowercased(), forKey: key)
+        return created
+    }
+
+    private func clearPendingInvitationRequestID(for roomID: String, recipientEmail: String) {
+        UserDefaults.standard.removeObject(
+            forKey: invitationRequestDefaultsKey(for: roomID, recipientEmail: recipientEmail)
+        )
+    }
+
+    private func invitationRequestDefaultsKey(for roomID: String, recipientEmail: String) -> String {
+        "quipsly.coaching.invitation-request.\(roomID).\(recipientEmail)"
     }
 
     func absoluteURL(for path: String?) -> URL? {
@@ -513,6 +625,17 @@ struct CaptureCoachingHomeView: View {
             Text("Send the private entry to the client. Their invited, verified email—not possession of the link—controls access.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if let booking = booking(for: handoff.callRoomId) {
+                invitationActions(for: booking)
+            } else {
+                HStack {
+                    coachingShareLink(
+                        title: "Join my Quipsly coaching session",
+                        roomID: handoff.callRoomId,
+                        entryPath: handoff.clientEntryPath
+                    )
+                }
+            }
             HStack {
                 if let roomID = handoff.callRoomId {
                     Button {
@@ -522,11 +645,6 @@ struct CaptureCoachingHomeView: View {
                     }
                     .buttonStyle(.bordered)
                 }
-                coachingShareLink(
-                    title: "Join my Quipsly coaching session",
-                    roomID: handoff.callRoomId,
-                    entryPath: handoff.clientEntryPath
-                )
             }
         }
         .captureCard()
@@ -585,18 +703,73 @@ struct CaptureCoachingHomeView: View {
                                 .buttonStyle(.bordered)
                                 .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
                             }
-                            coachingShareLink(
-                                title: booking.title,
-                                roomID: booking.callRoomId,
-                                entryPath: booking.clientEntryPath
-                            )
                         }
+                        if client.isCoach { invitationActions(for: booking) }
                     }
                     .captureCard()
                     .accessibilityIdentifier("CaptureCoachingBooking_\(booking.id)")
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func invitationActions(for booking: MobileCoachingBooking) -> some View {
+        if let roomID = booking.callRoomId,
+           let recipientEmail = booking.client?.email?.nonemptyCoachingText {
+            VStack(alignment: .leading, spacing: 8) {
+                Button {
+                    Task {
+                        _ = await client.sendInvitationEmail(
+                            roomID: roomID,
+                            recipientEmail: recipientEmail,
+                            recipientName: booking.client?.name
+                        )
+                    }
+                } label: {
+                    Label(
+                        client.invitationDeliveries[roomID]?.wasSent == true
+                            ? "Resend invitation email"
+                            : "Send invitation email",
+                        systemImage: "envelope.badge"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(client.isMutating || model.usesPreviewData)
+                .accessibilityHint("Emails a one-time, verified-email invitation and records delivery separately from acceptance.")
+                .accessibilityIdentifier("CaptureCoachingSendInvite_\(booking.id)")
+
+                if let delivery = client.invitationDeliveries[roomID] {
+                    Label(
+                        delivery.wasSent
+                            ? "Email sent to \(recipientEmail). Acceptance is still pending."
+                            : delivery.errorMessage ?? "Email was not sent. Retry or share the link.",
+                        systemImage: delivery.wasSent ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(delivery.wasSent ? .green : .orange)
+                    .accessibilityIdentifier("CaptureCoachingInviteDelivery_\(booking.id)")
+                }
+
+                coachingShareLink(
+                    title: booking.title,
+                    roomID: booking.callRoomId,
+                    entryPath: booking.clientEntryPath
+                )
+            }
+        } else {
+            coachingShareLink(
+                title: booking.title,
+                roomID: booking.callRoomId,
+                entryPath: booking.clientEntryPath
+            )
+        }
+    }
+
+    private func booking(for roomID: String?) -> MobileCoachingBooking? {
+        guard let roomID else { return nil }
+        return client.upcomingBookings.first { $0.callRoomId == roomID }
     }
 
     private var relationshipsSection: some View {
