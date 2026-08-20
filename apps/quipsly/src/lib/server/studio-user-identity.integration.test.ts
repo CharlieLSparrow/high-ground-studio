@@ -74,7 +74,7 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
     });
   });
 
-  it("binds two verified Firebase subjects to one person through primary and alias emails", async () => {
+  it("requires an explicit identity ledger link before an alias can authenticate as the same person", async () => {
     const primaryEmail = `firebase-primary-${nonce}@example.test`;
     const aliasEmail = `firebase-alias-${nonce}@example.test`;
     const user = await prisma.user.create({
@@ -96,6 +96,27 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
       email: primaryEmail,
       emailVerified: true,
       provider: "google.com",
+    });
+    await expect(
+      ensureStudioUserFromFirebaseIdentity({
+        firebaseUid: `firebase-alias-${nonce}`,
+        email: aliasEmail,
+        emailVerified: true,
+        provider: "google.com",
+      }),
+    ).rejects.toThrow(
+      "Firebase identity requires explicit review before a contact email alias can become a login.",
+    );
+
+    await prisma.userAuthIdentity.create({
+      data: {
+        userId: user.id,
+        authority: "firebase:quipsly-reef",
+        subject: `firebase-alias-${nonce}`,
+        provider: "google.com",
+        emailAtLink: aliasEmail,
+        emailVerifiedAt: new Date(),
+      },
     });
     const aliasIdentity = await ensureStudioUserFromFirebaseIdentity({
       firebaseUid: `firebase-alias-${nonce}`,

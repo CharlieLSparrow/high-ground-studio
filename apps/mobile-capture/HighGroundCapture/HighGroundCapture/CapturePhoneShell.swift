@@ -11,6 +11,8 @@ struct CapturePhoneShell: View {
     @EnvironmentObject private var deepLinkRouter: CaptureDeepLinkRouter
     @StateObject private var model = CaptureExperienceModel()
     @State private var showsNewSession = false
+    @State private var completedInitialLoad = false
+    @State private var isRoutingSessionLink = false
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -119,10 +121,17 @@ struct CapturePhoneShell: View {
         }
         .task {
             await model.load()
+            completedInitialLoad = true
             showRejectedLinkNotice()
             await routePendingSessionLink()
         }
         .onChange(of: deepLinkRouter.pendingSession) { _, _ in
+            // A cold app-link launch publishes the URL before the authenticated
+            // Capture model has finished its first canonical load. Starting a
+            // second Session load at that point lets two re-entrant refreshes
+            // mutate the same navigation projection. Wait for the shell to be
+            // ready and route exactly one request at a time.
+            guard completedInitialLoad else { return }
             Task { await routePendingSessionLink() }
         }
         .onChange(of: deepLinkRouter.rejectedLinkNotice) { _, _ in
@@ -158,15 +167,23 @@ struct CapturePhoneShell: View {
 
     @MainActor
     private func routePendingSessionLink() async {
-        guard let request = deepLinkRouter.pendingSession else { return }
-        switch await model.focusSession(from: request) {
-        case let .opened(tab):
-            visibleTab = tab
-            deepLinkRouter.consume(request)
-        case .rejected:
-            deepLinkRouter.consume(request)
-        case .retryWhenOnline:
-            break
+        guard completedInitialLoad, !isRoutingSessionLink else { return }
+        isRoutingSessionLink = true
+        defer { isRoutingSessionLink = false }
+
+        // A second link can arrive while Nest is authorizing the first one.
+        // Drain accepted/rejected requests in order, but leave a retryable link
+        // pending so reconnecting never silently loses the person's Session.
+        while let request = deepLinkRouter.pendingSession {
+            switch await model.focusSession(from: request) {
+            case let .opened(tab):
+                visibleTab = tab
+                deepLinkRouter.consume(request)
+            case .rejected:
+                deepLinkRouter.consume(request)
+            case .retryWhenOnline:
+                return
+            }
         }
     }
 

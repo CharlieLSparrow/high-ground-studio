@@ -42,7 +42,7 @@
       "NSPrivacyCollectedDataTypePhotosorVideos",
       "NSPrivacyCollectedDataTypeOtherUserContent"
     ],
-    "archiveAggregateValidatedBuild": "28",
+    "archiveAggregateValidatedBuild": "30",
     "aggregateCollectedDataTypeCount": 11,
     "publicationStatus": "requires-account-holder-approval"
   },
@@ -50,8 +50,8 @@
     "providerTarget": {
       "appId": "6780995957",
       "version": "1.0",
-      "build": "28",
-      "auditedAt": "2026-08-05T19:18:07.319Z"
+      "build": "30",
+      "auditedAt": "2026-08-20T17:06:26.000Z"
     },
     "contentRights": {
       "status": "configured-and-read-back",
@@ -172,7 +172,7 @@
     "blockers": [
       "Complete the account-level DSA trader determination in App Store Connect.",
       "Capture and approve all five 6.9-inch screenshots from the exact physical-device or TestFlight candidate without private data.",
-      "Install Build 28 from TestFlight on a physical iPhone, then prove Episode 9 opens without the prior layout crash plus audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
+      "Install Build 30 from TestFlight on a physical iPhone, then prove Episode 9 opens without the prior layout crash plus audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
       "Publish accurate App Privacy answers and prove the account-deletion workflow against a disposable production account."
     ]
   }

@@ -35,7 +35,6 @@ import { TagSearchChips } from "@/components/tag-search-chips";
 import { AudibleEventQualificationLab } from "@/components/audio/AudibleEventQualificationLab";
 import { CaptureAppHandoff } from "@/components/capture-app-handoff";
 import {
-  LiveSessionDockLauncher,
   type LiveSessionDockConfig,
   useLiveSessionDock,
 } from "@/components/live-session-dock";
@@ -5851,6 +5850,58 @@ export function SessionReviewClient({
     ],
   );
 
+  if (mode === "live") {
+    return (
+      <main className="mx-auto flex min-h-[calc(100dvh-8rem)] w-full max-w-4xl items-center px-0 py-4 sm:py-8">
+        <div className="w-full rounded-[2rem] border border-[#ded1bb] bg-[#fffaf0]/95 p-4 shadow-xl shadow-[#3d3122]/10 sm:p-7">
+          <header className="mb-4 flex items-start justify-between gap-4 px-1">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
+                Session lobby
+              </p>
+              <h1 className="mt-1 truncate font-serif text-2xl font-black text-[#3d3122] sm:text-3xl">
+                {sessionTitle}
+              </h1>
+              <p className="mt-1 text-xs font-semibold text-[#765f40]">
+                Nothing joins or records until you confirm it.
+              </p>
+            </div>
+            <Link
+              href={sessionWorkspaceHref(roomId, "overview")}
+              className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-[#d9c7a5] bg-white px-4 text-xs font-black text-[#5b472f]"
+            >
+              Leave lobby
+            </Link>
+          </header>
+
+          <CaptureAppHandoff
+            roomId={roomId}
+            joinedFromInvitation={joinedFromInvitation}
+            canViewChoiceMetrics={canViewEntryChoiceMetrics}
+            onContinueInBrowser={() => liveDock.open(liveDockConfig)}
+          />
+
+          <details className="mt-4 rounded-2xl border border-[#ded1bb] bg-white/75 p-4">
+            <summary className="cursor-pointer text-sm font-black text-[#5b472f]">
+              Recording confidence and source details
+            </summary>
+            <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
+              Optional technical details for planned devices, retained masters,
+              upload safety, or a recording problem. This does not control the call.
+            </p>
+            <div className="mt-4">
+              <SessionReadinessTopologyCard
+                roomId={roomId}
+                topology={readinessTopology}
+                canManageSourcePlan={canManageSourcePlan}
+              />
+            </div>
+          </details>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <section className="rounded-3xl border border-[#e5d5b7] bg-white/85 p-5 shadow-sm sm:p-6">
@@ -5964,48 +6015,6 @@ export function SessionReviewClient({
             />
           )}
         </>
-      ) : null}
-
-      {mode === "live" ? (
-        <div className="space-y-5">
-          {joinedFromInvitation ? (
-            <CaptureAppHandoff
-              roomId={roomId}
-              joinedFromInvitation
-              canViewChoiceMetrics={canViewEntryChoiceMetrics}
-              onContinueInBrowser={() => liveDock.open(liveDockConfig)}
-            />
-          ) : null}
-          <LiveSessionDockLauncher
-            config={liveDockConfig}
-            autoOpen={!joinedFromInvitation}
-            label="Open mic, camera & call"
-            description="Choose the microphone, camera, and headphones you want, confirm consent, then join this Session. The call stays available while you move between notes, goals, and follow-up."
-          />
-          {!joinedFromInvitation ? (
-            <CaptureAppHandoff
-              roomId={roomId}
-              canViewChoiceMetrics={canViewEntryChoiceMetrics}
-              onContinueInBrowser={() => liveDock.open(liveDockConfig)}
-            />
-          ) : null}
-          <details className="rounded-2xl border border-[#ded1bb] bg-white/75 p-4">
-            <summary className="cursor-pointer text-sm font-black text-[#5b472f]">
-              Recording confidence and source details
-            </summary>
-            <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
-              Use this when checking planned devices, retained masters, upload
-              safety, or a recording problem. It does not control the call.
-            </p>
-            <div className="mt-4">
-              <SessionReadinessTopologyCard
-                roomId={roomId}
-                topology={readinessTopology}
-                canManageSourcePlan={canManageSourcePlan}
-              />
-            </div>
-          </details>
-        </div>
       ) : null}
 
       {mode === "recordings" ? (

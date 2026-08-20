@@ -225,15 +225,17 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
     });
     const bySubject = authIdentity?.user ?? byLegacyUid;
 
-    const byEmail = await tx.user.findFirst({
-      where: {
-        OR: [
-          { primaryEmail: normalizedEmail },
-          { aliases: { some: { email: normalizedEmail } } },
-        ],
-      },
+    const byPrimaryEmail = await tx.user.findUnique({
+      where: { primaryEmail: normalizedEmail },
       include: userIdentityInclude,
     });
+    const emailAlias = await tx.userEmail.findUnique({
+      where: { email: normalizedEmail },
+      include: {
+        user: { include: userIdentityInclude },
+      },
+    });
+    const byEmail = byPrimaryEmail ?? emailAlias?.user ?? null;
 
     if (
       authIdentity &&
@@ -251,7 +253,19 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
       );
     }
 
-    const existing = bySubject ?? byEmail;
+    // UserEmail is a contact/access alias, not authentication authority. A
+    // brand-new Firebase subject may bind automatically only to its exact
+    // primary mailbox. Alternate credentials must already have an explicit
+    // UserAuthIdentity ledger row created by a reviewed account-link flow.
+    // This prevents an old convenience alias from silently collapsing two
+    // Google accounts into one Quipsly person.
+    if (!bySubject && !byPrimaryEmail && emailAlias) {
+      throw new Error(
+        "Firebase identity requires explicit review before a contact email alias can become a login.",
+      );
+    }
+
+    const existing = bySubject ?? byPrimaryEmail;
 
     if (existing) {
       // Firebase credentials must never resurrect an account after deletion or
