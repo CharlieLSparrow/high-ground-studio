@@ -657,8 +657,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(save.isEnabled)
         save.tap()
 
-        let syncCard = app.descendants(matching: .any)["CaptureQuickEntrySyncCard"]
-        XCTAssertTrue(syncCard.waitForExistence(timeout: 5))
+        let confirmation = app.descendants(matching: .any)["CaptureQuickEntryConfirmation"]
+        XCTAssertTrue(
+            confirmation.waitForExistence(timeout: 5),
+            "The save result must be visible immediately without requiring the coach to hunt through the recorder."
+        )
         XCTAssertTrue(app.staticTexts["Preview only — no note, task, goal, or source was saved."].exists)
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists, "Preview must not invent a pending durable outbox record.")
     }

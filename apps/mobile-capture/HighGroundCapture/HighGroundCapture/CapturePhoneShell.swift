@@ -6901,6 +6901,7 @@ private struct CaptureRecorderView: View {
             .padding(.top, 14)
             .padding(.bottom, 96)
         }
+        .accessibilityIdentifier("CaptureRecorderView")
         .safeAreaInset(edge: .top, spacing: 0) {
             if let message = model.quickEntrySyncMessage {
                 HStack(alignment: .top, spacing: 10) {
@@ -6909,6 +6910,7 @@ private struct CaptureRecorderView: View {
                     Text(message)
                         .font(.caption.weight(.semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("CaptureQuickEntryConfirmation")
                     Button {
                         model.clearQuickEntrySyncMessage()
                     } label: {
@@ -6921,10 +6923,8 @@ private struct CaptureRecorderView: View {
                 .padding(.trailing, 8)
                 .padding(.vertical, 6)
                 .background(.bar)
-                .accessibilityIdentifier("CaptureQuickEntryConfirmation")
             }
         }
-        .accessibilityIdentifier("CaptureRecorderView")
         .background(CaptureCanvas())
         .navigationTitle("Record")
         .navigationBarTitleDisplayMode(.inline)
