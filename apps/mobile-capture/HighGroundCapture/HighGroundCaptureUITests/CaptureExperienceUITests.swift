@@ -834,7 +834,7 @@ final class CaptureExperienceUITests: XCTestCase {
     func testQuickTaskCanExplicitlyTargetPrivateHomeNestEvenWhenASessionIsSelected() {
         app.tabBars.buttons["Record"].tap()
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
-        reveal(taskButton)
+        reveal(taskButton, searchAboveFirst: false)
         XCTAssertTrue(taskButton.isHittable)
         taskButton.tap()
 
@@ -954,7 +954,7 @@ final class CaptureExperienceUITests: XCTestCase {
     func testTaskQuickCaptureAuthorsAnExplicitRecurrenceWithoutImplyingAReminder() {
         app.tabBars.buttons["Record"].tap()
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
-        reveal(taskButton)
+        reveal(taskButton, searchAboveFirst: false)
         XCTAssertTrue(taskButton.isHittable)
         taskButton.tap()
 
@@ -964,7 +964,7 @@ final class CaptureExperienceUITests: XCTestCase {
         title.typeText("Weekly production review")
 
         let repeatPicker = app.descendants(matching: .any)["CaptureQuickEntryRecurrenceMode"].firstMatch
-        reveal(repeatPicker)
+        reveal(repeatPicker, searchAboveFirst: false)
         XCTAssertTrue(repeatPicker.exists)
         repeatPicker.tap()
         let fixed = app.buttons["Fixed schedule"].firstMatch
