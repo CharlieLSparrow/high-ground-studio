@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto";
 
+import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import {
   clearRenderedSession,
@@ -15,9 +16,9 @@ const baseURL = requireLoopbackOrigin(
   process.env.QUIPSLY_LOCAL_BASE_URL || "http://127.0.0.1:3012",
   "Local coaching transcript operation base URL",
 );
-const ROOM_ID = "retained-browser-live-room-20260804";
-const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
-const identity = {
+const retainedRoomId = "retained-browser-live-room-20260804";
+const retainedKeychainService = "com.quipsly.qa.retained-coaching";
+const retainedIdentity = {
   role: "coach",
   uid: "quipsly-coach-retained-20260731",
   email: "quipsly-coach-retained-20260731@example.test",
@@ -52,12 +53,20 @@ async function waitForTranscript(prisma, recordingAssetId) {
 }
 
 assert(enabled, "Set QUIPSLY_LOCAL_COACHING_TRANSCRIPT_OPERATION=1 to authorize retained local transcript artifacts.");
+const freshContext = await loadFreshCoachingAcceptanceContext({ baseURL });
+const ROOM_ID = freshContext?.roomId || retainedRoomId;
+const KEYCHAIN_SERVICE = freshContext?.keychainService || retainedKeychainService;
+const identity = freshContext?.identities.coach || retainedIdentity;
+const testLane = freshContext?.testLane || "retained-regression";
+const fixtureIdentifiersUsed = freshContext?.fixtureIdentifiersUsed ?? true;
 process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
-process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE = "keychain";
-const { main: restoreRetainedAuthIdentities } = await import(
-  "./quipsly-retained-coaching-auth-seed.mjs"
-);
-await restoreRetainedAuthIdentities();
+if (!freshContext) {
+  process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE = "keychain";
+  const { main: restoreRetainedAuthIdentities } = await import(
+    "./quipsly-retained-coaching-auth-seed.mjs"
+  );
+  await restoreRetainedAuthIdentities();
+}
 
 const databaseURL = new URL(
   process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio",
@@ -81,6 +90,11 @@ const room = await prisma.callRoom.findUnique({
   },
 });
 assert(room, "Run pnpm quipsly:local:live-room before the transcript operation.");
+if (freshContext) {
+  assert(room.bookingId === freshContext.bookingId, "Fresh transcript room is not bound to the UI-created booking.");
+  assert(room.coachingEngagementId === freshContext.engagementId, "Fresh transcript room is not bound to the UI-created coaching relationship.");
+  assert(room.participants.some((participant) => participant.userId === identity.userId), "Fresh coach is not an active transcript participant.");
+}
 
 const participantIds = room.participants.map((participant) => participant.id);
 const recentAssets = await prisma.recordingAsset.findMany({
@@ -108,7 +122,7 @@ assert(
 );
 
 const password = readRetainedQAPassword({ service: KEYCHAIN_SERVICE, account: identity.email });
-assert(password, "Retained coach Keychain password is unavailable.");
+assert(password, `${testLane} coach Keychain password is unavailable.`);
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({
@@ -252,9 +266,10 @@ try {
   console.log(JSON.stringify({
     ok: true,
     localOnly: true,
-    testLane: "retained-regression",
-    fixtureIdentifiersUsed: true,
+    testLane,
+    fixtureIdentifiersUsed,
     humanAcceptanceSatisfied: false,
+    contextPath: freshContext?.contextPath || null,
     roomId: ROOM_ID,
     captureGroupId: latestCaptureGroupId,
     sourceCount: sources.length,

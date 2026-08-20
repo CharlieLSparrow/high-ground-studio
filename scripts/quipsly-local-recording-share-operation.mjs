@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 
+import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import { assertNoHorizontalOverflow, clearRenderedSession, loadPlaywright, requireLoopbackOrigin, signInThroughRenderedLogin } from "./lib/retained-qa-browser.mjs";
 
 const enabled = process.env.QUIPSLY_LOCAL_RECORDING_SHARE_OPERATION === "1";
 const baseURL = requireLoopbackOrigin(process.env.QUIPSLY_LOCAL_BASE_URL || "http://127.0.0.1:3012", "Local recording-share operation base URL");
-const ROOM_ID = "retained-browser-live-room-20260804";
-const BOOKING_ID = "retained-browser-live-room-booking-20260819";
-const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
-const identities = {
+const retainedRoomId = "retained-browser-live-room-20260804";
+const retainedBookingId = "retained-browser-live-room-booking-20260819";
+const retainedKeychainService = "com.quipsly.qa.retained-coaching";
+const retainedIdentities = {
   coach: { role: "coach", uid: "quipsly-coach-retained-20260731", email: "quipsly-coach-retained-20260731@example.test", displayName: "Quipsly Retained Coach" },
   client: { role: "client", uid: "quipsly-client-retained-20260731", email: "quipsly-client-retained-20260731@example.test", displayName: "Quipsly Retained Client" },
 };
@@ -37,10 +38,19 @@ async function decodeAndAdvance(card) {
 }
 
 assert(enabled, "Set QUIPSLY_LOCAL_RECORDING_SHARE_OPERATION=1 to authorize retained local recording-share artifacts.");
+const freshContext = await loadFreshCoachingAcceptanceContext({ baseURL });
+const ROOM_ID = freshContext?.roomId || retainedRoomId;
+const BOOKING_ID = freshContext?.bookingId || retainedBookingId;
+const KEYCHAIN_SERVICE = freshContext?.keychainService || retainedKeychainService;
+const identities = freshContext?.identities || retainedIdentities;
+const testLane = freshContext?.testLane || "retained-regression";
+const fixtureIdentifiersUsed = freshContext?.fixtureIdentifiersUsed ?? true;
 process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
-process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE = "keychain";
-const { main: restoreRetainedAuthIdentities } = await import("./quipsly-retained-coaching-auth-seed.mjs");
-await restoreRetainedAuthIdentities();
+if (!freshContext) {
+  process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE = "keychain";
+  const { main: restoreRetainedAuthIdentities } = await import("./quipsly-retained-coaching-auth-seed.mjs");
+  await restoreRetainedAuthIdentities();
+}
 
 const databaseURL = new URL(process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio");
 assert(["postgres:", "postgresql:"].includes(databaseURL.protocol) && ["127.0.0.1", "localhost", "[::1]"].includes(databaseURL.hostname), "Recording-share operation refuses non-loopback PostgreSQL.");
@@ -48,7 +58,7 @@ process.env.DATABASE_URL = databaseURL.toString();
 const { getPrismaClient } = await import("../apps/quipsly/src/lib/prisma.ts");
 const prisma = getPrismaClient();
 
-const users = await prisma.user.findMany({ where: { firebaseUid: { in: Object.values(identities).map((identity) => identity.uid) } }, select: { id: true, firebaseUid: true } });
+const users = await prisma.user.findMany({ where: freshContext ? { id: { in: Object.values(identities).map((identity) => identity.userId) } } : { firebaseUid: { in: Object.values(identities).map((identity) => identity.uid) } }, select: { id: true, firebaseUid: true } });
 const userByUid = new Map(users.map((user) => [user.firebaseUid, user.id]));
 const coachUserId = userByUid.get(identities.coach.uid);
 const clientUserId = userByUid.get(identities.client.uid);
@@ -67,7 +77,9 @@ const room = await prisma.callRoom.findUnique({
   },
 });
 assert(room, "Run pnpm quipsly:local:live-room before the recording-share operation.");
-if (!room.bookingId) {
+if (freshContext) {
+  assert(room.bookingId === freshContext.bookingId, "Fresh recording-share room is not bound to the UI-created booking.");
+} else if (!room.bookingId) {
   await prisma.coachingBooking.upsert({
     where: { id: BOOKING_ID },
     create: { id: BOOKING_ID, clientUserId, coachUserId, status: "CONFIRMED", scheduledStart: new Date(Date.now() - 60 * 60_000), scheduledEnd: new Date(Date.now() + 60 * 60_000), timezone: "America/Denver", metadataJson: { retainedTestArtifact: true, testLane: "retained-regression" } },
@@ -192,9 +204,10 @@ assert(deliveryEvents.map((event) => event.kind).join(",") === "RELEASED_IN_APP,
 console.log(JSON.stringify({
   ok: true,
   localOnly: true,
-  testLane: "retained-regression",
-  fixtureIdentifiersUsed: true,
+  testLane,
+  fixtureIdentifiersUsed,
   humanAcceptanceSatisfied: false,
+  contextPath: freshContext?.contextPath || null,
   roomId: ROOM_ID,
   sourceAssetIds: [...originalHashes.keys()],
   sourceChecksumsUnchanged: true,
@@ -210,7 +223,7 @@ console.log(JSON.stringify({
   releaseRetryIdempotent: true,
   revokeRetryIdempotent: true,
   releaseAndRevokeEvents: deliveryEvents,
-  boundaries: { originalSourcesMutated: false, clientDraftVisibility: false, releaseWasExplicit: true, revokeWasExplicit: true, externalMessageSent: false, publicLinkCreated: false, realSpeechAccuracyProven: false, humanListeningProven: false, freshNoviceJourneyProven: false },
+  boundaries: { originalSourcesMutated: false, clientDraftVisibility: false, releaseWasExplicit: true, revokeWasExplicit: true, externalMessageSent: false, publicLinkCreated: false, realSpeechAccuracyProven: false, humanListeningProven: false, freshNoviceJourneyProven: false, freshContextMutatedOutsideProduct: false },
 }, null, 2));
 
 await prisma.$disconnect();

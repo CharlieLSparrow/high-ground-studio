@@ -470,3 +470,63 @@ not evidence that 50 minimally instructed humans can yet complete the journey.
 The retained regression fixtures remain separate and continue to prove deeper
 mechanics while this fresh context becomes the input to call, capture,
 transcription, correction, follow-through, light edit, and sharing acceptance.
+
+## Complete fresh coaching flight checkpoint — 2026-08-19
+
+Test lane: `fresh-ui-automation`
+
+Human acceptance satisfied: **no**
+
+`pnpm quipsly:fresh:coaching-flight` now creates a new coach and client and
+passes one private context from the rendered start through every deeper
+operation. It does not accept or construct a retained room ID. The second full
+run created room `cmt0rwb6o008bzvxl2i0s9bd0`, booking
+`cmt0rwb6l008azvxl1pryhbec`, and engagement
+`cmt0rwb690086zvxlvrm46zwk`, then proved:
+
+- two independently signed-in participants connected to the same LiveKit room;
+- both chose recording and transcription consent and exchanged Session chat;
+- two participant-owned local sources were byte-verified with 4,562 ms of
+  overlapping Session time;
+- both sources reached completed, source-attributed transcript jobs, protected
+  playback decoded, and the product generated transcript downloads;
+- the client created a shared note, an author-private note, a task, and a goal
+  from the coaching home;
+- the coach could not see the private note, completed the shared task, and the
+  client observed that change after returning;
+- Quipsly created a non-destructive light edit, the coach previewed it privately,
+  explicitly released it to the client, the client decoded it at phone width,
+  and revocation changed recipient media access from HTTP 200 to HTTP 404;
+- original source checksums stayed unchanged and no fresh-context database
+  repair was performed outside the ordinary product writes.
+
+The continuation file is private (`0600`), contains no password, and is used
+only to name what the rendered UI already created. Retained fixtures still run
+without that environment variable and remain a separate regression lane.
+
+This full flight uses the local mailbox adapter and browser-generated media. It
+therefore does **not** prove real email delivery, physical-device routing,
+real-speech transcription quality, human listening, accessibility, novice
+discoverability, production infrastructure, or 50-coach scale. Its combined
+result keeps all of those claims false.
+
+## Minimally instructed human flight
+
+Give a coach only this sentence:
+
+> Use Quipsly to invite this client, schedule and record a coaching Session,
+> keep a shared note, task, and goal, then lightly edit and share the recording
+> and transcript with the client.
+
+Give the client only the invitation produced by the coach. The observer may
+stop an unsafe action, but must not name a menu, route, hidden prerequisite, or
+workaround. Record where each person pauses, mispredicts an action, asks for
+help, abandons the path, or cannot explain the current privacy/recording state.
+The test uses real inboxes, real devices, natural speech, and ordinary product
+navigation; it never starts from an artifact context or a copied database ID.
+
+A human pass requires both people to return later and independently find the
+appointment, coaching home, Session, recording, transcript, shared work, and
+recipient visibility state. Automation failures block the candidate before a
+human sees it. Automation success merely makes the candidate eligible for this
+human flight; it never marks this section complete.

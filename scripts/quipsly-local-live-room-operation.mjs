@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
+import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
 import {
   clearRenderedSession,
   loadPlaywright,
@@ -13,11 +14,10 @@ const baseURL = requireLoopbackOrigin(
   process.env.QUIPSLY_LOCAL_BASE_URL || "http://127.0.0.1:3012",
   "Local live-room operation base URL",
 );
-const ROOM_ID = "retained-browser-live-room-20260804";
-const PROVIDER_ROOM_ID = "quipsly-retained-browser-live-room-20260804";
-const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
-const keepRoomOpenForInterop = process.env.QUIPSLY_LOCAL_LIVE_ROOM_KEEP_OPEN === "1";
-const identities = [
+const retainedRoomId = "retained-browser-live-room-20260804";
+const retainedProviderRoomId = "quipsly-retained-browser-live-room-20260804";
+const retainedKeychainService = "com.quipsly.qa.retained-coaching";
+const retainedIdentities = [
   {
     role: "coach",
     uid: "quipsly-coach-retained-20260731",
@@ -38,15 +38,28 @@ function assert(condition, message) {
 
 assert(enabled, "Set QUIPSLY_LOCAL_LIVE_ROOM_OPERATION=1 to authorize retained local call and chat artifacts.");
 
+const freshContext = await loadFreshCoachingAcceptanceContext({ baseURL });
+const ROOM_ID = freshContext?.roomId || retainedRoomId;
+let PROVIDER_ROOM_ID = retainedProviderRoomId;
+const KEYCHAIN_SERVICE = freshContext?.keychainService || retainedKeychainService;
+const identities = freshContext
+  ? [freshContext.identities.coach, freshContext.identities.client]
+  : retainedIdentities;
+const testLane = freshContext?.testLane || "retained-regression";
+const fixtureIdentifiersUsed = freshContext?.fixtureIdentifiersUsed ?? true;
+const keepRoomOpenForInterop = Boolean(freshContext) || process.env.QUIPSLY_LOCAL_LIVE_ROOM_KEEP_OPEN === "1";
+
 // Firebase emulator accounts are intentionally ephemeral. Restore the same
 // reserved .test identities from macOS Keychain on every operated rehearsal so
 // a clean emulator boot cannot masquerade as a product login or call failure.
 process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
-process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE = "keychain";
-const { main: restoreRetainedAuthIdentities } = await import(
-  "./quipsly-retained-coaching-auth-seed.mjs"
-);
-await restoreRetainedAuthIdentities();
+if (!freshContext) {
+  process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE = "keychain";
+  const { main: restoreRetainedAuthIdentities } = await import(
+    "./quipsly-retained-coaching-auth-seed.mjs"
+  );
+  await restoreRetainedAuthIdentities();
+}
 
 const databaseURL = new URL(
   process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio",
@@ -60,71 +73,103 @@ process.env.DATABASE_URL = databaseURL.toString();
 
 const { getPrismaClient } = await import("../apps/quipsly/src/lib/prisma.ts");
 const prisma = getPrismaClient();
-const sourceRoom = await prisma.callRoom.findUnique({
-  where: { id: "retained-coaching-follow-up-20260731" },
-  select: { projectId: true, projectSlug: true, nestSlug: true },
-});
-assert(sourceRoom?.projectId, "The retained coaching Nest fixture is unavailable.");
-
 const users = await prisma.user.findMany({
-  where: { firebaseUid: { in: identities.map((identity) => identity.uid) } },
+  where: freshContext
+    ? { id: { in: identities.map((identity) => identity.userId) } }
+    : { firebaseUid: { in: identities.map((identity) => identity.uid) } },
   select: { id: true, firebaseUid: true },
 });
 const userByUid = new Map(users.map((user) => [user.firebaseUid, user.id]));
 for (const identity of identities) {
-  assert(userByUid.has(identity.uid), `Retained ${identity.role} database identity is unavailable.`);
+  const databaseUserId = userByUid.get(identity.uid);
+  assert(databaseUserId, `${identity.role} database identity is unavailable.`);
+  if (freshContext) {
+    assert(
+      databaseUserId === identity.userId,
+      `Fresh ${identity.role} database identity does not match its context.`,
+    );
+  }
 }
 
-await prisma.callRoom.upsert({
-  where: { id: ROOM_ID },
-  create: {
-    id: ROOM_ID,
-    projectId: sourceRoom.projectId,
-    projectSlug: sourceRoom.projectSlug,
-    nestSlug: sourceRoom.nestSlug,
-    createdByUserId: userByUid.get(identities[0].uid),
-    purpose: "COACHING",
-    status: "OPEN",
-    provider: "livekit",
-    providerRoomId: PROVIDER_ROOM_ID,
-    title: "Retained browser and iPhone live-room rehearsal",
-    openedAt: new Date(),
-    metadataJson: { source: "quipsly-local-live-room-operation", localOnly: true, retainedTestArtifact: true },
-  },
-  update: {
-    projectId: sourceRoom.projectId,
-    projectSlug: sourceRoom.projectSlug,
-    nestSlug: sourceRoom.nestSlug,
-    status: "OPEN",
-    provider: "livekit",
-    providerRoomId: PROVIDER_ROOM_ID,
-    openedAt: new Date(),
-    endedAt: null,
-  },
-});
-// Keep one durable participant identity per retained actor. Recreating these
-// rows made prior source artifacts lose their participant owner through the
-// RecordingAsset participant relation's SetNull policy. A regression rerun may
-// append evidence, but it must not damage the evidence from the previous run.
-for (const identity of identities) {
-  const userId = userByUid.get(identity.uid);
-  const existing = await prisma.callParticipant.findFirst({
-    where: { roomId: ROOM_ID, userId },
-    orderBy: { createdAt: "asc" },
-    select: { id: true },
+if (freshContext) {
+  const room = await prisma.callRoom.findUnique({
+    where: { id: ROOM_ID },
+    select: {
+      bookingId: true,
+      coachingEngagementId: true,
+      purpose: true,
+      provider: true,
+      providerRoomId: true,
+      participants: { where: { accessStatus: "ACTIVE" }, select: { userId: true } },
+    },
   });
-  const data = {
-    userId,
-    email: identity.email,
-    displayName: identity.displayName,
-    role: identity.role === "coach" ? "COACH" : "CLIENT",
-    accessStatus: "ACTIVE",
-    deviceLabel: `Retained ${identity.role} browser`,
-  };
-  if (existing) {
-    await prisma.callParticipant.update({ where: { id: existing.id }, data });
-  } else {
-    await prisma.callParticipant.create({ data: { roomId: ROOM_ID, ...data } });
+  assert(room?.bookingId === freshContext.bookingId, "Fresh room is not bound to the UI-created booking.");
+  assert(room?.coachingEngagementId === freshContext.engagementId, "Fresh room is not bound to the UI-created coaching relationship.");
+  assert(room?.purpose === "COACHING" && room?.provider === "livekit", "Fresh Session is not a LiveKit coaching room.");
+  assert(room?.providerRoomId, "Fresh Session has no provider room identity.");
+  PROVIDER_ROOM_ID = room.providerRoomId;
+  const activeUserIds = new Set(room.participants.map((participant) => participant.userId));
+  for (const identity of identities) {
+    assert(
+      activeUserIds.has(identity.userId),
+      `Fresh ${identity.role} is not an active Session participant.`,
+    );
+  }
+} else {
+  const sourceRoom = await prisma.callRoom.findUnique({
+    where: { id: "retained-coaching-follow-up-20260731" },
+    select: { projectId: true, projectSlug: true, nestSlug: true },
+  });
+  assert(sourceRoom?.projectId, "The retained coaching Nest fixture is unavailable.");
+  await prisma.callRoom.upsert({
+    where: { id: ROOM_ID },
+    create: {
+      id: ROOM_ID,
+      projectId: sourceRoom.projectId,
+      projectSlug: sourceRoom.projectSlug,
+      nestSlug: sourceRoom.nestSlug,
+      createdByUserId: userByUid.get(identities[0].uid),
+      purpose: "COACHING",
+      status: "OPEN",
+      provider: "livekit",
+      providerRoomId: PROVIDER_ROOM_ID,
+      title: "Retained browser and iPhone live-room rehearsal",
+      openedAt: new Date(),
+      metadataJson: { source: "quipsly-local-live-room-operation", localOnly: true, retainedTestArtifact: true },
+    },
+    update: {
+      projectId: sourceRoom.projectId,
+      projectSlug: sourceRoom.projectSlug,
+      nestSlug: sourceRoom.nestSlug,
+      status: "OPEN",
+      provider: "livekit",
+      providerRoomId: PROVIDER_ROOM_ID,
+      openedAt: new Date(),
+      endedAt: null,
+    },
+  });
+  // Keep one durable participant identity per retained actor. Recreating these
+  // rows would detach prior source ownership through the SetNull relation.
+  for (const identity of identities) {
+    const userId = userByUid.get(identity.uid);
+    const existing = await prisma.callParticipant.findFirst({
+      where: { roomId: ROOM_ID, userId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    const data = {
+      userId,
+      email: identity.email,
+      displayName: identity.displayName,
+      role: identity.role === "coach" ? "COACH" : "CLIENT",
+      accessStatus: "ACTIVE",
+      deviceLabel: `Retained ${identity.role} browser`,
+    };
+    if (existing) {
+      await prisma.callParticipant.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.callParticipant.create({ data: { roomId: ROOM_ID, ...data } });
+    }
   }
 }
 
@@ -336,9 +381,10 @@ try {
   console.log(JSON.stringify({
     ok: true,
     localOnly: true,
-    testLane: "retained-regression",
-    fixtureIdentifiersUsed: true,
+    testLane,
+    fixtureIdentifiersUsed,
     humanAcceptanceSatisfied: false,
+    contextPath: freshContext?.contextPath || null,
     roomId: ROOM_ID,
     providerRoomId: PROVIDER_ROOM_ID,
     participantsConnected: journeys.length,
@@ -354,6 +400,7 @@ try {
     allPartyTranscriptionConsentReceipts: "passed",
     roomLeftOpenForInterop: keepRoomOpenForInterop,
     secretsPrinted: false,
+    freshContextMutatedOutsideProduct: false,
   }, null, 2));
 } finally {
   for (const journey of journeys) {
