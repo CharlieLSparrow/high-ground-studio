@@ -660,6 +660,9 @@ The failed runs remain useful evidence rather than being hidden:
   They prove recorder interruption and source recovery without stale app state,
   not first-run permission-prompt comprehension; that remains a physical-device
   and minimally instructed human-flight requirement.
+- Xcode DerivedData remains a reusable ignored compiler cache under `.tmp`.
+  Per-run acceptance artifacts retain the result bundle and receipt, not another
+  gigabyte-scale copy of rebuildable compiler output.
 - `c18e4114` exposed a real product dead end: ingest had minted media, but the
   Session had no production/editor container, so neither a truthful review
   destination nor a working attach action existed.

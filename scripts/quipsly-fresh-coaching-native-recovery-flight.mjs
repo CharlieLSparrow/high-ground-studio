@@ -279,7 +279,14 @@ const receiptPath = path.join(
   artifactDirectory,
   "native-capture-recovery-receipt.json",
 );
-const derivedDataPath = path.join(artifactDirectory, "native-capture-derived-data");
+// DerivedData is a reusable compiler cache, not acceptance evidence. Keep one
+// ignored cache across isolated runs while each run retains its own xcresult
+// and receipt under artifacts/coaching-acceptance.
+const derivedDataPath = path.join(
+  repoRoot,
+  ".tmp",
+  "native-capture-recovery-derived-data",
+);
 const destination =
   process.env.QUIPSLY_CAPTURE_UI_TEST_DESTINATION ||
   "platform=iOS Simulator,name=iPhone 17 Pro";

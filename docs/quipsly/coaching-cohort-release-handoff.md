@@ -103,6 +103,10 @@ npm run quipsly:fresh:coaching-speech-flight
 # adapter creates only a verified disposable identity; Capture owns the product work.
 npm run quipsly:fresh:coaching-phone-start
 
+# Fresh compiled-iPhone AVAudioRecorder, interruption, offline relaunch,
+# immutable-source recovery, verification, and durable Studio handoff.
+npm run quipsly:fresh:coaching-native-recovery
+
 # Capacity identity/isolation ladder. These call authenticated service
 # contracts; they do not operate or prove the rendered self-service UI.
 QUIPSLY_DISTINCT_COACH_COUNT=2 npm run quipsly:local:distinct-coach-capacity
