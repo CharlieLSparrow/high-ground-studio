@@ -53,17 +53,22 @@ These lanes are complementary and never interchangeable.
    acceptance, and client return through normal rendered surfaces without
    fixture IDs or database repair. Reserved local recipients are stopped before
    any external provider request and remain explicitly different from real mail.
-3. **Fresh product automation** — the same new relationship continues through
+3. **Fresh phone start** — a newly verified ordinary account enters the normal
+   iPhone Today surface; the compiled app performs coach setup, client and
+   relationship creation, scheduling, invitation attempt, fallback sharing,
+   and exact Session entry. The local adapter verifies only the disposable
+   mailbox identity and is named in the receipt.
+4. **Fresh product automation** — the same new relationship continues through
    rendered call, work, and sharing surfaces plus explicitly identified service
    mechanics. Its receipt reports surface coverage and never calls the combined
    run pure UI automation.
-4. **Fresh audible automation** — two isolated endpoints retain overlapping
+5. **Fresh audible automation** — two isolated endpoints retain overlapping
    participant-owned masters and recover role-specific controlled speech.
-5. **Physical-device flight** — real iPhone Capture plus browser/Mac operate the
+6. **Physical-device flight** — real iPhone Capture plus browser/Mac operate the
    same Session, including interruption and upload recovery.
-6. **Minimally instructed human flight** — real coach and client receive only
+7. **Minimally instructed human flight** — real coach and client receive only
    the one-sentence mission and product invitation.
-7. **Cohort operation** — release to 2, then 10, then 50 real coaches while
+8. **Cohort operation** — release to 2, then 10, then 50 real coaches while
    support, privacy, recovery, and capacity evidence remain healthy.
 
 Automation receipts must keep human, physical-device, real-mailbox, natural
@@ -91,6 +96,10 @@ node scripts/quipsly-mobile-capture-contract-smoke.mjs \
 # Full fresh two-account audible workflow. Its private receipt binds to HEAD.
 npm run quipsly:fresh:coaching-speech-flight
 
+# Fresh compiled-iPhone setup/schedule/invite/Session-entry workflow. The local
+# adapter creates only a verified disposable identity; Capture owns the product work.
+npm run quipsly:fresh:coaching-phone-start
+
 # Capacity identity/isolation ladder. These are local automation, not humans.
 QUIPSLY_DISTINCT_COACH_COUNT=2 npm run quipsly:local:distinct-coach-capacity
 QUIPSLY_DISTINCT_COACH_COUNT=10 npm run quipsly:local:distinct-coach-capacity
@@ -100,6 +109,7 @@ QUIPSLY_DISTINCT_COACH_COUNT=50 npm run quipsly:local:distinct-coach-capacity
 Receipts live under ignored, owner-readable directories:
 
 - `artifacts/coaching-acceptance/<run>/fresh-coaching-flight-receipt.json`
+- `artifacts/coaching-acceptance/phone-start-<run>/phone-start-receipt.json`
 - `artifacts/coaching-capacity/distinct-<batch>-<count>.json`
 
 ## Production environment manifest

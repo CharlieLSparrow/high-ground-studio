@@ -684,6 +684,34 @@ recipient visibility state. Automation failures block the candidate before a
 human sees it. Automation success merely makes the candidate eligible for this
 human flight; it never marks this section complete.
 
+## Fresh iPhone start checkpoint — 2026-08-20
+
+`npm run quipsly:fresh:coaching-phone-start` begins with one newly verified
+ordinary disposable account and no coach profile, relationship, appointment,
+or room. A clearly labeled loopback Firebase adapter creates and verifies only
+that identity. The compiled iPhone app then discovers Coaching from Today,
+sets up the coach, creates the exact client identity and private relationship,
+schedules a uniquely titled appointment, attempts the invitation, retains the
+system Share fallback, and opens the exact canonical Session. Independent API
+readback must find the same coach role, engagement, booking, room, client entry,
+and custom title.
+
+Clean source `9d8f9e38251871393df783c7fff29849a082ff7f` passed as run
+`8f44b4b6`, creating engagement `cmt1h1j8v01o62cxl5gnbnxjo`, booking
+`cmt1h1j9701oa2cxlp191qaja`, and room `cmt1h1j9d01ob2cxlfcf8vv5w`.
+The private receipt is
+`artifacts/coaching-acceptance/phone-start-8f44b4b6/phone-start-receipt.json`.
+The `.dev.test` invitation was intentionally stopped before external mail and
+recorded `LOCAL_TEST_RECIPIENT`; the phone visibly retained Share and Session
+entry. This run repaired two low-instruction UX/accessibility problems it
+exposed: the just-created appointment no longer duplicates its actions in both
+the handoff and Upcoming cards, and the card container no longer competes with
+the distinct Send, Share, and Open controls.
+
+The receipt keeps real mailbox, physical iPhone, minimally instructed human,
+and fifty-coach scale proof false. It is a product-path regression gate, not a
+substitute for the one-sentence human flight.
+
 ## Acceptance lanes are not interchangeable
 
 Every result must name exactly one lane. A passing lower lane never promotes
@@ -693,6 +721,7 @@ itself into a higher claim.
 | --------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | Retained regression               | Reserved fixture identities and durable fixture rooms                | Known mechanics have not regressed                                                                                                           | Discoverability, onboarding, or fresh-account integrity                       |
 | Fresh UI automation               | New `.dev.test` accounts created through rendered public pages       | The ordinary product can create and continue a new coaching relationship without copied IDs or database repair                               | Real inbox delivery, natural speech, physical devices, or human understanding |
+| Fresh phone automation            | New verified ordinary account with no coaching records               | The compiled iPhone UI can set up a coach, schedule and invite a client, and enter the exact canonical Session without seeded rooms           | Real mailbox delivery, physical-device behavior, or human discoverability     |
 | Fresh audible automation          | Fresh UI automation plus two isolated, role-specific audible sources | Each participant owns a distinct recording; Whisper recovers role-specific speech; protected playback and downstream share mechanics operate | Natural speech quality or a human playback-review receipt                     |
 | Minimally instructed human flight | Real inboxes, ordinary navigation, real devices, and one sentence    | A coach and client can understand and complete the end-to-end job without guidance                                                           | Fifty-person concurrency or organization-wide support readiness               |
 | Cohort operation                  | Instrumented 2, then 10, then 50-coach release                       | Recovery, support, privacy, and capacity remain healthy under real use                                                                       | That future product changes remain safe without rerunning the ladder          |
