@@ -4881,4 +4881,194 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "Studio handoff should either attach now or read back an earlier idempotent attachment with the exact review action."
         )
     }
+
+    func testPhysicalIPhoneSwitchesCamerasWithoutMergingSourceMovies() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip(
+            "Camera-switch source proof requires real front and back iPhone cameras. "
+                + "Simulator coverage must not claim physical lens or movie evidence."
+        )
+        #else
+        let credentials = try runtimeSmokeCredentials()
+        guard credentials.sessionID?.isEmpty == false,
+              credentials.sessionTitle?.isEmpty == false else {
+            throw XCTSkip(
+                "Physical camera switching requires one exact fresh Session ID and title."
+            )
+        }
+
+        let app = try launchSignedInCaptureApp(initialTab: "record")
+        selectRequestedSession(in: app, credentials: credentials)
+
+        let confirmConsent = app.buttons["CaptureConfirmConsentButton"].firstMatch
+        if waitForRuntimeElement(
+            confirmConsent,
+            in: app,
+            timeout: 6,
+            swipeAttempts: 4
+        ) {
+            confirmConsent.tap()
+            let consentSheet = app.descendants(matching: .any)[
+                "CaptureConsentConfirmationSheet"
+            ].firstMatch
+            XCTAssertTrue(consentSheet.waitForExistence(timeout: 8))
+            turnOn(app.switches["CaptureConsentRecordVideoToggle"], in: app)
+            turnOn(
+                app.switches["CaptureConsentAudibleParticipantsToggle"],
+                in: app
+            )
+            let save = app.buttons["CaptureConsentSaveChoicesButton"]
+            XCTAssertTrue(
+                waitForRuntimeElement(save, in: app, timeout: 8, swipeAttempts: 5)
+            )
+            XCTAssertTrue(save.isEnabled)
+            save.tap()
+        }
+
+        let recordingMode = app.segmentedControls[
+            "CaptureRecordingModePicker"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                recordingMode,
+                in: app,
+                timeout: 10,
+                swipeAttempts: 6
+            )
+        )
+        recordingMode.buttons["Camera"].tap()
+
+        tapRootTab("Library", in: app)
+        let recordingsBefore = recordingIdentifiers(
+            in: app,
+            prefix: "LocalRecordingRow_"
+        )
+        tapRootTab("Record", in: app)
+
+        let cameraPermission = addUIInterruptionMonitor(
+            withDescription: "Physical camera permission"
+        ) { alert in
+            for label in ["Allow", "OK"] where alert.buttons[label].exists {
+                alert.buttons[label].tap()
+                return true
+            }
+            return false
+        }
+        defer { removeUIInterruptionMonitor(cameraPermission) }
+
+        var prepare = app.buttons["CaptureVideoPrepareButton"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(prepare, in: app, timeout: 10, swipeAttempts: 7)
+        )
+        prepare.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        if springboard.alerts.firstMatch.waitForExistence(timeout: 5) {
+            let allow = springboard.alerts.firstMatch.buttons["Allow"]
+            XCTAssertTrue(allow.exists)
+            allow.tap()
+            app.activate()
+        }
+        var start = app.buttons["CaptureVideoStartButton"].firstMatch
+        if !start.waitForExistence(timeout: 15) {
+            prepare = app.buttons["CaptureVideoPrepareButton"].firstMatch
+            XCTAssertTrue(
+                waitForRuntimeElement(prepare, in: app, timeout: 8, swipeAttempts: 5)
+            )
+            prepare.tap()
+            start = app.buttons["CaptureVideoStartButton"].firstMatch
+        }
+        XCTAssertTrue(start.waitForExistence(timeout: 20))
+        XCTAssertTrue(start.isEnabled)
+        start.tap()
+
+        let flip = app.buttons["CaptureVideoSwitchCameraButton"].firstMatch
+        XCTAssertTrue(
+            flip.waitForExistence(timeout: 20),
+            "The real front-camera movie should expose the explicit source-boundary switch."
+        )
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        flip.tap()
+
+        XCTAssertTrue(
+            app.buttons["CaptureVideoSwitchCameraButton"].firstMatch
+                .waitForExistence(timeout: 30),
+            "The first movie should validate before the back camera begins another source in the same group."
+        )
+        XCTAssertTrue(
+            app.segmentedControls["CaptureVideoCameraPicker"]
+                .buttons["Back"].isSelected,
+            "The second immutable movie should visibly use the back camera."
+        )
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        app.buttons["CaptureVideoStopButton"].firstMatch.tap()
+        let savedState = app.staticTexts["CaptureVideoStateLabel"].firstMatch
+        XCTAssertEqual(
+            XCTWaiter.wait(
+                for: [
+                    XCTNSPredicateExpectation(
+                        predicate: NSPredicate(
+                            format: "label == %@",
+                            "Video saved on this iPhone"
+                        ),
+                        object: savedState
+                    )
+                ],
+                timeout: 30
+            ),
+            .completed,
+            "The second immutable movie must finish validation before Library evidence is inspected."
+        )
+
+        tapRootTab("Library", in: app)
+        let allRecordings = recordingIdentifiers(
+            in: app,
+            prefix: "LocalRecordingRow_"
+        )
+        let newRecordings = allRecordings.subtracting(recordingsBefore)
+        XCTAssertEqual(
+            newRecordings.count,
+            2,
+            "One lens switch must preserve two immutable movie rows, not rewrite one file."
+        )
+
+        var cameraLabels = Set<String>()
+        var captureGroupIdentifiers = Set<String>()
+        for rowIdentifier in newRecordings {
+            let recordingID = rowIdentifier.replacingOccurrences(
+                of: "LocalRecordingRow_",
+                with: ""
+            )
+            let row = app.descendants(matching: .any)[rowIdentifier].firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10))
+            let profile = app.descendants(matching: .any)[
+                "LocalRecordingRecordedVideoProfile_\(recordingID)"
+            ].firstMatch
+            XCTAssertTrue(profile.waitForExistence(timeout: 10))
+            cameraLabels.insert(profile.label)
+
+            let group = row.descendants(matching: .any).matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@",
+                    "LocalRecordingCaptureGroup_"
+                )
+            ).firstMatch
+            XCTAssertTrue(
+                group.waitForExistence(timeout: 10),
+                "Each lens source should expose its durable capture-group identity in its own Library row."
+            )
+            captureGroupIdentifiers.insert(group.identifier)
+        }
+        XCTAssertTrue(cameraLabels.contains { $0.contains("Front") })
+        XCTAssertTrue(cameraLabels.contains { $0.contains("Back") })
+        XCTAssertEqual(
+            captureGroupIdentifiers.count,
+            1,
+            "Front and back camera movies must retain one capture-group identity."
+        )
+        attachRecordingIdentity(
+            captureGroupIdentifiers.first ?? "missing-group",
+            name: "Physical front-to-back camera switch capture group"
+        )
+        #endif
+    }
 }

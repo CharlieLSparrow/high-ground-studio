@@ -9491,6 +9491,10 @@ private struct CaptureLibraryView: View {
                     ForEach(library.recordings) { recording in
                         LocalRecordingRow(
                             recording: recording,
+                            captureGroupSourceCount: library.recordings.filter {
+                                recording.captureGroupId != nil
+                                    && $0.captureGroupId == recording.captureGroupId
+                            }.count,
                             fileURL: library.fileURL(for: recording),
                             isPlaying: playback.playingRecordingID == recording.id,
                             canAudition: !model.isSessionContextLocked,
@@ -11740,6 +11744,7 @@ private struct LocalRecordingRow: View {
     @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
 
     let recording: LocalRecording
+    let captureGroupSourceCount: Int
     let fileURL: URL?
     let isPlaying: Bool
     let canAudition: Bool
@@ -11793,6 +11798,20 @@ private struct LocalRecordingRow: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier(
                     "LocalRecordingRecordedVideoProfile_\(recording.id)"
+                )
+            }
+
+            if let captureGroupID = recording.captureGroupId,
+               captureGroupSourceCount > 1 {
+                Label(
+                    "Grouped take · \(captureGroupSourceCount) local masters",
+                    systemImage: "rectangle.stack.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CapturePalette.accent)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier(
+                    "LocalRecordingCaptureGroup_\(captureGroupID.uuidString)"
                 )
             }
 

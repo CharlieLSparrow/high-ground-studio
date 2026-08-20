@@ -381,7 +381,12 @@ struct LocalRecording: Codable, Identifiable, Equatable {
             codec = "codec verified"
         }
         let audio = recorded.audioTrackCount > 0 ? "movie audio" : "video only"
-        return "\(resolution) · \(frameRate) · \(codec) · \(audio)"
+        let camera = sourceProfile?.cameraPosition?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .capitalized
+        return [camera, resolution, frameRate, codec, audio]
+            .compactMap { $0?.isEmpty == false ? $0 : nil }
+            .joined(separator: " · ")
     }
 
     var statusLabel: String {
