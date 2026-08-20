@@ -277,7 +277,8 @@ try {
   const editorPath = `/editor?project=${encodeURIComponent(sessionBody.homeNest.slug)}&episode=release-smoke`;
   const recorderPath = `/recorder?project=${encodeURIComponent(sessionBody.homeNest.slug)}&episode=release-smoke`;
   const episodeRoomPath = `/nests/${encodeURIComponent(sessionBody.homeNest.slug)}/episodes/release-smoke`;
-  const liveCutPath = `/nests/${encodeURIComponent(sessionBody.homeNest.slug)}/episode-editor?episode=release-smoke`;
+  const episodeRecordPath = `${episodeRoomPath}?mode=record#record`;
+  const episodeEditPath = `${episodeRoomPath}?mode=edit`;
   const recorderAccess = await requestText(`${baseUrl}/api/episode-production`, {
     method: "POST",
     headers: {
@@ -400,16 +401,21 @@ try {
   }
 
   assert(
-    episodeRoomText.includes("Edit timeline")
-      && renderedResponseIncludesHref(episodeRoomText, editorPath),
-    `${episodeRoomPath} did not render the exact production timeline handoff.`,
+    episodeRoomText.includes("Plan &amp; collaborate")
+      && renderedResponseIncludesHref(episodeRoomText, episodeRoomPath),
+    `${episodeRoomPath} did not render the canonical planning handoff.`,
   );
   assert(
-    episodeRoomText.includes("Live cut")
-      && renderedResponseIncludesHref(episodeRoomText, liveCutPath),
-    `${episodeRoomPath} did not render the exact live-cut handoff.`,
+    episodeRoomText.includes("Record")
+      && renderedResponseIncludesHref(episodeRoomText, episodeRecordPath),
+    `${episodeRoomPath} did not render the canonical recording handoff.`,
   );
-  checkedRoutes.push(`${episodeRoomPath}:timeline-handoffs-rendered`);
+  assert(
+    episodeRoomText.includes("Edit")
+      && renderedResponseIncludesHref(episodeRoomText, episodeEditPath),
+    `${episodeRoomPath} did not render the canonical editing handoff.`,
+  );
+  checkedRoutes.push(`${episodeRoomPath}:canonical-workflow-handoffs-rendered`);
 
   if (expectedProjectSlug) {
     assert(
