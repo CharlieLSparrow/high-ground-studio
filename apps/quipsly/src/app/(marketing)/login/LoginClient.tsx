@@ -41,8 +41,12 @@ function friendlyFirebaseAuthError(error: any) {
     return "That email address does not look valid yet.";
   }
 
-  if (code === "auth/too-many-requests") {
-    return "Firebase temporarily slowed this account down after repeated attempts. Give it a little time, then try again or use recovery.";
+  if (
+    code === "auth/too-many-requests" ||
+    code === "auth/quota-exceeded" ||
+    /rate exceeded|too many requests|resource exhausted/i.test(message)
+  ) {
+    return "Sign-in is temporarily busy. Wait a minute before trying again, or use Google or password recovery instead of repeating the same attempt.";
   }
 
   if (code === "auth/unauthorized-domain" || message.includes("redirect_uri_mismatch")) {

@@ -112,6 +112,25 @@ describe("Quipsly direct login", () => {
     ).toBeInTheDocument();
   });
 
+  it("turns a provider rate response into calm recovery guidance", async () => {
+    (signInWithEmailAndPassword as jest.Mock).mockRejectedValue(
+      new Error("Rate exceeded."),
+    );
+
+    render(<LoginClient callbackUrl="/coaching" />);
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "coach@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "not-a-real-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in with email" }));
+
+    expect(
+      await screen.findByText(/Sign-in is temporarily busy/),
+    ).toHaveTextContent(/Google or password recovery/);
+  });
+
   it("explains the exact coaching destination instead of dropping a new coach into generic Nest copy", () => {
     render(<LoginClient callbackUrl="/coaching" />);
 
