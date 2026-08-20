@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { chmod, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -31,6 +31,29 @@ assert(
   ["127.0.0.1", "localhost", "[::1]"].includes(parsedBaseURL.hostname),
   "Fresh native recovery refuses a non-loopback Nest origin.",
 );
+
+function readGitReleaseIdentity() {
+  const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).trim();
+  const trackedChanges = execFileSync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=no"],
+    { cwd: repoRoot, encoding: "utf8" },
+  ).trim();
+  assert.match(
+    sourceSha,
+    /^[a-f0-9]{40}$/,
+    "Native recovery could not resolve an exact candidate commit.",
+  );
+  return {
+    sourceSha,
+    trackedWorktreeCleanAtStart: trackedChanges.length === 0,
+  };
+}
+
+const releaseIdentity = readGitReleaseIdentity();
 
 function parsePacket(output, label) {
   for (
@@ -345,6 +368,8 @@ const receipt = {
   testLane: "fresh-native-recovery-automation",
   fixtureIdentifiersUsed: false,
   humanAcceptanceSatisfied: false,
+  sourceSha: releaseIdentity.sourceSha,
+  trackedWorktreeCleanAtStart: releaseIdentity.trackedWorktreeCleanAtStart,
   contextPath: context.contextPath,
   resultBundlePath,
   roomId: context.roomId,

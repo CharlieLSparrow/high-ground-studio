@@ -663,6 +663,9 @@ The failed runs remain useful evidence rather than being hidden:
 - Xcode DerivedData remains a reusable ignored compiler cache under `.tmp`.
   Per-run acceptance artifacts retain the result bundle and receipt, not another
   gigabyte-scale copy of rebuildable compiler output.
+- The native recovery receipt records the exact 40-character Git source SHA and
+  whether tracked source was clean when the flight began. A passing behavior
+  run without that source identity is diagnostic evidence, not release proof.
 - `c18e4114` exposed a real product dead end: ingest had minted media, but the
   Session had no production/editor container, so neither a truthful review
   destination nor a working attach action existed.
