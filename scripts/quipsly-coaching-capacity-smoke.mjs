@@ -122,6 +122,7 @@ async function main() {
               route,
               status: result.response.status,
               ok: result.response.ok && result.body?.ok === true,
+              responseBytes: Buffer.byteLength(JSON.stringify(result.body)),
               latencyMilliseconds: Math.round(
                 performance.now() - requestStartedAt,
               ),
@@ -133,6 +134,7 @@ async function main() {
               route,
               status: 0,
               ok: false,
+              responseBytes: 0,
               latencyMilliseconds: Math.round(
                 performance.now() - requestStartedAt,
               ),
@@ -160,6 +162,9 @@ async function main() {
       const routeLatencies = routeSamples.map(
         (sample) => sample.latencyMilliseconds,
       );
+      const routeResponseBytes = routeSamples.map(
+        (sample) => sample.responseBytes,
+      );
       return [
         route,
         {
@@ -169,6 +174,10 @@ async function main() {
             p50: percentile(routeLatencies, 0.5),
             p95: percentile(routeLatencies, 0.95),
             max: Math.max(...routeLatencies),
+          },
+          responseBytes: {
+            p50: percentile(routeResponseBytes, 0.5),
+            max: Math.max(...routeResponseBytes),
           },
         },
       ];
