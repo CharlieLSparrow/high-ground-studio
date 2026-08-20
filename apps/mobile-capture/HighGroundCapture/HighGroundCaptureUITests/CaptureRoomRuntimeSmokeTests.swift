@@ -1200,11 +1200,17 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 let privacy = app.switches["CaptureCoachingNoteVisibility"].firstMatch
                 XCTAssertTrue(privacy.waitForExistence(timeout: 5))
                 if (privacy.value as? String) != "1" {
-                    privacy.tap()
+                    privacy.coordinate(
+                        withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)
+                    ).tap()
                 }
+                let privateState = XCTNSPredicateExpectation(
+                    predicate: NSPredicate(format: "value == %@", "1"),
+                    object: privacy
+                )
                 XCTAssertEqual(
-                    privacy.value as? String,
-                    "1",
+                    XCTWaiter.wait(for: [privateState], timeout: 3),
+                    .completed,
                     "The author-only switch must be on before the phone saves a private note."
                 )
             }
