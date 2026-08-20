@@ -30,6 +30,48 @@ Give the coach only this sentence:
 Give the client only the invitation Quipsly produced. Do not supply a route,
 menu name, room ID, workaround, or spoken tour.
 
+## The actual product journey the observer expects
+
+This is the observer's map, not a checklist to hand to either participant. The
+names of pages, database records, test accounts, fixture Sessions, and direct
+URLs are deliberately absent.
+
+1. The coach follows the ordinary welcome path, signs in, and completes any
+   first-time coaching setup the product requests.
+2. The coach schedules a real Session for the client in the correct timezone.
+3. The coach sends the private invitation from the Session Quipsly just
+   created. The client receives it in their real inbox, understands it, signs
+   in with the invited identity, and accepts it.
+4. Both people can find the same coaching relationship and upcoming Session
+   through ordinary product navigation. Neither person gains access to an
+   unrelated Nest, client, or Session.
+5. Before the conversation, either participant can add useful shared context;
+   the coach can also keep genuinely private preparation private.
+6. Each person checks the microphone, camera when wanted, and listening output.
+   They understand the consent state, join the call, and deliberately start
+   their own high-quality recording only after everyone is ready.
+7. The call remains understandable while each endpoint records its own source.
+   Ending, backgrounding, a brief disconnect, or delayed upload has a visible
+   state and a recoverable next action.
+8. After the Session, Quipsly brings the participant-owned sources into one
+   synchronized Session and shows what is safe, incomplete, or needs attention.
+9. Quipsly creates a speaker-attributed transcript. A person can play the exact
+   source, correct words and speakers, and understand uncertainty without
+   rewriting the original media.
+10. The coach and client can create, find, change, assign, and complete the
+    shared notes, tasks, and goals that belong to this relationship. Suggested
+    follow-up remains editable until a person accepts it.
+11. The coach makes a light, reversible edit, previews the result, chooses the
+    exact recipient, and shares only the intended recording and transcript.
+    The client can play or download it, and revoked access stops working.
+12. Later, both people return independently and find the Session, follow-up,
+    recording, transcript, notes, tasks, and goals without the observer.
+
+If a person needs help, record the exact moment and help given, let them finish,
+and keep self-service acceptance failed. Repair the product after the flight;
+do not repair roles, records, or navigation behind the scenes while it is in
+progress.
+
 ## Observer rules
 
 - Let the product teach the workflow. Silence is part of the test.
