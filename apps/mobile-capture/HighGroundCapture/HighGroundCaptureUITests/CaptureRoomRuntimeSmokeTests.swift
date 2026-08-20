@@ -1217,21 +1217,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         addRelationshipWork(kind: "Note", title: "Shared phone note \(workSuffix)")
         addRelationshipWork(kind: "Task", title: "Phone task \(workSuffix)")
         addRelationshipWork(kind: "Goal", title: "Phone goal \(workSuffix)")
+        let privateNoteTitle = "Private phone note \(workSuffix)"
         addRelationshipWork(
             kind: "Note",
-            title: "Private phone note \(workSuffix)",
+            title: privateNoteTitle,
             privateNote: true
         )
-        let privateBoundary = app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "identifier BEGINSWITH %@ OR label == %@",
-                "CaptureCoachingPrivateWorkLabel_",
-                "Private note, only you can read it"
-            )
-        ).firstMatch
+        let privateBoundary = app.staticTexts[privateNoteTitle].firstMatch
         XCTAssertTrue(
-            waitForRuntimeElement(privateBoundary, in: app, timeout: 8, swipeAttempts: 4),
+            privateBoundary.waitForExistence(timeout: 8),
             "The phone must expose the author-only boundary to sighted and assistive-technology users."
+        )
+        XCTAssertTrue(
+            String(describing: privateBoundary.value).localizedCaseInsensitiveContains("only you can read"),
+            "VoiceOver must announce the privacy boundary on the exact private note, not only render a lock glyph."
         )
         attachRuntimeScreenshot(app, name: "Phone-first canonical client workspace")
 
