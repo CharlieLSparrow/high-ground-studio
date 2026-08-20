@@ -640,6 +640,10 @@ it does not replace either.
 
 ## Minimally instructed human flight
 
+The concise operator handoff is
+[`coaching-human-flight-runbook.md`](./coaching-human-flight-runbook.md). This
+section remains the authoritative acceptance rationale and evidence history.
+
 Give a coach only this sentence:
 
 > Use Quipsly to invite this client, schedule and record a coaching Session,
