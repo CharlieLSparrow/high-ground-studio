@@ -6901,6 +6901,29 @@ private struct CaptureRecorderView: View {
             .padding(.top, 14)
             .padding(.bottom, 96)
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let message = model.quickEntrySyncMessage {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text(message)
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        model.clearQuickEntrySyncMessage()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Dismiss save confirmation")
+                }
+                .padding(.leading, 18)
+                .padding(.trailing, 8)
+                .padding(.vertical, 6)
+                .background(.bar)
+                .accessibilityIdentifier("CaptureQuickEntryConfirmation")
+            }
+        }
         .accessibilityIdentifier("CaptureRecorderView")
         .background(CaptureCanvas())
         .navigationTitle("Record")

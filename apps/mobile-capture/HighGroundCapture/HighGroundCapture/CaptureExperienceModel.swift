@@ -698,6 +698,10 @@ final class CaptureExperienceModel: ObservableObject {
         }
     }
 
+    func clearQuickEntrySyncMessage() {
+        quickEntrySyncMessage = nil
+    }
+
     func retryQuickEntries(automatic: Bool = false) async {
         guard !usesPreviewData, !isSyncingQuickEntries else { return }
         if !automatic { quickEntryOutbox.releaseHeldEntriesForRetry() }
