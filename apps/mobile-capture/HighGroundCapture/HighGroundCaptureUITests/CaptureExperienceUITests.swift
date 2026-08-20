@@ -284,9 +284,10 @@ final class CaptureExperienceUITests: XCTestCase {
         app.tabBars.buttons["Record"].tap()
 
         let card = app.descendants(matching: .any)["CaptureEpisodeManuscriptCard"]
+        reveal(card, searchAboveFirst: false)
         XCTAssertTrue(
             card.waitForExistence(timeout: 5),
-            "An episode-bound Capture session should expose its canonical manuscript before the shared Watch controls."
+            "An episode-bound Capture session should expose its canonical manuscript before the shared Watch controls after following the recorder workspace."
         )
         XCTAssertTrue(app.staticTexts["The Swear Jar"].exists)
         XCTAssertTrue(
@@ -2799,7 +2800,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 8))
     }
 
-    private func reveal(_ element: XCUIElement) {
+    private func reveal(
+        _ element: XCUIElement,
+        searchAboveFirst: Bool = true
+    ) {
         let visibleBottom = app.frame.maxY - 96
         if element.exists,
            element.isHittable,
@@ -2822,7 +2826,8 @@ final class CaptureExperienceUITests: XCTestCase {
         // A LazyVStack removes distant rows from the accessibility tree. If a
         // target does not currently exist, search above first, then below,
         // instead of assuming every unseen control is farther down the page.
-        for searchAbove in [true, false] {
+        let searchDirections = searchAboveFirst ? [true, false] : [false, true]
+        for searchAbove in searchDirections {
             for _ in 0..<16 {
                 let shouldMoveContentDown = element.exists
                     ? element.frame.maxY <= app.frame.minY + 72
