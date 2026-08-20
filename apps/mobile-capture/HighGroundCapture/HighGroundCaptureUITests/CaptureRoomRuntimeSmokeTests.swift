@@ -1199,7 +1199,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if privateNote {
                 let privacy = app.switches["CaptureCoachingNoteVisibility"].firstMatch
                 XCTAssertTrue(privacy.waitForExistence(timeout: 5))
-                privacy.tap()
+                if (privacy.value as? String) != "1" {
+                    privacy.tap()
+                }
+                XCTAssertEqual(
+                    privacy.value as? String,
+                    "1",
+                    "The author-only switch must be on before the phone saves a private note."
+                )
             }
 
             let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
