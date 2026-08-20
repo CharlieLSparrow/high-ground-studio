@@ -103,6 +103,7 @@ require_text "$fastfile" 'only_testing: plan.fetch("selectors")' "Capture UI run
 require_text "$fastfile" 'number_of_retries: retry_limit' "Capture UI permits one recorded Xcode retry iteration for simulator contention"
 require_text "$fastfile" 'testRetryLimit: retry_limit' "Capture UI evidence records the bounded retry policy"
 require_text "$fastfile" 'ui_test(device: options[:device], suite: "full")' "Candidate qualification runs every deterministic UI shard"
+require_text "$fastfile" 'reset_simulator: suite == "full"' "Full UI shards reset simulator state between evidence bundles"
 require_text "$fastfile" 'schema: "quipsly-capture-ui-test-evidence-v1"' "Capture UI writes a source-bound aggregate evidence manifest"
 require_text "$fastfile" 'selected_tests.uniq.length == selected_tests.length' "Qualified UI evidence rejects duplicate or omitted selectors"
 require_text "$fastfile" 'selected_tests.sort == expected_tests.sort' "Qualified UI evidence matches the exact source-derived full plan"

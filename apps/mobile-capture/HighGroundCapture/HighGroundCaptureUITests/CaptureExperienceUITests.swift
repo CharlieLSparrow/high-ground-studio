@@ -2224,7 +2224,10 @@ final class CaptureExperienceUITests: XCTestCase {
             saveChoices.isHittable,
             "The final consent action must remain reachable without scrolling even at the largest accessibility text size."
         )
-        XCTAssertFalse(saveChoices.isEnabled)
+        XCTAssertTrue(
+            saveChoices.isEnabled,
+            "The standard consent action should be immediately available when the default audio and video choices are shown."
+        )
 
         try app.performAccessibilityAudit(for: [
             .hitRegion,

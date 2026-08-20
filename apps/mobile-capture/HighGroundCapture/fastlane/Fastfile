@@ -398,6 +398,11 @@ platform :ios do
         devices: [options[:device] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_DEVICE", "iPhone 17 Pro")],
         only_testing: plan.fetch("selectors"),
         parallel_testing: false,
+        # Full qualification runs for close to an hour. Reset the dedicated
+        # simulator before each shard so CoreSimulator accessibility services,
+        # permissions, and process state cannot leak between otherwise
+        # independent evidence bundles.
+        reset_simulator: suite == "full",
         reinstall_app: true,
         app_identifier: APP_IDENTIFIER,
         result_bundle: true,
