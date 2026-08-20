@@ -748,6 +748,30 @@ receipts and copy/share recovery are live, but automated real-mail delivery
 remains disabled until a sender domain and provider credential are configured;
 `realMailboxDeliveryProven` therefore remains false.
 
+## Production authenticated-read capacity checkpoint — 2026-08-19
+
+`pnpm quipsly:production:coaching-capacity` is a bounded, read-only production
+probe. It authenticates one dedicated test account once, then gives each
+virtual coach the same three reads a newly opened coaching workspace needs:
+coaching runway, Session index, and Today. The command accepts only
+`nest.quipsly.com` or a loopback origin, caps the virtual-coach count at 100,
+prints status and latency evidence, and exits nonzero if any read fails.
+
+The 2-coach floor passed 6 of 6 reads with 1,575 ms p95. The 10-coach floor
+passed 30 of 30 reads with 6,827 ms p95. The 50-coach floor correctly failed:
+65 of 150 reads returned HTTP 500 or exceeded the 20-second bound. Cloud Run
+system evidence identified the first hard cause: an instance used 522 MiB and
+was killed by its 512 MiB limit. The deployed service also combined concurrency
+80 with a two-instance maximum, allowing a single Next process to absorb an
+unsafe share of the burst.
+
+The 50 gate remains failed. The proposed repair is 1 GiB memory, concurrency
+20, and maximum four scale-to-zero instances, followed by the same 2 → 10 → 50
+probe. Even a repaired 50-coach read floor will keep
+`distinctAccountsProven`, `concurrentCallsProven`,
+`recordingUploadLoadProven`, `minimallyInstructedHumanAcceptanceProven`, and
+`productionScaleProven` false.
+
 ## Fifty-coach human flight scorecard
 
 Give every coach the same one-sentence mission above and give every client only
