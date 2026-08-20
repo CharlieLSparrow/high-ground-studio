@@ -72,7 +72,7 @@ const appStoreReadiness = read(paths.appStoreReadiness);
 ].forEach((marker) => assertIncludes(adminActions, marker, paths.adminActions));
 
 [
-  "Start here · finish coach setup",
+  "Set up your coaching space",
   "Optional. Leave blank to start without a payment link.",
   "create-booking-room",
   "Schedule and create the private Session",
