@@ -167,6 +167,18 @@ delivery/projection suite. Preview mode showed the real primary and fallback
 controls but kept external sending disabled. No physical phone, provider-backed
 mailbox delivery, or human invitation acceptance is claimed by that run.
 
+### Production delivery configuration readback — 2026-08-19
+
+The deployed `studio` service currently has neither
+`QUIPSLY_SESSION_INVITATION_RESEND_API_KEY` nor `RESEND_API_KEY`. Its Google
+Calendar projection is configured with `GOOGLE_CALENDAR_SEND_UPDATES=none` and
+`GOOGLE_CALENDAR_INCLUDE_ATTENDEES=false`. Therefore Quipsly can create the
+private invitation and expose copy/share recovery, but production has not yet
+proved automatic invitation delivery through email or a Calendar attendee
+notification. Do not hand this build to a minimally instructed cohort until a
+provider-backed message reaches a real client inbox and acceptance, resend,
+expiry, wrong-account, and revocation readback pass.
+
 ## Implementation checkpoint — 2026-08-19
 
 - Ordinary Coaching and Session surfaces no longer name retained people,
