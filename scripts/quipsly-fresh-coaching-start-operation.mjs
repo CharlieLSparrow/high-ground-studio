@@ -294,6 +294,23 @@ try {
     .getByText(sessionTitle, { exact: false })
     .first()
     .waitFor({ timeout: 30_000 });
+  const captureInstallLink = clientPage.getByRole("link", {
+    name: "Install on iPhone",
+    exact: true,
+  });
+  await captureInstallLink.waitFor({ timeout: 30_000 });
+  assert.equal(
+    await captureInstallLink.getAttribute("href"),
+    "https://testflight.apple.com/join/XwRRcYUm",
+    "Fresh client Session did not expose the verified Capture beta install path.",
+  );
+  assert.equal(
+    await clientPage
+      .getByRole("link", { name: "Open Capture", exact: true })
+      .getAttribute("href"),
+    `quipsly://session/${encodeURIComponent(evidence.roomId)}?mode=live`,
+    "Fresh client Session did not hand the exact room to Capture.",
+  );
   await assertNoHorizontalOverflow(
     clientPage.locator("main").last(),
     "fresh client Session at phone width",
@@ -333,6 +350,7 @@ try {
   );
   evidence.clientOnlyHomeOpenedExactSession = true;
   evidence.clientOnlyHomeExcludedCoachControls = true;
+  evidence.captureInstallAndExactRoomHandoffVisible = true;
 
   const room = await prisma.callRoom.findUniqueOrThrow({
     where: { id: evidence.roomId },
