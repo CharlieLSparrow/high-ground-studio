@@ -1,6 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  cat <<'USAGE'
+Usage:
+  scripts/release/quipsly-deploy-preview.sh
+
+Deploy the exact SOURCE_REF (default HEAD) as a no-traffic Quipsly Cloud Run
+preview, then emit the preview information required by the smoke and promotion
+lanes. Configuration is supplied through the documented environment variables;
+this command accepts no positional arguments.
+
+Important environment controls:
+  PROJECT_ID, REGION, SERVICE_NAME, SOURCE_REF
+  REUSE_EXISTING_IMAGE, IMAGE_TAG, ALLOW_EARLY_CLOUD_BUILD
+  MIN_INSTANCES, MAX_INSTANCES
+  ENABLE_SESSION_INVITATION_EMAIL, ENABLE_TRANSCRIPT_WORKER
+  ENABLE_GOOGLE_CALENDAR_OAUTH, ENABLE_GOOGLE_DRIVE_OAUTH
+  ENABLE_LIVEKIT_PROVIDER, CONFIGURE_LIVEKIT_EGRESS, ENABLE_LIVEKIT_EGRESS
+
+The preview receives no production traffic. Use quipsly-smoke-preview.sh and
+quipsly-promote-preview.sh for verification and promotion.
+USAGE
+}
+
+case "${1:-}" in
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  "") ;;
+  *)
+    usage >&2
+    echo "Unexpected argument: $1" >&2
+    exit 2
+    ;;
+esac
+
 REGION="${REGION:-us-central1}"
 ARTIFACT_REPOSITORY="${ARTIFACT_REPOSITORY:-high-ground-studio}"
 IMAGE_NAME="${IMAGE_NAME:-studio}"

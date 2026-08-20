@@ -5,8 +5,23 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
-const deployScript = fileURLToPath(new URL("./quipsly-deploy-preview.sh", import.meta.url));
-const hotfixScript = fileURLToPath(new URL("./quipsly-hotfix-deploy.sh", import.meta.url));
+const deployScript = fileURLToPath(
+  new URL("./quipsly-deploy-preview.sh", import.meta.url),
+);
+const hotfixScript = fileURLToPath(
+  new URL("./quipsly-hotfix-deploy.sh", import.meta.url),
+);
+
+test("preview deploy help is read-only and available without cloud authentication", () => {
+  const help = execFileSync("bash", [deployScript, "--help"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: { PATH: "/usr/bin:/bin" },
+  });
+
+  assert.match(help, /Deploy the exact SOURCE_REF/);
+  assert.match(help, /preview receives no production traffic/);
+});
 
 test("Nest release lanes preserve zero idle instances but allow one replacement instance", () => {
   for (const scriptPath of [deployScript, hotfixScript]) {
@@ -17,8 +32,14 @@ test("Nest release lanes preserve zero idle instances but allow one replacement 
     assert.match(source, /MAX_INSTANCES="\$\{MAX_INSTANCES:-2\}"/);
     assert.match(source, /MIN_INSTANCES > MAX_INSTANCES/);
     assert.match(source, /MAX_INSTANCES < 2/);
-    assert.match(source, /--min-instances=(?:"\$\{MIN_INSTANCES\}"|\$\{MIN_INSTANCES\})/);
-    assert.match(source, /--max-instances=(?:"\$\{MAX_INSTANCES\}"|\$\{MAX_INSTANCES\})/);
+    assert.match(
+      source,
+      /--min-instances=(?:"\$\{MIN_INSTANCES\}"|\$\{MIN_INSTANCES\})/,
+    );
+    assert.match(
+      source,
+      /--max-instances=(?:"\$\{MAX_INSTANCES\}"|\$\{MAX_INSTANCES\})/,
+    );
   }
 });
 
@@ -44,42 +65,93 @@ test("preview deploy mounts the required secrets and privately validates the rel
 test("session invitation email is explicit, Secret Manager backed, and safe to disable", () => {
   const source = readFileSync(deployScript, "utf8");
 
-  assert.match(source, /ENABLE_SESSION_INVITATION_EMAIL="\$\{ENABLE_SESSION_INVITATION_EMAIL:-0\}"/);
+  assert.match(
+    source,
+    /ENABLE_SESSION_INVITATION_EMAIL="\$\{ENABLE_SESSION_INVITATION_EMAIL:-0\}"/,
+  );
   assert.match(source, /ENABLE_SESSION_INVITATION_EMAIL must be 0 or 1/);
   assert.match(source, /SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME/);
-  assert.match(source, /SESSION_INVITATION_EMAIL_FROM="\$\{SESSION_INVITATION_EMAIL_FROM:-invites@notify\.quipsly\.com\}"/);
-  assert.match(source, /validate_private_secret "\$\{SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME\}" "api-key"/);
-  assert.match(source, /QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=\$\{SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME\}:latest/);
-  assert.match(source, /QUIPSLY_SESSION_INVITATION_EMAIL_FROM=\$\{SESSION_INVITATION_EMAIL_FROM\}/);
+  assert.match(
+    source,
+    /SESSION_INVITATION_EMAIL_FROM="\$\{SESSION_INVITATION_EMAIL_FROM:-invites@notify\.quipsly\.com\}"/,
+  );
+  assert.match(
+    source,
+    /validate_private_secret "\$\{SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME\}" "api-key"/,
+  );
+  assert.match(
+    source,
+    /QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=\$\{SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME\}:latest/,
+  );
+  assert.match(
+    source,
+    /QUIPSLY_SESSION_INVITATION_EMAIL_FROM=\$\{SESSION_INVITATION_EMAIL_FROM\}/,
+  );
   assert.doesNotMatch(source, /QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=[^$]/);
 });
 
 test("Drive activation is explicit, least-privilege, and entirely Secret Manager backed", () => {
   const source = readFileSync(deployScript, "utf8");
 
-  assert.match(source, /ENABLE_GOOGLE_DRIVE_OAUTH="\$\{ENABLE_GOOGLE_DRIVE_OAUTH:-0\}"/);
+  assert.match(
+    source,
+    /ENABLE_GOOGLE_DRIVE_OAUTH="\$\{ENABLE_GOOGLE_DRIVE_OAUTH:-0\}"/,
+  );
   assert.match(source, /ENABLE_GOOGLE_DRIVE_OAUTH must be 0 or 1/);
   assert.match(source, /GOOGLE_DRIVE_OAUTH_CLIENT_ID_SECRET_NAME/);
   assert.match(source, /GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME/);
   assert.match(source, /GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME/);
   assert.match(source, /GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME/);
-  assert.match(source, /validate_private_secret "\$\{GOOGLE_DRIVE_OAUTH_CLIENT_ID_SECRET_NAME\}" "oauth-client-id"/);
-  assert.match(source, /validate_private_secret "\$\{GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME\}" "encryption-key"/);
-  assert.match(source, /Google Drive OAuth and Picker secrets passed enabled-version and private shape validation/);
+  assert.match(
+    source,
+    /validate_private_secret "\$\{GOOGLE_DRIVE_OAUTH_CLIENT_ID_SECRET_NAME\}" "oauth-client-id"/,
+  );
+  assert.match(
+    source,
+    /validate_private_secret "\$\{GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME\}" "encryption-key"/,
+  );
+  assert.match(
+    source,
+    /Google Drive OAuth and Picker secrets passed enabled-version and private shape validation/,
+  );
   assert.doesNotMatch(source, /GOOGLE_DRIVE_OAUTH_CLIENT_SECRET=[^$]/);
 });
 
 test("preview deploy declares provider secrets while keeping optional egress default-off", () => {
   const source = readFileSync(deployScript, "utf8");
 
-  assert.match(source, /ENABLE_LIVEKIT_PROVIDER="\$\{ENABLE_LIVEKIT_PROVIDER:-1\}"/);
-  assert.match(source, /CONFIGURE_LIVEKIT_EGRESS="\$\{CONFIGURE_LIVEKIT_EGRESS:-1\}"/);
-  assert.match(source, /ENABLE_LIVEKIT_EGRESS="\$\{ENABLE_LIVEKIT_EGRESS:-0\}"/);
-  assert.match(source, /ENABLE_LIVEKIT_EGRESS=1 requires ENABLE_LIVEKIT_PROVIDER=1 and CONFIGURE_LIVEKIT_EGRESS=1/);
-  assert.match(source, /validate_private_secret "\$\{LIVEKIT_URL_SECRET_NAME\}" "url"/);
-  assert.match(source, /validate_private_secret "\$\{LIVEKIT_EGRESS_CREDENTIALS_SECRET_NAME\}" "gcp-credentials"/);
-  assert.match(source, /validate_private_secret "\$\{LIVEKIT_EGRESS_BUCKET_SECRET_NAME\}" "bucket"/);
-  assert.match(source, /LIVEKIT_EGRESS_ENABLED=\$\{livekit_egress_enabled_value\}/);
+  assert.match(
+    source,
+    /ENABLE_LIVEKIT_PROVIDER="\$\{ENABLE_LIVEKIT_PROVIDER:-1\}"/,
+  );
+  assert.match(
+    source,
+    /CONFIGURE_LIVEKIT_EGRESS="\$\{CONFIGURE_LIVEKIT_EGRESS:-1\}"/,
+  );
+  assert.match(
+    source,
+    /ENABLE_LIVEKIT_EGRESS="\$\{ENABLE_LIVEKIT_EGRESS:-0\}"/,
+  );
+  assert.match(
+    source,
+    /ENABLE_LIVEKIT_EGRESS=1 requires ENABLE_LIVEKIT_PROVIDER=1 and CONFIGURE_LIVEKIT_EGRESS=1/,
+  );
+  assert.match(
+    source,
+    /validate_private_secret "\$\{LIVEKIT_URL_SECRET_NAME\}" "url"/,
+  );
+  assert.match(
+    source,
+    /validate_private_secret "\$\{LIVEKIT_EGRESS_CREDENTIALS_SECRET_NAME\}" "gcp-credentials"/,
+  );
+  assert.match(
+    source,
+    /validate_private_secret "\$\{LIVEKIT_EGRESS_BUCKET_SECRET_NAME\}" "bucket"/,
+  );
+  assert.match(
+    source,
+    /LIVEKIT_EGRESS_ENABLED=\$\{livekit_egress_enabled_value\}/,
+  );
   assert.match(source, /Its value was not printed/);
   assert.doesNotMatch(source, /set -x/);
 });
@@ -88,7 +160,10 @@ test("account deletion activation requires a private dedicated worker and keeps 
   const source = readFileSync(deployScript, "utf8");
 
   assert.match(source, /ENABLE_ACCOUNT_DELETION_WORKER must be 0 or 1/);
-  assert.match(source, /Account deletion worker shared secret .* is missing or disabled/);
+  assert.match(
+    source,
+    /Account deletion worker shared secret .* is missing or disabled/,
+  );
   assert.match(source, /dedicated worker identity/);
   assert.match(source, /concurrency 1/);
   assert.match(source, /maximum 1 instance/);
@@ -110,28 +185,58 @@ test("preview deploy reuses one verified image for one committed source", () => 
   assert.match(source, /canonical_image_tag="source-\$\{SOURCE_SHA\}"/);
   assert.match(source, /IMAGE_TAG="\$\{canonical_image_tag\}"/);
   assert.match(source, /IMAGE_TAG must equal \$\{canonical_image_tag\}/);
-  assert.match(source, /Create a new commit for a distinct Nest release identity/);
-  assert.match(source, /gcloud artifacts docker images describe "\$\{IMAGE_URI\}"/);
+  assert.match(
+    source,
+    /Create a new commit for a distinct Nest release identity/,
+  );
+  assert.match(
+    source,
+    /gcloud artifacts docker images describe "\$\{IMAGE_URI\}"/,
+  );
   assert.match(source, /Reusing exact-source Quipsly image/);
-  assert.match(source, /Cloud Build skipped: this committed source already has a verified image/);
+  assert.match(
+    source,
+    /Cloud Build skipped: this committed source already has a verified image/,
+  );
   assert.match(source, /REUSE_EXISTING_IMAGE must be 0 or 1/);
-  assert.match(source, /Refusing to replace an existing immutable Quipsly image tag/);
-  assert.match(source, /Create a new commit for a distinct Nest release identity/);
+  assert.match(
+    source,
+    /Refusing to replace an existing immutable Quipsly image tag/,
+  );
+  assert.match(
+    source,
+    /Create a new commit for a distinct Nest release identity/,
+  );
   assert.match(
     source,
     /elif \[\[ "\$\{image_readback_status\}" == "0" \]\]; then[\s\S]*REUSE_EXISTING_IMAGE[\s\S]*Refusing to replace an existing immutable Quipsly image tag/,
   );
-  assert.match(source, /CLOUD_BUILD_MACHINE_TYPE="\$\{CLOUD_BUILD_MACHINE_TYPE:-e2-highcpu-32\}"/);
+  assert.match(
+    source,
+    /CLOUD_BUILD_MACHINE_TYPE="\$\{CLOUD_BUILD_MACHINE_TYPE:-e2-highcpu-32\}"/,
+  );
   assert.match(source, /--machine-type "\$\{CLOUD_BUILD_MACHINE_TYPE\}"/);
-  assert.match(source, /MIN_CLOUD_BUILD_INTERVAL_HOURS="\$\{MIN_CLOUD_BUILD_INTERVAL_HOURS:-72\}"/);
-  assert.match(source, /ALLOW_EARLY_CLOUD_BUILD="\$\{ALLOW_EARLY_CLOUD_BUILD:-0\}"/);
+  assert.match(
+    source,
+    /MIN_CLOUD_BUILD_INTERVAL_HOURS="\$\{MIN_CLOUD_BUILD_INTERVAL_HOURS:-72\}"/,
+  );
+  assert.match(
+    source,
+    /ALLOW_EARLY_CLOUD_BUILD="\$\{ALLOW_EARLY_CLOUD_BUILD:-0\}"/,
+  );
   assert.match(source, /--format='json\(createTime,status,substitutions\)'/);
   assert.match(source, /quipsly-latest-successful-build\.mjs/);
-  assert.doesNotMatch(source, /--filter="status=SUCCESS AND substitutions\._IMAGE_NAME=/);
+  assert.doesNotMatch(
+    source,
+    /--filter="status=SUCCESS AND substitutions\._IMAGE_NAME=/,
+  );
   assert.match(source, /Cloud Build cadence gate/);
   assert.match(source, /For an urgent production repair only/);
   assert.match(source, /requested existing image is unavailable/);
-  assert.match(source, /Could not verify the release image after the build\/reuse decision/);
+  assert.match(
+    source,
+    /Could not verify the release image after the build\/reuse decision/,
+  );
   assert.doesNotMatch(source, /IMAGE_TAG="\$\{IMAGE_TAG:-preview-\$\(date/);
 });
 
@@ -139,13 +244,25 @@ test("transcript activation requires an immutable worker and exact Nest executio
   const source = readFileSync(deployScript, "utf8");
 
   assert.match(source, /ENABLE_TRANSCRIPT_WORKER must be 0 or 1/);
-  assert.match(source, /Transcript worker project, region, job, identity, bucket, or secret name is unsafe/);
-  assert.match(source, /gcloud run jobs describe "\$\{TRANSCRIPT_WORKER_JOB\}"/);
+  assert.match(
+    source,
+    /Transcript worker project, region, job, identity, bucket, or secret name is unsafe/,
+  );
+  assert.match(
+    source,
+    /gcloud run jobs describe "\$\{TRANSCRIPT_WORKER_JOB\}"/,
+  );
   assert.match(source, /@sha256:\[0-9a-f\]\{64\}\$/);
   assert.match(source, /roles\/run\.jobsExecutor/);
   assert.match(source, /roles\/run\.jobsExecutorWithOverrides/);
-  assert.match(source, /Nest lacks the exact transcript jobsExecutor boundary or has unsafe override authority/);
+  assert.match(
+    source,
+    /Nest lacks the exact transcript jobsExecutor boundary or has unsafe override authority/,
+  );
   assert.match(source, /Transcript provider secret .* is missing or disabled/);
   assert.match(source, /QUIPSLY_TRANSCRIPT_WORKER_ENABLED=1/);
-  assert.match(source, /Transcript worker passed immutable job, provider-secret, and Nest executor readback/);
+  assert.match(
+    source,
+    /Transcript worker passed immutable job, provider-secret, and Nest executor readback/,
+  );
 });
