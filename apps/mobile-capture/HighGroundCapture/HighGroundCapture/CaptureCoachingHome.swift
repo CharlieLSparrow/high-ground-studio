@@ -1220,10 +1220,10 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
             Text(entry.title)
                 .font(.headline)
                 .strikethrough(entry.isComplete)
-                .accessibilityValue(
+                .accessibilityLabel(
                     entry.visibility == "PRIVATE"
-                        ? "Private note. Only you can read it."
-                        : ""
+                        ? "\(entry.title). Private note. Only you can read it."
+                        : entry.title
                 )
             if let body = entry.body?.nonemptyCoachingText, body != entry.title {
                 Text(body)

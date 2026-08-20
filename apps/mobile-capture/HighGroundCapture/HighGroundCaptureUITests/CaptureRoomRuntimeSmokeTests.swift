@@ -1207,8 +1207,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTAssertTrue(save.isEnabled)
             save.tap()
             XCTAssertTrue(editor.waitForNonExistence(timeout: 30))
+            let savedTitle = privateNote
+                ? app.staticTexts.matching(
+                    NSPredicate(format: "label BEGINSWITH %@", title)
+                ).firstMatch
+                : app.staticTexts[title].firstMatch
             XCTAssertTrue(
-                app.staticTexts[title].firstMatch.waitForExistence(timeout: 15),
+                savedTitle.waitForExistence(timeout: 15),
                 "The native relationship workspace should read the exact canonical \(kind.lowercased()) back after save."
             )
         }
@@ -1223,14 +1228,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             title: privateNoteTitle,
             privateNote: true
         )
-        let privateBoundary = app.staticTexts[privateNoteTitle].firstMatch
+        let privateBoundary = app.staticTexts.matching(
+            NSPredicate(
+                format: "label BEGINSWITH %@ AND label CONTAINS[c] %@",
+                privateNoteTitle,
+                "only you can read"
+            )
+        ).firstMatch
         XCTAssertTrue(
             privateBoundary.waitForExistence(timeout: 8),
             "The phone must expose the author-only boundary to sighted and assistive-technology users."
-        )
-        XCTAssertTrue(
-            String(describing: privateBoundary.value).localizedCaseInsensitiveContains("only you can read"),
-            "VoiceOver must announce the privacy boundary on the exact private note, not only render a lock glyph."
         )
         attachRuntimeScreenshot(app, name: "Phone-first canonical client workspace")
 
