@@ -1151,6 +1151,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             delivery.exists || globalError.exists,
             "Invitation must produce visible sent-or-not-sent truth; a tap may not disappear into silent state."
         )
+        attachRuntimeScreenshot(app, name: "Phone-first invitation outcome")
         let share = app.descendants(matching: .any).matching(
             NSPredicate(
                 format: "identifier == %@ OR label == %@",

@@ -657,7 +657,7 @@ struct CaptureCoachingHomeView: View {
             }
         }
         .captureCard()
-        .accessibilityIdentifier("CaptureCoachingHandoff")
+        .accessibilityElement(children: .contain)
     }
 
     private var upcomingSection: some View {
@@ -718,6 +718,7 @@ struct CaptureCoachingHomeView: View {
                         if client.isCoach { invitationActions(for: booking) }
                     }
                     .captureCard()
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("CaptureCoachingBooking_\(booking.id)")
                 }
             }
