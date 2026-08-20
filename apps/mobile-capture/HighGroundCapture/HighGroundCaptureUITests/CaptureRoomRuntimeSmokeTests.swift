@@ -1228,7 +1228,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             title: privateNoteTitle,
             privateNote: true
         )
-        let privateBoundary = app.staticTexts["Only you can read"].firstMatch
+        let privateBoundary = app.staticTexts["Only you can read this note"].firstMatch
         XCTAssertTrue(
             privateBoundary.waitForExistence(timeout: 8),
             "The phone must expose the author-only boundary to sighted and assistive-technology users."

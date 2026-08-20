@@ -1203,20 +1203,24 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(entry.visibility == "PRIVATE" ? .orange : .teal)
                 Spacer()
-                if entry.visibility == "PRIVATE" {
-                    HStack(spacing: 4) {
-                        Image(systemName: "lock.fill")
-                            .accessibilityHidden(true)
-                        Text("Only you can read")
-                    }
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.orange)
-                }
             }
 
             Text(entry.title)
                 .font(.headline)
                 .strikethrough(entry.isComplete)
+            if entry.visibility == "PRIVATE" {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.fill")
+                        .accessibilityHidden(true)
+                    Text("Only you can read this note")
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(.orange.opacity(0.12), in: Capsule())
+            }
             if let body = entry.body?.nonemptyCoachingText, body != entry.title {
                 Text(body)
                     .font(.subheadline)
