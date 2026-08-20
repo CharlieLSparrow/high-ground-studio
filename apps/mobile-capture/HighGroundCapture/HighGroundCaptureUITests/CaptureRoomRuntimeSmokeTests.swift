@@ -4649,8 +4649,24 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             allow.tap()
         }
 
-        let stop = app.buttons["CaptureStopButton"].firstMatch
-        XCTAssertTrue(stop.waitForExistence(timeout: 15), "The actual AVAudioRecorder-backed take should start.")
+        var stop = app.buttons["CaptureStopButton"].firstMatch
+        if !stop.waitForExistence(timeout: 8) {
+            // A first-install permission transition can rebuild the root shell
+            // while AVAudioRecorder keeps the take alive. Operate the same
+            // global recovery banner a coach sees instead of assuming the
+            // recorder detail view survived that system-owned transition.
+            let activeCapture = app.buttons["GlobalCaptureBanner"].firstMatch
+            XCTAssertTrue(
+                activeCapture.waitForExistence(timeout: 8),
+                "Starting a take should expose either recorder controls or the global active-capture recovery banner."
+            )
+            activeCapture.tap()
+            stop = app.buttons["CaptureStopButton"].firstMatch
+        }
+        XCTAssertTrue(
+            stop.waitForExistence(timeout: 8),
+            "The actual AVAudioRecorder-backed take should start and remain operable after permission transitions."
+        )
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
         let mark = app.buttons["CaptureMarkMomentButton"].firstMatch
         XCTAssertTrue(mark.exists)
@@ -4757,16 +4773,58 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         tapRootTab("Record", in: app)
         selectRequestedSession(in: app, credentials: credentials)
+
+        let missingPlanReason = app.textFields.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureMissingPlannedSourceReason_")
+        ).firstMatch
+        let waiveMissingMaster = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureWaiveMissingPlannedSource_")
+        ).firstMatch
+        if waitForRuntimeElement(missingPlanReason, in: app, timeout: 30, swipeAttempts: 12) {
+            XCTAssertTrue(
+                waitForRuntimeElement(waiveMissingMaster, in: app, timeout: 8, swipeAttempts: 4),
+                "A missing required master should expose the phone-only, reason-required recovery decision."
+            )
+            missingPlanReason.tap()
+            missingPlanReason.typeText(
+                "The interrupted take could not decode after process recovery; continue with the verified source."
+            )
+            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: waiveMissingMaster)
+            waitForExpectations(timeout: 8)
+            waiveMissingMaster.tap()
+            XCTAssertTrue(
+                missingPlanReason.waitForNonExistence(timeout: 20),
+                "The append-only waiver should refresh the exact Session source plan before Studio handoff."
+            )
+            let resolvedEvidence = app.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "CaptureResolvedEvidence_")
+            ).firstMatch
+            XCTAssertTrue(
+                waitForRuntimeElement(resolvedEvidence, in: app, timeout: 20, swipeAttempts: 6),
+                "The phone should preserve the interrupted receipt and its reason as visible resolved evidence."
+            )
+        }
+
         let handoffCard = app.descendants(matching: .any)["CaptureStudioHandoffCard_\(sessionID)"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(handoffCard, in: app, timeout: 45, swipeAttempts: 10),
             "A server-verified recording should keep its Studio handoff state reachable beside the recorder."
         )
         let promotionStatusIdentifier = "CaptureStudioPromotionStatus_\(sessionID)"
-        let attachToStudio = app.buttons["CaptureAttachToStudioButton_\(sessionID)"].firstMatch
-        let openStudioReview = app.links["CaptureOpenStudioReviewLink_\(sessionID)"].firstMatch
+        // SwiftUI can expose these controls as Button, Link, or Other across
+        // runtimes. Their stable identifiers are the cross-version contract;
+        // element-class guessing is not.
+        let attachToStudio = app.descendants(matching: .any)[
+            "CaptureAttachToStudioButton_\(sessionID)"
+        ].firstMatch
+        let openStudioReview = app.descendants(matching: .any)[
+            "CaptureOpenStudioReviewLink_\(sessionID)"
+        ].firstMatch
+        let openStudioReviewByLabel = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "Review in Studio")
+        ).firstMatch
 
-        if attachToStudio.exists {
+        if waitForRuntimeElement(attachToStudio, in: app, timeout: 20, swipeAttempts: 10) {
             let attachEnabled = XCTNSPredicateExpectation(
                 predicate: NSPredicate(format: "enabled == true"),
                 object: attachToStudio
@@ -4777,6 +4835,22 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "The verified source should become attachable without changing or deleting the local original."
             )
             attachToStudio.tap()
+        } else {
+            let reviewIsReachable = waitForRuntimeElement(
+                openStudioReview,
+                in: app,
+                timeout: 4,
+                swipeAttempts: 2
+            ) || waitForRuntimeElement(
+                openStudioReviewByLabel,
+                in: app,
+                timeout: 8,
+                swipeAttempts: 6
+            )
+            XCTAssertTrue(
+                reviewIsReachable,
+                "The repaired source plan should expose either an attach action or an idempotent Studio review action."
+            )
         }
 
         let promotionDeadline = Date().addingTimeInterval(45)
@@ -4786,7 +4860,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             let normalizedStatus = promotionStatus.label.lowercased()
             if promotionStatus.exists
                 && (normalizedStatus.contains("in studio") || normalizedStatus.contains("studio media ready"))
-                && openStudioReview.exists {
+                && (openStudioReview.exists || openStudioReviewByLabel.exists) {
                 durableStudioHandoff = true
                 break
             }

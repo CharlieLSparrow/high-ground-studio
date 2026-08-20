@@ -646,6 +646,8 @@ private struct CaptureSourceRecoveryCard: View {
     @ObservedObject var client: CaptureReviewDigestClient
     let previewOnly: Bool
     let onOpenLibrary: () -> Void
+    let onSourcePlanChanged: () async -> Void
+    @State private var reasonDrafts: [String: String] = [:]
 
     private var tint: Color {
         readiness.safeToLeaveAllEndpoints ? .green : .orange
@@ -675,18 +677,85 @@ private struct CaptureSourceRecoveryCard: View {
 
             if let missing = readiness.missingPlannedSources, !missing.isEmpty {
                 recoverySection("Missing planned masters", systemImage: "list.clipboard.fill") {
+                    Text("If a planned device never produced a recoverable master, explain what happened. Quipsly keeps the original recovery evidence and records the plan change before continuing with verified sources.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     ForEach(missing) { source in
-                        recoveryRow(
-                            id: "CaptureMissingPlannedSource_\(source.id)",
-                            icon: "exclamationmark.triangle.fill",
-                            title: source.label,
-                            detail: [source.participantLabel, source.expectedDeviceLabel, source.fulfillment.replacingOccurrences(of: "-", with: " ")]
-                                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).nonempty }
-                                .joined(separator: " · "),
-                            tone: .orange
-                        )
+                        VStack(alignment: .leading, spacing: 8) {
+                            recoveryRow(
+                                id: "CaptureMissingPlannedSource_\(source.id)",
+                                icon: "exclamationmark.triangle.fill",
+                                title: source.label,
+                                detail: [source.participantLabel, source.expectedDeviceLabel, source.fulfillment.replacingOccurrences(of: "-", with: " ")]
+                                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).nonempty }
+                                    .joined(separator: " · "),
+                                tone: .orange
+                            )
+
+                            TextField(
+                                "Why will this master not arrive?",
+                                text: reasonBinding(for: source.id),
+                                axis: .vertical
+                            )
+                            .lineLimit(2 ... 4)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(previewOnly || client.sourcePlanMutationID != nil)
+                            .accessibilityLabel("Reason this planned master will not arrive")
+                            .accessibilityIdentifier("CaptureMissingPlannedSourceReason_\(source.id)")
+
+                            Button {
+                                Task {
+                                    let saved = await client.waiveMissingPlannedSource(
+                                        roomID: session.callRoomId,
+                                        source: source,
+                                        reason: reasonDrafts[source.id] ?? ""
+                                    )
+                                    if saved {
+                                        reasonDrafts[source.id] = nil
+                                        await onSourcePlanChanged()
+                                    }
+                                }
+                            } label: {
+                                if client.sourcePlanMutationID == source.id {
+                                    HStack(spacing: 8) {
+                                        ProgressView()
+                                        Text("Saving decision…")
+                                    }
+                                } else {
+                                    Label("Continue without this master", systemImage: "arrow.right.circle.fill")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.orange)
+                            .disabled(
+                                previewOnly
+                                    || client.sourcePlanMutationID != nil
+                                    || (reasonDrafts[source.id] ?? "")
+                                        .trimmingCharacters(in: .whitespacesAndNewlines).count < 12
+                            )
+                            .accessibilityHint("Saves an append-only reason, keeps recovery evidence, and removes this missing master from the active recording plan.")
+                            .accessibilityIdentifier("CaptureWaiveMissingPlannedSource_\(source.id)")
+                        }
+                        .padding(10)
+                        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     }
                 }
+            }
+
+            if let errorMessage = client.errorMessage,
+               client.status.localizedCaseInsensitiveContains("recording plan") {
+                Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureSourcePlanMutationError")
+            } else if client.status.localizedCaseInsensitiveContains("recording plan") {
+                Label(client.status, systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureSourcePlanMutationStatus")
             }
 
             if let holds = readiness.sourceHolds, !holds.isEmpty {
@@ -698,6 +767,26 @@ private struct CaptureSourceRecoveryCard: View {
                             title: source.label,
                             detail: "\(source.deviceLabel) · \(sourceRetentionLabel(source.serverRetentionState))",
                             tone: .orange
+                        )
+                    }
+                }
+            }
+
+            if let resolvedEvidence = readiness.resolvedCaptureEvidence, !resolvedEvidence.isEmpty {
+                recoverySection("Resolved capture evidence", systemImage: "checkmark.shield.fill") {
+                    Text("These interrupted capture receipts remain in the audit trail, but a reasoned recording-plan revision means they no longer block the verified masters.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    ForEach(resolvedEvidence) { source in
+                        recoveryRow(
+                            id: "CaptureResolvedEvidence_\(source.id)",
+                            icon: "doc.badge.checkmark",
+                            title: source.label,
+                            detail: source.disposition.map {
+                                "Plan revision \($0.revision) · \($0.status) · \($0.reason)"
+                            } ?? "Resolved without discarding the capture receipt",
+                            tone: .green
                         )
                     }
                 }
@@ -797,6 +886,13 @@ private struct CaptureSourceRecoveryCard: View {
         case "FINALIZATION_RECEIPT_MISSING": "finalization receipt is missing"
         default: state.replacingOccurrences(of: "_", with: " ").lowercased()
         }
+    }
+
+    private func reasonBinding(for sourceID: String) -> Binding<String> {
+        Binding(
+            get: { reasonDrafts[sourceID] ?? "" },
+            set: { reasonDrafts[sourceID] = $0 }
+        )
     }
 
     private var nestSessionURL: URL? {
@@ -6298,9 +6394,24 @@ private struct CaptureRecorderView: View {
                             readiness: sourceExit,
                             client: model.reviewDigestClient,
                             previewOnly: model.usesPreviewData,
-                            onOpenLibrary: { visibleTab = .library }
+                            onOpenLibrary: { visibleTab = .library },
+                            onSourcePlanChanged: {
+                                await model.refreshSelectedSessionTruthAfterSourcePlanChange()
+                            }
                         )
                     }
+
+                    // Recovery and the next durable action belong together.
+                    // A coach who just resolved a failed take should not have
+                    // to traverse recorder controls and rehearsal tooling to
+                    // confirm the verified source or continue to review.
+                    UploadSummaryCard(model: model)
+
+                    StudioHandoffCard(
+                        model: model,
+                        session: session,
+                        captureIsActive: captureIsActive
+                    )
 
                     CaptureSessionGuardianCard(
                         audioCapture: audioCapture,
@@ -6425,19 +6536,6 @@ private struct CaptureRecorderView: View {
                             )
                         }
                     }
-
-                    // Keep the recording outcome beside the recorder. A
-                    // recovered or freshly verified source should never make
-                    // someone traverse transcript, manuscript, clip-watch,
-                    // notes, and follow-through work just to confirm upload
-                    // safety or hand the immutable group to Studio.
-                    UploadSummaryCard(model: model)
-
-                    StudioHandoffCard(
-                        model: model,
-                        session: session,
-                        captureIsActive: captureIsActive
-                    )
 
                     CaptureRehearsalReadinessCard(
                         audioCapture: audioCapture,

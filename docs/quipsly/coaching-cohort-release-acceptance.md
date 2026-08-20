@@ -510,6 +510,69 @@ real-speech transcription quality, human listening, accessibility, novice
 discoverability, production infrastructure, or 50-coach scale. Its combined
 result keeps all of those claims false.
 
+## Fresh native recovery and Studio handoff checkpoint — 2026-08-19
+
+Test lane: `fresh-native-recovery-automation`
+
+Human acceptance satisfied: **no**
+
+`pnpm quipsly:fresh:coaching-native-recovery` now creates a new coach, client,
+booking, relationship, and Session through the rendered public product before
+launching Quipsly Capture. It does not accept a retained room or known fixture
+identity. The native operation saves each participant's ordinary consent,
+records with `AVAudioRecorder`, plays the finalized local source, kills the app
+during a second take, proves protected offline relaunch and playback, returns
+online, records a reasoned append-only decision for the undecodable interrupted
+take, and continues the verified source into Studio.
+
+The passing `b4e47d6d` run created room `cmt0vpn9900serdxlskqwa92q`, booking
+`cmt0vpn9600sdrdxl4w23etmf`, and engagement
+`cmt0vpn8p00s9rdxl0a335w8y`. The app first showed **Attach to Studio**, performed
+that ordinary action, refreshed, and only then showed **Review in Studio**.
+Read-only canonical verification confirmed production
+`cmt0vtqle00ubrdxlkg54enpa`, boundary kind `coaching-session`, one verified and
+released RecordingAsset, its exact StudioMediaAsset, and the project attachment
+role `spine-audio-candidate`. The private receipt is retained at
+`artifacts/coaching-acceptance/b4e47d6d/native-capture-recovery-receipt.json`.
+
+A second fresh run, `6f32ec15`, passed after strengthening the flight's final
+postcondition. The coach's ordinary authenticated Sessions projection had to
+read back production `cmt0w0yex00wvrdxl3393xr0j`, the canonical coaching slug,
+capture group `e0074c3a-c878-4ad1-a148-20895c3de30f`, RecordingAsset
+`cmt0vzh5700vprdxlv88vxo30`, StudioMediaAsset
+`cmt0vzh5000vordxlxg5p6bl8`, exact-byte verification, and released processing.
+The reusable command now fails if the UI changes its badge without that complete
+source-to-production projection. Its private receipt is retained at
+`artifacts/coaching-acceptance/6f32ec15/native-capture-recovery-receipt.json`.
+
+The failed runs remain useful evidence rather than being hidden:
+
+- `09515842` exposed that first-install microphone permission can return the
+  person to Today while recording is active. The persistent global recording
+  banner already provided recovery; the operation now follows that visible
+  affordance instead of assuming the recorder stayed foregrounded.
+- `c18e4114` exposed a real product dead end: ingest had minted media, but the
+  Session had no production/editor container, so neither a truthful review
+  destination nor a working attach action existed.
+- `3aa64070` exposed a cross-runtime SwiftUI accessibility mismatch for the
+  review Link. The operation now uses the stable identifier plus the visible,
+  class-independent action label.
+- `9f143d93` exposed a more important false-positive: fallback episode metadata
+  was being treated as proof that a production existed. The mobile contract now
+  carries the explicit `episodeProductionId`; a media asset and a navigation
+  slug can no longer make the UI claim a durable Studio destination.
+
+Resolved interrupted-capture evidence remains visible with its exact reason and
+revision, but no longer blocks the verified required source. No bytes are called
+playable when iOS cannot decode them, and the decision neither deletes the
+receipt nor rewrites the source plan's history.
+
+This checkpoint uses an iOS Simulator and synthetic silence. It keeps
+`physicalDeviceProven`, `naturalHumanSpeechProven`, `humanListeningProven`,
+`noviceHumanAcceptanceProven`, and `productionScaleProven` false. It makes the
+candidate eligible for physical-device and minimally instructed human testing;
+it does not replace either.
+
 ## Minimally instructed human flight
 
 Give a coach only this sentence:

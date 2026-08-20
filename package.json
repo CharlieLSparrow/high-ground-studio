@@ -89,6 +89,7 @@
     "quipsly:local:coaching-transcript": "QUIPSLY_LOCAL_COACHING_TRANSCRIPT_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-coaching-transcript-operation.mjs",
     "quipsly:local:recording-share": "QUIPSLY_LOCAL_RECORDING_SHARE_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-recording-share-operation.mjs",
     "quipsly:fresh:coaching-start": "QUIPSLY_FRESH_COACHING_START_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-start-operation.mjs",
+    "quipsly:fresh:coaching-native-recovery": "QUIPSLY_FRESH_COACHING_NATIVE_RECOVERY=1 node scripts/quipsly-fresh-coaching-native-recovery-flight.mjs",
     "quipsly:fresh:coaching-work": "QUIPSLY_FRESH_COACHING_WORK_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-work-operation.mjs",
     "quipsly:fresh:coaching-flight": "QUIPSLY_FRESH_COACHING_FLIGHT=1 node scripts/quipsly-fresh-coaching-flight.mjs",
     "quipsly:fresh:coaching-speech-flight": "QUIPSLY_FRESH_COACHING_SPEECH_FLIGHT=1 node scripts/quipsly-fresh-coaching-flight.mjs",

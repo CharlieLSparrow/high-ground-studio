@@ -20,7 +20,9 @@ describe("mobile Capture review digest", () => {
   it("stops before private reads when signed out", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
 
-    const response = await GET(new Request("http://localhost/api/mobile/capture/review-digest"));
+    const response = await GET(
+      new Request("http://localhost/api/mobile/capture/review-digest"),
+    );
 
     expect(response.status).toBe(401);
     expect(getPrismaClient).not.toHaveBeenCalled();
@@ -41,26 +43,30 @@ describe("mobile Capture review digest", () => {
       mobileCaptureFinalizationReceipt: { findMany: jest.fn() },
     } as any);
 
-    const response = await GET(new Request("http://localhost/api/mobile/capture/review-digest"));
+    const response = await GET(
+      new Request("http://localhost/api/mobile/capture/review-digest"),
+    );
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        OR: expect.arrayContaining([
-          {
-            project: {
-              accessGrants: {
-                some: {
-                  email: "producer@example.com",
-                  status: "ACTIVE",
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: expect.arrayContaining([
+            {
+              project: {
+                accessGrants: {
+                  some: {
+                    email: "producer@example.com",
+                    status: "ACTIVE",
+                  },
                 },
               },
             },
-          },
-        ]),
-      },
-    }));
+          ]),
+        },
+      }),
+    );
     expect(mapMobileCaptureSessionsForUser).toHaveBeenCalledWith({
       rooms: [],
       userId: "user-1",
@@ -89,17 +95,25 @@ describe("mobile Capture review digest", () => {
       mobileCaptureFinalizationReceipt: { findMany: jest.fn() },
     } as any);
 
-    const response = await GET(new Request("http://localhost/api/mobile/capture/review-digest"));
+    const response = await GET(
+      new Request("http://localhost/api/mobile/capture/review-digest"),
+    );
 
     expect(response.status).toBe(200);
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        OR: expect.arrayContaining([
-          { createdByUserId: "staff-1" },
-          { participants: { some: { userId: "staff-1", accessStatus: "ACTIVE" } } },
-        ]),
-      },
-    }));
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: expect.arrayContaining([
+            { createdByUserId: "staff-1" },
+            {
+              participants: {
+                some: { userId: "staff-1", accessStatus: "ACTIVE" },
+              },
+            },
+          ]),
+        },
+      }),
+    );
   });
 
   it("preserves substantial recording evidence in the iPhone digest", async () => {
@@ -115,19 +129,23 @@ describe("mobile Capture review digest", () => {
       callRoom: { findMany: jest.fn().mockResolvedValue([]) },
       mobileCaptureFinalizationReceipt: { findMany: jest.fn() },
     } as any);
-    jest.mocked(mapMobileCaptureSessionsForUser).mockReturnValue([{
-      id: "room-1",
-      callRoomId: "room-1",
-      title: "Episode review",
-      recordingCount: 1,
-      contentReadiness: {
-        status: "substantial",
-        captureAssetCount: 1,
-        substantialRecordingCount: 1,
+    jest.mocked(mapMobileCaptureSessionsForUser).mockReturnValue([
+      {
+        id: "room-1",
+        callRoomId: "room-1",
+        title: "Episode review",
+        recordingCount: 1,
+        contentReadiness: {
+          status: "substantial",
+          captureAssetCount: 1,
+          substantialRecordingCount: 1,
+        },
       },
-    }] as any);
+    ] as any);
 
-    const response = await GET(new Request("http://localhost/api/mobile/capture/review-digest"));
+    const response = await GET(
+      new Request("http://localhost/api/mobile/capture/review-digest"),
+    );
     const payload = await response.json();
 
     expect(response.status).toBe(200);
@@ -135,19 +153,26 @@ describe("mobile Capture review digest", () => {
       sessionCount: 1,
       capturePlumbingEvidence: 1,
       substantialRecordingEvidence: 1,
-      sessions: [{
-        callRoomId: "room-1",
-        contentReadiness: {
-          status: "substantial",
-          substantialRecordingCount: 1,
+      sessions: [
+        {
+          callRoomId: "room-1",
+          contentReadiness: {
+            status: "substantial",
+            substantialRecordingCount: 1,
+          },
         },
-      }],
+      ],
     });
   });
 
-  it("ranks endpoint recovery ahead of transcription from the canonical Session topology", async () => {
+  it("ranks a missing planned master ahead of endpoint recovery and exposes its append-only mutation identity", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
-      user: { id: "user-1", primaryEmail: "producer@example.com", name: "Producer", isStaff: false },
+      user: {
+        id: "user-1",
+        primaryEmail: "producer@example.com",
+        name: "Producer",
+        isStaff: false,
+      },
     } as any);
     const exactStorage = {
       byteSize: BigInt(1024),
@@ -157,66 +182,90 @@ describe("mobile Capture review digest", () => {
     };
     const room = {
       id: "room-recovery",
-      participants: [{
-        id: "participant-1",
-        userId: "user-1",
-        displayName: "Producer",
-        email: "producer@example.com",
-        role: "HOST",
-      }],
+      participants: [
+        {
+          id: "participant-1",
+          userId: "user-1",
+          displayName: "Producer",
+          email: "producer@example.com",
+          role: "HOST",
+        },
+      ],
       participantProviderGrants: [],
       participantPreflightReceipts: [],
-      endpointQueueReceipts: [{
-        id: "queue-1",
-        participantId: "participant-1",
-        clientInstanceId: "ios-installation",
-        clientKind: "ios",
-        deviceLabel: "Quipsly Capture · iPhone",
-        queueRevision: BigInt(2),
-        queueState: "NOT_EMPTY",
-        localSourceCount: 2,
-        pendingSourceCount: 1,
-        failedSourceCount: 0,
-        observedCaptureIds: ["capture-1", "capture-2"],
-        recordingAssetIds: ["asset-1"],
-        latestLocalMutationAt: new Date("2026-08-06T18:00:00.000Z"),
-        reconciledAt: new Date("2026-08-06T18:00:01.000Z"),
-        createdAt: new Date("2026-08-06T18:00:01.000Z"),
-      }],
-      expectedSources: [{
-        id: "expected-1",
-        participantId: "participant-1",
-        label: "iPhone audio master",
-        sourceKind: "AUDIO",
-        retentionRole: "REQUIRED_MASTER",
-        status: "ACTIVE",
-        expectedClientKind: "ios",
-        expectedDeviceLabel: "iPhone",
-        recordingAssetId: "asset-1",
-        captureId: "capture-1",
-        revision: 1,
-        latestReason: null,
-        createdAt: new Date("2026-08-06T17:00:00.000Z"),
-        updatedAt: new Date("2026-08-06T17:59:00.000Z"),
-      }],
+      endpointQueueReceipts: [
+        {
+          id: "queue-1",
+          participantId: "participant-1",
+          clientInstanceId: "ios-installation",
+          clientKind: "ios",
+          deviceLabel: "Quipsly Capture · iPhone",
+          queueRevision: BigInt(2),
+          queueState: "NOT_EMPTY",
+          localSourceCount: 2,
+          pendingSourceCount: 1,
+          failedSourceCount: 0,
+          observedCaptureIds: ["capture-1", "capture-2"],
+          recordingAssetIds: ["asset-1"],
+          latestLocalMutationAt: new Date("2026-08-06T18:00:00.000Z"),
+          reconciledAt: new Date("2026-08-06T18:00:01.000Z"),
+          createdAt: new Date("2026-08-06T18:00:01.000Z"),
+        },
+      ],
+      expectedSources: [
+        {
+          id: "expected-1",
+          participantId: "participant-1",
+          label: "iPhone audio master",
+          sourceKind: "AUDIO",
+          retentionRole: "REQUIRED_MASTER",
+          status: "ACTIVE",
+          expectedClientKind: "ios",
+          expectedDeviceLabel: "iPhone",
+          recordingAssetId: "asset-1",
+          captureId: "capture-1",
+          revision: 1,
+          latestReason: null,
+          createdAt: new Date("2026-08-06T17:00:00.000Z"),
+          updatedAt: new Date("2026-08-06T17:59:00.000Z"),
+        },
+        {
+          id: "expected-2",
+          participantId: "participant-1",
+          label: "Interrupted iPhone master",
+          sourceKind: "AUDIO",
+          retentionRole: "REQUIRED_MASTER",
+          status: "ACTIVE",
+          expectedClientKind: "ios",
+          expectedDeviceLabel: "Producer's iPhone",
+          recordingAssetId: null,
+          captureId: "capture-2",
+          revision: 3,
+          latestReason: "Declared before capture.",
+          createdAt: new Date("2026-08-06T17:01:00.000Z"),
+          updatedAt: new Date("2026-08-06T18:00:00.000Z"),
+        },
+      ],
       stateReceipts: [],
       recordingConsents: [],
-      recordingAssets: [{
-        id: "asset-1",
-        roomId: "room-recovery",
-        participantId: "participant-1",
-        kind: "LOCAL_AUDIO",
-        status: "VERIFIED",
-        fileName: "source.m4a",
-        verifiedAt: new Date("2026-08-06T17:58:00.000Z"),
-        localManifestJson: {
-          captureId: "capture-1",
-          exactBytesVerified: true,
-          storageGeneration: "1785990000000",
-          reportedSourceProfile: { clientKind: "ios" },
+      recordingAssets: [
+        {
+          id: "asset-1",
+          roomId: "room-recovery",
+          participantId: "participant-1",
+          kind: "LOCAL_AUDIO",
+          status: "VERIFIED",
+          fileName: "source.m4a",
+          verifiedAt: new Date("2026-08-06T17:58:00.000Z"),
+          localManifestJson: {
+            captureId: "capture-1",
+            exactBytesVerified: true,
+            storageGeneration: "1785990000000",
+            reportedSourceProfile: { clientKind: "ios" },
+          },
+          ...exactStorage,
         },
-        ...exactStorage,
-      }],
+      ],
       transcriptJobs: [],
       notes: [],
       actionItems: [],
@@ -246,61 +295,93 @@ describe("mobile Capture review digest", () => {
     };
     jest.mocked(getPrismaClient).mockReturnValue({
       callRoom: { findMany: jest.fn().mockResolvedValue([room]) },
-      mobileCaptureFinalizationReceipt: { findMany: jest.fn().mockResolvedValue([finalization]) },
+      mobileCaptureFinalizationReceipt: {
+        findMany: jest.fn().mockResolvedValue([finalization]),
+      },
     } as any);
-    jest.mocked(mapMobileCaptureSessionsForUser).mockReturnValue([{
-      id: "room-recovery",
-      callRoomId: "room-recovery",
-      title: "Episode recording",
-      purpose: "PODCAST",
-      recordingCount: 1,
-      latestRecordingMediaAssetId: "media-1",
-      latestTranscriptStatus: "NOT_STARTED",
-      actionPacket: { capabilities: { canRunTranscript: true } },
-      lifecycle: { checks: [] },
-    }] as any);
+    jest.mocked(mapMobileCaptureSessionsForUser).mockReturnValue([
+      {
+        id: "room-recovery",
+        callRoomId: "room-recovery",
+        title: "Episode recording",
+        purpose: "PODCAST",
+        recordingCount: 1,
+        latestRecordingMediaAssetId: "media-1",
+        latestTranscriptStatus: "NOT_STARTED",
+        actionPacket: { capabilities: { canRunTranscript: true } },
+        lifecycle: { checks: [] },
+      },
+    ] as any);
 
-    const response = await GET(new Request("http://localhost/api/mobile/capture/review-digest"));
+    const response = await GET(
+      new Request("http://localhost/api/mobile/capture/review-digest"),
+    );
     const payload = await response.json();
 
     expect(payload.digest).toMatchObject({
       recoveryOpen: 1,
       safeToLeave: 0,
-      finishActions: [{
-        callRoomId: "room-recovery",
-        kind: "confirm-endpoint-drain",
-        priority: 5,
-        sourceExitReadiness: {
-          state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED",
-          serverSafeRequiredSourceCount: 1,
-          requiredSourceCount: 1,
-          endpointQueueCount: 1,
-          drainedEndpointCount: 0,
-          safeToLeaveAllEndpoints: false,
-          missingPlannedSources: [],
-          sourceHolds: [],
-          endpointQueues: [{
-            clientInstanceId: "ios-installation",
-            deviceLabel: "Quipsly Capture · iPhone",
-            queueRevision: "2",
-            queueState: "NOT_EMPTY",
-            pendingSourceCount: 1,
-            failedSourceCount: 0,
-          }],
+      finishActions: [
+        {
+          callRoomId: "room-recovery",
+          kind: "protect-recording-sources",
+          priority: 0,
+          sourceExitReadiness: {
+            state: "PLANNED_SOURCE_INCOMPLETE",
+            serverSafeRequiredSourceCount: 1,
+            requiredSourceCount: 1,
+            requiredPlannedSourceCount: 2,
+            fulfilledRequiredPlannedSourceCount: 1,
+            endpointQueueCount: 1,
+            drainedEndpointCount: 0,
+            safeToLeaveAllEndpoints: false,
+            missingPlannedSources: [
+              {
+                id: "expected-2",
+                label: "Interrupted iPhone master",
+                participantLabel: "Producer",
+                sourceKind: "audio",
+                retentionRole: "required-master",
+                revision: 3,
+                expectedClientKind: "ios",
+                expectedDeviceLabel: "Producer's iPhone",
+                fulfillment: "missing",
+                latestReason: "Declared before capture.",
+              },
+            ],
+            sourceHolds: [],
+            endpointQueues: [
+              {
+                clientInstanceId: "ios-installation",
+                deviceLabel: "Quipsly Capture · iPhone",
+                queueRevision: "2",
+                queueState: "NOT_EMPTY",
+                pendingSourceCount: 1,
+                failedSourceCount: 0,
+              },
+            ],
+          },
         },
-      }],
-      sessions: [{
-        callRoomId: "room-recovery",
-        sourceExitReadiness: {
-          state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED",
+      ],
+      sessions: [
+        {
+          callRoomId: "room-recovery",
+          sourceExitReadiness: {
+            state: "PLANNED_SOURCE_INCOMPLETE",
+          },
         },
-      }],
+      ],
     });
   });
 
   it("ranks explicit post-capture actions without performing them", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
-      user: { id: "user-1", primaryEmail: "producer@example.com", name: "Producer", isStaff: false },
+      user: {
+        id: "user-1",
+        primaryEmail: "producer@example.com",
+        name: "Producer",
+        isStaff: false,
+      },
     } as any);
     jest.mocked(getPrismaClient).mockReturnValue({
       callRoom: { findMany: jest.fn().mockResolvedValue([]) },
@@ -342,12 +423,23 @@ describe("mobile Capture review digest", () => {
       },
     ] as any);
 
-    const response = await GET(new Request("http://localhost/api/mobile/capture/review-digest"));
+    const response = await GET(
+      new Request("http://localhost/api/mobile/capture/review-digest"),
+    );
     const payload = await response.json();
 
-    expect(payload.boundaries).toMatchObject({ sideEffectFree: true, noRecordingStarted: true });
+    expect(payload.boundaries).toMatchObject({
+      sideEffectFree: true,
+      noRecordingStarted: true,
+    });
     expect(payload.digest.needsFinish).toBe(3);
-    expect(payload.digest.finishActions.map((action: any) => [action.callRoomId, action.kind, action.priority])).toEqual([
+    expect(
+      payload.digest.finishActions.map((action: any) => [
+        action.callRoomId,
+        action.kind,
+        action.priority,
+      ]),
+    ).toEqual([
       ["room-promote", "promote-recording", 10],
       ["room-transcript", "run-transcript", 20],
       ["room-review", "review-packet", 40],
@@ -356,30 +448,45 @@ describe("mobile Capture review digest", () => {
 
   it("counts the whole queue while returning a bounded list and reviews an existing packet before rebuilding", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
-      user: { id: "user-1", primaryEmail: "coach@example.com", name: "Coach", isStaff: false },
+      user: {
+        id: "user-1",
+        primaryEmail: "coach@example.com",
+        name: "Coach",
+        isStaff: false,
+      },
     } as any);
     jest.mocked(getPrismaClient).mockReturnValue({
       callRoom: { findMany: jest.fn().mockResolvedValue([]) },
       mobileCaptureFinalizationReceipt: { findMany: jest.fn() },
     } as any);
-    jest.mocked(mapMobileCaptureSessionsForUser).mockReturnValue(Array.from({ length: 10 }, (_, index) => ({
-      id: `room-${index}`,
-      callRoomId: `room-${index}`,
-      title: `Coaching session ${index}`,
-      purpose: "COACHING",
-      recordingCount: 1,
-      latestRecordingMediaAssetId: `media-${index}`,
-      latestTranscriptStatus: "COMPLETED",
-      coachingPacketStatus: "READY_FOR_REVIEW",
-      actionPacket: { capabilities: { canBuildPacket: true, canReviewPacket: true } },
-      lifecycle: { checks: [] },
-    })) as any);
+    jest.mocked(mapMobileCaptureSessionsForUser).mockReturnValue(
+      Array.from({ length: 10 }, (_, index) => ({
+        id: `room-${index}`,
+        callRoomId: `room-${index}`,
+        title: `Coaching session ${index}`,
+        purpose: "COACHING",
+        recordingCount: 1,
+        latestRecordingMediaAssetId: `media-${index}`,
+        latestTranscriptStatus: "COMPLETED",
+        coachingPacketStatus: "READY_FOR_REVIEW",
+        actionPacket: {
+          capabilities: { canBuildPacket: true, canReviewPacket: true },
+        },
+        lifecycle: { checks: [] },
+      })) as any,
+    );
 
-    const response = await GET(new Request("http://localhost/api/mobile/capture/review-digest"));
+    const response = await GET(
+      new Request("http://localhost/api/mobile/capture/review-digest"),
+    );
     const payload = await response.json();
 
     expect(payload.digest.needsFinish).toBe(10);
     expect(payload.digest.finishActions).toHaveLength(8);
-    expect(payload.digest.finishActions.every((action: any) => action.kind === "review-packet")).toBe(true);
+    expect(
+      payload.digest.finishActions.every(
+        (action: any) => action.kind === "review-packet",
+      ),
+    ).toBe(true);
   });
 });

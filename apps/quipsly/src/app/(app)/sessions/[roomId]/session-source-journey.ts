@@ -172,6 +172,15 @@ function retentionCheckpoint(source: SessionReadinessSource | null, evidence: Ev
     at: null,
   };
   const retention = source.serverRetention;
+  if (retention.state === "CAPTURE_PLAN_RESOLVED") return {
+    id: "retention",
+    label: "Retain",
+    state: "COMPLETE",
+    detail: source.planDisposition
+      ? `The interrupted capture receipt remains as evidence. Recording plan revision ${source.planDisposition.revision} ${source.planDisposition.status} this source: ${source.planDisposition.reason}`
+      : "The interrupted capture receipt remains as resolved evidence and no longer blocks the active source plan.",
+    at: source.planDisposition?.updatedAt ?? retention.updatedAt,
+  };
   if (retention.state === "SERVER_COPY_VERIFIED_RELEASED" && evidence?.status === "VERIFIED_MATCH") return {
     id: "retention",
     label: "Retain",

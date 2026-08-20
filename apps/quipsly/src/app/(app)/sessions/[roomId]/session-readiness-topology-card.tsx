@@ -81,6 +81,7 @@ function sourceDetail(source: SessionReadinessSource) {
 
 function retentionLabel(source: SessionReadinessSource) {
   if (source.serverRetention.state === "SERVER_COPY_VERIFIED_RELEASED") return "Server copy safe";
+  if (source.serverRetention.state === "CAPTURE_PLAN_RESOLVED") return "Resolved · evidence kept";
   if (source.serverRetention.state === "SERVER_COPY_VERIFIED_HELD") return "Verified · policy held";
   if (source.serverRetention.state === "FINALIZATION_RECEIPT_MISSING") return "Finalization receipt missing";
   if (source.serverRetention.state === "CAPTURE_AWAITING_MEDIA") return "Awaiting retained media";

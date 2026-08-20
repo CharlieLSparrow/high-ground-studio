@@ -5,10 +5,20 @@ import { randomUUID } from "node:crypto";
 import { auth } from "@/auth";
 import { GET as readEpisodeInventory } from "@/app/api/media-vault/episode-inventory/route";
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+  MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+  MOBILE_CAPTURE_CONSENT_TEXT,
+  MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+} from "@/lib/server/mobile-capture-consent-readiness.js";
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import { promoteRecordingAssetToStudioMedia } from "./recording-media-promotion";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
+jest.mock("@/lib/server/quipsly-session", () => ({
+  getQuipslySessionFromRequest: jest.fn(),
+}));
 jest.mock("@/lib/firebase/firebase-admin", () => ({
   adminAuth: {
     verifySessionCookie: jest.fn(),
@@ -39,6 +49,15 @@ runLocalDatabaseSmoke("canonical Session to Studio handoff local database smoke"
     const actor = await prisma.user.create({ data: { primaryEmail: actorEmail, name: "Studio handoff actor" } });
     actorUserId = actor.id;
     (auth as jest.Mock).mockResolvedValue({ user: { id: actorUserId, email: actorEmail, primaryEmail: actorEmail, name: "Studio handoff actor" } });
+    (getQuipslySessionFromRequest as jest.Mock).mockResolvedValue({
+      user: {
+        id: actorUserId,
+        email: actorEmail,
+        primaryEmail: actorEmail,
+        name: "Studio handoff actor",
+        isStaff: false,
+      },
+    });
     // Deliberately use a non-legacy workspace. Capture sessions can belong to
     // any accessible Nest, and Studio attachment must preserve that exact
     // project identity instead of silently assuming `tonight-pack`.
@@ -59,11 +78,37 @@ runLocalDatabaseSmoke("canonical Session to Studio handoff local database smoke"
     const tag = await prisma.studioTag.create({ data: { projectId, slug: `proof-listen-${nonce}`, label: "Proof listen", category: "review" } });
     const room = await prisma.callRoom.create({ data: { createdByUserId: actorUserId, projectId, projectSlug: `stale-${nonce}`, title: "Episode 4 recording" } });
     roomId = room.id;
+    const participant = await prisma.callParticipant.create({
+      data: { roomId, userId: actorUserId, displayName: "Studio handoff actor", role: "HOST" },
+    });
+    await prisma.recordingConsent.create({
+      data: {
+        roomId,
+        participantId: participant.id,
+        userId: actorUserId,
+        status: "GRANTED",
+        consentText: MOBILE_CAPTURE_CONSENT_TEXT,
+        policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+        canRecordAudio: true,
+        canRecordVideo: false,
+        canTranscribe: true,
+        consentedAt: new Date(),
+        metadataJson: {
+          consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+          consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+          recordingChoiceExplicit: true,
+          transcriptionChoiceExplicit: true,
+          allAudibleParticipantsNotifiedAndAgreed: true,
+          presentationEvidence: { version: 1, surface: "quipsly-capture-consent-v2" },
+        },
+      },
+    });
     await prisma.callRoomTagLink.create({ data: { roomId, tagId: tag.id, createdByUserId: actorUserId } });
     const checksum = "a".repeat(64);
     const recording = await prisma.recordingAsset.create({
       data: {
         roomId,
+        participantId: participant.id,
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
         fileName: "Episode 4 room mix.wav",
@@ -184,16 +229,18 @@ runLocalDatabaseSmoke("canonical Session to Studio handoff local database smoke"
       handoffReceipt: { projectId, idempotent: true },
       episodeAttachment: { status: "already-attached-to-episode-production" },
     });
-    const [attachmentCount, sourceCount, mediaCount, jobsAfterSecond, production] = await Promise.all([
+    const [attachmentCount, sourceCount, mediaCount, jobsAfterSecond, production, boundRoom] = await Promise.all([
       prisma.studioAssetAttachment.count({ where: { projectId, assetId: mediaAssetId } }),
       prisma.studioVideoSource.count({ where: { id: sourceId } }),
       prisma.studioMediaAsset.count({ where: { id: mediaAssetId } }),
       prisma.studioWorkflowJob.count({ where: { projectId, assetId: mediaAssetId } }),
       prisma.studioEpisodeProduction.findUniqueOrThrow({ where: { projectId_slug: { projectId, slug: "episode-4" } } }),
+      prisma.callRoom.findUniqueOrThrow({ where: { id: roomId }, select: { episodeProductionId: true } }),
     ]);
     expect({ attachmentCount, sourceCount, mediaCount, jobsAfterSecond }).toEqual({ attachmentCount: 1, sourceCount: 1, mediaCount: 1, jobsAfterSecond: jobsAfterFirst });
     const importedMedia = Array.isArray((production.productionJson as any)?.importedMedia) ? (production.productionJson as any).importedMedia : [];
     expect(importedMedia).toHaveLength(1);
+    expect(boundRoom.episodeProductionId).toBe(production.id);
     expect(importedMedia[0]).toMatchObject({ metadata: { sessionContext: { roomId, projectId, projectSlug, tagIds: [expect.any(String)] } } });
     const attachment = await prisma.studioAssetAttachment.findUniqueOrThrow({ where: { projectId_assetId: { projectId, assetId: mediaAssetId } } });
     expect(attachment.metadataJson).toMatchObject({

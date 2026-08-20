@@ -306,6 +306,7 @@ final class CaptureExperienceModel: ObservableObject {
     private var isStoppingCoordinatedCapture = false
     private var didReconcileReceiptOutbox = false
     private var observedReceiptOwnerAccountID: String?
+    private var automaticallyQueuedRecoveredRecordingIDs = Set<UUID>()
     private var cancellables = Set<AnyCancellable>()
 
     init(usesPreviewData: Bool? = nil) {
@@ -369,6 +370,7 @@ final class CaptureExperienceModel: ObservableObject {
                 guard let self else { return }
                 self.endpointQueueOutbox.reconcile(recordings: recordings, client: self.sessionClient)
                 self.sourcePlanOutbox.reconcile(recordings: recordings, client: self.sessionClient)
+                self.queueRecoveredUploadsWhenSafe(recordings)
             }
             .store(in: &cancellables)
         quickEntryOutbox.objectWillChange
@@ -595,6 +597,11 @@ final class CaptureExperienceModel: ObservableObject {
             readinessLoad,
             reviewDigestLoad
         )
+        // The Library can finish crash validation before Nest has restored
+        // network authority. Re-evaluate recovered sources after the signed-in
+        // product load so an early protected/offline emission is not the only
+        // chance to resume its durable upload.
+        queueRecoveredUploadsWhenSafe(LocalRecordingLibrary.shared.recordings)
         sourcePlanOutbox.resume(client: sessionClient)
         await taskReminderScheduler.reconcile(
             drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
@@ -1215,6 +1222,17 @@ final class CaptureExperienceModel: ObservableObject {
         message = sourceCount > 1
             ? "Studio handoff complete for all \(sourceCount) capture-group sources. Every immutable original and server receipt remains preserved."
             : "Studio media ready. The immutable local source and server recording evidence remain preserved."
+    }
+
+    func refreshSelectedSessionTruthAfterSourcePlanChange() async {
+        guard !usesPreviewData else { return }
+        let selectedID = selectedSessionID
+        await sessionClient.load()
+        await reviewDigestClient.load()
+        if let selectedID, sessionClient.sessions.contains(where: { $0.id == selectedID }) {
+            selectedSessionID = selectedID
+        }
+        errorMessage = sessionClient.errorMessage ?? reviewDigestClient.errorMessage
     }
 
     func prepareVideoCapture(
@@ -2175,6 +2193,36 @@ final class CaptureExperienceModel: ObservableObject {
 
     func retryUploads() {
         uploadManager.retryRecoverableUploads()
+    }
+
+    private func queueRecoveredUploadsWhenSafe(_ recordings: [LocalRecording]) {
+        guard !usesPreviewData,
+              AuthManager.shared.networkActionsAllowed,
+              let activeOwnerAccountID = normalizedOwnerAccountID(
+                AuthManager.currentStoredOwnerID()
+              ) else {
+            return
+        }
+
+        for recording in recordings where recording.status == .recovered {
+            guard normalizedOwnerAccountID(recording.ownerAccountID) == activeOwnerAccountID,
+                  recording.isUploadEligible,
+                  recording.recordingConsentGranted,
+                  recording.stoppedAt != nil,
+                  recording.projectSlug?.isEmpty == false,
+                  recording.episodeSlug?.isEmpty == false,
+                  recording.callRoomId?.isEmpty == false,
+                  recording.recordingConsentId?.isEmpty == false,
+                  automaticallyQueuedRecoveredRecordingIDs.insert(recording.id).inserted else {
+                continue
+            }
+
+            // Crash recovery is not complete while the only safe copy remains
+            // stranded on one phone. Reuse the same durable, idempotent upload
+            // path as an explicit Library retry after EOF validation proves the
+            // source playable and Nest has re-established account authority.
+            retryUpload(for: recording)
+        }
     }
 
     func retryUpload(for recording: LocalRecording) {

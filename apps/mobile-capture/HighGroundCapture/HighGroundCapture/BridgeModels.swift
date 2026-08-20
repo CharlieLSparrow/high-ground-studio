@@ -811,6 +811,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let projectBindingSource: String?
     let projectLegacySlugDrift: Bool?
     let episodeSlug: String?
+    var episodeProductionId: String? = nil
     var coachingEngagementId: String? = nil
     var coachingEngagementTitle: String? = nil
     var coachingEngagementStatus: String? = nil
@@ -1175,6 +1176,9 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         guard let projectSlug = projectSlug?
             .trimmingCharacters(in: .whitespacesAndNewlines),
               !projectSlug.isEmpty,
+              let episodeProductionID = episodeProductionId?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !episodeProductionID.isEmpty,
               let episodeSlug = episodeSlug?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
               !episodeSlug.isEmpty,
@@ -1210,12 +1214,16 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     }
 
     var recordingPromotedToStudioMedia: Bool {
+        let hasProductionDestination = episodeProductionId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
         let requiredSources = studioRequiredHandoffSources
         if !requiredSources.isEmpty {
-            return requiredSources.allSatisfy(\.isPromotedToStudio)
+            return hasProductionDestination
+                && requiredSources.allSatisfy(\.isPromotedToStudio)
                 && studioPromotionSources.allSatisfy(\.isPromotedToStudio)
         }
-        return latestRecordingMediaAssetId?
+        return hasProductionDestination && latestRecordingMediaAssetId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty == false
     }
@@ -1224,8 +1232,14 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         guard projectSlug?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else { return false }
         let requiredSources = studioRequiredHandoffSources
         if !requiredSources.isEmpty {
-            return requiredSources.allSatisfy(\.isVerifiedForStudio)
-                && studioPromotionSources.contains { !$0.isPromotedToStudio }
+            guard requiredSources.allSatisfy(\.isVerifiedForStudio) else {
+                return false
+            }
+            let hasProductionDestination = episodeProductionId?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty == false
+            return !hasProductionDestination
+                || studioPromotionSources.contains { !$0.isPromotedToStudio }
         }
         if actionPacket?.capabilities?.canPromoteRecordingToMedia == true { return true }
         guard latestRecordingAssetId != nil, !recordingPromotedToStudioMedia else { return false }
@@ -2865,9 +2879,12 @@ struct MobileCaptureMissingPlannedSource: Codable, Identifiable, Hashable {
     let label: String
     let participantLabel: String?
     let sourceKind: String
+    let retentionRole: String
+    let revision: Int
     let expectedClientKind: String?
     let expectedDeviceLabel: String?
     let fulfillment: String
+    let latestReason: String?
 }
 
 struct MobileCaptureSourceHold: Codable, Identifiable, Hashable {
@@ -2879,6 +2896,22 @@ struct MobileCaptureSourceHold: Codable, Identifiable, Hashable {
     let captureId: String?
     let status: String
     let serverRetentionState: String
+}
+
+struct MobileCaptureResolvedPlanDisposition: Codable, Hashable {
+    let status: String
+    let expectationId: String
+    let revision: Int
+    let reason: String
+    let updatedAt: String
+}
+
+struct MobileCaptureResolvedCaptureEvidence: Codable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let captureId: String?
+    let status: String
+    let disposition: MobileCaptureResolvedPlanDisposition?
 }
 
 struct MobileCaptureEndpointQueueEvidence: Codable, Identifiable, Hashable {
@@ -2921,6 +2954,7 @@ struct MobileCaptureSourceExitReadiness: Codable, Hashable {
     var attentionAt: String? = nil
     var missingPlannedSources: [MobileCaptureMissingPlannedSource]? = nil
     var sourceHolds: [MobileCaptureSourceHold]? = nil
+    var resolvedCaptureEvidence: [MobileCaptureResolvedCaptureEvidence]? = nil
     var endpointQueues: [MobileCaptureEndpointQueueEvidence]? = nil
 
     var evidenceLine: String {
@@ -3085,6 +3119,7 @@ final class CaptureReviewDigestClient: ObservableObject {
     @Published var status: String = "Review digest not loaded"
     @Published var errorMessage: String?
     @Published var isLoading = false
+    @Published var sourcePlanMutationID: String?
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
 
@@ -3093,6 +3128,7 @@ final class CaptureReviewDigestClient: ObservableObject {
         status = "Review digest not loaded"
         errorMessage = nil
         isLoading = false
+        sourcePlanMutationID = nil
     }
 
     func loadPreview() {
@@ -3268,6 +3304,82 @@ final class CaptureReviewDigestClient: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    @discardableResult
+    func waiveMissingPlannedSource(
+        roomID: String,
+        source: MobileCaptureMissingPlannedSource,
+        reason: String
+    ) async -> Bool {
+        let normalizedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedReason.count >= 12 else {
+            errorMessage = "Explain what happened before changing this recording plan."
+            return false
+        }
+        guard source.retentionRole == "required-master" else {
+            errorMessage = "Only a missing required master can be waived from this recovery view."
+            return false
+        }
+        guard sourcePlanMutationID == nil else { return false }
+        guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
+            status = "Needs sign in"
+            errorMessage = "Sign in before changing the recording plan."
+            return false
+        }
+
+        var pathCharacters = CharacterSet.urlPathAllowed
+        pathCharacters.remove(charactersIn: "/%?#")
+        guard let encodedRoomID = roomID.addingPercentEncoding(withAllowedCharacters: pathCharacters),
+              let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/sessions/\(encodedRoomID)/source-expectations") else {
+            errorMessage = "The configured Nest URL is not valid."
+            return false
+        }
+
+        sourcePlanMutationID = source.id
+        status = "Saving recording-plan decision"
+        errorMessage = nil
+        defer { sourcePlanMutationID = nil }
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "PATCH"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "requestId": UUID().uuidString.lowercased(),
+                "expectationId": source.id,
+                "expectedRevision": source.revision,
+                "action": "WAIVE",
+                "reason": normalizedReason,
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let packet = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+                clear()
+                status = "Account changed"
+                errorMessage = "The Quipsly account changed while the recording plan was being updated."
+                return false
+            }
+            guard response.statusCode < 300, packet?["ok"] as? Bool == true else {
+                throw NSError(
+                    domain: "CaptureReviewDigest",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: packet?["error"] as? String ?? "The recording-plan decision could not be saved."]
+                )
+            }
+            status = "Recording plan updated with reason"
+            await load()
+            return true
+        } catch {
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+                clear()
+                status = "Account changed"
+                return false
+            }
+            status = "Recording plan needs attention"
+            errorMessage = error.localizedDescription
+            return false
+        }
     }
 }
 

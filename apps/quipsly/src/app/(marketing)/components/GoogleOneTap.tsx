@@ -90,6 +90,16 @@ function loginErrorUrl({
   return `/login?${params.toString()}`;
 }
 
+export function shouldPromptGoogleOneTap(hostname: string) {
+  const normalized = hostname.trim().toLowerCase();
+  return ![
+    "127.0.0.1",
+    "localhost",
+    "::1",
+    "[::1]",
+  ].includes(normalized);
+}
+
 export function GoogleOneTap({
   clientId =
     process.env.NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID
@@ -215,7 +225,13 @@ export function GoogleOneTap({
       });
       window.dispatchEvent(new Event("quipsly:google-button-rendered"));
     }
-    googleIdentity.prompt();
+    // Keep Google's standard rendered button available in local development,
+    // but do not launch FedCM One Tap where a loopback origin cannot satisfy
+    // the production identity handoff. The rejected prompt otherwise appears
+    // as a Next.js error overlay and turns local UX testing into a false alarm.
+    if (shouldPromptGoogleOneTap(window.location.hostname)) {
+      googleIdentity.prompt();
+    }
 
     return () => googleIdentity.cancel();
   }, [

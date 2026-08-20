@@ -70,6 +70,14 @@ export function canonicalMobileSessionEpisodeSlug(room: any) {
     || room?.id;
 }
 
+export function canonicalMobileSessionProductionId(room: any) {
+  const productionId = label(room?.episodeProductionId);
+  const relatedProductionId = label(room?.episodeProduction?.id);
+  return productionId && relatedProductionId === productionId
+    ? productionId
+    : null;
+}
+
 export function releasedClientFollowUpForUser(
   room: any,
   userId: string,
@@ -1107,6 +1115,7 @@ export function mapMobileCaptureSessionsForUser(input: {
       projectBindingSource: sessionProject.bindingSource,
       projectLegacySlugDrift: sessionProject.legacySlugDrift,
       episodeSlug: canonicalMobileSessionEpisodeSlug(room),
+      episodeProductionId: canonicalMobileSessionProductionId(room),
       coachingEngagementId: label(room.coachingEngagementId) || label(room.coachingEngagement?.id),
       coachingEngagementTitle: label(room.coachingEngagement?.title),
       coachingEngagementStatus: label(room.coachingEngagement?.status),

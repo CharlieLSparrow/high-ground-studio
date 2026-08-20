@@ -11,6 +11,7 @@ import {
   captureGroupStudioHandoff,
   captureSourceSummaries,
   canonicalMobileSessionEpisodeSlug,
+  canonicalMobileSessionProductionId,
   canonicalMobileSessionProject,
   mobilePacketReviewLanes,
   releasedClientFollowUpForUser,
@@ -150,6 +151,23 @@ describe("mobile Session canonical episode projection", () => {
       booking: { offering: { slug: "legacy-offering" } },
     })).toBe("legacy-offering");
     expect(canonicalMobileSessionEpisodeSlug({ id: "room-2" })).toBe("room-2");
+  });
+});
+
+describe("mobile Session production destination projection", () => {
+  it("requires the first-class production relation instead of trusting fallback metadata", () => {
+    expect(canonicalMobileSessionProductionId({
+      episodeProductionId: "production-4",
+      episodeProduction: { id: "production-4" },
+      metadataJson: { episodeSlug: "episode-4" },
+    })).toBe("production-4");
+    expect(canonicalMobileSessionProductionId({
+      metadataJson: { episodeSlug: "episode-4" },
+    })).toBeNull();
+    expect(canonicalMobileSessionProductionId({
+      episodeProductionId: "production-4",
+      episodeProduction: { id: "production-other" },
+    })).toBeNull();
   });
 });
 

@@ -450,6 +450,168 @@ describe("Session readiness topology", () => {
     });
   });
 
+  it("keeps a reasoned waived capture receipt as evidence without treating it as active recovery work", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      recordings: [{
+        id: "asset-good",
+        ...exactStorage,
+        participantId: participant.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+        localManifestJson: {
+          captureId: "capture-good",
+          exactBytesVerified: true,
+          storageGeneration: "1785990000000",
+          reportedSourceProfile: { clientKind: "ios" },
+        },
+      }],
+      finalizations: [{
+        uploadSessionId: "upload-good",
+        captureId: "capture-good",
+        roomId: "room-1",
+        actorUserId: "user-scott",
+        recordingAssetId: "asset-good",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+        metadataJson: {
+          immutableUploadBinding: {
+            uploadSessionId: "upload-good",
+            captureId: "capture-good",
+            roomId: "room-1",
+            actorUserId: "user-scott",
+            sha256: "a".repeat(64),
+            sizeBytes: 1024,
+            bucketName: "quipsly-test-media",
+            objectName: "media-vault/test/source.m4a",
+            generation: "1785990000000",
+          },
+        },
+      }],
+      captures: [{
+        captureId: "capture-interrupted",
+        actorUserId: "user-scott",
+        status: "START_AND_STOP_RECEIVED",
+        startedAt: "2026-08-05T17:00:00.000Z",
+        stoppedAt: "2026-08-05T17:00:05.000Z",
+        lastReceivedAt: "2026-08-05T17:00:06.000Z",
+      }],
+      expectedSources: [{
+        id: "expected-good",
+        participantId: participant.id,
+        label: "Verified iPhone master",
+        sourceKind: "AUDIO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "ACTIVE",
+        expectedClientKind: "ios",
+        recordingAssetId: "asset-good",
+        captureId: "capture-good",
+        revision: 2,
+        createdAt: "2026-08-05T16:50:00.000Z",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }, {
+        id: "expected-interrupted",
+        participantId: participant.id,
+        label: "Interrupted iPhone master",
+        sourceKind: "AUDIO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "WAIVED",
+        expectedClientKind: "ios",
+        captureId: "capture-interrupted",
+        revision: 3,
+        latestReason: "The interrupted take could not decode after process recovery; continue with the verified source.",
+        createdAt: "2026-08-05T16:50:00.000Z",
+        updatedAt: "2026-08-05T18:00:00.000Z",
+      }],
+    });
+
+    expect(topology.people[0].sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        evidenceKind: "capture-receipt",
+        captureId: "capture-interrupted",
+        verified: false,
+        planDisposition: expect.objectContaining({
+          status: "waived",
+          expectationId: "expected-interrupted",
+          revision: 3,
+        }),
+        serverRetention: expect.objectContaining({ state: "CAPTURE_PLAN_RESOLVED" }),
+      }),
+    ]));
+    expect(topology.summary).toMatchObject({
+      retainedSourceCount: 1,
+      pendingCaptureCount: 0,
+      requiredPlannedSourceCount: 1,
+      fulfilledRequiredPlannedSourceCount: 1,
+      attentionCount: 0,
+    });
+    expect(topology.exitReadiness).toMatchObject({
+      state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED",
+      requiredSourceCount: 1,
+      serverSafeRequiredSourceCount: 1,
+      pendingCaptureCount: 0,
+      safeForPlannedSources: true,
+      safeForServerObservedSources: true,
+      safeToLeaveAllEndpoints: false,
+    });
+  });
+
+  it("keeps a receipt blocking while any plan for the exact capture remains active", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      recordings: [],
+      captures: [{
+        captureId: "capture-shared",
+        actorUserId: "user-scott",
+        status: "START_AND_STOP_RECEIVED",
+        startedAt: "2026-08-05T17:00:00.000Z",
+        stoppedAt: "2026-08-05T17:10:00.000Z",
+        lastReceivedAt: "2026-08-05T17:10:01.000Z",
+      }],
+      expectedSources: [{
+        id: "expected-waived",
+        participantId: participant.id,
+        label: "Old plan",
+        sourceKind: "AUDIO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "WAIVED",
+        captureId: "capture-shared",
+        revision: 2,
+        latestReason: "This earlier planned source was superseded by a corrected active plan.",
+        createdAt: "2026-08-05T16:50:00.000Z",
+        updatedAt: "2026-08-05T17:00:00.000Z",
+      }, {
+        id: "expected-active",
+        participantId: participant.id,
+        label: "Current plan",
+        sourceKind: "AUDIO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "ACTIVE",
+        captureId: "capture-shared",
+        revision: 1,
+        createdAt: "2026-08-05T17:00:01.000Z",
+        updatedAt: "2026-08-05T17:00:01.000Z",
+      }],
+    });
+
+    expect(topology.people[0].sources[0]).toMatchObject({
+      planDisposition: null,
+      serverRetention: { state: "CAPTURE_AWAITING_MEDIA" },
+    });
+    expect(topology.summary.pendingCaptureCount).toBe(1);
+    expect(topology.exitReadiness).toMatchObject({
+      state: "PLANNED_SOURCE_INCOMPLETE",
+      pendingCaptureCount: 1,
+      safeForServerObservedSources: false,
+    });
+  });
+
   it("does not call verified bytes server-safe without their finalization receipt", () => {
     const topology = buildSessionReadinessTopology({
       generatedAt,

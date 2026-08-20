@@ -6,7 +6,7 @@ import {
 } from "firebase/auth";
 
 import { finishQuipslyFirebaseSignIn } from "@/lib/firebase/quipsly-session";
-import { GoogleOneTap } from "./GoogleOneTap";
+import { GoogleOneTap, shouldPromptGoogleOneTap } from "./GoogleOneTap";
 
 let currentPathname = "/";
 let currentSearchParams = new URLSearchParams();
@@ -84,7 +84,7 @@ describe("GoogleOneTap", () => {
     delete window.google;
   });
 
-  it("loads GIS on public product surfaces with FedCM and no automatic sign-in", async () => {
+  it("loads GIS on public product surfaces without prompting FedCM on loopback", async () => {
     render(<GoogleOneTap clientId="public-web-client.apps.googleusercontent.com" />);
 
     await waitFor(() => expect(initialize).toHaveBeenCalledTimes(1));
@@ -96,9 +96,17 @@ describe("GoogleOneTap", () => {
       use_fedcm_for_prompt: true,
       callback: expect.any(Function),
     }));
-    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(prompt).not.toHaveBeenCalled();
     expect(document.querySelector("#quipsly-google-identity-services"))
       .toHaveAttribute("src", "https://accounts.google.com/gsi/client");
+  });
+
+  it("keeps production One Tap eligible while suppressing only loopback prompts", () => {
+    expect(shouldPromptGoogleOneTap("quipsly.com")).toBe(true);
+    expect(shouldPromptGoogleOneTap("www.quipsly.com")).toBe(true);
+    expect(shouldPromptGoogleOneTap("localhost")).toBe(false);
+    expect(shouldPromptGoogleOneTap("127.0.0.1")).toBe(false);
+    expect(shouldPromptGoogleOneTap("::1")).toBe(false);
   });
 
   it("exchanges the One Tap ID token through Firebase before creating a Quipsly session", async () => {

@@ -148,9 +148,17 @@ export type SessionReadinessSource = {
   durationSeconds: number | null;
   byteSize: string | null;
   verified: boolean;
+  planDisposition?: {
+    status: "waived" | "canceled";
+    expectationId: string;
+    revision: number;
+    reason: string;
+    updatedAt: string;
+  } | null;
   serverRetention: {
     state:
       | "CAPTURE_AWAITING_MEDIA"
+      | "CAPTURE_PLAN_RESOLVED"
       | "SERVER_COPY_PENDING"
       | "SERVER_COPY_VERIFIED_HELD"
       | "SERVER_COPY_VERIFIED_RELEASED"
@@ -519,6 +527,7 @@ function recordingSource(
     durationSeconds: Number.isFinite(recording.durationSeconds) ? recording.durationSeconds ?? null : null,
     byteSize,
     verified: exactBytesVerified,
+    planDisposition: null,
     serverRetention: {
       state: retentionState,
       uploadSessionId: finalization?.uploadSessionId ?? null,
@@ -581,17 +590,57 @@ export function buildSessionReadinessTopology(input: {
     ),
   }));
   const recordingCaptureIds = new Set(
-    recordingSources.map(({ source }) => source.captureId).filter(Boolean),
+    recordingSources.map(({ source }) => source.captureId?.toLowerCase() ?? null).filter(Boolean),
   );
-  const pendingCaptureSources = input.captures
-    .filter((capture) => !recordingCaptureIds.has(capture.captureId))
-    .map((capture) => ({
-      participantId: participantByUserId.get(capture.actorUserId)?.id ?? null,
-      source: {
+  const expectedSourcesByCaptureId = new Map<string, SessionTopologyExpectedSourceInput[]>();
+  for (const expectation of input.expectedSources ?? []) {
+    const captureId = text(expectation.captureId).toLowerCase();
+    if (!captureId) continue;
+    expectedSourcesByCaptureId.set(
+      captureId,
+      [...(expectedSourcesByCaptureId.get(captureId) ?? []), expectation],
+    );
+  }
+  const resolvedPlanByCaptureId = new Map<string, {
+    status: "waived" | "canceled";
+    expectationId: string;
+    revision: number;
+    reason: string;
+    updatedAt: string;
+  }>();
+  for (const [captureId, expectations] of expectedSourcesByCaptureId) {
+    if (expectations.some((expectation) => expectedSourceStatus(expectation.status) === "active")) continue;
+    const resolution = expectations
+      .filter((expectation) => {
+        const status = expectedSourceStatus(expectation.status);
+        return (status === "waived" || status === "canceled") && Boolean(text(expectation.latestReason));
+      })
+      .sort((left, right) => {
+        if (left.revision !== right.revision) return right.revision - left.revision;
+        return (iso(right.updatedAt) ?? "").localeCompare(iso(left.updatedAt) ?? "");
+      })[0];
+    if (!resolution) continue;
+    resolvedPlanByCaptureId.set(captureId, {
+      status: expectedSourceStatus(resolution.status) as "waived" | "canceled",
+      expectationId: resolution.id,
+      revision: resolution.revision,
+      reason: text(resolution.latestReason),
+      updatedAt: iso(resolution.updatedAt) ?? generatedAt.toISOString(),
+    });
+  }
+  const captureReceiptSources = input.captures
+    .filter((capture) => !recordingCaptureIds.has(capture.captureId.toLowerCase()))
+    .map((capture) => {
+      const planDisposition = resolvedPlanByCaptureId.get(capture.captureId.toLowerCase()) ?? null;
+      return {
+        participantId: participantByUserId.get(capture.actorUserId)?.id ?? null,
+        source: {
         id: `capture-${capture.captureId}`,
         evidenceKind: "capture-receipt" as const,
         sourceKind: "unknown" as const,
-        label: "iPhone local capture awaiting retained media",
+        label: planDisposition
+          ? "Interrupted iPhone capture kept as resolved evidence"
+          : "iPhone local capture awaiting retained media",
         status: capture.status,
         clientKind: "ios",
         deviceLabel: "Quipsly Capture",
@@ -601,8 +650,9 @@ export function buildSessionReadinessTopology(input: {
         durationSeconds: null,
         byteSize: null,
         verified: false,
+        planDisposition,
         serverRetention: {
-          state: "CAPTURE_AWAITING_MEDIA" as const,
+          state: planDisposition ? "CAPTURE_PLAN_RESOLVED" as const : "CAPTURE_AWAITING_MEDIA" as const,
           uploadSessionId: null,
           exactBytesVerified: false,
           processingDisposition: null,
@@ -610,8 +660,12 @@ export function buildSessionReadinessTopology(input: {
           updatedAt: null,
         },
       },
-    }));
-  const allSources = [...recordingSources, ...pendingCaptureSources];
+      };
+    });
+  const pendingCaptureSources = captureReceiptSources.filter(({ source }) => (
+    source.serverRetention.state === "CAPTURE_AWAITING_MEDIA"
+  ));
+  const allSources = [...recordingSources, ...captureReceiptSources];
   const boundSourceIds = new Set(
     (input.expectedSources ?? [])
       .map((expectation) => text(expectation.recordingAssetId))
@@ -776,7 +830,7 @@ export function buildSessionReadinessTopology(input: {
     const attentionCount = (consent === "missing-or-stale" ? 1 : 0)
       + preflights.filter((preflight) => preflight.status === "NEEDS_ATTENTION" && preflight.expiresAt > generatedAt.toISOString()).length
       + endpointQueues.filter((queue) => queue.queueState !== "DRAINED").length
-      + sources.filter((source) => source.evidenceKind === "capture-receipt" || source.status === "HELD" || source.status === "FAILED").length;
+      + sources.filter((source) => source.serverRetention.state === "CAPTURE_AWAITING_MEDIA" || source.status === "HELD" || source.status === "FAILED").length;
     return {
       id: participant.id,
       label: participant.label,
@@ -797,7 +851,10 @@ export function buildSessionReadinessTopology(input: {
     .filter((entry) => !entry.participantId || !assignedParticipantIds.has(entry.participantId))
     .map((entry) => entry.source);
   const sources = allSources.map((entry) => entry.source);
-  const requiredSources = sources.filter((source) => source.sourceKind !== "provider");
+  const requiredSources = sources.filter((source) => (
+    source.sourceKind !== "provider"
+    && source.serverRetention.state !== "CAPTURE_PLAN_RESOLVED"
+  ));
   const serverSafeRequiredSources = requiredSources.filter((source) => (
     source.serverRetention.state === "SERVER_COPY_VERIFIED_RELEASED"
   ));
@@ -935,7 +992,7 @@ export function buildSessionReadinessTopology(input: {
           ...plannedSourceFields,
         };
   const attentionCount = people.reduce((total, person) => total + person.attentionCount, 0)
-    + unassignedSources.length
+    + unassignedSources.filter((source) => source.serverRetention.state !== "CAPTURE_PLAN_RESOLVED").length
     + expectedSources.filter((expectation) => expectation.blocking).length;
   return {
     generatedAt: generatedAt.toISOString(),

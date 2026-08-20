@@ -428,15 +428,20 @@ async function attachPromotedRecordingToEpisodeProduction(input: {
     };
   }
 
-  const title = episodeSlug
+  const roomPurpose = text(input.recordingAsset?.room?.purpose).toUpperCase();
+  const roomTitle = text(input.recordingAsset?.room?.title);
+  const title = roomTitle || episodeSlug
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const boundaryKind = roomPurpose === "COACHING"
+    ? "coaching-session"
+    : "episode";
   const production = await input.prisma.studioEpisodeProduction.upsert({
     where: { projectId_slug: { projectId: input.projectId, slug: episodeSlug } },
     update: {
       title,
       boundaryLabel: title,
-      boundaryKind: "episode",
+      boundaryKind,
     },
     create: {
       projectId: input.projectId,
@@ -444,7 +449,7 @@ async function attachPromotedRecordingToEpisodeProduction(input: {
       slug: episodeSlug,
       title,
       boundaryLabel: title,
-      boundaryKind: "episode",
+      boundaryKind,
       productionJson: {
         episodeProductionPayloadVersion: 1,
         projectSlug: input.projectSlug,
@@ -454,6 +459,41 @@ async function attachPromotedRecordingToEpisodeProduction(input: {
       },
     },
   });
+
+  // A reusable media row without a canonical production destination leaves a
+  // fresh coach at a disabled "in Studio" dead end. Bind the Session and the
+  // production in the same promotion transaction. Never steal a room from a
+  // different production if another writer won the race.
+  const roomId = text(input.recordingAsset?.roomId);
+  const previouslyBoundProductionId = text(
+    input.recordingAsset?.room?.episodeProductionId,
+  );
+  if (previouslyBoundProductionId && previouslyBoundProductionId !== production.id) {
+    throw new Error(
+      "This Session is already bound to a different Studio production. Resolve that binding before attaching recording media.",
+    );
+  }
+  if (roomId && !previouslyBoundProductionId) {
+    const bound = await input.prisma.callRoom.updateMany({
+      where: {
+        id: roomId,
+        projectId: input.projectId,
+        episodeProductionId: null,
+      },
+      data: { episodeProductionId: production.id },
+    });
+    if (bound.count !== 1) {
+      const current = await input.prisma.callRoom.findUnique({
+        where: { id: roomId },
+        select: { episodeProductionId: true },
+      });
+      if (text(current?.episodeProductionId) !== production.id) {
+        throw new Error(
+          "The Session production binding changed during Studio handoff. No ambiguous editor destination was accepted.",
+        );
+      }
+    }
+  }
 
   const currentJson = asRecord(production.productionJson);
   const importedMedia = Array.isArray(currentJson.importedMedia) ? currentJson.importedMedia.map(asRecord) : [];

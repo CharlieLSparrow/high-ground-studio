@@ -1581,6 +1581,15 @@ final class LocalRecordingLibrary: ObservableObject {
         recording.byteCount = fileByteCount(at: fileURL)
         if let durationSeconds = validation.durationSeconds {
             recording.durationSeconds = durationSeconds
+            if recording.stoppedAt == nil, durationSeconds > 0 {
+                // A process death cannot append the ordinary STOP receipt. Once
+                // the complete media stream has yielded a bounded duration,
+                // preserve that decoded boundary instead of leaving an otherwise
+                // uploadable recovered source without an end timestamp.
+                recording.stoppedAt = recording.startedAt.addingTimeInterval(
+                    durationSeconds
+                )
+            }
         }
         if validation.isPlayable {
             recording.status = .validatingRecovery
