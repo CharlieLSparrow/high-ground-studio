@@ -88,19 +88,6 @@ const publicLoopCards = QUIPSLY_PUBLIC_LOOP_STATUS.owners.map((owner) => ({
   sourceOfTruth: owner.sourceOfTruth,
 }));
 
-const publicProofSteps = QUIPSLY_PUBLIC_LOOP_STATUS.proofLadder.map((step) => ({
-  title: step.label,
-  state: step.currentState,
-  proof: step.proof,
-  notProof: step.notProof,
-}));
-
-const publicSafeActions = QUIPSLY_PUBLIC_LOOP_STATUS.safeNextActions.map((action) => ({
-  title: action.label,
-  summary: action.summary,
-  boundary: action.boundary,
-}));
-
 export default function QuipslyCoachingPage() {
   return (
     <main className="min-h-screen overflow-hidden bg-[#f8efe0] text-[#332316] selection:bg-[#d9b66b]/40">
@@ -326,39 +313,6 @@ export default function QuipslyCoachingPage() {
                 <p className="mt-3 font-sans text-xs leading-6 text-[#8a6a39]">Boundary: {card.boundary}</p>
               </article>
             ))}
-          </div>
-          <div className="mt-7 grid gap-4 lg:grid-cols-[1fr_0.92fr]">
-            <div className="rounded-[2rem] border border-[#dbc295] bg-[#f8efe0]/80 p-5">
-              <p className="font-sans text-[10px] font-black uppercase tracking-[0.16em] text-[#8a6a39]">Proof ladder</p>
-              <h3 className="mt-2 font-serif text-3xl font-black">What is proven, and what is not.</h3>
-              <div className="mt-5 grid gap-3">
-                {publicProofSteps.map((step) => (
-                  <article key={step.state} className="rounded-2xl border border-[#dbc295] bg-white/72 p-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="font-serif text-xl font-black">{step.title}</h4>
-                      <span className="rounded-full bg-[#315d4f]/10 px-3 py-1 font-sans text-[10px] font-black uppercase tracking-[0.13em] text-[#315d4f]">
-                        {step.state}
-                      </span>
-                    </div>
-                    <p className="mt-3 font-sans text-sm leading-6 text-[#745b3c]">{step.proof}</p>
-                    <p className="mt-2 font-sans text-xs leading-6 text-[#8a6a39]">Not proof: {step.notProof}</p>
-                  </article>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-[2rem] border border-[#dbc295] bg-[#f8efe0]/80 p-5">
-              <p className="font-sans text-[10px] font-black uppercase tracking-[0.16em] text-[#8a6a39]">Safe next actions</p>
-              <h3 className="mt-2 font-serif text-3xl font-black">Good buttons do not hide consequences.</h3>
-              <div className="mt-5 grid gap-3">
-                {publicSafeActions.map((action) => (
-                  <article key={action.title} className="rounded-2xl border border-[#dbc295] bg-white/72 p-4">
-                    <h4 className="font-serif text-xl font-black">{action.title}</h4>
-                    <p className="mt-2 font-sans text-sm leading-6 text-[#745b3c]">{action.summary}</p>
-                    <p className="mt-2 font-sans text-xs leading-6 text-[#8a6a39]">Boundary: {action.boundary}</p>
-                  </article>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
       </section>

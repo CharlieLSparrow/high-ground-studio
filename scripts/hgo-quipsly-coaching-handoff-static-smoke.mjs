@@ -364,14 +364,24 @@ for (const [label, needle] of [
   ["quipsly coaching shared public loop mapper", "QUIPSLY_PUBLIC_LOOP_STATUS.owners.map"],
   ["quipsly coaching public loop boundary", "owner.safeBoundary"],
   ["quipsly coaching public loop truth flag", "owner.sourceOfTruth"],
-  ["quipsly coaching shared proof ladder mapper", "QUIPSLY_PUBLIC_LOOP_STATUS.proofLadder.map"],
-  ["quipsly coaching shared safe actions mapper", "QUIPSLY_PUBLIC_LOOP_STATUS.safeNextActions.map"],
-  ["quipsly coaching proof ladder heading", "Proof ladder"],
-  ["quipsly coaching proof not proof copy", "Not proof:"],
-  ["quipsly coaching safe next actions heading", "Safe next actions"],
-  ["quipsly coaching safe action boundary", "action.boundary"],
 ]) {
   requireIncludes(texts.quipslyMarketingCoaching, needle, label, files.quipslyMarketingCoaching);
+}
+
+for (const [label, needle] of [
+  ["internal proof ladder", "QUIPSLY_PUBLIC_LOOP_STATUS.proofLadder.map"],
+  ["internal release actions", "QUIPSLY_PUBLIC_LOOP_STATUS.safeNextActions.map"],
+  ["release proof heading", "Proof ladder"],
+  ["release proof disclaimer", "Not proof:"],
+  ["release action heading", "Safe next actions"],
+  ["reviewer smoke copy", "Run capture reviewer smoke"],
+]) {
+  requireNotIncludes(
+    texts.quipslyMarketingCoaching,
+    needle,
+    `${label} on the customer coaching page`,
+    files.quipslyMarketingCoaching,
+  );
 }
 
 for (const [label, needle] of [
