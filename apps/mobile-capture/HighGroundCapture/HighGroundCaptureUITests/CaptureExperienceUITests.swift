@@ -3481,7 +3481,10 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         captureApp.launch()
         XCTAssertTrue(captureApp.navigationBars["Record"].waitForExistence(timeout: 12))
         let otherOwnerStatus = captureApp.staticTexts["1 quick capture waiting"]
-        revealCapture(otherOwnerStatus)
+        // `exists` queries the complete accessibility tree. Do not run the
+        // reveal helper for an element whose required state is absence: that
+        // helper deliberately searches both scroll directions and turns this
+        // privacy assertion into minutes of synthetic gestures.
         XCTAssertFalse(otherOwnerStatus.exists)
         XCTAssertFalse(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
