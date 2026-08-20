@@ -41,9 +41,10 @@ describe("coaching release surfaces", () => {
       "timezone: setupForm.timezone || current.timezone",
     );
     expect(source).toContain("value={createForm.timezone}");
-    expect(compact).toContain(
-      "The time above is interpreted in this timezone and shown to both participants.",
-    );
+    expect(compact).toContain("The time above uses");
+    expect(compact).toContain("Both people will see the timezone with the appointment.");
+    expect(compact).toContain("Advanced appointment options");
+    expect(compact).toContain("Schedule and create the private Session");
   });
 
   it("keeps operator evidence out of the ordinary coach journey and preserves durable session actions", () => {

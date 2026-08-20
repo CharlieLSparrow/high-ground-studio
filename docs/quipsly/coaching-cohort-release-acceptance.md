@@ -430,3 +430,43 @@ Regression labels and cohort-gate language remain in this evidence report and
 machine-readable operation output only. The ordinary recording card explains
 the coach/client privacy boundary in product language and does not expose test
 fixtures, test lanes, or internal release bureaucracy to either participant.
+
+## Fresh minimally instructed start checkpoint — 2026-08-19
+
+Test lane: `fresh-ui-automation`
+
+Human acceptance satisfied: **no**
+
+A phone-width operation now starts without a known room, booking, engagement,
+user, or fixture identifier. It creates a new disposable coach through the
+public account form, completes the simplified coach profile, schedules a named
+client through the rendered appointment form, copies the exact private client
+entry exposed by the product, and opens that entry in an independent signed-out
+browser. The client sees only the private Session sign-in gate, creates a new
+account with the invited address, and returns to the exact Session. Read-only
+database assertions confirm the `COACH` role record, absence of client staff
+authority, requested timezone, participant identities, booking, room, and
+durable coaching engagement.
+
+The passing run created room `cmt0rj54f005fzvxl4gtqhbqb`, booking
+`cmt0rj54b005ezvxlwo2sqa3m`, and engagement
+`cmt0rj53v005azvxleni0j6so`. Its continuation context is retained with mode
+`0600` at
+`artifacts/coaching-acceptance/7e092367/fresh-start-context.json`; passwords are
+stored only in macOS Keychain and are never printed or written to that file.
+The product forms were exercised at 390 by 844 CSS pixels with no horizontal
+overflow. The flight also removed a nested main landmark, gave the appointment
+its own semantic region, and made optional offer, pricing, hold, purpose,
+timezone, and payment choices progressive disclosure rather than onboarding
+requirements.
+
+Because the local Firebase Auth emulator cannot deliver mail, the operation
+explicitly marks only its newly created `.dev.test` accounts verified through a
+local mailbox adapter after first proving the public flow did not bypass
+verification. The result reports `fixtureIdentifiersUsed: false`,
+`humanAcceptanceSatisfied: false`, `realMailboxDeliveryProven: false`, and
+`callCaptureTranscriptShareProven: false`. This is a repeatable fresh UX flight,
+not evidence that 50 minimally instructed humans can yet complete the journey.
+The retained regression fixtures remain separate and continue to prove deeper
+mechanics while this fresh context becomes the input to call, capture,
+transcription, correction, follow-through, light edit, and sharing acceptance.
