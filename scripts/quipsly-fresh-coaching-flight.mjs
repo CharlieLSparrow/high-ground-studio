@@ -12,6 +12,25 @@ assert(
   "Set QUIPSLY_FRESH_COACHING_FLIGHT=1 or QUIPSLY_FRESH_COACHING_SPEECH_FLIGHT=1 to run a complete local fresh-coach flight.",
 );
 
+function readGitReleaseIdentity() {
+  const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  }).trim();
+  const trackedChanges = execFileSync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=no"],
+    { cwd: process.cwd(), encoding: "utf8" },
+  ).trim();
+  assert.match(sourceSha, /^[a-f0-9]{40}$/, "Fresh flight could not resolve an exact candidate commit.");
+  return {
+    sourceSha,
+    trackedWorktreeCleanAtStart: trackedChanges.length === 0,
+  };
+}
+
+const releaseIdentity = readGitReleaseIdentity();
+
 function parsePacket(output, label) {
   for (
     let cursor = output.indexOf("{");
@@ -218,6 +237,7 @@ const result = {
   recordedAt: new Date().toISOString(),
   ok: true,
   localOnly: true,
+  releaseIdentity,
   testLane: "fresh-ui-automation",
   fixtureIdentifiersUsed: false,
   humanAcceptanceSatisfied: false,

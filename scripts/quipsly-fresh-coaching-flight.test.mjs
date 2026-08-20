@@ -14,6 +14,9 @@ test("fresh coaching flight retains a private receipt without claiming human acc
   assert.match(source, /"fresh-coaching-flight-receipt\.json"/);
   assert.match(source, /humanAcceptanceSatisfied: false/);
   assert.match(source, /minimallyInstructedHumanAcceptanceProven: false/);
+  assert.match(source, /sourceSha/);
+  assert.match(source, /trackedWorktreeCleanAtStart/);
+  assert.match(source, /releaseIdentity,/);
   assert.match(source, /writeFile\(receiptPath/);
   assert.match(source, /mode: 0o600/);
   assert.match(source, /chmod\(receiptPath, 0o600\)/);
