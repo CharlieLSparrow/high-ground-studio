@@ -46,18 +46,28 @@ process.stdout.write(`${preview.revisionName}\t${preview.url}\n`);
 NODE
 }
 
-describe_service
-previous_revision="$(
+read_live_revision() {
   node - "${service_json}" <<'NODE'
 const fs = require("node:fs");
 const service = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-const live = (service.status?.traffic || []).find(
-  (entry) => Number(entry.percent || 0) === 100 && !entry.tag,
+const live = (service.status?.traffic || []).filter(
+  (entry) => Number(entry.percent || 0) === 100 && entry.revisionName,
 );
-if (!live?.revisionName) process.exit(1);
-process.stdout.write(live.revisionName);
+if (live.length !== 1) {
+  const summary = (service.status?.traffic || [])
+    .map((entry) => `${entry.revisionName || "<missing>"}:${Number(entry.percent || 0)}%${entry.tag ? `@${entry.tag}` : ""}`)
+    .join(", ");
+  process.stderr.write(
+    `Expected exactly one immutable revision with 100% live traffic; found ${live.length}. Traffic: ${summary || "<none>"}\n`,
+  );
+  process.exit(1);
+}
+process.stdout.write(live[0].revisionName);
 NODE
-)"
+}
+
+describe_service
+previous_revision="$(read_live_revision)"
 IFS=$'\t' read -r preview_revision preview_url <<< "$(read_preview_identity)"
 
 revision_json="$(mktemp)"

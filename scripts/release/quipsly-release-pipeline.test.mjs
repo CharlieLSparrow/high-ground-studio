@@ -189,6 +189,9 @@ test("failed production readback rolls back to the previous revision", () => {
   assert.match(promote, /quipsly-production-status\.sh/);
   assert.match(promote, /rolling traffic back to \$\{previous_revision\}/);
   assert.match(promote, /--to-revisions="\$\{previous_revision\}=100"/);
+  assert.match(promote, /Number\(entry\.percent \|\| 0\) === 100 && entry\.revisionName/);
+  assert.doesNotMatch(promote, /Number\(entry\.percent \|\| 0\) === 100 && !entry\.tag/);
+  assert.match(promote, /Expected exactly one immutable revision with 100% live traffic/);
 });
 
 test("authenticated smoke persists and verifies recorder access before claiming the surface", () => {
