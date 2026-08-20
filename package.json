@@ -102,6 +102,7 @@
     "quipsly:production:status": "bash scripts/release/quipsly-production-status.sh",
     "quipsly:production:coaching-capacity": "QUIPSLY_COACHING_CAPACITY_SMOKE=1 node scripts/quipsly-coaching-capacity-smoke.mjs",
     "quipsly:production:coaching-capacity:test": "node --test scripts/quipsly-coaching-capacity-smoke.test.mjs",
+    "quipsly:coaching:fixture-boundary:test": "node --test scripts/quipsly-coaching-product-fixture-boundary.test.mjs",
     "quipsly:schema:release": "bash scripts/release/quipsly-schema-release.sh",
     "quipsly:schema:release:test": "bash scripts/release/quipsly-schema-release.test.sh && node --test scripts/release/quipsly-cloud-sql-backup-readback.test.mjs",
     "quipsly:schema:fixture:local": "node scripts/quipsly-local-schema-fixture.mjs",
