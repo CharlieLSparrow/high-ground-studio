@@ -103,7 +103,8 @@ npm run quipsly:fresh:coaching-speech-flight
 # adapter creates only a verified disposable identity; Capture owns the product work.
 npm run quipsly:fresh:coaching-phone-start
 
-# Capacity identity/isolation ladder. These are local automation, not humans.
+# Capacity identity/isolation ladder. These call authenticated service
+# contracts; they do not operate or prove the rendered self-service UI.
 QUIPSLY_DISTINCT_COACH_COUNT=2 npm run quipsly:local:distinct-coach-capacity
 QUIPSLY_DISTINCT_COACH_COUNT=10 npm run quipsly:local:distinct-coach-capacity
 QUIPSLY_DISTINCT_COACH_COUNT=50 npm run quipsly:local:distinct-coach-capacity

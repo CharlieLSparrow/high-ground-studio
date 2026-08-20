@@ -240,7 +240,7 @@ async function main() {
     const latencies = samples.map((sample) => sample.latencyMilliseconds);
     result = {
       ok: failures.length === 0,
-      schema: "quipsly-local-distinct-coach-capacity-v1",
+      schema: "quipsly-local-distinct-coach-capacity-v2",
       testLane: "local-capacity-automation",
       generatedAt: new Date().toISOString(),
       origin,
@@ -258,7 +258,8 @@ async function main() {
         distinctQuipslyIdentitiesProven: samples
           .filter((sample) => sample.route === "/api/coaching/runway")
           .every((sample) => sample.correctIdentity),
-        selfServiceCoachSetupProven: coaches.length === count,
+        authenticatedCoachSetupContractProven: coaches.length === count,
+        renderedSelfServiceCoachSetupProven: false,
         concurrentAuthenticatedReadsProven: failures.length === 0,
         minimallyInstructedHumanAcceptanceProven: false,
         realMailboxDeliveryProven: false,
