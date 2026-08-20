@@ -154,6 +154,26 @@ async function main() {
         samples.filter((sample) => String(sample.status) === status).length,
       ]),
   );
+  const routeBreakdown = Object.fromEntries(
+    routes.map((route) => {
+      const routeSamples = samples.filter((sample) => sample.route === route);
+      const routeLatencies = routeSamples.map(
+        (sample) => sample.latencyMilliseconds,
+      );
+      return [
+        route,
+        {
+          passed: routeSamples.filter((sample) => sample.ok).length,
+          failed: routeSamples.filter((sample) => !sample.ok).length,
+          latencyMilliseconds: {
+            p50: percentile(routeLatencies, 0.5),
+            p95: percentile(routeLatencies, 0.95),
+            max: Math.max(...routeLatencies),
+          },
+        },
+      ];
+    }),
+  );
   const packet = {
     ok: failures.length === 0,
     baseURL,
@@ -163,6 +183,7 @@ async function main() {
     failedAuthenticatedReads: failures.length,
     wallMilliseconds: Date.now() - startedAt,
     statusCounts,
+    routeBreakdown,
     latencyMilliseconds: {
       p50: percentile(latencies, 0.5),
       p95: percentile(latencies, 0.95),
