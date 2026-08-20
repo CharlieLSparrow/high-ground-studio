@@ -707,6 +707,47 @@ Automation plays and decodes protected media but does not tick the product's “
 listened” control or create a `TranscriptSegmentVerification`; that receipt is
 reserved for the person who actually listened.
 
+## Production web checkpoint — 2026-08-19
+
+The production schema is current through
+`20260820033000_fix_invitation_delivery_index_name`. The guarded release first
+replayed the complete migration chain in a disposable Cloud SQL database,
+verified zero schema drift, created production backup `1787197023921`, applied
+the migration, and verified zero production drift. The disposable database and
+job were removed after their exact identities were read back.
+
+Exact web source `a82a64d0484268dcb4f85a183f0cb628ce9f791d`, image digest
+`sha256:79f5d95f823244b1af2ca5529fd22688ba1c2d6161db488a98792750139b090a`,
+and Cloud Run revision `studio-00504-giw` passed the no-traffic preview,
+authenticated database-backed Session smoke, configured-host checks, and
+post-promotion recovery gate before receiving 100 percent production traffic.
+The service may scale to two instances so one unavailable instance no longer
+exhausts the entire login and Session service.
+
+The first authenticated preview smoke failed because its retained assertion
+still required the removed labels `Edit timeline` and `Live cut`. The rendered
+Episode Room correctly exposed the calmer canonical workflow: `Plan &
+collaborate`, `Record`, and `Edit`. Release tooling commit `eb30417b` now checks
+those visible labels and their exact canonical destinations. It does not
+restore obsolete product jargon to satisfy a fixture. The repaired smoke then
+passed the same immutable preview before promotion.
+
+A normal Chrome network probe reached Firebase and returned the intended
+friendly invalid-account response for synthetic credentials. The isolated
+in-app browser returned `auth/network-request-failed` for the same operation,
+so that result is classified as test-harness failure rather than product auth
+failure. The signed-in production coaching response returned the real dashboard
+with `Set coach profile`, `Create session`, `Meet and record`, `Review and
+share`, `Upcoming sessions`, `Capture rooms`, `Create appointment`, and
+`Requests`, and contained no retained acceptance account or release-smoke
+marker.
+
+This checkpoint proves deploy integrity and a real persisted reviewer journey.
+It does not prove a minimally instructed human flight. Durable invitation
+receipts and copy/share recovery are live, but automated real-mail delivery
+remains disabled until a sender domain and provider credential are configured;
+`realMailboxDeliveryProven` therefore remains false.
+
 ## Fifty-coach human flight scorecard
 
 Give every coach the same one-sentence mission above and give every client only
