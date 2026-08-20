@@ -5,49 +5,63 @@ struct ContentView: View {
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @State private var runtimePlaybackFixtureReceipt: String?
+    @State private var visibleTab: CaptureRootTab = CaptureLaunchConfiguration.previewTab ?? .today
 
     var body: some View {
-        if CaptureLaunchConfiguration.usesLoginPreview {
-            LoginView()
-        } else if authManager.isAuthenticated || CaptureLaunchConfiguration.usesPreviewData || mustKeepRecorderVisible {
-            CapturePhoneShell()
-                .overlay(alignment: .topLeading) {
-                    CaptureRuntimeAccountIdentityReceipt(email: authManager.userEmail)
-                }
-                .overlay(alignment: .topLeading) {
-                    CaptureRuntimePlaybackFixtureReceipt(value: runtimePlaybackFixtureReceipt)
-                }
-                .task(id: authManager.isAuthenticated) {
-                    guard authManager.isAuthenticated else { return }
-#if DEBUG
-                    do {
-                        let recording = try LocalRecordingLibrary.shared
-                            .installRuntimeSmokePlaybackFixtureIfRequested()
-                        runtimePlaybackFixtureReceipt = recording?.recordingAssetId
-                    } catch {
-                        let message = error.localizedDescription
-                        if message.contains("owner does not match") {
-                            runtimePlaybackFixtureReceipt = "error: owner mismatch"
-                        } else if message.contains("outside the protected") {
-                            runtimePlaybackFixtureReceipt = "error: source bridge rejected"
-                        } else if message.contains("incomplete") {
-                            runtimePlaybackFixtureReceipt = "error: incomplete fixture"
-                        } else if message.contains("SHA-256") {
-                            runtimePlaybackFixtureReceipt = "error: checksum mismatch"
-                        } else if message.contains("decoded") {
-                            runtimePlaybackFixtureReceipt = "error: source not playable"
-                        } else {
-                            runtimePlaybackFixtureReceipt = "error: \(message)"
-                        }
+        Group {
+            if CaptureLaunchConfiguration.usesLoginPreview {
+                LoginView()
+            } else if authManager.isAuthenticated || CaptureLaunchConfiguration.usesPreviewData || mustKeepRecorderVisible {
+                CapturePhoneShell(visibleTab: $visibleTab)
+                    .overlay(alignment: .topLeading) {
+                        CaptureRuntimeAccountIdentityReceipt(email: authManager.userEmail)
                     }
+                    .overlay(alignment: .topLeading) {
+                        CaptureRuntimePlaybackFixtureReceipt(value: runtimePlaybackFixtureReceipt)
+                    }
+                    .task(id: authManager.isAuthenticated) {
+                        guard authManager.isAuthenticated else { return }
+#if DEBUG
+                        do {
+                            let recording = try LocalRecordingLibrary.shared
+                                .installRuntimeSmokePlaybackFixtureIfRequested()
+                            runtimePlaybackFixtureReceipt = recording?.recordingAssetId
+                        } catch {
+                            let message = error.localizedDescription
+                            if message.contains("owner does not match") {
+                                runtimePlaybackFixtureReceipt = "error: owner mismatch"
+                            } else if message.contains("outside the protected") {
+                                runtimePlaybackFixtureReceipt = "error: source bridge rejected"
+                            } else if message.contains("incomplete") {
+                                runtimePlaybackFixtureReceipt = "error: incomplete fixture"
+                            } else if message.contains("SHA-256") {
+                                runtimePlaybackFixtureReceipt = "error: checksum mismatch"
+                            } else if message.contains("decoded") {
+                                runtimePlaybackFixtureReceipt = "error: source not playable"
+                            } else {
+                                runtimePlaybackFixtureReceipt = "error: \(message)"
+                            }
+                        }
 #endif
-                }
-        } else if authManager.hasProtectedOfflineAccess {
-            ProtectedOfflineLibraryShell(authManager: authManager)
-        } else if authManager.accessMode == .checking {
-            CaptureIdentityCheckingView()
-        } else {
-            LoginView()
+                    }
+            } else if authManager.hasProtectedOfflineAccess {
+                ProtectedOfflineLibraryShell(authManager: authManager)
+            } else if authManager.accessMode == .checking {
+                CaptureIdentityCheckingView()
+            } else {
+                LoginView()
+            }
+        }
+        .onChange(of: authManager.accessMode) { previousMode, currentMode in
+            guard previousMode == .online,
+                  currentMode == .checkingCachedIdentity || currentMode == .offlineCachedIdentity else {
+                return
+            }
+            // A transport failure after local finalization intentionally opens
+            // the protected Library. Keep that destination when Nest verifies
+            // the same person again instead of rebuilding the online shell on
+            // Today and making the just-saved source appear to disappear.
+            visibleTab = .library
         }
     }
 

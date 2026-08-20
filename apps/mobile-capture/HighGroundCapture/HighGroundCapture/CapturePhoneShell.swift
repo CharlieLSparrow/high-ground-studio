@@ -11,11 +11,7 @@ struct CapturePhoneShell: View {
     @EnvironmentObject private var deepLinkRouter: CaptureDeepLinkRouter
     @StateObject private var model = CaptureExperienceModel()
     @State private var showsNewSession = false
-    @State private var visibleTab: CaptureRootTab
-
-    init() {
-        _visibleTab = State(initialValue: CaptureLaunchConfiguration.previewTab ?? .today)
-    }
+    @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
         TabView(selection: $visibleTab) {
@@ -12983,7 +12979,7 @@ private extension String {
 }
 
 #Preview {
-    CapturePhoneShell()
+    CapturePhoneShell(visibleTab: .constant(.today))
         .environmentObject(AudioCaptureController())
         .environmentObject(VideoCaptureController())
 }

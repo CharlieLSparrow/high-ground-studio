@@ -489,6 +489,18 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         return element.exists
     }
 
+    private func waitForAnyRuntimeElement(
+        _ elements: [XCUIElement],
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if elements.contains(where: { $0.exists }) { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return elements.contains(where: { $0.exists })
+    }
+
     private func waitUntilHittable(
         _ element: XCUIElement,
         timeout: TimeInterval
@@ -4935,9 +4947,28 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         mark.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureLatestMomentMark"].firstMatch.waitForExistence(timeout: 4))
         stop.tap()
-        XCTAssertTrue(app.buttons["CaptureStartButton"].firstMatch.waitForExistence(timeout: 15), "The first take should finish local finalization.")
+        let recorderReady = app.buttons["CaptureStartButton"].firstMatch
+        let protectedLibrary = app.descendants(matching: .any)["CaptureOfflineAccessBanner"].firstMatch
+        let onlineLibrary = app.scrollViews["CaptureLibraryView"].firstMatch
+        XCTAssertTrue(
+            waitForAnyRuntimeElement([recorderReady, protectedLibrary, onlineLibrary], timeout: 15),
+            "The first take should finish on Recorder or the visible protected/online Library recovery surface."
+        )
 
-        tapRootTab("Library", in: app)
+        if protectedLibrary.exists {
+            XCTAssertTrue(
+                app.staticTexts["Protected offline access"].exists,
+                "A network transition must explain that the saved source is protected locally."
+            )
+            XCTAssertTrue(
+                waitForAnyRuntimeElement([onlineLibrary, app.tabBars.firstMatch], timeout: 20),
+                "Re-verifying the same identity should restore the full shell without losing the saved-source journey."
+            )
+        }
+
+        if !onlineLibrary.exists {
+            tapRootTab("Library", in: app)
+        }
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 8))
         guard let safeRow = waitForNewRecordingRow(in: app, excluding: recordingsBeforeSafeTake) else {
             XCTFail("The completed take should appear as a new immutable local source.")
