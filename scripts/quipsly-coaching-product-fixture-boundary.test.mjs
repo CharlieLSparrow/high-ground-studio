@@ -7,6 +7,7 @@ const productSurfaceRoots = [
   "apps/quipsly/src/app/(app)/sessions",
   "apps/quipsly/src/app/api/coaching",
   "apps/quipsly/src/app/api/mobile/capture",
+  "apps/mobile-capture/HighGroundCapture/HighGroundCapture",
 ];
 
 const additionalProductSurfaces = [
@@ -31,7 +32,7 @@ async function sourceFilesUnder(directory) {
     if (entry.isDirectory()) {
       files.push(...(await sourceFilesUnder(path)));
     } else if (
-      /\.(?:ts|tsx)$/.test(entry.name)
+      /\.(?:swift|ts|tsx)$/.test(entry.name)
       && !/\.(?:test|spec)\.(?:ts|tsx)$/.test(entry.name)
     ) {
       files.push(path);
@@ -40,7 +41,7 @@ async function sourceFilesUnder(directory) {
   return files;
 }
 
-test("ordinary coaching surfaces stay independent of retained people and fixtures", async () => {
+test("ordinary web and Capture coaching surfaces stay independent of retained people and fixtures", async () => {
   const productSurfaces = [
     ...additionalProductSurfaces,
     ...(await Promise.all(productSurfaceRoots.map(sourceFilesUnder))).flat(),
