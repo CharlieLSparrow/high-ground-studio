@@ -42,7 +42,9 @@ describe("coaching release surfaces", () => {
     );
     expect(source).toContain("value={createForm.timezone}");
     expect(compact).toContain("The time above uses");
-    expect(compact).toContain("Both people will see the timezone with the appointment.");
+    expect(compact).toContain(
+      "Both people will see the timezone with the appointment.",
+    );
     expect(compact).toContain("Advanced appointment options");
     expect(compact).toContain("Schedule and create the private Session");
   });
@@ -60,6 +62,25 @@ describe("coaching release surfaces", () => {
     expect(source).toContain("href={booking.engagementPath}");
     expect(source).toContain("?mode=transcript");
     expect(source).toContain("?mode=outputs");
+  });
+
+  it("guides coaches and clients through the real job instead of a fixture or data-model walkthrough", () => {
+    const source = readFileSync(join(coachingRoot, "page.tsx"), "utf8");
+    const compact = source.replace(/\s+/g, " ");
+
+    expect(source).toContain("const isCoachingClient = Boolean(");
+    expect(source).toContain("const journeyAction = (() => {");
+    expect(compact).toContain("Schedule your first coaching session");
+    expect(compact).toContain("Schedule and invite");
+    expect(compact).toContain("Open my session");
+    expect(compact).toContain("Use the follow-up");
+    expect(compact).toContain("Session workspaces");
+    expect(compact).not.toContain(
+      "create a booking/hold path that writes to Quipsly-owned records",
+    );
+    expect(compact).not.toContain(
+      "The iOS capture app can only become calm once a room exists",
+    );
   });
 
   it("labels retained browser operation as regression evidence instead of human acceptance", () => {

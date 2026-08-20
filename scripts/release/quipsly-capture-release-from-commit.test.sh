@@ -101,6 +101,17 @@ grep -Fqx "lane=upload_qualified" "$receipt" ||
 grep -Fqx "arguments=<receipt_path:/tmp/Quipsly Capture/release.json>" "$receipt" ||
   fail "Qualified receipt path was not preserved exactly."
 
+MOCK_RECEIPT_PATH="$receipt" \
+QUIPSLY_CAPTURE_RELEASE_DIR="$fixture_release" \
+"${fixture_repo}/scripts/release/quipsly-capture-release-from-commit.sh" \
+  upload_qualified \
+  --revision "$source_revision" \
+  --receipt "/tmp/Quipsly Capture/release.json" \
+  --api-key-path "/tmp/Quipsly Secrets/api key.json"
+
+grep -Fqx "arguments=<receipt_path:/tmp/Quipsly Capture/release.json><api_key_path:/tmp/Quipsly Secrets/api key.json>" "$receipt" ||
+  fail "Named upload flags did not preserve their exact paths."
+
 runner_cwd="$(sed -n 's/^cwd=//p' "$receipt")"
 [[ "$runner_cwd" != "$fixture_repo" ]] ||
   fail "Runner executed in the caller's dirty worktree."

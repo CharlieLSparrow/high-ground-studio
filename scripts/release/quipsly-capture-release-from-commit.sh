@@ -6,6 +6,7 @@ usage() {
   cat <<'USAGE'
 Usage:
   scripts/release/quipsly-capture-release-from-commit.sh <candidate|release|beta|upload_qualified> [--revision <commit-ish>] [fastlane options...]
+  scripts/release/quipsly-capture-release-from-commit.sh upload_qualified --revision <commit-ish> --receipt <release-receipt.json> --api-key-path <api-key.json>
 
 Builds or uploads Quipsly Capture from a disposable detached worktree at one
 resolved commit. Any uncommitted files in the caller's worktree are excluded.
@@ -15,6 +16,9 @@ tests followed by signed archive/export verification. `release` is the lower
 level archive-only diagnostic lane. `beta` qualifies, uploads, and waits for
 App Store Connect processing. `upload_qualified` re-verifies and uploads an
 existing sealed candidate receipt without repeating qualification or rebuild.
+The named upload flags are translated to Fastlane options so paths containing
+spaces remain one argument. APP_STORE_CONNECT_API_KEY_PATH may replace
+--api-key-path.
 USAGE
 }
 
@@ -49,6 +53,28 @@ while [[ $# -gt 0 ]]; do
     --revision=*)
       revision="${1#--revision=}"
       [[ -n "$revision" ]] || fail "--revision requires a commit-ish value."
+      shift
+      ;;
+    --receipt)
+      [[ $# -ge 2 && -n "$2" ]] || fail "--receipt requires a release-receipt.json path."
+      fastlane_args+=("receipt_path:$2")
+      shift 2
+      ;;
+    --receipt=*)
+      receipt_path="${1#--receipt=}"
+      [[ -n "$receipt_path" ]] || fail "--receipt requires a release-receipt.json path."
+      fastlane_args+=("receipt_path:${receipt_path}")
+      shift
+      ;;
+    --api-key-path)
+      [[ $# -ge 2 && -n "$2" ]] || fail "--api-key-path requires a Fastlane API-key JSON path."
+      fastlane_args+=("api_key_path:$2")
+      shift 2
+      ;;
+    --api-key-path=*)
+      api_key_path="${1#--api-key-path=}"
+      [[ -n "$api_key_path" ]] || fail "--api-key-path requires a Fastlane API-key JSON path."
+      fastlane_args+=("api_key_path:${api_key_path}")
       shift
       ;;
     --)

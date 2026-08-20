@@ -1870,6 +1870,71 @@ export default function CoachingPage() {
   );
   const isStaff = runway?.user?.isStaff === true;
   const canManageCoaching = isStaff || runway?.user?.isCoach === true;
+  const isCoachingClient = Boolean(
+    runway?.user?.id &&
+    bookings.some((booking) => booking.clientUserId === runway.user?.id),
+  );
+  const nextBooking = bookings.find(
+    (booking) => !["CANCELED", "COMPLETED", "NO_SHOW"].includes(booking.status),
+  );
+  const journeyAction = (() => {
+    if (!canManageCoaching && !isCoachingClient) {
+      return {
+        eyebrow: "First step",
+        title: "Set up your coaching space",
+        detail:
+          "Confirm your name, timezone, and usual session length once. Then Quipsly can schedule your first client.",
+        label: "Set up coaching",
+        href: "#coach-setup",
+      };
+    }
+    if (isCoachingClient && nextBooking?.liveSessionPath) {
+      return {
+        eyebrow: "Next session",
+        title: nextBooking.title,
+        detail: `${formatDateTime(nextBooking.scheduledStart)} · ${nextBooking.timezone}. Check your devices, review consent, and join from the private room.`,
+        label: "Open my session",
+        href: nextBooking.liveSessionPath,
+      };
+    }
+    if (nextRoom?.packetSummaryNoteId) {
+      return {
+        eyebrow: "Follow-up ready",
+        title: "Review what the client will receive",
+        detail:
+          "Check the recording, transcript, notes, tasks, and goals together before you share anything.",
+        label: "Review and share",
+        href: `/sessions/${encodeURIComponent(nextRoom.id)}?mode=outputs`,
+      };
+    }
+    if (nextRoom?.recordingCount) {
+      return {
+        eyebrow: "Recording saved",
+        title: "Turn this session into useful follow-up",
+        detail:
+          "Review the recording and transcript, correct anything important, then prepare the notes, tasks, and goals.",
+        label: "Review session",
+        href: `/sessions/${encodeURIComponent(nextRoom.id)}?mode=transcript`,
+      };
+    }
+    if (nextBooking?.liveSessionPath) {
+      return {
+        eyebrow: "Next session",
+        title: nextBooking.title,
+        detail: `${formatDateTime(nextBooking.scheduledStart)} · ${nextBooking.timezone}. Send the invitation, check your devices, and enter the room when you are ready.`,
+        label: "Open session",
+        href: nextBooking.liveSessionPath,
+      };
+    }
+    return {
+      eyebrow: "Start here",
+      title: "Schedule your first coaching session",
+      detail:
+        "Choose the client and time. Quipsly creates one private place for the invitation, call, recording, transcript, notes, tasks, and goals.",
+      label: "Schedule a session",
+      href: "#create-appointment",
+    };
+  })();
 
   return (
     <div className="min-h-full w-full overflow-y-auto bg-[radial-gradient(circle_at_top_left,#fff7df,transparent_35%),linear-gradient(135deg,#fffaf1,#f7efe2_45%,#eef8f0)]">
@@ -1931,42 +1996,85 @@ export default function CoachingPage() {
               product workflow.
             </p>
           ) : null}
-          {!isLoading && runway?.user && !canManageCoaching ? (
-            <a
-              href="#coach-setup"
-              className="mt-4 inline-flex min-h-11 items-center rounded-full bg-emerald-800 px-5 py-3 text-sm font-black text-white shadow-sm"
-            >
-              Start here · finish coach setup
-            </a>
+          {!isLoading && runway?.user ? (
+            <div className="mt-5 flex flex-col gap-4 rounded-2xl border border-violet-200 bg-violet-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-700">
+                  {journeyAction.eyebrow}
+                </p>
+                <h2 className="mt-1 text-lg font-black text-violet-950">
+                  {journeyAction.title}
+                </h2>
+                <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-violet-900/75">
+                  {journeyAction.detail}
+                </p>
+              </div>
+              <a
+                href={journeyAction.href}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-violet-800 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-violet-900"
+              >
+                <Sparkles size={15} aria-hidden="true" /> {journeyAction.label}
+              </a>
+            </div>
           ) : null}
           <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <FriendlyStepCard
-              step="1"
-              title="Set coach profile"
-              detail="Your coach identity connects private relationships, Sessions, recordings, and follow-up."
-              ready={canManageCoaching}
-            />
-            <FriendlyStepCard
-              step="2"
-              title="Create session"
-              detail="Use a hold for tentative time. Create a booking when the coachee should see the appointment."
-              ready={
-                (counts?.activeHolds ?? 0) > 0 ||
-                (counts?.upcomingBookings ?? 0) > 0
-              }
-            />
-            <FriendlyStepCard
-              step="3"
-              title="Meet and record"
-              detail="Open the room, choose each device, confirm consent, and record only when everyone is ready."
-              ready={(counts?.roomsWithRecordings ?? 0) > 0}
-            />
-            <FriendlyStepCard
-              step="4"
-              title="Review and share"
-              detail="Review the transcript, notes, goals, tasks, and recording before sharing follow-up."
-              ready={(counts?.roomsWithPackets ?? 0) > 0}
-            />
+            {isCoachingClient ? (
+              <>
+                <FriendlyStepCard
+                  step="1"
+                  title="Open the invitation"
+                  detail="Your private invitation brings you back to the same client-and-coach space."
+                  ready={bookings.length > 0}
+                />
+                <FriendlyStepCard
+                  step="2"
+                  title="Join the session"
+                  detail="Check your microphone and camera, understand consent, then join the conversation."
+                  ready={
+                    nextRoom?.status === "OPEN" ||
+                    nextRoom?.status === "RECORDING"
+                  }
+                />
+                <FriendlyStepCard
+                  step="3"
+                  title="Work together"
+                  detail="Keep the shared notes, tasks, and goals for this coaching relationship in one place."
+                />
+                <FriendlyStepCard
+                  step="4"
+                  title="Use the follow-up"
+                  detail="Return to the recording and transcript your coach deliberately shared with you."
+                  ready={(counts?.roomsWithPackets ?? 0) > 0}
+                />
+              </>
+            ) : (
+              <>
+                <FriendlyStepCard
+                  step="1"
+                  title="Set up coaching"
+                  detail="Confirm your name, timezone, and usual session length once."
+                  ready={canManageCoaching}
+                />
+                <FriendlyStepCard
+                  step="2"
+                  title="Schedule and invite"
+                  detail="Choose a client and time, then send the private invitation Quipsly creates."
+                  ready={(counts?.upcomingBookings ?? 0) > 0}
+                />
+                <FriendlyStepCard
+                  step="3"
+                  title="Meet and record"
+                  detail="Check each device, confirm consent, and record only when everyone is ready."
+                  ready={(counts?.roomsWithRecordings ?? 0) > 0}
+                />
+                <FriendlyStepCard
+                  step="4"
+                  title="Review and share"
+                  detail="Check the transcript, notes, goals, tasks, and recording before sharing follow-up."
+                  ready={(counts?.roomsWithPackets ?? 0) > 0}
+                />
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -2277,7 +2385,10 @@ export default function CoachingPage() {
             </details>
           ) : null}
 
-          <div className="rounded-[1.7rem] border border-[#e8dcc4] bg-white/80 p-6 shadow-sm">
+          <div
+            id="upcoming-sessions"
+            className="scroll-mt-6 rounded-[1.7rem] border border-[#e8dcc4] bg-white/80 p-6 shadow-sm"
+          >
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
                 <h2 className="flex items-center gap-2 text-2xl font-black text-[#3d3122]">
@@ -2294,9 +2405,9 @@ export default function CoachingPage() {
             <div className="space-y-3">
               {bookings.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-[#d6c5a5] bg-[#fffaf1] p-5 text-[#7b5c3b]">
-                  No upcoming coaching bookings are visible yet. Next useful
-                  action: create a booking/hold path that writes to
-                  Quipsly-owned records before Stripe or calendar evidence.
+                  No sessions are scheduled yet. Create the first one below;
+                  Quipsly will prepare the private room and the invitation you
+                  send to your client.
                 </div>
               ) : (
                 bookings.map((booking) => {
@@ -2797,11 +2908,14 @@ export default function CoachingPage() {
             </div>
           </div>
 
-          <div className="rounded-[1.7rem] border border-[#e8dcc4] bg-white/80 p-6 shadow-sm">
+          <div
+            id="session-workspaces"
+            className="scroll-mt-6 rounded-[1.7rem] border border-[#e8dcc4] bg-white/80 p-6 shadow-sm"
+          >
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
                 <h2 className="flex items-center gap-2 text-2xl font-black text-[#3d3122]">
-                  <Mic className="text-[#b98036]" /> Capture rooms
+                  <Mic className="text-[#b98036]" /> Session workspaces
                 </h2>
                 <p className="mt-1 text-sm text-[#7b5c3b]">
                   Join the call, then review the recording, transcript, notes,
@@ -2817,8 +2931,9 @@ export default function CoachingPage() {
             <div className="grid gap-4 lg:grid-cols-2">
               {rooms.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-[#d6c5a5] bg-[#fffaf1] p-5 text-[#7b5c3b] lg:col-span-2">
-                  No capture rooms yet. The iOS capture app can only become calm
-                  once a room exists with participants and consent state.
+                  Your first private workspace appears here after you schedule a
+                  session. Open it to check devices, review consent, meet,
+                  record, and keep the follow-up together.
                 </div>
               ) : (
                 rooms.map((room) => (
