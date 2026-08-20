@@ -245,6 +245,12 @@ enum CaptureLaunchConfiguration {
     }
 }
 
+struct CaptureStudioHandoffFeedback: Equatable {
+    let sessionID: String
+    let message: String
+    let isError: Bool
+}
+
 @MainActor
 final class CaptureExperienceModel: ObservableObject {
     @Published var selectedSessionID: String?
@@ -274,6 +280,7 @@ final class CaptureExperienceModel: ObservableObject {
     @Published private(set) var sessionNoteEditMessage: String?
     @Published private(set) var sessionNoteEditMessageRoomID: String?
     @Published private(set) var isPromotingRecordingToStudio = false
+    @Published private(set) var studioHandoffFeedback: CaptureStudioHandoffFeedback?
 
     let sessionClient = CaptureSessionClient()
     let todayClient = CaptureTodayClient()
@@ -1183,49 +1190,70 @@ final class CaptureExperienceModel: ObservableObject {
         guard !isPromotingRecordingToStudio else { return }
         guard let session = selectedSession else {
             errorMessage = "Choose a session before attaching recording media to Studio."
+            studioHandoffFeedback = nil
             return
         }
         guard activeCaptureSession == nil, activeVideoCaptureSession == nil else {
-            errorMessage = "Stop and save the active take before attaching its verified recording to Studio."
+            let feedback = "Stop and save the active take before attaching its verified recording to Studio."
+            errorMessage = feedback
+            studioHandoffFeedback = .init(sessionID: session.id, message: feedback, isError: true)
             return
         }
         if session.recordingPromotedToStudioMedia {
             errorMessage = nil
-            message = "This complete capture group is already available in Studio. Every original remains preserved."
+            let feedback = "This complete capture group is already available in Studio. Every original remains preserved."
+            message = feedback
+            studioHandoffFeedback = .init(sessionID: session.id, message: feedback, isError: false)
             return
         }
         guard session.canPromoteRecordingToStudioMedia else {
             errorMessage = session.recordingMediaVaultLine
+            studioHandoffFeedback = .init(
+                sessionID: session.id,
+                message: session.recordingMediaVaultLine,
+                isError: true
+            )
             return
         }
         guard !usesPreviewData else {
-            message = "Preview mode shows the Studio handoff without changing media."
+            let feedback = "Preview mode shows the Studio handoff without changing media."
+            message = feedback
+            studioHandoffFeedback = .init(sessionID: session.id, message: feedback, isError: false)
             return
         }
         guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
-            errorMessage = "Verify the current Quipsly account before attaching recording media to Studio."
+            let feedback = "Verify the current Quipsly account before attaching recording media to Studio."
+            errorMessage = feedback
+            studioHandoffFeedback = .init(sessionID: session.id, message: feedback, isError: true)
             return
         }
 
         isPromotingRecordingToStudio = true
         errorMessage = nil
+        studioHandoffFeedback = nil
         defer { isPromotingRecordingToStudio = false }
 
         let promoted = await sessionClient.promoteRecordingToStudioMedia(for: session)
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
-            errorMessage = "The Quipsly account changed during the Studio handoff. Review the current account and session before continuing."
+            let feedback = "The Quipsly account changed during the Studio handoff. Review the current account and session before continuing."
+            errorMessage = feedback
+            studioHandoffFeedback = .init(sessionID: session.id, message: feedback, isError: true)
             return
         }
         guard promoted else {
-            errorMessage = sessionClient.errorMessage ?? "The verified recording could not be attached to Studio media."
+            let feedback = sessionClient.errorMessage ?? "The verified recording could not be attached to Studio media."
+            errorMessage = feedback
+            studioHandoffFeedback = .init(sessionID: session.id, message: feedback, isError: true)
             return
         }
 
         selectedSessionID = session.id
         let sourceCount = session.studioHandoffSources.count
-        message = sourceCount > 1
+        let feedback = sourceCount > 1
             ? "Studio handoff complete for all \(sourceCount) capture-group sources. Every immutable original and server receipt remains preserved."
             : "Studio media ready. The immutable local source and server recording evidence remain preserved."
+        message = feedback
+        studioHandoffFeedback = .init(sessionID: session.id, message: feedback, isError: false)
     }
 
     func refreshSelectedSessionTruthAfterSourcePlanChange() async {
@@ -2937,6 +2965,7 @@ extension MobileCaptureSession {
             projectBindingSource: "canonical-session-project",
             projectLegacySlugDrift: false,
             episodeSlug: "session-capture",
+            episodeProductionId: "preview-session-capture",
             scheduledStart: scheduledStart,
             scheduledEnd: scheduledEnd,
             participantId: "preview-host",

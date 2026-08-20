@@ -2759,7 +2759,15 @@ final class CaptureExperienceUITests: XCTestCase {
             expectedDetail: "All 2 protected masters passed exact-byte verification and can move to Studio together."
         )
         app.buttons["CaptureAttachToStudioButton_preview-studio-group-ready"].tap()
-        XCTAssertTrue(app.staticTexts["Preview mode shows the Studio handoff without changing media."].exists)
+        XCTAssertTrue(
+            app.staticTexts["Preview mode shows the Studio handoff without changing media."]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "CaptureStudioHandoffFeedback_preview-studio-group-ready"
+            ].exists
+        )
 
         chooseSession("preview-studio-group-partial")
         assertHandoff(

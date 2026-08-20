@@ -11653,6 +11653,20 @@ private struct StudioHandoffCard: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let feedback = model.studioHandoffFeedback,
+               feedback.sessionID == session.id {
+                Label(
+                    feedback.message,
+                    systemImage: feedback.isError
+                        ? "exclamationmark.triangle.fill"
+                        : "checkmark.circle.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(feedback.isError ? Color.orange : Color.green)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureStudioHandoffFeedback_\(session.id)")
+            }
         }
         .captureCard()
         .accessibilityElement(children: .contain)
