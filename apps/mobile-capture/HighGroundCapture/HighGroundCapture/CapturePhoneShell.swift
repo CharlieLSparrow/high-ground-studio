@@ -6292,6 +6292,7 @@ private struct CaptureRecorderView: View {
     @State private var showsSessionReadiness = false
     @State private var showsConsentConfirmation = false
     @State private var quickEntryKind: MobileQuickEntryKind?
+    @State private var sessionNotesSession: MobileCaptureSession?
     @State private var recordingMode: CaptureRecordingMode = .audio
     @State private var cameraPosition: VideoCaptureCameraPosition = .front
     @State private var videoQualityIntent: VideoCaptureQualityIntent = .production4K24
@@ -6660,7 +6661,8 @@ private struct CaptureRecorderView: View {
 
                     CaptureSessionNotesCard(
                         session: session,
-                        model: model
+                        model: model,
+                        onOpen: { sessionNotesSession = $0 }
                     )
 
                     CapturePacketReviewLanesCard(
@@ -6952,6 +6954,14 @@ private struct CaptureRecorderView: View {
         .sheet(item: $quickEntryKind) { kind in
             CaptureQuickEntrySheet(kind: kind, session: model.selectedSession, model: model)
                 .presentationDetents([.large])
+        }
+        .sheet(item: $sessionNotesSession) { session in
+            CaptureSessionNotesWorkspace(
+                session: session,
+                model: model,
+                onDismiss: { sessionNotesSession = nil }
+            )
+            .presentationDetents([.large])
         }
         .navigationDestination(for: CaptureTranscriptSourceDestination.self) { destination in
             CaptureTranscriptReviewView(
@@ -8136,9 +8146,83 @@ struct CaptureQuickEntrySyncCard: View {
 private struct CaptureSessionNotesCard: View {
     let session: MobileCaptureSession
     @ObservedObject var model: CaptureExperienceModel
+    let onOpen: (MobileCaptureSession) -> Void
+
+    private var totalCount: Int {
+        let canonicalCount = session.sessionNotes?.count ?? 0
+        let pendingCount = model.quickEntryOutbox.entries.filter {
+            $0.kind == .note && $0.callRoomID == session.callRoomId
+        }.count
+        return canonicalCount + pendingCount
+    }
+
+    var body: some View {
+        Button {
+            onOpen(session)
+        } label: {
+            HStack {
+                Label("Session Notes", systemImage: "note.text")
+                    .font(.headline)
+                Spacer()
+                Text(totalCount == 0 ? "None yet" : "\(totalCount)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(totalCount == 0 ? Color.secondary : CapturePalette.accent)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .captureCard()
+        .accessibilityIdentifier("CaptureSessionNotesToggle")
+        .accessibilityHint("Opens protected pending notes and canonical notes whose audience permits this account.")
+    }
+}
+
+private struct CaptureSessionNotesWorkspace: View {
+    let session: MobileCaptureSession
+    @ObservedObject var model: CaptureExperienceModel
+    let onDismiss: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                CaptureSessionNotesSheetContent(
+                    session: session,
+                    model: model,
+                    initiallyExpanded: true
+                )
+                .padding(18)
+            }
+            .navigationTitle("Session Notes")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { onDismiss() }
+                }
+            }
+            .accessibilityIdentifier("CaptureSessionNotesSheet")
+        }
+    }
+}
+
+private struct CaptureSessionNotesSheetContent: View {
+    let session: MobileCaptureSession
+    @ObservedObject var model: CaptureExperienceModel
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var isExpanded = false
-    @State private var editingNote: MobileCaptureSessionNote?
+
+    init(
+        session: MobileCaptureSession,
+        model: CaptureExperienceModel,
+        initiallyExpanded: Bool = false
+    ) {
+        self.session = session
+        self.model = model
+        _isExpanded = State(initialValue: initiallyExpanded)
+    }
 
     private var quickEntryOutbox: MobileQuickEntryOutbox {
         model.quickEntryOutbox
@@ -8338,8 +8422,13 @@ private struct CaptureSessionNotesCard: View {
                             }
                         }
                         if note.canEdit {
-                            Button {
-                                editingNote = note
+                            NavigationLink {
+                                CaptureSessionNoteEditSheet(
+                                    session: session,
+                                    note: note,
+                                    protectedEdit: protectedEdit,
+                                    model: model
+                                )
                             } label: {
                                 Label(
                                     protectedEdit == nil ? "Edit note" : "Review protected draft",
@@ -8378,14 +8467,6 @@ private struct CaptureSessionNotesCard: View {
         }
         .captureCard()
         .accessibilityHint("Shows protected pending notes and canonical notes whose audience permits this account.")
-        .sheet(item: $editingNote) { note in
-            CaptureSessionNoteEditSheet(
-                session: session,
-                note: note,
-                protectedEdit: model.pendingSessionNoteEdit(for: note.id),
-                model: model
-            )
-        }
     }
 
     private func matchingRecording(_ source: MobileCaptureTodayTranscriptSourceAnchor) -> LocalRecording? {
@@ -8472,8 +8553,7 @@ private struct CaptureSessionNoteEditSheet: View {
     }
 
     var bodyView: some View {
-        NavigationStack {
-            Form {
+        Form {
                 if let protectedEdit {
                     Section("Protected iPhone draft") {
                         LabeledContent(
@@ -8514,9 +8594,10 @@ private struct CaptureSessionNoteEditSheet: View {
                 }
 
                 Section {
-                    TextField("Title (optional)", text: $title, axis: .vertical)
-                        .lineLimit(1...3)
+                    TextField("Title (optional)", text: $title)
                         .focused($focusedField, equals: .title)
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .body }
                         .accessibilityIdentifier("CaptureSessionNoteEditTitle")
                     TextField("Session note", text: $noteBody, axis: .vertical)
                         .lineLimit(5...14)
@@ -8646,7 +8727,6 @@ private struct CaptureSessionNoteEditSheet: View {
                 }
             }
             .accessibilityIdentifier("CaptureSessionNoteEditSheet")
-        }
     }
 
     var body: some View {

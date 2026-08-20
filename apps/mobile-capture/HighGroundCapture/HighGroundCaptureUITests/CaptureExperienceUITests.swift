@@ -788,7 +788,12 @@ final class CaptureExperienceUITests: XCTestCase {
         title.typeKey("a", modifierFlags: .command)
         title.typeText("Reviewed opening")
         let body = app.textFields["CaptureSessionNoteEditBody"].firstMatch
-        body.tap()
+        body.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        expectation(
+            for: NSPredicate(format: "hasKeyboardFocus == true"),
+            evaluatedWith: body
+        )
+        waitForExpectations(timeout: 4)
         body.typeKey("a", modifierFlags: .command)
         body.typeText("Begin with the question the client actually needs.")
         let keyboardDone = app.buttons["CaptureSessionNoteEditKeyboardDone"].firstMatch

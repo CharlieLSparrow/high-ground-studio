@@ -1696,7 +1696,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         title.typeText(editedTitle)
         let editBody = app.textFields["CaptureSessionNoteEditBody"].firstMatch
         XCTAssertTrue(editBody.exists)
-        editBody.tap()
+        editBody.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        expectation(
+            for: NSPredicate(format: "hasKeyboardFocus == true"),
+            evaluatedWith: editBody
+        )
+        waitForExpectations(timeout: 4)
         editBody.typeKey("a", modifierFlags: .command)
         editBody.typeText(editedBody)
         let editKeyboardDone = app.buttons["CaptureSessionNoteEditKeyboardDone"].firstMatch
