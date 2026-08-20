@@ -10226,7 +10226,7 @@ private struct ConsentStrip: View {
             }
             .accessibilityLabel("Recorder consent options")
         } else {
-            Button("Review choices", action: onGrant)
+            Button("Review and agree", action: onGrant)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
                 .frame(minHeight: 44)
@@ -10235,7 +10235,7 @@ private struct ConsentStrip: View {
     }
 
     private var consentTitle: String {
-        session.hasCurrentRecordingConsent ? "Recorder attestation saved" : "Consent attestation required"
+        session.hasCurrentRecordingConsent ? "Your consent is saved" : "Recording consent"
     }
 
     private var consentDetail: String {
@@ -10249,17 +10249,17 @@ private struct ConsentStrip: View {
                     session.recordingConsentCanRecordAudio == true ? "audio \(audioGranted)/\(required)" : nil,
                     session.recordingConsentCanRecordVideo == true ? "video \(videoGranted)/\(required)" : nil,
                 ].compactMap { $0 }.joined(separator: " · ")
-                return "\(counts). Each signed-in participant must confirm; everyone else who may be captured must also be told and agree."
+                return "\(counts). Your choice is saved; waiting for the other participant."
             }
         }
         guard session.hasCurrentRecordingConsent else {
-            return "Choose audio, video, or both, then confirm that everyone who may be captured was told and agreed."
+            return "Review what this Session will record, then agree once."
         }
         let sources = [
             session.recordingConsentCanRecordAudio == true ? "audio" : nil,
             session.recordingConsentCanRecordVideo == true ? "video" : nil,
         ].compactMap { $0 }.joined(separator: " and ")
-        return "You confirmed \(sources) consent for everyone who may be captured. Recording still starts visibly."
+        return "Your \(sources) choice is saved for this Session."
     }
 }
 
@@ -10269,10 +10269,9 @@ struct CaptureConsentConfirmationSheet: View {
     let requiresStableOwner: Bool
     let onSave: @MainActor @Sendable (Bool, Bool, Bool, Bool, Date) async -> Bool
 
-    @State private var canRecordAudio = false
-    @State private var canRecordVideo = false
-    @State private var canTranscribe = false
-    @State private var allAudibleParticipantsNotifiedAndAgreed = false
+    @State private var canRecordAudio: Bool
+    @State private var canRecordVideo: Bool
+    @State private var canTranscribe: Bool
     @State private var isSubmitting = false
     @State private var presentedAt = Date()
     @State private var presentationOwnerSnapshot: AuthManager.StableOwnerSnapshot?
@@ -10291,6 +10290,21 @@ struct CaptureConsentConfirmationSheet: View {
                 ? AuthManager.shared.stableOwnerSnapshot()
                 : nil
         )
+        _canRecordAudio = State(
+            initialValue: session.hasCurrentRecordingConsent
+                ? session.recordingConsentCanRecordAudio == true
+                : true
+        )
+        _canRecordVideo = State(
+            initialValue: session.hasCurrentRecordingConsent
+                ? session.recordingConsentCanRecordVideo == true
+                : true
+        )
+        _canTranscribe = State(
+            initialValue: session.hasCurrentRecordingConsent
+                ? session.recordingConsentCanTranscribe == true
+                : true
+        )
     }
 
     var body: some View {
@@ -10298,9 +10312,9 @@ struct CaptureConsentConfirmationSheet: View {
             Form {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("Choose each use separately", systemImage: "checkmark.shield.fill")
-                            .font(.headline)
-                        Text(MobileCaptureConsentGrantAttestation.policyText)
+                        Label("Record and transcribe this Session?", systemImage: "checkmark.shield.fill")
+                            .font(.title3.weight(.semibold))
+                        Text("Your choice is saved for this Session and shared across Quipsly Capture and the browser. Recording only starts when someone taps Record.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -10309,11 +10323,11 @@ struct CaptureConsentConfirmationSheet: View {
                     Text(session.displayTitle)
                 }
 
-                Section("Recording") {
+                Section("Included") {
                     Toggle(isOn: $canRecordAudio) {
                         ConsentChoiceLabel(
                             title: "Record audio",
-                            detail: "Save a local audio source on this iPhone.",
+                            detail: "Capture the conversation audio.",
                             systemImage: "waveform"
                         )
                     }
@@ -10322,32 +10336,26 @@ struct CaptureConsentConfirmationSheet: View {
                     Toggle(isOn: $canRecordVideo) {
                         ConsentChoiceLabel(
                             title: "Record video",
-                            detail: "Save local camera sources. This is separate from joining a call.",
+                            detail: "Capture camera video when enabled.",
                             systemImage: "video"
                         )
                     }
                     .accessibilityIdentifier("CaptureConsentRecordVideoToggle")
                 }
 
-                Section("Transcription") {
+                Section {
                     Toggle(isOn: $canTranscribe) {
                         ConsentChoiceLabel(
                             title: "Create a transcript",
-                            detail: "Optional; audio can be recorded without it.",
+                            detail: "Create the transcript, notes, and follow-up items.",
                             systemImage: "text.bubble"
                         )
                     }
                     .accessibilityIdentifier("CaptureConsentTranscriptionToggle")
                 }
 
-                Section("Everyone who may be seen or heard") {
-                    Toggle(isOn: $allAudibleParticipantsNotifiedAndAgreed) {
-                        Text("I confirm everyone who may be seen or heard — including people not signed into Quipsly — was told which recording and transcription choices are on and agreed before recording starts.")
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .accessibilityIdentifier("CaptureConsentAudibleParticipantsToggle")
-
-                    Text("Signed-in participants must also save their own consent; this confirmation covers everyone who may be captured, including people who are not signed into Quipsly.")
+                Section {
+                    Text("Only continue after everyone who may be seen or heard agrees. Each signed-in participant confirms for themselves.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -10373,7 +10381,7 @@ struct CaptureConsentConfirmationSheet: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 consentActionBar
             }
-            .navigationTitle("Consent choices")
+            .navigationTitle("Recording consent")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -10401,7 +10409,7 @@ struct CaptureConsentConfirmationSheet: View {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Text("Save these choices")
+                        Text("Agree and continue")
                             .fontWeight(.semibold)
                     }
                     Spacer()
@@ -10411,9 +10419,7 @@ struct CaptureConsentConfirmationSheet: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(
-                (!canRecordAudio && !canRecordVideo)
-                    || !allAudibleParticipantsNotifiedAndAgreed
-                    || isSubmitting
+                (!canRecordAudio && !canRecordVideo) || isSubmitting
             )
             .accessibilityHint(
                 "Saves only the recording and transcription choices shown above. Recording still starts separately."
@@ -10426,9 +10432,7 @@ struct CaptureConsentConfirmationSheet: View {
     }
 
     private func submitConsent() {
-        guard (canRecordAudio || canRecordVideo),
-              allAudibleParticipantsNotifiedAndAgreed,
-              !isSubmitting else { return }
+        guard (canRecordAudio || canRecordVideo), !isSubmitting else { return }
         if requiresStableOwner {
             guard let presentationOwnerSnapshot,
                   AuthManager.shared.matchesStableOwnerSnapshot(presentationOwnerSnapshot) else {

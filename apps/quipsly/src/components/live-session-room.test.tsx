@@ -166,10 +166,10 @@ describe("LiveSessionRoom", () => {
     expect(screen.queryByRole("button", { name: /Allow camera/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("checkbox", { name: /Join with camera/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Allow camera/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Allow microphone and camera/i }));
     await act(async () => undefined);
 
-    expect(getUserMedia).toHaveBeenCalledWith({ audio: false, video: true });
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: true });
   });
 
   it("does not claim a camera join is ready when the browser exposes no usable camera id", async () => {

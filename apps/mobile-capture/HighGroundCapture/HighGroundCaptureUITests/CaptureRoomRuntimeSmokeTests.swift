@@ -4879,13 +4879,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
             let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
             let transcription = app.switches["CaptureConsentTranscriptionToggle"]
-            let audibleParticipants = app.switches["CaptureConsentAudibleParticipantsToggle"]
             XCTAssertTrue(recordAudio.exists)
             XCTAssertTrue(transcription.exists)
-            XCTAssertTrue(audibleParticipants.exists)
             turnOn(recordAudio, in: app)
-            XCTAssertEqual(transcription.value as? String, "0", "Dogfood records audio without silently opting into transcription.")
-            turnOn(audibleParticipants, in: app)
+            XCTAssertEqual(transcription.value as? String, "1", "The standard Session workflow includes transcription unless the person turns it off.")
 
             let saveConsent = app.buttons["CaptureConsentSaveChoicesButton"]
             XCTAssertTrue(waitForRuntimeElement(saveConsent, in: app, timeout: 8, swipeAttempts: 5))
@@ -5196,10 +5193,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             ].firstMatch
             XCTAssertTrue(consentSheet.waitForExistence(timeout: 8))
             turnOn(app.switches["CaptureConsentRecordVideoToggle"], in: app)
-            turnOn(
-                app.switches["CaptureConsentAudibleParticipantsToggle"],
-                in: app
-            )
             let save = app.buttons["CaptureConsentSaveChoicesButton"]
             XCTAssertTrue(
                 waitForRuntimeElement(save, in: app, timeout: 8, swipeAttempts: 5)

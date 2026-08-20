@@ -318,7 +318,7 @@ export function LiveSessionRoom({
     [kind, purpose],
   );
   const [status, setStatus] = useState<LiveSessionRoomStatus>("preflight");
-  const [message, setMessage] = useState("Choose the exact mic and camera you want Quipsly to use.");
+  const [message, setMessage] = useState("Preparing your microphone and camera…");
   const [microphones, setMicrophones] = useState<DeviceOption[]>([]);
   const [cameras, setCameras] = useState<DeviceOption[]>([]);
   const [outputs, setOutputs] = useState<DeviceOption[]>([]);
@@ -565,7 +565,7 @@ export function LiveSessionRoom({
     container.appendChild(element);
   }, [routeAudioOutput]);
 
-  const refreshDevices = useCallback(async (permission: "none" | "microphone" | "camera" = "none") => {
+  const refreshDevices = useCallback(async (permission: "none" | "microphone" | "camera" | "media" = "none") => {
     const room = roomRef.current;
     const preserveLiveConnection = Boolean(room && room.state !== ConnectionState.Disconnected);
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -576,15 +576,15 @@ export function LiveSessionRoom({
     if (!preserveLiveConnection) setStatus("checking");
     setMessage(permission === "microphone"
       ? "Waiting for browser microphone permission…"
-      : permission === "camera"
+      : permission === "camera" || permission === "media"
         ? "Waiting for browser camera permission…"
         : "Reading available devices…");
     try {
       if (permission !== "none") {
         clearPreflightPreview();
         preflightStreamRef.current = await getUserMediaWithTimeout({
-          audio: permission === "microphone",
-          video: permission === "camera",
+          audio: permission === "microphone" || permission === "media",
+          video: permission === "camera" || permission === "media",
         });
         stopStream(preflightStreamRef.current);
         preflightStreamRef.current = null;
@@ -604,10 +604,10 @@ export function LiveSessionRoom({
       setOutputId((current) => preferredDeviceId(current, nextOutputs, preferred.outputId, preferred.outputLabel));
       const microphoneNamesVisible = nextMicrophones.some((device) => !/^Microphone \d+$/.test(device.label));
       const cameraNamesVisible = nextCameras.some((device) => !/^Camera \d+$/.test(device.label));
-      if (permission === "camera" && !nextCameras.length) {
+      if ((permission === "camera" || permission === "media") && !nextCameras.length) {
         if (!preserveLiveConnection) setStatus("error");
         setMessage("Camera access did not expose a usable device. Open this site's camera controls, choose the Canon or desired camera, then try again—or turn off Join with camera.");
-      } else if (permission === "camera") {
+      } else if (permission === "camera" || permission === "media") {
         if (!preserveLiveConnection) setStatus("ready");
         setMessage(cameraNamesVisible ? "Camera names are visible. Choose the exact camera and run the preview." : "Camera access is available. Use the preview to verify the selected source.");
       } else if (!nextMicrophones.length) {
@@ -631,6 +631,10 @@ export function LiveSessionRoom({
       setMessage(error instanceof Error ? `Device check failed: ${error.message}` : "Device permission was not granted.");
     }
   }, [clearPreflightPreview]);
+
+  useEffect(() => {
+    void refreshDevices("none");
+  }, [refreshDevices]);
 
   const startSelectedPreview = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia || !microphoneId) return;
@@ -1113,7 +1117,9 @@ export function LiveSessionRoom({
 
       <div className={`mt-5 grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
         <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
+          <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={status === "error"}>
+            <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Camera, microphone, and speakers</summary>
+          <div className="mt-4 grid gap-3 md:grid-cols-2" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
             <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Microphone
               <select value={microphoneId} disabled={sourceLocked} onChange={(event) => void chooseMicrophone(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
                 <option value="">Choose a microphone</option>{microphones.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
@@ -1138,11 +1144,16 @@ export function LiveSessionRoom({
             </div>}
           </div>
 
+          <div className="mt-3 flex flex-wrap gap-2">
+            {!connected ? <>
+              <button type="button" aria-label={`Allow microphone${cameraWanted ? " and camera" : ""}`} onClick={() => void refreshDevices(cameraWanted ? "media" : "microphone")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">{status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : <Mic size={15} />} Use microphone{cameraWanted ? " and camera" : ""}</button>
+              <button type="button" aria-label="Test selected setup" onClick={() => void startSelectedPreview()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Video size={15} /> Preview</button>
+            </> : null}
+          </div>
+          </details>
+
           <div className="flex flex-wrap gap-2">
             {!connected ? <>
-              <button type="button" onClick={() => void refreshDevices("microphone")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">{status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : <Mic size={15} />} Allow microphone</button>
-              {cameraWanted ? <button type="button" onClick={() => void refreshDevices("camera")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><Camera size={15} /> Allow camera</button> : null}
-              <button type="button" onClick={() => void startSelectedPreview()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Video size={15} /> Test selected setup</button>
               <button type="button" onClick={() => void join()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} Join live room</button>
             </> : <>
               <button type="button" onClick={() => void toggleMicrophone()} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
@@ -1174,7 +1185,7 @@ export function LiveSessionRoom({
               disabled={!preflightStreamRef.current || status !== "ready"}
             />
           ) : null}
-          <p className="text-[10px] font-bold text-[#8a7354]">Quipsly remembers this studio setup on this browser and falls back by device label if the browser rotates a device ID.</p>
+          <p className="text-[10px] font-bold text-[#8a7354]">Your browser remembers permission; Quipsly remembers this device setup.</p>
         </div>
 
         <aside className="space-y-3">

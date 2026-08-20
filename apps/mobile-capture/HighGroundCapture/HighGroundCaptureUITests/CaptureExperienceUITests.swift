@@ -156,7 +156,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.buttons["CaptureConfirmConsentButton"]
                 .waitForExistence(timeout: 5),
-            "Consent-needed Sessions must open the in-recorder Review choices action."
+            "Consent-needed Sessions must open the in-recorder consent action."
         )
         XCTAssertTrue(app.state == .runningForeground)
     }
@@ -2163,7 +2163,7 @@ final class CaptureExperienceUITests: XCTestCase {
             saveChoices.isHittable,
             "The final consent action should remain reachable while the person reviews each choice."
         )
-        XCTAssertFalse(saveChoices.isEnabled)
+        XCTAssertTrue(saveChoices.isEnabled)
 
         let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
         let recordVideo = app.switches["CaptureConsentRecordVideoToggle"]
@@ -2171,20 +2171,9 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(recordAudio.exists)
         XCTAssertTrue(recordVideo.exists)
         XCTAssertTrue(transcribe.exists)
-        XCTAssertEqual(recordVideo.value as? String, "0", "Video must default off and require its own opt-in.")
-        XCTAssertEqual(transcribe.value as? String, "0", "Transcription must default off and require its own opt-in.")
-
-        turnOn(recordAudio)
-        XCTAssertEqual(
-            app.switches["CaptureConsentTranscriptionToggle"].value as? String,
-            "0",
-            "Recording must remain independently grantable with transcription off."
-        )
-
-        let nearbyPeopleChoice = app.switches["CaptureConsentAudibleParticipantsToggle"]
-        reveal(nearbyPeopleChoice)
-        XCTAssertTrue(nearbyPeopleChoice.exists)
-        turnOn(nearbyPeopleChoice)
+        XCTAssertEqual(recordAudio.value as? String, "1")
+        XCTAssertEqual(recordVideo.value as? String, "1")
+        XCTAssertEqual(transcribe.value as? String, "1")
 
         // The action remains outside the scrolling Form so the person never
         // has to hunt for the final consent decision after reviewing choices.
@@ -2204,7 +2193,7 @@ final class CaptureExperienceUITests: XCTestCase {
             evaluatedWith: readyStart
         )
         waitForExpectations(timeout: 5)
-        XCTAssertTrue(readyStart.isEnabled, "The local recorder should become available once explicit choices and nearby-person agreement are saved.")
+        XCTAssertTrue(readyStart.isEnabled, "The local recorder should become available once the visible Session consent action is saved.")
         XCTAssertEqual(app.staticTexts["CaptureRecorderStateLabel"].label, "Consent ready · mic checks on tap")
     }
 
@@ -2353,13 +2342,16 @@ final class CaptureExperienceUITests: XCTestCase {
         let saveChoices = app.buttons["CaptureConsentSaveChoicesButton"]
         XCTAssertTrue(saveChoices.exists)
         XCTAssertTrue(saveChoices.isHittable)
-        XCTAssertFalse(saveChoices.isEnabled)
+        XCTAssertTrue(saveChoices.isEnabled)
+        XCTAssertEqual(recordAudio.value as? String, "1")
+        recordAudio.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        expectation(
+            for: NSPredicate(format: "value == %@", "0"),
+            evaluatedWith: recordAudio
+        )
+        waitForExpectations(timeout: 3)
         XCTAssertEqual(recordAudio.value as? String, "0")
-        turnOn(recordVideo)
-
-        let nearbyPeople = app.switches["CaptureConsentAudibleParticipantsToggle"]
-        reveal(nearbyPeople)
-        turnOn(nearbyPeople)
+        XCTAssertEqual(recordVideo.value as? String, "1")
 
         XCTAssertTrue(saveChoices.isHittable)
         XCTAssertTrue(saveChoices.isEnabled)
@@ -3034,8 +3026,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         turnOnConsentChoice("CaptureConsentRecordAudioToggle")
         turnOnConsentChoice("CaptureConsentRecordVideoToggle")
         turnOnConsentChoice("CaptureConsentTranscriptionToggle")
-        turnOnConsentChoice("CaptureConsentAudibleParticipantsToggle")
-        let saveConsent = app.buttons["Save these choices"]
+        let saveConsent = app.buttons["Agree and continue"]
         XCTAssertTrue(saveConsent.waitForExistence(timeout: 5))
         XCTAssertTrue(saveConsent.isEnabled)
         Thread.sleep(forTimeInterval: 0.8)

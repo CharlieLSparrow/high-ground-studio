@@ -894,7 +894,7 @@ for (const needle of [
   "CaptureRecordingModePicker",
   "CaptureRehearsalReadinessCard",
   "CaptureConsentConfirmationSheet",
-  "I confirm everyone who may be seen or heard — including people not signed into Quipsly — was told which recording and transcription choices are on and agreed before recording starts.",
+  "Only continue after everyone who may be seen or heard agrees. Each signed-in participant confirms for themselves.",
   "Consent needed",
   "Button(\"Cancel\")",
   "Revoke",
@@ -950,7 +950,6 @@ for (const needle of [
   "CaptureConsentRecordAudioToggle",
   "CaptureConsentRecordVideoToggle",
   "CaptureConsentTranscriptionToggle",
-  "CaptureConsentAudibleParticipantsToggle",
   "CaptureConsentSaveChoicesButton",
   "Local source is production truth",
   "GlobalCaptureBanner",
@@ -966,7 +965,7 @@ for (const needle of [
   "CaptureVideoPauseResumeButton",
   "CaptureVideoSwitchCameraButton",
   "Podcast camera",
-  "Everyone who may be seen or heard",
+  "Only continue after everyone who may be seen or heard agrees",
   "model.providerControlsLockedForLocalCapture",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "capture-first iPhone UX");

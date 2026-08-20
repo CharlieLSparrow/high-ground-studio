@@ -294,15 +294,14 @@ test("consent grant sends exact separate recording, transcription, and nearby-pe
     "CaptureConsentRecordAudioToggle",
     "CaptureConsentRecordVideoToggle",
     "CaptureConsentTranscriptionToggle",
-    "CaptureConsentAudibleParticipantsToggle",
     "CaptureConsentSaveChoicesButton",
   ]) {
     assert.ok(captureShell.includes(identifier), `Missing explicit consent control ${identifier}`);
   }
-  assert.match(captureShell, /@State private var canTranscribe = false/);
+  assert.match(captureShell, /@State private var canTranscribe: Bool/);
   assert.match(captureShell, /@State private var presentationOwnerSnapshot: AuthManager\.StableOwnerSnapshot\?/);
   assert.match(captureShell, /matchesStableOwnerSnapshot\(presentationOwnerSnapshot\)/);
-  assert.match(captureShell, /including people who are not signed into Quipsly/);
+  assert.match(captureShell, /Each signed-in participant confirms for themselves/);
 });
 
 test("daemon transfer is fail-closed on persistence and retries use bounded stable jitter", () => {
