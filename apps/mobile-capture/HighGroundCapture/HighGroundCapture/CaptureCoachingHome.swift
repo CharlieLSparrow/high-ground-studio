@@ -854,6 +854,7 @@ private struct NewMobileCoachingAppointmentSheet: View {
                     TextField("Name (optional)", text: $draft.clientName)
                         .textContentType(.name)
                         .focused($focusedField, equals: .name)
+                        .accessibilityIdentifier("CaptureCoachingClientName")
                     TextField("Email", text: $draft.clientEmail)
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
@@ -869,6 +870,7 @@ private struct NewMobileCoachingAppointmentSheet: View {
                 Section("Appointment") {
                     TextField("Session title", text: $draft.title)
                         .focused($focusedField, equals: .title)
+                        .accessibilityIdentifier("CaptureCoachingSessionTitle")
                     DatePicker(
                         "Starts",
                         selection: $draft.scheduledStart,

@@ -71,6 +71,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let password: String
         let sessionID: String?
         let sessionTitle: String?
+        let coachingClientEmail: String?
+        let coachingClientName: String?
         let taskID: String?
         let taskEditSourceTitle: String?
         let taskEditUpdatedTitle: String?
@@ -138,6 +140,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 password: envPassword,
                 sessionID: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_ID"],
                 sessionTitle: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE"],
+                coachingClientEmail: environment["QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_EMAIL"],
+                coachingClientName: environment["QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_NAME"],
                 taskID: environment["QUIPSLY_CAPTURE_UI_TEST_TASK_ID"],
                 taskEditSourceTitle: environment["QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_SOURCE_TITLE"],
                 taskEditUpdatedTitle: environment["QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_UPDATED_TITLE"],
@@ -219,6 +223,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             password: password,
             sessionID: payload["sessionID"] as? String,
             sessionTitle: payload["sessionTitle"] as? String,
+            coachingClientEmail: payload["coachingClientEmail"] as? String,
+            coachingClientName: payload["coachingClientName"] as? String,
             taskID: payload["taskID"] as? String,
             taskEditSourceTitle: payload["taskEditSourceTitle"] as? String,
             taskEditUpdatedTitle: payload["taskEditUpdatedTitle"] as? String,
@@ -1050,6 +1056,119 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             sessionID: sessionID,
             newTagLabel: tagLabel,
             in: app
+        )
+    }
+
+    func testFreshCoachSchedulesAndInvitesFromIPhone() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty,
+              let clientEmail = credentials.coachingClientEmail, !clientEmail.isEmpty,
+              let clientName = credentials.coachingClientName, !clientName.isEmpty else {
+            throw XCTSkip("Phone-first coaching requires one unique Session title plus exact client name and email.")
+        }
+
+        let app = try launchSignedInCaptureApp()
+        let coaching = app.buttons["CaptureOpenCoachingHome"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(coaching, in: app, timeout: 30, swipeAttempts: 10),
+            "A newly verified ordinary account should find Coaching from the normal Today surface."
+        )
+        coaching.tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 20),
+            "The ordinary coaching destination should be native and server-backed."
+        )
+
+        let setup = app.buttons["CaptureCoachingSetupButton"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(setup, in: app, timeout: 30, swipeAttempts: 8),
+            "A fresh ordinary account should receive one understandable coach-setup action."
+        )
+        XCTAssertTrue(setup.isEnabled)
+        setup.tap()
+
+        let schedule = app.buttons["CaptureCoachingNewAppointmentButton"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(schedule, in: app, timeout: 45, swipeAttempts: 10),
+            "Coach setup should converge to scheduling on the same iPhone surface."
+        )
+        XCTAssertTrue(schedule.isEnabled)
+        schedule.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingAppointmentSheet"].waitForExistence(timeout: 8)
+        )
+
+        let name = app.textFields["CaptureCoachingClientName"].firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 6))
+        name.tap()
+        name.typeText(clientName)
+
+        let email = app.textFields["CaptureCoachingClientEmail"].firstMatch
+        XCTAssertTrue(email.waitForExistence(timeout: 6))
+        email.tap()
+        email.typeText(clientEmail)
+
+        let title = app.textFields["CaptureCoachingSessionTitle"].firstMatch
+        replaceText(in: title, with: sessionTitle, app: app)
+
+        let create = app.buttons["CaptureCoachingCreateAppointment"].firstMatch
+        XCTAssertTrue(create.waitForExistence(timeout: 6))
+        XCTAssertTrue(create.isEnabled)
+        create.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingAppointmentSheet"].waitForNonExistence(timeout: 45),
+            "One phone action should create the client identity, relationship, appointment, consent requests, and room."
+        )
+        XCTAssertTrue(
+            app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 30),
+            "The same iPhone should read the canonical custom Session title back from Nest."
+        )
+        XCTAssertTrue(app.staticTexts[clientName].firstMatch.exists)
+
+        let send = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingSendInvite_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(send, in: app, timeout: 20, swipeAttempts: 10),
+            "The newly scheduled Session should expose durable email invitation from the same phone."
+        )
+        XCTAssertTrue(send.isEnabled)
+        send.tap()
+
+        let delivery = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingInviteDelivery_")
+        ).firstMatch
+        let globalError = app.descendants(matching: .any)["CaptureCoachingError"].firstMatch
+        let invitationDeadline = Date().addingTimeInterval(30)
+        while !delivery.exists && !globalError.exists && Date() < invitationDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        }
+        XCTAssertTrue(
+            delivery.exists || globalError.exists,
+            "Invitation must produce visible sent-or-not-sent truth; a tap may not disappear into silent state."
+        )
+        let share = app.descendants(matching: .any)["CaptureCoachingShareInvite"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(share, in: app, timeout: 15, swipeAttempts: 8),
+            "A system share fallback should remain available even when local acceptance intentionally blocks external mail."
+        )
+
+        let open = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingOpen_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(open, in: app, timeout: 20, swipeAttempts: 10),
+            "The new canonical Session should open directly from the ordinary booking card."
+        )
+        open.tap()
+        XCTAssertTrue(app.scrollViews["CaptureRecorderView"].waitForExistence(timeout: 45))
+        XCTAssertTrue(
+            app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 20),
+            "The iPhone must enter the exact Session it just scheduled, not a fixture or generic room."
+        )
+        attachRecordingIdentity(
+            "\(credentials.email)|\(clientEmail)|\(sessionTitle)",
+            name: "Fresh phone-first coaching identity"
         )
     }
 

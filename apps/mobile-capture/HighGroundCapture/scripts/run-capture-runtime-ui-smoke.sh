@@ -12,6 +12,8 @@ TEST_EMAIL="${QUIPSLY_CAPTURE_UI_TEST_EMAIL:-}"
 TEST_PASSWORD="${QUIPSLY_CAPTURE_UI_TEST_PASSWORD:-}"
 TEST_SESSION_ID="${QUIPSLY_CAPTURE_UI_TEST_SESSION_ID:-}"
 TEST_SESSION_TITLE="${QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE:-}"
+TEST_COACHING_CLIENT_EMAIL="${QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_EMAIL:-}"
+TEST_COACHING_CLIENT_NAME="${QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_NAME:-}"
 TEST_TASK_ID="${QUIPSLY_CAPTURE_UI_TEST_TASK_ID:-}"
 TEST_TASK_EDIT_SOURCE_TITLE="${QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_SOURCE_TITLE:-}"
 TEST_TASK_EDIT_UPDATED_TITLE="${QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_UPDATED_TITLE:-}"
@@ -124,6 +126,13 @@ case "$TEST_MODE" in
     TEST_CASE="testIPhoneCreatesRetainedSessionAndReadsRecordingTruth"
     if [[ "$TEST_SESSION_TITLE" != "QA Retained · "* ]]; then
       echo "Retained Session truth mode requires one unique title beginning with 'QA Retained · '." >&2
+      exit 2
+    fi
+    ;;
+  coaching-phone-start)
+    TEST_CASE="testFreshCoachSchedulesAndInvitesFromIPhone"
+    if [[ -z "$TEST_SESSION_TITLE" || -z "$TEST_COACHING_CLIENT_EMAIL" || -z "$TEST_COACHING_CLIENT_NAME" ]]; then
+      echo "Phone-first coaching mode requires one unique Session title plus exact client name and email." >&2
       exit 2
     fi
     ;;
@@ -366,7 +375,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-deep-link, today-client-follow-up, weekly-plan-preview, weekly-plan-operation, session-create-surface, transcript-follow-through, transcript-packet-span, transcript-packet-materialization, transcript-packet-note-merge, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-deep-link, today-client-follow-up, weekly-plan-preview, weekly-plan-operation, session-create-surface, coaching-phone-start, transcript-follow-through, transcript-packet-span, transcript-packet-materialization, transcript-packet-note-merge, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
     exit 2
     ;;
 esac
@@ -546,6 +555,22 @@ payload.update(
         "weeklyPlanCommitmentTwo": commitment_two or None,
         "weeklyPlanSupport": support or None,
         "weeklyPlanReflection": reflection or None,
+    }
+)
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle)
+PY
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$TEST_COACHING_CLIENT_EMAIL" "$TEST_COACHING_CLIENT_NAME" <<'PY'
+import json
+import sys
+
+path, client_email, client_name = sys.argv[1:4]
+with open(path, encoding="utf-8") as handle:
+    payload = json.load(handle)
+payload.update(
+    {
+        "coachingClientEmail": client_email or None,
+        "coachingClientName": client_name or None,
     }
 )
 with open(path, "w", encoding="utf-8") as handle:
