@@ -155,12 +155,6 @@ async function grantClientRecordingConsent(context) {
       password,
       callbackPath: context.clientEntryPath,
     });
-    const audibleConsent = page.getByLabel(
-      "Every audible participant was notified and agreed to the selected recording.",
-      { exact: true },
-    );
-    await audibleConsent.waitFor({ timeout: 20_000 });
-    if (!(await audibleConsent.isChecked())) await audibleConsent.check();
     const [response] = await Promise.all([
       page.waitForResponse(
         (candidate) =>
@@ -168,7 +162,7 @@ async function grantClientRecordingConsent(context) {
           new URL(candidate.url()).pathname === "/api/mobile/capture/consent",
       ),
       page
-        .getByRole("button", { name: "Save my consent receipt", exact: true })
+        .getByRole("button", { name: /Agree and continue|Update choices/ })
         .click(),
     ]);
     const packet = await response.json().catch(() => null);

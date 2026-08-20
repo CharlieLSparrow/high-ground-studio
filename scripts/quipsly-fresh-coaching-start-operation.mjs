@@ -377,6 +377,11 @@ try {
     .getByText(sessionTitle, { exact: false })
     .first()
     .waitFor({ timeout: 30_000 });
+  const captureChoice = clientPage.getByRole("button", {
+    name: /iPhone Capture/i,
+  });
+  await captureChoice.waitFor({ timeout: 30_000 });
+  await captureChoice.click();
   const captureInstallLink = clientPage.getByRole("link", {
     name: "Get iPhone beta",
     exact: true,
@@ -394,9 +399,11 @@ try {
     `quipsly://session/${encodeURIComponent(evidence.roomId)}?mode=live`,
     "Fresh client Session did not hand the exact room to Capture.",
   );
+  await clientPage
+    .getByRole("button", { name: "Change device", exact: true })
+    .click();
   const continueInBrowser = clientPage.getByRole("button", {
-    name: "Continue in browser",
-    exact: true,
+    name: /This browser/i,
   });
   await continueInBrowser.waitFor({ timeout: 30_000 });
   const browserChoiceResponse = clientPage.waitForResponse(

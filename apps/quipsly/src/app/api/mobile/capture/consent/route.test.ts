@@ -77,6 +77,9 @@ describe("capture consent readback", () => {
     expect(packet.session).toMatchObject({
       participantId: "participant-1",
       recordingConsentId: "consent-1",
+      recordingConsentCanRecordAudio: true,
+      recordingConsentCanRecordVideo: true,
+      recordingConsentCanTranscribe: true,
       allRegisteredParticipantConsentGranted: true,
       allRegisteredParticipantVideoConsentGranted: true,
       allRegisteredParticipantTranscriptionConsentGranted: true,

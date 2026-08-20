@@ -304,17 +304,35 @@ try {
       password,
       callbackPath,
     });
-    const allowMicrophone = page.getByRole("button", {
-      name: "Allow microphone",
-      exact: true,
+    const browserChoice = page.getByRole("button", {
+      name: /This browser/i,
     });
-    await allowMicrophone.waitFor({ timeout: 20_000 });
-    await allowMicrophone.click();
+    await browserChoice.waitFor({ timeout: 20_000 });
+    await browserChoice.click();
     const join = page.getByRole("button", {
       name: "Join live room",
       exact: true,
     });
     await join.waitFor({ state: "visible", timeout: 20_000 });
+    if (!(await join.isEnabled())) {
+      await page
+        .getByText("Camera, microphone, and speakers", { exact: true })
+        .click();
+      const allowMicrophone = page.getByRole("button", {
+        name: /^Allow microphone(?: and camera)?$/,
+      });
+      await allowMicrophone.waitFor({ timeout: 20_000 }).catch(async (error) => {
+        const visibleButtons = await page.getByRole("button").allInnerTexts();
+        const visibleHeadings = await page.getByRole("heading").allInnerTexts();
+        throw new Error(
+          `${identity.role} device-permission action did not appear when Join needed setup. ` +
+            `Buttons: ${JSON.stringify(visibleButtons)}. ` +
+            `Headings: ${JSON.stringify(visibleHeadings)}. ` +
+            `URL: ${page.url()}. ${error instanceof Error ? error.message : ""}`,
+        );
+      });
+      await allowMicrophone.click();
+    }
     for (
       let attempt = 0;
       attempt < 40 && !(await join.isEnabled());
@@ -395,7 +413,7 @@ try {
           new URL(candidate.url()).pathname === "/api/mobile/capture/consent",
       ),
       journey.page
-        .getByRole("button", { name: "Save my consent receipt", exact: true })
+        .getByRole("button", { name: /Agree and continue|Update choices/ })
         .click(),
     ]);
     const packet = await response.json().catch(() => null);
@@ -406,14 +424,8 @@ try {
     return packet;
   };
   for (const journey of journeys) {
-    const audibleConsent = journey.page.getByLabel(
-      "Every audible participant was notified and agreed to the selected recording.",
-      { exact: true },
-    );
-    await audibleConsent.waitFor({ timeout: 20_000 });
-    if (!(await audibleConsent.isChecked())) await audibleConsent.check();
     const transcriptionConsent = journey.page.getByLabel(
-      "I separately agree to transcription and transcript-derived notes/tasks.",
+      "Create a transcript and suggested notes/tasks",
       { exact: true },
     );
     await transcriptionConsent.waitFor({ timeout: 20_000 });
@@ -436,12 +448,13 @@ try {
     );
     await journey.page
       .getByText(
-        "All currently signed-in participants are ready for this source.",
+        "Everyone is ready to record.",
         { exact: true },
       )
+      .first()
       .waitFor({ timeout: 20_000 });
     const headphones = journey.page.getByLabel(
-      "I am monitoring through headphones, so the retained mic source will not capture speaker echo.",
+      "I’m using headphones (recommended to prevent echo).",
       { exact: true },
     );
     if (!(await headphones.isChecked())) await headphones.check();

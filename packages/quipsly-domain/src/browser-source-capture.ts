@@ -224,7 +224,7 @@ export function browserSourceCanBegin(input: {
   sourceType: BrowserSourceKind;
   recordingConsentId?: string | null;
   allPartyConsentReady: boolean;
-  headphonesAttested: boolean;
+  headphonesAttested?: boolean;
 }) {
   if (
     ["ENDED", "CANCELED", "FAILED"].includes(
@@ -251,12 +251,6 @@ export function browserSourceCanBegin(input: {
       ok: false as const,
       reason:
         "Every signed-in participant must grant the selected recording consent.",
-    };
-  }
-  if (!input.headphonesAttested) {
-    return {
-      ok: false as const,
-      reason: "Confirm headphones before retaining a studio source.",
     };
   }
   return {

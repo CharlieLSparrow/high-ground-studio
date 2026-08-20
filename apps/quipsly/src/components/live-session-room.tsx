@@ -1185,23 +1185,23 @@ export function LiveSessionRoom({
               disabled={!preflightStreamRef.current || status !== "ready"}
             />
           ) : null}
-          <p className="text-[10px] font-bold text-[#8a7354]">Your browser remembers permission; Quipsly remembers this device setup.</p>
         </div>
 
         <aside className="space-y-3">
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
             <ShieldCheck className="text-emerald-800" aria-hidden="true" />
-            <h3 className="mt-2 font-serif text-xl font-black text-emerald-950">Conversation is not recording</h3>
-            <p className="mt-2 text-xs font-bold leading-5 text-emerald-900">Joining publishes call media to participants. It does not start browser recording, iPhone local capture, or provider egress.</p>
-            <p className="mt-3 rounded-xl bg-white/80 p-3 text-[10px] font-black uppercase tracking-wide text-emerald-950">Consent: {recordingConsentGranted ? "ready for a separate visible record action" : recordingConsentStatus}</p>
+            <h3 className="mt-2 font-serif text-xl font-black text-emerald-950">Nothing records until you start it</h3>
+            <p className="mt-2 text-xs font-bold leading-5 text-emerald-900">Joining starts the conversation only. Use Record on this device when everyone is ready.</p>
+            <p className="mt-3 rounded-xl bg-white/80 p-3 text-[10px] font-black uppercase tracking-wide text-emerald-950">{recordingConsentGranted ? "Your choice is saved" : "Recording agreement needed"}</p>
           </div>
-          <div className={`rounded-2xl border p-4 ${providerRecordingState === "recording" ? "border-rose-300 bg-rose-50 text-rose-950" : providerRecordingState === "needs-review" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-sky-200 bg-sky-50 text-sky-950"}`}>
+          <details className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-950" open={["recording", "needs-review"].includes(providerRecordingState)}>
+            <summary className="cursor-pointer text-xs font-black uppercase tracking-wide">Backup recording details · {providerRecordingStateLabel}</summary>
+          <div className={`mt-3 rounded-2xl border p-4 ${providerRecordingState === "recording" ? "border-rose-300 bg-rose-50 text-rose-950" : providerRecordingState === "needs-review" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-sky-200 bg-white text-sky-950"}`}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 {providerRecordingState === "recording" ? <Cloud className="text-rose-800" aria-hidden="true" /> : providerRecordingState === "needs-review" ? <CircleAlert className="text-amber-800" aria-hidden="true" /> : <CloudOff className="text-sky-800" aria-hidden="true" />}
                 <h3 className="mt-2 font-serif text-xl font-black">Provider safety copy: {providerRecordingStateLabel}</h3>
               </div>
-              <span className="rounded-full border border-current/20 bg-white/70 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide">Optional witness</span>
             </div>
             <p className="mt-2 text-xs font-bold leading-5">{providerRecordingMessage}</p>
             <p className="mt-3 rounded-xl bg-white/80 p-3 text-[10px] font-black leading-4">Turning this copy off cannot change take synchronization. Alignment comes from the shared capture group, device clock and START receipts, protected local masters, and waveform/drift review.</p>
@@ -1231,6 +1231,7 @@ export function LiveSessionRoom({
               <p className="mt-3 text-[10px] font-black uppercase tracking-wide">Provider copy is deliberately unavailable. Local recording remains fully usable.</p>
             ) : null}
           </div>
+          </details>
           <div className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-[#5b472f]"><Users size={15} /> In this room · {participants.length}</div>
             <div className="mt-3 space-y-2">{participants.length ? participants.map((participant) => <div key={participant.identity} className="flex items-center justify-between rounded-xl bg-[#fffaf0] px-3 py-2 text-sm font-bold text-[#5b472f]"><span>{participant.name}</span><span className={`h-2.5 w-2.5 rounded-full ${participant.speaking ? "bg-emerald-500 ring-4 ring-emerald-100" : "bg-[#cdbb9a]"}`} aria-label={participant.speaking ? "Speaking" : "Quiet"} /></div>) : <p className="text-xs font-semibold leading-5 text-[#8a7354]">The roster appears after you join. iPhone and browser devices can represent the same person without replacing each other.</p>}</div>

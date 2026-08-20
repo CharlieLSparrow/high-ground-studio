@@ -61,7 +61,7 @@ describe("LiveSessionRoom", () => {
 
     expect(await screen.findByRole("option", { name: "Shure MV7i" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Canon EOS R8" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Conversation is not recording" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Nothing records until you start it" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Call-path microphone evidence" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Private studio sound check" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Record private sample" })).toBeDisabled();

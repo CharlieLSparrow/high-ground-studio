@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ChevronRight,
@@ -35,6 +35,24 @@ export function CaptureAppHandoff({
   const captureURL = `quipsly://session/${encodeURIComponent(roomId)}?mode=live`;
   const [metrics, setMetrics] = useState<EntryChoiceMetrics | null>(null);
   const [step, setStep] = useState<"choose" | "capture">("choose");
+  const continueInBrowserRef = useRef(onContinueInBrowser);
+  continueInBrowserRef.current = onContinueInBrowser;
+
+  function clearBrowserEntryIntent() {
+    const current = new URL(window.location.href);
+    if (current.searchParams.get("entry") !== "browser") return;
+    current.searchParams.delete("entry");
+    window.history.replaceState(window.history.state, "", current);
+  }
+
+  function continueInBrowser() {
+    const current = new URL(window.location.href);
+    current.searchParams.set("entry", "browser");
+    window.history.replaceState(window.history.state, "", current);
+    recordChoice("BROWSER");
+    onContinueInBrowser?.();
+    window.setTimeout(clearBrowserEntryIntent, 15_000);
+  }
 
   function recordChoice(choice: SessionEntryChoice) {
     void fetch(
@@ -65,6 +83,13 @@ export function CaptureAppHandoff({
       cancelled = true;
     };
   }, [canViewChoiceMetrics, roomId]);
+
+  useEffect(() => {
+    const current = new URL(window.location.href);
+    if (current.searchParams.get("entry") !== "browser") return;
+    continueInBrowserRef.current?.();
+    clearBrowserEntryIntent();
+  }, []);
 
   return (
     <section
@@ -108,10 +133,7 @@ export function CaptureAppHandoff({
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
-                onClick={() => {
-                  recordChoice("BROWSER");
-                  onContinueInBrowser?.();
-                }}
+                onClick={continueInBrowser}
                 className="group flex min-h-24 items-center gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-900"
               >
                 <span className="rounded-xl bg-white p-2 text-sky-800 shadow-sm">

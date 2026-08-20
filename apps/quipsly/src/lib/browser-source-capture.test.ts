@@ -56,7 +56,7 @@ describe("browser source capture contract", () => {
     });
   });
 
-  test("requires a camera for video and headphones for studio retention", () => {
+  test("requires a camera for video but treats headphones as guidance", () => {
     expect(
       browserSourceCanBegin({
         opfsAvailable: true,
@@ -77,6 +77,17 @@ describe("browser source capture contract", () => {
         recordingConsentId: "consent",
         allPartyConsentReady: true,
         headphonesAttested: true,
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      browserSourceCanBegin({
+        opfsAvailable: true,
+        microphoneId: "mic",
+        sourceType: "audio",
+        recordingConsentId: "consent",
+        allPartyConsentReady: true,
+        headphonesAttested: false,
       }).ok,
     ).toBe(true);
   });

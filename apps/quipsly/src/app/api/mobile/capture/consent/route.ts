@@ -149,6 +149,12 @@ export async function GET(request: Request) {
         participantId: participant?.id ?? null,
         recordingConsentId: consent?.id ?? null,
         recordingConsentStatus: consent?.status ?? "not-created",
+        recordingConsentCanRecordAudio:
+          consent?.status === "GRANTED" && consent?.canRecordAudio === true,
+        recordingConsentCanRecordVideo:
+          consent?.status === "GRANTED" && consent?.canRecordVideo === true,
+        recordingConsentCanTranscribe:
+          consent?.status === "GRANTED" && consent?.canTranscribe === true,
         allRegisteredParticipantConsentGranted: mobileCaptureAllPartiesReady(
           versions,
           "audio",

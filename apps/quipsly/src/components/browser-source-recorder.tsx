@@ -213,8 +213,9 @@ export function BrowserSourceRecorder({
     sessionKind === "episode" ? "video" : "audio",
   );
   const [headphonesAttested, setHeadphonesAttested] = useState(false);
-  const [audibleConsentAttested, setAudibleConsentAttested] = useState(false);
-  const [transcriptionAllowed, setTranscriptionAllowed] = useState(false);
+  const [myAudioConsent, setMyAudioConsent] = useState(false);
+  const [myVideoConsent, setMyVideoConsent] = useState(false);
+  const [transcriptionAllowed, setTranscriptionAllowed] = useState(true);
   const [policy, setPolicy] = useState<ConsentPolicy | null>(null);
   const [consentId, setConsentId] = useState<string | null>(null);
   const [participantId, setParticipantId] = useState<string | null>(null);
@@ -379,6 +380,17 @@ export function BrowserSourceRecorder({
         setUsageBytes(vault.usageBytes);
         setPolicy(consentPacket?.currentPolicy ?? null);
         setConsentId(consentPacket?.session?.recordingConsentId ?? null);
+        setMyAudioConsent(
+          consentPacket?.session?.recordingConsentCanRecordAudio === true,
+        );
+        setMyVideoConsent(
+          consentPacket?.session?.recordingConsentCanRecordVideo === true,
+        );
+        setTranscriptionAllowed(
+          consentPacket?.session?.recordingConsentId
+            ? consentPacket?.session?.recordingConsentCanTranscribe === true
+            : true,
+        );
         setParticipantId(consentPacket?.session?.participantId ?? null);
         setAllPartyAudioReady(
           consentPacket?.session?.allRegisteredParticipantConsentGranted ===
@@ -416,6 +428,8 @@ export function BrowserSourceRecorder({
 
   const consentReady =
     sourceType === "video" ? allPartyVideoReady : allPartyAudioReady;
+  const myConsentCoversSource =
+    sourceType === "video" ? myVideoConsent : myAudioConsent;
   const readiness = useMemo(
     () =>
       browserSourceCanBegin({
@@ -426,13 +440,11 @@ export function BrowserSourceRecorder({
         sourceType,
         recordingConsentId: consentId,
         allPartyConsentReady: consentReady,
-        headphonesAttested,
       }),
     [
       cameraId,
       consentId,
       consentReady,
-      headphonesAttested,
       microphoneId,
       roomStatus,
       sourceType,
@@ -489,10 +501,8 @@ export function BrowserSourceRecorder({
   }, [guardianEvidence, onGuardianEvidenceChange]);
 
   const grantConsent = useCallback(async () => {
-    if (!policy || !audibleConsentAttested) {
-      setMessage(
-        "Confirm that every audible participant was notified and agreed before saving consent.",
-      );
+    if (!policy) {
+      setMessage("Recording choices are still loading. Try again in a moment.");
       return;
     }
     setStatus("checking");
@@ -530,6 +540,11 @@ export function BrowserSourceRecorder({
         throw new Error(packet?.error || "Consent could not be saved.");
       const session = packet.session ?? {};
       setConsentId(session.recordingConsentId ?? null);
+      setMyAudioConsent(session.recordingConsentCanRecordAudio === true);
+      setMyVideoConsent(session.recordingConsentCanRecordVideo === true);
+      setTranscriptionAllowed(
+        session.recordingConsentCanTranscribe === true,
+      );
       setParticipantId(session.participantId ?? null);
       setAllPartyAudioReady(
         session.allRegisteredParticipantConsentGranted === true,
@@ -540,7 +555,11 @@ export function BrowserSourceRecorder({
       setRoomStatus(session.roomStatus ?? roomStatus);
       setCanControlRoom(session.canControlRoom === true || canControlRoom);
       setStatus("ready");
-      setMessage(session.nextAction || "Consent receipt saved.");
+      setMessage(
+        session.allRegisteredParticipantConsentGranted === true
+          ? "Everyone is ready to record."
+          : "Your choice is saved. Waiting for the other participant.",
+      );
     } catch (error) {
       setStatus("error");
       setMessage(
@@ -548,7 +567,6 @@ export function BrowserSourceRecorder({
       );
     }
   }, [
-    audibleConsentAttested,
     callRoomId,
     canControlRoom,
     policy,
@@ -1417,7 +1435,7 @@ export function BrowserSourceRecorder({
                 ? audioSettings.autoGainControl
                 : null,
           },
-          headphonesAttested: true,
+          headphonesAttested,
           localVault: "opfs",
           localRetentionRequired: true,
         },
@@ -1652,6 +1670,7 @@ export function BrowserSourceRecorder({
     clearGuardianMonitoring,
     consentId,
     episodeSlug,
+    headphonesAttested,
     microphoneId,
     microphoneLabel,
     participantId,
@@ -1760,30 +1779,22 @@ export function BrowserSourceRecorder({
               onChange={(event) => setHeadphonesAttested(event.target.checked)}
               className="mt-1 accent-violet-800"
             />{" "}
-            I am monitoring through headphones, so the retained mic source will
-            not capture speaker echo.
+            I’m using headphones (recommended to prevent echo).
           </label>
+          {!headphonesAttested ? (
+            <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
+              You can still record without headphones.
+            </p>
+          ) : null}
         </div>
 
         <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
           <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
-            2 · Consent
+            2 · Recording choice
           </strong>
           <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
-            {policy?.text || "Loading the current recording policy…"}
+            Agree to record {sourceType === "video" ? "camera and audio" : "audio"} on this device. Each participant confirms their own choice.
           </p>
-          <label className="mt-2 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
-            <input
-              type="checkbox"
-              checked={audibleConsentAttested}
-              onChange={(event) =>
-                setAudibleConsentAttested(event.target.checked)
-              }
-              className="mt-1 accent-violet-800"
-            />{" "}
-            Every audible participant was notified and agreed to the selected
-            recording.
-          </label>
           <label className="mt-2 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
             <input
               type="checkbox"
@@ -1793,27 +1804,33 @@ export function BrowserSourceRecorder({
               }
               className="mt-1 accent-violet-800"
             />{" "}
-            I separately agree to transcription and transcript-derived
-            notes/tasks.
+            Create a transcript and suggested notes/tasks
           </label>
+          <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
+            Continue only after everyone who may be heard or seen agrees.
+          </p>
           <button
             type="button"
             onClick={() => void grantConsent()}
             disabled={
-              !policy || !audibleConsentAttested || status === "recording"
+              !policy || status === "recording"
             }
             className="mt-3 min-h-10 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-[10px] font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"
           >
-            <ShieldCheck size={14} className="mr-1 inline" /> Save my consent
-            receipt
+            <ShieldCheck size={14} className="mr-1 inline" />
+            {myConsentCoversSource ? "Update choices" : "Agree and continue"}
           </button>
           <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
             {consentReady
-              ? "All currently signed-in participants are ready for this source."
+              ? "Everyone is ready to record."
               : consentId
-                ? "Your receipt is saved; another signed-in participant may still need to consent."
-                : "No current browser consent receipt."}
+                ? "Your choice is saved. Waiting for the other participant."
+                : "Not agreed yet."}
           </p>
+          <details className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
+            <summary className="cursor-pointer">Recording and privacy details</summary>
+            <p className="mt-2">{policy?.text || "Loading details…"}</p>
+          </details>
         </div>
       </div>
 

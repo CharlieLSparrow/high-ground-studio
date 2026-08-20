@@ -45,4 +45,20 @@ describe("CaptureAppHandoff", () => {
     await user.click(screen.getByRole("button", { name: /This browser/i }));
     expect(onContinueInBrowser).toHaveBeenCalledTimes(1);
   });
+
+  it("recovers a browser handoff when the invitation page remounts", () => {
+    window.history.replaceState({}, "", "/sessions/room-reload?mode=live&joined=1&entry=browser");
+    const onContinueInBrowser = jest.fn();
+
+    render(
+      <CaptureAppHandoff
+        roomId="room-reload"
+        joinedFromInvitation
+        onContinueInBrowser={onContinueInBrowser}
+      />,
+    );
+
+    expect(onContinueInBrowser).toHaveBeenCalledTimes(1);
+    expect(new URL(window.location.href).searchParams.has("entry")).toBe(false);
+  });
 });

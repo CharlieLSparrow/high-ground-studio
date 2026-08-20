@@ -163,17 +163,15 @@ try {
     await reopenButton.click();
     await recorder.getByText(/Session reopened/i).waitFor({ timeout: 20_000 });
   }
-  await recorder.getByLabel(/I am monitoring through headphones/).check();
+  await recorder.getByLabel(/using headphones/).check();
+  const transcription = recorder.getByLabel(/Create a transcript and suggested notes\/tasks/);
+  if (!(await transcription.isChecked())) await transcription.check();
   await recorder
-    .getByLabel(/Every audible participant was notified and agreed/)
-    .check();
-  await recorder.getByLabel(/I separately agree to transcription/).check();
-  await recorder
-    .getByRole("button", { name: "Save my consent receipt" })
+    .getByRole("button", { name: /Agree and continue|Update choices/ })
     .click();
   await recorder
     .getByText(
-      /All currently signed-in participants are ready|receipt is saved/i,
+      /Everyone is ready to record|Your choice is saved/i,
     )
     .waitFor({ timeout: 20_000 });
 
