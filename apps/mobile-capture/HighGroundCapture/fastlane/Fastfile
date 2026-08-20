@@ -111,6 +111,8 @@ def verify_ui_test_evidence_path(path, expected_source_revision: nil, require_fu
   UI.user_error!("UI evidence contains duplicate or omitted selectors.") unless
     selected_tests.length == manifest["selectedTestCount"] && selected_tests.uniq.length == selected_tests.length
   configured_shard_count = Integer(manifest.fetch("configuredShardCount"))
+  retry_limit = Integer(manifest.fetch("testRetryLimit"))
+  UI.user_error!("Capture UI retry limit must be zero or one.") unless (0..1).cover?(retry_limit)
   expected_plans = if suite == "full"
     (1..configured_shard_count).map do |shard_number|
       capture_ui_test_plan(suite: "full", shard: shard_number, shards: configured_shard_count)
@@ -124,6 +126,7 @@ def verify_ui_test_evidence_path(path, expected_source_revision: nil, require_fu
     manifest["discoveredTestCount"] == expected_plans.fetch(0).fetch("discoveredTestCount") &&
       selected_tests.sort == expected_tests.sort
   shards.each do |shard|
+    UI.user_error!("Capture UI shard retry policy is inconsistent.") unless shard.fetch("testRetryLimit") == retry_limit
     result_bundle_path = File.expand_path(shard.fetch("resultBundlePath"), File.dirname(expanded_path))
     UI.user_error!("UI shard #{shard.fetch("shard")} result bundle is unavailable.") unless
       File.directory?(result_bundle_path) && File.file?(File.join(result_bundle_path, "Info.plist"))
@@ -375,6 +378,8 @@ platform :ios do
 
     suite = (options[:suite] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_SUITE", "critical")).to_s
     shard_count = suite == "full" ? Integer(options[:shards] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_SHARDS", DEFAULT_FULL_UI_TEST_SHARDS)) : 1
+    retry_limit = Integer(options[:test_retry_limit] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_RETRY_LIMIT", "1"))
+    UI.user_error!("Capture UI test retry limit must be zero or one.") unless (0..1).cover?(retry_limit)
     requested_shard = options[:shard] || ENV["QUIPSLY_CAPTURE_UI_TEST_SHARD"]
     shard_numbers = requested_shard.to_s.empty? ? (1..shard_count).to_a : [Integer(requested_shard)]
     evidence_shards = []
@@ -400,6 +405,7 @@ platform :ios do
         derived_data_path: derived_data_path,
         buildlog_path: shard_root,
         fail_build: true,
+        number_of_retries: retry_limit,
       )
       result_bundles = Dir[File.join(shard_root, "*.xcresult")].select { |path| File.directory?(path) }
       UI.user_error!(
@@ -412,6 +418,7 @@ platform :ios do
         selectors: plan.fetch("selectors"),
         resultBundlePath: result_bundle_path,
         resultSummary: result_summary.transform_keys(&:to_s),
+        testRetryLimit: retry_limit,
       }
     end
 
@@ -427,6 +434,7 @@ platform :ios do
         suite: suite,
         shardCount: shard_numbers.length,
         configuredShardCount: shard_count,
+        testRetryLimit: retry_limit,
         discoveredTestCount: plans.fetch(0).fetch("discoveredTestCount"),
         selectedTestCount: plans.sum { |plan| plan.fetch("selectedTestCount") },
         shards: evidence_shards,

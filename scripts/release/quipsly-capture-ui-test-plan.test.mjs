@@ -41,7 +41,7 @@ test("full shards cover each current deterministic UI test exactly once", async 
   const shards = buildFullShards(tests, 4);
   const flattened = shards.flatMap((shard) => shard.tests);
 
-  assert.equal(tests.length, 66);
+  assert.equal(tests.length, 67);
   assert.equal(flattened.length, tests.length);
   assert.deepEqual([...new Set(flattened)].sort(), tests);
   assert.ok(Math.max(...shards.map((shard) => shard.estimatedWeight)) - Math.min(...shards.map((shard) => shard.estimatedWeight)) <= 1);
