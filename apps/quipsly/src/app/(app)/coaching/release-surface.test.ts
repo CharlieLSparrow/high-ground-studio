@@ -69,7 +69,11 @@ describe("coaching release surfaces", () => {
     const compact = source.replace(/\s+/g, " ");
 
     expect(source).toContain("const isCoachingClient = Boolean(");
+    expect(source).toContain(
+      "const isClientOnly = isCoachingClient && !canManageCoaching",
+    );
     expect(source).toContain("const journeyAction = (() => {");
+    expect(source).toContain("{!isClientOnly ? (");
     expect(compact).toContain("Schedule your first coaching session");
     expect(compact).toContain("Schedule and invite");
     expect(compact).toContain("Open my session");

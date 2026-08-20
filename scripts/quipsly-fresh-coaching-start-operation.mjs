@@ -166,6 +166,15 @@ try {
   await coachPage
     .getByRole("heading", { name: "Coach profile", exact: true })
     .waitFor({ timeout: 30_000 });
+  await coachPage
+    .getByRole("heading", {
+      name: "Set up your coaching space",
+      exact: true,
+    })
+    .waitFor({ timeout: 30_000 });
+  await coachPage
+    .getByRole("link", { name: "Set up coaching", exact: true })
+    .waitFor({ timeout: 30_000 });
   await assertNoHorizontalOverflow(
     coachPage.locator("main").last(),
     "fresh coach setup at phone width",
@@ -195,6 +204,15 @@ try {
     null,
     "Completed coach profile did not collapse out of the scheduling path.",
   );
+  await coachPage
+    .getByRole("heading", {
+      name: "Schedule your first coaching session",
+      exact: true,
+    })
+    .waitFor({ timeout: 30_000 });
+  await coachPage
+    .getByRole("link", { name: "Schedule a session", exact: true })
+    .waitFor({ timeout: 30_000 });
 
   const appointment = coachPage.locator("#create-appointment");
   await appointment.waitFor({ state: "visible", timeout: 30_000 });
@@ -280,6 +298,41 @@ try {
     clientPage.locator("main").last(),
     "fresh client Session at phone width",
   );
+  await clientPage.goto(`${baseURL}/coaching`, {
+    waitUntil: "domcontentloaded",
+  });
+  const clientNextSession = clientPage.getByRole("link", {
+    name: "Open my session",
+    exact: true,
+  });
+  await clientNextSession.waitFor({ timeout: 30_000 });
+  const clientNextSessionURL = new URL(
+    (await clientNextSession.getAttribute("href")) || "",
+    baseURL,
+  );
+  assert.equal(
+    clientNextSessionURL.pathname,
+    clientEntryURL.pathname,
+    "Client-only coaching home did not return to the exact private Session.",
+  );
+  assert.equal(
+    await clientPage.getByRole("heading", { name: "Coach profile" }).count(),
+    0,
+    "Client-only coaching home exposed coach setup.",
+  );
+  assert.equal(
+    await clientPage
+      .getByRole("heading", { name: "Create appointment" })
+      .count(),
+    0,
+    "Client-only coaching home exposed coach scheduling controls.",
+  );
+  await assertNoHorizontalOverflow(
+    clientPage.locator("main").last(),
+    "fresh client coaching home at phone width",
+  );
+  evidence.clientOnlyHomeOpenedExactSession = true;
+  evidence.clientOnlyHomeExcludedCoachControls = true;
 
   const room = await prisma.callRoom.findUniqueOrThrow({
     where: { id: evidence.roomId },

@@ -1874,11 +1874,12 @@ export default function CoachingPage() {
     runway?.user?.id &&
     bookings.some((booking) => booking.clientUserId === runway.user?.id),
   );
+  const isClientOnly = isCoachingClient && !canManageCoaching;
   const nextBooking = bookings.find(
     (booking) => !["CANCELED", "COMPLETED", "NO_SHOW"].includes(booking.status),
   );
   const journeyAction = (() => {
-    if (!canManageCoaching && !isCoachingClient) {
+    if (!canManageCoaching && !isClientOnly) {
       return {
         eyebrow: "First step",
         title: "Set up your coaching space",
@@ -1888,7 +1889,7 @@ export default function CoachingPage() {
         href: "#coach-setup",
       };
     }
-    if (isCoachingClient && nextBooking?.liveSessionPath) {
+    if (isClientOnly && nextBooking?.liveSessionPath) {
       return {
         eyebrow: "Next session",
         title: nextBooking.title,
@@ -2018,7 +2019,7 @@ export default function CoachingPage() {
             </div>
           ) : null}
           <div className="mt-4 grid gap-3 md:grid-cols-4">
-            {isCoachingClient ? (
+            {isClientOnly ? (
               <>
                 <FriendlyStepCard
                   step="1"
@@ -3267,510 +3268,522 @@ export default function CoachingPage() {
         </section>
 
         <aside className="order-first space-y-6 xl:order-last">
-          <details
-            id="coach-setup"
-            open={!canManageCoaching}
-            className="scroll-mt-6 rounded-[1.7rem] border border-emerald-100 bg-emerald-50/80 p-6 shadow-sm"
-          >
-            <summary className="mb-3 flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="flex items-center gap-2 text-xl font-black text-[#214531]">
-                  <Users className="text-emerald-700" /> Coach profile
-                </h2>
-                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-emerald-700">
-                  {canManageCoaching
-                    ? "Ready · open to edit defaults"
-                    : "Finish your coach workspace once"}
-                </p>
-              </div>
-              <StatusPill
-                label={canManageCoaching ? "coach ready" : "needs setup"}
-                tone={canManageCoaching ? "good" : "warn"}
-              />
-            </summary>
-            <p className="mb-4 text-sm leading-6 text-[#315641]">
-              Confirm your name, timezone, and usual Session length. You can
-              change offer and pricing defaults later.
-            </p>
-            <form className="space-y-3" onSubmit={setupCoachProfile}>
-              <p className="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 text-xs font-bold text-[#315641]">
-                Coach account:{" "}
-                {setupForm.coachEmail || "your signed-in Quipsly email"}
-              </p>
-              <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
-                Coach name
-                <input
-                  type="text"
-                  value={setupForm.coachName}
-                  onChange={(event) =>
-                    setSetupForm((current) => ({
-                      ...current,
-                      coachName: event.target.value,
-                    }))
-                  }
-                  placeholder="Your name"
-                  className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
-                  required
-                />
-              </label>
-              <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
-                Timezone
-                <input
-                  type="text"
-                  aria-label="Timezone"
-                  value={setupForm.timezone}
-                  onChange={(event) =>
-                    setSetupForm((current) => ({
-                      ...current,
-                      timezone: event.target.value,
-                    }))
-                  }
-                  placeholder="America/Denver"
-                  className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
-                  required
-                />
-                <span className="mt-1 block text-[11px] normal-case tracking-normal text-[#315641]">
-                  Detected from this device. Change it if your coaching calendar
-                  uses another timezone.
-                </span>
-              </label>
-              <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
-                Usual Session length (minutes)
-                <input
-                  type="number"
-                  min="15"
-                  step="15"
-                  value={setupForm.defaultDurationMinutes}
-                  onChange={(event) =>
-                    setSetupForm((current) => ({
-                      ...current,
-                      defaultDurationMinutes: event.target.value,
-                    }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
-                />
-              </label>
-              <details className="rounded-xl border border-emerald-200 bg-white/80 p-3">
-                <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#315641]">
-                  Offer and pricing defaults
+          {!isClientOnly ? (
+            <>
+              <details
+                id="coach-setup"
+                open={!canManageCoaching}
+                className="scroll-mt-6 rounded-[1.7rem] border border-emerald-100 bg-emerald-50/80 p-6 shadow-sm"
+              >
+                <summary className="mb-3 flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="flex items-center gap-2 text-xl font-black text-[#214531]">
+                      <Users className="text-emerald-700" /> Coach profile
+                    </h2>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-wide text-emerald-700">
+                      {canManageCoaching
+                        ? "Ready · open to edit defaults"
+                        : "Finish your coach workspace once"}
+                    </p>
+                  </div>
+                  <StatusPill
+                    label={canManageCoaching ? "coach ready" : "needs setup"}
+                    tone={canManageCoaching ? "good" : "warn"}
+                  />
                 </summary>
-                <div className="mt-4 space-y-3">
+                <p className="mb-4 text-sm leading-6 text-[#315641]">
+                  Confirm your name, timezone, and usual Session length. You can
+                  change offer and pricing defaults later.
+                </p>
+                <form className="space-y-3" onSubmit={setupCoachProfile}>
+                  <p className="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 text-xs font-bold text-[#315641]">
+                    Coach account:{" "}
+                    {setupForm.coachEmail || "your signed-in Quipsly email"}
+                  </p>
                   <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
-                    Default offer title
+                    Coach name
                     <input
                       type="text"
-                      value={setupForm.offeringTitle}
+                      value={setupForm.coachName}
                       onChange={(event) =>
                         setSetupForm((current) => ({
                           ...current,
-                          offeringTitle: event.target.value,
+                          coachName: event.target.value,
                         }))
                       }
+                      placeholder="Your name"
                       className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
                       required
                     />
                   </label>
                   <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
-                    Offer description
-                    <textarea
-                      value={setupForm.offeringDescription}
-                      onChange={(event) =>
-                        setSetupForm((current) => ({
-                          ...current,
-                          offeringDescription: event.target.value,
-                        }))
-                      }
-                      rows={3}
-                      className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
-                    />
-                  </label>
-                  <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
-                    Default price
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={setupForm.defaultAmountDollars}
-                      onChange={(event) =>
-                        setSetupForm((current) => ({
-                          ...current,
-                          defaultAmountDollars: event.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
-                    />
-                    <span className="mt-1 block text-[11px] normal-case tracking-normal text-[#315641]">
-                      Optional. Leave blank to start without a payment link.
-                    </span>
-                  </label>
-                </div>
-              </details>
-              <button
-                type="submit"
-                disabled={isSettingUpCoach}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#214531] px-4 py-3 text-sm font-black text-white transition hover:bg-[#315641] disabled:cursor-wait disabled:opacity-50"
-              >
-                <ShieldCheck size={16} />{" "}
-                {isSettingUpCoach ? "Setting up..." : "Set up coach profile"}
-              </button>
-              {setupStatus && (
-                <p className="rounded-xl bg-white/80 p-3 text-xs font-bold text-[#315641]">
-                  {setupStatus}
-                </p>
-              )}
-            </form>
-          </details>
-
-          <section
-            id="create-appointment"
-            aria-labelledby="create-appointment-heading"
-            className="rounded-[1.7rem] border border-[#e8dcc4] bg-white/80 p-6 shadow-sm"
-          >
-            <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2
-                  id="create-appointment-heading"
-                  className="flex items-center gap-2 text-xl font-black text-[#3d3122]"
-                >
-                  <CalendarIcon className="text-[#b98036]" /> Create appointment
-                </h2>
-                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-[#b98036]">
-                  Schedule, invite, capture, and follow through
-                </p>
-              </div>
-            </div>
-            <p className="mb-4 text-sm text-[#7b5c3b]">
-              Choose the client, time, and Session name. Quipsly will create the
-              private coaching home and give you the exact client entry to send.
-            </p>
-            <form className="space-y-3" onSubmit={createLocalSession}>
-              <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                Client email
-                <input
-                  type="email"
-                  value={createForm.clientEmail}
-                  onChange={(event) =>
-                    setCreateForm((current) => ({
-                      ...current,
-                      clientEmail: event.target.value,
-                    }))
-                  }
-                  placeholder="client@example.com"
-                  className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                  required
-                />
-              </label>
-              <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                Client name
-                <input
-                  type="text"
-                  value={createForm.clientName}
-                  onChange={(event) =>
-                    setCreateForm((current) => ({
-                      ...current,
-                      clientName: event.target.value,
-                    }))
-                  }
-                  placeholder="Optional"
-                  className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                />
-              </label>
-              <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                Session title
-                <input
-                  type="text"
-                  value={createForm.title}
-                  onChange={(event) =>
-                    setCreateForm((current) => ({
-                      ...current,
-                      title: event.target.value,
-                    }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                  required
-                />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
-                <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                  Start
-                  <input
-                    type="datetime-local"
-                    value={createForm.scheduledStart}
-                    onChange={(event) =>
-                      setCreateForm((current) => ({
-                        ...current,
-                        scheduledStart: event.target.value,
-                      }))
-                    }
-                    className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                    required
-                  />
-                </label>
-                <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                  Minutes
-                  <input
-                    type="number"
-                    min="15"
-                    step="15"
-                    value={createForm.durationMinutes}
-                    onChange={(event) =>
-                      setCreateForm((current) => ({
-                        ...current,
-                        durationMinutes: event.target.value,
-                      }))
-                    }
-                    className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                    required
-                  />
-                </label>
-              </div>
-              <p className="rounded-xl bg-[#f8f3e6] px-3 py-2 text-xs font-bold text-[#7b5c3b]">
-                The time above uses{" "}
-                {createForm.timezone || "your detected timezone"}. Both people
-                will see the timezone with the appointment.
-              </p>
-              <details className="rounded-xl border border-[#d6c5a5] bg-white p-3">
-                <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                  Advanced appointment options
-                </summary>
-                <div className="mt-4 space-y-3">
-                  <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                    Appointment type
-                    <select
-                      value={createForm.runwayAction}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          runwayAction: event.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                    >
-                      <option value="create-booking-room">
-                        Schedule and create the private Session
-                      </option>
-                      <option value="create-booking-hold">
-                        Hold the time without inviting yet
-                      </option>
-                    </select>
-                  </label>
-                  <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
                     Timezone
                     <input
                       type="text"
-                      value={createForm.timezone}
+                      aria-label="Timezone"
+                      value={setupForm.timezone}
                       onChange={(event) =>
-                        setCreateForm((current) => ({
+                        setSetupForm((current) => ({
                           ...current,
                           timezone: event.target.value,
                         }))
                       }
                       placeholder="America/Denver"
+                      className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
+                      required
+                    />
+                    <span className="mt-1 block text-[11px] normal-case tracking-normal text-[#315641]">
+                      Detected from this device. Change it if your coaching
+                      calendar uses another timezone.
+                    </span>
+                  </label>
+                  <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
+                    Usual Session length (minutes)
+                    <input
+                      type="number"
+                      min="15"
+                      step="15"
+                      value={setupForm.defaultDurationMinutes}
+                      onChange={(event) =>
+                        setSetupForm((current) => ({
+                          ...current,
+                          defaultDurationMinutes: event.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
+                    />
+                  </label>
+                  <details className="rounded-xl border border-emerald-200 bg-white/80 p-3">
+                    <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#315641]">
+                      Offer and pricing defaults
+                    </summary>
+                    <div className="mt-4 space-y-3">
+                      <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
+                        Default offer title
+                        <input
+                          type="text"
+                          value={setupForm.offeringTitle}
+                          onChange={(event) =>
+                            setSetupForm((current) => ({
+                              ...current,
+                              offeringTitle: event.target.value,
+                            }))
+                          }
+                          className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
+                          required
+                        />
+                      </label>
+                      <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
+                        Offer description
+                        <textarea
+                          value={setupForm.offeringDescription}
+                          onChange={(event) =>
+                            setSetupForm((current) => ({
+                              ...current,
+                              offeringDescription: event.target.value,
+                            }))
+                          }
+                          rows={3}
+                          className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
+                        />
+                      </label>
+                      <label className="block text-xs font-black uppercase tracking-wide text-[#315641]">
+                        Default price
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={setupForm.defaultAmountDollars}
+                          onChange={(event) =>
+                            setSetupForm((current) => ({
+                              ...current,
+                              defaultAmountDollars: event.target.value,
+                            }))
+                          }
+                          className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
+                        />
+                        <span className="mt-1 block text-[11px] normal-case tracking-normal text-[#315641]">
+                          Optional. Leave blank to start without a payment link.
+                        </span>
+                      </label>
+                    </div>
+                  </details>
+                  <button
+                    type="submit"
+                    disabled={isSettingUpCoach}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#214531] px-4 py-3 text-sm font-black text-white transition hover:bg-[#315641] disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <ShieldCheck size={16} />{" "}
+                    {isSettingUpCoach
+                      ? "Setting up..."
+                      : "Set up coach profile"}
+                  </button>
+                  {setupStatus && (
+                    <p className="rounded-xl bg-white/80 p-3 text-xs font-bold text-[#315641]">
+                      {setupStatus}
+                    </p>
+                  )}
+                </form>
+              </details>
+
+              <section
+                id="create-appointment"
+                aria-labelledby="create-appointment-heading"
+                className="rounded-[1.7rem] border border-[#e8dcc4] bg-white/80 p-6 shadow-sm"
+              >
+                <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2
+                      id="create-appointment-heading"
+                      className="flex items-center gap-2 text-xl font-black text-[#3d3122]"
+                    >
+                      <CalendarIcon className="text-[#b98036]" /> Create
+                      appointment
+                    </h2>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-wide text-[#b98036]">
+                      Schedule, invite, capture, and follow through
+                    </p>
+                  </div>
+                </div>
+                <p className="mb-4 text-sm text-[#7b5c3b]">
+                  Choose the client, time, and Session name. Quipsly will create
+                  the private coaching home and give you the exact client entry
+                  to send.
+                </p>
+                <form className="space-y-3" onSubmit={createLocalSession}>
+                  <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                    Client email
+                    <input
+                      type="email"
+                      value={createForm.clientEmail}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          clientEmail: event.target.value,
+                        }))
+                      }
+                      placeholder="client@example.com"
                       className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                       required
                     />
                   </label>
                   <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                    Purpose
-                    <select
-                      value={createForm.purpose}
+                    Client name
+                    <input
+                      type="text"
+                      value={createForm.clientName}
                       onChange={(event) =>
                         setCreateForm((current) => ({
                           ...current,
-                          purpose: event.target.value,
+                          clientName: event.target.value,
+                        }))
+                      }
+                      placeholder="Optional"
+                      className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                    />
+                  </label>
+                  <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                    Session title
+                    <input
+                      type="text"
+                      value={createForm.title}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          title: event.target.value,
                         }))
                       }
                       className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                    >
-                      <option value="COACHING">Coaching</option>
-                      <option value="PODCAST">Podcast</option>
-                      <option value="RESEARCH_INTERVIEW">
-                        Research interview
-                      </option>
-                      <option value="INTERNAL_MEETING">Internal meeting</option>
-                    </select>
+                      required
+                    />
                   </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
                     <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                      Payment
-                      <select
-                        value={createForm.paymentPolicy}
+                      Start
+                      <input
+                        type="datetime-local"
+                        value={createForm.scheduledStart}
                         onChange={(event) =>
                           setCreateForm((current) => ({
                             ...current,
-                            paymentPolicy: event.target.value,
+                            scheduledStart: event.target.value,
                           }))
                         }
                         className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                      >
-                        <option value="MANUAL">Decide payment later</option>
-                        <option value="FREE">Free session</option>
-                        <option value="DONATION_SUPPORTED">
-                          Contribution supported
-                        </option>
-                        <option value="PAID_ONE_TO_ONE">
-                          Paid 1:1 coaching
-                        </option>
-                      </select>
+                        required
+                      />
                     </label>
                     <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                      Client price
+                      Minutes
                       <input
                         type="number"
-                        min="0"
-                        step="1"
-                        value={createForm.amountDollars}
+                        min="15"
+                        step="15"
+                        value={createForm.durationMinutes}
                         onChange={(event) =>
                           setCreateForm((current) => ({
                             ...current,
-                            amountDollars: event.target.value,
+                            durationMinutes: event.target.value,
                           }))
                         }
-                        placeholder="Example: 150"
                         className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                        required
                       />
                     </label>
                   </div>
-                  <p className="text-[11px] font-semibold leading-5 text-[#7b5c3b]">
-                    Quipsly never charges, emails, or writes an external
-                    calendar event just because you create the appointment.
-                    Those remain separate, explicit actions.
+                  <p className="rounded-xl bg-[#f8f3e6] px-3 py-2 text-xs font-bold text-[#7b5c3b]">
+                    The time above uses{" "}
+                    {createForm.timezone || "your detected timezone"}. Both
+                    people will see the timezone with the appointment.
                   </p>
-                </div>
-              </details>
-              {createForm.paymentPolicy === "PAID_ONE_TO_ONE" &&
-                !dollarsToCents(createForm.amountDollars) && (
-                  <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-700">
-                    Paid one-to-one sessions need an amount here or a selected
-                    offering with Stripe price evidence before checkout can be
-                    created.
-                  </p>
-                )}
-              <button
-                type="submit"
-                disabled={isCreating || !canManageCoaching}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#3d3122] px-4 py-3 text-sm font-black text-white transition hover:bg-[#5a472f] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <CalendarIcon size={16} />{" "}
-                {isCreating
-                  ? "Creating..."
-                  : createForm.runwayAction === "create-booking-hold"
-                    ? "Hold slot"
-                    : "Create appointment"}
-              </button>
-              {!canManageCoaching && (
-                <p className="text-xs font-bold text-amber-700">
-                  Set up your coach profile first, then this appointment form
-                  unlocks.
-                </p>
-              )}
-              {createStatus && (
-                <p className="rounded-xl bg-[#f8f3e6] p-3 text-xs font-bold text-[#7b5c3b]">
-                  {createStatus}
-                </p>
-              )}
-              {createdHandoff ? (
-                <section
-                  className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4"
-                  aria-labelledby="created-coaching-handoff-heading"
-                >
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
-                    Appointment ready
-                  </p>
-                  <h3
-                    id="created-coaching-handoff-heading"
-                    className="mt-1 text-lg font-black text-emerald-950"
+                  <details className="rounded-xl border border-[#d6c5a5] bg-white p-3">
+                    <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                      Advanced appointment options
+                    </summary>
+                    <div className="mt-4 space-y-3">
+                      <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                        Appointment type
+                        <select
+                          value={createForm.runwayAction}
+                          onChange={(event) =>
+                            setCreateForm((current) => ({
+                              ...current,
+                              runwayAction: event.target.value,
+                            }))
+                          }
+                          className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                        >
+                          <option value="create-booking-room">
+                            Schedule and create the private Session
+                          </option>
+                          <option value="create-booking-hold">
+                            Hold the time without inviting yet
+                          </option>
+                        </select>
+                      </label>
+                      <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                        Timezone
+                        <input
+                          type="text"
+                          value={createForm.timezone}
+                          onChange={(event) =>
+                            setCreateForm((current) => ({
+                              ...current,
+                              timezone: event.target.value,
+                            }))
+                          }
+                          placeholder="America/Denver"
+                          className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                          required
+                        />
+                      </label>
+                      <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                        Purpose
+                        <select
+                          value={createForm.purpose}
+                          onChange={(event) =>
+                            setCreateForm((current) => ({
+                              ...current,
+                              purpose: event.target.value,
+                            }))
+                          }
+                          className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                        >
+                          <option value="COACHING">Coaching</option>
+                          <option value="PODCAST">Podcast</option>
+                          <option value="RESEARCH_INTERVIEW">
+                            Research interview
+                          </option>
+                          <option value="INTERNAL_MEETING">
+                            Internal meeting
+                          </option>
+                        </select>
+                      </label>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                          Payment
+                          <select
+                            value={createForm.paymentPolicy}
+                            onChange={(event) =>
+                              setCreateForm((current) => ({
+                                ...current,
+                                paymentPolicy: event.target.value,
+                              }))
+                            }
+                            className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                          >
+                            <option value="MANUAL">Decide payment later</option>
+                            <option value="FREE">Free session</option>
+                            <option value="DONATION_SUPPORTED">
+                              Contribution supported
+                            </option>
+                            <option value="PAID_ONE_TO_ONE">
+                              Paid 1:1 coaching
+                            </option>
+                          </select>
+                        </label>
+                        <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                          Client price
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={createForm.amountDollars}
+                            onChange={(event) =>
+                              setCreateForm((current) => ({
+                                ...current,
+                                amountDollars: event.target.value,
+                              }))
+                            }
+                            placeholder="Example: 150"
+                            className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                          />
+                        </label>
+                      </div>
+                      <p className="text-[11px] font-semibold leading-5 text-[#7b5c3b]">
+                        Quipsly never charges, emails, or writes an external
+                        calendar event just because you create the appointment.
+                        Those remain separate, explicit actions.
+                      </p>
+                    </div>
+                  </details>
+                  {createForm.paymentPolicy === "PAID_ONE_TO_ONE" &&
+                    !dollarsToCents(createForm.amountDollars) && (
+                      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-700">
+                        Paid one-to-one sessions need an amount here or a
+                        selected offering with Stripe price evidence before
+                        checkout can be created.
+                      </p>
+                    )}
+                  <button
+                    type="submit"
+                    disabled={isCreating || !canManageCoaching}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#3d3122] px-4 py-3 text-sm font-black text-white transition hover:bg-[#5a472f] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Invite{" "}
-                    {createdHandoff.clientName || createdHandoff.clientEmail}
-                  </h3>
-                  <p className="mt-2 text-xs font-bold leading-5 text-emerald-950">
-                    One private coaching relationship and one exact Session now
-                    exist. Send the client entry below; Quipsly will require{" "}
-                    {createdHandoff.clientEmail} to sign in with Google or a
-                    verified Quipsly email before anything opens.
-                  </p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void sendClientSessionInvitation({
-                          bookingId: createdHandoff.bookingId,
-                          callRoomId: createdHandoff.callRoomId,
-                          clientEmail: createdHandoff.clientEmail,
-                          clientName: createdHandoff.clientName,
-                        })
-                      }
-                      disabled={
-                        invitationBusyByBooking[createdHandoff.bookingId]
-                      }
-                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-                    >
-                      {invitationBusyByBooking[createdHandoff.bookingId] ? (
-                        <RefreshCw size={14} className="animate-spin" />
-                      ) : (
-                        <Mail size={14} />
-                      )}
-                      Send invitation email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void copyClientSessionLink(
-                          createdHandoff.bookingId,
-                          createdHandoff.clientEntryPath,
-                        )
-                      }
-                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white"
-                    >
-                      <Copy size={14} /> Copy client entry
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void shareClientSessionLink({
-                          bookingId: createdHandoff.bookingId,
-                          title: createdHandoff.title,
-                          clientEmail: createdHandoff.clientEmail,
-                          clientEntryPath: createdHandoff.clientEntryPath,
-                        })
-                      }
-                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900"
-                    >
-                      <Share2 size={14} /> Share from this device
-                    </button>
-                    <a
-                      href={createdHandoff.liveSessionPath}
-                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"
-                    >
-                      <Video size={14} /> Open live room
-                    </a>
-                    {createdHandoff.engagementPath ? (
-                      <a
-                        href={createdHandoff.engagementPath}
-                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"
-                      >
-                        <Users size={14} /> Open coaching home
-                      </a>
-                    ) : null}
-                  </div>
-                  {linkCopyStatusByBooking[createdHandoff.bookingId] ? (
-                    <p
-                      role="status"
-                      className="mt-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-950"
-                    >
-                      {linkCopyStatusByBooking[createdHandoff.bookingId]}
+                    <CalendarIcon size={16} />{" "}
+                    {isCreating
+                      ? "Creating..."
+                      : createForm.runwayAction === "create-booking-hold"
+                        ? "Hold slot"
+                        : "Create appointment"}
+                  </button>
+                  {!canManageCoaching && (
+                    <p className="text-xs font-bold text-amber-700">
+                      Set up your coach profile first, then this appointment
+                      form unlocks.
                     </p>
+                  )}
+                  {createStatus && (
+                    <p className="rounded-xl bg-[#f8f3e6] p-3 text-xs font-bold text-[#7b5c3b]">
+                      {createStatus}
+                    </p>
+                  )}
+                  {createdHandoff ? (
+                    <section
+                      className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4"
+                      aria-labelledby="created-coaching-handoff-heading"
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
+                        Appointment ready
+                      </p>
+                      <h3
+                        id="created-coaching-handoff-heading"
+                        className="mt-1 text-lg font-black text-emerald-950"
+                      >
+                        Invite{" "}
+                        {createdHandoff.clientName ||
+                          createdHandoff.clientEmail}
+                      </h3>
+                      <p className="mt-2 text-xs font-bold leading-5 text-emerald-950">
+                        One private coaching relationship and one exact Session
+                        now exist. Send the client entry below; Quipsly will
+                        require {createdHandoff.clientEmail} to sign in with
+                        Google or a verified Quipsly email before anything
+                        opens.
+                      </p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void sendClientSessionInvitation({
+                              bookingId: createdHandoff.bookingId,
+                              callRoomId: createdHandoff.callRoomId,
+                              clientEmail: createdHandoff.clientEmail,
+                              clientName: createdHandoff.clientName,
+                            })
+                          }
+                          disabled={
+                            invitationBusyByBooking[createdHandoff.bookingId]
+                          }
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
+                        >
+                          {invitationBusyByBooking[createdHandoff.bookingId] ? (
+                            <RefreshCw size={14} className="animate-spin" />
+                          ) : (
+                            <Mail size={14} />
+                          )}
+                          Send invitation email
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void copyClientSessionLink(
+                              createdHandoff.bookingId,
+                              createdHandoff.clientEntryPath,
+                            )
+                          }
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white"
+                        >
+                          <Copy size={14} /> Copy client entry
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void shareClientSessionLink({
+                              bookingId: createdHandoff.bookingId,
+                              title: createdHandoff.title,
+                              clientEmail: createdHandoff.clientEmail,
+                              clientEntryPath: createdHandoff.clientEntryPath,
+                            })
+                          }
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900"
+                        >
+                          <Share2 size={14} /> Share from this device
+                        </button>
+                        <a
+                          href={createdHandoff.liveSessionPath}
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"
+                        >
+                          <Video size={14} /> Open live room
+                        </a>
+                        {createdHandoff.engagementPath ? (
+                          <a
+                            href={createdHandoff.engagementPath}
+                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"
+                          >
+                            <Users size={14} /> Open coaching home
+                          </a>
+                        ) : null}
+                      </div>
+                      {linkCopyStatusByBooking[createdHandoff.bookingId] ? (
+                        <p
+                          role="status"
+                          className="mt-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-950"
+                        >
+                          {linkCopyStatusByBooking[createdHandoff.bookingId]}
+                        </p>
+                      ) : null}
+                      <p className="mt-3 text-[11px] font-semibold leading-5 text-emerald-900">
+                        Only the invited, verified email can enter this private
+                        Session. The client will not see your private coach
+                        notes or the rest of your Nest.
+                      </p>
+                    </section>
                   ) : null}
-                  <p className="mt-3 text-[11px] font-semibold leading-5 text-emerald-900">
-                    Only the invited, verified email can enter this private
-                    Session. The client will not see your private coach notes or
-                    the rest of your Nest.
-                  </p>
-                </section>
-              ) : null}
-            </form>
-          </section>
+                </form>
+              </section>
+            </>
+          ) : null}
 
           {isStaff ? (
             <div className="rounded-[1.7rem] border border-[#e8dcc4] bg-[#3d3122] p-6 text-white shadow-sm">
