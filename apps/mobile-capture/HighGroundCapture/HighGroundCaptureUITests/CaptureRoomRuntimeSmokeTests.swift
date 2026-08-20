@@ -536,7 +536,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(tabBar.waitForExistence(timeout: 20), "Signed-in Capture should expose its root tab bar.")
         let button = tabBar.buttons[title].firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 8), "Capture should expose the \(title) root tab.")
-        button.tap()
         let destination: XCUIElement
         switch title {
         case "Today":
@@ -552,6 +551,23 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         default:
             XCTFail("Capture runtime test has no destination proof for the \(title) root tab.")
             return
+        }
+        XCTAssertTrue(
+            waitUntilHittable(button, timeout: 8),
+            "The visible \(title) root tab should become operable before navigation."
+        )
+        button.tap()
+        if !destination.waitForExistence(timeout: 2) {
+            // SwiftUI can briefly rebuild the TabView after a sheet closes and
+            // leave XCTest holding an element whose synthesized hit point is
+            // {-1,-1}. Reacquire the same visible control and operate its
+            // center; do not bypass navigation or mutate selected-tab state.
+            let currentButton = app.tabBars.firstMatch.buttons[title].firstMatch
+            XCTAssertTrue(
+                waitUntilHittable(currentButton, timeout: 8),
+                "The \(title) root tab should remain visibly retryable after a transient layout pass."
+            )
+            currentButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
         XCTAssertTrue(
             destination.waitForExistence(timeout: 8),
