@@ -1689,21 +1689,27 @@ export function BrowserSourceRecorder({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-800">
-            <HardDrive size={14} /> Retained local source
+            <HardDrive size={14} /> {sessionKind === "coaching" ? "High-quality local recording" : "Retained local source"}
           </p>
           <h3
             id={`browser-source-${callRoomId}`}
             className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
           >
-            Record the selected studio source
+            {sessionKind === "coaching"
+              ? "Record this coaching Session"
+              : "Record the selected studio source"}
           </h3>
           <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
-            This is independent from the live call. Chunks go to a private
-            on-device file, survive refreshes, receive START/STOP and consent
-            receipts, then use the same verified upload path as iPhone Capture.
-            Every source in this Session shares one take identity while
-            preserving its own clock and immutable bytes.
+            {sessionKind === "coaching"
+              ? "This recording is separate from the call, so joining never records anyone by surprise. Confirm the source and consent below, then start the high-quality copy saved on this device."
+              : "This is independent from the live call. Chunks go to a private on-device file, survive refreshes, receive START/STOP and consent receipts, then use the same verified upload path as iPhone Capture. Every source in this Session shares one take identity while preserving its own clock and immutable bytes."}
           </p>
+          <details className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]">
+            <summary className="cursor-pointer">How source protection works</summary>
+            <p className="mt-2">
+              Quipsly keeps the call and each participant-owned recording as separate evidence, then aligns verified sources with the shared Session clock without rewriting the originals.
+            </p>
+          </details>
         </div>
         <span
           className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${status === "recording" ? "bg-rose-700 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-emerald-100 text-emerald-950"}`}
@@ -1854,7 +1860,7 @@ export function BrowserSourceRecorder({
             ) : (
               <span className="h-3 w-3 rounded-full bg-white" />
             )}{" "}
-            Record local source
+            {sessionKind === "coaching" ? "Record on this device" : "Record local source"}
           </button>
         )}
         <span className="text-[10px] font-bold text-[#8a7354]">

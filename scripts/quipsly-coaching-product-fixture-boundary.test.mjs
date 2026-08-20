@@ -84,3 +84,15 @@ test("Capture preview data is compile-time unavailable in release builds", async
     /process\.arguments\.contains\("--quipsly-capture-runtime-smoke"\)[\s\S]*process\.arguments\.contains\("--quipsly-capture-runtime-playback-fixture"\)/,
   );
 });
+
+test("the coaching runway projects one canonical Session title", async () => {
+  const runway = await readFile(
+    "apps/quipsly/src/app/api/coaching/runway/route.ts",
+    "utf8",
+  );
+  assert.match(
+    runway,
+    /title: booking\.callRoom\?\.title \|\| booking\.offering\?\.title \|\| "Coaching session"/,
+    "Upcoming appointments should use the exact Session title before a generic offering label.",
+  );
+});

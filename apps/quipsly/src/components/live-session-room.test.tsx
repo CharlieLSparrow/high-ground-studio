@@ -102,6 +102,48 @@ describe("LiveSessionRoom", () => {
     await screen.findByText(/No microphone was found/i);
   });
 
+  it("puts the coaching call and local-recording path before the camera preview", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+
+    let view: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(
+        <LiveSessionRoom
+          callRoomId="room-coaching-order"
+          captureGroupId="55555555-5555-4555-8555-555555555549"
+          sessionTitle="Simple coaching Session"
+          kind="coaching"
+          purpose="COACHING"
+        />,
+      );
+    });
+
+    expect(
+      screen.getByRole("heading", { name: "Start this coaching call" }),
+    ).toBeInTheDocument();
+    const join = screen.getByRole("button", { name: /Join live room/i });
+    const recorder = screen.getByTestId("browser-source-capture-group");
+    const preview = view!.container.querySelector("video");
+    expect(preview).not.toBeNull();
+    expect(
+      join.compareDocumentPosition(recorder) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      recorder.compareDocumentPosition(preview!)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(preview?.parentElement).toHaveClass("h-28");
+  });
+
   it("keeps camera permission independent from an audio-only coaching join", async () => {
     const permissionStream = { getTracks: () => [{ stop: jest.fn() }] };
     const getUserMedia = jest.fn().mockResolvedValue(permissionStream);

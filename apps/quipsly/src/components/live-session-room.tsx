@@ -1074,6 +1074,30 @@ export function LiveSessionRoom({
     return () => window.clearInterval(interval);
   }, [refreshProviderRecording]);
 
+  const retainedSourceControls = typeof captureGroupId === "string" && captureGroupId.trim() ? (
+    <BrowserSourceRecorder
+      key={`${callRoomId}:${captureGroupId.trim()}`}
+      callRoomId={callRoomId}
+      captureGroupId={captureGroupId.trim()}
+      sessionTitle={sessionTitle}
+      sessionKind={experience.captureProfile}
+      projectSlug={projectSlug}
+      episodeSlug={episodeSlug}
+      microphoneId={microphoneId}
+      microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
+      cameraId={cameraId}
+      cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
+      onSourceLockChange={setSourceLocked}
+      onGuardianEvidenceChange={setRetainedGuardianEvidence}
+    />
+  ) : (
+    <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-label="Retained source unavailable">
+      <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide"><CircleAlert size={16} aria-hidden="true" /> Conversation available · recording held</p>
+      <p className="mt-2 text-sm font-semibold leading-6">This Session does not yet have a canonical capture-group identity. Device testing and the live conversation remain available, but Quipsly will not create or relabel retained source files without that take boundary.</p>
+      <p className="mt-2 text-[10px] font-black leading-4">Refresh the Session after its capture group is repaired or created. Do not substitute the room ID: room access and synchronized source identity are different contracts.</p>
+    </section>
+  );
+
   return (
     <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1089,13 +1113,6 @@ export function LiveSessionRoom({
 
       <div className={`mt-5 grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
         <div className="space-y-4">
-          <div className="relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14]">
-            <video ref={localVideoRef} muted playsInline className={`aspect-video w-full object-cover ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`} />
-            {!cameraWanted || cameraMuted ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
-            <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">You · {sessionTitle}</div>
-          </div>
-          <div ref={remoteMediaRef} className="grid gap-3 md:grid-cols-2" aria-label="Remote participant media" />
-
           <div className="grid gap-3 md:grid-cols-2" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
             <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Microphone
               <select value={microphoneId} disabled={sourceLocked} onChange={(event) => void chooseMicrophone(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
@@ -1121,6 +1138,29 @@ export function LiveSessionRoom({
             </div>}
           </div>
 
+          <div className="flex flex-wrap gap-2">
+            {!connected ? <>
+              <button type="button" onClick={() => void refreshDevices("microphone")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">{status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : <Mic size={15} />} Allow microphone</button>
+              {cameraWanted ? <button type="button" onClick={() => void refreshDevices("camera")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><Camera size={15} /> Allow camera</button> : null}
+              <button type="button" onClick={() => void startSelectedPreview()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Video size={15} /> Test selected setup</button>
+              <button type="button" onClick={() => void join()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} Join live room</button>
+            </> : <>
+              <button type="button" onClick={() => void toggleMicrophone()} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
+              <button type="button" onClick={() => void toggleCamera()} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:opacity-45 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
+              <button type="button" onClick={() => void leave()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white"><PhoneOff size={16} /> Leave</button>
+            </>}
+          </div>
+          <p role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
+
+          {experience.captureProfile === "coaching" ? retainedSourceControls : null}
+
+          <div className={`relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14] ${!connected && !cameraWanted ? "h-28" : ""}`}>
+            <video ref={localVideoRef} muted playsInline className={`w-full object-cover ${!connected && !cameraWanted ? "h-full" : "aspect-video"} ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`} />
+            {!cameraWanted || cameraMuted ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
+            <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">You · {sessionTitle}</div>
+          </div>
+          <div ref={remoteMediaRef} className="grid gap-3 md:grid-cols-2" aria-label="Remote participant media" />
+
           <StudioInputEvidenceMeter evidence={meterEvidence} />
           {cameraWanted ? <StudioCameraEvidence cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""} evidence={cameraEvidence} /> : null}
           {!connected ? (
@@ -1134,21 +1174,7 @@ export function LiveSessionRoom({
               disabled={!preflightStreamRef.current || status !== "ready"}
             />
           ) : null}
-
-          <div className="flex flex-wrap gap-2">
-            {!connected ? <>
-              <button type="button" onClick={() => void refreshDevices("microphone")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">{status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : <Mic size={15} />} Allow microphone</button>
-              {cameraWanted ? <button type="button" onClick={() => void refreshDevices("camera")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><Camera size={15} /> Allow camera</button> : null}
-              <button type="button" onClick={() => void startSelectedPreview()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Video size={15} /> Test selected setup</button>
-              <button type="button" onClick={() => void join()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} Join live room</button>
-            </> : <>
-              <button type="button" onClick={() => void toggleMicrophone()} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
-              <button type="button" onClick={() => void toggleCamera()} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:opacity-45 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
-              <button type="button" onClick={() => void leave()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white"><PhoneOff size={16} /> Leave</button>
-            </>}
-          </div>
           <p className="text-[10px] font-bold text-[#8a7354]">Quipsly remembers this studio setup on this browser and falls back by device label if the browser rotates a device ID.</p>
-          <p role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
         </div>
 
         <aside className="space-y-3">
@@ -1209,30 +1235,15 @@ export function LiveSessionRoom({
         </aside>
       </div>
       <div className="mt-5 space-y-4">
-        <SessionGuardianCard projection={guardianProjection} />
-        {typeof captureGroupId === "string" && captureGroupId.trim() ? (
-          <BrowserSourceRecorder
-            key={`${callRoomId}:${captureGroupId.trim()}`}
-            callRoomId={callRoomId}
-            captureGroupId={captureGroupId.trim()}
-            sessionTitle={sessionTitle}
-            sessionKind={experience.captureProfile}
-            projectSlug={projectSlug}
-            episodeSlug={episodeSlug}
-            microphoneId={microphoneId}
-            microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
-            cameraId={cameraId}
-            cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
-            onSourceLockChange={setSourceLocked}
-            onGuardianEvidenceChange={setRetainedGuardianEvidence}
-          />
-        ) : (
-          <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-label="Retained source unavailable">
-            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide"><CircleAlert size={16} aria-hidden="true" /> Conversation available · recording held</p>
-            <p className="mt-2 text-sm font-semibold leading-6">This Session does not yet have a canonical capture-group identity. Device testing and the live conversation remain available, but Quipsly will not create or relabel retained source files without that take boundary.</p>
-            <p className="mt-2 text-[10px] font-black leading-4">Refresh the Session after its capture group is repaired or created. Do not substitute the room ID: room access and synchronized source identity are different contracts.</p>
-          </section>
-        )}
+        {experience.captureProfile === "episode" ? retainedSourceControls : null}
+        <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
+          <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
+            Recording safety details
+          </summary>
+          <div className="mt-4">
+            <SessionGuardianCard projection={guardianProjection} />
+          </div>
+        </details>
       </div>
     </section>
   );

@@ -1045,7 +1045,7 @@ export async function GET(request: Request) {
       id: booking.id,
       clientUserId: booking.clientUserId,
       coachingEngagementId: booking.engagementId || booking.callRoom?.coachingEngagementId || null,
-      title: booking.offering?.title || "Coaching session",
+      title: booking.callRoom?.title || booking.offering?.title || "Coaching session",
       status: booking.status,
       scheduledStart: booking.scheduledStart,
       scheduledEnd: booking.scheduledEnd,
