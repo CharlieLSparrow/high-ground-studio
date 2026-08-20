@@ -1126,7 +1126,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[clientName].firstMatch.exists)
 
         let send = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingSendInvite_")
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ OR label == %@",
+                "CaptureCoachingSendInvite_",
+                "Send invitation email"
+            )
         ).firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(send, in: app, timeout: 20, swipeAttempts: 10),
@@ -1147,14 +1151,25 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             delivery.exists || globalError.exists,
             "Invitation must produce visible sent-or-not-sent truth; a tap may not disappear into silent state."
         )
-        let share = app.descendants(matching: .any)["CaptureCoachingShareInvite"].firstMatch
+        let share = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier == %@ OR label == %@",
+                "CaptureCoachingShareInvite",
+                "Share coaching invitation"
+            )
+        ).firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(share, in: app, timeout: 15, swipeAttempts: 8),
             "A system share fallback should remain available even when local acceptance intentionally blocks external mail."
         )
 
         let open = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingOpen_")
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ OR label == %@ OR label == %@",
+                "CaptureCoachingOpen_",
+                "Open room",
+                "Open"
+            )
         ).firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(open, in: app, timeout: 20, swipeAttempts: 10),

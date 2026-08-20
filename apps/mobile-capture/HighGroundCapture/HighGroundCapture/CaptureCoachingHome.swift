@@ -626,6 +626,15 @@ struct CaptureCoachingHomeView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let booking = booking(for: handoff.callRoomId) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(booking.title)
+                        .font(.headline)
+                    Text(booking.clientLabel)
+                        .font(.subheadline.weight(.semibold))
+                    Text(booking.scheduleLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 invitationActions(for: booking)
             } else {
                 HStack {
@@ -660,9 +669,11 @@ struct CaptureCoachingHomeView: View {
                 if client.isLoading { ProgressView().controlSize(.small) }
             }
 
-            if client.upcomingBookings.isEmpty {
+            if displayedUpcomingBookings.isEmpty {
                 Text(
-                    client.isCoach
+                    client.latestHandoff != nil
+                        ? "This new appointment is ready above. It will appear here after you leave or refresh."
+                        : client.isCoach
                         ? "No upcoming coaching appointments yet."
                         : client.isCoachingClient
                             ? "No upcoming Sessions. Your existing client spaces and shared follow-through remain available below."
@@ -673,7 +684,7 @@ struct CaptureCoachingHomeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .captureCard()
             } else {
-                ForEach(client.upcomingBookings) { booking in
+                ForEach(displayedUpcomingBookings) { booking in
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 3) {
@@ -711,6 +722,13 @@ struct CaptureCoachingHomeView: View {
                 }
             }
         }
+    }
+
+    private var displayedUpcomingBookings: [MobileCoachingBooking] {
+        guard let latestRoomID = client.latestHandoff?.callRoomId else {
+            return client.upcomingBookings
+        }
+        return client.upcomingBookings.filter { $0.callRoomId != latestRoomID }
     }
 
     @ViewBuilder
