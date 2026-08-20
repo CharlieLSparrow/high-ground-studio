@@ -233,12 +233,13 @@ const receiptPath = path.join(
   "fresh-coaching-flight-receipt.json",
 );
 const result = {
-  schema: "quipsly-fresh-coaching-flight-receipt-v1",
+  schema: "quipsly-fresh-coaching-flight-receipt-v2",
   recordedAt: new Date().toISOString(),
   ok: true,
   localOnly: true,
   releaseIdentity,
-  testLane: "fresh-ui-automation",
+  testLane: "fresh-product-automation",
+  sourceContextLane: start.testLane,
   fixtureIdentifiersUsed: false,
   humanAcceptanceSatisfied: false,
   receiptPath,
@@ -268,6 +269,31 @@ const result = {
     share.clientMediaStatusAfterRevoke === 404,
   controlledAudibleSpeechPipelineOperated:
     controlledSpeechFlight && transcript.controlledSpeechTermsObserved,
+  interactionSurfaceEvidence: {
+    renderedBrowser: {
+      accountCreation: true,
+      coachSetup: start.coachSetupThroughRenderedProduct === true,
+      appointmentCreation:
+        start.appointmentCreatedThroughRenderedProduct === true,
+      invitationHandoff:
+        start.clientEntryCopiedFromRenderedProduct === true,
+      clientEntryAndReturn:
+        start.clientCreatedAccountFromExactEntry === true &&
+        start.clientOnlyHomeOpenedExactSession === true,
+      callLobbyConsentChatAndCapture: call.browserToBrowserLiveKit === "passed",
+      relationshipWork: work.boundaries?.productFormsOnlyForWrites === true,
+      lightEditPreviewReleaseAndRevoke:
+        share.boundaries?.releaseWasExplicit === true &&
+        share.boundaries?.revokeWasExplicit === true,
+    },
+    browserInitiatedServiceMechanics: {
+      transcriptWorkerAndProtectedPlayback: true,
+      immutableSourceReadback: share.sourceChecksumsUnchanged === true,
+      recipientMediaAuthorizationReadback: true,
+    },
+    directDatabaseAcceptanceWrites: false,
+    humanUnderstandingObserved: false,
+  },
   boundaries: {
     localMailboxAdapterUsed: true,
     realMailboxDeliveryProven: false,
@@ -280,6 +306,7 @@ const result = {
     humanListeningProven: false,
     minimallyInstructedHumanAcceptanceProven: false,
     productionScaleProven: false,
+    combinedReceiptIsNotPureUIAutomation: true,
   },
 };
 await writeFile(receiptPath, `${JSON.stringify(result, null, 2)}\n`, {

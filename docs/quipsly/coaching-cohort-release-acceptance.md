@@ -539,13 +539,18 @@ transcription, correction, follow-through, light edit, and sharing acceptance.
 
 ## Complete fresh coaching flight checkpoint — 2026-08-19
 
-Test lane: `fresh-ui-automation`
+Test lane: `fresh-product-automation`
 
 Human acceptance satisfied: **no**
 
 `pnpm quipsly:fresh:coaching-flight` now creates a new coach and client and
 passes one private context from the rendered start through every deeper
-operation. It does not accept or construct a retained room ID. The second full
+operation. The source context remains `fresh-ui-automation`, but the combined
+receipt is deliberately `fresh-product-automation`: signup, setup, scheduling,
+entry, call controls, relationship work, and sharing use rendered product
+surfaces, while transcript execution and protected authorization readbacks also
+exercise browser-initiated service mechanics. It is not labeled as pure UI
+automation. It does not accept or construct a retained room ID. The second full
 run created room `cmt0rwb6o008bzvxl2i0s9bd0`, booking
 `cmt0rwb6l008azvxl1pryhbec`, and engagement
 `cmt0rwb690086zvxlvrm46zwk`, then proved:

@@ -48,15 +48,20 @@ These lanes are complementary and never interchangeable.
 
 1. **Source and contract** — production build, route tests, mobile contract,
    migration status, privacy tests, and release-script tests.
-2. **Fresh UI automation** — new coach and client accounts complete the normal
-   rendered workflow without fixture IDs or database repair.
-3. **Fresh audible automation** — two isolated endpoints retain overlapping
+2. **Fresh UI start** — new coach and client accounts complete signup, coach
+   setup, scheduling, invitation handoff, and client return through normal
+   rendered surfaces without fixture IDs or database repair.
+3. **Fresh product automation** — the same new relationship continues through
+   rendered call, work, and sharing surfaces plus explicitly identified service
+   mechanics. Its receipt reports surface coverage and never calls the combined
+   run pure UI automation.
+4. **Fresh audible automation** — two isolated endpoints retain overlapping
    participant-owned masters and recover role-specific controlled speech.
-4. **Physical-device flight** — real iPhone Capture plus browser/Mac operate the
+5. **Physical-device flight** — real iPhone Capture plus browser/Mac operate the
    same Session, including interruption and upload recovery.
-5. **Minimally instructed human flight** — real coach and client receive only
+6. **Minimally instructed human flight** — real coach and client receive only
    the one-sentence mission and product invitation.
-6. **Cohort operation** — release to 2, then 10, then 50 real coaches while
+7. **Cohort operation** — release to 2, then 10, then 50 real coaches while
    support, privacy, recovery, and capacity evidence remain healthy.
 
 Automation receipts must keep human, physical-device, real-mailbox, natural
