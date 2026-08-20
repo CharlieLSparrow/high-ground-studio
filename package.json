@@ -91,6 +91,7 @@
     "quipsly:fresh:coaching-start": "QUIPSLY_FRESH_COACHING_START_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-start-operation.mjs",
     "quipsly:fresh:coaching-work": "QUIPSLY_FRESH_COACHING_WORK_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-work-operation.mjs",
     "quipsly:fresh:coaching-flight": "QUIPSLY_FRESH_COACHING_FLIGHT=1 node scripts/quipsly-fresh-coaching-flight.mjs",
+    "quipsly:fresh:coaching-speech-flight": "QUIPSLY_FRESH_COACHING_SPEECH_FLIGHT=1 node scripts/quipsly-fresh-coaching-flight.mjs",
     "quipsly:local:session-invitation": "QUIPSLY_LOCAL_SESSION_INVITATION_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-session-invitation-operation.mjs",
     "quipsly:local:calendar-cancellation-dogfood": "node --experimental-strip-types scripts/quipsly-local-calendar-cancellation-dogfood.mjs",
     "quipsly:local:calendar-reconciliation-dogfood": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-calendar-reconciliation-dogfood.mjs",
