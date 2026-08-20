@@ -9460,7 +9460,7 @@ private struct CaptureLibraryView: View {
                     NavigationLink {
                         CaptureTranscriptReviewView(
                             roomID: "room-preview-coaching-ready",
-                            sessionTitle: "Leadership coaching session",
+                            sessionTitle: "Coaching session",
                             recording: nil,
                             previewOnly: true
                         )
@@ -9590,7 +9590,7 @@ private struct CaptureLibraryPreviewSourceCard: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Leadership coaching session")
+                    Text("Coaching session")
                         .font(.headline)
                     Text(presentsAppStoreStory
                          ? "Local audio source · 18.4 MB"

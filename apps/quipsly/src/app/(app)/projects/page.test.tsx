@@ -5,7 +5,6 @@ import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { canAccessPrivateFictionNest } from "@/lib/fiction/private-fiction-access";
 import { ensureHomeNestForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
-import { ensureBetaStarterNestForEmail } from "@/lib/server/quipsly-core";
 import { listAccessibleStudioProjectSummariesForEmail } from "@/lib/server/studio-project-access";
 import { isUserManagementAdminEmail } from "@/lib/server/user-management";
 import { listStudioProjectOptions } from "@/lib/studio/project-registry";
@@ -23,10 +22,6 @@ jest.mock("@/lib/fiction/private-fiction-access", () => ({
 jest.mock("@/lib/server/home-nest", () => ({
   ensureHomeNestForEmail: jest.fn(),
   listProjectsVisibleToEmail: jest.fn(),
-}));
-jest.mock("@/lib/server/quipsly-core", () => ({
-  createNestWithOwner: jest.fn(),
-  ensureBetaStarterNestForEmail: jest.fn(),
 }));
 jest.mock("@/lib/server/studio-project-access", () => ({
   listAccessibleStudioProjectSummariesForEmail: jest.fn(),
@@ -82,7 +77,6 @@ describe("Nest registry degraded-state UX", () => {
     });
     (getPrismaClient as jest.Mock).mockReturnValue({ kind: "mock-prisma" });
     (ensureHomeNestForEmail as jest.Mock).mockResolvedValue({ id: "home-1" });
-    (ensureBetaStarterNestForEmail as jest.Mock).mockResolvedValue(undefined);
     (listProjectsVisibleToEmail as jest.Mock).mockResolvedValue([]);
     (listStudioProjectOptions as jest.Mock).mockResolvedValue([]);
     (listAccessibleStudioProjectSummariesForEmail as jest.Mock).mockResolvedValue([]);

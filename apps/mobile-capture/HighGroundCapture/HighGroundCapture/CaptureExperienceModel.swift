@@ -554,7 +554,7 @@ final class CaptureExperienceModel: ObservableObject {
             sessionClient.coachingEngagements = [
                 MobileCaptureCoachingEngagement(
                     id: "preview-engagement",
-                    title: "Leadership coaching with Homer",
+                    title: "Coaching with Homer",
                     status: "ACTIVE",
                     projectId: "preview-high-ground",
                     projectSlug: "preview-high-ground",
@@ -2800,7 +2800,7 @@ extension MobileCaptureSession {
         return [
             capturePreview(
                 id: "preview-coaching-ready",
-                title: "Leadership coaching session",
+                title: "Coaching session",
                 purpose: "COACHING",
                 consentGranted: true,
                 scheduledStart: ISO8601DateFormatter().string(from: coachingStart),
@@ -3154,7 +3154,7 @@ extension MobileCaptureSession {
         let output = MobileCaptureClientFollowUp(
             id: "preview-client-follow-up",
             status: "DRAFT",
-            title: "Follow-up — Leadership coaching session",
+            title: "Follow-up — Coaching session",
             intro: "A private draft assembled from the reviewed Session records.",
             nextSessionFocus: "Return to the question after trying one concrete change.",
             contentSha256: String(repeating: "c", count: 64),
@@ -3171,7 +3171,7 @@ extension MobileCaptureSession {
             role: "COACH",
             room: MobileCaptureClientFollowUpRoom(
                 id: "room-preview-coaching-ready",
-                title: "Leadership coaching session",
+                title: "Coaching session",
                 scheduledStart: nil,
                 coach: MobileCaptureClientFollowUpParty(id: "preview-coach", label: "Charlie"),
                 client: MobileCaptureClientFollowUpParty(id: "preview-client", label: "Homer")

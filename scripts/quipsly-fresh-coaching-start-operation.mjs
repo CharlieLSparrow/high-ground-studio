@@ -129,6 +129,28 @@ async function createVerifyAndSignIn(page, identity, callbackPath) {
   };
 }
 
+async function gotoRenderedRoute(page, destination) {
+  const expected = new URL(destination, baseURL);
+  try {
+    await page.goto(expected.toString(), { waitUntil: "domcontentloaded" });
+  } catch (error) {
+    // Next's client router can finish the same navigation while Playwright's
+    // explicit navigation is still pending. Chromium reports that harmless
+    // race as ERR_ABORTED even though the requested route rendered. Recover
+    // only when the browser proves it landed on the exact destination; every
+    // other abort remains a real acceptance failure.
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("net::ERR_ABORTED")) throw error;
+    await page.waitForURL(
+      (candidate) =>
+        candidate.origin === expected.origin &&
+        candidate.pathname === expected.pathname &&
+        candidate.search === expected.search,
+      { timeout: 10_000 },
+    );
+  }
+}
+
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({
   headless: true,
@@ -376,9 +398,7 @@ try {
     clientPage.locator("main").last(),
     "fresh client Session at phone width",
   );
-  await clientPage.goto(`${baseURL}/coaching`, {
-    waitUntil: "domcontentloaded",
-  });
+  await gotoRenderedRoute(clientPage, "/coaching");
   const clientNextSession = clientPage.getByRole("link", {
     name: "Open my session",
     exact: true,

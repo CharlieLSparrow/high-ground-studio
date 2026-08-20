@@ -20,7 +20,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
     schema: CLIENT_FOLLOW_UP_SCHEMA,
     title: "Your coaching follow-up",
     intro: "One useful step at a time.",
-    session: { id: "room-1", title: "Leadership coaching" },
+    session: { id: "room-1", title: "Coaching session" },
     notes: [{ id: "note-1", title: "Keep this", body: "Protect the useful constraint.", kind: "FOLLOW_UP", sourceAnchor: null }],
     goals: [],
     tasks: [{ id: "task-1", title: "Try one change", detail: null, status: "OPEN", dueAt: null, sourceAnchor: null }],
@@ -52,7 +52,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
     updatedAt: new Date("2026-08-03T18:00:00.000Z"),
     room: {
       id: "room-1",
-      title: "Leadership coaching",
+      title: "Coaching session",
       booking: {
         clientUserId: "client-1",
         coachUserId: "coach-1",
@@ -89,7 +89,7 @@ describe("client follow-up attention", () => {
       schema: CLIENT_FOLLOW_UP_ATTENTION_SCHEMA,
       outputId: "output-1",
       roomId: "room-1",
-      sessionTitle: "Leadership coaching",
+      sessionTitle: "Coaching session",
       title: "Your coaching follow-up",
       revision: 2,
       contentSha256: clientFollowUpSha256(fixture().bodyJson),

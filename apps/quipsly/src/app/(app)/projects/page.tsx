@@ -31,7 +31,6 @@ import {
 } from "@/lib/fiction/private-fiction-access";
 import { getPrismaClient } from "@/lib/prisma";
 import { ensureHomeNestForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
-import { ensureBetaStarterNestForEmail } from "@/lib/server/quipsly-core";
 import {
   listAccessibleStudioProjectSummariesForEmail,
 } from "@/lib/server/studio-project-access";
@@ -251,11 +250,6 @@ export default async function ProjectsHub({
     try {
       const actorHomeNest = await ensureHomeNestForEmail(actorEmail, prisma);
       actorHomeNestId = actorHomeNest.id;
-      try {
-        await ensureBetaStarterNestForEmail({ email: actorEmail, prisma });
-      } catch {
-        // Continue even if starter nest fails
-      }
     } catch {
       // The hub should still render even if the personal Home Nest cannot be created yet.
     }

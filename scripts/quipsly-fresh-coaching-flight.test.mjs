@@ -14,6 +14,12 @@ test("fresh coaching flight retains a private receipt without claiming human acc
   assert.match(source, /"fresh-coaching-flight-receipt\.json"/);
   assert.match(source, /testLane: "fresh-product-automation"/);
   assert.match(source, /sourceContextLane: start\.testLane/);
+  assert.match(source, /--experimental-transform-types/);
+  assert.match(source, /quipsly-fresh-coaching-isolation-operation\.mjs/);
+  assert.match(source, /coachAndClientTenantIsolationOperated:/);
+  assert.match(source, /authorizedListsAndUnauthorizedDirectProbes:/);
+  assert.match(source, /neighboringTenantDataPresentDuringIsolationProof:/);
+  assert.match(source, /unrelatedPodcastLeakageObserved:/);
   assert.match(source, /interactionSurfaceEvidence:/);
   assert.match(source, /oneTimeInvitationAcceptance:/);
   assert.match(source, /localInvitationDeliveryBoundaryUsed:/);

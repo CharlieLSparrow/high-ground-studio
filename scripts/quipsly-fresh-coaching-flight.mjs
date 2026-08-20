@@ -51,7 +51,7 @@ async function run(label, script, flag, extraEnv = {}) {
   const child = spawn(
     process.execPath,
     [
-      "--experimental-strip-types",
+      "--experimental-transform-types",
       "--import",
       "./scripts/register-ts-extension-loader.mjs",
       script,
@@ -93,6 +93,12 @@ const start = await run(
 const continuationEnv = {
   QUIPSLY_COACHING_ACCEPTANCE_CONTEXT: start.contextPath,
 };
+const isolation = await run(
+  "Fresh coach/client isolation from neighboring Nests, Sessions, and coaching relationships",
+  "scripts/quipsly-fresh-coaching-isolation-operation.mjs",
+  "QUIPSLY_FRESH_COACHING_ISOLATION_OPERATION",
+  continuationEnv,
+);
 const artifactDirectory = path.dirname(start.contextPath);
 let controlledSpeech = null;
 if (controlledSpeechFlight) {
@@ -184,6 +190,7 @@ const share = await run(
 
 for (const [label, packet] of Object.entries({
   start,
+  isolation,
   call,
   transcript,
   work,
@@ -249,6 +256,11 @@ const result = {
   engagementId: start.engagementId,
   freshAccountsCreated: true,
   exactRenderedClientEntryUsed: true,
+  coachAndClientTenantIsolationOperated:
+    isolation.coachAndClientIsolationOperated === true &&
+    isolation.normalNavigationLeakageObserved === false &&
+    isolation.directUrlLeakageObserved === false &&
+    isolation.directApiLeakageObserved === false,
   participantsConnected: call.participantsConnected,
   independentParticipantSourcesVerified:
     call.independentParticipantSourcesVerified,
@@ -283,6 +295,8 @@ const result = {
       clientEntryAndReturn:
         start.clientCreatedAccountFromExactEntry === true &&
         start.clientOnlyHomeOpenedExactSession === true,
+      authorizedListsAndUnauthorizedDirectProbes:
+        isolation.coachAndClientIsolationOperated === true,
       callLobbyConsentChatAndCapture: call.browserToBrowserLiveKit === "passed",
       relationshipWork: work.boundaries?.productFormsOnlyForWrites === true,
       lightEditPreviewReleaseAndRevoke:
@@ -312,6 +326,12 @@ const result = {
     combinedReceiptIsNotPureUIAutomation: true,
     localInvitationDeliveryBoundaryUsed:
       start.localInvitationDeliveryReceiptRecorded === true,
+    neighboringTenantDataPresentDuringIsolationProof:
+      isolation.boundaries?.localRetainedDatabaseHadNeighboringTenantData === true,
+    unrelatedPodcastLeakageObserved:
+      isolation.unrelatedPodcastLeakageObserved === true,
+    privateTestArtifactLeakageObserved:
+      isolation.privateTestArtifactLeakageObserved === true,
     externalInvitationMessageSent: false,
   },
 };

@@ -10,7 +10,7 @@ describe("Nest Today model", () => {
         schema: "quipsly-client-follow-up-attention-v1",
         outputId: "follow-up-1",
         roomId: "coaching-room",
-        sessionTitle: "Leadership coaching",
+        sessionTitle: "Coaching session",
         title: "Your next useful step",
         revision: 2,
         contentSha256: "a".repeat(64),

@@ -1174,7 +1174,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(attention.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["New coaching follow-up"].exists)
         XCTAssertTrue(app.staticTexts["Your next useful step"].exists)
-        XCTAssertTrue(app.staticTexts["From Homer · Leadership coaching session"].exists)
+        XCTAssertTrue(app.staticTexts["From Homer · Coaching session"].exists)
 
         let open = app.buttons[
             "CaptureTodayClientFollowUpOpen_preview-client-follow-up"
@@ -3015,7 +3015,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
     func testCapturePrivateDataSafeDrafts() {
         launch(tab: "today", waitingFor: app.scrollViews["CaptureTodayView"])
         XCTAssertFalse(app.descendants(matching: .any)["CapturePreviewModeBadge"].exists)
-        XCTAssertTrue(app.staticTexts["Leadership coaching session"].exists)
+        XCTAssertTrue(app.staticTexts["Coaching session"].exists)
         keepScreenshot("01-today.png")
 
         launch(tab: "record", waitingFor: app.navigationBars["Record"])

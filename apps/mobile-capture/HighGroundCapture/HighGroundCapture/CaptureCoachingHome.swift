@@ -349,7 +349,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 MobileCoachingBooking(
                     id: "preview-booking",
                     coachingEngagementId: "preview-engagement",
-                    title: "Leadership coaching session",
+                    title: "Coaching session",
                     status: "CONFIRMED",
                     scheduledStart: ISO8601DateFormatter().string(from: start),
                     scheduledEnd: ISO8601DateFormatter().string(from: start.addingTimeInterval(50 * 60)),
