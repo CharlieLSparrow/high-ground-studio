@@ -1045,9 +1045,13 @@ function checkReviewDigestContractSources() {
     "The shipping native Capture shell exposes journey, lifecycle receipt, safe-action, source-quality, and recording-boundary truth without restoring the disconnected reviewer control board.",
   );
   expect(
-    contentViewText.includes("CapturePhoneShell()")
+    contentViewText.includes("CapturePhoneShell(visibleTab: $visibleTab)")
+      && contentViewText.includes("@State private var visibleTab: CaptureRootTab")
+      && contentViewText.includes(".onChange(of: authManager.accessMode)")
+      && contentViewText.includes("visibleTab = .library")
       && contentViewText.includes("ProtectedOfflineLibraryShell")
       && contentViewText.includes("mustKeepRecorderVisible")
+      && capturePhoneShellText.includes("@Binding var visibleTab: CaptureRootTab")
       && capturePhoneShellText.includes("CaptureRootTab.today")
       && capturePhoneShellText.includes("CaptureRootTab.record")
       && capturePhoneShellText.includes("CaptureRootTab.work")

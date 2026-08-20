@@ -915,7 +915,10 @@ for (const needle of [
   requireAnyIncludes(shippingCaptureUIText, [needle, needle.replace("\\(", "(")], "reachable capture reviewer UI");
 }
 
-requireIncludes(contentViewText, "CapturePhoneShell()", "the app root opens the production capture-first shell");
+requireIncludes(contentViewText, "CapturePhoneShell(visibleTab: $visibleTab)", "the app root opens the production capture-first shell with durable navigation ownership");
+requireIncludes(contentViewText, "@State private var visibleTab: CaptureRootTab", "the app root owns navigation across online and protected-offline shell transitions");
+requireIncludes(contentViewText, "visibleTab = .library", "the app root returns a recovered source journey to Library after a transport failure");
+requireIncludes(capturePhoneShellText, "@Binding var visibleTab: CaptureRootTab", "the capture shell consumes app-root navigation instead of resetting it");
 requireIncludes(contentViewText, "ProtectedOfflineLibraryShell", "the app root preserves protected offline recovery");
 requireIncludes(contentViewText, "mustKeepRecorderVisible", "the app root keeps active local capture reachable across auth expiry");
 assert(
