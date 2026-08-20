@@ -162,6 +162,142 @@ const GOAL_SELECT = {
   owner: { select: { name: true, primaryEmail: true } },
 } as const;
 
+function privateJson(value: unknown, status = 200) {
+  return NextResponse.json(value, {
+    status,
+    headers: { "Cache-Control": "private, no-store, max-age=0" },
+  });
+}
+
+/**
+ * Nest and Quipsly Capture share this relationship projection. The native app
+ * consumes the canonical engagement records instead of maintaining a second
+ * task, note, or goal schema. Author-private notes are filtered in the query
+ * and never enter another member's response.
+ */
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ engagementId: string }> },
+) {
+  const session = await getQuipslySessionFromRequest(request);
+  if (!session?.user?.id) {
+    return privateJson(
+      { ok: false, error: "Sign in before opening this coaching space." },
+      401,
+    );
+  }
+
+  const { engagementId } = await context.params;
+  const prisma = getPrismaClient() as any;
+  try {
+    const [engagement, writable] = await Promise.all([
+      prisma.coachingEngagement.findFirst({
+        where: coachingEngagementAccessWhere(
+          engagementId,
+          session.user,
+          "read",
+        ),
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          members: {
+            where: { status: "ACTIVE" },
+            orderBy: { joinedAt: "asc" },
+            select: {
+              role: true,
+              userId: true,
+              user: { select: { name: true, primaryEmail: true } },
+            },
+          },
+          notes: {
+            where: {
+              OR: [
+                { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
+                { authorUserId: session.user.id },
+              ],
+            },
+            orderBy: { updatedAt: "desc" },
+            take: 100,
+            select: NOTE_SELECT,
+          },
+          actionItems: {
+            where: {
+              sourceJson: {
+                path: ["visibility"],
+                equals: "engagement-shared",
+              },
+            },
+            orderBy: [{ status: "asc" }, { dueAt: "asc" }],
+            take: 100,
+            select: TASK_SELECT,
+          },
+          goals: {
+            where: {
+              sourceJson: {
+                path: ["visibility"],
+                equals: "engagement-shared",
+              },
+            },
+            orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+            take: 100,
+            select: GOAL_SELECT,
+          },
+        },
+      }),
+      prisma.coachingEngagement.findFirst({
+        where: coachingEngagementAccessWhere(
+          engagementId,
+          session.user,
+          "write",
+        ),
+        select: { id: true },
+      }),
+    ]);
+
+    if (!engagement) {
+      return privateJson(
+        { ok: false, error: "This coaching relationship is unavailable." },
+        404,
+      );
+    }
+
+    const entries = [
+      ...engagement.notes.map((row: any) => notePayload(row, session.user.id)),
+      ...engagement.actionItems.map((row: any) => taskPayload(row)),
+      ...engagement.goals.map((row: any) => goalPayload(row)),
+    ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+
+    return privateJson({
+      ok: true,
+      engagement: {
+        id: engagement.id,
+        title: engagement.title,
+        status: engagement.status,
+        canWrite: Boolean(writable),
+        currentUserId: session.user.id,
+        members: engagement.members.map((member: any) => ({
+          id: member.userId,
+          label: member.user?.name || member.user?.primaryEmail || "Member",
+          role: member.role,
+        })),
+        entries,
+      },
+      boundaries: {
+        canonicalEngagementRecords: true,
+        authorPrivateNotesFilteredServerSide: true,
+        externalSideEffects: false,
+      },
+    });
+  } catch (error) {
+    console.error("Coaching engagement work read failed", error);
+    return privateJson(
+      { ok: false, error: "Quipsly could not load this coaching space." },
+      503,
+    );
+  }
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ engagementId: string }> },

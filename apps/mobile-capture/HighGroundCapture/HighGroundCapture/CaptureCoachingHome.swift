@@ -102,6 +102,187 @@ private struct MobileCoachingInvitationResponse: Codable {
     let delivery: MobileCoachingInvitationDelivery?
 }
 
+struct MobileCoachingEngagementMember: Codable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let role: String?
+}
+
+struct MobileCoachingEngagementWorkEntry: Codable, Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let title: String
+    let body: String?
+    let status: String?
+    let owner: MobileCoachingEngagementMember?
+    let visibility: String
+    let dueAt: String?
+    let canEdit: Bool
+    let createdAt: String
+    let updatedAt: String
+
+    var isComplete: Bool {
+        status == "DONE" || status == "ACHIEVED"
+    }
+
+    var kindLabel: String {
+        switch kind {
+        case "TASK": "Task"
+        case "GOAL": "Goal"
+        default: "Note"
+        }
+    }
+}
+
+struct MobileCoachingEngagementWorkspace: Codable, Hashable {
+    let id: String
+    let title: String
+    let status: String
+    let canWrite: Bool
+    let currentUserId: String
+    let members: [MobileCoachingEngagementMember]
+    let entries: [MobileCoachingEngagementWorkEntry]
+}
+
+private struct MobileCoachingEngagementWorkspaceResponse: Codable {
+    let ok: Bool
+    let error: String?
+    let engagement: MobileCoachingEngagementWorkspace?
+    let entry: MobileCoachingEngagementWorkEntry?
+}
+
+@MainActor
+final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
+    @Published private(set) var workspace: MobileCoachingEngagementWorkspace?
+    @Published private(set) var isLoading = false
+    @Published private(set) var isSaving = false
+    @Published private(set) var errorMessage: String?
+
+    let engagementID: String
+    private let baseURL = normalizedNestBaseURL(
+        Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+            ?? "https://nest.quipsly.com"
+    )
+
+    init(engagementID: String) {
+        self.engagementID = engagementID
+    }
+
+    func load() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+        do {
+            let (payload, response) = try await request(method: "GET")
+            guard response.statusCode < 400, payload.ok, let engagement = payload.engagement else {
+                throw coachingClientError(payload.error ?? "This coaching space could not load.")
+            }
+            workspace = engagement
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func create(
+        kind: String,
+        title: String,
+        body: String,
+        visibility: String,
+        ownerUserID: String
+    ) async -> Bool {
+        guard !isSaving else { return false }
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+        do {
+            var requestBody: [String: Any] = [
+                "clientRequestId": UUID().uuidString.lowercased(),
+                "kind": kind,
+                "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
+                "body": body.trimmingCharacters(in: .whitespacesAndNewlines),
+            ]
+            if kind == "NOTE" {
+                requestBody["visibility"] = visibility
+            } else {
+                requestBody["ownerUserId"] = ownerUserID
+            }
+            let (payload, response) = try await request(method: "POST", body: requestBody)
+            guard response.statusCode < 400, payload.ok, payload.entry != nil else {
+                throw coachingClientError(payload.error ?? "That coaching item could not be saved.")
+            }
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func update(
+        entry: MobileCoachingEngagementWorkEntry,
+        title: String,
+        body: String,
+        visibility: String,
+        ownerUserID: String,
+        status: String
+    ) async -> Bool {
+        guard !isSaving else { return false }
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+        do {
+            var requestBody: [String: Any] = [
+                "id": entry.id,
+                "kind": entry.kind,
+                "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
+                "body": body.trimmingCharacters(in: .whitespacesAndNewlines),
+                "expectedUpdatedAt": entry.updatedAt,
+            ]
+            if entry.kind == "NOTE" {
+                requestBody["visibility"] = visibility
+            } else {
+                requestBody["ownerUserId"] = ownerUserID
+                requestBody["status"] = status
+            }
+            let (payload, response) = try await request(method: "PATCH", body: requestBody)
+            guard response.statusCode < 400, payload.ok, payload.entry != nil else {
+                throw coachingClientError(payload.error ?? "That coaching item could not be updated.")
+            }
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func request(
+        method: String,
+        body: [String: Any]? = nil
+    ) async throws -> (MobileCoachingEngagementWorkspaceResponse, HTTPURLResponse) {
+        guard let encodedID = engagementID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(baseURL)/api/coaching/engagements/\(encodedID)/work") else {
+            throw coachingClientError("The configured Nest URL is not valid.")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+        return (
+            try JSONDecoder().decode(MobileCoachingEngagementWorkspaceResponse.self, from: data),
+            response
+        )
+    }
+}
+
 struct MobileCoachingAppointmentDraft: Equatable {
     var clientEmail = ""
     var clientName = ""
@@ -802,20 +983,34 @@ struct CaptureCoachingHomeView: View {
                     .captureCard()
             } else {
                 ForEach(model.coachingEngagements) { engagement in
-                    VStack(alignment: .leading, spacing: 5) {
-                        Label(engagement.title, systemImage: "person.2.fill")
-                            .font(.headline)
-                        if !engagement.participantLine.isEmpty {
-                            Text(engagement.participantLine)
-                                .font(.caption)
+                    NavigationLink {
+                        CaptureCoachingEngagementWorkspaceView(engagement: engagement)
+                    } label: {
+                        HStack(alignment: .center, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Label(engagement.title, systemImage: "person.2.fill")
+                                    .font(.headline)
+                                if !engagement.participantLine.isEmpty {
+                                    Text(engagement.participantLine)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text("Open shared notes, goals, tasks, and Session continuity")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
                                 .foregroundStyle(.secondary)
                         }
-                        Text("Shared notes, goals, tasks, and Sessions stay attached to this exact relationship.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .captureCard()
                     .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Open client space, \(engagement.title)")
+                    .accessibilityHint("Manage this relationship's shared notes, goals, tasks, and Sessions.")
                     .accessibilityIdentifier("CaptureCoachingRelationship_\(engagement.id)")
                 }
             }
@@ -854,6 +1049,370 @@ struct CaptureCoachingHomeView: View {
         }
         model.select(session)
         if navigate { visibleTab = .record }
+    }
+}
+
+private enum MobileCoachingWorkFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case notes = "Notes"
+    case tasks = "Tasks"
+    case goals = "Goals"
+
+    var id: String { rawValue }
+
+    func includes(_ entry: MobileCoachingEngagementWorkEntry) -> Bool {
+        switch self {
+        case .all: true
+        case .notes: entry.kind == "NOTE"
+        case .tasks: entry.kind == "TASK"
+        case .goals: entry.kind == "GOAL"
+        }
+    }
+}
+
+private struct MobileCoachingInlineWarning: View {
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: "exclamationmark.triangle.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.orange)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .captureCard()
+    }
+}
+
+private struct CaptureCoachingEngagementWorkspaceView: View {
+    let engagement: MobileCaptureCoachingEngagement
+    @StateObject private var client: MobileCoachingEngagementWorkspaceClient
+    @State private var filter: MobileCoachingWorkFilter = .all
+    @State private var isPresentingNewWork = false
+    @State private var editingEntry: MobileCoachingEngagementWorkEntry?
+
+    init(engagement: MobileCaptureCoachingEngagement) {
+        self.engagement = engagement
+        _client = StateObject(
+            wrappedValue: MobileCoachingEngagementWorkspaceClient(
+                engagementID: engagement.id
+            )
+        )
+    }
+
+    private var entries: [MobileCoachingEngagementWorkEntry] {
+        (client.workspace?.entries ?? []).filter(filter.includes)
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                workspaceHeader
+
+                Picker("Show coaching work", selection: $filter) {
+                    ForEach(MobileCoachingWorkFilter.allCases) { value in
+                        Text(value.rawValue).tag(value)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("CaptureCoachingWorkFilter")
+
+                if client.isLoading, client.workspace == nil {
+                    ProgressView("Loading client space…")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 40)
+                } else if entries.isEmpty {
+                    ContentUnavailableView {
+                        Label("Nothing here yet", systemImage: "checklist")
+                    } description: {
+                        Text(
+                            client.workspace?.canWrite == true
+                                ? "Add the first \(filter.rawValue.lowercased()) item for this coaching relationship."
+                                : "Shared work will appear here when it is available to you."
+                        )
+                    }
+                    .captureCard()
+                } else {
+                    ForEach(entries) { entry in
+                        coachingWorkCard(entry)
+                    }
+                }
+
+                if let error = client.errorMessage {
+                    MobileCoachingInlineWarning(text: error)
+                        .accessibilityIdentifier("CaptureCoachingWorkspaceError")
+                }
+            }
+            .padding(20)
+        }
+        .background(Color.primary.opacity(0.035).ignoresSafeArea())
+        .navigationTitle(client.workspace?.title ?? engagement.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if client.workspace?.canWrite == true {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isPresentingNewWork = true
+                    } label: {
+                        Label("Add coaching work", systemImage: "plus")
+                    }
+                    .accessibilityIdentifier("CaptureCoachingAddWork")
+                }
+            }
+        }
+        .refreshable { await client.load() }
+        .task { await client.load() }
+        .sheet(isPresented: $isPresentingNewWork) {
+            if let workspace = client.workspace {
+                MobileCoachingWorkEditorSheet(
+                    client: client,
+                    workspace: workspace,
+                    entry: nil
+                )
+            }
+        }
+        .sheet(item: $editingEntry) { entry in
+            if let workspace = client.workspace {
+                MobileCoachingWorkEditorSheet(
+                    client: client,
+                    workspace: workspace,
+                    entry: entry
+                )
+            }
+        }
+        .accessibilityIdentifier("CaptureCoachingEngagementWorkspace")
+    }
+
+    private var workspaceHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Private client space", systemImage: "lock.shield.fill")
+                .font(.headline)
+                .foregroundStyle(.teal)
+            Text(engagement.participantLine)
+                .font(.subheadline.weight(.semibold))
+            Text("Shared notes, tasks, and goals are visible to this relationship. A private note is visible only to its author—even to another coach or Quipsly staff.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .captureCard()
+        .accessibilityIdentifier("CaptureCoachingWorkspacePrivacy")
+    }
+
+    private func coachingWorkCard(_ entry: MobileCoachingEngagementWorkEntry) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                Label(entry.kindLabel, systemImage: icon(for: entry))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(entry.visibility == "PRIVATE" ? .orange : .teal)
+                Spacer()
+                if entry.visibility == "PRIVATE" {
+                    Label("Only you", systemImage: "lock.fill")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Text(entry.title)
+                .font(.headline)
+                .strikethrough(entry.isComplete)
+            if let body = entry.body?.nonemptyCoachingText, body != entry.title {
+                Text(body)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            if let owner = entry.owner {
+                Text("For \(owner.label)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            if entry.canEdit {
+                HStack(spacing: 10) {
+                    Button("Edit") { editingEntry = entry }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CaptureCoachingEdit_\(entry.id)")
+                    if entry.kind == "TASK" || entry.kind == "GOAL" {
+                        Button(entry.isComplete ? "Reopen" : entry.kind == "TASK" ? "Complete" : "Achieve") {
+                            Task { await toggleCompletion(entry) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(client.isSaving)
+                        .accessibilityIdentifier("CaptureCoachingToggle_\(entry.id)")
+                    }
+                }
+            }
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCoachingWork_\(entry.id)")
+    }
+
+    private func icon(for entry: MobileCoachingEngagementWorkEntry) -> String {
+        switch entry.kind {
+        case "TASK": entry.isComplete ? "checkmark.circle.fill" : "checkmark.circle"
+        case "GOAL": entry.isComplete ? "target" : "scope"
+        default: entry.visibility == "PRIVATE" ? "note.text.badge.plus" : "note.text"
+        }
+    }
+
+    private func toggleCompletion(_ entry: MobileCoachingEngagementWorkEntry) async {
+        let nextStatus: String
+        if entry.kind == "TASK" {
+            nextStatus = entry.isComplete ? "OPEN" : "DONE"
+        } else {
+            nextStatus = entry.isComplete ? "ACTIVE" : "ACHIEVED"
+        }
+        _ = await client.update(
+            entry: entry,
+            title: entry.title,
+            body: entry.body ?? "",
+            visibility: entry.visibility,
+            ownerUserID: entry.owner?.id ?? client.workspace?.currentUserId ?? "",
+            status: nextStatus
+        )
+    }
+}
+
+private struct MobileCoachingWorkEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: MobileCoachingEngagementWorkspaceClient
+    let workspace: MobileCoachingEngagementWorkspace
+    let entry: MobileCoachingEngagementWorkEntry?
+
+    @State private var kind: String
+    @State private var title: String
+    @State private var detail: String
+    @State private var visibility: String
+    @State private var ownerUserID: String
+    @State private var status: String
+
+    init(
+        client: MobileCoachingEngagementWorkspaceClient,
+        workspace: MobileCoachingEngagementWorkspace,
+        entry: MobileCoachingEngagementWorkEntry?
+    ) {
+        self.client = client
+        self.workspace = workspace
+        self.entry = entry
+        _kind = State(initialValue: entry?.kind ?? "NOTE")
+        _title = State(initialValue: entry?.title ?? "")
+        _detail = State(initialValue: entry?.body ?? "")
+        _visibility = State(initialValue: entry?.visibility ?? "SHARED")
+        _ownerUserID = State(initialValue: entry?.owner?.id ?? workspace.currentUserId)
+        _status = State(initialValue: entry?.status ?? "OPEN")
+    }
+
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (kind == "NOTE" || !ownerUserID.isEmpty)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("What is it?") {
+                    Picker("Type", selection: $kind) {
+                        Text("Note").tag("NOTE")
+                        Text("Task").tag("TASK")
+                        Text("Goal").tag("GOAL")
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(entry != nil)
+                    .accessibilityIdentifier("CaptureCoachingWorkKind")
+
+                    TextField(kind == "NOTE" ? "Note title" : kind == "TASK" ? "Task title" : "Goal title", text: $title)
+                        .accessibilityIdentifier("CaptureCoachingWorkTitle")
+                    TextEditor(text: $detail)
+                        .frame(minHeight: 120)
+                        .accessibilityLabel("Details")
+                        .accessibilityIdentifier("CaptureCoachingWorkDetail")
+                }
+
+                if kind == "NOTE" {
+                    Section("Who can see it?") {
+                        Toggle(
+                            "Only me",
+                            isOn: Binding(
+                                get: { visibility == "PRIVATE" },
+                                set: { visibility = $0 ? "PRIVATE" : "SHARED" }
+                            )
+                        )
+                        .accessibilityIdentifier("CaptureCoachingNoteVisibility")
+                        Text(
+                            visibility == "PRIVATE"
+                                ? "Only you can read this note. Room access, staff status, and the shared client space do not widen it."
+                                : "Every active member of this client space can read this note."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Section(kind == "TASK" ? "Task owner" : "Goal owner") {
+                        Picker("Owner", selection: $ownerUserID) {
+                            ForEach(workspace.members) { member in
+                                Text(member.label).tag(member.id)
+                            }
+                        }
+                        .accessibilityIdentifier("CaptureCoachingWorkOwner")
+
+                        if entry != nil {
+                            Picker("Status", selection: $status) {
+                                if kind == "TASK" {
+                                    Text("Open").tag("OPEN")
+                                    Text("Done").tag("DONE")
+                                    Text("Canceled").tag("CANCELED")
+                                } else {
+                                    Text("Active").tag("ACTIVE")
+                                    Text("Paused").tag("PAUSED")
+                                    Text("Achieved").tag("ACHIEVED")
+                                    Text("Archived").tag("ARCHIVED")
+                                }
+                            }
+                            .accessibilityIdentifier("CaptureCoachingWorkStatus")
+                        }
+                    }
+                }
+
+                if let error = client.errorMessage {
+                    Section { MobileCoachingInlineWarning(text: error) }
+                }
+            }
+            .navigationTitle(entry == nil ? "Add coaching work" : "Edit \(entry?.kindLabel ?? "item")")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(client.isSaving ? "Saving…" : "Save") {
+                        Task {
+                            let saved: Bool
+                            if let entry {
+                                saved = await client.update(
+                                    entry: entry,
+                                    title: title,
+                                    body: detail,
+                                    visibility: visibility,
+                                    ownerUserID: ownerUserID,
+                                    status: status
+                                )
+                            } else {
+                                saved = await client.create(
+                                    kind: kind,
+                                    title: title,
+                                    body: detail,
+                                    visibility: visibility,
+                                    ownerUserID: ownerUserID
+                                )
+                            }
+                            if saved { dismiss() }
+                        }
+                    }
+                    .disabled(client.isSaving || !canSave)
+                    .accessibilityIdentifier("CaptureCoachingSaveWork")
+                }
+            }
+        }
+        .interactiveDismissDisabled(client.isSaving)
+        .accessibilityIdentifier("CaptureCoachingWorkEditor")
     }
 }
 

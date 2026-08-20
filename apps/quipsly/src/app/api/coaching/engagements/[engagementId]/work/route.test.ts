@@ -3,7 +3,7 @@
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
-import { PATCH, POST } from "./route";
+import { GET, PATCH, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({
@@ -20,13 +20,17 @@ const coachMember = { userId: actor.id };
 const clientMember = { userId: "client-1" };
 const now = new Date("2026-08-19T21:00:00.000Z");
 
-function request(method: "POST" | "PATCH", body: Record<string, unknown>) {
+function request(method: "GET" | "POST" | "PATCH", body?: Record<string, unknown>) {
   return new Request(
     `http://localhost/api/coaching/engagements/${engagementId}/work`,
     {
       method,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      ...(body
+        ? {
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          }
+        : {}),
     },
   );
 }
@@ -45,6 +49,82 @@ describe("coaching engagement work", () => {
     jest
       .mocked(getQuipslySessionFromRequest)
       .mockResolvedValue({ user: actor } as any);
+  });
+
+  it("reads one canonical relationship workspace with server-filtered private notes", async () => {
+    const findFirst = jest
+      .fn()
+      .mockResolvedValueOnce({
+        id: engagementId,
+        title: "Client and coach",
+        status: "ACTIVE",
+        members: [
+          {
+            userId: actor.id,
+            role: "COACH",
+            user: { name: "Coach", primaryEmail: actor.primaryEmail },
+          },
+          {
+            userId: "client-1",
+            role: "CLIENT",
+            user: { name: "Client", primaryEmail: "client@example.test" },
+          },
+        ],
+        notes: [
+          {
+            id: "note-1",
+            authorUserId: actor.id,
+            title: "Private reflection",
+            body: "Listen longer.",
+            visibility: "AUTHOR_PRIVATE",
+            createdAt: now,
+            updatedAt: now,
+            authorUser: { name: "Coach", primaryEmail: actor.primaryEmail },
+          },
+        ],
+        actionItems: [],
+        goals: [],
+      })
+      .mockResolvedValueOnce({ id: engagementId });
+    jest.mocked(getPrismaClient).mockReturnValue({
+      coachingEngagement: { findFirst },
+    } as any);
+
+    const response = await GET(request("GET"), {
+      params: Promise.resolve({ engagementId }),
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe(
+      "private, no-store, max-age=0",
+    );
+    expect(payload).toMatchObject({
+      ok: true,
+      engagement: {
+        id: engagementId,
+        canWrite: true,
+        currentUserId: actor.id,
+        entries: [
+          {
+            id: "note-1",
+            kind: "NOTE",
+            visibility: "PRIVATE",
+            canEdit: true,
+          },
+        ],
+      },
+      boundaries: {
+        canonicalEngagementRecords: true,
+        authorPrivateNotesFilteredServerSide: true,
+      },
+    });
+    expect(findFirst.mock.calls[0][0].select.notes.where).toEqual({
+      OR: [
+        { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
+        { authorUserId: actor.id },
+      ],
+    });
   });
 
   it("creates a retry-safe client-owned task on the relationship boundary", async () => {

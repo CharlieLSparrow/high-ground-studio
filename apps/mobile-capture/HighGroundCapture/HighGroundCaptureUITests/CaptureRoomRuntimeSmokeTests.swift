@@ -1164,6 +1164,72 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "A system share fallback should remain available even when local acceptance intentionally blocks external mail."
         )
 
+        let relationship = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingRelationship_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(relationship, in: app, timeout: 30, swipeAttempts: 12),
+            "The phone-first path must continue into the exact client relationship instead of ending at a scheduled room."
+        )
+        relationship.tap()
+        let workspace = app.descendants(matching: .any)["CaptureCoachingEngagementWorkspace"].firstMatch
+        XCTAssertTrue(
+            workspace.waitForExistence(timeout: 30),
+            "The relationship card must open native shared notes, tasks, and goals without requiring a desktop or fixture route."
+        )
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkspacePrivacy"].exists)
+
+        func addRelationshipWork(kind: String, title: String, privateNote: Bool = false) {
+            let add = app.buttons["CaptureCoachingAddWork"].firstMatch
+            XCTAssertTrue(add.waitForExistence(timeout: 10))
+            add.tap()
+
+            let editor = app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch
+            XCTAssertTrue(editor.waitForExistence(timeout: 8))
+            if kind != "Note" {
+                let kindControl = app.buttons[kind].firstMatch
+                XCTAssertTrue(kindControl.waitForExistence(timeout: 5))
+                kindControl.tap()
+            }
+
+            let titleField = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+            XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+            titleField.tap()
+            titleField.typeText(title)
+            if privateNote {
+                let privacy = app.switches["CaptureCoachingNoteVisibility"].firstMatch
+                XCTAssertTrue(privacy.waitForExistence(timeout: 5))
+                privacy.tap()
+            }
+
+            let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
+            XCTAssertTrue(save.waitForExistence(timeout: 5))
+            XCTAssertTrue(save.isEnabled)
+            save.tap()
+            XCTAssertTrue(editor.waitForNonExistence(timeout: 30))
+            XCTAssertTrue(
+                app.staticTexts[title].firstMatch.waitForExistence(timeout: 15),
+                "The native relationship workspace should read the exact canonical \(kind.lowercased()) back after save."
+            )
+        }
+
+        let workSuffix = String(sessionTitle.suffix(12))
+        addRelationshipWork(kind: "Note", title: "Shared phone note \(workSuffix)")
+        addRelationshipWork(kind: "Task", title: "Phone task \(workSuffix)")
+        addRelationshipWork(kind: "Goal", title: "Phone goal \(workSuffix)")
+        addRelationshipWork(
+            kind: "Note",
+            title: "Private phone note \(workSuffix)",
+            privateNote: true
+        )
+        XCTAssertTrue(app.staticTexts["Only you"].firstMatch.exists)
+        attachRuntimeScreenshot(app, name: "Phone-first canonical client workspace")
+
+        let back = app.navigationBars.buttons.firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        back.tap()
+        XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 15))
+
         let open = app.buttons.matching(
             NSPredicate(
                 format: "identifier BEGINSWITH %@ OR label == %@ OR label == %@",
