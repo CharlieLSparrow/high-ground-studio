@@ -1207,7 +1207,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "lock.fill")
                             .accessibilityHidden(true)
-                        Text("Only you")
+                        Text("Only you can read")
                     }
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.orange)
@@ -1248,7 +1248,6 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
             }
         }
         .captureCard()
-        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureCoachingWork_\(entry.id)")
     }
 
