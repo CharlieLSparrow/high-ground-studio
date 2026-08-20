@@ -49,8 +49,10 @@ These lanes are complementary and never interchangeable.
 1. **Source and contract** — production build, route tests, mobile contract,
    migration status, privacy tests, and release-script tests.
 2. **Fresh UI start** — new coach and client accounts complete signup, coach
-   setup, scheduling, invitation handoff, and client return through normal
-   rendered surfaces without fixture IDs or database repair.
+   setup, scheduling, the primary invitation action, one-time invitation
+   acceptance, and client return through normal rendered surfaces without
+   fixture IDs or database repair. Reserved local recipients are stopped before
+   any external provider request and remain explicitly different from real mail.
 3. **Fresh product automation** — the same new relationship continues through
    rendered call, work, and sharing surfaces plus explicitly identified service
    mechanics. Its receipt reports surface coverage and never calls the combined

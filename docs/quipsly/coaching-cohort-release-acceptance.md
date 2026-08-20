@@ -506,13 +506,17 @@ Human acceptance satisfied: **no**
 A phone-width operation now starts without a known room, booking, engagement,
 user, or fixture identifier. It creates a new disposable coach through the
 public account form, completes the simplified coach profile, schedules a named
-client through the rendered appointment form, copies the exact private client
-entry exposed by the product, and opens that entry in an independent signed-out
-browser. The client sees only the private Session sign-in gate, creates a new
-account with the invited address, and returns to the exact Session. Read-only
+client through the rendered appointment form, and presses the same **Send
+invitation email** action a real coach uses. Reserved `.dev.test` recipients are
+refused before any provider request; the UI records the failed local delivery
+and retains its copy/share fallback. The operation then follows the generated
+one-time invitation through the signed-out join page, creates the exact invited
+account, presses **Accept and open lobby**, and returns to the Session. The
+one-time token is consumed and never written to the retained artifact. Read-only
 database assertions confirm the `COACH` role record, absence of client staff
 authority, requested timezone, participant identities, booking, room, and
-durable coaching engagement.
+durable coaching engagement, accepted invitation, consumed token, and failed
+local-only delivery receipt.
 
 The passing run created room `cmt0rj54f005fzvxl4gtqhbqb`, booking
 `cmt0rj54b005ezvxlwo2sqa3m`, and engagement

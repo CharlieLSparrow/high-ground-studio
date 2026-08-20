@@ -113,4 +113,22 @@ describe("Session invitation email", () => {
       retryAfterSeconds: 2,
     });
   });
+
+  it("refuses reserved local recipients before any provider request", async () => {
+    globalThis.fetch = jest.fn() as typeof fetch;
+
+    await expect(
+      sendSessionInvitationEmail({
+        recipientEmail: "fresh-client@dev.test",
+        roomTitle: "Local acceptance Session",
+        joinUrl:
+          "http://127.0.0.1:3012/sessions/join?token=qsinv_abcdefghijklmnopqrstuvwxyzABCDEFGH123456",
+        idempotencyKey: "session-invitation/local-receipt",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: "LOCAL_TEST_RECIPIENT",
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
 });

@@ -276,7 +276,10 @@ const result = {
       appointmentCreation:
         start.appointmentCreatedThroughRenderedProduct === true,
       invitationHandoff:
-        start.clientEntryCopiedFromRenderedProduct === true,
+        start.clientEntryCopiedFromRenderedProduct === true &&
+        start.primaryInvitationActionAttempted === true,
+      oneTimeInvitationAcceptance:
+        start.clientInvitationAcceptedThroughRenderedProduct === true,
       clientEntryAndReturn:
         start.clientCreatedAccountFromExactEntry === true &&
         start.clientOnlyHomeOpenedExactSession === true,
@@ -307,6 +310,9 @@ const result = {
     minimallyInstructedHumanAcceptanceProven: false,
     productionScaleProven: false,
     combinedReceiptIsNotPureUIAutomation: true,
+    localInvitationDeliveryBoundaryUsed:
+      start.localInvitationDeliveryReceiptRecorded === true,
+    externalInvitationMessageSent: false,
   },
 };
 await writeFile(receiptPath, `${JSON.stringify(result, null, 2)}\n`, {

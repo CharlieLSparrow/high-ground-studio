@@ -16,6 +16,7 @@ export type SessionInvitationEmailResult =
         | "PUBLIC_URL_NOT_CONFIGURED"
         | "INVALID_RECIPIENT"
         | "INVALID_INVITE_URL"
+        | "LOCAL_TEST_RECIPIENT"
         | "RATE_LIMITED"
         | "PROVIDER_REJECTED"
         | "PROVIDER_UNAVAILABLE";
@@ -103,6 +104,30 @@ export async function sendSessionInvitationEmail(input: {
   joinUrl: string | null;
   idempotencyKey: string;
 }): Promise<SessionInvitationEmailResult> {
+  const recipientEmail = normalizeEmail(input.recipientEmail);
+  if (!recipientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+    return {
+      ok: false,
+      provider: "resend",
+      code: "INVALID_RECIPIENT",
+      message: "The invitation recipient email is invalid.",
+      retryAfterSeconds: null,
+    };
+  }
+  // `.dev.test` is Quipsly's reserved local acceptance namespace. Refuse it
+  // before reading provider configuration or making an outbound request so a
+  // developer machine can safely exercise the real invitation action without
+  // leaking synthetic recipients to Resend.
+  if (recipientEmail.endsWith("@dev.test")) {
+    return {
+      ok: false,
+      provider: "resend",
+      code: "LOCAL_TEST_RECIPIENT",
+      message:
+        "Quipsly kept this local test invitation on this device. Use the private client entry to continue; no external email was sent.",
+      retryAfterSeconds: null,
+    };
+  }
   const apiKey =
     process.env.QUIPSLY_SESSION_INVITATION_RESEND_API_KEY?.trim() ||
     process.env.RESEND_API_KEY?.trim() ||
@@ -122,16 +147,6 @@ export async function sendSessionInvitationEmail(input: {
     };
   }
 
-  const recipientEmail = normalizeEmail(input.recipientEmail);
-  if (!recipientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
-    return {
-      ok: false,
-      provider: "resend",
-      code: "INVALID_RECIPIENT",
-      message: "The invitation recipient email is invalid.",
-      retryAfterSeconds: null,
-    };
-  }
   if (!input.joinUrl) {
     return {
       ok: false,

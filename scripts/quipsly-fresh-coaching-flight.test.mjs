@@ -15,6 +15,8 @@ test("fresh coaching flight retains a private receipt without claiming human acc
   assert.match(source, /testLane: "fresh-product-automation"/);
   assert.match(source, /sourceContextLane: start\.testLane/);
   assert.match(source, /interactionSurfaceEvidence:/);
+  assert.match(source, /oneTimeInvitationAcceptance:/);
+  assert.match(source, /localInvitationDeliveryBoundaryUsed:/);
   assert.match(source, /combinedReceiptIsNotPureUIAutomation: true/);
   assert.match(source, /humanAcceptanceSatisfied: false/);
   assert.match(source, /minimallyInstructedHumanAcceptanceProven: false/);

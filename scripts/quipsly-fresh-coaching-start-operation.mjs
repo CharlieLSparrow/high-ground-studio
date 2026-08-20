@@ -243,6 +243,48 @@ try {
     handoff,
     "fresh client handoff at phone width",
   );
+
+  const [invitationResponse] = await Promise.all([
+    coachPage.waitForResponse(
+      (candidate) => {
+        const pathname = new URL(candidate.url()).pathname;
+        return (
+          candidate.request().method() === "POST" &&
+          /^\/api\/sessions\/[^/]+\/invitations$/.test(pathname)
+        );
+      },
+      { timeout: 20_000 },
+    ).catch(() => null),
+    handoff
+      .getByRole("button", { name: "Send invitation email", exact: true })
+      .click(),
+  ]);
+  assert(invitationResponse, "Rendered invitation action emitted no delivery response.");
+  const invitationPacket = await invitationResponse.json().catch(() => null);
+  assert.equal(invitationResponse.status(), 201);
+  assert.equal(invitationPacket?.ok, true);
+  assert.match(
+    invitationPacket?.invitePath || "",
+    /^\/sessions\/join\?token=qsinv_/,
+    "Rendered invitation action did not create an expiring one-time client entry.",
+  );
+  assert.equal(
+    invitationPacket?.delivery?.status,
+    "FAILED",
+    "Reserved local invitation unexpectedly claimed external delivery.",
+  );
+  assert.equal(
+    invitationPacket?.delivery?.errorCode,
+    "LOCAL_TEST_RECIPIENT",
+    "Reserved local invitation did not use the fail-closed local delivery boundary.",
+  );
+  await handoff
+    .getByText(/kept this local test invitation on this device/i)
+    .waitFor({ timeout: 20_000 });
+  evidence.primaryInvitationActionAttempted = true;
+  evidence.localInvitationDeliveryReceiptRecorded = true;
+  evidence.externalInvitationMessageSent = false;
+
   await handoff
     .getByRole("button", { name: "Copy client entry", exact: true })
     .click();
@@ -266,30 +308,49 @@ try {
     clientEntryURL.pathname.split("/").at(-1),
   );
 
-  await clientPage.goto(clientEntryURL.toString(), {
+  const invitationEntryURL = new URL(invitationPacket.invitePath, baseURL);
+  assert.equal(invitationEntryURL.origin, baseURL);
+  assert.equal(invitationEntryURL.pathname, "/sessions/join");
+
+  await clientPage.goto(invitationEntryURL.toString(), {
     waitUntil: "domcontentloaded",
   });
   const clientSignInGate = clientPage.getByRole("link", {
-    name: "Sign in to this Session",
+    name: "Sign in to continue",
     exact: true,
   });
   await clientSignInGate.waitFor({ timeout: 20_000 });
   await assertNoHorizontalOverflow(
     clientPage.locator("main").last(),
-    "fresh signed-out client entry at phone width",
+    "fresh signed-out invitation entry at phone width",
   );
   await clientSignInGate.click();
+  const invitationEntryPath = `${invitationEntryURL.pathname}${invitationEntryURL.search}`;
   await clientPage.waitForURL(
     (url) =>
       url.pathname === "/login" &&
-      url.searchParams.get("callbackUrl") === evidence.clientEntryPath,
+      url.searchParams.get("callbackUrl") === invitationEntryPath,
     { timeout: 20_000 },
   );
   evidence.clientAuth = await createVerifyAndSignIn(
     clientPage,
     identities.client,
-    evidence.clientEntryPath,
+    invitationEntryPath,
   );
+  const acceptInvitation = clientPage.getByRole("button", {
+    name: "Accept and open lobby",
+    exact: true,
+  });
+  await acceptInvitation.waitFor({ timeout: 20_000 });
+  await acceptInvitation.click();
+  await clientPage.waitForURL(
+    (url) =>
+      url.pathname === clientEntryURL.pathname &&
+      url.searchParams.get("mode") === "live" &&
+      url.searchParams.get("joined") === "1",
+    { timeout: 30_000 },
+  );
+  evidence.clientAcceptedOneTimeInvitation = true;
   await clientPage
     .getByText(sessionTitle, { exact: false })
     .first()
@@ -383,6 +444,19 @@ try {
       emailVerified: true,
     },
   });
+  const invitationReadback = await prisma.callRoomInvitation.findFirstOrThrow({
+    where: { roomId: room.id, email: identities.client.email },
+    select: {
+      status: true,
+      acceptedByUserId: true,
+      tokenHash: true,
+      deliveries: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { status: true, errorCode: true, recipientEmail: true },
+      },
+    },
+  });
   const coachUser = users.find((user) => user.id === room.booking.coachUserId);
   const clientUser = users.find(
     (user) => user.id === room.booking.clientUserId,
@@ -400,6 +474,14 @@ try {
     false,
   );
   assert.equal(room.booking.timezone, "America/Denver");
+  assert.equal(invitationReadback.status, "ACCEPTED");
+  assert.equal(invitationReadback.acceptedByUserId, clientUser?.id);
+  assert.equal(invitationReadback.tokenHash, null);
+  assert.deepEqual(invitationReadback.deliveries[0], {
+    status: "FAILED",
+    errorCode: "LOCAL_TEST_RECIPIENT",
+    recipientEmail: identities.client.email,
+  });
   assert(
     room.booking.engagementId,
     "Rendered appointment did not create the private coaching relationship.",
@@ -413,6 +495,7 @@ try {
   evidence.coachSetupThroughRenderedProduct = true;
   evidence.appointmentCreatedThroughRenderedProduct = true;
   evidence.clientEntryCopiedFromRenderedProduct = true;
+  evidence.clientInvitationAcceptedThroughRenderedProduct = true;
   evidence.privateClientEntryRequiredRenderedSignInGate = true;
   evidence.clientCreatedAccountFromExactEntry = true;
   evidence.phoneWidthOverflow = false;
@@ -459,6 +542,9 @@ try {
       passwordsWrittenToArtifact: false,
       databaseMutatedOutsideProduct: false,
       localMailboxVerificationAdapterUsed: true,
+      localInvitationDeliveryBoundaryUsed: true,
+      externalInvitationMessageSent: false,
+      invitationTokenWrittenToArtifact: false,
     },
   };
   await writeFile(contextPath, `${JSON.stringify(context, null, 2)}\n`, {
@@ -482,6 +568,8 @@ try {
           noDatabaseMutationAfterJourneyStarted: true,
           publicSignupFormsUsed: true,
           exactRenderedClientEntryUsed: true,
+          primaryInvitationActionAttempted: true,
+          oneTimeInvitationAccepted: true,
           localMailboxVerificationAdapterUsed: true,
           realMailboxDeliveryProven: false,
           humanNoviceAcceptanceProven: false,
