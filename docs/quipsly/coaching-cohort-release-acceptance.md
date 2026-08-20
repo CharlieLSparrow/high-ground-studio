@@ -599,6 +599,17 @@ The reusable command now fails if the UI changes its badge without that complete
 source-to-production projection. Its private receipt is retained at
 `artifacts/coaching-acceptance/6f32ec15/native-capture-recovery-receipt.json`.
 
+The current `ff9bdf63` candidate passed the same fresh operation as run
+`69e09be5`, creating room `cmt0xz3i600802cxlubgi2k9x` without a fixture ID. It
+verified and released RecordingAsset `cmt0y1kbf008r2cxlu269x2dh`, preserved the
+process-killed second take without claiming its bytes were playable, and read
+back Studio production `cmt0y311200a02cxlyqgjsnd7` with capture group
+`e64f1b01-a479-4855-baf3-c4923389c28a`. The result bundle and private receipt
+are under `artifacts/coaching-acceptance/69e09be5/`. The run remains simulator,
+generated-audio, and automation evidence; every physical-device, natural-human-
+speech, human-listening, novice-discoverability, and production-scale boundary
+is explicitly false.
+
 The failed runs remain useful evidence rather than being hidden:
 
 - `09515842` exposed that first-install microphone permission can return the
