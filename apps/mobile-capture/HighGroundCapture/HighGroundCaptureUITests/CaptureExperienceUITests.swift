@@ -1181,7 +1181,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
         let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
-        reveal(followUp)
+        reveal(followUp, searchAboveFirst: false)
         XCTAssertTrue(
             followUp.waitForExistence(timeout: 5),
             "Today should open the exact Session output surface without acknowledging or mutating the released snapshot."
@@ -1661,16 +1661,18 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(recorderHero.waitForExistence(timeout: 5))
 
         let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
-        reveal(followUp)
+        reveal(followUp, searchAboveFirst: false)
         XCTAssertTrue(followUp.waitForExistence(timeout: 5))
+        followUp.tap()
+        let followUpScroll = app.scrollViews["CaptureCoachFollowUpReviewView"].firstMatch
+        XCTAssertTrue(followUpScroll.waitForExistence(timeout: 5))
         XCTAssertTrue(
             app.staticTexts["Private revision 1"].waitForExistence(timeout: 5),
             "The coach must see the exact private revision before reviewing or releasing it."
         )
 
-        let recorderScroll = app.scrollViews["CaptureRecorderView"].firstMatch
         let source = app.descendants(matching: .any)["CaptureClientFollowUpSource_note_preview-follow-up-note"].firstMatch
-        revealBelow(source, in: recorderScroll)
+        revealBelow(source, in: followUpScroll)
         let sourceBoundaryScreenshot = XCTAttachment(screenshot: app.screenshot())
         sourceBoundaryScreenshot.name = "Coach follow-up exact source boundary"
         sourceBoundaryScreenshot.lifetime = .keepAlways
@@ -1690,18 +1692,19 @@ final class CaptureExperienceUITests: XCTestCase {
             .textClipped,
         ])
 
-        let back = app.navigationBars["Transcript review"].buttons.firstMatch
-        XCTAssertTrue(back.waitForExistence(timeout: 5))
-        back.tap()
-        reveal(recorderHero)
-        XCTAssertTrue(recorderHero.waitForExistence(timeout: 5))
+        if !followUpScroll.exists {
+            let back = app.buttons["CaptureTranscriptReturn"]
+            XCTAssertTrue(back.waitForExistence(timeout: 5))
+            back.tap()
+        }
+        XCTAssertTrue(followUpScroll.waitForExistence(timeout: 5))
 
         let save = app.buttons["CaptureCoachFollowUpSave"]
-        revealBelow(save, in: recorderScroll)
+        revealBelow(save, in: followUpScroll)
         XCTAssertTrue(save.waitForExistence(timeout: 5))
         XCTAssertFalse(save.isEnabled, "Preview may inspect the canonical draft but must not save another revision.")
         let release = app.buttons["CaptureCoachFollowUpRelease"]
-        revealBelow(release, in: recorderScroll)
+        revealBelow(release, in: followUpScroll)
         XCTAssertTrue(release.waitForExistence(timeout: 5))
         XCTAssertFalse(release.isEnabled, "Preview must not release a coaching follow-up.")
     }
@@ -1711,12 +1714,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
 
         let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
-        reveal(followUp)
+        reveal(followUp, searchAboveFirst: false)
         XCTAssertTrue(followUp.waitForExistence(timeout: 5))
+        followUp.tap()
+        let followUpScroll = app.scrollViews["CaptureCoachFollowUpReviewView"].firstMatch
+        XCTAssertTrue(followUpScroll.waitForExistence(timeout: 5))
 
-        let recorderScroll = app.scrollViews["CaptureRecorderView"].firstMatch
         let heldTitle = app.staticTexts["CaptureCoachFollowUpReleaseHeldTitle"]
-        revealBelow(heldTitle, in: recorderScroll)
+        revealBelow(heldTitle, in: followUpScroll)
         XCTAssertTrue(heldTitle.waitForExistence(timeout: 5))
         XCTAssertTrue(heldTitle.label.contains("Release held — review current sources"))
         let sourceChanges = app.staticTexts
@@ -1738,12 +1743,12 @@ final class CaptureExperienceUITests: XCTestCase {
         add(sourceReadinessScreenshot)
 
         let confirmation = app.switches["CaptureCoachFollowUpReleaseConfirmation"].firstMatch
-        revealBelow(confirmation, in: recorderScroll)
+        revealBelow(confirmation, in: followUpScroll)
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         XCTAssertFalse(confirmation.isEnabled)
 
         let release = app.buttons["CaptureCoachFollowUpRelease"].firstMatch
-        revealBelow(release, in: recorderScroll)
+        revealBelow(release, in: followUpScroll)
         XCTAssertTrue(release.waitForExistence(timeout: 5))
         XCTAssertFalse(release.isEnabled)
     }
@@ -1753,12 +1758,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
 
         let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
-        reveal(followUp)
+        reveal(followUp, searchAboveFirst: false)
         XCTAssertTrue(followUp.waitForExistence(timeout: 5))
+        followUp.tap()
+        let followUpScroll = app.scrollViews["CaptureCoachFollowUpReviewView"].firstMatch
+        XCTAssertTrue(followUpScroll.waitForExistence(timeout: 5))
 
-        let recorderScroll = app.scrollViews["CaptureRecorderView"].firstMatch
         let title = app.textFields["CaptureCoachFollowUpTitle"].firstMatch
-        revealBelow(title, in: recorderScroll)
+        revealBelow(title, in: followUpScroll)
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         title.tap()
         title.typeText(" unsaved")
@@ -1767,7 +1774,7 @@ final class CaptureExperienceUITests: XCTestCase {
         keyboardDone.tap()
 
         let held = app.descendants(matching: .any)["CaptureCoachFollowUpUnsavedChanges"].firstMatch
-        revealBelow(held, in: recorderScroll)
+        revealBelow(held, in: followUpScroll)
         XCTAssertTrue(held.waitForExistence(timeout: 5))
         let heldTitle = app.staticTexts
             .matching(identifier: "CaptureCoachFollowUpUnsavedChanges")
@@ -1782,12 +1789,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertEqual(heldDetail.count, 1)
 
         let confirmation = app.switches["CaptureCoachFollowUpReleaseConfirmation"].firstMatch
-        revealBelow(confirmation, in: recorderScroll)
+        revealBelow(confirmation, in: followUpScroll)
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         XCTAssertFalse(confirmation.isEnabled)
 
         let release = app.buttons["CaptureCoachFollowUpRelease"].firstMatch
-        revealBelow(release, in: recorderScroll)
+        revealBelow(release, in: followUpScroll)
         XCTAssertTrue(release.waitForExistence(timeout: 5))
         XCTAssertFalse(release.isEnabled)
 
@@ -2930,19 +2937,20 @@ final class CaptureExperienceUITests: XCTestCase {
     private func revealBelow(_ element: XCUIElement, in scrollSurface: XCUIElement) {
         let visibleBottom = app.frame.maxY - 96
         for _ in 0..<16 {
-            if element.exists,
-               element.isHittable,
-               element.frame.minY >= app.frame.minY + 72,
-               element.frame.maxY <= visibleBottom {
-                return
+            if element.exists {
+                let frame = element.frame
+                if !frame.isEmpty,
+                   frame.minY >= app.frame.minY + 72,
+                   frame.maxY <= visibleBottom {
+                    return
+                }
             }
             if scrollSurface.exists {
-                scrollSurface
-                    .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
                     .press(
                         forDuration: 0.05,
-                        thenDragTo: scrollSurface.coordinate(
-                            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.42)
+                        thenDragTo: app.coordinate(
+                            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.24)
                         )
                     )
                 RunLoop.current.run(until: Date().addingTimeInterval(0.15))

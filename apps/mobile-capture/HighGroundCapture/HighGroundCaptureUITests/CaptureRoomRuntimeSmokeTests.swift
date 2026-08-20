@@ -4169,6 +4169,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The assigned coach should receive the canonical private follow-up workspace on the exact Session."
         )
         XCTAssertTrue(app.staticTexts["Assigned coach · canonical Nest state"].firstMatch.exists)
+        card.tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureCoachFollowUpReviewView"].waitForExistence(timeout: 8),
+            "The private follow-up editor should open as a bounded workspace instead of expanding inside the recorder timeline."
+        )
         XCTAssertTrue(
             app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS %@", "never emails, texts, publishes, schedules, bills, changes consent")

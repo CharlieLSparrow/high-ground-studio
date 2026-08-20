@@ -2579,6 +2579,7 @@ struct CaptureTranscriptReviewView: View {
     let previewOnly: Bool
     let focusSegmentID: String?
     let canUseProjectTeamNotes: Bool
+    let returnLabel: String?
 
     @StateObject private var client = CaptureTranscriptCorrectionClient()
     @StateObject private var playback = CaptureTranscriptPlaybackController()
@@ -2595,7 +2596,8 @@ struct CaptureTranscriptReviewView: View {
         recording: LocalRecording?,
         previewOnly: Bool,
         focusSegmentID: String? = nil,
-        canUseProjectTeamNotes: Bool = false
+        canUseProjectTeamNotes: Bool = false,
+        returnLabel: String? = nil
     ) {
         self.roomID = roomID
         self.sessionTitle = sessionTitle
@@ -2603,6 +2605,7 @@ struct CaptureTranscriptReviewView: View {
         self.previewOnly = previewOnly
         self.focusSegmentID = focusSegmentID
         self.canUseProjectTeamNotes = canUseProjectTeamNotes
+        self.returnLabel = returnLabel
     }
 
     var body: some View {
@@ -2738,6 +2741,24 @@ struct CaptureTranscriptReviewView: View {
             .scrollPosition(id: $scrollTargetSegmentID, anchor: .center)
             .scrollDismissesKeyboard(.immediately)
             .background(Color(uiColor: .systemGroupedBackground))
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let returnLabel {
+                    HStack {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Label("Back to \(returnLabel.lowercased())", systemImage: "chevron.backward")
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CaptureTranscriptReturn")
+                        Spacer()
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+                    .background(.bar)
+                }
+            }
             .navigationTitle("Transcript review")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

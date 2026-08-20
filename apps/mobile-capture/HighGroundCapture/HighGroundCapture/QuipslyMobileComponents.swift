@@ -501,7 +501,8 @@ private struct MobileClientFollowUpSnapshot: View {
                     recording: nil,
                     previewOnly: previewOnly,
                     focusSegmentID: anchor.segmentId,
-                    canUseProjectTeamNotes: session.canUseProjectTeamNotes == true
+                    canUseProjectTeamNotes: session.canUseProjectTeamNotes == true,
+                    returnLabel: "Client follow-up"
                 )
             } label: {
                 Label(
@@ -731,7 +732,7 @@ struct MobileCoachClientFollowUpCard: View {
     let session: MobileCaptureSession
     @ObservedObject var sessionClient: CaptureSessionClient
     let previewOnly: Bool
-    @State private var isExpanded = true
+    @State private var isReviewing = false
     @State private var draft = MobileCaptureClientFollowUpDraft(
         title: "",
         intro: "",
@@ -773,6 +774,16 @@ struct MobileCoachClientFollowUpCard: View {
         sourcesReady && !hasUnsavedDraftChanges
     }
 
+    private func dismissKeyboard() {
+        focusedField = nil
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+    }
+
     private func readinessDetail(_ change: MobileCaptureClientFollowUpReadinessChange) -> String {
         switch change.reason {
         case "CONTENT_CHANGED": return "changed after this draft was saved"
@@ -804,8 +815,36 @@ struct MobileCoachClientFollowUpCard: View {
 
     var body: some View {
         if let workspace, workspace.isCoach {
-            DisclosureGroup(isExpanded: $isExpanded) {
-                VStack(alignment: .leading, spacing: 12) {
+            Button {
+                isReviewing = true
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Client follow-up review", systemImage: "person.crop.circle.badge.checkmark")
+                        .font(.caption.bold())
+                        .foregroundStyle(.teal)
+                    Text(workspace.output?.status == "DRAFT" ? "Private revision \(workspace.output?.revision ?? 1)" : "Prepare for \(workspace.room.client.label)")
+                        .font(.subheadline.bold())
+                    HStack {
+                        Text("Assigned coach · canonical Nest state")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("CaptureCoachClientFollowUp")
+            .accessibilityHint("Opens the private follow-up review workspace without releasing or sending anything.")
+            .padding(10)
+            .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .sheet(isPresented: $isReviewing) {
+                NavigationStack {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
                     if let notice {
                         Text(notice)
                             .font(.caption.bold())
@@ -838,31 +877,23 @@ struct MobileCoachClientFollowUpCard: View {
                         TextField("Follow-up title", text: $draft.title)
                             .textFieldStyle(.roundedBorder)
                             .submitLabel(.done)
-                            .onSubmit { focusedField = nil }
+                            .onSubmit { dismissKeyboard() }
                             .focused($focusedField, equals: .title)
                             .accessibilityIdentifier("CaptureCoachFollowUpTitle")
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Opening note")
-                                .font(.caption.bold())
-                            TextEditor(text: $draft.intro)
-                                .frame(minHeight: 72)
-                                .padding(6)
-                                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
-                                .focused($focusedField, equals: .intro)
-                                .accessibilityIdentifier("CaptureCoachFollowUpIntro")
-                        }
+                        TextField("Opening note", text: $draft.intro, axis: .vertical)
+                            .lineLimit(3...8)
+                            .textFieldStyle(.roundedBorder)
+                            .submitLabel(.done)
+                            .focused($focusedField, equals: .intro)
+                            .accessibilityIdentifier("CaptureCoachFollowUpIntro")
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Bring into the next Session")
-                                .font(.caption.bold())
-                            TextEditor(text: $draft.nextSessionFocus)
-                                .frame(minHeight: 64)
-                                .padding(6)
-                                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
-                                .focused($focusedField, equals: .nextSession)
-                                .accessibilityIdentifier("CaptureCoachFollowUpNextSession")
-                        }
+                        TextField("Bring into the next Session", text: $draft.nextSessionFocus, axis: .vertical)
+                            .lineLimit(3...6)
+                            .textFieldStyle(.roundedBorder)
+                            .submitLabel(.done)
+                            .focused($focusedField, equals: .nextSession)
+                            .accessibilityIdentifier("CaptureCoachFollowUpNextSession")
                     }
 
                     if let eligible = workspace.eligible {
@@ -1006,38 +1037,32 @@ struct MobileCoachClientFollowUpCard: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(16)
+                    }
+                    .accessibilityIdentifier("CaptureCoachFollowUpReviewView")
+                    .navigationTitle("Client follow-up")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { isReviewing = false }
+                                .accessibilityIdentifier("CaptureCoachFollowUpDone")
+                        }
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") { dismissKeyboard() }
+                                .accessibilityIdentifier("CaptureCoachFollowUpKeyboardDone")
+                        }
+                    }
                 }
-                .padding(.top, 8)
-            } label: {
-                VStack(alignment: .leading, spacing: 3) {
-                    Label("Client follow-up review", systemImage: "person.crop.circle.badge.checkmark")
-                        .font(.caption.bold())
-                        .foregroundStyle(.teal)
-                    Text(workspace.output?.status == "DRAFT" ? "Private revision \(workspace.output?.revision ?? 1)" : "Prepare for \(workspace.room.client.label)")
-                        .font(.subheadline.bold())
-                    Text("Assigned coach · canonical Nest state")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                .task(id: workspaceVersion) {
+                    guard loadedWorkspaceVersion != workspaceVersion else { return }
+                    draft = MobileCaptureClientFollowUpDraft.make(from: workspace)
+                    loadedWorkspaceVersion = workspaceVersion
+                    releaseConfirmed = false
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("CaptureCoachClientFollowUp")
-            }
-            .padding(10)
-            .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .task(id: workspaceVersion) {
-                guard loadedWorkspaceVersion != workspaceVersion else { return }
-                draft = MobileCaptureClientFollowUpDraft.make(from: workspace)
-                loadedWorkspaceVersion = workspaceVersion
-                releaseConfirmed = false
-            }
-            .onChange(of: draft) { _, _ in
-                releaseConfirmed = false
-            }
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { focusedField = nil }
-                        .accessibilityIdentifier("CaptureCoachFollowUpKeyboardDone")
+                .onChange(of: draft) { _, _ in
+                    releaseConfirmed = false
                 }
             }
         }
