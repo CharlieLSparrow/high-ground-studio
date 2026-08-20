@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (30)**
+- App: **Quipsly Capture 1.0 (31)**
 - Exact native source:
-  `c7bdae41fc635261ca735723e0f74f4b053b632b`
-- App Store Connect build ID: `c398a182-6bab-4e4c-acc7-3728065640b8`
+  `5d894d347032b8d68feda45c9c1a69ff6f635213`
+- App Store Connect build ID: `1099ac19-15a0-44df-97fa-2c9b56a27331`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,11 +22,11 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 30 is the current approved public beta identified by the canonical
-  release ledger and Apple readback. Earlier Build 28 qualification evidence
-  below remains historical evidence, not a claim that Build 30 has repeated
-  every physical-device drill. Build 30 must still be exercised on a physical
-  iPhone before its behavior is treated as accepted.
+- Build 31 is the current approved public beta identified by the canonical
+  release ledger and Apple readback. It passed 67 serialized iPhone and Share
+  Extension journeys plus signed archive/export verification. It contains the
+  serialized authenticated Session-link repair and remains subject to a real
+  physical-iPhone handoff, call, and recording acceptance test.
 - Build 28 passed all 63 serialized iPhone and Share Extension journeys,
   exact-source preflight, signed archive/export inspection, Apple processing,
   external beta review, external-group readback, and an anonymous HTTP 200 read
