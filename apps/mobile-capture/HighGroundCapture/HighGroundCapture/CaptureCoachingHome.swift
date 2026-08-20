@@ -1209,22 +1209,14 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                             .accessibilityHidden(true)
                         Text("Only you can read")
                     }
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.orange)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Private note, only you can read it")
-                        .accessibilityIdentifier("CaptureCoachingPrivateWorkLabel_\(entry.id)")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.orange)
                 }
             }
 
             Text(entry.title)
                 .font(.headline)
                 .strikethrough(entry.isComplete)
-                .accessibilityLabel(
-                    entry.visibility == "PRIVATE"
-                        ? "\(entry.title). Private note. Only you can read it."
-                        : entry.title
-                )
             if let body = entry.body?.nonemptyCoachingText, body != entry.title {
                 Text(body)
                     .font(.subheadline)
