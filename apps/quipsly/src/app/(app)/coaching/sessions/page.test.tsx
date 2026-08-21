@@ -104,6 +104,26 @@ describe("CoachingSessionsPage", () => {
     expect(jest.mocked(globalThis.fetch).mock.calls.some(([input, init]) => String(input) === "/api/mobile/capture/consent" && init?.method === "POST")).toBe(false);
   });
 
+  it("gives a new participant an obvious self-service path to become a coach", async () => {
+    jest.mocked(globalThis.fetch).mockImplementation(() => jsonResponse({
+      ok: true,
+      user: {
+        id: "user-1",
+        email: "new-coach@example.com",
+        name: "New coach",
+        canCreateCaptureSessions: false,
+      },
+      sessions: [],
+    }));
+
+    render(<CoachingSessionsPage />);
+
+    expect(await screen.findByRole("heading", { name: "No sessions are visible yet." })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Set up coaching" })).toHaveAttribute("href", "/coaching");
+    expect(screen.getByText(/use the private link from your coach/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Plan a real session" })).not.toBeInTheDocument();
+  });
+
   it("bounds a large Session collection and makes an older Episode directly searchable", async () => {
     const user = userEvent.setup();
     const sessions = Array.from({ length: 14 }, (_, index) => ({

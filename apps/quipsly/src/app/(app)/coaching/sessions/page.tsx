@@ -597,8 +597,23 @@ export default function CoachingSessionsPage() {
               <h2 className="text-xl font-black">No sessions are visible yet.</h2>
             </div>
             <p className="max-w-2xl text-sm font-bold leading-relaxed">
-              Nothing is broken. Create a Session if you are a coach, or open the invitation your coach sent. Once the Session exists, this page will keep its schedule, consent, recording, transcript, and follow-up together.
+              {payload?.user?.canCreateCaptureSessions
+                ? "Create your first Session above. Once it exists, this page will keep its schedule, consent, recording, transcript, and follow-up together."
+                : "If you are meeting with a coach, open the private invitation they sent. If you want to host coaching Sessions, set up your coach profile first."}
             </p>
+            {!payload?.user?.canCreateCaptureSessions ? (
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <Link
+                  href="/coaching"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#3d3122] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#5a472f]"
+                >
+                  Set up coaching
+                </Link>
+                <p className="max-w-xl text-xs font-bold leading-5 text-[#806a4d]">
+                  Already invited? Use the private link from your coach so Quipsly opens the right Session and account.
+                </p>
+              </div>
+            ) : null}
           </div>
         ) : filteredSessions.length === 0 ? (
           <div className="rounded-[1.8rem] border border-dashed border-[#d6c5a5] bg-white/75 p-8 text-[#7b5c3b] shadow-sm" role="status">
