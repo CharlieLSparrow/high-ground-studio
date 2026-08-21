@@ -338,7 +338,7 @@ try {
     waitUntil: "domcontentloaded",
   });
   const clientSignInGate = clientPage.getByRole("link", {
-    name: "Sign in to choose how to join",
+    name: "Sign in",
     exact: true,
   });
   await clientSignInGate.waitFor({ timeout: 20_000 });
