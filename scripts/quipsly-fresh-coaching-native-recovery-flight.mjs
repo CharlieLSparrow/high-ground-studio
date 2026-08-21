@@ -169,6 +169,14 @@ async function grantClientRecordingConsent(context) {
     ]);
     if (deviceChoiceShown) await browserChoice.click();
     await consentButton.waitFor({ state: "visible", timeout: 30_000 });
+    const transcriptionChoice = page.getByRole("checkbox", {
+      name: "Create a transcript and suggested notes/tasks",
+      exact: true,
+    });
+    await transcriptionChoice.waitFor({ state: "visible", timeout: 30_000 });
+    if (!(await transcriptionChoice.isChecked())) {
+      await transcriptionChoice.check();
+    }
     await consentButton.click();
     let packet = null;
     const deadline = Date.now() + 30_000;
