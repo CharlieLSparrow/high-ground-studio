@@ -283,11 +283,13 @@ export async function processCaptureTranscriptQueueObject(
       const expiresAt = new Date(
         options.now().getTime() + options.signedUrlDurationMs,
       );
-      const signedUrl = await storage.signedReadUrl(
-        manifest.source.objectName,
-        manifest.source.generation,
-        expiresAt,
-      );
+      const signedUrl = manifest.provider.name === "deepgram"
+        ? await storage.signedReadUrl(
+            manifest.source.objectName,
+            manifest.source.generation,
+            expiresAt,
+          )
+        : "";
       let providerResponse;
       try {
         providerResponse = await provider.transcribe(

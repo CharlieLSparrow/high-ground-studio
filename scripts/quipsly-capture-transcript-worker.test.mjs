@@ -491,6 +491,46 @@ test("worker stores provider evidence, completes once, and retires queue", async
   );
 });
 
+test("Google worker uses its GCS source without minting a signed media URL", async () => {
+  const storage = new FakeStorage();
+  const { queueObjectName, manifestObjectName } = fixture();
+  const manifestRow = storage.rows.get(manifestObjectName);
+  manifestRow.value = parseCaptureTranscriptManifest({
+    ...manifestRow.value,
+    provider: {
+      ...manifestRow.value.provider,
+      name: "google-speech-v2",
+      model: "chirp_3",
+      version: null,
+      diarizeModel: null,
+      terminology: null,
+    },
+  }, jobId);
+  const calls = [];
+  const provider = {
+    async transcribe(source, request) {
+      calls.push({ source, request });
+      return {
+        payload: googleSpeechPayload(),
+        requestId: googleSpeechPayload().operationName,
+      };
+    },
+  };
+  const result = await processCaptureTranscriptQueueObject(
+    storage,
+    provider,
+    options,
+    { name: queueObjectName, generation: "1" },
+  );
+  assert.equal(result.disposition, "completed");
+  assert.equal(storage.signedUrls.length, 0);
+  assert.equal(calls[0].source.signedUrl, "");
+  assert.equal(
+    calls[0].source.gcsUri,
+    "gs://quipsly-media/media-vault/recordings/capture/audio.m4a",
+  );
+});
+
 test("transient provider failure releases and retries without invalidating queue receipt", async () => {
   const storage = new FakeStorage();
   let calls = 0;
