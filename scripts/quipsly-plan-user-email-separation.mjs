@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { evaluateUserEmailSeparation } from "./lib/user-email-separation-plan.mjs";
 
 const AUTHORITY = "firebase:quipsly-reef";
 
@@ -71,12 +72,10 @@ async function main() {
       }),
     ]);
 
-    const retainedUser = users.find((user) =>
-      user.primaryEmail === input.retainedEmail || user.aliases.some((alias) => alias.email === input.retainedEmail));
-    const separateUser = users.find((user) =>
-      user.primaryEmail === input.separateEmail || user.aliases.some((alias) => alias.email === input.separateEmail));
     const separateLedger = users.flatMap((user) => user.authIdentities.map((identity) => ({ user, identity })))
       .find(({ identity }) => identity.subject === separateFirebase.uid);
+    const retainedLedger = users.flatMap((user) => user.authIdentities.map((identity) => ({ user, identity })))
+      .find(({ identity }) => identity.subject === retainedFirebase.uid);
 
     const [projectGrants, nestInvites, callInvitations, coachingInvitations] = await Promise.all([
       prisma.studioProjectAccessGrant.findMany({
@@ -91,32 +90,41 @@ async function main() {
       prisma.coachingEngagementInvitation.count({ where: { invitedEmail: input.separateEmail } }),
     ]);
 
-    const sameCanonicalUser = Boolean(retainedUser && separateUser && retainedUser.id === separateUser.id);
-    const separateIsAlias = Boolean(retainedUser?.aliases.some((alias) => alias.email === input.separateEmail));
-    const directSeparatePrimaryExists = users.some((user) => user.primaryEmail === input.separateEmail);
-    const canSeparate = Boolean(
-      retainedUser
-      && sameCanonicalUser
-      && separateIsAlias
-      && !directSeparatePrimaryExists
-      && retainedFirebase.uid !== separateFirebase.uid
-      && separateLedger?.user.id === retainedUser.id
-      && separateFirebase.emailVerified
-      && !separateFirebase.disabled,
-    );
+    const separation = evaluateUserEmailSeparation({
+      input,
+      users,
+      retainedFirebase,
+      separateFirebase,
+      retainedLedgerOwnerUserId: retainedLedger?.user.id || null,
+      separateLedgerOwnerUserId: separateLedger?.user.id || null,
+    });
+    const {
+      retainedUser,
+      separateUser,
+      sameCanonicalUser,
+      separateIsAlias,
+      directSeparatePrimaryExists,
+      retainedSubjectOwned,
+      separateSubjectOwned,
+      alreadySeparated,
+      canSeparate,
+    } = separation;
 
     console.log(JSON.stringify({
-      ok: canSeparate,
+      ok: separation.ok,
       mode: "read-only",
       retainedEmail: input.retainedEmail,
       separateEmail: input.separateEmail,
       current: {
         sameCanonicalUser,
+        alreadySeparated,
         canonicalPrimaryEmail: retainedUser?.primaryEmail || null,
         separateEmailIsAlias: separateIsAlias,
         separatePrimaryAlreadyExists: directSeparatePrimaryExists,
         canonicalRoles: retainedUser?.roles.map((entry) => entry.role).sort() || [],
+        separateRoles: separateUser?.roles.map((entry) => entry.role).sort() || [],
         activeNativeDeviceSessionsOnCanonicalUser: retainedUser?.nativeDeviceSessions.length || 0,
+        activeNativeDeviceSessionsOnSeparateUser: separateUser?.nativeDeviceSessions.length || 0,
       },
       firebase: {
         distinctSubjects: retainedFirebase.uid !== separateFirebase.uid,
@@ -126,6 +134,8 @@ async function main() {
         separateDisabled: separateFirebase.disabled,
         separateProviders: providerIds(separateFirebase),
         separateSubjectBoundToCanonicalUser: separateLedger?.user.id === retainedUser?.id,
+        retainedSubjectOwnedByRetainedUser: retainedSubjectOwned,
+        separateSubjectOwnedBySeparateUser: separateSubjectOwned,
         separateLedgerEmail: separateLedger?.identity.emailAtLink || null,
       },
       emailScopedAccess: {
@@ -134,12 +144,14 @@ async function main() {
         callInvitationCount: callInvitations,
         coachingInvitationCount: coachingInvitations,
       },
-      proposedBoundary: canSeparate
+      proposedBoundary: alreadySeparated
+        ? "The emails and exact Firebase subjects already resolve to separate active canonical users. No identity mutation is needed. Preserve email-scoped grants and continue two-account visibility testing."
+        : canSeparate
         ? "Detach only the separate email and its exact Firebase subject into a new canonical User; preserve the retained User and all user-owned data; review email-scoped grants before activation; revoke stale native sessions; provision a new private Home Nest and free membership."
         : "No mutation is safe until the failed identity preconditions are resolved.",
       secretsPrinted: false,
     }, null, 2));
-    process.exit(canSeparate ? 0 : 1);
+    process.exit(separation.ok ? 0 : 1);
   } finally {
     await prisma.$disconnect();
   }
