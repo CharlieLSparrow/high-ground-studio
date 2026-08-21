@@ -89,8 +89,11 @@ The verifier opens a read-only, repeatable-read transaction. Its private
 mode-0600 receipt binds invitation delivery and acceptance, separate account
 identities, current consent, endpoint checks and grants, recording transitions,
 source expectations, verified local media, resumable-queue drainage,
-finalization, and shared work to the exact canonical Session. Names, addresses,
-content bodies, and storage locations are excluded.
+finalization, one completed non-empty participant-bound transcript per person,
+and shared work to the exact canonical Session. Email delivery and accepted
+share/copy handoff remain separate facts; either supported invitation path can
+satisfy the Session handoff. Names, addresses, content bodies, and storage
+locations are excluded.
 
 This receipt cannot prove audible quality, comprehension, hands-off navigation,
 later cross-device discovery, or outsider concealment. Record those direct
