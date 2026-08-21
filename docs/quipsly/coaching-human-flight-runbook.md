@@ -88,9 +88,11 @@ npm run quipsly:coaching:post-call-readback -- \
 The verifier opens a read-only, repeatable-read transaction. Its private
 mode-0600 receipt binds invitation delivery and acceptance, separate account
 identities, current consent, endpoint checks and grants, recording transitions,
-source expectations, verified local media, resumable-queue drainage,
-finalization, one completed non-empty participant-bound transcript per person,
-and shared work to the exact canonical Session. Email delivery and accepted
+source expectations, verified local media, at least two seconds of overlap
+across the required masters, resumable-queue drainage, finalization, one
+completed participant-bound transcript per person whose immutable source hash
+matches and whose timed segments remain inside that source, and shared work to
+the exact canonical Session. Email delivery and accepted
 share/copy handoff remain separate facts; either supported invitation path can
 satisfy the Session handoff. Names, addresses, content bodies, and storage
 locations are excluded.

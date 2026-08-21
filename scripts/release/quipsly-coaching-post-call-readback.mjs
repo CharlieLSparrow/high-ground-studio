@@ -37,6 +37,56 @@ function latestBy(rows, key) {
   return [...result.values()];
 }
 
+function recordingWindow(asset) {
+  const startedAt = asset?.recordedStartedAt ? new Date(asset.recordedStartedAt).getTime() : Number.NaN;
+  const stoppedAt = asset?.recordedStoppedAt ? new Date(asset.recordedStoppedAt).getTime() : Number.NaN;
+  if (!Number.isFinite(startedAt) || !Number.isFinite(stoppedAt) || stoppedAt <= startedAt) return null;
+  return { startedAt, stoppedAt, durationSeconds: (stoppedAt - startedAt) / 1_000 };
+}
+
+function transcriptTiming(job, asset) {
+  const segments = Array.isArray(job?.segments) ? job.segments : [];
+  const declaredDuration = Number(asset?.durationSeconds);
+  const measuredWindow = recordingWindow(asset);
+  const assetDuration = Number.isFinite(declaredDuration) && declaredDuration > 0
+    ? declaredDuration
+    : measuredWindow?.durationSeconds;
+  const sourceMatches = Boolean(job?.sourceSha256 && asset?.checksum)
+    && String(job.sourceSha256).toLowerCase() === String(asset.checksum).toLowerCase();
+  let previousStart = -1;
+  const spansAreValid = segments.length > 0 && segments.every((segment) => {
+    const start = Number(segment.startSeconds);
+    const end = Number(segment.endSeconds);
+    const valid = Number.isFinite(start)
+      && Number.isFinite(end)
+      && start >= 0
+      && end > start
+      && start >= previousStart;
+    previousStart = start;
+    return valid;
+  });
+  const firstStartSeconds = spansAreValid ? Number(segments[0].startSeconds) : null;
+  const lastEndSeconds = spansAreValid ? Math.max(...segments.map((segment) => Number(segment.endSeconds))) : null;
+  const toleranceSeconds = Number.isFinite(assetDuration) && assetDuration > 0
+    ? Math.max(2, assetDuration * 0.02)
+    : 0;
+  const insideSource = spansAreValid
+    && Number.isFinite(assetDuration)
+    && assetDuration > 0
+    && lastEndSeconds <= assetDuration + toleranceSeconds;
+  return {
+    sourceMatches,
+    spansAreValid,
+    insideSource,
+    firstStartSeconds,
+    lastEndSeconds,
+    sourceDurationSeconds: Number.isFinite(assetDuration) && assetDuration > 0 ? assetDuration : null,
+    sourceDurationAuthority: Number.isFinite(declaredDuration) && declaredDuration > 0 ? "asset-duration" : measuredWindow ? "recording-window" : null,
+    toleranceSeconds,
+    passed: sourceMatches && spansAreValid && insideSource,
+  };
+}
+
 export function parseArguments(argv) {
   const options = { roomId: "", outputPath: "", databaseUrl: process.env.DATABASE_URL || "" };
   const valueAfter = (index, flag) => {
@@ -109,6 +159,12 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
   const requiredSources = room.expectedSources.filter((row) => row.status === "ACTIVE" && row.retentionRole === "REQUIRED_MASTER");
   const requiredSourcesSatisfied = requiredSources.length >= 2
     && requiredSources.every((row) => row.recordingAssetId && verifiedLocalAssets.some((asset) => asset.id === row.recordingAssetId));
+  const requiredAssetIds = new Set(requiredSources.map((row) => row.recordingAssetId).filter(Boolean));
+  const requiredVerifiedAssets = verifiedLocalAssets.filter((asset) => requiredAssetIds.has(asset.id));
+  const requiredRecordingWindows = requiredVerifiedAssets.map(recordingWindow).filter(Boolean);
+  const sourceOverlapSeconds = requiredRecordingWindows.length === requiredVerifiedAssets.length && requiredRecordingWindows.length >= 2
+    ? Math.max(0, (Math.min(...requiredRecordingWindows.map((row) => row.stoppedAt)) - Math.max(...requiredRecordingWindows.map((row) => row.startedAt))) / 1_000)
+    : 0;
   const completedTranscriptByAssetId = new Map();
   for (const job of room.transcriptJobs || []) {
     if (job.assetId
@@ -121,6 +177,13 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
   }
   const transcribedParticipantIds = unique(verifiedLocalAssets
     .filter((asset) => completedTranscriptByAssetId.has(asset.id))
+    .map((asset) => asset.participantId));
+  const timedTranscriptByAssetId = new Map(verifiedLocalAssets.map((asset) => {
+    const job = completedTranscriptByAssetId.get(asset.id);
+    return [asset.id, job ? transcriptTiming(job, asset) : null];
+  }));
+  const timedTranscriptParticipantIds = unique(verifiedLocalAssets
+    .filter((asset) => timedTranscriptByAssetId.get(asset.id)?.passed)
     .map((asset) => asset.participantId));
   const finalizedParticipants = unique(finalizationReceipts
     .filter((row) => row.recordingAssetId && row.processingDisposition !== "HELD")
@@ -144,10 +207,13 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
     verifiedLocalSourceForEveryParticipant: participantIds.length >= 2
       && participantIds.every((id) => localSourceParticipantIds.includes(id)),
     requiredSourcePlanSatisfied: requiredSourcesSatisfied,
+    coherentRequiredSourceOverlap: requiredSourcesSatisfied && sourceOverlapSeconds >= 2,
     finalizationForEveryParticipant: participantIds.length >= 2
       && participantIds.every((id) => finalizedParticipants.includes(id)),
     completedTranscriptForEveryParticipant: participantIds.length >= 2
       && participantIds.every((id) => transcribedParticipantIds.includes(id)),
+    sourceBoundTimedTranscriptForEveryParticipant: participantIds.length >= 2
+      && participantIds.every((id) => timedTranscriptParticipantIds.includes(id)),
     endpointQueuesDrained: latestQueues.length >= 2
       && latestQueues.every((row) => row.queueState === "DRAINED" && row.pendingSourceCount === 0 && row.failedSourceCount === 0),
     sharedCollaborationWorkRetained: room.notes.some((row) => row.visibility === "SESSION_SHARED")
@@ -155,7 +221,7 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
   };
 
   return {
-    schema: "quipsly-coaching-post-call-readback-v3",
+    schema: "quipsly-coaching-post-call-readback-v4",
     auditedAt,
     authority: "read-only-canonical-postgresql-projection",
     room: {
@@ -238,6 +304,7 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
         byteSize: String(row.byteSize), durationSeconds: row.durationSeconds, checksumSha256: hash(row.checksum),
         recordedStartedAt: iso(row.recordedStartedAt), recordedStoppedAt: iso(row.recordedStoppedAt), uploadedAt: iso(row.uploadedAt), verifiedAt: iso(row.verifiedAt),
       })),
+      requiredSourceOverlapSeconds: sourceOverlapSeconds,
       finalizations: finalizationReceipts.map((row) => ({
         captureIdSha256: hash(row.captureId), actorUserIdSha256: hash(row.actorUserId), recordingAssetIdSha256: hash(row.recordingAssetId),
         processingDisposition: row.processingDisposition, transcriptDisposition: row.transcriptDisposition, updatedAt: iso(row.updatedAt),
@@ -260,6 +327,7 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
         wordCount: job._count?.words || 0,
         sourceSha256: hash(job.sourceSha256),
         completedAt: iso(job.completedAt),
+        timing: timedTranscriptByAssetId.get(job.assetId),
       })),
       participantAttributionAuthority: "recording-asset-to-call-participant binding",
       humanSpeakerReviewClaimed: false,
@@ -316,7 +384,13 @@ async function readRoom(prisma, roomId) {
     const providerRecordingEvents = await tx.providerRecordingEventReceipt.findMany({ where: { roomId }, orderBy: { receivedAt: "asc" } });
     const transcriptJobs = await tx.transcriptJob.findMany({
       where: { roomId },
-      include: { _count: { select: { segments: true, words: true } } },
+      include: {
+        _count: { select: { segments: true, words: true } },
+        segments: {
+          orderBy: [{ startSeconds: "asc" }, { id: "asc" }],
+          select: { startSeconds: true, endSeconds: true, confidence: true },
+        },
+      },
       orderBy: { updatedAt: "desc" },
     });
     const collaborationScope = room.coachingEngagementId

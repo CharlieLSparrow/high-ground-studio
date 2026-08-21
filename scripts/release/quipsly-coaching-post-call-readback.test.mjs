@@ -5,6 +5,7 @@ import test from "node:test";
 import { parseArguments, summarizePostCallEvidence } from "./quipsly-coaching-post-call-readback.mjs";
 
 const now = new Date("2026-08-20T18:00:00.000Z");
+const stopped = new Date("2026-08-20T18:00:12.000Z");
 const participant = (id, userId, role) => ({ id, userId, role, accessStatus: "ACTIVE", joinedAt: now, leftAt: now, deviceLabel: role === "COACH" ? "Quipsly Web" : "Quipsly Capture", user: { primaryEmail: `${userId}@example.test` } });
 
 function completeRoom() {
@@ -19,8 +20,8 @@ function completeRoom() {
     endpointQueueReceipts: participants.map((row, index) => ({ participantId: row.id, clientInstanceId: `client-${index}`, clientKind: index ? "ios" : "web", queueState: "DRAINED", localSourceCount: 1, pendingSourceCount: 0, failedSourceCount: 0, reconciledAt: now })),
     expectedSources: participants.map((row) => ({ id: `expected-${row.id}`, participantId: row.id, sourceKind: "AUDIO", retentionRole: "REQUIRED_MASTER", status: "ACTIVE", recordingAssetId: `asset-${row.id}`, createdAt: now })),
     stateReceipts: participants.flatMap((row, index) => ["START_RECORDING", "STOP_RECORDING"].map((action, actionIndex) => ({ receiptId: `receipt-${index}-${actionIndex}`, actorUserId: row.userId, action, outcome: "APPLIED", stateApplied: true, occurredAt: now }))),
-    recordingAssets: participants.map((row) => ({ id: `asset-${row.id}`, participantId: row.id, kind: "LOCAL_AUDIO", status: "VERIFIED", checksum: "a".repeat(64), byteSize: 1000n, durationSeconds: 12, storageBucket: "private", storageObjectPath: `room/${row.id}`, verifiedAt: now, uploadedAt: now, recordedStartedAt: now, recordedStoppedAt: now })),
-    transcriptJobs: participants.map((row) => ({ id: `transcript-${row.id}`, assetId: `asset-${row.id}`, status: "COMPLETED", provider: "local-whisper", language: "en", sourceSha256: "b".repeat(64), completedAt: now, updatedAt: now, _count: { segments: 3, words: 24 } })),
+    recordingAssets: participants.map((row) => ({ id: `asset-${row.id}`, participantId: row.id, kind: "LOCAL_AUDIO", status: "VERIFIED", checksum: "a".repeat(64), byteSize: 1000n, durationSeconds: 12, storageBucket: "private", storageObjectPath: `room/${row.id}`, verifiedAt: now, uploadedAt: now, recordedStartedAt: now, recordedStoppedAt: stopped })),
+    transcriptJobs: participants.map((row) => ({ id: `transcript-${row.id}`, assetId: `asset-${row.id}`, status: "COMPLETED", provider: "local-whisper", language: "en", sourceSha256: "a".repeat(64), completedAt: now, updatedAt: now, _count: { segments: 3, words: 24 }, segments: [{ startSeconds: 0.1, endSeconds: 3.5, confidence: 0.9 }, { startSeconds: 3.6, endSeconds: 7.5, confidence: 0.88 }, { startSeconds: 7.6, endSeconds: 11.8, confidence: 0.91 }] })),
     providerRecordingCommands: [], providerRecordingEvents: [], notes: [{ id: "note", visibility: "SESSION_SHARED" }], actionItems: [{ id: "task", status: "OPEN" }], goals: [],
   };
 }
@@ -42,7 +43,7 @@ test("parses exact room and output options", () => {
 
 test("complete canonical records pass automation but never claim human acceptance", () => {
   const receipt = summarizePostCallEvidence(completeRoom(), finalizations(), now.toISOString());
-  assert.equal(receipt.schema, "quipsly-coaching-post-call-readback-v3");
+  assert.equal(receipt.schema, "quipsly-coaching-post-call-readback-v4");
   assert.equal(receipt.automatedEvidencePassed, true);
   assert.equal(receipt.humanAcceptance.satisfied, false);
   assert.equal(receipt.invitationEvidence.emailDeliveryProven, true);
@@ -100,6 +101,38 @@ test("a missing or empty participant transcript fails post-call evidence", () =>
   const emptyReceipt = summarizePostCallEvidence(empty, finalizations(), now.toISOString());
   assert.equal(emptyReceipt.automatedGates.completedTranscriptForEveryParticipant, false);
   assert.equal(emptyReceipt.automatedEvidencePassed, false);
+});
+
+test("non-overlapping required masters cannot claim an assemblable call", () => {
+  const room = completeRoom();
+  room.recordingAssets[1].recordedStartedAt = new Date("2026-08-20T18:00:15.000Z");
+  room.recordingAssets[1].recordedStoppedAt = new Date("2026-08-20T18:00:27.000Z");
+  const receipt = summarizePostCallEvidence(room, finalizations(), now.toISOString());
+  assert.equal(receipt.recordingEvidence.requiredSourceOverlapSeconds, 0);
+  assert.equal(receipt.automatedGates.coherentRequiredSourceOverlap, false);
+  assert.equal(receipt.automatedEvidencePassed, false);
+});
+
+test("transcript timing must remain source-bound and inside the retained asset", () => {
+  const wrongHash = completeRoom();
+  wrongHash.transcriptJobs[1].sourceSha256 = "b".repeat(64);
+  const wrongHashReceipt = summarizePostCallEvidence(wrongHash, finalizations(), now.toISOString());
+  assert.equal(wrongHashReceipt.automatedGates.sourceBoundTimedTranscriptForEveryParticipant, false);
+
+  const outsideSource = completeRoom();
+  outsideSource.transcriptJobs[1].segments[2].endSeconds = 30;
+  const outsideSourceReceipt = summarizePostCallEvidence(outsideSource, finalizations(), now.toISOString());
+  assert.equal(outsideSourceReceipt.automatedGates.sourceBoundTimedTranscriptForEveryParticipant, false);
+  assert.equal(outsideSourceReceipt.automatedEvidencePassed, false);
+});
+
+test("timed transcript can use a coherent recording window when container duration is absent", () => {
+  const room = completeRoom();
+  room.recordingAssets.forEach((asset) => { asset.durationSeconds = null; });
+  const receipt = summarizePostCallEvidence(room, finalizations(), now.toISOString());
+  assert.equal(receipt.automatedGates.sourceBoundTimedTranscriptForEveryParticipant, true);
+  assert.equal(receipt.transcriptEvidence.jobs[0].timing.sourceDurationAuthority, "recording-window");
+  assert.equal(receipt.automatedEvidencePassed, true);
 });
 
 test("revoked consent cannot satisfy current consent", () => {
