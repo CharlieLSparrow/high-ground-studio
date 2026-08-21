@@ -187,6 +187,7 @@ export function BrowserSourceRecorder({
   microphoneLabel,
   cameraId,
   cameraLabel,
+  conversationConnected = true,
   onSourceLockChange,
   onGuardianEvidenceChange,
 }: {
@@ -200,6 +201,7 @@ export function BrowserSourceRecorder({
   microphoneLabel: string;
   cameraId: string;
   cameraLabel: string;
+  conversationConnected?: boolean;
   onSourceLockChange?: (locked: boolean) => void;
   onGuardianEvidenceChange?: (
     evidence: BrowserRetainedSourceGuardianEvidence,
@@ -1834,6 +1836,17 @@ export function BrowserSourceRecorder({
         </div>
       </div>
 
+      {!conversationConnected ? (
+        <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold leading-5 text-violet-950">
+          Next, check your microphone and camera, then join the call. Joining
+          does not start recording; the Record button appears after you join.
+        </p>
+      ) : null}
+
+      <div
+        className={conversationConnected ? "" : "hidden"}
+        aria-hidden={!conversationConnected}
+      >
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {["ENDED", "CANCELED", "FAILED"].includes(
           roomStatus?.toUpperCase() ?? "",
@@ -2205,6 +2218,7 @@ export function BrowserSourceRecorder({
           Local deletion remains unavailable by design.
         </p>
       ) : null}
+      </div>
     </section>
   );
 }

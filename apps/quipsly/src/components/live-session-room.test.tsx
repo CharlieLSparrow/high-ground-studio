@@ -12,15 +12,18 @@ jest.mock("@/components/browser-source-recorder", () => ({
   BrowserSourceRecorder: ({
     captureGroupId,
     projectSlug,
+    conversationConnected,
     onSourceLockChange,
   }: {
     captureGroupId: string;
     projectSlug?: string | null;
+    conversationConnected?: boolean;
     onSourceLockChange?: (locked: boolean) => void;
   }) => (
     <div>
       <span data-testid="browser-source-capture-group">{captureGroupId}</span>
       <span data-testid="browser-source-project">{projectSlug || "unbound"}</span>
+      <span data-testid="browser-source-conversation">{conversationConnected ? "connected" : "lobby"}</span>
       <button type="button" onClick={() => onSourceLockChange?.(true)}>Simulate retained source start</button>
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
     </div>
@@ -61,7 +64,7 @@ describe("LiveSessionRoom", () => {
 
     expect(await screen.findByRole("option", { name: "Shure MV7i" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Canon EOS R8" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Nothing records until you start it" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Joining does not record" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Call-path microphone evidence" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Private studio sound check" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Record private sample" })).toBeDisabled();
@@ -104,7 +107,7 @@ describe("LiveSessionRoom", () => {
     await screen.findByText(/No microphone was found/i);
   });
 
-  it("puts the coaching call and local-recording path before the camera preview", async () => {
+  it("presents coaching consent, device readiness, sound check, then Join", async () => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -134,15 +137,22 @@ describe("LiveSessionRoom", () => {
     ).toBeInTheDocument();
     const join = screen.getByRole("button", { name: /Join live room/i });
     const recorder = screen.getByTestId("browser-source-capture-group");
+    const devices = screen.getByRole("group", { name: "Preflight studio devices" });
+    const soundCheck = screen.getByRole("region", { name: "Private studio sound check" });
     const preview = view!.container.querySelector("video");
     expect(preview).not.toBeNull();
     expect(
-      join.compareDocumentPosition(recorder) & Node.DOCUMENT_POSITION_FOLLOWING,
+      recorder.compareDocumentPosition(devices) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      recorder.compareDocumentPosition(preview!)
+      devices.compareDocumentPosition(soundCheck)
         & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    expect(
+      soundCheck.compareDocumentPosition(join)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("lobby");
     expect(preview?.parentElement).toHaveClass("h-28");
   });
 

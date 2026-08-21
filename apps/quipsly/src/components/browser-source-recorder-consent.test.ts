@@ -13,6 +13,9 @@ describe("browser retained-source consent", () => {
     );
     expect(source).toContain('"Agree and continue"');
     expect(source).toContain("Create a transcript and suggested notes/tasks");
+    expect(source).toContain("conversationConnected = true");
+    expect(source).toContain('className={conversationConnected ? "" : "hidden"}');
+    expect(source).toContain("the Record button appears after you join");
     expect(source).not.toContain("Save my consent receipt");
   });
 });

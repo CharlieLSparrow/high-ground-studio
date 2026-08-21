@@ -1091,14 +1091,15 @@ export function LiveSessionRoom({
       microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
       cameraId={cameraId}
       cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
+      conversationConnected={connected}
       onSourceLockChange={setSourceLocked}
       onGuardianEvidenceChange={setRetainedGuardianEvidence}
     />
   ) : (
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-label="Retained source unavailable">
       <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide"><CircleAlert size={16} aria-hidden="true" /> Conversation available · recording held</p>
-      <p className="mt-2 text-sm font-semibold leading-6">This Session does not yet have a canonical capture-group identity. Device testing and the live conversation remain available, but Quipsly will not create or relabel retained source files without that take boundary.</p>
-      <p className="mt-2 text-[10px] font-black leading-4">Refresh the Session after its capture group is repaired or created. Do not substitute the room ID: room access and synchronized source identity are different contracts.</p>
+      <p className="mt-2 text-sm font-semibold leading-6">You can still join the call, but recording is unavailable for this Session.</p>
+      <p className="mt-2 text-[10px] font-black leading-4">Refresh the Session. If recording is still unavailable, ask the host to reopen it.</p>
     </section>
   );
 
@@ -1117,9 +1118,11 @@ export function LiveSessionRoom({
 
       <div className={`mt-5 grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
         <div className="space-y-4">
+          {experience.captureProfile === "coaching" ? retainedSourceControls : null}
+
           <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={!connected}>
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Camera, microphone, and speakers</summary>
-          <div className="mt-4 grid gap-3 md:grid-cols-2" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
+          <div className="mt-4 grid gap-3 md:grid-cols-2" role="group" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
             <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Microphone
               <select value={microphoneId} disabled={sourceLocked} onChange={(event) => void chooseMicrophone(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
                 <option value="">Choose a microphone</option>{microphones.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
@@ -1150,6 +1153,20 @@ export function LiveSessionRoom({
               <button type="button" aria-label="Test selected setup" onClick={() => void startSelectedPreview()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Video size={15} /> Preview</button>
             </> : null}
           </div>
+
+          {!connected ? (
+            <div className="mt-4">
+              <StudioSoundCheck
+                getInputStream={currentPreflightStream}
+                microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
+                outputId={outputId}
+                evidence={meterEvidence}
+                setupKey={[microphoneId, cameraWanted ? cameraId : "camera-off", outputId || "system-output"].join(":")}
+                onDecision={saveSoundCheckDecision}
+                disabled={!preflightStreamRef.current || status !== "ready"}
+              />
+            </div>
+          ) : null}
           </details>
 
           <div className="flex flex-wrap gap-2">
@@ -1163,8 +1180,6 @@ export function LiveSessionRoom({
           </div>
           <p role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
 
-          {experience.captureProfile === "coaching" ? retainedSourceControls : null}
-
           <div className={`relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14] ${!connected && !cameraWanted ? "h-28" : ""}`}>
             <video ref={localVideoRef} muted playsInline className={`w-full object-cover ${!connected && !cameraWanted ? "h-full" : "aspect-video"} ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`} />
             {!cameraWanted || cameraMuted ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
@@ -1174,25 +1189,14 @@ export function LiveSessionRoom({
 
           <StudioInputEvidenceMeter evidence={meterEvidence} />
           {cameraWanted ? <StudioCameraEvidence cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""} evidence={cameraEvidence} /> : null}
-          {!connected ? (
-            <StudioSoundCheck
-              getInputStream={currentPreflightStream}
-              microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
-              outputId={outputId}
-              evidence={meterEvidence}
-              setupKey={[microphoneId, cameraWanted ? cameraId : "camera-off", outputId || "system-output"].join(":")}
-              onDecision={saveSoundCheckDecision}
-              disabled={!preflightStreamRef.current || status !== "ready"}
-            />
-          ) : null}
         </div>
 
         <aside className="space-y-3">
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
             <ShieldCheck className="text-emerald-800" aria-hidden="true" />
-            <h3 className="mt-2 font-serif text-xl font-black text-emerald-950">Nothing records until you start it</h3>
-            <p className="mt-2 text-xs font-bold leading-5 text-emerald-900">Joining starts the conversation only. Use Record on this device when everyone is ready.</p>
-            <p className="mt-3 rounded-xl bg-white/80 p-3 text-[10px] font-black uppercase tracking-wide text-emerald-950">{recordingConsentGranted ? "Your choice is saved" : "Recording agreement needed"}</p>
+            <h3 className="mt-2 font-serif text-xl font-black text-emerald-950">Joining does not record</h3>
+            <p className="mt-2 text-xs font-bold leading-5 text-emerald-900">Recording starts only when the host presses Record after everyone agrees.</p>
+            <p className="mt-3 rounded-xl bg-white/80 p-3 text-[10px] font-black uppercase tracking-wide text-emerald-950">{recordingConsentGranted ? "Recording choice saved" : "Choose recording above"}</p>
           </div>
           <details className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-950" open={["recording", "needs-review"].includes(providerRecordingState)}>
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide">Backup recording details · {providerRecordingStateLabel}</summary>
