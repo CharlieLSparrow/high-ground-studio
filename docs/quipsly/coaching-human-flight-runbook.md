@@ -3,6 +3,62 @@
 This is the real UX test. It is not a fixture smoke, a route checklist, or an
 operator demonstration. Run it only after automated release gates pass.
 
+## Immediate Build 32 physical flight
+
+The first physical flight is deliberately smaller than the complete cohort
+journey below. It proves the released phone and browser call spine before the
+same people spend time evaluating post-call editing. Passing this milestone
+does not pass the complete human-flight or 50-coach release gate.
+
+Current release target, read back on 2026-08-21:
+
+- **Quipsly Capture 1.0 (32)** through the open Apple public beta at
+  `https://testflight.apple.com/join/XwRRcYUm`;
+- **Nest revision `studio-00518-dih`**, source
+  `3a3861a075c158de32dc9ed1facab0df7a41da47`;
+- Homer signs into Quipsly with Google as `shomers@gmail.com`. His Apple
+  TestFlight account may be a different address and does not determine his
+  Quipsly identity;
+- the client uses a separate ordinary identity that has not been granted any
+  unrelated Quipsly access.
+
+Send Homer this message and nothing else before he starts:
+
+> Install or update Quipsly Capture from
+> https://testflight.apple.com/join/XwRRcYUm, then continue with Google as
+> shomers@gmail.com. Create a Coaching Session for this client's email and use
+> Quipsly to invite them. At the scheduled time, both follow Quipsly's prompts,
+> join, make a short recording, add one shared note and one assigned task, end
+> the Session, and later reopen it to confirm the work is still there.
+
+Give the client only the invitation Quipsly produced. The invitation should
+explain the relationship and offer the supported app or browser path without
+requiring a laptop, a redemption code, an internal route, or a room ID.
+
+For this first flight, observe these facts without steering either person:
+
+1. Homer installs or updates Build 32, signs into the intended Quipsly account,
+   creates the Session, and produces the invitation through ordinary UI.
+2. A signed-out client opens that exact invitation, uses a fresh identity,
+   reaches only the invited coaching space, and can choose the supported app or
+   browser path.
+3. Consent, device readiness, Join, and Record appear in a conventional order.
+   The call does not start recording implicitly.
+4. Both endpoints hear each other. The intended endpoint starts and stops its
+   participant-owned source, and a reconnect or background event has an
+   understandable recovery path.
+5. The shared note and assigned task are visible to the intended people and no
+   unrelated Nest, podcast, client, or Session is visible.
+6. After ending, both people can return through ordinary navigation. The
+   recording state and retained shared work survive the return.
+7. Run the canonical post-call readback below against the Session created by
+   the people. Human listening and UI observations remain separate evidence.
+
+If a person asks for help, record the question and exact answer, let the flight
+continue, and mark hands-off acceptance failed. A useful recording may still be
+kept as diagnostic evidence. After repairing any discovered problem, repeat
+this same flight with a person who has not rehearsed the repair.
+
 ## Prepare without pre-solving the journey
 
 1. Use two people who have not rehearsed the current build, two real inboxes,
@@ -29,6 +85,10 @@ Give the coach only this sentence:
 
 Give the client only the invitation Quipsly produced. Do not supply a route,
 menu name, room ID, workaround, or spoken tour.
+
+This complete mission follows the immediate Build 32 flight. Do not interpret
+a successful short call as proof that transcript correction, light editing,
+sharing, revocation, and later cohort operation have passed.
 
 ## The actual product journey the observer expects
 

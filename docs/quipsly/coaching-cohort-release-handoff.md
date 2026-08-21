@@ -1,6 +1,7 @@
 # Quipsly Coaching cohort release handoff
 
-Status: candidate preparation; human acceptance and production promotion remain open.
+Status: Build 32 and the matching Nest release are live; physical human
+acceptance remains open.
 
 This is the short operational handoff for the coaching-certification cohort.
 It complements the detailed acceptance history in
@@ -25,6 +26,24 @@ Do not copy a commit identifier into this document and let it become stale.
 The fresh-flight receipt records the exact 40-character source commit and the
 tracked-worktree state at the beginning of the operated flight. The preview
 release maps that same commit to immutable image tag `source-<commit>`.
+
+### Current deployed checkpoint
+
+Read-only production checks on 2026-08-21 returned:
+
+- Nest revision `studio-00518-dih` at 100% production traffic;
+- immutable image tag
+  `source-3a3861a075c158de32dc9ed1facab0df7a41da47` and matching source SHA;
+- Cloud Run health `ok: true` at `https://nest.quipsly.com/api/healthz`;
+- Quipsly Capture `1.0 (32)` as the intended public beta;
+- HTTP 200 from `https://testflight.apple.com/join/XwRRcYUm`, an open beta,
+  matching Quipsly Capture title and heading, and the exact `itms-beta`
+  handoff.
+
+The production revision intentionally retains release channel `preview`: the
+guarded release process qualified one immutable no-traffic revision and moved
+that exact revision to production. Creating a replacement revision merely to
+rename the channel would discard the preview-to-production identity proof.
 
 ## What this candidate is intended to deliver
 
@@ -209,15 +228,18 @@ archive/signing/privacy/upload procedure and
 [`ios-capture-reviewer-smoke-checklist.md`](./ios-capture-reviewer-smoke-checklist.md)
 for the reviewer journey.
 
-## Current blockers that must remain visible
+## Open gates that must remain visible
 
 - Google Cloud CLI user and ADC tokens must be freshly authorized before a
-  preview or provider-secret readback.
+  future preview, deployment, or provider-secret readback. This does not stop
+  the currently released app or public human flight.
 - Production invitation email is not a pass until the dedicated credential and
   verified sender deliver to a real inbox.
-- The earlier 50-virtual-user production read probe exhausted a 512 MiB Cloud
-  Run instance. Any memory/concurrency/maximum-instance change requires an
-  approved capacity proposal and a repeated 2 → 10 → 50 production probe.
+- The earlier same-millisecond production burst failure remains useful limit
+  evidence, not the current readiness result. A realistic 50-coach arrival over
+  60 seconds passed 150/150 authenticated reads, and a local 50-distinct-coach
+  identity/isolation run passed 150/150 reads with exact cleanup. Neither run
+  proves 50 concurrent calls, uploads, transcripts, or people.
 - No current physical iPhone is visible to Xcode, so physical installation,
   real microphone/camera behavior, backgrounding, restart, and human listening
   remain unproved.
@@ -225,6 +247,13 @@ for the reviewer journey.
   may promote that state.
 
 ## Human release decision
+
+Run the smaller Build 32 call milestone in
+[`coaching-human-flight-runbook.md`](./coaching-human-flight-runbook.md) first.
+It protects the people's time by proving installation, identity, invitation,
+call entry, participant-owned recording, shared work, and return before asking
+them to evaluate transcript correction and editing. It is a milestone, not a
+replacement for this complete release decision.
 
 After automated gates pass, give the coach only:
 
