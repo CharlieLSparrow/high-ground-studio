@@ -5,6 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 subject="${script_dir}/quipsly-capture-release-from-commit.sh"
 fixture_root="$(mktemp -d "${TMPDIR:-/tmp}/quipsly-capture-release-test.XXXXXX")"
+export QUIPSLY_CAPTURE_MIN_FREE_GIB=1
 
 cleanup() {
   rm -rf -- "$fixture_root"
@@ -65,6 +66,17 @@ git -C "$fixture_repo" add \
 git -C "$fixture_repo" commit -qm "test: committed release fixture"
 source_revision="$(git -C "$fixture_repo" rev-parse HEAD)"
 printf 'must not enter release\n' >"${fixture_repo}/uncommitted-only.txt"
+
+if MOCK_RECEIPT_PATH="$receipt" \
+  QUIPSLY_CAPTURE_MIN_FREE_GIB=999999999 \
+  QUIPSLY_CAPTURE_RELEASE_DIR="$fixture_release" \
+  "${fixture_repo}/scripts/release/quipsly-capture-release-from-commit.sh" \
+    candidate \
+    --revision "$source_revision" >/dev/null 2>&1; then
+  fail "Candidate qualification must fail before worktree creation when disk capacity is insufficient."
+fi
+[[ ! -e "$receipt" ]] ||
+  fail "The committed runner must not start after the disk-capacity gate fails."
 
 MOCK_RECEIPT_PATH="$receipt" \
 QUIPSLY_CAPTURE_RELEASE_DIR="$fixture_release" \

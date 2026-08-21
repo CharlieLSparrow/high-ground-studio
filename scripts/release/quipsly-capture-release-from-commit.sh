@@ -105,6 +105,39 @@ case "${release_root}/" in
     ;;
 esac
 
+minimum_free_gib="${QUIPSLY_CAPTURE_MIN_FREE_GIB:-10}"
+[[ "$minimum_free_gib" =~ ^[1-9][0-9]*$ ]] ||
+  fail "QUIPSLY_CAPTURE_MIN_FREE_GIB must be a positive integer."
+minimum_free_kib="$((minimum_free_gib * 1024 * 1024))"
+
+require_free_space() {
+  local path="$1"
+  local label="$2"
+  local available_kib
+  available_kib="$(df -Pk "$path" | awk 'NR == 2 { print $4 }')"
+  [[ "$available_kib" =~ ^[0-9]+$ ]] ||
+    fail "Could not determine free space for ${label} at ${path}."
+  (( available_kib >= minimum_free_kib )) ||
+    fail "${label} requires at least ${minimum_free_gib} GiB free at ${path}; only $((available_kib / 1024 / 1024)) GiB is available. Remove disposable Xcode/release evidence or set the output directory to a larger volume."
+}
+
+if [[ "$lane" != "upload_qualified" ]]; then
+  require_free_space "$release_root" "Capture release qualification"
+fi
+
+if [[ "$lane" == "candidate" || "$lane" == "beta" ]]; then
+  ui_test_root_input="${QUIPSLY_CAPTURE_UI_TEST_DIR:-/tmp/quipsly-capture-ui-tests}"
+  mkdir -p "$ui_test_root_input"
+  ui_test_root="$(cd "$ui_test_root_input" && pwd)"
+  case "${ui_test_root}/" in
+    "${repo_root}/"*)
+      fail "Capture UI evidence must be written outside the source repository."
+      ;;
+  esac
+  require_free_space "$ui_test_root" "Capture UI qualification"
+  export QUIPSLY_CAPTURE_UI_TEST_DIR="$ui_test_root"
+fi
+
 release_run_id="${QUIPSLY_CAPTURE_RELEASE_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 [[ "$release_run_id" =~ ^[A-Za-z0-9._-]+$ ]] ||
   fail "QUIPSLY_CAPTURE_RELEASE_RUN_ID may contain only letters, numbers, dot, underscore, and hyphen."
