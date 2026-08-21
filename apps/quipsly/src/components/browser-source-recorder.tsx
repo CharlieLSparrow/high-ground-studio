@@ -218,6 +218,11 @@ export function BrowserSourceRecorder({
   const [myAudioConsent, setMyAudioConsent] = useState(false);
   const [myVideoConsent, setMyVideoConsent] = useState(false);
   const [transcriptionAllowed, setTranscriptionAllowed] = useState(true);
+  const transcriptionAllowedRef = useRef(true);
+  const setTranscriptionChoice = useCallback((allowed: boolean) => {
+    transcriptionAllowedRef.current = allowed;
+    setTranscriptionAllowed(allowed);
+  }, []);
   const [policy, setPolicy] = useState<ConsentPolicy | null>(null);
   const [consentId, setConsentId] = useState<string | null>(null);
   const [participantId, setParticipantId] = useState<string | null>(null);
@@ -388,7 +393,7 @@ export function BrowserSourceRecorder({
         setMyVideoConsent(
           consentPacket?.session?.recordingConsentCanRecordVideo === true,
         );
-        setTranscriptionAllowed(
+        setTranscriptionChoice(
           consentPacket?.session?.recordingConsentId
             ? consentPacket?.session?.recordingConsentCanTranscribe === true
             : true,
@@ -426,7 +431,7 @@ export function BrowserSourceRecorder({
     return () => {
       cancelled = true;
     };
-  }, [callRoomId]);
+  }, [callRoomId, setTranscriptionChoice]);
 
   const consentReady =
     sourceType === "video" ? allPartyVideoReady : allPartyAudioReady;
@@ -518,7 +523,7 @@ export function BrowserSourceRecorder({
           consentAction: "GRANT",
           canRecordAudio: true,
           canRecordVideo: sourceType === "video",
-          canTranscribe: transcriptionAllowed,
+          canTranscribe: transcriptionAllowedRef.current,
           allAudibleParticipantsNotifiedAndAgreed: true,
           consentPolicyVersion: policy.version,
           consentText: policy.text,
@@ -544,7 +549,7 @@ export function BrowserSourceRecorder({
       setConsentId(session.recordingConsentId ?? null);
       setMyAudioConsent(session.recordingConsentCanRecordAudio === true);
       setMyVideoConsent(session.recordingConsentCanRecordVideo === true);
-      setTranscriptionAllowed(
+      setTranscriptionChoice(
         session.recordingConsentCanTranscribe === true,
       );
       setParticipantId(session.participantId ?? null);
@@ -574,7 +579,7 @@ export function BrowserSourceRecorder({
     policy,
     roomStatus,
     sourceType,
-    transcriptionAllowed,
+    setTranscriptionChoice,
   ]);
 
   const reopenRoom = useCallback(async () => {
@@ -1801,9 +1806,7 @@ export function BrowserSourceRecorder({
             <input
               type="checkbox"
               checked={transcriptionAllowed}
-              onChange={(event) =>
-                setTranscriptionAllowed(event.target.checked)
-              }
+              onChange={(event) => setTranscriptionChoice(event.target.checked)}
               className="mt-1 accent-violet-800"
             />{" "}
             Create a transcript and suggested notes/tasks
