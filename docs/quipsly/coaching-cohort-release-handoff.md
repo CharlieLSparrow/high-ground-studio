@@ -198,6 +198,8 @@ PROJECT_ID=high-ground-odyssey \
 SOURCE_REF=HEAD \
 MIN_INSTANCES=0 \
 MAX_INSTANCES=2 \
+ENABLE_SESSION_INVITATION_EMAIL=1 \
+ENABLE_TRANSCRIPT_WORKER=1 \
 scripts/release/quipsly-deploy-preview.sh
 ```
 
@@ -205,6 +207,12 @@ The deploy command receives no production traffic. Follow its emitted preview
 URL with `quipsly-smoke-preview.sh`, the authenticated two-account privacy
 checks, and `quipsly-promote-preview.sh`. Run
 `quipsly-production-status.sh` after promotion.
+
+The invitation and transcript flags are part of this coaching release profile,
+not optional demonstrations. The deploy fails closed before creating a preview
+unless the invitation provider secret and the isolated transcript worker's
+secret, immutable image, service account, media bucket, and exact executor IAM
+boundary all read back successfully.
 
 Do not change Cloud Run memory, concurrency, maximum instances, provider
 recording, outbound invitation email, calendar attendee notification, or other
