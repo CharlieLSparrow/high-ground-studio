@@ -91,6 +91,9 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
   const localSourceParticipantIds = unique(verifiedLocalAssets.map((row) => row.participantId));
   const stoppedActors = unique(stateReceiptsApplied.filter((row) => row.action === "STOP_RECORDING").map((row) => row.actorUserId));
   const startedActors = unique(stateReceiptsApplied.filter((row) => row.action === "START_RECORDING").map((row) => row.actorUserId));
+  const recordingCoordinatorUserIds = unique(activeParticipants
+    .filter((row) => ["COACH", "HOST"].includes(String(row.role)))
+    .map((row) => row.userId));
   const acceptedInvitations = room.invitations.filter((row) => row.status === "ACCEPTED" && row.acceptedAt && row.acceptedByUserId);
   const sentDeliveries = room.invitations.flatMap((row) => row.deliveries).filter((row) => row.status === "SENT" && row.completedAt);
   const currentConsentByUser = new Map(latestConsents.map((row) => [row.userId, row]));
@@ -123,8 +126,8 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
       && participantIds.every((id) => latestPreflights.some((row) => row.participantId === id && row.status === "READY")),
     providerGrantForEveryParticipant: participantIds.length >= 2
       && participantIds.every((id) => room.participantProviderGrants.some((row) => row.participantId === id)),
-    recordingStartAndStopForEveryAccount: participantUserIds.length >= 2
-      && participantUserIds.every((id) => startedActors.includes(id) && stoppedActors.includes(id)),
+    coachCoordinatedRecordingStartAndStop: recordingCoordinatorUserIds.length >= 1
+      && recordingCoordinatorUserIds.some((id) => startedActors.includes(id) && stoppedActors.includes(id)),
     verifiedLocalSourceForEveryParticipant: participantIds.length >= 2
       && participantIds.every((id) => localSourceParticipantIds.includes(id)),
     requiredSourcePlanSatisfied: requiredSourcesSatisfied,

@@ -61,6 +61,23 @@ test("an accepted private share link passes without inventing email delivery", (
   assert.equal(receipt.automatedEvidencePassed, true);
 });
 
+test("one coach can coordinate recording while every endpoint retains its own source", () => {
+  const room = completeRoom();
+  room.stateReceipts = room.stateReceipts.filter((row) => row.actorUserId === "u1");
+  const receipt = summarizePostCallEvidence(room, finalizations(), now.toISOString());
+  assert.equal(receipt.automatedGates.coachCoordinatedRecordingStartAndStop, true);
+  assert.equal(receipt.automatedGates.verifiedLocalSourceForEveryParticipant, true);
+  assert.equal(receipt.automatedEvidencePassed, true);
+});
+
+test("a client-only recording transition cannot impersonate coach coordination", () => {
+  const room = completeRoom();
+  room.stateReceipts = room.stateReceipts.filter((row) => row.actorUserId === "u2");
+  const receipt = summarizePostCallEvidence(room, finalizations(), now.toISOString());
+  assert.equal(receipt.automatedGates.coachCoordinatedRecordingStartAndStop, false);
+  assert.equal(receipt.automatedEvidencePassed, false);
+});
+
 test("missing second retained source fails exact automated gates", () => {
   const room = completeRoom();
   room.recordingAssets.pop();
