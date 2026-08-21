@@ -178,22 +178,20 @@ async function grantClientRecordingConsent(context) {
       exact: true,
     });
     await transcriptionChoice.waitFor({ state: "visible", timeout: 30_000 });
+    await consentButton.click({ trial: true, timeout: 30_000 });
     if (!(await transcriptionChoice.isChecked())) {
       await transcriptionChoice.check();
     }
-    await page.waitForFunction(
-      () => {
-        const checkbox = Array.from(
-          document.querySelectorAll('input[type="checkbox"]'),
-        ).find((input) =>
-          input.parentElement?.textContent?.includes(
-            "Create a transcript and suggested notes/tasks",
-          ),
-        );
-        return checkbox instanceof HTMLInputElement && checkbox.checked;
-      },
-      null,
-      { timeout: 10_000 },
+    await consentButton.click({ trial: true, timeout: 30_000 });
+    assert.equal(
+      await transcriptionChoice.isEnabled(),
+      true,
+      "The transcription choice stopped being actionable before consent submission.",
+    );
+    assert.equal(
+      await transcriptionChoice.isChecked(),
+      true,
+      "The retained recorder reset the visible transcription choice before consent submission.",
     );
     const consentRequestPromise = page.waitForRequest(
       (request) => {
@@ -212,6 +210,20 @@ async function grantClientRecordingConsent(context) {
       },
       { timeout: 30_000 },
     );
+    const clickBoundary = await retainedRecorder.evaluate((region) => ({
+      text: region.textContent,
+      checkboxes: Array.from(
+        region.querySelectorAll('input[type="checkbox"]'),
+      ).map((input) => ({
+        checked: input.checked,
+        disabled: input.disabled,
+        label: input.parentElement?.textContent?.trim() ?? null,
+      })),
+      buttons: Array.from(region.querySelectorAll("button")).map((button) => ({
+        disabled: button.disabled,
+        label: button.textContent?.trim() ?? null,
+      })),
+    }));
     await consentButton.click();
     const consentRequest = await consentRequestPromise;
     const submittedChoices = consentRequest.postDataJSON();
@@ -219,7 +231,7 @@ async function grantClientRecordingConsent(context) {
     assert.equal(
       submittedChoices.canTranscribe,
       true,
-      "The retained recorder submitted a stale transcription choice.",
+      `The retained recorder submitted a stale transcription choice. Click boundary: ${JSON.stringify(clickBoundary)}`,
     );
     let packet = null;
     const deadline = Date.now() + 30_000;
