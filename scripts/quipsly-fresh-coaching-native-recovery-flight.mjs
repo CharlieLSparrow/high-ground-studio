@@ -155,7 +155,11 @@ async function grantClientRecordingConsent(context) {
       password,
       callbackPath: context.clientEntryPath,
     });
-    const consentButton = page.getByRole("button", {
+    const retainedRecorder = page.getByRole("region", {
+      name: "Record this coaching Session",
+      exact: true,
+    });
+    const consentButton = retainedRecorder.getByRole("button", {
       name: /Agree and continue|Update choices/,
     });
     const browserChoice = page.getByRole("button", { name: /This browser/i });
@@ -169,8 +173,9 @@ async function grantClientRecordingConsent(context) {
     ]);
     if (deviceChoiceShown) await browserChoice.click();
     await consentButton.waitFor({ state: "visible", timeout: 30_000 });
-    const transcriptionChoice = page.getByRole("checkbox", {
-      name: /Separately allow transcription of my recorded participation/i,
+    const transcriptionChoice = retainedRecorder.getByRole("checkbox", {
+      name: "Create a transcript and suggested notes/tasks",
+      exact: true,
     });
     await transcriptionChoice.waitFor({ state: "visible", timeout: 30_000 });
     if (!(await transcriptionChoice.isChecked())) {
