@@ -1785,7 +1785,6 @@ export function BrowserSourceRecorder({
           ) : null}
           <label className="mt-3 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
             <input
-              ref={transcriptionChoiceInputRef}
               type="checkbox"
               checked={headphonesAttested}
               onChange={(event) => setHeadphonesAttested(event.target.checked)}
@@ -1809,6 +1808,7 @@ export function BrowserSourceRecorder({
           </p>
           <label className="mt-2 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
             <input
+              ref={transcriptionChoiceInputRef}
               type="checkbox"
               checked={transcriptionAllowed}
               onChange={(event) => setTranscriptionChoice(event.target.checked)}
