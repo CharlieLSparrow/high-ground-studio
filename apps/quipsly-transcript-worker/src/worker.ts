@@ -508,6 +508,9 @@ export function normalizeGoogleSpeechV2Response(value: unknown): {
 } {
   const payload = object(value);
   const response = object(payload.response);
+  const providerDurationSeconds = googleDurationSeconds(
+    response.totalBilledDuration,
+  );
   const fileResults = Object.values(object(response.results));
   const draftWords: Array<Omit<CaptureTranscriptWordAnchor, "index">> = [];
   let requestId = "";
@@ -533,6 +536,8 @@ export function normalizeGoogleSpeechV2Response(value: unknown): {
           startSeconds == null
           || endSeconds == null
           || endSeconds < startSeconds
+          || (providerDurationSeconds != null
+            && endSeconds > providerDurationSeconds + 1)
           || !rawWord
         ) continue;
         draftWords.push({
@@ -597,7 +602,7 @@ export function normalizeGoogleSpeechV2Response(value: unknown): {
   }
   return {
     requestId,
-    durationSeconds: googleDurationSeconds(response.totalBilledDuration)
+    durationSeconds: providerDurationSeconds
       ?? words.at(-1)!.endSeconds,
     channels: maximumChannel || null,
     words,

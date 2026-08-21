@@ -306,8 +306,18 @@ test("non-diarized provider words remain source-bindable without invented labels
 });
 
 test("normalizes Google Speech word anchors without losing timeline evidence", () => {
-  const normalized = normalizeGoogleSpeechV2Response(googleSpeechPayload());
+  const payload = googleSpeechPayload();
+  payload.response.results[providerSource().gcsUri]
+    .inlineResult.transcript.results[0].alternatives[0].words.push({
+      word: "Hallucination.",
+      startOffset: "5s",
+      endOffset: "5.2s",
+      confidence: 0.1,
+      speakerLabel: "2",
+    });
+  const normalized = normalizeGoogleSpeechV2Response(payload);
   assert.equal(normalized.requestId, "google-request-001");
+  assert.equal(normalized.words.length, 3);
   assert.equal(normalized.durationSeconds, 3.2);
   assert.equal(normalized.channels, 1);
   assert.deepEqual(
