@@ -783,7 +783,7 @@ function checkTranscriptPacketContractSources() {
       && transcriptProcessingText.includes("getMobileCaptureObjectEvidence")
       && transcriptProcessingText.includes("newCaptureTranscriptManifest")
       && transcriptProcessingText.includes('const diarize = input.topology.kind !== "participant-isolated"')
-      && transcriptProcessingText.includes('diarizeModel: diarize ? "v2" : null')
+      && transcriptProcessingText.includes('diarizeModel: name === "deepgram" && diarize ? "v2" : null')
       && transcriptProcessingText.includes("multichannel: false")
       && transcriptProviderText.includes('query.set("diarize_model", request.diarizeModel)')
       && transcriptProviderText.includes('query.set("diarize", String(request.diarize))')
