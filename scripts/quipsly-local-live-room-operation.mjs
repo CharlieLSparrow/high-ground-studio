@@ -265,6 +265,26 @@ const sharedBrowser = syntheticSpeechSources
     });
 if (sharedBrowser) browsers.push(sharedBrowser);
 const journeys = [];
+
+const saveRenderedConsent = async (journey) => {
+  const [response] = await Promise.all([
+    journey.page.waitForResponse(
+      (candidate) =>
+        candidate.request().method() === "POST" &&
+        new URL(candidate.url()).pathname === "/api/mobile/capture/consent",
+    ),
+    journey.page
+      .getByRole("button", { name: /Agree and continue|Update choices/ })
+      .click(),
+  ]);
+  const packet = await response.json().catch(() => null);
+  assert(
+    response.ok() && packet?.ok === true,
+    `${journey.identity.role} consent receipt was rejected.`,
+  );
+  return packet;
+};
+
 try {
   for (const identity of identities) {
     const browser =
@@ -312,11 +332,61 @@ try {
     });
     await browserChoice.waitFor({ timeout: 20_000 });
     await browserChoice.click();
+    const consentButton = page.getByRole("button", {
+      name: /Agree and continue|Update choices/,
+    });
+    await consentButton.waitFor({ state: "visible", timeout: 20_000 });
     const join = page.getByRole("button", {
       name: "Join live room",
       exact: true,
     });
     await join.waitFor({ state: "visible", timeout: 20_000 });
+    const deviceGroup = page.getByRole("group", {
+      name: "Preflight studio devices",
+      exact: true,
+    });
+    const soundCheck = page.getByRole("region", {
+      name: "Private studio sound check",
+      exact: true,
+    });
+    await deviceGroup.waitFor({ state: "visible", timeout: 20_000 });
+    await soundCheck.waitFor({ state: "visible", timeout: 20_000 });
+    assert(
+      await consentButton.evaluate(
+        (consent, elements) =>
+          Boolean(
+            consent.compareDocumentPosition(elements.device) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+          ) &&
+          Boolean(
+            elements.device.compareDocumentPosition(elements.soundCheck) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+          ) &&
+          Boolean(
+            elements.soundCheck.compareDocumentPosition(elements.join) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+          ),
+        {
+          device: await deviceGroup.elementHandle(),
+          soundCheck: await soundCheck.elementHandle(),
+          join: await join.elementHandle(),
+        },
+      ),
+      `${identity.role} lobby did not render consent, devices, sound check, then Join.`,
+    );
+    assert(
+      (await page
+        .getByRole("button", { name: /Record (?:on this device|local source)/ })
+        .count()) === 0,
+      `${identity.role} could see a recording action before joining.`,
+    );
+    const transcriptionConsent = page.getByLabel(
+      "Create a transcript and suggested notes/tasks",
+      { exact: true },
+    );
+    if (!(await transcriptionConsent.isChecked()))
+      await transcriptionConsent.check();
+    await saveRenderedConsent({ identity, page });
     if (!(await join.isEnabled())) {
       const deviceSetup = page
         .getByText("Camera, microphone, and speakers", { exact: true })
@@ -411,24 +481,6 @@ try {
     .getByText(receiptText, { exact: true })
     .waitFor({ timeout: 20_000 });
 
-  const saveRenderedConsent = async (journey) => {
-    const [response] = await Promise.all([
-      journey.page.waitForResponse(
-        (candidate) =>
-          candidate.request().method() === "POST" &&
-          new URL(candidate.url()).pathname === "/api/mobile/capture/consent",
-      ),
-      journey.page
-        .getByRole("button", { name: /Agree and continue|Update choices/ })
-        .click(),
-    ]);
-    const packet = await response.json().catch(() => null);
-    assert(
-      response.ok() && packet?.ok === true,
-      `${journey.identity.role} consent receipt was rejected.`,
-    );
-    return packet;
-  };
   for (const journey of journeys) {
     const transcriptionConsent = journey.page.getByLabel(
       "Create a transcript and suggested notes/tasks",

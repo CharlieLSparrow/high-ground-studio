@@ -37,12 +37,21 @@ remain available in secondary surfaces.
   conversation is connected.
 - Focused Jest suites pass 12/12.
 - Quipsly TypeScript passes after route generation.
+- The complete optimized production build compiles, typechecks, and generates
+  all 194 routes.
 - `git diff --check` passes.
+- The retained rendered live-room operation signs in independent coach and
+  client browsers at 1440x1000 and 390x844, respectively. It proves the lobby
+  order, proves no Record action exists before Join, saves each participant's
+  consent in the lobby, connects both participants through LiveKit, round-trips
+  chat, records two participant-owned local masters, verifies both uploads,
+  and measures 4,657 ms of source overlap. No provider recording starts.
 
-Browser-side visual inspection was attempted against the running local app,
-but both available browser-control connections detached before the local tab
-could be claimed. This is not counted as rendered visual proof. The next live
-browser flight must inspect narrow and desktop layouts before promotion.
+Direct inspection of the already-open interactive browser tab was attempted,
+but both available browser-control connections detached before the tab could
+be claimed. The operated headless flight supplies rendered interaction proof,
+but a human visual review of the exact narrow layout remains part of the next
+live flight rather than being inferred.
 
 ## Release boundary
 
