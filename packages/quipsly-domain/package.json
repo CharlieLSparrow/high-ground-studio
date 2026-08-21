@@ -68,6 +68,10 @@
       "types": "./src/coaching-packet.ts",
       "import": "./src/coaching-packet.ts"
     },
+    "./coaching-packet-version": {
+      "types": "./src/coaching-packet-version.ts",
+      "import": "./src/coaching-packet-version.ts"
+    },
     "./transcript-derived-task": {
       "types": "./src/transcript-derived-task.ts",
       "import": "./src/transcript-derived-task.ts"

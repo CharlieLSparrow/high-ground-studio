@@ -4,6 +4,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { initializeApp, deleteApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { SESSION_PACKET_TEMPLATE_VERSION } from "../packages/quipsly-domain/src/coaching-packet-version.ts";
 
 import {
   MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
@@ -362,15 +363,47 @@ try {
   });
   fixture.transcriptSegmentId = segment.id;
 
+  const transcriptVerification = await requestJson(
+    new URL("/api/mobile/capture/transcripts/corrections", baseUrl),
+    {
+      method: "POST",
+      headers: {
+        ...bearer(collaboratorToken),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        operation: "confirm-segment-as-is",
+        roomId: room.id,
+        segmentId: segment.id,
+        clientRequestId: `dogfood-transcript-verification-${nonce}`,
+        expectedText: transcriptText,
+        expectedSpeakerLabel: segment.speakerLabel,
+        expectedAcceptedCorrectionId: null,
+        confirmedAgainstPlayback: true,
+        playbackPositionSeconds: 13.5,
+        reviewNote: "Disposable dogfood reviewer confirmed the generated transcript against generated playback evidence.",
+      }),
+    },
+  );
+  assert(
+    transcriptVerification.status === 200 &&
+      transcriptVerification.body?.ok === true &&
+      transcriptVerification.body?.verification?.id,
+    `Active collaborator could not confirm the disposable transcript against playback. HTTP ${transcriptVerification.status} ${JSON.stringify(transcriptVerification.body)}`,
+  );
+
   const packetBuildId = randomUUID();
   const actionCandidateId = `quipsly-transcript-action-candidate-v1:${transcriptJob.id}:${segment.id}`;
-  const transcriptSnapshot = buildTranscriptSnapshot({
-    id: segment.id,
-    speakerLabel: segment.speakerLabel,
-    startSeconds: segment.startSeconds,
-    endSeconds: segment.endSeconds,
-    text: segment.text,
-  });
+  const transcriptSnapshot = buildTranscriptSnapshot(
+    {
+      id: segment.id,
+      speakerLabel: segment.speakerLabel,
+      startSeconds: segment.startSeconds,
+      endSeconds: segment.endSeconds,
+      text: segment.text,
+    },
+    transcriptVerification.body.verification.id,
+  );
   const summary = await prisma.coachingNote.create({
     data: {
       roomId: room.id,
@@ -385,6 +418,7 @@ try {
         recordingAssetId: recordingAsset.id,
         roomId: room.id,
         packetBuildId,
+        packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
         transcriptSnapshot,
         packetBrief: {
           kind: "quipsly-transcript-packet-brief-v1",
@@ -501,7 +535,13 @@ try {
       packetNoteCandidate.providerTextSha256 === sha256(transcriptText) &&
       packetNoteCandidate.humanApprovalRequired === true &&
       packetNoteCandidate.committedNoteId === null,
-    "Packet read did not project an uncommitted note candidate with exact transcript, packet, lane, and recording identity.",
+    `Packet read did not project an uncommitted note candidate with exact transcript, packet, lane, and recording identity. ${JSON.stringify({
+      packetStatus: viewerRead.body?.packet?.status ?? null,
+      packetBuild: viewerRead.body?.packet?.build ?? null,
+      transcriptReview: viewerRead.body?.packet?.transcriptReview ?? null,
+      summarySource: viewerRead.body?.packet?.summary?.source ?? null,
+      noteCandidates: packetNoteCandidates,
+    })}`,
   );
   const packetGoalCandidates = Array.isArray(viewerRead.body?.packet?.goalCandidates)
     ? viewerRead.body.packet.goalCandidates.map(object)
@@ -633,7 +673,7 @@ try {
       review.body?.boundaries?.canonicalSessionAccess === true &&
       review.body?.boundaries?.canonicalSessionMutationAccess === true &&
       review.body?.boundaries?.sessionAccessRechecked === true,
-    `Active project collaborator could not accept the disposable candidate as source-linked work. HTTP ${review.status}`,
+    `Active project collaborator could not accept the disposable candidate as source-linked work. HTTP ${review.status} ${JSON.stringify(review.body)}`,
   );
   const exactReplay = await requestJson(
     new URL("/api/mobile/capture/transcripts/packet/actions", baseUrl),
@@ -890,8 +930,8 @@ try {
   );
   assert(
     transcriptNoteChangedIntent.status === 409 &&
-      transcriptNoteChangedIntent.body?.code === "IDEMPOTENCY_CONFLICT",
-    "Changed note intent unexpectedly rewrote an already materialized packet candidate.",
+      transcriptNoteChangedIntent.body?.code === "PACKET_NOTE_CANDIDATE_RECEIPT_MISMATCH",
+    `Changed note intent unexpectedly rewrote an already materialized packet candidate. ${JSON.stringify(transcriptNoteChangedIntent.body)}`,
   );
 
   const packetAfterNote = await requestJson(
@@ -1143,6 +1183,7 @@ try {
     emptyLaneReviewDenied: true,
     actionableLaneReviewPersisted: true,
     laneReviewExternalSideEffects: false,
+    transcriptSegmentConfirmedAgainstPlayback: true,
     disposableDecision: "ACCEPT",
     actionItemsCreated: actionCount,
     acceptedTaskAssignedToActor: true,
@@ -1238,7 +1279,8 @@ async function inspectRenderedAcceptedTask(input) {
       callbackPath: `/sessions/${input.roomId}?mode=transcript`,
     });
     const main = page.getByRole("main").last();
-    await page.getByRole("heading", { name: "Decide candidate by candidate", exact: true }).waitFor({ timeout: 20_000 });
+    await page.getByRole("heading", { name: "Turn this Session into trusted follow-through", exact: true }).waitFor({ timeout: 20_000 });
+    await page.getByRole("button", { name: /^Decided\b/ }).click();
     const sessionText = await main.innerText();
     assert(sessionText.includes(input.title), "Rendered Session review lost the accepted task title.");
     assert(sessionText.includes("Committed as canonical Quipsly work"), "Rendered Session review did not distinguish committed work from a candidate.");
@@ -1256,7 +1298,7 @@ async function inspectRenderedAcceptedTask(input) {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${baseUrl.origin}/sessions/${input.roomId}?mode=transcript`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Decide candidate by candidate", exact: true }).waitFor({ timeout: 20_000 });
+    await page.getByRole("heading", { name: "Turn this Session into trusted follow-through", exact: true }).waitFor({ timeout: 20_000 });
     await assertNoHorizontalOverflow(page.getByRole("main").last(), "phone-width accepted transcript task");
     assert(pageErrors.length === 0, `Rendered accepted task raised client errors: ${pageErrors.join(" | ")}`);
     await clearRenderedSession(page, baseUrl.origin, identity.role);
@@ -1359,7 +1401,7 @@ function bearer(token) {
   return { authorization: `Bearer ${token}` };
 }
 
-function buildTranscriptSnapshot(segment) {
+function buildTranscriptSnapshot(segment, acceptedReviewId) {
   const textHash = sha256(segment.text);
   const segmentReviews = [
     {
@@ -1367,9 +1409,10 @@ function buildTranscriptSnapshot(segment) {
       providerTextSha256: textHash,
       resolvedTextSha256: textHash,
       resolvedSpeakerLabel: segment.speakerLabel,
-      acceptedReviewId: null,
+      acceptedReviewId,
       acceptedCorrectionId: null,
-      reviewStatus: "provider",
+      acceptedSpeakerAttributionId: null,
+      reviewStatus: "human-reviewed",
       startSeconds: segment.startSeconds,
       endSeconds: segment.endSeconds,
     },
@@ -1378,8 +1421,8 @@ function buildTranscriptSnapshot(segment) {
     schema: "quipsly-transcript-packet-snapshot-v1",
     sha256: sha256(JSON.stringify(segmentReviews)),
     segmentCount: 1,
-    humanReviewedSegmentCount: 0,
-    providerOnlySegmentCount: 1,
+    humanReviewedSegmentCount: 1,
+    providerOnlySegmentCount: 0,
     segmentReviews,
   };
 }

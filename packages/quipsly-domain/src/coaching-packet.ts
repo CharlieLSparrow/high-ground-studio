@@ -12,6 +12,7 @@ import {
 } from "./transcript-derived-task";
 
 export const TRANSCRIPT_PACKET_SOURCE = "transcript-packet-builder" as const;
+export { SESSION_PACKET_TEMPLATE_VERSION } from "./coaching-packet-version";
 export const LEGACY_WEB_TRANSCRIPT_PACKET_SOURCE = "web-transcript-packet-builder" as const;
 export const TRANSCRIPT_PACKET_SOURCES = [
   TRANSCRIPT_PACKET_SOURCE,

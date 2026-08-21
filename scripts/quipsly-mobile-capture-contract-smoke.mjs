@@ -743,6 +743,9 @@ function checkTranscriptPacketContractSources() {
   const transcriptProviderText = sourceText("apps/quipsly-transcript-worker/src/deepgram.ts");
   const packetBuilderText = sourceText("apps/quipsly/src/lib/server/coaching-packets.ts");
   const coachingPacketDomainText = sourceText("packages/quipsly-domain/src/coaching-packet.ts");
+  const coachingPacketVersionText = sourceText(
+    "packages/quipsly-domain/src/coaching-packet-version.ts",
+  );
   const lifecycleSmokeText = sourceText("scripts/quipsly-coaching-local-lifecycle-db-smoke.mjs");
   const sessionsText = sourceText("apps/quipsly/src/lib/server/mobile-capture-sessions.ts");
 
@@ -861,7 +864,8 @@ function checkTranscriptPacketContractSources() {
       && packetBuilderText.includes("reviewRequired: true")
       && packetBuilderText.includes("reusedExistingPacket")
       && packetBuilderText.includes("buildTranscriptPacketReviewLanes")
-      && packetBuilderText.includes('SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v4"')
+      && coachingPacketVersionText.includes('SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v4"')
+      && packetBuilderText.includes("SESSION_PACKET_TEMPLATE_VERSION")
       && packetBuilderText.includes('TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v1"')
       && packetBuilderText.includes("projectTranscriptSegmentsForPacket")
       && packetBuilderText.includes("packetSnapshotMatches")

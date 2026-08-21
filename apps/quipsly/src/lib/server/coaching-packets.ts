@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   TRANSCRIPT_ACTION_CANDIDATE_KIND,
   TRANSCRIPT_PACKET_SOURCE,
+  SESSION_PACKET_TEMPLATE_VERSION,
   buildTranscriptPacketBrief,
   createTranscriptActionCandidate,
   isTranscriptActionCandidate,
@@ -22,7 +23,7 @@ type BuildCoachingPacketArgs = {
 
 type SessionPacketPurpose = "COACHING" | "PODCAST" | "RESEARCH_INTERVIEW" | "INTERNAL_MEETING";
 
-export const SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v4";
+export { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coaching-packet";
 export const TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v1";
 export const TRANSCRIPT_PACKET_SEGMENT_ORDER_BY = [
   { startSeconds: "asc" as const },
