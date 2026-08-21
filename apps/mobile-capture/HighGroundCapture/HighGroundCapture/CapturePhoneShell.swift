@@ -6344,6 +6344,11 @@ private struct CaptureRecorderView: View {
                         .accessibilityIdentifier("CaptureSessionAuthorityStatus")
                 }
 
+                if let message = model.message {
+                    CaptureInlineMessage(text: message)
+                        .accessibilityIdentifier("CaptureSessionStatusMessage")
+                }
+
                 if let session = model.selectedSession {
                     // Keep the consent and recording controls in one eager,
                     // bounded unit so VoiceOver and UI automation can reach
@@ -6640,10 +6645,6 @@ private struct CaptureRecorderView: View {
 
                     if let safetyNotice = model.captureSafetyNotice {
                         CaptureInlineWarning(text: safetyNotice)
-                    }
-
-                    if let message = model.message {
-                        CaptureInlineMessage(text: message)
                     }
 
                     if let receiptNotice = model.captureReceiptNotice {

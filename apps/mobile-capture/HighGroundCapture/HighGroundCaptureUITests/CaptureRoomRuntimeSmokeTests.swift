@@ -4256,7 +4256,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let handoffBoundaryCopy = app.staticTexts.matching(
             NSPredicate(
                 format: "label == %@",
-                "Session opened from the private link. Review the audio route and consent, then explicitly join the live room or start a local source."
+                "Session opened. Nothing joined or recorded yet."
             )
         ).firstMatch
         XCTAssertTrue(

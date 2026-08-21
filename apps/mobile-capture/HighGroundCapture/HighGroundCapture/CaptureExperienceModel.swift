@@ -960,8 +960,8 @@ final class CaptureExperienceModel: ObservableObject {
 
         select(session)
         message = deepLink.mode == .live
-            ? "Session opened from the private link. Review the audio route and consent, then explicitly join the live room or start a local source."
-            : "Session opened from the private link. Nothing joined or recorded automatically."
+            ? "Session opened. Nothing joined or recorded yet."
+            : "Session opened. Nothing started automatically."
         let destinationTab: CaptureRootTab = deepLink.mode == .review ? .library : .record
         return .opened(destinationTab)
     }
