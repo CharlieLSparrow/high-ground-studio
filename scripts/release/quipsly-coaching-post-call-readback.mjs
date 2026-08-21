@@ -109,6 +109,19 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
   const requiredSources = room.expectedSources.filter((row) => row.status === "ACTIVE" && row.retentionRole === "REQUIRED_MASTER");
   const requiredSourcesSatisfied = requiredSources.length >= 2
     && requiredSources.every((row) => row.recordingAssetId && verifiedLocalAssets.some((asset) => asset.id === row.recordingAssetId));
+  const completedTranscriptByAssetId = new Map();
+  for (const job of room.transcriptJobs || []) {
+    if (job.assetId
+      && !completedTranscriptByAssetId.has(job.assetId)
+      && job.status === "COMPLETED"
+      && job.completedAt
+      && (job._count?.segments || 0) > 0) {
+      completedTranscriptByAssetId.set(job.assetId, job);
+    }
+  }
+  const transcribedParticipantIds = unique(verifiedLocalAssets
+    .filter((asset) => completedTranscriptByAssetId.has(asset.id))
+    .map((asset) => asset.participantId));
   const finalizedParticipants = unique(finalizationReceipts
     .filter((row) => row.recordingAssetId && row.processingDisposition !== "HELD")
     .map((row) => room.participants.find((participant) => participant.userId === row.actorUserId)?.id));
@@ -133,6 +146,8 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
     requiredSourcePlanSatisfied: requiredSourcesSatisfied,
     finalizationForEveryParticipant: participantIds.length >= 2
       && participantIds.every((id) => finalizedParticipants.includes(id)),
+    completedTranscriptForEveryParticipant: participantIds.length >= 2
+      && participantIds.every((id) => transcribedParticipantIds.includes(id)),
     endpointQueuesDrained: latestQueues.length >= 2
       && latestQueues.every((row) => row.queueState === "DRAINED" && row.pendingSourceCount === 0 && row.failedSourceCount === 0),
     sharedCollaborationWorkRetained: room.notes.some((row) => row.visibility === "SESSION_SHARED")
@@ -140,7 +155,7 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
   };
 
   return {
-    schema: "quipsly-coaching-post-call-readback-v2",
+    schema: "quipsly-coaching-post-call-readback-v3",
     auditedAt,
     authority: "read-only-canonical-postgresql-projection",
     room: {
@@ -233,6 +248,22 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
         authority: "reference-or-fallback-only",
       },
     },
+    transcriptEvidence: {
+      transcribedParticipantCount: transcribedParticipantIds.length,
+      jobs: [...completedTranscriptByAssetId.values()].map((job) => ({
+        idSha256: hash(job.id),
+        recordingAssetIdSha256: hash(job.assetId),
+        status: String(job.status),
+        provider: job.provider,
+        language: job.language || null,
+        segmentCount: job._count?.segments || 0,
+        wordCount: job._count?.words || 0,
+        sourceSha256: hash(job.sourceSha256),
+        completedAt: iso(job.completedAt),
+      })),
+      participantAttributionAuthority: "recording-asset-to-call-participant binding",
+      humanSpeakerReviewClaimed: false,
+    },
     collaborationEvidence: {
       sharedNoteCount: room.notes.filter((row) => row.visibility === "SESSION_SHARED").length,
       currentActorPrivateContentIncluded: false,
@@ -260,33 +291,62 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
 async function readRoom(prisma, roomId) {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
-    const room = await tx.callRoom.findUnique({
-      where: { id: roomId },
-      include: {
-        participants: { include: { user: { select: { primaryEmail: true } } }, orderBy: { createdAt: "asc" } },
-        invitations: { include: { deliveries: { orderBy: { createdAt: "asc" } } }, orderBy: { createdAt: "asc" } },
-        recordingConsents: { orderBy: { updatedAt: "desc" } },
-        participantPreflightReceipts: { orderBy: { testedAt: "desc" } },
-        participantProviderGrants: { orderBy: { issuedAt: "desc" } },
-        endpointQueueReceipts: { orderBy: { createdAt: "desc" } },
-        expectedSources: { orderBy: { createdAt: "asc" } },
-        stateReceipts: { orderBy: { sequence: "asc" } },
-        recordingAssets: { orderBy: { createdAt: "asc" } },
-        providerRecordingCommands: { orderBy: { createdAt: "asc" } },
-        providerRecordingEvents: { orderBy: { receivedAt: "asc" } },
-      },
-    });
+    const room = await tx.callRoom.findUnique({ where: { id: roomId } });
     if (!room) return null;
+    // Prisma can fan nested includes into concurrent queries. This release
+    // verifier intentionally uses one read-only connection, so assemble the
+    // projection through sequential reads from the same repeatable snapshot.
+    const participants = await tx.callParticipant.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
+    const invitationRows = await tx.callRoomInvitation.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
+    const deliveryRows = invitationRows.length
+      ? await tx.callRoomInvitationDeliveryReceipt.findMany({ where: { invitationId: { in: invitationRows.map((row) => row.id) } }, orderBy: { createdAt: "asc" } })
+      : [];
+    const invitations = invitationRows.map((invitation) => ({
+      ...invitation,
+      deliveries: deliveryRows.filter((delivery) => delivery.invitationId === invitation.id),
+    }));
+    const recordingConsents = await tx.recordingConsent.findMany({ where: { roomId }, orderBy: { updatedAt: "desc" } });
+    const participantPreflightReceipts = await tx.callParticipantPreflightReceipt.findMany({ where: { roomId }, orderBy: { testedAt: "desc" } });
+    const participantProviderGrants = await tx.callParticipantProviderGrantReceipt.findMany({ where: { roomId }, orderBy: { issuedAt: "desc" } });
+    const endpointQueueReceipts = await tx.callEndpointQueueReceipt.findMany({ where: { roomId }, orderBy: { createdAt: "desc" } });
+    const expectedSources = await tx.callExpectedSource.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
+    const stateReceipts = await tx.captureRoomStateReceipt.findMany({ where: { roomId }, orderBy: { sequence: "asc" } });
+    const recordingAssets = await tx.recordingAsset.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
+    const providerRecordingCommands = await tx.providerRecordingCommand.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
+    const providerRecordingEvents = await tx.providerRecordingEventReceipt.findMany({ where: { roomId }, orderBy: { receivedAt: "asc" } });
+    const transcriptJobs = await tx.transcriptJob.findMany({
+      where: { roomId },
+      include: { _count: { select: { segments: true, words: true } } },
+      orderBy: { updatedAt: "desc" },
+    });
     const collaborationScope = room.coachingEngagementId
       ? { OR: [{ roomId }, { engagementId: room.coachingEngagementId }] }
       : { roomId };
-    const [finalizationReceipts, notes, actionItems, goals] = await Promise.all([
-      tx.mobileCaptureFinalizationReceipt.findMany({ where: { roomId }, orderBy: { updatedAt: "desc" } }),
-      tx.coachingNote.findMany({ where: { ...collaborationScope, visibility: "SESSION_SHARED" }, select: { id: true, visibility: true } }),
-      tx.actionItem.findMany({ where: collaborationScope, select: { id: true, status: true } }),
-      tx.goal.findMany({ where: collaborationScope, select: { id: true, status: true } }),
-    ]);
-    return { room: { ...room, notes, actionItems, goals }, finalizationReceipts };
+    const finalizationReceipts = await tx.mobileCaptureFinalizationReceipt.findMany({ where: { roomId }, orderBy: { updatedAt: "desc" } });
+    const notes = await tx.coachingNote.findMany({ where: { ...collaborationScope, visibility: "SESSION_SHARED" }, select: { id: true, visibility: true } });
+    const actionItems = await tx.actionItem.findMany({ where: collaborationScope, select: { id: true, status: true } });
+    const goals = await tx.goal.findMany({ where: collaborationScope, select: { id: true, status: true } });
+    return {
+      room: {
+        ...room,
+        participants,
+        invitations,
+        recordingConsents,
+        participantPreflightReceipts,
+        participantProviderGrants,
+        endpointQueueReceipts,
+        expectedSources,
+        stateReceipts,
+        recordingAssets,
+        providerRecordingCommands,
+        providerRecordingEvents,
+        transcriptJobs,
+        notes,
+        actionItems,
+        goals,
+      },
+      finalizationReceipts,
+    };
   }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
 }
 

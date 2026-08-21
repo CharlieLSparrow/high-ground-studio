@@ -20,6 +20,7 @@ function completeRoom() {
     expectedSources: participants.map((row) => ({ id: `expected-${row.id}`, participantId: row.id, sourceKind: "AUDIO", retentionRole: "REQUIRED_MASTER", status: "ACTIVE", recordingAssetId: `asset-${row.id}`, createdAt: now })),
     stateReceipts: participants.flatMap((row, index) => ["START_RECORDING", "STOP_RECORDING"].map((action, actionIndex) => ({ receiptId: `receipt-${index}-${actionIndex}`, actorUserId: row.userId, action, outcome: "APPLIED", stateApplied: true, occurredAt: now }))),
     recordingAssets: participants.map((row) => ({ id: `asset-${row.id}`, participantId: row.id, kind: "LOCAL_AUDIO", status: "VERIFIED", checksum: "a".repeat(64), byteSize: 1000n, durationSeconds: 12, storageBucket: "private", storageObjectPath: `room/${row.id}`, verifiedAt: now, uploadedAt: now, recordedStartedAt: now, recordedStoppedAt: now })),
+    transcriptJobs: participants.map((row) => ({ id: `transcript-${row.id}`, assetId: `asset-${row.id}`, status: "COMPLETED", provider: "local-whisper", language: "en", sourceSha256: "b".repeat(64), completedAt: now, updatedAt: now, _count: { segments: 3, words: 24 } })),
     providerRecordingCommands: [], providerRecordingEvents: [], notes: [{ id: "note", visibility: "SESSION_SHARED" }], actionItems: [{ id: "task", status: "OPEN" }], goals: [],
   };
 }
@@ -41,7 +42,7 @@ test("parses exact room and output options", () => {
 
 test("complete canonical records pass automation but never claim human acceptance", () => {
   const receipt = summarizePostCallEvidence(completeRoom(), finalizations(), now.toISOString());
-  assert.equal(receipt.schema, "quipsly-coaching-post-call-readback-v2");
+  assert.equal(receipt.schema, "quipsly-coaching-post-call-readback-v3");
   assert.equal(receipt.automatedEvidencePassed, true);
   assert.equal(receipt.humanAcceptance.satisfied, false);
   assert.equal(receipt.invitationEvidence.emailDeliveryProven, true);
@@ -85,6 +86,20 @@ test("missing second retained source fails exact automated gates", () => {
   assert.equal(receipt.automatedGates.verifiedLocalSourceForEveryParticipant, false);
   assert.equal(receipt.automatedGates.requiredSourcePlanSatisfied, false);
   assert.equal(receipt.automatedEvidencePassed, false);
+});
+
+test("a missing or empty participant transcript fails post-call evidence", () => {
+  const missing = completeRoom();
+  missing.transcriptJobs.pop();
+  const missingReceipt = summarizePostCallEvidence(missing, finalizations(), now.toISOString());
+  assert.equal(missingReceipt.automatedGates.completedTranscriptForEveryParticipant, false);
+  assert.equal(missingReceipt.automatedEvidencePassed, false);
+
+  const empty = completeRoom();
+  empty.transcriptJobs[1]._count.segments = 0;
+  const emptyReceipt = summarizePostCallEvidence(empty, finalizations(), now.toISOString());
+  assert.equal(emptyReceipt.automatedGates.completedTranscriptForEveryParticipant, false);
+  assert.equal(emptyReceipt.automatedEvidencePassed, false);
 });
 
 test("revoked consent cannot satisfy current consent", () => {
