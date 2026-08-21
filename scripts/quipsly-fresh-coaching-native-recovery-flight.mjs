@@ -155,9 +155,21 @@ async function grantClientRecordingConsent(context) {
       password,
       callbackPath: context.clientEntryPath,
     });
-    await page
-      .getByRole("button", { name: /Agree and continue|Update choices/ })
-      .click();
+    const consentButton = page.getByRole("button", {
+      name: /Agree and continue|Update choices/,
+    });
+    const browserChoice = page.getByRole("button", { name: /This browser/i });
+    const deviceChoiceShown = await Promise.race([
+      browserChoice
+        .waitFor({ state: "visible", timeout: 30_000 })
+        .then(() => true),
+      consentButton
+        .waitFor({ state: "visible", timeout: 30_000 })
+        .then(() => false),
+    ]);
+    if (deviceChoiceShown) await browserChoice.click();
+    await consentButton.waitFor({ state: "visible", timeout: 30_000 });
+    await consentButton.click();
     let packet = null;
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {
