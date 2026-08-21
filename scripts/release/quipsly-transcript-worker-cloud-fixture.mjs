@@ -52,7 +52,14 @@ const deepgramSecret = optionalEnvironment(
   "DEEPGRAM_SECRET",
   "quipsly-deepgram-api-key",
 );
-const providerModel = optionalEnvironment("TRANSCRIPT_MODEL", "nova-3");
+const transcriptProvider = optionalEnvironment("TRANSCRIPT_PROVIDER", "deepgram");
+if (!["deepgram", "google-speech-v2"].includes(transcriptProvider)) {
+  throw new Error("TRANSCRIPT_PROVIDER must be deepgram or google-speech-v2.");
+}
+const providerModel = optionalEnvironment(
+  "TRANSCRIPT_MODEL",
+  transcriptProvider === "google-speech-v2" ? "chirp_3" : "nova-3",
+);
 const providerLanguage = optionalEnvironment("TRANSCRIPT_LANGUAGE", "en-US");
 const minimumWordCount = boundedInteger(
   process.env.MINIMUM_WORD_COUNT,
@@ -63,7 +70,7 @@ const minimumWordCount = boundedInteger(
 const cleanupRequested = process.env.CLEANUP === "1";
 assertSafeName(region, "region");
 assertSafeName(jobName, "job name");
-assertSafeSecretName(deepgramSecret);
+if (transcriptProvider === "deepgram") assertSafeSecretName(deepgramSecret);
 if (!/^[A-Za-z0-9._-]{1,128}$/.test(providerModel)) {
   throw new Error("TRANSCRIPT_MODEL is unsafe.");
 }
@@ -158,13 +165,14 @@ try {
       recordingAssetId,
     },
     provider: {
-      name: "deepgram",
+      name: transcriptProvider,
       model: providerModel,
+      version: transcriptProvider === "deepgram" ? "latest" : null,
       language: providerLanguage,
       smartFormat: true,
       punctuate: true,
       diarize: true,
-      diarizeModel: "v2",
+      diarizeModel: transcriptProvider === "deepgram" ? "v2" : null,
       multichannel: false,
       utterances: true,
       paragraphs: true,
@@ -384,18 +392,26 @@ async function readJobContract() {
     environment.QUIPSLY_WORKER_BUILD_ID?.value === expectedBuildId,
     "Cloud Run Job build ID does not match EXPECTED_BUILD_ID.",
   );
+  assert(
+    environment.QUIPSLY_TRANSCRIPT_PROVIDER?.value === transcriptProvider,
+    "Cloud Run Job provider does not match TRANSCRIPT_PROVIDER.",
+  );
   const secret =
     environment.DEEPGRAM_API_KEY?.valueSource?.secretKeyRef?.secret
     || environment.DEEPGRAM_API_KEY?.valueFrom?.secretKeyRef?.name;
-  assert(
-    secret === deepgramSecret
-      || String(secret || "").endsWith(`/secrets/${deepgramSecret}`),
-    "Cloud Run Job does not use the expected Deepgram secret.",
-  );
-  assert(
-    typeof environment.DEEPGRAM_API_KEY?.value !== "string",
-    "Cloud Run Job exposes the Deepgram key as plaintext.",
-  );
+  if (transcriptProvider === "deepgram") {
+    assert(
+      secret === deepgramSecret
+        || String(secret || "").endsWith(`/secrets/${deepgramSecret}`),
+      "Cloud Run Job does not use the expected Deepgram secret.",
+    );
+    assert(
+      typeof environment.DEEPGRAM_API_KEY?.value !== "string",
+      "Cloud Run Job exposes the Deepgram key as plaintext.",
+    );
+  } else {
+    assert(!environment.DEEPGRAM_API_KEY, "Google worker retains a Deepgram secret.");
+  }
   return { image, imageDigest: digestMatch[1] };
 }
 
