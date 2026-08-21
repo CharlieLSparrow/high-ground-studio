@@ -1811,6 +1811,7 @@ export function BrowserSourceRecorder({
               ref={transcriptionChoiceInputRef}
               type="checkbox"
               checked={transcriptionAllowed}
+              disabled={!policy || status === "checking" || status === "recording"}
               onChange={(event) => setTranscriptionChoice(event.target.checked)}
               className="mt-1 accent-violet-800"
             />{" "}

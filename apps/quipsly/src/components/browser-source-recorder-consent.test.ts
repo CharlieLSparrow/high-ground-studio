@@ -19,6 +19,9 @@ describe("browser retained-source consent", () => {
     expect(source).toMatch(
       /ref=\{transcriptionChoiceInputRef\}\s+type="checkbox"\s+checked=\{transcriptionAllowed\}/,
     );
+    expect(source).toContain(
+      'disabled={!policy || status === "checking" || status === "recording"}',
+    );
     expect(source).toContain('"Agree and continue"');
     expect(source).toContain("Create a transcript and suggested notes/tasks");
     expect(source).toContain("conversationConnected = true");
