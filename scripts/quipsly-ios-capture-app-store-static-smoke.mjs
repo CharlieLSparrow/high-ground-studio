@@ -1911,6 +1911,8 @@ assert(!liveKitJoinTokenHelperText.includes("console.log(input.apiSecret"), "Liv
 requireIncludes(mobileCaptureReadinessRouteText, "getQuipslyLiveKitEgressReadiness", "mobile capture uses shared LiveKit egress readiness helper");
 requireIncludes(mobileCaptureReadinessRouteText, "captureTranscriptWorkerEnabled", "mobile capture readiness recognizes the isolated production transcript worker");
 requireIncludes(mobileCaptureReadinessRouteText, "localCaptureTranscriptWorkerEnabled", "mobile capture readiness recognizes an explicitly available local transcript worker");
+requireIncludes(mobileCaptureReadinessRouteText, "sessionInvitationEmailReadiness", "mobile capture readiness projects actionable invitation-email availability without provider secrets");
+requireIncludes(mobileCaptureReadinessRouteText, "invitationDelivery", "mobile capture publishes invitation delivery readiness");
 requireIncludes(providerRecordingCommandText, "MEDIA_VAULT_BUCKET_ENV_NAMES", "LiveKit egress uses shared media-vault bucket env list");
 requireIncludes(liveKitEgressHelperText, "MEDIA_VAULT_PREFIXES.livekitRecording", "LiveKit egress uses shared livekit recording prefix");
 requireIncludes(providerRecordingCommandText, "LIVEKIT_EGRESS_ENABLED", "LiveKit egress has explicit operator enablement gate");

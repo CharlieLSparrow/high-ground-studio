@@ -11,6 +11,7 @@ import {
 } from "@/lib/server/capture-transcript-processing";
 import { getMobileCaptureLocalVaultConfig } from "@/lib/server/mobile-capture-local-vault";
 import { longSourceVerifierEnabled } from "@/lib/server/mobile-capture-long-verification";
+import { sessionInvitationEmailReadiness } from "@/lib/server/session-invitation-email";
 import {
   MAX_LONG_VIDEO_SOURCE_BYTES,
   SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES,
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
   const stripeLiveAllowed = process.env["QUIPSLY_ALLOW_LIVE_STRIPE"] === "true";
   const mediaVaultReadiness = getMediaVaultReadiness();
   const calendarReadiness = getCoachingCalendarReadiness();
+  const invitationEmailReadiness = sessionInvitationEmailReadiness(request.url);
   let developmentCaptureVaultConfigured = false;
   let developmentCaptureVaultConfigurationError: string | null = null;
   try {
@@ -118,6 +120,7 @@ export async function GET(request: Request) {
       consentStates: ["REQUESTED", "GRANTED", "DECLINED", "REVOKED"],
       localFallback: "iOS segmented local recording remains available when provider rooms are not ready.",
     },
+    invitationDelivery: invitationEmailReadiness,
     callArchitecture: {
       primaryPath: QUIPSLY_NATIVE_CAPTURE_CONTRACT.primaryCallPath,
       nativePresentation: QUIPSLY_NATIVE_CAPTURE_CONTRACT.nativeCallPresentation,
