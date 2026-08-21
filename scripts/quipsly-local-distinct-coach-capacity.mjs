@@ -89,7 +89,7 @@ async function signIn(authOrigin, email, password) {
   return body.idToken;
 }
 
-async function prepareCoach({ auth, authOrigin, origin, batch, index }) {
+async function prepareCoach({ auth, authOrigin, origin, batch, index, registerForCleanup }) {
   const email = generatedCoachEmail(batch, index);
   const password = `Qp-${randomBytes(24).toString("base64url")}!26`;
   const firebaseUser = await auth.createUser({
@@ -99,7 +99,13 @@ async function prepareCoach({ auth, authOrigin, origin, batch, index }) {
     emailVerified: true,
     disabled: false,
   });
+  const coach = { email, firebaseUid: firebaseUser.uid, token: null };
+  // Register ownership immediately after the first external mutation. Session
+  // creation or coach setup can still fail, and that partial identity must be
+  // eligible for the same tightly bounded cleanup as a completed coach.
+  registerForCleanup(coach);
   const token = await signIn(authOrigin, email, password);
+  coach.token = token;
   const session = await api(origin, token, "/api/auth/session", {
     method: "POST",
     body: JSON.stringify({ idToken: token }),
@@ -122,7 +128,7 @@ async function prepareCoach({ auth, authOrigin, origin, batch, index }) {
     setup.status === 200 && setup.body?.result?.role === "COACH",
     `Self-service coach setup failed for generated coach ${index + 1}.`,
   );
-  return { email, firebaseUid: firebaseUser.uid, token };
+  return coach;
 }
 
 async function cleanupGeneratedBatch(prisma, auth, coaches) {
@@ -201,7 +207,14 @@ async function main() {
 
   try {
     for (let index = 0; index < count; index += 1) {
-      coaches.push(await prepareCoach({ auth, authOrigin, origin, batch, index }));
+      await prepareCoach({
+        auth,
+        authOrigin,
+        origin,
+        batch,
+        index,
+        registerForCleanup: (coach) => coaches.push(coach),
+      });
     }
     const routes = [
       "/api/coaching/runway",
