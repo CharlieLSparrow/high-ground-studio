@@ -196,9 +196,20 @@ async function grantClientRecordingConsent(context) {
       { timeout: 10_000 },
     );
     const consentRequestPromise = page.waitForRequest(
-      (request) =>
-        request.method() === "POST" &&
-        new URL(request.url()).pathname === "/api/mobile/capture/consent",
+      (request) => {
+        if (
+          request.method() !== "POST" ||
+          new URL(request.url()).pathname !== "/api/mobile/capture/consent"
+        ) return false;
+        try {
+          return (
+            request.postDataJSON()?.presentationEvidence?.surface ===
+            "quipsly-capture-consent-v2"
+          );
+        } catch {
+          return false;
+        }
+      },
       { timeout: 30_000 },
     );
     await consentButton.click();
