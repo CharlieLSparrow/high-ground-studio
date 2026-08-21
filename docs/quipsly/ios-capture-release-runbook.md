@@ -110,6 +110,21 @@ readback proves assignment only; `INSTALLED` proves provider-side installation.
 Require app-owned version/build readback and TestFlight/device operation
 separately before changing the physical-operation receipt.
 
+Read tester-submitted crash feedback and Apple's aggregate diagnostic state for
+the exact build without requesting tester email, comments, or crash-log bytes:
+
+```bash
+pnpm quipsly:capture:app-store-diagnostics -- \
+  --version 1.0 \
+  --build 32 \
+  --output /absolute/private/evidence/app-store-diagnostics-build32.json
+```
+
+The receipt fails when the exact build has tester-submitted crash feedback. A
+zero count is encouraging but never physical-device acceptance. Apple may also
+return `404` until aggregate diagnostic signatures have been materialized; the
+receipt records that state as unavailable instead of misreporting zero issues.
+
 Then audit App Store submission prerequisites without changing legal answers,
 screenshots, price, availability, App Privacy, or review state:
 
