@@ -41,7 +41,7 @@ test("build-only apply requires the exact provider target", () => {
   const options = parseArguments([
     "--apply",
     "--assign-build-only",
-    "--confirm-target", "6780995957/1.0/28",
+    "--confirm-target", "6780995957/1.0/32",
   ]);
   assert.equal(options.assignBuildOnly, true);
   assert.doesNotThrow(() => validateMutationTarget(options));
@@ -49,13 +49,13 @@ test("build-only apply requires the exact provider target", () => {
 
 test("apply rejects a missing or stale provider confirmation", () => {
   assert.throws(
-    () => validateMutationTarget(parseArguments(["--apply", "--build", "28"])),
-    /--confirm-target 6780995957\/1\.0\/28/,
+    () => validateMutationTarget(parseArguments(["--apply", "--build", "32"])),
+    /--confirm-target 6780995957\/1\.0\/32/,
   );
   assert.throws(
     () => validateMutationTarget(parseArguments([
-      "--apply", "--build", "28", "--confirm-target", "6780995957/1.0/27",
+      "--apply", "--build", "32", "--confirm-target", "6780995957/1.0/31",
     ])),
-    /--confirm-target 6780995957\/1\.0\/28/,
+    /--confirm-target 6780995957\/1\.0\/32/,
   );
 });

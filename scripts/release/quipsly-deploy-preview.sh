@@ -14,7 +14,8 @@ this command accepts no positional arguments.
 Important environment controls:
   PROJECT_ID, REGION, SERVICE_NAME, SOURCE_REF
   REUSE_EXISTING_IMAGE, IMAGE_TAG, ALLOW_EARLY_CLOUD_BUILD
-  MIN_INSTANCES, MAX_INSTANCES
+  MIN_INSTANCES, MAX_INSTANCES, CONCURRENCY
+  PRISMA_PG_POOL_MAX, PRISMA_ROLLOUT_CONNECTION_BUDGET
   ENABLE_SESSION_INVITATION_EMAIL, ENABLE_TRANSCRIPT_WORKER
   ENABLE_GOOGLE_CALENDAR_OAUTH, ENABLE_GOOGLE_DRIVE_OAUTH
   ENABLE_LIVEKIT_PROVIDER, CONFIGURE_LIVEKIT_EGRESS, ENABLE_LIVEKIT_EGRESS
@@ -44,6 +45,12 @@ SERVICE_NAME="${SERVICE_NAME:-studio}"
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 MIN_INSTANCES="${MIN_INSTANCES:-0}"
 MAX_INSTANCES="${MAX_INSTANCES:-2}"
+CONCURRENCY="${CONCURRENCY:-8}"
+PRISMA_PG_POOL_MAX="${PRISMA_PG_POOL_MAX:-4}"
+# PostgreSQL currently has a small finite connection ceiling. This budget is
+# deliberately for both sides of a rolling release: the live revision and the
+# candidate can each reach MAX_INSTANCES while preview smoke is running.
+PRISMA_ROLLOUT_CONNECTION_BUDGET="${PRISMA_ROLLOUT_CONNECTION_BUDGET:-16}"
 REQUESTED_IMAGE_TAG="${IMAGE_TAG:-}"
 REUSE_EXISTING_IMAGE="${REUSE_EXISTING_IMAGE:-1}"
 CLOUD_BUILD_MACHINE_TYPE="${CLOUD_BUILD_MACHINE_TYPE:-e2-highcpu-32}"
@@ -103,6 +110,24 @@ fi
 if [[ ! "${MIN_INSTANCES}" =~ ^[0-9]+$ ]] || [[ ! "${MAX_INSTANCES}" =~ ^[0-9]+$ ]] \
   || (( MIN_INSTANCES > MAX_INSTANCES )) || (( MAX_INSTANCES < 2 )) || (( MAX_INSTANCES > 10 )); then
   echo "MIN_INSTANCES and MAX_INSTANCES must be integers with 0 <= MIN_INSTANCES <= MAX_INSTANCES, and MAX_INSTANCES from 2 through 10." >&2
+  exit 2
+fi
+
+if [[ ! "${CONCURRENCY}" =~ ^[0-9]+$ ]] || (( CONCURRENCY < 1 )) || (( CONCURRENCY > 80 )); then
+  echo "CONCURRENCY must be an integer from 1 through 80." >&2
+  exit 2
+fi
+if [[ ! "${PRISMA_PG_POOL_MAX}" =~ ^[0-9]+$ ]] || (( PRISMA_PG_POOL_MAX < 1 )) || (( PRISMA_PG_POOL_MAX > 50 )); then
+  echo "PRISMA_PG_POOL_MAX must be an integer from 1 through 50." >&2
+  exit 2
+fi
+if [[ ! "${PRISMA_ROLLOUT_CONNECTION_BUDGET}" =~ ^[0-9]+$ ]] || (( PRISMA_ROLLOUT_CONNECTION_BUDGET < 4 )); then
+  echo "PRISMA_ROLLOUT_CONNECTION_BUDGET must be an integer of at least 4." >&2
+  exit 2
+fi
+if (( 2 * MAX_INSTANCES * PRISMA_PG_POOL_MAX > PRISMA_ROLLOUT_CONNECTION_BUDGET )); then
+  echo "The live-plus-preview Prisma pools exceed PRISMA_ROLLOUT_CONNECTION_BUDGET." >&2
+  echo "Reduce MAX_INSTANCES or PRISMA_PG_POOL_MAX, or raise the budget only after verifying PostgreSQL capacity." >&2
   exit 2
 fi
 
@@ -697,11 +722,12 @@ gcloud run deploy "${SERVICE_NAME}" \
   --region="${REGION}" \
   --min-instances="${MIN_INSTANCES}" \
   --max-instances="${MAX_INSTANCES}" \
+  --concurrency="${CONCURRENCY}" \
   --no-traffic \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \
   --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${livekit_secret_mounts}${google_calendar_oauth_secrets}${google_drive_oauth_secrets}${account_deletion_worker_secret}${session_invitation_email_secret}" \
-  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=${livekit_egress_enabled_value}${google_calendar_push_env_vars}${transcript_worker_env_vars}${account_deletion_worker_env_vars}${session_invitation_email_env_vars}" \
+  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,PRISMA_PG_POOL_MAX=${PRISMA_PG_POOL_MAX},QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=${livekit_egress_enabled_value}${google_calendar_push_env_vars}${transcript_worker_env_vars}${account_deletion_worker_env_vars}${session_invitation_email_env_vars}" \
   --quiet
 
 echo "Preview revision deployed."

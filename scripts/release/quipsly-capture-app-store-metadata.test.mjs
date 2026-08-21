@@ -65,7 +65,7 @@ test("provider-complete status fails closed without exact readback evidence", ()
   });
 
   assert.equal(result.ok, false);
-  assert.match(result.errors.join("\n"), /exact Quipsly Capture Build 28/);
+  assert.match(result.errors.join("\n"), /exact Quipsly Capture Build 32/);
   assert.match(result.errors.join("\n"), /prove USES_THIRD_PARTY_CONTENT/);
   assert.match(result.errors.join("\n"), /prove Free pricing/);
 });

@@ -18,7 +18,7 @@ function snapshot(overrides = {}) {
   const fields = {
     Created: "2026-08-05T20:00:00Z",
     Surface: "Account",
-    App: "1.0 (28)",
+    App: "1.0 (32)",
     Device: "iPhone17,3",
     System: "iOS 26.2",
     "Account access": "online",
@@ -56,7 +56,7 @@ test("parses the package-script separator and bounded snapshot age", () => {
   );
 });
 
-test("proves exact Build 28 on a physical authenticated iPhone without inventing capture proof", () => {
+test("proves exact Build 32 on a physical authenticated iPhone without inventing capture proof", () => {
   const receipt = inspectPhysicalInstallSnapshot({
     text: snapshot(),
     auditedAt: new Date("2026-08-05T20:10:00Z"),
@@ -65,7 +65,7 @@ test("proves exact Build 28 on a physical authenticated iPhone without inventing
   assert.equal(receipt.physicalInstallAndAuthenticationProven, true);
   assert.equal(receipt.physicalCaptureAcceptanceProven, false);
   assert.equal(receipt.snapshot.deviceModel, "iPhone17,3");
-  assert.equal(receipt.snapshot.appBuild, "28");
+  assert.equal(receipt.snapshot.appBuild, "32");
   assert.equal(receipt.snapshot.accountAccessMode, "online");
   assert.equal(receipt.rawSnapshotRetainedInReceipt, false);
   assert.equal(receipt.claimsNotMade.length, 6);
@@ -84,7 +84,7 @@ test("fails closed for a simulator, wrong build, preview, sign-in surface, or st
   const receipt = inspectPhysicalInstallSnapshot({
     text: snapshot({
       Surface: "Sign-in",
-      App: "1.0 (27)",
+      App: "1.0 (31)",
       Device: "arm64",
       "Account access": "signedOut",
       "Preview mode": "yes",

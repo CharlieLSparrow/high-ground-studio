@@ -43,6 +43,23 @@ test("Nest release lanes preserve zero idle instances but allow one replacement 
   }
 });
 
+test("preview deploy bounds request concurrency against the rolling database pool budget", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(source, /CONCURRENCY="\$\{CONCURRENCY:-8\}"/);
+  assert.match(source, /PRISMA_PG_POOL_MAX="\$\{PRISMA_PG_POOL_MAX:-4\}"/);
+  assert.match(
+    source,
+    /PRISMA_ROLLOUT_CONNECTION_BUDGET="\$\{PRISMA_ROLLOUT_CONNECTION_BUDGET:-16\}"/,
+  );
+  assert.match(
+    source,
+    /2 \* MAX_INSTANCES \* PRISMA_PG_POOL_MAX > PRISMA_ROLLOUT_CONNECTION_BUDGET/,
+  );
+  assert.match(source, /--concurrency="\$\{CONCURRENCY\}"/);
+  assert.match(source, /PRISMA_PG_POOL_MAX=\$\{PRISMA_PG_POOL_MAX\}/);
+});
+
 test("preview deploy mounts the required secrets and privately validates the release-smoke signing key", () => {
   execFileSync("bash", ["-n", deployScript], { cwd: repoRoot, stdio: "pipe" });
   const source = readFileSync(deployScript, "utf8");

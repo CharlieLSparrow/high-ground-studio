@@ -15,6 +15,29 @@ export function boundedVirtualCoachCount(value, fallback = 50) {
   return parsed;
 }
 
+export function boundedArrivalWindowMilliseconds(value, fallback = 0) {
+  const parsed =
+    value === undefined || value === ""
+      ? fallback
+      : Number.parseInt(String(value), 10);
+  assert(
+    Number.isInteger(parsed) && parsed >= 0 && parsed <= 60_000,
+    "QUIPSLY_COACHING_CAPACITY_ARRIVAL_WINDOW_MS must be an integer from 0 through 60000.",
+  );
+  return parsed;
+}
+
+export function coachStartDelayMilliseconds(
+  coachIndex,
+  virtualCoaches,
+  arrivalWindowMilliseconds,
+) {
+  if (virtualCoaches <= 1 || arrivalWindowMilliseconds === 0) return 0;
+  return Math.round(
+    (coachIndex * arrivalWindowMilliseconds) / (virtualCoaches - 1),
+  );
+}
+
 export function percentile(values, fraction) {
   assert(
     values.length > 0,
@@ -26,15 +49,19 @@ export function percentile(values, fraction) {
   ];
 }
 
-export function allowedCapacityOrigin(rawValue) {
+export function allowedCapacityOrigin(rawValue, allowCloudRunPreview = false) {
   const origin = new URL(rawValue || "https://nest.quipsly.com").origin;
   const url = new URL(origin);
   const loopback =
     url.protocol === "http:" &&
     ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+  const cloudRunPreview =
+    allowCloudRunPreview &&
+    url.protocol === "https:" &&
+    /^([a-z0-9-]+---)?studio-[a-z0-9-]+-uc\.a\.run\.app$/.test(url.hostname);
   assert(
-    origin === "https://nest.quipsly.com" || loopback,
-    "Capacity smoke accepts only production nest.quipsly.com or a loopback origin.",
+    origin === "https://nest.quipsly.com" || loopback || cloudRunPreview,
+    "Capacity smoke accepts only production nest.quipsly.com, a loopback origin, or an explicitly authorized Studio Cloud Run preview.",
   );
   return origin;
 }
@@ -56,6 +83,7 @@ async function main() {
   );
   const baseURL = allowedCapacityOrigin(
     process.env.QUIPSLY_COACHING_CAPACITY_BASE_URL,
+    process.env.QUIPSLY_COACHING_CAPACITY_ALLOW_CLOUD_RUN_PREVIEW === "1",
   );
   const email = String(process.env.QUIPSLY_AUTH_SMOKE_EMAIL || "")
     .trim()
@@ -67,6 +95,9 @@ async function main() {
   );
   const virtualCoaches = boundedVirtualCoachCount(
     process.env.QUIPSLY_COACHING_CAPACITY_VIRTUAL_COACHES,
+  );
+  const arrivalWindowMilliseconds = boundedArrivalWindowMilliseconds(
+    process.env.QUIPSLY_COACHING_CAPACITY_ARRIVAL_WINDOW_MS,
   );
 
   const config = await jsonFetch(`${baseURL}/api/mac/firebase-client-config`);
@@ -109,8 +140,16 @@ async function main() {
   ];
   const startedAt = Date.now();
   const results = await Promise.all(
-    Array.from({ length: virtualCoaches }, (_, coachIndex) =>
-      Promise.all(
+    Array.from({ length: virtualCoaches }, async (_, coachIndex) => {
+      const startDelay = coachStartDelayMilliseconds(
+        coachIndex,
+        virtualCoaches,
+        arrivalWindowMilliseconds,
+      );
+      if (startDelay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, startDelay));
+      }
+      return Promise.all(
         routes.map(async (route) => {
           const requestStartedAt = performance.now();
           try {
@@ -142,8 +181,8 @@ async function main() {
             };
           }
         }),
-      ),
-    ),
+      );
+    }),
   );
   const samples = results.flat();
   const failures = samples.filter((sample) => !sample.ok);
@@ -187,6 +226,7 @@ async function main() {
     ok: failures.length === 0,
     baseURL,
     virtualCoaches,
+    arrivalWindowMilliseconds,
     routesPerCoach: routes.length,
     totalAuthenticatedReads: samples.length,
     failedAuthenticatedReads: failures.length,

@@ -154,7 +154,7 @@ function completeFixture() {
 }
 
 test("submission auditor has no mutation mode", () => {
-  assert.equal(parseArguments([]).build, "28");
+  assert.equal(parseArguments([]).build, "32");
   assert.throws(() => parseArguments(["--apply"]), /Unknown argument/);
   assert.throws(() => parseArguments(["--submit"]), /Unknown argument/);
 });
@@ -175,7 +175,7 @@ test("complete provider state still preserves manual legal and physical gates", 
     [
       "app-privacy-manual-publication",
       "dsa-trader-manual-verification",
-      "physical-build28-acceptance",
+      "physical-build32-acceptance",
       "production-account-deletion-proof",
     ],
   );
