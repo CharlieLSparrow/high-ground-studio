@@ -155,25 +155,36 @@ async function grantClientRecordingConsent(context) {
       password,
       callbackPath: context.clientEntryPath,
     });
-    const [response] = await Promise.all([
-      page.waitForResponse(
-        (candidate) =>
-          candidate.request().method() === "POST" &&
-          new URL(candidate.url()).pathname === "/api/mobile/capture/consent",
-      ),
-      page
-        .getByRole("button", { name: /Agree and continue|Update choices/ })
-        .click(),
-    ]);
-    const packet = await response.json().catch(() => null);
-    assert(
-      response.ok() && packet?.ok === true,
-      "Fresh client consent receipt was rejected.",
+    await page
+      .getByRole("button", { name: /Agree and continue|Update choices/ })
+      .click();
+    let packet = null;
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      packet = await page.evaluate(async (callRoomId) => {
+        const response = await fetch(
+          `/api/mobile/capture/consent?callRoomId=${encodeURIComponent(callRoomId)}`,
+          { cache: "no-store" },
+        );
+        return response.ok ? await response.json().catch(() => null) : null;
+      }, context.roomId);
+      if (
+        packet?.ok === true &&
+        packet?.session?.recordingConsentCanRecordAudio === true &&
+        packet?.session?.recordingConsentCanTranscribe === true
+      ) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    assert.equal(packet?.ok, true, "Fresh client consent readback failed.");
+    assert.equal(
+      packet?.session?.recordingConsentCanRecordAudio,
+      true,
+      "Fresh client audio consent did not read back for that participant.",
     );
     assert.equal(
-      packet?.session?.recordingConsentGranted,
+      packet?.session?.recordingConsentCanTranscribe,
       true,
-      "Fresh client consent did not read back as recording-ready for that participant.",
+      "Fresh client transcription consent did not read back for that participant.",
     );
   } finally {
     await clearRenderedSession(
