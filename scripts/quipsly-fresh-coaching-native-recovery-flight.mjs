@@ -281,13 +281,22 @@ process.stderr.write(
 );
 await grantClientRecordingConsent(context);
 
-const password = readRetainedQAPassword({
+const coachPassword = readRetainedQAPassword({
   service: context.keychainService,
   account: context.identities.coach.email,
 });
-assert(password, "Fresh coach password was not found in macOS Keychain.");
+assert(coachPassword, "Fresh coach password was not found in macOS Keychain.");
+const clientPassword = readRetainedQAPassword({
+  service: context.keychainService,
+  account: context.identities.client.email,
+});
+assert(clientPassword, "Fresh client password was not found in macOS Keychain.");
 
 const artifactDirectory = path.dirname(context.contextPath);
+const clientEntryResultBundlePath = path.join(
+  artifactDirectory,
+  "native-client-entry.xcresult",
+);
 const resultBundlePath = path.join(
   artifactDirectory,
   "native-capture-recovery.xcresult",
@@ -309,6 +318,50 @@ const destination =
   "platform=iOS Simulator,name=iPhone 17 Pro";
 
 process.stderr.write(
+  `[fresh native recovery] opening accepted Session ${context.roomId} from a fresh invited-client app\n`,
+);
+const clientEntryStatus = await runInherited(
+  "bash",
+  [
+    "apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh",
+  ],
+  {
+    env: {
+      ...process.env,
+      QUIPSLY_CAPTURE_UI_TEST_BASE_URL: baseURL,
+      QUIPSLY_CAPTURE_UI_TEST_EMAIL: context.identities.client.email,
+      QUIPSLY_CAPTURE_UI_TEST_PASSWORD: clientPassword,
+      QUIPSLY_CAPTURE_UI_TEST_SESSION_ID: context.roomId,
+      QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE: context.sessionTitle,
+      QUIPSLY_CAPTURE_UI_TEST_MODE: "session-deep-link",
+      QUIPSLY_CAPTURE_UI_TEST_SIMULATOR_APP_STATE_MODE: "fresh",
+      QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH: derivedDataPath,
+      QUIPSLY_CAPTURE_UI_TEST_DESTINATION: destination,
+      QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH: clientEntryResultBundlePath,
+      QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:
+        process.env.QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS || "900",
+    },
+  },
+);
+assert.equal(
+  clientEntryStatus,
+  0,
+  `Native invited-client entry proof failed with exit ${String(clientEntryStatus)}.`,
+);
+const clientEntrySummary = await readJSONCommand("xcrun", [
+  "xcresulttool",
+  "get",
+  "test-results",
+  "summary",
+  "--path",
+  clientEntryResultBundlePath,
+]);
+assert.equal(clientEntrySummary.result, "Passed");
+assert.equal(clientEntrySummary.passedTests, 1);
+assert.equal(clientEntrySummary.failedTests, 0);
+assert.equal(clientEntrySummary.skippedTests, 0);
+
+process.stderr.write(
   `[fresh native recovery] operating isolated Session ${context.roomId}\n`,
 );
 const status = await runInherited(
@@ -321,7 +374,7 @@ const status = await runInherited(
       ...process.env,
       QUIPSLY_CAPTURE_UI_TEST_BASE_URL: baseURL,
       QUIPSLY_CAPTURE_UI_TEST_EMAIL: context.identities.coach.email,
-      QUIPSLY_CAPTURE_UI_TEST_PASSWORD: password,
+      QUIPSLY_CAPTURE_UI_TEST_PASSWORD: coachPassword,
       QUIPSLY_CAPTURE_UI_TEST_SESSION_ID: context.roomId,
       QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE: context.sessionTitle,
       QUIPSLY_CAPTURE_UI_TEST_MODE: "capture-recovery",
@@ -354,7 +407,7 @@ assert.equal(summary.passedTests, 1);
 assert.equal(summary.failedTests, 0);
 assert.equal(summary.skippedTests, 0);
 
-const studioHandoff = await readCoachStudioHandoffProjection(context, password);
+const studioHandoff = await readCoachStudioHandoffProjection(context, coachPassword);
 
 const receipt = {
   ok: true,
@@ -365,6 +418,7 @@ const receipt = {
   sourceSha: releaseIdentity.sourceSha,
   trackedWorktreeCleanAtStart: releaseIdentity.trackedWorktreeCleanAtStart,
   contextPath: context.contextPath,
+  clientEntryResultBundlePath,
   resultBundlePath,
   roomId: context.roomId,
   bookingId: context.bookingId,
@@ -379,9 +433,19 @@ const receipt = {
     skippedTests: summary.skippedTests,
     totalTestCount: summary.totalTestCount,
   },
+  clientEntryXcode: {
+    result: clientEntrySummary.result,
+    passedTests: clientEntrySummary.passedTests,
+    failedTests: clientEntrySummary.failedTests,
+    skippedTests: clientEntrySummary.skippedTests,
+    totalTestCount: clientEntrySummary.totalTestCount,
+  },
   studioHandoff,
   operated: {
     publicRenderedFreshStart: true,
+    acceptedClientInvitationOpenedInFreshNativeApp: true,
+    exactClientAccountAndCanonicalSessionReauthorized: true,
+    clientEntryDidNotJoinOrRecordAutomatically: true,
     clientConsentThroughRenderedUI: true,
     coachConsentThroughNativeUI: true,
     actualAVAudioRecorderTake: true,
