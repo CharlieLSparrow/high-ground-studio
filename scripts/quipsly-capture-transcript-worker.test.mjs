@@ -363,6 +363,7 @@ test("Google Speech uses workload identity, GCS batch input, and polls its recei
   const body = JSON.parse(requests[0].init.body);
   assert.equal(body.files[0].uri, providerSource().gcsUri);
   assert.equal(body.config.features.enableWordTimeOffsets, true);
+  assert.equal(body.config.features.enableWordConfidence, undefined);
   assert.equal(body.config.features.diarizationConfig != null, true);
   assert.equal(
     new Headers(requests[0].init.headers).get("authorization"),

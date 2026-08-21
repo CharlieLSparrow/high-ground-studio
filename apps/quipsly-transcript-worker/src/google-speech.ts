@@ -69,7 +69,6 @@ export class GoogleSpeechV2TranscriptProvider implements TranscriptProvider {
     const requestUrl = `${endpoint}/v2/${recognizer}:batchRecognize`;
     const features: Record<string, unknown> = {
       enableWordTimeOffsets: true,
-      enableWordConfidence: true,
       enableAutomaticPunctuation: true,
     };
     if (request.diarize) features.diarizationConfig = {};
