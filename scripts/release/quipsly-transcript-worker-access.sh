@@ -6,6 +6,7 @@ region="${REGION:-us-central1}"
 job_name="${JOB_NAME:-quipsly-transcript-worker}"
 media_bucket="${QUIPSLY_MEDIA_BUCKET:-}"
 deepgram_secret="${DEEPGRAM_SECRET:-quipsly-deepgram-api-key}"
+transcript_provider="${TRANSCRIPT_PROVIDER:-deepgram}"
 nest_service_name="${NEST_SERVICE_NAME:-studio}"
 worker_account="${TRANSCRIPT_SERVICE_ACCOUNT:-quipsly-transcript-worker@${project_id}.iam.gserviceaccount.com}"
 scheduler_account="${SCHEDULER_SERVICE_ACCOUNT:-quipsly-transcript-scheduler@${project_id}.iam.gserviceaccount.com}"
@@ -18,6 +19,10 @@ phase="${PHASE:-all}"
 
 if [[ -z "${project_id}" || -z "${media_bucket}" ]]; then
   echo "PROJECT_ID and QUIPSLY_MEDIA_BUCKET are required." >&2
+  exit 2
+fi
+if [[ "${transcript_provider}" != "deepgram" && "${transcript_provider}" != "google-speech-v2" ]]; then
+  echo "TRANSCRIPT_PROVIDER must be deepgram or google-speech-v2." >&2
   exit 2
 fi
 if [[ "${phase}" != "prepare" \
@@ -57,11 +62,13 @@ if [[ "${uniform_access}" != "True" \
   exit 1
 fi
 
-if ! gcloud secrets describe "${deepgram_secret}" \
-  --project="${project_id}" >/dev/null 2>&1; then
-  echo "Missing Secret Manager secret: ${deepgram_secret}" >&2
-  echo "Create it and add an enabled version without placing the value in git or shell history." >&2
-  exit 1
+if [[ "${transcript_provider}" == "deepgram" ]]; then
+  if ! gcloud secrets describe "${deepgram_secret}" \
+    --project="${project_id}" >/dev/null 2>&1; then
+    echo "Missing Secret Manager secret: ${deepgram_secret}" >&2
+    echo "Create it and add an enabled version without placing the value in git or shell history." >&2
+    exit 1
+  fi
 fi
 
 ensure_service_account() {
@@ -292,21 +299,22 @@ for folder in \
     "${runtime_members[@]}"
 done
 
-if [[ "${apply}" == "1" ]]; then
+if [[ "${apply}" == "1" && "${transcript_provider}" == "deepgram" ]]; then
   gcloud secrets add-iam-policy-binding "${deepgram_secret}" \
     --project="${project_id}" \
     --member="serviceAccount:${worker_account}" \
     --role="roles/secretmanager.secretAccessor" \
     --quiet >/dev/null
 fi
-secret_policy="$(
-  gcloud secrets get-iam-policy "${deepgram_secret}" \
-    --project="${project_id}" \
-    --format=json
-)"
-POLICY_JSON="${secret_policy}" \
-EXPECTED_MEMBER="serviceAccount:${worker_account}" \
-node <<'NODE'
+if [[ "${transcript_provider}" == "deepgram" ]]; then
+  secret_policy="$(
+    gcloud secrets get-iam-policy "${deepgram_secret}" \
+      --project="${project_id}" \
+      --format=json
+  )"
+  POLICY_JSON="${secret_policy}" \
+  EXPECTED_MEMBER="serviceAccount:${worker_account}" \
+  node <<'NODE'
 const policy = JSON.parse(process.env.POLICY_JSON || "{}");
 const accessor = (policy.bindings || []).some(
   (binding) =>
@@ -315,6 +323,28 @@ const accessor = (policy.bindings || []).some(
 );
 if (!accessor) throw new Error("Transcript worker cannot access the provider secret.");
 NODE
+else
+  if [[ "${apply}" == "1" ]]; then
+    gcloud projects add-iam-policy-binding "${project_id}" \
+      --member="serviceAccount:${worker_account}" \
+      --role="roles/speech.client" \
+      --condition=None \
+      --quiet >/dev/null
+  fi
+  project_speech_policy="$(
+    gcloud projects get-iam-policy "${project_id}" --format=json
+  )"
+  POLICY_JSON="${project_speech_policy}" \
+  EXPECTED_MEMBER="serviceAccount:${worker_account}" \
+  node <<'NODE'
+const policy = JSON.parse(process.env.POLICY_JSON || "{}");
+const allowed = (policy.bindings || []).some(
+  (binding) => binding.role === "roles/speech.client"
+    && (binding.members || []).includes(process.env.EXPECTED_MEMBER),
+);
+if (!allowed) throw new Error("Transcript worker cannot call Speech-to-Text.");
+NODE
+fi
 
 if [[ "${apply}" == "1" \
   && ( "${phase}" == "activate" || "${phase}" == "all" ) ]]; then
@@ -359,7 +389,7 @@ if [[ "${apply}" == "1" \
 fi
 
 if [[ "${phase}" == "prepare" ]]; then
-  echo "PASS Transcript worker storage and secret access match the least-privilege contract."
+  echo "PASS Transcript worker storage and provider access match the least-privilege contract."
   exit 0
 fi
 
@@ -429,4 +459,4 @@ if (failures.length) {
 }
 NODE
 
-echo "PASS Transcript storage, secret, invoker, and recovery access match the least-privilege contract."
+echo "PASS Transcript storage, provider, invoker, and recovery access match the least-privilege contract."

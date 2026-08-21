@@ -10,6 +10,8 @@ job_name="${JOB_NAME:-quipsly-transcript-worker}"
 source_ref="${SOURCE_REF:-HEAD}"
 media_bucket="${QUIPSLY_MEDIA_BUCKET:-}"
 deepgram_secret="${DEEPGRAM_SECRET:-quipsly-deepgram-api-key}"
+transcript_provider="${TRANSCRIPT_PROVIDER:-deepgram}"
+google_speech_location="${GOOGLE_SPEECH_LOCATION:-us}"
 service_account="${TRANSCRIPT_SERVICE_ACCOUNT:-quipsly-transcript-worker@${project_id}.iam.gserviceaccount.com}"
 requested_image_tag="${IMAGE_TAG:-}"
 reuse_existing_image="${REUSE_EXISTING_IMAGE:-1}"
@@ -29,18 +31,24 @@ if [[ "${reuse_existing_image}" != "0" && "${reuse_existing_image}" != "1" ]]; t
   echo "REUSE_EXISTING_IMAGE must be 0 or 1." >&2
   exit 2
 fi
+if [[ "${transcript_provider}" != "deepgram" && "${transcript_provider}" != "google-speech-v2" ]]; then
+  echo "TRANSCRIPT_PROVIDER must be deepgram or google-speech-v2." >&2
+  exit 2
+fi
 
-enabled_secret_version="$(
-  gcloud secrets versions list "${deepgram_secret}" \
-    --project="${project_id}" \
-    --filter='state=ENABLED' \
-    --sort-by='~createTime' \
-    --limit=1 \
-    --format='value(name)' 2>/dev/null || true
-)"
-if [[ -z "${enabled_secret_version}" ]]; then
-  echo "Secret ${deepgram_secret} needs an enabled version before deployment." >&2
-  exit 1
+if [[ "${transcript_provider}" == "deepgram" ]]; then
+  enabled_secret_version="$(
+    gcloud secrets versions list "${deepgram_secret}" \
+      --project="${project_id}" \
+      --filter='state=ENABLED' \
+      --sort-by='~createTime' \
+      --limit=1 \
+      --format='value(name)' 2>/dev/null || true
+  )"
+  if [[ -z "${enabled_secret_version}" ]]; then
+    echo "Secret ${deepgram_secret} needs an enabled version before deployment." >&2
+    exit 1
+  fi
 fi
 
 source_sha="$(git -C "${repo_root}" rev-parse --verify "${source_ref}^{commit}")"
@@ -139,6 +147,14 @@ if [[ ! "${image_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
 fi
 immutable_image="${region}-docker.pkg.dev/${project_id}/${artifact_repository}/${image_name}@${image_digest}"
 
+worker_env="QUIPSLY_MEDIA_BUCKET=${media_bucket},QUIPSLY_WORKER_BUILD_ID=${source_sha},QUIPSLY_WORKER_IMAGE_DIGEST=${image_digest},QUIPSLY_TRANSCRIPT_WORKER_JOB_LIMIT=1,QUIPSLY_TRANSCRIPT_WORKER_LEASE_MS=21600000,QUIPSLY_TRANSCRIPT_SIGNED_URL_MS=21600000,QUIPSLY_TRANSCRIPT_PROVIDER=${transcript_provider},GOOGLE_CLOUD_PROJECT=${project_id},GOOGLE_SPEECH_LOCATION=${google_speech_location}"
+provider_arguments=()
+if [[ "${transcript_provider}" == "deepgram" ]]; then
+  provider_arguments+=(--set-secrets="DEEPGRAM_API_KEY=${deepgram_secret}:latest")
+else
+  provider_arguments+=(--remove-secrets=DEEPGRAM_API_KEY)
+fi
+
 gcloud run jobs deploy "${job_name}" \
   --project="${project_id}" \
   --region="${region}" \
@@ -150,8 +166,8 @@ gcloud run jobs deploy "${job_name}" \
   --max-retries=2 \
   --cpu=1 \
   --memory=1Gi \
-  --set-env-vars="QUIPSLY_MEDIA_BUCKET=${media_bucket},QUIPSLY_WORKER_BUILD_ID=${source_sha},QUIPSLY_WORKER_IMAGE_DIGEST=${image_digest},QUIPSLY_TRANSCRIPT_WORKER_JOB_LIMIT=1,QUIPSLY_TRANSCRIPT_WORKER_LEASE_MS=21600000,QUIPSLY_TRANSCRIPT_SIGNED_URL_MS=21600000" \
-  --set-secrets="DEEPGRAM_API_KEY=${deepgram_secret}:latest" \
+  --set-env-vars="${worker_env}" \
+  "${provider_arguments[@]}" \
   --quiet
 
 job_json="$(
@@ -166,6 +182,7 @@ EXPECTED_SERVICE_ACCOUNT="${service_account}" \
 EXPECTED_BUCKET="${media_bucket}" \
 EXPECTED_BUILD_ID="${source_sha}" \
 EXPECTED_SECRET="${deepgram_secret}" \
+EXPECTED_PROVIDER="${transcript_provider}" \
 node <<'NODE'
 const job = JSON.parse(process.env.JOB_JSON || "{}");
 const template =
@@ -195,19 +212,26 @@ if (env.QUIPSLY_WORKER_BUILD_ID?.value !== process.env.EXPECTED_BUILD_ID) {
 if (env.QUIPSLY_TRANSCRIPT_WORKER_JOB_LIMIT?.value !== "1") {
   failures.push("job limit");
 }
+if (env.QUIPSLY_TRANSCRIPT_PROVIDER?.value !== process.env.EXPECTED_PROVIDER) {
+  failures.push("transcript provider");
+}
 const secret =
   env.DEEPGRAM_API_KEY?.valueSource?.secretKeyRef?.secret
   || env.DEEPGRAM_API_KEY?.valueFrom?.secretKeyRef?.name;
-if (
-  secret !== process.env.EXPECTED_SECRET
-  && !String(secret || "").endsWith(
-    `/secrets/${process.env.EXPECTED_SECRET}`,
-  )
-) {
-  failures.push("Deepgram secret reference");
-}
-if (typeof env.DEEPGRAM_API_KEY?.value === "string") {
-  failures.push("plaintext Deepgram value");
+if (process.env.EXPECTED_PROVIDER === "deepgram") {
+  if (
+    secret !== process.env.EXPECTED_SECRET
+    && !String(secret || "").endsWith(
+      `/secrets/${process.env.EXPECTED_SECRET}`,
+    )
+  ) {
+    failures.push("Deepgram secret reference");
+  }
+  if (typeof env.DEEPGRAM_API_KEY?.value === "string") {
+    failures.push("plaintext Deepgram value");
+  }
+} else if (env.DEEPGRAM_API_KEY) {
+  failures.push("unexpected Deepgram secret");
 }
 if (failures.length) {
   throw new Error(

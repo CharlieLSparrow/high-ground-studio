@@ -277,9 +277,12 @@ test("transcript activation requires an immutable worker and exact Nest executio
     /Nest lacks the exact transcript jobsExecutor boundary or has unsafe override authority/,
   );
   assert.match(source, /Transcript provider secret .* is missing or disabled/);
+  assert.match(source, /TRANSCRIPT_PROVIDER must be deepgram or google-speech-v2/);
+  assert.match(source, /GOOGLE_SPEECH_MODEL=.*chirp_3/);
+  assert.match(source, /QUIPSLY_TRANSCRIPT_PROVIDER=\$\{TRANSCRIPT_PROVIDER\}/);
   assert.match(source, /QUIPSLY_TRANSCRIPT_WORKER_ENABLED=1/);
   assert.match(
     source,
-    /Transcript worker passed immutable job, provider-secret, and Nest executor readback/,
+    /Transcript worker passed immutable job, provider identity, and Nest executor readback/,
   );
 });

@@ -62,7 +62,7 @@ export type CaptureTranscriptSourceBinding = {
 };
 
 export type CaptureTranscriptProviderRequest = {
-  name: "deepgram";
+  name: "deepgram" | "google-speech-v2";
   model: string;
   /** Exact request value. Historical manifests omitted it and used provider default. */
   version?: string | null;
@@ -128,7 +128,10 @@ export type CaptureTranscriptSegment = {
   confidence: number | null;
   speakerLabel: string | null;
   channel: number | null;
-  providerShape: "deepgram-utterance" | "deepgram-word-group";
+  providerShape:
+    | "deepgram-utterance"
+    | "deepgram-word-group"
+    | "google-speech-v2-result";
   wordStartIndex: number;
   wordEndIndexExclusive: number;
 };
@@ -149,7 +152,7 @@ export type CaptureTranscriptResult = {
   manifestObjectName: string;
   source: CaptureTranscriptSourceBinding;
   provider: {
-    name: "deepgram";
+    name: "deepgram" | "google-speech-v2";
     model: string;
     requestId: string;
     durationSeconds: number | null;
@@ -313,7 +316,7 @@ function routingPlanMatchesManifest(
     && plan.source.sizeBytes === source.sizeBytes
     && JSON.stringify(plan.source.topology)
       === JSON.stringify(source.topology || { kind: "unknown" })
-    && plan.primaryAttempt.provider === "deepgram"
+    && plan.primaryAttempt.provider === provider.name
     && plan.primaryAttempt.model === expectedModel
     && plan.primaryAttempt.language === (provider.language || "en-US")
     && plan.primaryAttempt.configuration.diarize === provider.diarize
@@ -336,7 +339,7 @@ export function parseCaptureTranscriptResult(
     manifestObjectName: normalizedText(row.manifestObjectName),
     source: parseSource(row.source),
     provider: {
-      name: "deepgram",
+      name: providerRow.name as CaptureTranscriptResult["provider"]["name"],
       model: normalizedText(providerRow.model),
       requestId: normalizedText(providerRow.requestId),
       durationSeconds: providerRow.durationSeconds == null
@@ -365,7 +368,7 @@ export function parseCaptureTranscriptResult(
     || result.manifestObjectName
       !== buildCaptureTranscriptManifestObjectName(expectedManifest.jobId)
     || !sameSource(result.source, expectedManifest.source)
-    || providerRow.name !== "deepgram"
+    || !["deepgram", "google-speech-v2"].includes(String(providerRow.name))
     || result.provider.name !== expectedManifest.provider.name
     || result.provider.model !== expectedManifest.provider.model
     || !result.provider.requestId
@@ -531,8 +534,9 @@ function parseProviderRequest(value: unknown): CaptureTranscriptProviderRequest 
     ? null
     : normalizedText(row.diarizeModel) as CaptureTranscriptProviderRequest["diarizeModel"];
   const multichannel = row.multichannel == null ? false : row.multichannel;
+  const name = normalizedText(row.name) as CaptureTranscriptProviderRequest["name"];
   const result: CaptureTranscriptProviderRequest = {
-    name: "deepgram",
+    name,
     model: normalizedText(row.model),
     version,
     language,
@@ -548,7 +552,7 @@ function parseProviderRequest(value: unknown): CaptureTranscriptProviderRequest 
       : parseDeepgramTerminologyProjection(row.terminology),
   };
   if (
-    row.name !== result.name
+    !["deepgram", "google-speech-v2"].includes(result.name)
     || !result.model
     || result.model.length > 128
     || (version !== null && (!version || version.length > 128 || !/^[A-Za-z0-9._-]+$/.test(version)))
@@ -556,11 +560,15 @@ function parseProviderRequest(value: unknown): CaptureTranscriptProviderRequest 
     || row.smartFormat !== true
     || row.punctuate !== true
     || (row.diarize != null && typeof row.diarize !== "boolean")
-    || (!diarize && diarizeModel !== null)
-    || (diarizeModel !== null && !["latest", "v1", "v2"].includes(diarizeModel))
+    || (result.name === "deepgram" && !diarize && diarizeModel !== null)
+    || (result.name === "deepgram"
+      && diarizeModel !== null
+      && !["latest", "v1", "v2"].includes(diarizeModel))
+    || (result.name === "google-speech-v2" && diarizeModel !== null)
     || (row.multichannel != null && typeof row.multichannel !== "boolean")
     || row.utterances !== true
     || row.paragraphs !== true
+    || (result.name === "google-speech-v2" && result.terminology !== null)
   ) {
     throw new Error("Capture transcript provider request is invalid.");
   }
@@ -668,7 +676,11 @@ function parseSegment(value: unknown): CaptureTranscriptSegment {
   if (
     result.endSeconds < result.startSeconds
     || !result.text
-    || !["deepgram-utterance", "deepgram-word-group"].includes(providerShape)
+    || ![
+      "deepgram-utterance",
+      "deepgram-word-group",
+      "google-speech-v2-result",
+    ].includes(providerShape)
     || result.wordStartIndex >= result.wordEndIndexExclusive
     || (row.speakerLabel != null && !result.speakerLabel)
   ) {

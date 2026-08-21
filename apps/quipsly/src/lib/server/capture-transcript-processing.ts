@@ -198,8 +198,18 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
   const resultObjectName = buildCaptureTranscriptResultObjectName(job.id);
   const queuedAt = new Date().toISOString();
   const topology = captureTranscriptSourceTopology(job.asset);
-  const providerModel = process.env.DEEPGRAM_MODEL?.trim() || "nova-3";
-  const providerVersion = process.env.DEEPGRAM_MODEL_VERSION?.trim() || "latest";
+  const providerName = process.env.QUIPSLY_TRANSCRIPT_PROVIDER?.trim()
+    === "google-speech-v2"
+    ? "google-speech-v2" as const
+    : "deepgram" as const;
+  const providerModel = providerName === "google-speech-v2"
+    ? process.env.GOOGLE_SPEECH_MODEL?.trim() || "chirp_3"
+    : process.env.DEEPGRAM_MODEL?.trim() || "nova-3";
+  const providerVersion = providerName === "google-speech-v2"
+    ? null
+    : process.env.DEEPGRAM_MODEL_VERSION?.trim() || "latest";
+  const providerLocation = process.env.GOOGLE_SPEECH_LOCATION?.trim()
+    || "us";
   const language = normalizedLanguage(job.language) || "en-US";
   const terminologySnapshot = job.room?.projectId
     ? await compileStudioTranscriptTerminologySnapshot({
@@ -208,7 +218,9 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
         compiledAt: new Date(queuedAt),
       })
     : null;
-  const terminology = terminologySnapshot && providerModel.startsWith("nova-3")
+  const terminology = providerName === "deepgram"
+    && terminologySnapshot
+    && providerModel.startsWith("nova-3")
     ? compileDeepgramTerminologyKeyterms(terminologySnapshot)
     : null;
   const routingPlan = planTranscriptRouting({
@@ -222,12 +234,15 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
     cloudProcessing: "required",
     providers: {
       appleOnDeviceAvailable: false,
-      deepgramAvailable: true,
+      deepgramAvailable: providerName === "deepgram",
       deepgramModel: providerModel,
       deepgramModelVersion: providerVersion,
       deepgramModelVersionPolicy: providerVersion === "latest"
         ? "moving-latest"
         : "pinned",
+      googleSpeechAvailable: providerName === "google-speech-v2",
+      googleSpeechModel: providerModel,
+      googleSpeechLocation: providerLocation,
       openAIAvailable: false,
     },
     terminologySnapshotSha256: terminology?.snapshotSha256 || null,
@@ -249,6 +264,7 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
       topology,
     },
     provider: captureTranscriptProviderRequest({
+      name: providerName,
       topology,
       model: providerModel,
       // `latest` is made explicit until a measured standard-model revision is
@@ -451,15 +467,17 @@ export function localCaptureTranscriptRoutingSummary(asset: any) {
 }
 
 export function captureTranscriptProviderRequest(input: {
+  name?: "deepgram" | "google-speech-v2";
   topology: TranscriptSourceTopology;
   model: string;
-  version: string;
+  version: string | null;
   language: string | null;
   terminology: DeepgramTerminologyProjection | null;
 }): CaptureTranscriptProviderRequest {
   const diarize = input.topology.kind !== "participant-isolated";
+  const name = input.name || "deepgram";
   return {
-    name: "deepgram",
+    name,
     model: input.model,
     version: input.version,
     language: input.language,
@@ -468,11 +486,13 @@ export function captureTranscriptProviderRequest(input: {
     diarize,
     // Pin new mixed/unknown jobs to a measured diarizer revision. Existing
     // manifests retain their original request verbatim.
-    diarizeModel: diarize ? "v2" : null,
+    diarizeModel: name === "deepgram" && diarize ? "v2" : null,
     multichannel: false,
     utterances: true,
     paragraphs: true,
-    terminology: input.model.startsWith("nova-3") ? input.terminology : null,
+    terminology: name === "deepgram" && input.model.startsWith("nova-3")
+      ? input.terminology
+      : null,
   };
 }
 

@@ -88,6 +88,9 @@ TRANSCRIPT_WORKER_JOB="${TRANSCRIPT_WORKER_JOB:-quipsly-transcript-worker}"
 TRANSCRIPT_WORKER_SERVICE_ACCOUNT="${TRANSCRIPT_WORKER_SERVICE_ACCOUNT:-quipsly-transcript-worker@${TRANSCRIPT_WORKER_PROJECT_ID}.iam.gserviceaccount.com}"
 TRANSCRIPT_WORKER_MEDIA_BUCKET="${TRANSCRIPT_WORKER_MEDIA_BUCKET:-high-ground-odyssey-media}"
 TRANSCRIPT_WORKER_SECRET_NAME="${TRANSCRIPT_WORKER_SECRET_NAME:-quipsly-deepgram-api-key}"
+TRANSCRIPT_PROVIDER="${TRANSCRIPT_PROVIDER:-deepgram}"
+GOOGLE_SPEECH_MODEL="${GOOGLE_SPEECH_MODEL:-chirp_3}"
+GOOGLE_SPEECH_LOCATION="${GOOGLE_SPEECH_LOCATION:-us}"
 GOOGLE_CALENDAR_OAUTH_CLIENT_ID_SECRET_NAME="${GOOGLE_CALENDAR_OAUTH_CLIENT_ID_SECRET_NAME:-quipsly-google-calendar-oauth-client-id}"
 GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET_SECRET_NAME="${GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET_SECRET_NAME:-quipsly-google-calendar-oauth-client-secret}"
 GOOGLE_CALENDAR_OAUTH_STATE_SECRET_NAME="${GOOGLE_CALENDAR_OAUTH_STATE_SECRET_NAME:-quipsly-google-calendar-oauth-state-secret}"
@@ -197,6 +200,10 @@ if [[ "${ENABLE_TRANSCRIPT_WORKER}" == "1" ]] && {
     || [[ ! "${TRANSCRIPT_WORKER_SECRET_NAME}" =~ ^[A-Za-z][A-Za-z0-9_-]{0,254}$ ]];
 }; then
   echo "Transcript worker project, region, job, identity, bucket, or secret name is unsafe." >&2
+  exit 2
+fi
+if [[ "${TRANSCRIPT_PROVIDER}" != "deepgram" && "${TRANSCRIPT_PROVIDER}" != "google-speech-v2" ]]; then
+  echo "TRANSCRIPT_PROVIDER must be deepgram or google-speech-v2." >&2
   exit 2
 fi
 
@@ -401,12 +408,14 @@ fi
 
 transcript_worker_env_vars=""
 if [[ "${ENABLE_TRANSCRIPT_WORKER}" == "1" ]]; then
-  if ! gcloud secrets versions describe latest \
-    --secret="${TRANSCRIPT_WORKER_SECRET_NAME}" \
-    --project="${TRANSCRIPT_WORKER_PROJECT_ID}" \
-    --format='value(state)' | grep -qx 'ENABLED'; then
-    echo "Transcript provider secret ${TRANSCRIPT_WORKER_SECRET_NAME}:latest is missing or disabled." >&2
-    exit 2
+  if [[ "${TRANSCRIPT_PROVIDER}" == "deepgram" ]]; then
+    if ! gcloud secrets versions describe latest \
+      --secret="${TRANSCRIPT_WORKER_SECRET_NAME}" \
+      --project="${TRANSCRIPT_WORKER_PROJECT_ID}" \
+      --format='value(state)' | grep -qx 'ENABLED'; then
+      echo "Transcript provider secret ${TRANSCRIPT_WORKER_SECRET_NAME}:latest is missing or disabled." >&2
+      exit 2
+    fi
   fi
 
   nest_service_account="$(
@@ -425,6 +434,7 @@ if [[ "${ENABLE_TRANSCRIPT_WORKER}" == "1" ]]; then
   EXPECTED_WORKER_ACCOUNT="${TRANSCRIPT_WORKER_SERVICE_ACCOUNT}" \
   EXPECTED_MEDIA_BUCKET="${TRANSCRIPT_WORKER_MEDIA_BUCKET}" \
   EXPECTED_SECRET="${TRANSCRIPT_WORKER_SECRET_NAME}" \
+  EXPECTED_PROVIDER="${TRANSCRIPT_PROVIDER}" \
   node <<'NODE'
 const job = JSON.parse(process.env.JOB_JSON || "{}");
 const template = job.template?.template || job.spec?.template?.spec?.template?.spec;
@@ -438,13 +448,16 @@ if (
 ) failures.push("worker service account");
 if (env.QUIPSLY_MEDIA_BUCKET?.value !== process.env.EXPECTED_MEDIA_BUCKET) failures.push("media bucket");
 if (!/^[0-9a-f]{40}$/.test(env.QUIPSLY_WORKER_BUILD_ID?.value || "")) failures.push("committed build identity");
+if (env.QUIPSLY_TRANSCRIPT_PROVIDER?.value !== process.env.EXPECTED_PROVIDER) failures.push("provider");
 const secret = env.DEEPGRAM_API_KEY?.valueSource?.secretKeyRef?.secret
   || env.DEEPGRAM_API_KEY?.valueFrom?.secretKeyRef?.name;
-if (
-  secret !== process.env.EXPECTED_SECRET
-  && !String(secret || "").endsWith(`/secrets/${process.env.EXPECTED_SECRET}`)
-) failures.push("provider secret reference");
-if (typeof env.DEEPGRAM_API_KEY?.value === "string") failures.push("plaintext provider secret");
+if (process.env.EXPECTED_PROVIDER === "deepgram") {
+  if (
+    secret !== process.env.EXPECTED_SECRET
+    && !String(secret || "").endsWith(`/secrets/${process.env.EXPECTED_SECRET}`)
+  ) failures.push("provider secret reference");
+  if (typeof env.DEEPGRAM_API_KEY?.value === "string") failures.push("plaintext provider secret");
+} else if (env.DEEPGRAM_API_KEY) failures.push("unexpected provider secret");
 if (failures.length) throw new Error(`Transcript worker activation readback mismatch: ${failures.join(", ")}`);
 NODE
 
@@ -467,8 +480,8 @@ if (!hasRole("roles/run.jobsExecutor") || hasRole("roles/run.jobsExecutorWithOve
 }
 NODE
 
-  transcript_worker_env_vars=",QUIPSLY_TRANSCRIPT_WORKER_ENABLED=1,QUIPSLY_TRANSCRIPT_WORKER_PROJECT_ID=${TRANSCRIPT_WORKER_PROJECT_ID},QUIPSLY_TRANSCRIPT_WORKER_REGION=${TRANSCRIPT_WORKER_REGION},QUIPSLY_TRANSCRIPT_WORKER_JOB=${TRANSCRIPT_WORKER_JOB}"
-  echo "Transcript worker passed immutable job, provider-secret, and Nest executor readback."
+  transcript_worker_env_vars=",QUIPSLY_TRANSCRIPT_WORKER_ENABLED=1,QUIPSLY_TRANSCRIPT_WORKER_PROJECT_ID=${TRANSCRIPT_WORKER_PROJECT_ID},QUIPSLY_TRANSCRIPT_WORKER_REGION=${TRANSCRIPT_WORKER_REGION},QUIPSLY_TRANSCRIPT_WORKER_JOB=${TRANSCRIPT_WORKER_JOB},QUIPSLY_TRANSCRIPT_PROVIDER=${TRANSCRIPT_PROVIDER},GOOGLE_SPEECH_MODEL=${GOOGLE_SPEECH_MODEL},GOOGLE_SPEECH_LOCATION=${GOOGLE_SPEECH_LOCATION}"
+  echo "Transcript worker passed immutable job, provider identity, and Nest executor readback."
 fi
 
 account_deletion_worker_secret=""

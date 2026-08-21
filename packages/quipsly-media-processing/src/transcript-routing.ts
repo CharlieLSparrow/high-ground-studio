@@ -19,6 +19,7 @@ export type TranscriptSourceTopology =
 export type TranscriptRoutingProvider =
   | "apple-speech-on-device"
   | "deepgram"
+  | "google-speech-v2"
   | "openai-transcribe"
   | "openai-diarized";
 
@@ -85,6 +86,9 @@ export type TranscriptRoutingInput = {
     deepgramModel: string;
     deepgramModelVersion: string | null;
     deepgramModelVersionPolicy: "pinned" | "moving-latest";
+    googleSpeechAvailable?: boolean;
+    googleSpeechModel?: string;
+    googleSpeechLocation?: string;
     openAIAvailable: boolean;
   };
   terminologySnapshotSha256: string | null;
@@ -142,6 +146,12 @@ export function planTranscriptRouting(
     && !cloudAllowed
   ) {
     primaryAttempt = appleAttempt(input, "primary", false);
+  } else if (cloudAllowed && input.providers.googleSpeechAvailable) {
+    primaryAttempt = googleSpeechAttempt(
+      input,
+      "primary",
+      topology.kind !== "participant-isolated",
+    );
   } else if (cloudAllowed && input.providers.deepgramAvailable) {
     primaryAttempt = deepgramAttempt(
       input,
@@ -374,6 +384,39 @@ function deepgramAttempt(
   };
 }
 
+function googleSpeechAttempt(
+  input: TranscriptRoutingInput,
+  role: TranscriptRoutingAttempt["role"],
+  diarize: boolean,
+): TranscriptRoutingAttempt {
+  return {
+    role,
+    provider: "google-speech-v2",
+    model: routingText(
+      input.providers.googleSpeechModel || "chirp_3",
+      "Google Speech model",
+      128,
+    ),
+    modelRevisionPolicy: "provider-model-name",
+    language: input.language,
+    speakerAttribution: diarize ? "provider-candidate" : "source-binding",
+    timingGranularity: "word",
+    terminology: { mode: "none", snapshotSha256: null },
+    configuration: {
+      location: routingText(
+        input.providers.googleSpeechLocation || "us",
+        "Google Speech location",
+        63,
+      ),
+      diarize,
+      multichannel: false,
+      automaticPunctuation: true,
+      wordTimeOffsets: true,
+      wordConfidence: true,
+    },
+  };
+}
+
 function openAIGeneralAttempt(
   input: TranscriptRoutingInput,
 ): TranscriptRoutingAttempt {
@@ -472,6 +515,7 @@ function parseRoutingAttempt(value: unknown, field: string): TranscriptRoutingAt
   const provider = [
     "apple-speech-on-device",
     "deepgram",
+    "google-speech-v2",
     "openai-transcribe",
     "openai-diarized",
   ].includes(String(row.provider)) ? row.provider as TranscriptRoutingProvider : null;

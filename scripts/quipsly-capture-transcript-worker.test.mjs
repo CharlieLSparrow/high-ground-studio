@@ -17,13 +17,25 @@ import {
   TranscriptProviderError,
 } from "../apps/quipsly-transcript-worker/src/deepgram.ts";
 import {
+  GoogleSpeechV2TranscriptProvider,
+} from "../apps/quipsly-transcript-worker/src/google-speech.ts";
+import {
   normalizeDeepgramResponse,
+  normalizeGoogleSpeechV2Response,
   processCaptureTranscriptQueueObject,
 } from "../apps/quipsly-transcript-worker/src/worker.ts";
 
 const jobId = "transcript_job_001";
 const sourceSha256 = "a".repeat(64);
 const now = "2026-07-30T18:30:00.000Z";
+
+function providerSource() {
+  return {
+    signedUrl: "https://storage.example/source",
+    gcsUri: "gs://quipsly-media/media-vault/recordings/capture/audio.m4a",
+    generation: "101",
+  };
+}
 
 function deepgramPayload() {
   return {
@@ -63,6 +75,35 @@ function deepgramPayload() {
           ],
         }],
       }],
+    },
+  };
+}
+
+function googleSpeechPayload() {
+  return {
+    operationName: "projects/high-ground-odyssey/locations/us-central1/operations/op-001",
+    response: {
+      totalBilledDuration: "3.2s",
+      results: {
+        "gs://quipsly-media/media-vault/recordings/capture/audio.m4a": {
+          metadata: { requestId: "google-request-001" },
+          inlineResult: {
+            transcript: {
+              results: [{
+                channelTag: 1,
+                alternatives: [{
+                  transcript: "Hello world. Reply.",
+                  words: [
+                    { word: "Hello", startOffset: "0.1s", endOffset: "0.5s", confidence: 0.99, speakerLabel: "1" },
+                    { word: "world.", startOffset: "0.55s", endOffset: "1s", confidence: 0.97, speakerLabel: "1" },
+                    { word: "Reply.", startOffset: "2.5s", endOffset: "3s", confidence: 0.95, speakerLabel: "2" },
+                  ],
+                }],
+              }],
+            },
+          },
+        },
+      },
     },
   };
 }
@@ -219,8 +260,8 @@ class FakeProvider {
     this.calls = [];
   }
 
-  async transcribe(sourceUrl, request) {
-    this.calls.push({ sourceUrl, request });
+  async transcribe(source, request) {
+    this.calls.push({ source, request });
     return {
       payload: deepgramPayload(),
       requestId: "deepgram-request-001",
@@ -264,6 +305,71 @@ test("non-diarized provider words remain source-bindable without invented labels
   assert.deepEqual(normalized.segments.map((segment) => segment.speakerLabel), [null, null]);
 });
 
+test("normalizes Google Speech word anchors without losing timeline evidence", () => {
+  const normalized = normalizeGoogleSpeechV2Response(googleSpeechPayload());
+  assert.equal(normalized.requestId, "google-request-001");
+  assert.equal(normalized.durationSeconds, 3.2);
+  assert.equal(normalized.channels, 1);
+  assert.deepEqual(
+    normalized.segments.map((segment) => [
+      segment.providerShape,
+      segment.speakerLabel,
+      segment.text,
+    ]),
+    [
+      ["google-speech-v2-result", "Speaker 1", "Hello world."],
+      ["google-speech-v2-result", "Speaker 2", "Reply."],
+    ],
+  );
+});
+
+test("Google Speech uses workload identity, GCS batch input, and polls its receipt", async () => {
+  const requests = [];
+  const payload = googleSpeechPayload();
+  const provider = new GoogleSpeechV2TranscriptProvider({
+    projectId: "high-ground-odyssey",
+    location: "us-central1",
+    authClient: {
+      async getRequestHeaders() {
+        return { Authorization: "Bearer workload-token" };
+      },
+    },
+    pollIntervalMs: 1,
+    fetchImplementation: async (url, init) => {
+      requests.push({ url: String(url), init });
+      if (requests.length === 1) {
+        return new Response(JSON.stringify({ name: payload.operationName }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ done: true, response: payload.response }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+  const request = {
+    ...fixture().manifest.provider,
+    name: "google-speech-v2",
+    model: "latest_long",
+    version: null,
+    diarizeModel: null,
+    terminology: null,
+  };
+  const result = await provider.transcribe(providerSource(), request);
+  assert.equal(result.requestId, payload.operationName);
+  assert.equal(requests.length, 2);
+  const body = JSON.parse(requests[0].init.body);
+  assert.equal(body.files[0].uri, providerSource().gcsUri);
+  assert.equal(body.config.features.enableWordTimeOffsets, true);
+  assert.equal(body.config.features.diarizationConfig != null, true);
+  assert.equal(
+    new Headers(requests[0].init.headers).get("authorization"),
+    "Bearer workload-token",
+  );
+});
+
 test("new batch requests use the versioned diarizer without the deprecated boolean", async () => {
   let requestedUrl = "";
   const provider = new DeepgramTranscriptProvider("test-key", async (url) => {
@@ -273,7 +379,7 @@ test("new batch requests use the versioned diarizer without the deprecated boole
       headers: { "content-type": "application/json" },
     });
   });
-  await provider.transcribe("https://storage.example/source", fixture().manifest.provider);
+  await provider.transcribe(providerSource(), fixture().manifest.provider);
   const query = new URL(requestedUrl).searchParams;
   assert.equal(query.get("diarize_model"), "v2");
   assert.equal(query.has("diarize"), false);
@@ -313,7 +419,7 @@ test("isolated requests skip diarization and submit each frozen keyterm separate
       },
     },
   };
-  await provider.transcribe("https://storage.example/source", request);
+  await provider.transcribe(providerSource(), request);
   const query = new URL(requestedUrl).searchParams;
   assert.equal(query.get("version"), "2026-05-01.0");
   assert.equal(query.has("diarize"), false);
@@ -337,7 +443,7 @@ test("legacy manifests preserve the deprecated request for exact replay", async 
       headers: { "content-type": "application/json" },
     });
   });
-  await provider.transcribe("https://storage.example/source", parsed.provider);
+  await provider.transcribe(providerSource(), parsed.provider);
   const query = new URL(requestedUrl).searchParams;
   assert.equal(query.get("diarize"), "true");
   assert.equal(query.has("diarize_model"), false);
@@ -359,8 +465,12 @@ test("worker stores provider evidence, completes once, and retires queue", async
     wordCount: 3,
   });
   assert.equal(provider.calls.length, 1);
-  assert.match(provider.calls[0].sourceUrl, /generation=101/);
-  assert.equal(provider.calls[0].sourceUrl.includes("signature=secret"), true);
+  assert.match(provider.calls[0].source.signedUrl, /generation=101/);
+  assert.equal(provider.calls[0].source.signedUrl.includes("signature=secret"), true);
+  assert.equal(
+    provider.calls[0].source.gcsUri,
+    "gs://quipsly-media/media-vault/recordings/capture/audio.m4a",
+  );
   assert.equal(storage.rows.has(queueObjectName), false);
   const completed = parseCaptureTranscriptManifest(
     storage.rows.get(manifestObjectName).value,

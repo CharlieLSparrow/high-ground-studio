@@ -291,7 +291,11 @@ export async function processCaptureTranscriptQueueObject(
       let providerResponse;
       try {
         providerResponse = await provider.transcribe(
-          signedUrl,
+          {
+            signedUrl,
+            gcsUri: `gs://${manifest.source.bucketName}/${manifest.source.objectName}`,
+            generation: manifest.source.generation,
+          },
           manifest.provider,
         );
       } catch (error) {
@@ -300,6 +304,16 @@ export async function processCaptureTranscriptQueueObject(
         }
         throw error;
       }
+      // Speech-to-Text V2 accepts only a generation-less GCS URI. Rechecking
+      // the immutable binding after recognition ensures a concurrent rewrite
+      // can never be accepted as transcript evidence for the claimed source.
+      assertSourceEvidence(
+        manifest,
+        await storage.objectEvidence(
+          manifest.source.objectName,
+          manifest.source.generation,
+        ),
+      );
       storedProvider = await storage.saveProviderResponseIfAbsent(
         rawObjectName,
         providerResponse.payload,
@@ -314,7 +328,9 @@ export async function processCaptureTranscriptQueueObject(
       );
     }
 
-    const normalized = normalizeDeepgramResponse(storedProvider.value);
+    const normalized = manifest.provider.name === "google-speech-v2"
+      ? normalizeGoogleSpeechV2Response(storedProvider.value)
+      : normalizeDeepgramResponse(storedProvider.value);
     const result = resultFor({
       manifest,
       storedProvider,
@@ -481,6 +497,112 @@ export function normalizeDeepgramResponse(value: unknown): {
   };
 }
 
+export function normalizeGoogleSpeechV2Response(value: unknown): {
+  requestId: string;
+  durationSeconds: number | null;
+  channels: number | null;
+  words: CaptureTranscriptWordAnchor[];
+  segments: CaptureTranscriptSegment[];
+} {
+  const payload = object(value);
+  const response = object(payload.response);
+  const fileResults = Object.values(object(response.results));
+  const draftWords: Array<Omit<CaptureTranscriptWordAnchor, "index">> = [];
+  let requestId = "";
+  let maximumChannel = 0;
+
+  for (const fileValue of fileResults) {
+    const file = object(fileValue);
+    const metadata = object(file.metadata);
+    requestId ||= text(metadata.requestId);
+    const inline = object(file.inlineResult);
+    const transcript = object(inline.transcript || file.transcript);
+    for (const resultValue of array(transcript.results)) {
+      const result = object(resultValue);
+      const channel = positiveIntegerOrNull(result.channelTag);
+      if (channel) maximumChannel = Math.max(maximumChannel, channel);
+      const alternative = object(array(result.alternatives)[0]);
+      for (const wordValue of array(alternative.words)) {
+        const word = object(wordValue);
+        const startSeconds = googleDurationSeconds(word.startOffset);
+        const endSeconds = googleDurationSeconds(word.endOffset);
+        const rawWord = text(word.word);
+        if (
+          startSeconds == null
+          || endSeconds == null
+          || endSeconds < startSeconds
+          || !rawWord
+        ) continue;
+        draftWords.push({
+          startSeconds,
+          endSeconds,
+          word: rawWord.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}']+$/gu, "") || rawWord,
+          punctuatedWord: rawWord,
+          confidence: confidence(word.confidence),
+          speakerLabel: providerSpeakerLabel(word.speakerLabel),
+          channel,
+        });
+      }
+    }
+  }
+  draftWords.sort((left, right) => (
+    left.startSeconds - right.startSeconds
+    || left.endSeconds - right.endSeconds
+    || (left.channel ?? 0) - (right.channel ?? 0)
+  ));
+  const words = draftWords.map((word, index) => ({ ...word, index }));
+  if (words.length === 0) {
+    throw new TerminalTranscriptError(
+      "provider-result-empty",
+      "Google Speech returned no valid word timing anchors.",
+    );
+  }
+  const segments: CaptureTranscriptSegment[] = [];
+  let startIndex = 0;
+  for (let index = 1; index <= words.length; index += 1) {
+    const previous = words[index - 1]!;
+    const current = words[index];
+    const textLength = words
+      .slice(startIndex, index)
+      .reduce((sum, word) => sum + word.punctuatedWord.length + 1, 0);
+    const boundary = !current
+      || current.speakerLabel !== previous.speakerLabel
+      || current.channel !== previous.channel
+      || current.startSeconds - previous.endSeconds > 1.25
+      || textLength > 420;
+    if (!boundary) continue;
+    const segmentWords = words.slice(startIndex, index);
+    segments.push({
+      ordinal: segments.length,
+      startSeconds: segmentWords[0]!.startSeconds,
+      endSeconds: segmentWords.at(-1)!.endSeconds,
+      text: joinPunctuatedWords(segmentWords),
+      confidence: minimumConfidence(segmentWords),
+      speakerLabel: segmentWords[0]!.speakerLabel,
+      channel: segmentWords[0]!.channel,
+      providerShape: "google-speech-v2-result",
+      wordStartIndex: startIndex,
+      wordEndIndexExclusive: index,
+    });
+    startIndex = index;
+  }
+  requestId ||= text(payload.operationName);
+  if (!requestId) {
+    throw new TerminalTranscriptError(
+      "provider-receipt-missing",
+      "Google Speech response did not retain a request identifier.",
+    );
+  }
+  return {
+    requestId,
+    durationSeconds: googleDurationSeconds(response.totalBilledDuration)
+      ?? words.at(-1)!.endSeconds,
+    channels: maximumChannel || null,
+    words,
+    segments,
+  };
+}
+
 async function commitTerminalFailure(
   storage: CaptureTranscriptWorkerStorage,
   manifestObjectName: string,
@@ -600,7 +722,9 @@ function assertSourceEvidence(
 function resultFor(input: {
   manifest: CaptureTranscriptManifest;
   storedProvider: StoredProviderResponse;
-  normalized: ReturnType<typeof normalizeDeepgramResponse>;
+  normalized:
+    | ReturnType<typeof normalizeDeepgramResponse>
+    | ReturnType<typeof normalizeGoogleSpeechV2Response>;
   options: CaptureTranscriptWorkerOptions;
 }): CaptureTranscriptResult {
   return {
@@ -677,6 +801,13 @@ function nonNegativeNumber(value: unknown) {
 function positiveIntegerOrNull(value: unknown) {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function googleDurationSeconds(value: unknown) {
+  if (typeof value !== "string" || !/^[0-9]+(?:\.[0-9]{1,9})?s$/.test(value)) {
+    return null;
+  }
+  return nonNegativeNumber(value.slice(0, -1));
 }
 
 function object(value: unknown): Record<string, unknown> {

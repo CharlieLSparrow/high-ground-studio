@@ -7,9 +7,15 @@ export type TranscriptProviderResponse = {
   requestId: string | null;
 };
 
+export type TranscriptProviderSource = {
+  signedUrl: string;
+  gcsUri: string;
+  generation: string;
+};
+
 export interface TranscriptProvider {
   transcribe(
-    sourceUrl: string,
+    source: TranscriptProviderSource,
     request: CaptureTranscriptProviderRequest,
   ): Promise<TranscriptProviderResponse>;
 }
@@ -47,7 +53,7 @@ export class DeepgramTranscriptProvider implements TranscriptProvider {
   }
 
   async transcribe(
-    sourceUrl: string,
+    source: TranscriptProviderSource,
     request: CaptureTranscriptProviderRequest,
   ): Promise<TranscriptProviderResponse> {
     const query = new URLSearchParams({
@@ -84,7 +90,7 @@ export class DeepgramTranscriptProvider implements TranscriptProvider {
             Authorization: `Token ${this.apiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ url: sourceUrl }),
+          body: JSON.stringify({ url: source.signedUrl }),
           signal: AbortSignal.timeout(6 * 60 * 60 * 1_000),
         },
       );

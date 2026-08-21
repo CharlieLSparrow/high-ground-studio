@@ -1,10 +1,12 @@
 import { DeepgramTranscriptProvider } from "./deepgram.js";
 import { GcsCaptureTranscriptWorkerStorage } from "./gcs-storage.js";
+import { GoogleSpeechV2TranscriptProvider } from "./google-speech.js";
 import { runCaptureTranscriptWorker } from "./worker.js";
 
 const bucketName = requiredEnv("QUIPSLY_MEDIA_BUCKET");
 const buildId = requiredEnv("QUIPSLY_WORKER_BUILD_ID");
-const deepgramApiKey = requiredEnv("DEEPGRAM_API_KEY");
+const providerName = process.env.QUIPSLY_TRANSCRIPT_PROVIDER?.trim()
+  || "deepgram";
 const executionId =
   process.env.CLOUD_RUN_EXECUTION?.trim()
   || process.env.HOSTNAME?.trim()
@@ -32,9 +34,17 @@ const signedUrlDurationMs = boundedInteger(
 
 const startedAt = Date.now();
 try {
+  const provider = providerName === "google-speech-v2"
+    ? new GoogleSpeechV2TranscriptProvider({
+        projectId: requiredEnv("GOOGLE_CLOUD_PROJECT"),
+        location: process.env.GOOGLE_SPEECH_LOCATION?.trim() || "us",
+      })
+    : providerName === "deepgram"
+      ? new DeepgramTranscriptProvider(requiredEnv("DEEPGRAM_API_KEY"))
+      : invalidProvider(providerName);
   const results = await runCaptureTranscriptWorker(
     new GcsCaptureTranscriptWorkerStorage(bucketName),
-    new DeepgramTranscriptProvider(deepgramApiKey),
+    provider,
     {
       executionId,
       buildId,
@@ -64,6 +74,10 @@ try {
     reason: error instanceof Error ? error.message : "unknown",
   }));
   process.exitCode = 1;
+}
+
+function invalidProvider(value: string): never {
+  throw new Error(`Unsupported QUIPSLY_TRANSCRIPT_PROVIDER: ${value}`);
 }
 
 function requiredEnv(name: string) {

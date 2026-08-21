@@ -665,6 +665,9 @@ importers:
       '@high-ground/quipsly-media-processing':
         specifier: workspace:*
         version: link:../../packages/quipsly-media-processing
+      google-auth-library:
+        specifier: ^10.6.2
+        version: 10.6.2
     devDependencies:
       '@types/node':
         specifier: 25.3.3
