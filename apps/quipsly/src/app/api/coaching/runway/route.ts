@@ -27,6 +27,7 @@ import {
 } from "@/lib/server/mobile-capture-consent-readiness.js";
 import { mobileCaptureProcessingGateFromEvidence } from "@/lib/server/mobile-capture-processing-policy.js";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { sessionInvitationEmailReadiness } from "@/lib/server/session-invitation-email";
 import { ensureInvitedStudioUserByEmail } from "@/lib/server/studio-user-identity";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
@@ -1129,6 +1130,7 @@ export async function GET(request: Request) {
   }));
   const liveKitEgressReadiness = getQuipslyLiveKitEgressReadiness();
   const calendarReadiness = getCoachingCalendarReadiness();
+  const invitationEmailReadiness = sessionInvitationEmailReadiness(request.url);
 
   return NextResponse.json({
     ok: true,
@@ -1146,6 +1148,8 @@ export async function GET(request: Request) {
       recordingScope: "Recording requires explicit consent and visible recording state.",
     },
     readiness: {
+      invitationEmailConfigured: invitationEmailReadiness.available,
+      invitationEmailStatus: invitationEmailReadiness.status,
       stripeConfigured: Boolean(process.env["STRIPE_SECRET_KEY"]),
       stripeLiveAllowed: process.env["QUIPSLY_ALLOW_LIVE_STRIPE"] === "true",
       liveKitJoinConfigured: liveKitEgressReadiness.liveKitJoinConfigured,

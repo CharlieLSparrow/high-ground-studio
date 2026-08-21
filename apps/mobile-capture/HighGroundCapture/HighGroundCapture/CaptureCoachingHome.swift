@@ -60,7 +60,13 @@ struct MobileCoachingRunwayResponse: Codable {
     let ok: Bool
     let error: String?
     let user: MobileCoachingRunwayUser?
+    let readiness: MobileCoachingRunwayReadiness?
     let upcomingBookings: [MobileCoachingBooking]?
+}
+
+struct MobileCoachingRunwayReadiness: Codable, Hashable {
+    let invitationEmailConfigured: Bool
+    let invitationEmailStatus: String?
 }
 
 struct MobileCoachingAppointmentResult: Codable, Hashable {
@@ -327,6 +333,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
     )
 
     var isCoach: Bool { response?.user?.isCoach == true }
+    var invitationEmailAvailable: Bool {
+        response?.readiness?.invitationEmailConfigured == true
+    }
     var upcomingBookings: [MobileCoachingBooking] { response?.upcomingBookings ?? [] }
     var isCoachingClient: Bool {
         guard let userID = response?.user?.id else { return false }
@@ -344,6 +353,10 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 name: "Charlie Sparrow",
                 isStaff: false,
                 isCoach: true
+            ),
+            readiness: MobileCoachingRunwayReadiness(
+                invitationEmailConfigured: true,
+                invitationEmailStatus: "AVAILABLE"
             ),
             upcomingBookings: [
                 MobileCoachingBooking(
@@ -918,38 +931,45 @@ struct CaptureCoachingHomeView: View {
         if let roomID = booking.callRoomId,
            let recipientEmail = booking.client?.email?.nonemptyCoachingText {
             VStack(alignment: .leading, spacing: 8) {
-                Button {
-                    Task {
-                        _ = await client.sendInvitationEmail(
-                            roomID: roomID,
-                            recipientEmail: recipientEmail,
-                            recipientName: booking.client?.name
+                if client.invitationEmailAvailable {
+                    Button {
+                        Task {
+                            _ = await client.sendInvitationEmail(
+                                roomID: roomID,
+                                recipientEmail: recipientEmail,
+                                recipientName: booking.client?.name
+                            )
+                        }
+                    } label: {
+                        Label(
+                            client.invitationDeliveries[roomID]?.wasSent == true
+                                ? "Resend invitation email"
+                                : "Send invitation email",
+                            systemImage: "envelope.badge"
                         )
+                        .frame(maxWidth: .infinity)
                     }
-                } label: {
-                    Label(
-                        client.invitationDeliveries[roomID]?.wasSent == true
-                            ? "Resend invitation email"
-                            : "Send invitation email",
-                        systemImage: "envelope.badge"
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(client.isMutating || model.usesPreviewData)
-                .accessibilityHint("Emails a one-time, verified-email invitation and records delivery separately from acceptance.")
-                .accessibilityIdentifier("CaptureCoachingSendInvite_\(booking.id)")
+                    .buttonStyle(.borderedProminent)
+                    .disabled(client.isMutating || model.usesPreviewData)
+                    .accessibilityHint("Emails a one-time, verified-email invitation and records delivery separately from acceptance.")
+                    .accessibilityIdentifier("CaptureCoachingSendInvite_\(booking.id)")
 
-                if let delivery = client.invitationDeliveries[roomID] {
-                    Label(
-                        delivery.wasSent
-                            ? "Email sent to \(recipientEmail). Acceptance is still pending."
-                            : delivery.errorMessage ?? "Email was not sent. Retry or share the link.",
-                        systemImage: delivery.wasSent ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(delivery.wasSent ? .green : .orange)
-                    .accessibilityIdentifier("CaptureCoachingInviteDelivery_\(booking.id)")
+                    if let delivery = client.invitationDeliveries[roomID] {
+                        Label(
+                            delivery.wasSent
+                                ? "Email sent to \(recipientEmail). Acceptance is still pending."
+                                : delivery.errorMessage ?? "Email was not sent. Retry or share the link.",
+                            systemImage: delivery.wasSent ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(delivery.wasSent ? .green : .orange)
+                        .accessibilityIdentifier("CaptureCoachingInviteDelivery_\(booking.id)")
+                    }
+                } else {
+                    Text("Share the private invitation below. Your client can open it on a phone, tablet, or desktop.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureCoachingInvitationShareOnly_\(booking.id)")
                 }
 
                 coachingShareLink(

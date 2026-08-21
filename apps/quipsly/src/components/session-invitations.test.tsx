@@ -21,7 +21,14 @@ describe("SessionInvitations", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ ok: true, invitations: [] }),
+        json: async () => ({
+          ok: true,
+          invitations: [],
+          deliveryCapabilities: {
+            email: { available: false, status: "EMAIL_NOT_CONFIGURED" },
+            privateLink: { available: true },
+          },
+        }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -85,7 +92,7 @@ describe("SessionInvitations", () => {
     });
     await waitFor(() =>
       expect(
-        screen.getByText(/Expiring, email-bound invitation/i),
+        screen.getByText(/Private invitation/i),
       ).toBeInTheDocument(),
     );
     fireEvent.change(screen.getByLabelText("Email"), {
@@ -95,7 +102,7 @@ describe("SessionInvitations", () => {
       target: { value: "Guest" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: /Create private link/i }),
+      screen.getByRole("button", { name: /Create invitation/i }),
     );
 
     await waitFor(() =>
@@ -122,7 +129,14 @@ describe("SessionInvitations", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ ok: true, invitations: [] }),
+        json: async () => ({
+          ok: true,
+          invitations: [],
+          deliveryCapabilities: {
+            email: { available: true, status: "AVAILABLE" },
+            privateLink: { available: true },
+          },
+        }),
       })
       .mockResolvedValueOnce({
         ok: true,

@@ -2,7 +2,10 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { sendSessionInvitationEmail } from "@/lib/server/session-invitation-email";
+import {
+  sendSessionInvitationEmail,
+  sessionInvitationEmailReadiness,
+} from "@/lib/server/session-invitation-email";
 
 import { DELETE, GET, POST } from "./route";
 
@@ -16,6 +19,10 @@ jest.mock("@/lib/server/session-invitation-email", () => ({
     () => "http://127.0.0.1:3012/sessions/join?token=qsinv_test",
   ),
   sendSessionInvitationEmail: jest.fn(),
+  sessionInvitationEmailReadiness: jest.fn(() => ({
+    available: true,
+    status: "AVAILABLE",
+  })),
 }));
 
 const now = new Date("2026-08-04T18:00:00.000Z");
@@ -125,6 +132,10 @@ describe("Session invitation API", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
+      deliveryCapabilities: {
+        email: { available: true, status: "AVAILABLE" },
+        privateLink: { available: true },
+      },
       boundaries: {
         sessionScoped: true,
         grantsNestAccess: false,
@@ -141,6 +152,9 @@ describe("Session invitation API", () => {
         },
       },
     });
+    expect(sessionInvitationEmailReadiness).toHaveBeenCalledWith(
+      "http://127.0.0.1:3012/api/sessions/room-1/invitations",
+    );
   });
 
   it("projects access history and safe join-key leases without provider identities or credentials", async () => {

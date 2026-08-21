@@ -11,6 +11,7 @@ import {
 } from "@/lib/server/session-invitation";
 import {
   sendSessionInvitationEmail,
+  sessionInvitationEmailReadiness,
   sessionInvitationJoinUrl,
 } from "@/lib/server/session-invitation-email";
 import { normalizeEmail } from "@/lib/server/studio-user-identity";
@@ -213,6 +214,10 @@ export async function GET(
   });
   return privateJson({
     ok: true,
+    deliveryCapabilities: {
+      email: sessionInvitationEmailReadiness(request.url),
+      privateLink: { available: true },
+    },
     room: {
       id: access.room.id,
       title: access.room.title,
@@ -294,6 +299,10 @@ export async function POST(
     if (existingDelivery) {
       return privateJson({
         ok: true,
+        deliveryCapabilities: {
+          email: sessionInvitationEmailReadiness(request.url),
+          privateLink: { available: true },
+        },
         invitation: invitationRow(existingDelivery.invitation),
         invitePath: null,
         delivery: deliveryRow(existingDelivery),
@@ -415,6 +424,10 @@ export async function POST(
   return privateJson(
     {
       ok: true,
+      deliveryCapabilities: {
+        email: sessionInvitationEmailReadiness(request.url),
+        privateLink: { available: true },
+      },
       invitation: invitationRow(invitation),
       invitePath,
       delivery: deliveryReceipt ? deliveryRow(deliveryReceipt) : null,

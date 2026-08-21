@@ -78,6 +78,13 @@ type InvitationPacket = {
   delivery?: InvitationDelivery | null;
   participant?: NonNullable<Invitation["participant"]>;
   provider?: { status?: string; nextAction?: string };
+  deliveryCapabilities?: {
+    email?: {
+      available?: boolean;
+      status?: "AVAILABLE" | "EMAIL_NOT_CONFIGURED" | "PUBLIC_URL_NOT_CONFIGURED";
+    };
+    privateLink?: { available?: boolean };
+  };
   collaboration?: {
     activity?: CollaborationActivity[];
     joinKeyLeases?: JoinKeyLease[];
@@ -229,6 +236,7 @@ export function SessionInvitations({
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [supportsShare, setSupportsShare] = useState(false);
+  const [emailDeliveryAvailable, setEmailDeliveryAvailable] = useState(false);
   const [confirmingRemovalId, setConfirmingRemovalId] = useState("");
   const [managerOpen, setManagerOpen] = useState(false);
   const [presence, setPresence] = useState<ProviderPresence | null>(null);
@@ -262,6 +270,9 @@ export function SessionInvitations({
       return;
     }
     setAuthorized(true);
+    setEmailDeliveryAvailable(
+      packet.deliveryCapabilities?.email?.available === true,
+    );
     setInvitations(packet.invitations || []);
     setActivity(packet.collaboration?.activity || []);
     setJoinKeyLeases(packet.collaboration?.joinKeyLeases || []);
@@ -526,12 +537,14 @@ export function SessionInvitations({
           <form
             onSubmit={(event: FormEvent) => {
               event.preventDefault();
-              void createInvitation("EMAIL");
+              void createInvitation(emailDeliveryAvailable ? "EMAIL" : "LINK");
             }}
             className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4"
           >
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">
-              Expiring, email-bound invitation
+              {emailDeliveryAvailable
+                ? "Expiring, email-bound invitation"
+                : "Private invitation"}
             </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-black text-[#5b472f]">
@@ -589,22 +602,31 @@ export function SessionInvitations({
               >
                 {status === "creating" ? (
                   <LoaderCircle size={15} className="animate-spin" />
-                ) : (
+                ) : emailDeliveryAvailable ? (
                   <Send size={15} />
+                ) : (
+                  <Link2 size={15} />
                 )}
-                Send email invitation
+                {emailDeliveryAvailable
+                  ? "Send email invitation"
+                  : "Create invitation"}
               </button>
-              <button
-                type="button"
-                onClick={() => void createInvitation("LINK")}
-                disabled={status === "creating" || !email.trim()}
-                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-5 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
-              >
-                <Link2 size={15} />
-                Create private link
-              </button>
+              {emailDeliveryAvailable ? (
+                <button
+                  type="button"
+                  onClick={() => void createInvitation("LINK")}
+                  disabled={status === "creating" || !email.trim()}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-5 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
+                >
+                  <Link2 size={15} />
+                  Create private link
+                </button>
+              ) : null}
             </div>
             <p className="mt-3 text-[11px] font-bold leading-5 text-violet-950">
+              {emailDeliveryAvailable
+                ? "Quipsly can email this invitation, or you can share the private link yourself. "
+                : "Quipsly will create a private link for you to share using Messages, email, or another app. "}
               The recipient must sign in with this exact verified email. The
               link grants this Session—not the Nest—and never starts recording.
             </p>
@@ -697,7 +719,7 @@ export function SessionInvitations({
                         : ` · ${new Date(invitation.delivery.requestedAt).toLocaleString()}`}
                     </p>
                   ) : null}
-                  {invitation.canRevokeLink &&
+                  {emailDeliveryAvailable && invitation.canRevokeLink &&
                   invitation.delivery?.status !== "PENDING" ? (
                     <button
                       type="button"

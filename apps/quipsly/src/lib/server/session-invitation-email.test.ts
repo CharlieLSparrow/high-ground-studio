@@ -2,6 +2,7 @@
 
 import {
   sendSessionInvitationEmail,
+  sessionInvitationEmailReadiness,
   sessionInvitationJoinUrl,
 } from "./session-invitation-email";
 
@@ -52,6 +53,21 @@ describe("Session invitation email", () => {
           "https://attacker.example/sessions/join?token=qsinv_abcdefghijklmnopqrstuvwxyzABCDEFGH123456",
       }),
     ).toBeNull();
+  });
+
+  it("reports only actionable email readiness without exposing provider configuration", () => {
+    expect(
+      sessionInvitationEmailReadiness(
+        "http://127.0.0.1:3012/api/sessions/room-1/invitations",
+      ),
+    ).toEqual({ available: true, status: "AVAILABLE" });
+
+    delete process.env.QUIPSLY_SESSION_INVITATION_RESEND_API_KEY;
+    expect(
+      sessionInvitationEmailReadiness(
+        "http://127.0.0.1:3012/api/sessions/room-1/invitations",
+      ),
+    ).toEqual({ available: false, status: "EMAIL_NOT_CONFIGURED" });
   });
 
   it("sends one recipient with provider idempotency and no hidden recipients", async () => {

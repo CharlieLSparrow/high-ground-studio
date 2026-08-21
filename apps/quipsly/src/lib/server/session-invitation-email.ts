@@ -64,6 +64,35 @@ function publicBaseUrl(requestUrl: string) {
   }
 }
 
+export type SessionInvitationEmailReadiness = {
+  available: boolean;
+  status: "AVAILABLE" | "EMAIL_NOT_CONFIGURED" | "PUBLIC_URL_NOT_CONFIGURED";
+};
+
+/**
+ * Projects only the user-actionable delivery capability. It never exposes a
+ * provider key, sender value, or deployment detail to the client.
+ */
+export function sessionInvitationEmailReadiness(
+  requestUrl: string,
+): SessionInvitationEmailReadiness {
+  const apiKey =
+    process.env.QUIPSLY_SESSION_INVITATION_RESEND_API_KEY?.trim() ||
+    process.env.RESEND_API_KEY?.trim() ||
+    "";
+  const from =
+    process.env.QUIPSLY_SESSION_INVITATION_EMAIL_FROM?.trim() ||
+    process.env.HGO_EMAIL_FROM?.trim() ||
+    "";
+  if (!apiKey || !from || !validSender(from)) {
+    return { available: false, status: "EMAIL_NOT_CONFIGURED" };
+  }
+  if (!publicBaseUrl(requestUrl)) {
+    return { available: false, status: "PUBLIC_URL_NOT_CONFIGURED" };
+  }
+  return { available: true, status: "AVAILABLE" };
+}
+
 export function sessionInvitationJoinUrl(input: {
   requestUrl: string;
   invitePath: string;

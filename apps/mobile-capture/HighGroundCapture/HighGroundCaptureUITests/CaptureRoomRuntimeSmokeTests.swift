@@ -1165,33 +1165,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts[clientName].firstMatch.exists)
 
-        let send = app.buttons.matching(
-            NSPredicate(
-                format: "identifier BEGINSWITH %@ OR label == %@",
-                "CaptureCoachingSendInvite_",
-                "Send invitation email"
-            )
-        ).firstMatch
-        XCTAssertTrue(
-            waitForRuntimeElement(send, in: app, timeout: 20, swipeAttempts: 10),
-            "The newly scheduled Session should expose durable email invitation from the same phone."
-        )
-        XCTAssertTrue(send.isEnabled)
-        send.tap()
-
-        let delivery = app.descendants(matching: .any).matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingInviteDelivery_")
-        ).firstMatch
-        let globalError = app.descendants(matching: .any)["CaptureCoachingError"].firstMatch
-        let invitationDeadline = Date().addingTimeInterval(30)
-        while !delivery.exists && !globalError.exists && Date() < invitationDeadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        }
-        XCTAssertTrue(
-            delivery.exists || globalError.exists,
-            "Invitation must produce visible sent-or-not-sent truth; a tap may not disappear into silent state."
-        )
-        attachRuntimeScreenshot(app, name: "Phone-first invitation outcome")
         let share = app.descendants(matching: .any).matching(
             NSPredicate(
                 format: "identifier == %@ OR label == %@",
@@ -1200,9 +1173,42 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             )
         ).firstMatch
         XCTAssertTrue(
-            waitForRuntimeElement(share, in: app, timeout: 15, swipeAttempts: 8),
-            "A system share fallback should remain available even when local acceptance intentionally blocks external mail."
+            waitForRuntimeElement(share, in: app, timeout: 20, swipeAttempts: 10),
+            "The newly scheduled Session should expose a working system share invitation from the same phone."
         )
+        let send = app.buttons.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ OR label == %@",
+                "CaptureCoachingSendInvite_",
+                "Send invitation email"
+            )
+        ).firstMatch
+        if send.exists {
+            XCTAssertTrue(send.isEnabled)
+            send.tap()
+
+            let delivery = app.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingInviteDelivery_")
+            ).firstMatch
+            let globalError = app.descendants(matching: .any)["CaptureCoachingError"].firstMatch
+            let invitationDeadline = Date().addingTimeInterval(30)
+            while !delivery.exists && !globalError.exists && Date() < invitationDeadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            }
+            XCTAssertTrue(
+                delivery.exists || globalError.exists,
+                "Configured email delivery must produce visible sent-or-not-sent truth; a tap may not disappear into silent state."
+            )
+        } else {
+            let shareOnly = app.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingInvitationShareOnly_")
+            ).firstMatch
+            XCTAssertTrue(
+                shareOnly.exists,
+                "When email is unavailable, Capture should lead with the working share path instead of an error-producing email action."
+            )
+        }
+        attachRuntimeScreenshot(app, name: "Phone-first invitation outcome")
 
         let relationship = app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingRelationship_")
