@@ -144,6 +144,8 @@ const inviteToken = (process.env.QUIPSLY_AUTH_SMOKE_INVITE_TOKEN || "")
 const skipNativeSessionCheck = process.env.QUIPSLY_AUTH_SMOKE_SKIP_NATIVE_SESSION_CHECK === "1";
 const requireSessionWorkspaceCheck =
   process.env.QUIPSLY_AUTH_SMOKE_REQUIRE_SESSION_WORKSPACE === "1";
+const assertExactProjectVisibility =
+  process.env.QUIPSLY_AUTH_SMOKE_ASSERT_EXACT_PROJECT_VISIBILITY === "1";
 const firebaseApiKey = requiredEnv(
   "QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY",
   localEnv.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -430,6 +432,48 @@ try {
     }
   }
 
+  let exactProjectVisibility = "not-requested";
+  if (assertExactProjectVisibility) {
+    assert(
+      !skipNativeSessionCheck,
+      "Exact project visibility requires the native session-check projection.",
+    );
+    assert(
+      expectedProjectSlug,
+      "Exact project visibility requires QUIPSLY_AUTH_SMOKE_EXPECT_PROJECT_SLUG.",
+    );
+    const allowedProjectSlugs = new Set([
+      sessionBody.homeNest.slug,
+      expectedProjectSlug,
+    ]);
+    const visibleProjects = Array.isArray(nativeSessionBody.projects)
+      ? nativeSessionBody.projects
+      : [];
+    const visibleProjectSlugs = visibleProjects
+      .map((project) => String(project?.slug || "").trim())
+      .filter(Boolean);
+    assert(
+      visibleProjectSlugs.length > 0,
+      "Native session-check returned no projects for exact visibility proof.",
+    );
+    for (const slug of visibleProjectSlugs) {
+      assert(
+        allowedProjectSlugs.has(slug),
+        `/api/mac/session-check disclosed unrelated project slug ${slug}.`,
+      );
+    }
+    assert(
+      visibleProjectSlugs.includes(sessionBody.homeNest.slug),
+      "Exact visibility proof omitted the generated Home Nest.",
+    );
+    assert(
+      visibleProjectSlugs.includes(expectedProjectSlug),
+      "Exact visibility proof omitted the invited Nest.",
+    );
+    exactProjectVisibility = "pass";
+    checkedRoutes.push("/api/mac/session-check:exact-project-allowlist");
+  }
+
   const logout = await requestText(`${baseUrl}/api/auth/session`, {
     method: "DELETE",
     headers: { cookie },
@@ -452,6 +496,7 @@ try {
     freeTierOnboarding: sessionBody.onboarding.freeMembershipStatus,
     expectedProjectSlug: expectedProjectSlug || null,
     inviteAcceptance: inviteToken ? "pass" : "not-requested",
+    exactProjectVisibility,
     sessionWorkspace: requireSessionWorkspaceCheck ? sessionWorkspacePath : "not-requested",
     checkedRoutes,
     logout: "pass",
