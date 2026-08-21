@@ -1909,6 +1909,8 @@ requireIncludes(liveKitJoinTokenHelperText, "roomJoin: true", "LiveKit token roo
 requireIncludes(liveKitJoinTokenHelperText, "metadata: JSON.stringify(input.metadata)", "LiveKit token metadata evidence");
 assert(!liveKitJoinTokenHelperText.includes("console.log(input.apiSecret"), "LiveKit helper must not log provider secrets.");
 requireIncludes(mobileCaptureReadinessRouteText, "getQuipslyLiveKitEgressReadiness", "mobile capture uses shared LiveKit egress readiness helper");
+requireIncludes(mobileCaptureReadinessRouteText, "captureTranscriptWorkerEnabled", "mobile capture readiness recognizes the isolated production transcript worker");
+requireIncludes(mobileCaptureReadinessRouteText, "localCaptureTranscriptWorkerEnabled", "mobile capture readiness recognizes an explicitly available local transcript worker");
 requireIncludes(providerRecordingCommandText, "MEDIA_VAULT_BUCKET_ENV_NAMES", "LiveKit egress uses shared media-vault bucket env list");
 requireIncludes(liveKitEgressHelperText, "MEDIA_VAULT_PREFIXES.livekitRecording", "LiveKit egress uses shared livekit recording prefix");
 requireIncludes(providerRecordingCommandText, "LIVEKIT_EGRESS_ENABLED", "LiveKit egress has explicit operator enablement gate");

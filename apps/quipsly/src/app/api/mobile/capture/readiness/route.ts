@@ -5,6 +5,10 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { getMediaVaultReadiness } from "@/lib/server/media-vault";
 import { getCoachingCalendarReadiness } from "@/lib/server/coaching-google-calendar";
 import { getQuipslyLiveKitEgressReadiness } from "@/lib/server/coaching-livekit-egress";
+import {
+  captureTranscriptWorkerEnabled,
+  localCaptureTranscriptWorkerEnabled,
+} from "@/lib/server/capture-transcript-processing";
 import { getMobileCaptureLocalVaultConfig } from "@/lib/server/mobile-capture-local-vault";
 import { longSourceVerifierEnabled } from "@/lib/server/mobile-capture-long-verification";
 import {
@@ -32,8 +36,10 @@ export async function GET(request: Request) {
   const root = baseUrl();
   const liveKitEgressReadiness = getQuipslyLiveKitEgressReadiness();
   const transcriptConfigured =
-    configured(process.env.DEEPGRAM_API_KEY) ||
-    configured(process.env.TRANSCRIPTION_PROVIDER_API_KEY);
+    captureTranscriptWorkerEnabled()
+    || localCaptureTranscriptWorkerEnabled()
+    || configured(process.env.DEEPGRAM_API_KEY)
+    || configured(process.env.TRANSCRIPTION_PROVIDER_API_KEY);
   const stripeConfigured = configured(process.env["STRIPE_SECRET_KEY"]);
   const stripeLiveAllowed = process.env["QUIPSLY_ALLOW_LIVE_STRIPE"] === "true";
   const mediaVaultReadiness = getMediaVaultReadiness();

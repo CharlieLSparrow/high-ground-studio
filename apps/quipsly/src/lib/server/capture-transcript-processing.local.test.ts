@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import {
+  captureTranscriptWorkerEnabled,
   captureTranscriptSourceTopology,
   captureTranscriptProviderRequest,
   captureTranscriptRoutingSummary,
@@ -12,6 +13,15 @@ describe("local Capture transcript worker availability", () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalDatabaseUrl = process.env.DATABASE_URL;
   const originalAvailability = process.env.QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE;
+  const workerEnvironmentNames = [
+    "QUIPSLY_TRANSCRIPT_WORKER_ENABLED",
+    "QUIPSLY_TRANSCRIPT_WORKER_PROJECT_ID",
+    "QUIPSLY_TRANSCRIPT_WORKER_REGION",
+    "QUIPSLY_TRANSCRIPT_WORKER_JOB",
+  ] as const;
+  const originalWorkerEnvironment = Object.fromEntries(
+    workerEnvironmentNames.map((name) => [name, process.env[name]]),
+  );
   const setNodeEnv = (value: string | undefined) => {
     Object.defineProperty(process.env, "NODE_ENV", {
       configurable: true,
@@ -27,6 +37,25 @@ describe("local Capture transcript worker availability", () => {
     else process.env.DATABASE_URL = originalDatabaseUrl;
     if (originalAvailability === undefined) delete process.env.QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE;
     else process.env.QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE = originalAvailability;
+    for (const name of workerEnvironmentNames) {
+      const original = originalWorkerEnvironment[name];
+      if (original === undefined) delete process.env[name];
+      else process.env[name] = original;
+    }
+  });
+
+  it("recognizes the isolated production worker only when its exact execution target is complete", () => {
+    process.env.QUIPSLY_TRANSCRIPT_WORKER_ENABLED = "1";
+    process.env.QUIPSLY_TRANSCRIPT_WORKER_PROJECT_ID = "high-ground-odyssey";
+    process.env.QUIPSLY_TRANSCRIPT_WORKER_REGION = "us-central1";
+    delete process.env.QUIPSLY_TRANSCRIPT_WORKER_JOB;
+    expect(captureTranscriptWorkerEnabled()).toBe(false);
+
+    process.env.QUIPSLY_TRANSCRIPT_WORKER_JOB = "quipsly-transcript-worker";
+    expect(captureTranscriptWorkerEnabled()).toBe(true);
+
+    process.env.QUIPSLY_TRANSCRIPT_WORKER_ENABLED = "0";
+    expect(captureTranscriptWorkerEnabled()).toBe(false);
   });
 
   it("requires an explicit lifecycle signal and loopback database", () => {
