@@ -14,8 +14,9 @@ Current release target, read back on 2026-08-21:
 
 - **Quipsly Capture 1.0 (33)** through the open Apple public beta at
   `https://testflight.apple.com/join/XwRRcYUm`;
-- **Nest revision `studio-00518-dih`**, source
-  `3a3861a075c158de32dc9ed1facab0df7a41da47`;
+- **Nest revision `studio-00523-yun`**, source
+  `e73fef64880362f3c6c5fc793c5b047408d22a40`, serving 100% of production
+  traffic;
 - Homer signs into Quipsly with Google as `shomers@gmail.com`. His Apple
   TestFlight account may be a different address and does not determine his
   Quipsly identity;
