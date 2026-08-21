@@ -14,11 +14,13 @@ jest.mock("@/components/browser-source-recorder", () => ({
     projectSlug,
     conversationConnected,
     onSourceLockChange,
+    onPreparationStateChange,
   }: {
     captureGroupId: string;
     projectSlug?: string | null;
     conversationConnected?: boolean;
     onSourceLockChange?: (locked: boolean) => void;
+    onPreparationStateChange?: (state: { participantReady: boolean; everyoneReady: boolean }) => void;
   }) => (
     <div>
       <span data-testid="browser-source-capture-group">{captureGroupId}</span>
@@ -26,6 +28,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
       <span data-testid="browser-source-conversation">{conversationConnected ? "connected" : "lobby"}</span>
       <button type="button" onClick={() => onSourceLockChange?.(true)}>Simulate retained source start</button>
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
+      <button type="button" onClick={() => onPreparationStateChange?.({ participantReady: true, everyoneReady: false })}>Simulate recording choice ready</button>
     </div>
   ),
 }));
@@ -135,6 +138,10 @@ describe("LiveSessionRoom", () => {
     expect(
       screen.getByRole("heading", { name: "Start this coaching call" }),
     ).toBeInTheDocument();
+    const progress = screen.getByRole("region", { name: "Session lobby progress" });
+    expect(progress).toHaveTextContent(/Confirm what may be recorded/i);
+    fireEvent.click(screen.getByRole("button", { name: "Simulate recording choice ready" }));
+    expect(progress).toHaveTextContent(/private sound check is recommended, not required/i);
     const join = screen.getByRole("button", { name: /Join live room/i });
     const recorder = screen.getByTestId("browser-source-capture-group");
     const devices = screen.getByRole("group", { name: "Preflight studio devices" });
@@ -323,6 +330,7 @@ describe("LiveSessionRoom", () => {
       render(<LiveSessionRoom callRoomId="room-provider-retry" captureGroupId="55555555-5555-4555-8555-555555555556" sessionTitle="Provider retry" kind="coaching" />);
     });
     await screen.findByRole("option", { name: "Shure MV7i" });
+    fireEvent.click(screen.getByText("Advanced room and recording details"));
     fireEvent.click(await screen.findByRole("button", { name: "Review provider safety copy" }));
     fireEvent.click(screen.getByRole("button", { name: "Start provider copy" }));
     await waitFor(() => expect(postBodies).toHaveLength(1));

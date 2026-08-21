@@ -190,6 +190,7 @@ export function BrowserSourceRecorder({
   conversationConnected = true,
   onSourceLockChange,
   onGuardianEvidenceChange,
+  onPreparationStateChange,
 }: {
   callRoomId: string;
   captureGroupId: string;
@@ -206,6 +207,10 @@ export function BrowserSourceRecorder({
   onGuardianEvidenceChange?: (
     evidence: BrowserRetainedSourceGuardianEvidence,
   ) => void;
+  onPreparationStateChange?: (state: {
+    participantReady: boolean;
+    everyoneReady: boolean;
+  }) => void;
 }) {
   const [status, setStatus] = useState<BrowserRetainedSourceStatus>("checking");
   const [message, setMessage] = useState(
@@ -438,6 +443,12 @@ export function BrowserSourceRecorder({
     sourceType === "video" ? allPartyVideoReady : allPartyAudioReady;
   const myConsentCoversSource =
     sourceType === "video" ? myVideoConsent : myAudioConsent;
+  useEffect(() => {
+    onPreparationStateChange?.({
+      participantReady: myConsentCoversSource,
+      everyoneReady: consentReady,
+    });
+  }, [consentReady, myConsentCoversSource, onPreparationStateChange]);
   const readiness = useMemo(
     () =>
       browserSourceCanBegin({
@@ -1748,7 +1759,14 @@ export function BrowserSourceRecorder({
         </span>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+      <details
+        className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3"
+        open={!myConsentCoversSource || status === "recording"}
+      >
+        <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
+          Recording choices · {myConsentCoversSource ? "Saved" : "Action needed"}
+        </summary>
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
           <div className="flex items-center justify-between gap-2">
             <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
@@ -1844,6 +1862,7 @@ export function BrowserSourceRecorder({
           </details>
         </div>
       </div>
+      </details>
 
       {!conversationConnected ? (
         <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold leading-5 text-violet-950">

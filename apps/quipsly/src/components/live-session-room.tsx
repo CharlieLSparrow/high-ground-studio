@@ -3,7 +3,9 @@
 import {
   Camera,
   CameraOff,
+  CheckCircle2,
   CircleAlert,
+  CircleDashed,
   Cloud,
   CloudOff,
   Headphones,
@@ -98,6 +100,53 @@ type JoinPacket = {
   recordingConsentStatus?: string;
   nextAction?: string;
 };
+
+function SessionLobbyProgress({
+  recordingReady,
+  devicesReady,
+  previewReady,
+  connected,
+}: {
+  recordingReady: boolean;
+  devicesReady: boolean;
+  previewReady: boolean;
+  connected: boolean;
+}) {
+  const steps = [
+    { label: "Recording choice", ready: recordingReady },
+    { label: "Devices", ready: devicesReady },
+    { label: "Preview", ready: previewReady },
+    { label: "Join", ready: connected },
+  ];
+  const current = steps.findIndex((step) => !step.ready);
+
+  return (
+    <section className="mt-5 rounded-2xl border border-violet-200 bg-violet-50/70 p-3" aria-label="Session lobby progress">
+      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {steps.map((step, index) => {
+          const isCurrent = current === index;
+          return (
+            <li key={step.label} className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wide ${step.ready ? "border-emerald-200 bg-white text-emerald-900" : isCurrent ? "border-violet-300 bg-white text-violet-950 ring-2 ring-violet-100" : "border-transparent bg-violet-50 text-violet-700/65"}`}>
+              {step.ready ? <CheckCircle2 size={15} aria-label="Done" /> : <CircleDashed size={15} aria-label={isCurrent ? "Next" : "Later"} />}
+              <span>{step.label}</span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="mt-2 px-1 text-xs font-bold leading-5 text-violet-950">
+        {connected
+          ? "You’re in the room. Recording still starts with its own visible button."
+          : current === 0
+            ? "Confirm what may be recorded. Your choice is remembered for this Session."
+            : current === 1
+              ? "Choose the microphone and optional camera you want to use."
+              : current === 2
+                ? "Preview your setup. The private sound check is recommended, not required."
+                : "Your setup is ready. Join when you are comfortable."}
+      </p>
+    </section>
+  );
+}
 
 type ProviderRecordingState = {
   state: "off" | "starting" | "recording" | "stopping" | "needs-review" | "held";
@@ -331,8 +380,10 @@ export function LiveSessionRoom({
   const [participants, setParticipants] = useState<Array<{ identity: string; name: string; speaking: boolean }>>([]);
   const [recordingConsentGranted, setRecordingConsentGranted] = useState(false);
   const [recordingConsentStatus, setRecordingConsentStatus] = useState("not checked");
+  const [allRecordingChoicesReady, setAllRecordingChoicesReady] = useState(false);
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
   const [cameraEvidence, setCameraEvidence] = useState<StudioCameraInputEvidence | null>(null);
+  const [previewTested, setPreviewTested] = useState(false);
   const [supportsOutputSelection, setSupportsOutputSelection] = useState(false);
   const [supportsOutputPrompt, setSupportsOutputPrompt] = useState(false);
   const [sourceLocked, setSourceLocked] = useState(false);
@@ -358,6 +409,8 @@ export function LiveSessionRoom({
   });
 
   const connected = status === "connected" || status === "reconnecting";
+  const devicesReady = Boolean(microphoneId && (!cameraWanted || cameraId));
+  const previewReady = connected || previewTested;
   const statusLabel = useMemo(() => status.replace(/\b\w/g, (letter) => letter.toUpperCase()), [status]);
   const providerRecordingState = providerRecording?.state || "off";
   const providerRecordingStateLabel = providerRecordingState === "needs-review"
@@ -420,6 +473,7 @@ export function LiveSessionRoom({
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     setMeterEvidence(null);
     setCameraEvidence(null);
+    setPreviewTested(false);
   }, []);
   const currentPreflightStream = useCallback(() => preflightStreamRef.current, []);
 
@@ -718,6 +772,7 @@ export function LiveSessionRoom({
         setMeterEvidence(null);
       };
       setStatus("ready");
+      setPreviewTested(true);
       setMessage("Preview is live. This is a device check only—nothing is sent or recorded.");
     } catch (error) {
       setStatus("error");
@@ -1078,6 +1133,14 @@ export function LiveSessionRoom({
     return () => window.clearInterval(interval);
   }, [refreshProviderRecording]);
 
+  const handlePreparationStateChange = useCallback((state: {
+    participantReady: boolean;
+    everyoneReady: boolean;
+  }) => {
+    setRecordingConsentGranted(state.participantReady);
+    setAllRecordingChoicesReady(state.everyoneReady);
+  }, []);
+
   const retainedSourceControls = typeof captureGroupId === "string" && captureGroupId.trim() ? (
     <BrowserSourceRecorder
       key={`${callRoomId}:${captureGroupId.trim()}`}
@@ -1094,6 +1157,7 @@ export function LiveSessionRoom({
       conversationConnected={connected}
       onSourceLockChange={setSourceLocked}
       onGuardianEvidenceChange={setRetainedGuardianEvidence}
+      onPreparationStateChange={handlePreparationStateChange}
     />
   ) : (
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-label="Retained source unavailable">
@@ -1115,6 +1179,8 @@ export function LiveSessionRoom({
         </div>
         <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${connected ? "border-emerald-300 bg-emerald-50 text-emerald-900" : status === "error" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-violet-200 bg-violet-50 text-violet-900"}`}>{statusLabel}</span>
       </div>
+
+      <SessionLobbyProgress recordingReady={recordingConsentGranted} devicesReady={devicesReady} previewReady={previewReady} connected={connected} />
 
       <div className={`mt-5 grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
         <div className="space-y-4">
@@ -1196,8 +1262,11 @@ export function LiveSessionRoom({
             <ShieldCheck className="text-emerald-800" aria-hidden="true" />
             <h3 className="mt-2 font-serif text-xl font-black text-emerald-950">Joining does not record</h3>
             <p className="mt-2 text-xs font-bold leading-5 text-emerald-900">Recording starts only when the host presses Record after everyone agrees.</p>
-            <p className="mt-3 rounded-xl bg-white/80 p-3 text-[10px] font-black uppercase tracking-wide text-emerald-950">{recordingConsentGranted ? "Recording choice saved" : "Choose recording above"}</p>
+            <p className="mt-3 rounded-xl bg-white/80 p-3 text-[10px] font-black uppercase tracking-wide text-emerald-950">{allRecordingChoicesReady ? "Everyone’s recording choice is ready" : recordingConsentGranted ? "Your choice is saved" : "Choose recording above"}</p>
           </div>
+          <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={connected || ["recording", "needs-review"].includes(providerRecordingState)}>
+            <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Advanced room and recording details</summary>
+            <div className="mt-3 space-y-3">
           <details className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-950" open={["recording", "needs-review"].includes(providerRecordingState)}>
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide">Backup recording details · {providerRecordingStateLabel}</summary>
           <div className={`mt-3 rounded-2xl border p-4 ${providerRecordingState === "recording" ? "border-rose-300 bg-rose-50 text-rose-950" : providerRecordingState === "needs-review" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-sky-200 bg-white text-sky-950"}`}>
@@ -1248,6 +1317,8 @@ export function LiveSessionRoom({
             <Headphones aria-hidden="true" />
             <p className="mt-2">For your MV7i: choose it as microphone and choose its headphone output here when supported. Safari may require selecting it in macOS Sound instead.</p>
           </div>
+            </div>
+          </details>
         </aside>
       </div>
       <div className="mt-5 space-y-4">
