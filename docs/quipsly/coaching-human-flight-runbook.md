@@ -72,6 +72,31 @@ and keep self-service acceptance failed. Repair the product after the flight;
 do not repair roles, records, or navigation behind the scenes while it is in
 progress.
 
+## Canonical post-call readback
+
+After both people finish, connect the production Cloud SQL proxy without
+changing the Session and run the exact-room verifier:
+
+```bash
+QUIPSLY_PRODUCTION_POST_CALL_READBACK=1 \
+DATABASE_URL='postgresql://…' \
+npm run quipsly:coaching:post-call-readback -- \
+  --room-id '<room-id-created-by-the-flight>' \
+  --output '/absolute/private/path/post-call-readback.json'
+```
+
+The verifier opens a read-only, repeatable-read transaction. Its private
+mode-0600 receipt binds invitation delivery and acceptance, separate account
+identities, current consent, endpoint checks and grants, recording transitions,
+source expectations, verified local media, resumable-queue drainage,
+finalization, and shared work to the exact canonical Session. Names, addresses,
+content bodies, and storage locations are excluded.
+
+This receipt cannot prove audible quality, comprehension, hands-off navigation,
+later cross-device discovery, or outsider concealment. Record those direct
+observations separately. `automatedEvidencePassed: true` makes the Session
+eligible for human acceptance; it never sets `humanAcceptance.satisfied`.
+
 ## Observer rules
 
 - Let the product teach the workflow. Silence is part of the test.
