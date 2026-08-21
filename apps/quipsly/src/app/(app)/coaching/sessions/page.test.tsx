@@ -50,20 +50,22 @@ describe("CoachingSessionsPage", () => {
     });
   });
 
-  it("keeps planning secondary and creates only the explicit canonical Session", async () => {
+  it("opens a first coach's quiet Session planner and creates only the explicit canonical Session", async () => {
     const user = userEvent.setup();
     render(<CoachingSessionsPage />);
 
-    expect(await screen.findByRole("heading", { name: "Plan a real session" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Session title")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Plan a session" }));
-    expect(screen.getByText(/does not invite, charge, join, record, transcribe, send, publish, or update an external calendar/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Create your first coaching Session." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Name your coaching Session" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Session title")).toBeInTheDocument();
+    expect(screen.getByText(/take you to the private Session workspace to schedule it and invite your client/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No external side effects/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Session truth loaded/i)).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Session title"), "Episode 8 recording");
     await user.selectOptions(screen.getByLabelText("Purpose"), "PODCAST");
     await user.selectOptions(screen.getByLabelText("Nest"), "high-ground");
     await user.type(screen.getByLabelText(/Episode slug/i), "episode-8");
-    await user.click(screen.getByRole("button", { name: "Create planned session" }));
+    await user.click(screen.getByRole("button", { name: "Create Session" }));
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(
       "/api/mobile/capture/sessions",
