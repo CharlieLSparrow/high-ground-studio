@@ -855,6 +855,46 @@ probe. Even a repaired 50-coach read floor will keep
 `recordingUploadLoadProven`, `minimallyInstructedHumanAcceptanceProven`, and
 `productionScaleProven` false.
 
+## Production capacity correction and Build 32 checkpoint — 2026-08-20
+
+The earlier 50-coach failure above is retained as history, not current state.
+Direct Cloud SQL inspection found a second, tighter boundary: the shared-core
+production database exposes 25 connections, 22 after PostgreSQL reserves, while
+one fresh coaching workspace can fan into several reads. Allowing Cloud Run
+concurrency 80 did not create database capacity; it admitted substantially more
+work than the bounded Prisma pools could serve.
+
+Release tooling now sets Cloud Run concurrency `8`, Prisma pool maximum `4`,
+maximum instances `2`, and validates both live and preview pools against a
+rollout connection budget of `16`. Exact production revision
+`studio-00516-haf`, source
+`14428169924eecb26eda363afcc66a753e473a26`, and image digest
+`sha256:8108f3491d1eb5aa82e7e312c7a5c49070db7628db21d734a897e7abedee6861`
+carry that boundary. A 50-coach probe arriving over ten seconds passed all 150
+authenticated reads with no HTTP 500s or client timeouts. This is a production
+read-capacity floor, not proof of 50 simultaneous calls, recordings, uploads,
+transcripts, or minimally instructed people.
+
+Quipsly Capture `1.0 (32)`, exact native source
+`aaf3e83633f36792cbe461f69b0fa7d78e2ab35c`, is the public TestFlight target.
+That native source is an ancestor of the live Nest source, so production keeps
+the complete Build 32 contract plus later invitation, lobby, follow-through,
+and capacity corrections. Apple's public handoff returns HTTP 200 and names
+Quipsly Capture. Xcode Organizer's current two-week feed shows
+`CaptureRecorderView`/SwiftUI construction crashes for Builds 27, 28, and 30,
+but no Build 31 or 32 crash group and no separate feedback item. Absence of a
+report is not proof that Build 32 survives a physical-device journey.
+
+Current-source simulator tests pass both the exact consent-needed full Session
+opening regression and the ordinary Today → Session → Record navigation. A
+clean local two-account flight also passes rendered invitation acceptance,
+negative tenant visibility, two endpoints, explicit consent, independent
+overlapping sources, participant-attributed transcript, protected playback,
+shared/private relationship work, light edit, recipient release, playback, and
+revoke. It uses synthetic browser media and local invitation delivery, so the
+physical iPhone, natural speech, human listening, real-mail delivery, and
+minimally instructed human flags remain false.
+
 ## Fifty-coach human flight scorecard
 
 Give every coach the same one-sentence mission above and give every client only
