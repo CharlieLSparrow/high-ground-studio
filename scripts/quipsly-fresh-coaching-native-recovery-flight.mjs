@@ -181,7 +181,35 @@ async function grantClientRecordingConsent(context) {
     if (!(await transcriptionChoice.isChecked())) {
       await transcriptionChoice.check();
     }
+    await page.waitForFunction(
+      () => {
+        const checkbox = Array.from(
+          document.querySelectorAll('input[type="checkbox"]'),
+        ).find((input) =>
+          input.parentElement?.textContent?.includes(
+            "Create a transcript and suggested notes/tasks",
+          ),
+        );
+        return checkbox instanceof HTMLInputElement && checkbox.checked;
+      },
+      null,
+      { timeout: 10_000 },
+    );
+    const consentRequestPromise = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/api/mobile/capture/consent",
+      { timeout: 30_000 },
+    );
     await consentButton.click();
+    const consentRequest = await consentRequestPromise;
+    const submittedChoices = consentRequest.postDataJSON();
+    assert.equal(submittedChoices.canRecordAudio, true);
+    assert.equal(
+      submittedChoices.canTranscribe,
+      true,
+      "The retained recorder submitted a stale transcription choice.",
+    );
     let packet = null;
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {
