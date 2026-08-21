@@ -605,7 +605,7 @@ pnpm quipsly:capture:physical-install-readback -- \
 ```
 
 The owner-only receipt requires a fresh Account-surface snapshot, exact
-Quipsly Capture `1.0 (28)`, an `iPhone<model>,<variant>` hardware identifier,
+Quipsly Capture `1.0 (33)`, an `iPhone<model>,<variant>` hardware identifier,
 iOS, production Nest, non-preview mode, online or verified offline account
 access, and the exact privacy disclaimer. It fails on an email/private field,
 wrong build, simulator, signed-out state, preview, stale timestamp, or missing
@@ -626,7 +626,7 @@ pnpm quipsly:capture:rehearsal-preflight \
   --output /private/tmp/quipsly-hgo-rehearsal-preflight-current.json
 ```
 
-`infrastructureReady: true` proves the current Build 28/public-link boundary,
+`infrastructureReady: true` proves the current Build 33/public-link boundary,
 the exact private production Room, two participant records, just-in-time
 Scott Google linking, the 34-block manuscript, all three protected Watch
 objects, and the signed canonical Mac launcher. It intentionally leaves
@@ -702,7 +702,7 @@ START/STOP, upload, transcript, or participant sync was involved. Use the
 built-in camera only as an explicit reference fallback; keep the R8's on-card
 file as the production original until the live Canon route is visually proven.
 
-Build 14 exposes four deliberate source modes:
+Build 33 exposes four deliberate source modes:
 
 - **Audio** creates a local microphone source. In a joined LiveKit room it
   records the room-owned local-input PCM instead of opening a second
@@ -725,7 +725,7 @@ For the most useful low-risk first proof:
    headphones, and `EOS Webcam Utility` for the Canon reference feed. Confirm
    a fresh live image. Keep Canon on-card recording as the independent 4K
    production master if desired.
-3. Homer opens the same Session in Build 14. Both people join the LiveKit room.
+3. Homer opens the same Session in Build 33. Both people join the LiveKit room.
    Joining must not start recording.
 4. Homer selects **A/V**, prepares the front camera, expands **Before you
    record**, and runs **Check this iPhone**. Do not start until the exact
@@ -800,7 +800,7 @@ clock.
 
 The rehearsal passes only when:
 
-- Homer installed Build 14 through TestFlight and used Google sign-in;
+- Homer installed Build 33 through TestFlight and used Google sign-in;
 - the pre-provisioned Quipsly identity linked without a duplicate account or
   email-verification loop;
 - both people independently granted the intended consent choices;
@@ -829,7 +829,7 @@ The rehearsal passes only when:
   a spoken-gain headphone proof-listen, room join, upload, and cross-device
   readback. A local-only MV7i plus built-in-camera take now has durable Studio
   and relaunch proof, but it does not substitute for those operations.
-- Build 14 implements same-iPhone coordinated local audio plus video beside
+- Build 33 implements same-iPhone coordinated local audio plus video beside
   LiveKit, but the exact real-device microphone ownership, first PCM,
   Pause/Resume/Flip, upload, and assembled sync path remains unproven until
   this rehearsal.
