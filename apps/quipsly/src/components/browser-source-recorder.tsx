@@ -219,6 +219,7 @@ export function BrowserSourceRecorder({
   const [myVideoConsent, setMyVideoConsent] = useState(false);
   const [transcriptionAllowed, setTranscriptionAllowed] = useState(true);
   const transcriptionAllowedRef = useRef(true);
+  const transcriptionChoiceInputRef = useRef<HTMLInputElement>(null);
   const setTranscriptionChoice = useCallback((allowed: boolean) => {
     transcriptionAllowedRef.current = allowed;
     setTranscriptionAllowed(allowed);
@@ -514,6 +515,9 @@ export function BrowserSourceRecorder({
     }
     setStatus("checking");
     const presentedAt = new Date().toISOString();
+    const submittedTranscriptionChoice =
+      transcriptionChoiceInputRef.current?.checked ??
+      transcriptionAllowedRef.current;
     try {
       const response = await fetch("/api/mobile/capture/consent", {
         method: "POST",
@@ -523,7 +527,7 @@ export function BrowserSourceRecorder({
           consentAction: "GRANT",
           canRecordAudio: true,
           canRecordVideo: sourceType === "video",
-          canTranscribe: transcriptionAllowedRef.current,
+          canTranscribe: submittedTranscriptionChoice,
           allAudibleParticipantsNotifiedAndAgreed: true,
           consentPolicyVersion: policy.version,
           consentText: policy.text,
@@ -1781,6 +1785,7 @@ export function BrowserSourceRecorder({
           ) : null}
           <label className="mt-3 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
             <input
+              ref={transcriptionChoiceInputRef}
               type="checkbox"
               checked={headphonesAttested}
               onChange={(event) => setHeadphonesAttested(event.target.checked)}
