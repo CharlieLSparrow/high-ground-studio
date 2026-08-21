@@ -835,7 +835,8 @@ struct CaptureCoachingHomeView: View {
                     coachingShareLink(
                         title: "Join my Quipsly coaching session",
                         roomID: handoff.callRoomId,
-                        entryPath: handoff.clientEntryPath
+                        entryPath: handoff.clientEntryPath,
+                        recipientEmail: booking(for: handoff.callRoomId)?.client?.email
                     )
                 }
             }
@@ -975,14 +976,16 @@ struct CaptureCoachingHomeView: View {
                 coachingShareLink(
                     title: booking.title,
                     roomID: booking.callRoomId,
-                    entryPath: booking.clientEntryPath
+                    entryPath: booking.clientEntryPath,
+                    recipientEmail: recipientEmail
                 )
             }
         } else {
             coachingShareLink(
                 title: booking.title,
                 roomID: booking.callRoomId,
-                entryPath: booking.clientEntryPath
+                entryPath: booking.clientEntryPath,
+                recipientEmail: booking.client?.email
             )
         }
     }
@@ -1038,16 +1041,22 @@ struct CaptureCoachingHomeView: View {
     }
 
     @ViewBuilder
-    private func coachingShareLink(title: String, roomID: String?, entryPath: String?) -> some View {
+    private func coachingShareLink(
+        title: String,
+        roomID: String?,
+        entryPath: String?,
+        recipientEmail: String?
+    ) -> some View {
         if let entryURL = client.absoluteURL(for: entryPath) {
             let nativeURL = client.nativeURL(for: roomID)
+            let invitedIdentity = recipientEmail?.nonemptyCoachingText ?? "the invited email"
             ShareLink(
                 item: entryURL,
                 subject: Text(title),
                 message: Text(
                     nativeURL.map {
-                        "Join this private Quipsly Session with the invited email. Open it in a browser on your phone, tablet, or desktop: \(entryURL.absoluteString) Or use Quipsly Capture on iPhone: \($0.absoluteString)"
-                    } ?? "Join this private Quipsly Session with the invited email in a browser on your phone, tablet, or desktop."
+                        "Join this private Quipsly Session. Open the link on your phone, tablet, or desktop, then sign in as \(invitedIdentity). Continue in your browser or choose Quipsly Capture on iPhone: \($0.absoluteString)"
+                    } ?? "Join this private Quipsly Session. Open the link on your phone, tablet, or desktop, then sign in as \(invitedIdentity)."
                 )
             ) {
                 Label("Share invite", systemImage: "square.and.arrow.up")

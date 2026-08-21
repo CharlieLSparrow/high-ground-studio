@@ -113,6 +113,12 @@ describe("SessionInvitations", () => {
     expect(
       screen.getByText(/sessions\/join\?token=qsinv_/i),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Copy invitation message" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Copy link only" }),
+    ).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       2,
       "/api/sessions/room-1/invitations",

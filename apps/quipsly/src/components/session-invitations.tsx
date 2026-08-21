@@ -235,6 +235,7 @@ export function SessionInvitations({
   >("loading");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedMessage, setCopiedMessage] = useState(false);
   const [supportsShare, setSupportsShare] = useState(false);
   const [emailDeliveryAvailable, setEmailDeliveryAvailable] = useState(false);
   const [confirmingRemovalId, setConfirmingRemovalId] = useState("");
@@ -334,6 +335,7 @@ export function SessionInvitations({
     setStatus("creating");
     setMessage("");
     setCopied(false);
+    setCopiedMessage(false);
     const response = await fetch(
       `/api/sessions/${encodeURIComponent(roomId)}/invitations`,
       {
@@ -395,11 +397,24 @@ export function SessionInvitations({
     setCopied(true);
   }
 
+  const activeInvitation = invitations.find(
+    (invitation) => invitation.id === inviteUrlInvitationId,
+  );
+  const invitationMessage = inviteUrl
+    ? `Join my private Quipsly Session. Open this link on your phone, tablet, or desktop, then sign in as ${activeInvitation?.email || "the invited email"}. You can continue in your browser or choose Quipsly Capture on iPhone: ${inviteUrl}`
+    : "";
+
+  async function copyMessage() {
+    if (!invitationMessage || !navigator.clipboard?.writeText) return;
+    await navigator.clipboard.writeText(invitationMessage);
+    setCopiedMessage(true);
+  }
+
   async function share() {
     if (!inviteUrl || !navigator.share) return;
     await navigator.share({
       title: "Join my Quipsly Session",
-      text: "Use this private link to join the Quipsly Session.",
+      text: `Join my private Quipsly Session. Sign in as ${activeInvitation?.email || "the invited email"}. Continue in your browser or choose Quipsly Capture on iPhone.`,
       url: inviteUrl,
     });
   }
@@ -647,11 +662,11 @@ export function SessionInvitations({
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => void copy()}
+                    onClick={() => void copyMessage()}
                     className="inline-flex min-h-10 items-center gap-2 rounded-full bg-emerald-800 px-4 text-xs font-black text-white"
                   >
-                    {copied ? <Check size={14} /> : <Copy size={14} />}
-                    {copied ? "Copied" : "Copy link"}
+                    {copiedMessage ? <Check size={14} /> : <Copy size={14} />}
+                    {copiedMessage ? "Message copied" : "Copy invitation message"}
                   </button>
                   {supportsShare ? (
                     <button
@@ -663,6 +678,14 @@ export function SessionInvitations({
                       Share…
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void copy()}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 text-xs font-black text-emerald-950"
+                  >
+                    {copied ? <Check size={14} /> : <Link2 size={14} />}
+                    {copied ? "Link copied" : "Copy link only"}
+                  </button>
                 </div>
               </div>
             ) : null}
