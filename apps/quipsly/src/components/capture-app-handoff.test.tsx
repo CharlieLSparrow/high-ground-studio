@@ -19,8 +19,11 @@ describe("CaptureAppHandoff", () => {
       />,
     );
     expect(
-      screen.getByRole("heading", { name: "Choose how you want to join" }),
+      screen.getByRole("heading", { name: "Join your Session" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Join your Session" }),
+    ).toHaveAttribute("data-session-entry-ready", "true");
     expect(screen.queryByRole("link", { name: "Open Capture" })).not.toBeInTheDocument();
     expect(screen.getByText(/one choice now · setup comes next/i)).toBeInTheDocument();
 
@@ -36,9 +39,9 @@ describe("CaptureAppHandoff", () => {
       screen.getByText(/install the public beta, sign in with the invited/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/link grants no access/i),
+      screen.getByText(/same private Session/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/phone, tablet, or desktop/i)).toBeInTheDocument();
+    expect(screen.getByText(/continue in this browser/i)).toBeInTheDocument();
     expect(screen.queryByText(/laptop/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Change device" }));
     expect(screen.queryByRole("link", { name: "Open Capture" })).not.toBeInTheDocument();

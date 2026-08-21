@@ -1117,7 +1117,7 @@ export function LiveSessionRoom({
 
       <div className={`mt-5 grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
         <div className="space-y-4">
-          <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={status === "error"}>
+          <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={!connected}>
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Camera, microphone, and speakers</summary>
           <div className="mt-4 grid gap-3 md:grid-cols-2" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
             <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Microphone

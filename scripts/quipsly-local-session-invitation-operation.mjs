@@ -284,7 +284,7 @@ try {
     .waitFor({ timeout: 20_000 });
   assert(
     (await wrongAccountPage
-      .getByRole("button", { name: "Accept and choose how to join", exact: true })
+      .getByRole("button", { name: "Accept invitation", exact: true })
       .count()) === 0,
     "Wrong account was offered invitation acceptance.",
   );
@@ -325,9 +325,19 @@ try {
   await guestPage
     .getByText(`Signed in as ${guest.email}`, { exact: true })
     .waitFor();
-  await guestPage
-    .getByRole("button", { name: "Accept and choose how to join", exact: true })
-    .click();
+  const acceptInvitationButton = guestPage.getByRole("button", {
+    name: "Accept invitation",
+    exact: true,
+  });
+  const [acceptBox, nextStepsBox] = await Promise.all([
+    acceptInvitationButton.boundingBox(),
+    guestPage.getByRole("heading", { name: "What happens next", exact: true }).boundingBox(),
+  ]);
+  assert(
+    acceptBox && nextStepsBox && acceptBox.y < nextStepsBox.y,
+    "Phone invitation did not place its immediate acceptance action before optional setup guidance.",
+  );
+  await acceptInvitationButton.click();
   await guestPage.waitForURL(
     new RegExp(`/sessions/${ROOM_ID}\\?mode=live&joined=1$`),
     { timeout: 20_000 },
@@ -344,7 +354,7 @@ try {
     .waitFor({ timeout: 20_000 });
   assert(
     (await replayPage
-      .getByRole("button", { name: "Accept and choose how to join", exact: true })
+      .getByRole("button", { name: "Accept invitation", exact: true })
       .count()) === 0,
     "Consumed invitation was offered a second acceptance.",
   );
@@ -355,14 +365,22 @@ try {
   });
 
   for (const journey of journeys) {
+    await journey.page
+      .locator('[data-session-entry-ready="true"]')
+      .waitFor({ state: "visible", timeout: 20_000 });
     const continueInBrowser = journey.page.getByRole("button", {
-      name: "Continue in browser",
-      exact: true,
+      name: /^This browser\b/,
     });
-    if (await continueInBrowser.count()) await continueInBrowser.click();
+    assert(
+      (await continueInBrowser.count()) === 1,
+      `${journey.identity.role} did not receive exactly one browser-entry choice.`,
+    );
+    await continueInBrowser.click();
+    await journey.page
+      .locator(`aside[aria-label="Retained email-bound Session invitation rehearsal live call dock"]`)
+      .waitFor({ state: "visible", timeout: 20_000 });
     const allowMicrophone = journey.page.getByRole("button", {
-      name: "Allow microphone",
-      exact: true,
+      name: /^Allow microphone(?: and camera)?$/,
     });
     await allowMicrophone.waitFor({ timeout: 20_000 });
     await allowMicrophone.click();
@@ -382,9 +400,19 @@ try {
       `${journey.identity.role} device setup did not become join-ready.`,
     );
     await join.click();
-    await journey.page
-      .getByRole("button", { name: "Leave", exact: true })
-      .waitFor({ timeout: 20_000 });
+    const leave = journey.page.getByRole("button", { name: "Leave", exact: true });
+    try {
+      await leave.waitFor({ timeout: 20_000 });
+    } catch (error) {
+      const statuses = await journey.page
+        .locator('[role="status"]')
+        .allInnerTexts()
+        .catch(() => []);
+      throw new Error(
+        `${journey.identity.role} received join credentials but did not reach connected state. Visible status: ${JSON.stringify(statuses.slice(-8))}`,
+        { cause: error },
+      );
+    }
   }
   for (const journey of journeys) {
     await journey.page
@@ -703,19 +731,14 @@ try {
     "Append-only restoration receipt is missing.",
   );
 
-  const collaborationReadback = await hostPage.evaluate(
-    async ({ callRoomId }) => {
-      const response = await fetch(
-        `/api/sessions/${encodeURIComponent(callRoomId)}/invitations`,
-        { cache: "no-store" },
-      );
-      return {
-        status: response.status,
-        packet: await response.json().catch(() => ({})),
-      };
-    },
-    { callRoomId: ROOM_ID },
+  const collaborationResponse = await hostManagerPage.request.get(
+    `${baseURL}/api/sessions/${encodeURIComponent(ROOM_ID)}/invitations`,
+    { headers: { "cache-control": "no-store" } },
   );
+  const collaborationReadback = {
+    status: collaborationResponse.status(),
+    packet: await collaborationResponse.json().catch(() => ({})),
+  };
   assert(
     collaborationReadback.status === 200 &&
       collaborationReadback.packet?.ok === true,

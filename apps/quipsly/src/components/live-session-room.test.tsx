@@ -97,7 +97,9 @@ describe("LiveSessionRoom", () => {
       render(<LiveSessionRoom callRoomId="room-2" captureGroupId="55555555-5555-4555-8555-555555555552" sessionTitle="Coaching test" kind="coaching" />);
     });
     expect(getUserMedia).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Allow microphone/i }));
+    const allowMicrophone = screen.getByRole("button", { name: /Allow microphone/i });
+    expect(allowMicrophone.closest("details")).toHaveAttribute("open");
+    fireEvent.click(allowMicrophone);
     expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false });
     await screen.findByText(/No microphone was found/i);
   });

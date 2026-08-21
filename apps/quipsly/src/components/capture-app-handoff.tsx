@@ -35,6 +35,7 @@ export function CaptureAppHandoff({
   const captureURL = `quipsly://session/${encodeURIComponent(roomId)}?mode=live`;
   const [metrics, setMetrics] = useState<EntryChoiceMetrics | null>(null);
   const [step, setStep] = useState<"choose" | "capture">("choose");
+  const [interactive, setInteractive] = useState(false);
   const continueInBrowserRef = useRef(onContinueInBrowser);
   continueInBrowserRef.current = onContinueInBrowser;
 
@@ -68,6 +69,10 @@ export function CaptureAppHandoff({
   }
 
   useEffect(() => {
+    setInteractive(true);
+  }, []);
+
+  useEffect(() => {
     if (!canViewChoiceMetrics) return;
     let cancelled = false;
     void fetch(`/api/sessions/${encodeURIComponent(roomId)}/entry-choice`, {
@@ -95,6 +100,8 @@ export function CaptureAppHandoff({
     <section
       className={`rounded-[1.75rem] border p-5 shadow-sm ${joinedFromInvitation ? "border-emerald-200 bg-emerald-50" : "border-sky-200 bg-sky-50/70"}`}
       aria-labelledby="capture-handoff-heading"
+      aria-busy={!interactive}
+      data-session-entry-ready={interactive ? "true" : "false"}
     >
       <div className="flex max-w-3xl items-start gap-3">
         <span className="rounded-2xl bg-white p-3 text-violet-800 shadow-sm">
@@ -112,14 +119,11 @@ export function CaptureAppHandoff({
             id="capture-handoff-heading"
             className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
           >
-            {joinedFromInvitation
-              ? "Choose how you want to join"
-              : "Browser or Quipsly Capture on iPhone"}
+            {joinedFromInvitation ? "Join your Session" : "Choose where to join"}
           </h2>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">
-            Use a browser on your phone, tablet, or desktop, or continue this
-            exact Session in Quipsly Capture on iPhone. Both re-check the
-            signed-in account before showing private context.
+            Continue in this browser or open the same Session in Quipsly
+            Capture on iPhone.
           </p>
         </div>
       </div>
@@ -133,8 +137,9 @@ export function CaptureAppHandoff({
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
+                disabled={!interactive}
                 onClick={continueInBrowser}
-                className="group flex min-h-24 items-center gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-900"
+                className="group flex min-h-24 items-center gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-900 disabled:cursor-wait disabled:opacity-60"
               >
                 <span className="rounded-xl bg-white p-2 text-sky-800 shadow-sm">
                   <MonitorSmartphone size={22} aria-hidden="true" />
@@ -142,7 +147,7 @@ export function CaptureAppHandoff({
                 <span className="min-w-0 flex-1">
                   <span className="block font-black text-[#3d3122]">This browser</span>
                   <span className="mt-0.5 block text-xs font-semibold leading-5 text-[#765f40]">
-                    Check devices, consent, then join
+                    Set up and join here
                   </span>
                 </span>
                 <ChevronRight className="shrink-0 text-sky-800" size={18} aria-hidden="true" />
@@ -150,8 +155,9 @@ export function CaptureAppHandoff({
 
               <button
                 type="button"
+                disabled={!interactive}
                 onClick={() => setStep("capture")}
-                className="group flex min-h-24 items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800"
+                className="group flex min-h-24 items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800 disabled:cursor-wait disabled:opacity-60"
               >
                 <span className="rounded-xl bg-white p-2 text-violet-800 shadow-sm">
                   <Smartphone size={22} aria-hidden="true" />
@@ -159,7 +165,7 @@ export function CaptureAppHandoff({
                 <span className="min-w-0 flex-1">
                   <span className="block font-black text-[#3d3122]">iPhone Capture</span>
                   <span className="mt-0.5 block text-xs font-semibold leading-5 text-[#765f40]">
-                    Open this same Session in the app
+                    Open on this iPhone
                   </span>
                 </span>
                 <ChevronRight className="shrink-0 text-violet-800" size={18} aria-hidden="true" />
@@ -183,7 +189,7 @@ export function CaptureAppHandoff({
               <div>
                 <h3 className="font-black text-[#3d3122]">Continue on this iPhone</h3>
                 <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">
-                  Capture verifies your account and opens this Session’s setup room. It will not join or record automatically.
+                  Capture opens this Session so you can check your setup and join.
                 </p>
               </div>
             </div>
@@ -220,9 +226,8 @@ export function CaptureAppHandoff({
           className="mt-0.5 shrink-0 text-emerald-700"
           aria-hidden="true"
         />
-        Browser and Capture are equivalent views of one Session—not two rooms.
-        The link grants no access, and joining and recording remain separate,
-        explicit actions.
+        Whichever you choose, you’ll enter the same private Session. Joining
+        never starts a recording.
       </p>
 
       {metrics ? (

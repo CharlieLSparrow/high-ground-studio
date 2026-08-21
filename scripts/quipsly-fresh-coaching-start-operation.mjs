@@ -360,7 +360,7 @@ try {
     invitationEntryPath,
   );
   const acceptInvitation = clientPage.getByRole("button", {
-    name: "Accept and choose how to join",
+    name: "Accept invitation",
     exact: true,
   });
   await acceptInvitation.waitFor({ timeout: 20_000 });

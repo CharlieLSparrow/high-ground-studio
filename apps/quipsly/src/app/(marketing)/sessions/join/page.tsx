@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarClock, Camera, CheckCircle2, Headphones, LockKeyhole, MonitorSmartphone, Mic2, ShieldCheck, Smartphone, UserRoundCheck } from "lucide-react";
+import { CalendarClock, CheckCircle2, LockKeyhole, MonitorSmartphone, Mic2, ShieldCheck, Smartphone, UserRoundCheck } from "lucide-react";
 
 import { auth } from "@/auth";
 import {
@@ -81,22 +81,21 @@ export default async function JoinSessionPage({
       <header className="bg-[#211a14] px-6 py-8 text-[#fff7e8] md:px-10">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-[#e7b15f]">You’re invited · {experience.label}</p>
         <h1 className="mt-3 max-w-4xl font-serif text-4xl font-black md:text-5xl">{invitation.room.title}</h1>
-        <p className="mt-4 max-w-3xl text-sm font-semibold leading-7 text-[#d8c6a6]">{invitation.room.hostName ? `${invitation.room.hostName} invited you to join this Quipsly Session.` : "You were invited to join this Quipsly Session."} Accepting gives this account access to this Session only—not the surrounding Nest.</p>
+        <p className="mt-4 max-w-3xl text-sm font-semibold leading-7 text-[#d8c6a6]">{invitation.room.hostName ? `${invitation.room.hostName} invited you to join this Quipsly Session.` : "You were invited to join this Quipsly Session."}</p>
       </header>
 
       <div className="grid gap-6 p-6 md:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)] md:p-10">
-        <section>
+        <section className="order-2 md:order-1">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4"><CalendarClock className="text-sky-800" aria-hidden="true" /><p className="mt-3 text-[10px] font-black uppercase tracking-wide text-sky-800">Scheduled</p><p className="mt-1 text-sm font-black text-sky-950">{formatted(invitation.room.scheduledStart)}</p></div>
             <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4"><UserRoundCheck className="text-violet-800" aria-hidden="true" /><p className="mt-3 text-[10px] font-black uppercase tracking-wide text-violet-800">Your Session role</p><p className="mt-1 text-sm font-black capitalize text-violet-950">{invitation.role.toLowerCase()}</p></div>
           </div>
           <div className="mt-5 rounded-2xl border border-[#e5d5b7] bg-white p-5">
-            <h2 className="font-serif text-2xl font-black">A calm lobby before anything starts</h2>
+            <h2 className="font-serif text-2xl font-black">What happens next</h2>
             <ul className="mt-4 space-y-3 text-sm font-semibold leading-6 text-[#765f40]">
-              <li className="flex gap-3"><Mic2 className="mt-0.5 shrink-0 text-violet-700" size={18} aria-hidden="true" />Choose and preview the exact microphone you want.</li>
-              <li className="flex gap-3"><Camera className="mt-0.5 shrink-0 text-violet-700" size={18} aria-hidden="true" />Choose a camera or join audio-only.</li>
-              <li className="flex gap-3"><Headphones className="mt-0.5 shrink-0 text-violet-700" size={18} aria-hidden="true" />Confirm your headphones and output before joining.</li>
-              <li className="flex gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-emerald-700" size={18} aria-hidden="true" />Joining the conversation does not start recording. Recording and transcription require separate, visible consent.</li>
+              <li className="flex gap-3"><MonitorSmartphone className="mt-0.5 shrink-0 text-violet-700" size={18} aria-hidden="true" />Choose this browser or Quipsly Capture on iPhone.</li>
+              <li className="flex gap-3"><Mic2 className="mt-0.5 shrink-0 text-violet-700" size={18} aria-hidden="true" />Check your microphone, headphones, and optional camera.</li>
+              <li className="flex gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-emerald-700" size={18} aria-hidden="true" />Join when you are ready. Recording is a separate action.</li>
             </ul>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2" aria-label="Ways to join this Session">
@@ -113,18 +112,18 @@ export default async function JoinSessionPage({
           </div>
         </section>
 
-        <aside className="rounded-2xl border border-[#d8c7a7] bg-[#fffaf0] p-5">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#987443]">Identity check</p>
-          <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">This link belongs to <strong className="text-[#3d3122]">{invitation.recipientEmailHint}</strong> and expires {formatted(invitation.expiresAt)}.</p>
+        <aside className="order-1 rounded-2xl border border-[#d8c7a7] bg-[#fffaf0] p-5 md:order-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#987443]">Before you join</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Invitation for <strong className="text-[#3d3122]">{invitation.recipientEmailHint}</strong> · expires {formatted(invitation.expiresAt)}.</p>
           {!session?.user ? <>
-            <p className="mt-4 text-sm font-semibold leading-6 text-[#765f40]">Sign in with the invited Google or Quipsly email. The link alone grants nothing. After acceptance, choose the browser or Quipsly Capture on iPhone.</p>
-            <Link href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white">Sign in to choose how to join</Link>
+            <p className="mt-4 text-sm font-semibold leading-6 text-[#765f40]">Sign in with the invited Google or Quipsly email to accept.</p>
+            <Link href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white">Sign in</Link>
           </> : emailMatches ? <>
             <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-950"><CheckCircle2 className="mr-2 inline" size={17} aria-hidden="true" />Signed in as {actorEmail}</div>
             {errorCode && ERROR_MESSAGES[errorCode] ? <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-900">{ERROR_MESSAGES[errorCode]}</p> : null}
             <form action={acceptSessionInvitationAction} className="mt-4">
               <input type="hidden" name="token" value={token} />
-              <button className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white">Accept and choose how to join</button>
+              <button className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white">Accept invitation</button>
             </form>
           </> : <>
             <p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-950">You’re signed in as {actorEmail}. Switch to the invited account before accepting.</p>
