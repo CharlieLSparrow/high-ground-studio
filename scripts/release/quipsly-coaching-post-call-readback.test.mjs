@@ -41,11 +41,24 @@ test("parses exact room and output options", () => {
 
 test("complete canonical records pass automation but never claim human acceptance", () => {
   const receipt = summarizePostCallEvidence(completeRoom(), finalizations(), now.toISOString());
+  assert.equal(receipt.schema, "quipsly-coaching-post-call-readback-v2");
   assert.equal(receipt.automatedEvidencePassed, true);
   assert.equal(receipt.humanAcceptance.satisfied, false);
+  assert.equal(receipt.invitationEvidence.emailDeliveryProven, true);
+  assert.equal(receipt.invitationEvidence.acceptedShareOrCopyHandoffProven, false);
   assert.equal(receipt.redaction.emailAddressesIncluded, false);
   assert.equal(JSON.stringify(receipt).includes("u2@example.test"), false);
   assert.equal(Object.values(receipt.automatedGates).every(Boolean), true);
+});
+
+test("an accepted private share link passes without inventing email delivery", () => {
+  const room = completeRoom();
+  room.invitations[0].deliveries = [];
+  const receipt = summarizePostCallEvidence(room, finalizations(), now.toISOString());
+  assert.equal(receipt.automatedGates.invitationHandoffCompleted, true);
+  assert.equal(receipt.invitationEvidence.emailDeliveryProven, false);
+  assert.equal(receipt.invitationEvidence.acceptedShareOrCopyHandoffProven, true);
+  assert.equal(receipt.automatedEvidencePassed, true);
 });
 
 test("missing second retained source fails exact automated gates", () => {

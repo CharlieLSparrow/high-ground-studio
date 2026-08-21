@@ -116,7 +116,8 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
       && activeParticipants.some((row) => row.role === "COACH")
       && activeParticipants.some((row) => ["CLIENT", "GUEST"].includes(String(row.role))),
     acceptedPrivateInvitation: acceptedInvitations.length >= 1,
-    invitationEmailSent: sentDeliveries.length >= 1,
+    invitationHandoffCompleted: acceptedInvitations.length >= 1
+      && (sentDeliveries.length >= 1 || acceptedInvitations.some((row) => row.acceptedByUserId)),
     currentConsentForEveryAccount: consentReady,
     endpointReadinessForEveryParticipant: participantIds.length >= 2
       && participantIds.every((id) => latestPreflights.some((row) => row.participantId === id && row.status === "READY")),
@@ -136,7 +137,7 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
   };
 
   return {
-    schema: "quipsly-coaching-post-call-readback-v1",
+    schema: "quipsly-coaching-post-call-readback-v2",
     auditedAt,
     authority: "read-only-canonical-postgresql-projection",
     room: {
@@ -164,6 +165,8 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
       total: room.invitations.length,
       accepted: acceptedInvitations.length,
       sentDeliveries: sentDeliveries.length,
+      emailDeliveryProven: sentDeliveries.length >= 1,
+      acceptedShareOrCopyHandoffProven: sentDeliveries.length === 0 && acceptedInvitations.length >= 1,
       rows: room.invitations.map((row) => ({
         idSha256: hash(row.id),
         recipientEmailSha256: hash(row.email),
