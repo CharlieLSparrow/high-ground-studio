@@ -42,7 +42,7 @@
       "NSPrivacyCollectedDataTypePhotosorVideos",
       "NSPrivacyCollectedDataTypeOtherUserContent"
     ],
-    "archiveAggregateValidatedBuild": "32",
+    "archiveAggregateValidatedBuild": "33",
     "aggregateCollectedDataTypeCount": 11,
     "publicationStatus": "requires-account-holder-approval"
   },
@@ -50,8 +50,8 @@
     "providerTarget": {
       "appId": "6780995957",
       "version": "1.0",
-      "build": "32",
-      "auditedAt": "2026-08-21T00:43:59.496Z"
+      "build": "33",
+      "auditedAt": "2026-08-21T09:18:40Z"
     },
     "contentRights": {
       "status": "configured-and-read-back",

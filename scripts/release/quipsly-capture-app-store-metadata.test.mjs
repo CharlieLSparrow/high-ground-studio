@@ -9,6 +9,7 @@ import {
   readAppStoreMetadata,
   validateAppStoreMetadata,
 } from "./quipsly-capture-app-store-metadata.mjs";
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -65,7 +66,10 @@ test("provider-complete status fails closed without exact readback evidence", ()
   });
 
   assert.equal(result.ok, false);
-  assert.match(result.errors.join("\n"), /exact Quipsly Capture Build 32/);
+  assert.match(
+    result.errors.join("\n"),
+    new RegExp(`exact Quipsly Capture Build ${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber}`),
+  );
   assert.match(result.errors.join("\n"), /prove USES_THIRD_PARTY_CONTENT/);
   assert.match(result.errors.join("\n"), /prove Free pricing/);
 });

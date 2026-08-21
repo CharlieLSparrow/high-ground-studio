@@ -284,6 +284,12 @@ const localCheckRunners = [
       requiredForDeploy: false,
       maxOutput: 8000,
       parseJson: true,
+      env: {
+        DATABASE_URL: process.env.DATABASE_URL
+          || (localOnly
+            ? "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio"
+            : undefined),
+      },
     },
   ),
 ];
