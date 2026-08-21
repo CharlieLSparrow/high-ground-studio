@@ -1400,10 +1400,9 @@ describe("Session review goal candidates", () => {
       }}
     />);
 
-    await user.click(screen.getByLabelText("Allow audio recording of my participation."));
-    await user.click(screen.getByLabelText("Separately allow transcription of my recorded participation."));
-    await user.click(screen.getByLabelText(/anyone else who may be heard/i));
-    await user.click(screen.getByRole("button", { name: "Grant selected consent" }));
+    expect(screen.getByLabelText("Allow audio recording of my participation.")).toBeChecked();
+    expect(screen.getByLabelText("Separately allow transcription of my recorded participation.")).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Agree and continue" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith("/api/mobile/capture/consent", expect.objectContaining({ method: "POST" }));
@@ -1427,6 +1426,64 @@ describe("Session review goal candidates", () => {
     expect(payload.consentTextHash).toMatch(/^[a-f0-9]{64}$/);
     expect(await screen.findByRole("status")).toHaveTextContent("Consent saved for this exact Session.");
     expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps saved consent compact until the participant chooses to change it", async () => {
+    global.fetch = jest.fn() as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionReviewClient
+      roomId="room-coaching-ready"
+      sessionTitle="Coaching Session"
+      mode="prepare"
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
+      preparation={{
+        captureGroupId: "55555555-5555-4555-8555-555555555553",
+        purpose: "COACHING",
+        status: "PLANNED",
+        provider: "livekit",
+        providerRoomId: "provider-room",
+        providerCanJoin: true,
+        providerReadiness: "livekit-ready",
+        providerNextAction: "Join when ready.",
+        scheduledStart: "2026-08-20T18:00:00.000Z",
+        scheduledEnd: "2026-08-20T19:00:00.000Z",
+        project: { id: "project-1", name: "Coaching", slug: "coaching" },
+        participants: [{
+          id: "participant-coach",
+          label: "Coach",
+          role: "COACH",
+          isCurrentActor: true,
+          joinedAt: null,
+          consent: {
+            id: "consent-current",
+            status: "GRANTED",
+            policyVersion: "2026-07-04",
+            canRecordAudio: true,
+            canRecordVideo: false,
+            canTranscribe: true,
+            recordingReady: true,
+            transcriptionReady: true,
+            consentedAt: "2026-08-20T17:55:00.000Z",
+            revokedAt: null,
+            updatedAt: "2026-08-20T17:55:00.000Z",
+          },
+        }],
+        allAudioReady: true,
+        allTranscriptionReady: true,
+      }}
+    />);
+
+    const control = screen.getByTestId("session-consent-control");
+    expect(within(control).getByRole("heading", { name: "You’re ready" })).toBeInTheDocument();
+    expect(within(control).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(within(control).getByText("Audio")).toBeInTheDocument();
+    expect(within(control).getByText("Transcript")).toBeInTheDocument();
+
+    await user.click(within(control).getByRole("button", { name: "Change" }));
+    expect(within(control).getByLabelText("Allow audio recording of my participation.")).toBeChecked();
+    expect(within(control).getByLabelText("Separately allow transcription of my recorded participation.")).toBeChecked();
+    expect(within(control).queryByLabelText(/anyone else who may be heard/i)).not.toBeInTheDocument();
+    expect(within(control).getByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });
 
   it("changes only the canonical Quipsly time from the exact Session workspace", async () => {

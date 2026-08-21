@@ -900,24 +900,26 @@ function SessionConsentControl({
   const closed =
     preparation.status === "CANCELED" || preparation.status === "ENDED";
   const [canRecordAudio, setCanRecordAudio] = useState(
-    consent?.canRecordAudio ?? false,
+    consent?.canRecordAudio ?? true,
   );
   const [canRecordVideo, setCanRecordVideo] = useState(
     consent?.canRecordVideo ?? false,
   );
   const [canTranscribe, setCanTranscribe] = useState(
-    consent?.canTranscribe ?? false,
+    consent?.canTranscribe ?? true,
   );
-  const [audiblePeopleAttested, setAudiblePeopleAttested] = useState(false);
+  const [isEditingConsent, setIsEditingConsent] = useState(
+    consent?.recordingReady !== true,
+  );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setCanRecordAudio(consent?.canRecordAudio ?? false);
+    setCanRecordAudio(consent?.canRecordAudio ?? true);
     setCanRecordVideo(consent?.canRecordVideo ?? false);
-    setCanTranscribe(consent?.canTranscribe ?? false);
-    setAudiblePeopleAttested(false);
+    setCanTranscribe(consent?.canTranscribe ?? true);
+    setIsEditingConsent(consent?.recordingReady !== true);
   }, [
     actor?.id,
     consent?.canRecordAudio,
@@ -952,7 +954,7 @@ function SessionConsentControl({
                 canRecordAudio,
                 canRecordVideo,
                 canTranscribe,
-                allAudibleParticipantsNotifiedAndAgreed: audiblePeopleAttested,
+                allAudibleParticipantsNotifiedAndAgreed: true,
                 presentationEvidence: {
                   version: 1,
                   surface: "quipsly-session-workspace-consent-v1",
@@ -979,6 +981,7 @@ function SessionConsentControl({
         body.session?.nextAction ||
           "Your consent choice is saved. Quipsly is refreshing the exact Session evidence.",
       );
+      if (consentAction === "GRANT") setIsEditingConsent(false);
       router.refresh();
     } catch (cause) {
       setError(
@@ -995,36 +998,36 @@ function SessionConsentControl({
     busy ||
     closed ||
     !actor ||
-    (!canRecordAudio && !canRecordVideo) ||
-    !audiblePeopleAttested;
+    (!canRecordAudio && !canRecordVideo);
 
   return (
     <section
-      className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/55 p-5"
+      className={`mt-5 rounded-2xl border p-5 ${consent?.recordingReady ? "border-emerald-200 bg-emerald-50/55" : "border-amber-200 bg-amber-50/55"}`}
       aria-labelledby="my-session-consent-heading"
       data-testid="session-consent-control"
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-3xl">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-800">
-            My participation
+            Recording
           </p>
           <h3
             id="my-session-consent-heading"
             className="mt-1 text-xl font-black text-[#3d3122]"
           >
-            Recording and transcription consent
+            {consent?.recordingReady ? "You’re ready" : "Choose what Quipsly may record"}
           </h3>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#6b5538]">
-            {MOBILE_CAPTURE_CONSENT_TEXT}
+            Everyone confirms for themselves before recording. Nothing starts
+            until someone taps Record.
           </p>
         </div>
         <span
           className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(consent?.recordingReady ? "READY" : "HELD")}`}
         >
           {consent?.recordingReady
-            ? "My consent is current"
-            : "My consent needs attention"}
+            ? "Saved"
+            : "Action needed"}
         </span>
       </div>
 
@@ -1034,8 +1037,43 @@ function SessionConsentControl({
           Session. Accept the invitation or ask an owner to add the exact
           account before granting consent.
         </div>
+      ) : consent?.recordingReady && !isEditingConsent ? (
+        <div className="mt-4">
+          <div className="flex flex-wrap gap-2 text-xs font-black text-emerald-900">
+            {consent.canRecordAudio ? (
+              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">Audio</span>
+            ) : null}
+            {consent.canRecordVideo ? (
+              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">Video</span>
+            ) : null}
+            {consent.canTranscribe ? (
+              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">Transcript</span>
+            ) : null}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsEditingConsent(true)}
+              disabled={busy || closed}
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900 disabled:opacity-45"
+            >
+              Change
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveConsent("REVOKE")}
+              disabled={busy || closed}
+              className="inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-45"
+            >
+              Revoke
+            </button>
+          </div>
+        </div>
       ) : (
         <>
+          <p className="mt-4 text-sm font-semibold leading-6 text-[#6b5538]">
+            {MOBILE_CAPTURE_CONSENT_TEXT}
+          </p>
           <div className="mt-4 grid gap-3 text-sm font-bold text-[#3d3122] md:grid-cols-2">
             <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-white p-3">
               <input
@@ -1067,20 +1105,11 @@ function SessionConsentControl({
               />
               Separately allow transcription of my recorded participation.
             </label>
-            <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-white p-3">
-              <input
-                type="checkbox"
-                checked={audiblePeopleAttested}
-                onChange={(event) =>
-                  setAudiblePeopleAttested(event.target.checked)
-                }
-                disabled={busy || closed}
-                className="mt-1"
-              />
-              I confirm anyone else who may be heard has been told and agreed
-              before recording starts.
-            </label>
           </div>
+          <p className="mt-3 text-xs font-bold leading-5 text-[#765f40]">
+            By continuing, you confirm that anyone else nearby who may be seen
+            or heard has also agreed.
+          </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -1091,17 +1120,26 @@ function SessionConsentControl({
               {busy
                 ? "Saving…"
                 : consent?.status === "GRANTED"
-                  ? "Update consent choices"
-                  : "Grant selected consent"}
+                  ? "Save changes"
+                  : "Agree and continue"}
             </button>
-            {consent?.status === "GRANTED" ? (
+            {consent?.recordingReady ? (
+              <button
+                type="button"
+                onClick={() => setIsEditingConsent(false)}
+                disabled={busy || closed}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-700 disabled:opacity-45"
+              >
+                Cancel
+              </button>
+            ) : consent?.status === "GRANTED" ? (
               <button
                 type="button"
                 onClick={() => void saveConsent("REVOKE")}
                 disabled={busy || closed}
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-45"
+                className="inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-45"
               >
-                Revoke my consent
+                Revoke
               </button>
             ) : (
               <button
@@ -1110,7 +1148,7 @@ function SessionConsentControl({
                 disabled={busy || closed || consent?.status === "DECLINED"}
                 className="inline-flex min-h-11 items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 disabled:opacity-45"
               >
-                Decline recording
+                Don’t record me
               </button>
             )}
           </div>
@@ -1118,9 +1156,7 @@ function SessionConsentControl({
       )}
 
       <p className="mt-4 text-xs font-bold leading-5 text-[#765f40]">
-        Saving consent does not join a call, start recording, enable another
-        participant, schedule anything, send a message, or publish. Every
-        signed-in participant must make their own current choice.
+        Your choice stays with this Session and can be changed here later.
       </p>
       {closed ? (
         <p className="mt-3 text-xs font-black uppercase tracking-wide text-rose-800">
