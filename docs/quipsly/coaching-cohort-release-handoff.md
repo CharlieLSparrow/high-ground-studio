@@ -1,6 +1,6 @@
 # Quipsly Coaching cohort release handoff
 
-Status: Build 32 and the matching Nest release are live; physical human
+Status: Build 33 and the matching Nest release are live; physical human
 acceptance remains open.
 
 This is the short operational handoff for the coaching-certification cohort.
@@ -8,6 +8,8 @@ It complements the detailed acceptance history in
 [`coaching-cohort-release-acceptance.md`](./coaching-cohort-release-acceptance.md)
 and the silent-observer journey in
 [`coaching-human-flight-runbook.md`](./coaching-human-flight-runbook.md).
+The current evidence matrix is
+[`coaching-build33-release-report.md`](./coaching-build33-release-report.md).
 
 ## Release identity
 
@@ -31,11 +33,12 @@ release maps that same commit to immutable image tag `source-<commit>`.
 
 Read-only production checks on 2026-08-21 returned:
 
-- Nest revision `studio-00518-dih` at 100% production traffic;
+- Nest revision `studio-00523-yun` at 100% production traffic;
 - immutable image tag
-  `source-3a3861a075c158de32dc9ed1facab0df7a41da47` and matching source SHA;
+  `source-e73fef64880362f3c6c5fc793c5b047408d22a40` and matching source SHA;
 - Cloud Run health `ok: true` at `https://nest.quipsly.com/api/healthz`;
-- Quipsly Capture `1.0 (32)` as the intended public beta;
+- Quipsly Capture `1.0 (33)`, build ID
+  `9a7944d0-55d7-46da-9755-694384fbe9fd`, as the intended public beta;
 - HTTP 200 from `https://testflight.apple.com/join/XwRRcYUm`, an open beta,
   matching Quipsly Capture title and heading, and the exact `itms-beta`
   handoff.
@@ -238,9 +241,9 @@ for the reviewer journey.
 
 ## Open gates that must remain visible
 
-- Google Cloud CLI user and ADC tokens must be freshly authorized before a
-  future preview, deployment, or provider-secret readback. This does not stop
-  the currently released app or public human flight.
+- Google Cloud CLI user and ADC authorization passed on 2026-08-21. Re-run the
+  repository auth check before a later release rather than assuming that
+  time-limited credentials remain current.
 - Production invitation email is not a pass until the dedicated credential and
   verified sender deliver to a real inbox.
 - The earlier same-millisecond production burst failure remains useful limit
@@ -256,7 +259,7 @@ for the reviewer journey.
 
 ## Human release decision
 
-Run the smaller Build 32 call milestone in
+Run the smaller Build 33 call milestone in
 [`coaching-human-flight-runbook.md`](./coaching-human-flight-runbook.md) first.
 It protects the people's time by proving installation, identity, invitation,
 call entry, participant-owned recording, shared work, and return before asking

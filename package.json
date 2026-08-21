@@ -193,6 +193,7 @@
     "quipsly:capture:app-store-readback": "node scripts/release/quipsly-app-store-connect-readback.mjs",
     "quipsly:capture:app-store-diagnostics": "node scripts/release/quipsly-app-store-connect-diagnostics-readback.mjs",
     "quipsly:coaching:post-call-readback": "node scripts/release/quipsly-coaching-post-call-readback.mjs",
+    "quipsly:coaching:release-report:test": "node --test scripts/release/quipsly-coaching-build33-release-report.test.mjs scripts/release/quipsly-coaching-post-call-readback.test.mjs scripts/release/quipsly-capture-release-target.test.mjs",
     "quipsly:capture:app-store-listing": "node scripts/release/quipsly-app-store-connect-listing.mjs",
     "quipsly:capture:app-store-submission-readiness": "node scripts/release/quipsly-app-store-connect-submission-readiness.mjs",
     "quipsly:capture:app-store-submission-configuration": "node scripts/release/quipsly-app-store-connect-submission-configuration.mjs",
