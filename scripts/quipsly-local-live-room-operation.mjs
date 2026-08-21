@@ -304,6 +304,9 @@ try {
       password,
       callbackPath,
     });
+    await page
+      .locator('[data-session-entry-ready="true"]')
+      .waitFor({ state: "visible", timeout: 20_000 });
     const browserChoice = page.getByRole("button", {
       name: /This browser/i,
     });
@@ -315,9 +318,12 @@ try {
     });
     await join.waitFor({ state: "visible", timeout: 20_000 });
     if (!(await join.isEnabled())) {
-      await page
+      const deviceSetup = page
         .getByText("Camera, microphone, and speakers", { exact: true })
-        .click();
+        .locator("..");
+      if (!(await deviceSetup.evaluate((element) => element.hasAttribute("open")))) {
+        await deviceSetup.locator("summary").click();
+      }
       const allowMicrophone = page.getByRole("button", {
         name: /^Allow microphone(?: and camera)?$/,
       });
