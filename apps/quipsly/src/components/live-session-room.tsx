@@ -14,7 +14,6 @@ import {
   PhoneOff,
   Radio,
   RefreshCw,
-  ShieldCheck,
   Smartphone,
   Users,
   Video,
@@ -341,7 +340,6 @@ export function LiveSessionRoom({
   const [cameraMuted, setCameraMuted] = useState(false);
   const [participants, setParticipants] = useState<Array<{ identity: string; name: string; speaking: boolean }>>([]);
   const [recordingConsentGranted, setRecordingConsentGranted] = useState(false);
-  const [allRecordingChoicesReady, setAllRecordingChoicesReady] = useState(false);
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
   const [cameraEvidence, setCameraEvidence] = useState<StudioCameraInputEvidence | null>(null);
   const [previewTested, setPreviewTested] = useState(false);
@@ -691,18 +689,24 @@ export function LiveSessionRoom({
       if (!preserveLiveConnection) {
         if (microphoneDisconnected || cameraDisconnected) clearPreflightPreview();
         if (!(sourceLockedRef.current && microphoneDisconnected)) {
-          setMicrophoneId((current) => {
-            const selected = preferredDeviceId(current, nextMicrophones, preferred.microphoneId, preferred.microphoneLabel);
-            microphoneIdRef.current = selected;
-            return selected;
-          });
+          const selected = preferredDeviceId(
+            previousMicrophoneId,
+            nextMicrophones,
+            preferred.microphoneId,
+            preferred.microphoneLabel,
+          );
+          microphoneIdRef.current = selected;
+          setMicrophoneId(selected);
         }
         if (!(sourceLockedRef.current && cameraDisconnected)) {
-          setCameraId((current) => {
-            const selected = preferredDeviceId(current, nextCameras, preferred.cameraId, preferred.cameraLabel);
-            cameraIdRef.current = selected;
-            return selected;
-          });
+          const selected = preferredDeviceId(
+            previousCameraId,
+            nextCameras,
+            preferred.cameraId,
+            preferred.cameraLabel,
+          );
+          cameraIdRef.current = selected;
+          setCameraId(selected);
         }
         if (microphoneDisconnected) {
           setMicrophoneRecoveryHeld(sourceLockedRef.current || !nextMicrophoneId);
@@ -809,11 +813,14 @@ export function LiveSessionRoom({
           ? `Headphone output disconnected. Remote audio moved to ${nextOutputs.find((device) => device.deviceId === nextOutputId)?.label || "an available output"}.`
           : "Headphone output disconnected. Remote audio moved to the system default.");
       } else if (!preserveLiveConnection) {
-        setOutputId((current) => {
-          const selected = preferredDeviceId(current, nextOutputs, preferred.outputId, preferred.outputLabel);
-          outputIdRef.current = selected;
-          return selected;
-        });
+        const selected = preferredDeviceId(
+          previousOutputId,
+          nextOutputs,
+          preferred.outputId,
+          preferred.outputLabel,
+        );
+        outputIdRef.current = selected;
+        setOutputId(selected);
       }
       const microphoneNamesVisible = nextMicrophones.some((device) => !/^Microphone \d+$/.test(device.label));
       const cameraNamesVisible = nextCameras.some((device) => !/^Camera \d+$/.test(device.label));
@@ -958,13 +965,21 @@ export function LiveSessionRoom({
   }, [clearPreflightPreview, clearRemoteMedia]);
 
   const join = useCallback(async () => {
-    if (!microphoneId) {
-      setMessage("Choose and test a microphone before joining.");
+    let selectedMicrophoneId = microphoneIdRef.current;
+    let selectedCameraId = cameraIdRef.current;
+    if (!selectedMicrophoneId || (cameraWanted && !selectedCameraId)) {
+      await refreshDevices(cameraWanted ? "media" : "microphone", "manual");
+      selectedMicrophoneId = microphoneIdRef.current;
+      selectedCameraId = cameraIdRef.current;
+    }
+    if (!selectedMicrophoneId) {
+      setStatus("error");
+      setMessage("Microphone access is off. Allow it in this site's browser settings, then join again.");
       return;
     }
-    if (cameraWanted && !cameraId) {
+    if (cameraWanted && !selectedCameraId) {
       setStatus("error");
-      setMessage("Choose a usable camera or turn off Join with camera before joining.");
+      setMessage("Camera access is off. Allow it in this site's browser settings, or turn the camera off and join again.");
       return;
     }
     setStatus("joining");
@@ -1038,19 +1053,19 @@ export function LiveSessionRoom({
         });
 
       await room.connect(packet.serverUrl, packet.participantToken);
-      await room.switchActiveDevice("audioinput", microphoneId);
+      await room.switchActiveDevice("audioinput", selectedMicrophoneId);
       await room.localParticipant.setMicrophoneEnabled(!joinMuted, {
-        deviceId: microphoneId,
+        deviceId: selectedMicrophoneId,
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       });
       setMicrophoneMuted(joinMuted);
       microphoneMutedRef.current = joinMuted;
-      if (cameraWanted && cameraId) {
-        await room.switchActiveDevice("videoinput", cameraId);
+      if (cameraWanted && selectedCameraId) {
+        await room.switchActiveDevice("videoinput", selectedCameraId);
         const publication = await room.localParticipant.setCameraEnabled(true, {
-          deviceId: cameraId,
+          deviceId: selectedCameraId,
           resolution: { width: 1920, height: 1080, frameRate: 30 },
         });
         const mediaTrack = publication?.track?.mediaStreamTrack;
@@ -1076,7 +1091,7 @@ export function LiveSessionRoom({
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "The live room could not connect.");
     }
-  }, [attachRemoteTrack, callRoomId, cameraId, cameraWanted, clearPreflightPreview, clearRemoteMedia, episodeSlug, joinMuted, microphoneId, onEpisodeWatchHint, projectSlug, updateRoster]);
+  }, [attachRemoteTrack, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
@@ -1333,7 +1348,6 @@ export function LiveSessionRoom({
     everyoneReady: boolean;
   }) => {
     setRecordingConsentGranted(state.participantReady);
-    setAllRecordingChoicesReady(state.everyoneReady);
   }, []);
 
   const retainedSourceControls = typeof captureGroupId === "string" && captureGroupId.trim() ? (
@@ -1366,11 +1380,8 @@ export function LiveSessionRoom({
     <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-3xl">
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-800"><Radio size={14} aria-hidden="true" /> Live Session · {experience.label}</p>
-          <h2 id={`live-room-${callRoomId}`} className="mt-2 font-serif text-3xl font-black text-[#3d3122]">{experience.liveHeading}</h2>
-          <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">
-            {experience.liveDescription}
-          </p>
+          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-800"><Radio size={14} aria-hidden="true" /> Call · {experience.label}</p>
+          <h2 id={`live-room-${callRoomId}`} className="mt-2 font-serif text-3xl font-black text-[#3d3122]">{sessionTitle}</h2>
         </div>
         <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${connected ? "border-emerald-300 bg-emerald-50 text-emerald-900" : status === "error" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-violet-200 bg-violet-50 text-violet-900"}`}>{statusLabel}</span>
       </div>
@@ -1409,10 +1420,11 @@ export function LiveSessionRoom({
                 >
                   {cameraWanted ? <Camera size={16} /> : <CameraOff size={16} />}{cameraWanted ? "Camera on" : "Camera off"}
                 </button>
-                <button type="button" onClick={() => void join()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-6 text-xs font-black text-white disabled:opacity-50">
+                <button type="button" onClick={() => void join()} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-6 text-xs font-black text-white disabled:opacity-50">
                   {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} Join call
                 </button>
               </div>
+              <p className="mt-3 text-[11px] font-bold text-violet-900">Joining doesn’t start recording.</p>
             </section>
           ) : null}
 
@@ -1493,15 +1505,10 @@ export function LiveSessionRoom({
         </div>
 
         <aside className="space-y-3">
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-            <ShieldCheck className="text-emerald-800" aria-hidden="true" />
-            <h3 className="mt-2 font-serif text-xl font-black text-emerald-950">Joining does not record</h3>
-            <p className="mt-2 text-xs font-bold leading-5 text-emerald-900">Recording starts only when the host presses Record after everyone agrees.</p>
-            <p className="mt-3 rounded-xl bg-white/80 p-3 text-[10px] font-black uppercase tracking-wide text-emerald-950">{allRecordingChoicesReady ? "Everyone’s recording choice is ready" : recordingConsentGranted ? "Your choice is saved" : "Choose recording above"}</p>
-          </div>
           <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={connected || ["recording", "needs-review"].includes(providerRecordingState)}>
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Advanced room and recording details</summary>
             <div className="mt-3 space-y-3">
+          <p className="rounded-xl bg-[#fffaf0] p-3 text-xs font-semibold leading-5 text-[#765f40]">{experience.liveDescription}</p>
           <details className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-950" open={["recording", "needs-review"].includes(providerRecordingState)}>
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide">Backup recording details · {providerRecordingStateLabel}</summary>
           <div className={`mt-3 rounded-2xl border p-4 ${providerRecordingState === "recording" ? "border-rose-300 bg-rose-50 text-rose-950" : providerRecordingState === "needs-review" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-sky-200 bg-white text-sky-950"}`}>

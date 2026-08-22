@@ -134,14 +134,15 @@ describe("LiveSessionRoom", () => {
 
     expect(await screen.findByRole("option", { name: "Shure MV7i" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Canon EOS R8" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Joining does not record" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Episode test" })).toBeInTheDocument();
+    expect(screen.getByText("Joining doesn’t start recording.")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Call-path microphone evidence" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Private studio sound check" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Record private sample" })).toBeDisabled();
     expect(screen.getByText("Call-path input evidence")).toBeInTheDocument();
     expect(screen.getByText(/not LUFS, true peak, or proof of the retained source/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Join call/i })).toBeEnabled();
-    expect(screen.getByRole("heading", { name: /Record the episode together from browser and iPhone/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Record the episode together from browser and iPhone/i })).not.toBeInTheDocument();
     expect(screen.getByText(/live call, each retained local source, shared Watch, and the production timeline/i)).toBeInTheDocument();
     expect(screen.getByText(/Turning this copy off cannot change take synchronization/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Session Guardian" })).toHaveTextContent(/Checking the retained-source recorder/i);
@@ -152,7 +153,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByTestId("browser-source-project")).toHaveTextContent("high-ground-odyssey");
   });
 
-  it("does not request media permission until the person acts", async () => {
+  it("asks for media only from Join and continues without a separate permission ritual", async () => {
     const getUserMedia = jest.fn().mockResolvedValue({
       getTracks: () => [{ stop: jest.fn() }],
     });
@@ -170,11 +171,11 @@ describe("LiveSessionRoom", () => {
       render(<LiveSessionRoom callRoomId="room-2" captureGroupId="55555555-5555-4555-8555-555555555552" sessionTitle="Coaching test" kind="coaching" />);
     });
     expect(getUserMedia).not.toHaveBeenCalled();
-    const allowMicrophone = screen.getByRole("button", { name: /Allow microphone/i });
-    expect(allowMicrophone.closest("details")).toHaveAttribute("open");
-    fireEvent.click(allowMicrophone);
+    const join = screen.getByRole("button", { name: "Join call" });
+    expect(join).toBeEnabled();
+    fireEvent.click(join);
     expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false });
-    await screen.findByText(/No microphone was found/i);
+    await screen.findByText(/Microphone access is off/i);
   });
 
   it("remembers safe join choices and falls back by device label when browser ids rotate", async () => {
@@ -342,14 +343,13 @@ describe("LiveSessionRoom", () => {
     });
 
     expect(
-      screen.getByRole("heading", { name: "Start this coaching call" }),
+      screen.getByRole("heading", { name: "Simple coaching Session" }),
     ).toBeInTheDocument();
     const greenRoom = screen.getByRole("region", { name: "Ready to join" });
     expect(greenRoom).toHaveTextContent(/Check how you’ll enter the call/i);
     expect(greenRoom).toHaveTextContent(/Coach microphone/i);
     expect(greenRoom).toHaveTextContent(/Preview optional/i);
-    fireEvent.click(screen.getByRole("button", { name: "Simulate recording choice ready" }));
-    expect(screen.getByRole("heading", { name: "Joining does not record" })).toBeInTheDocument();
+    expect(greenRoom).toHaveTextContent(/Joining doesn’t start recording/i);
     const join = screen.getByRole("button", { name: /Join call/i });
     const recorder = screen.getByTestId("browser-source-capture-group");
     const devices = screen.getByRole("group", { name: "Preflight studio devices" });
@@ -405,6 +405,7 @@ describe("LiveSessionRoom", () => {
   });
 
   it("does not claim a camera join is ready when the browser exposes no usable camera id", async () => {
+    const getUserMedia = jest.fn().mockRejectedValue(new Error("Permission denied"));
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -412,7 +413,7 @@ describe("LiveSessionRoom", () => {
           { kind: "audioinput", deviceId: "mv7i", label: "Shure MV7i" },
           { kind: "videoinput", deviceId: "", label: "" },
         ]),
-        getUserMedia: jest.fn(),
+        getUserMedia,
         addEventListener: jest.fn(),
         removeEventListener: jest.fn(),
       },
@@ -424,7 +425,11 @@ describe("LiveSessionRoom", () => {
 
     expect(screen.getByRole("combobox", { name: "Camera" })).toHaveValue("");
     expect(screen.getByRole("button", { name: /Test selected setup/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Join call/i })).toBeDisabled();
+    const join = screen.getByRole("button", { name: /Join call/i });
+    expect(join).toBeEnabled();
+    fireEvent.click(join);
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: true });
+    await screen.findByText(/Camera access is off/i);
   });
 
   it("turns the Canon virtual-camera ownership failure into explicit preflight guidance", async () => {

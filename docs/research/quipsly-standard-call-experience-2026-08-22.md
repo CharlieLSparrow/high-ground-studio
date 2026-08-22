@@ -112,6 +112,15 @@ failure shapes recur often enough to influence the architecture:
   surface now provides one direct `Allow ... in Settings` recovery action.
 - Replaced the browser's four-step progress rail with one familiar green room:
   current devices, direct mic/camera state, preview, and one `Join call` action.
+- Made that `Join call` action the normal first permission boundary. When a
+  browser has not exposed usable device IDs yet, Join asks once for the selected
+  microphone/camera scope, resolves the remembered or default devices, and
+  continues without a separate permission ritual. A refusal becomes one short
+  browser-settings recovery instruction.
+- Replaced workflow-specific sales copy and a large recording-policy card in
+  the green room with the Session name, standard mic/camera/Join controls, and
+  one quiet `Joining doesn't start recording` reassurance. Quipsly's source,
+  provider, and production explanation remains available under advanced details.
 - Put browser device selection and the optional audio confidence check behind
   secondary disclosures when the remembered setup is usable.
 - Remembered browser camera and join-muted choices alongside microphone, camera,
