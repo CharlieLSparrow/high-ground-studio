@@ -2664,8 +2664,8 @@ struct CaptureTranscriptReviewView: View {
                     }
                     if client.isUsingProtectedCache {
                         reviewNotice(
-                            title: "Protected offline snapshot",
-                            detail: "You can inspect the transcript and play the exact retained local source. A playback-reviewed correction or as-heard confirmation can wait in the protected phone outbox; packet, task, goal, note, and AI-proposal decisions stay locked until Nest verifies this account again.",
+                            title: "Available offline",
+                            detail: "You can read the transcript and play the matching recording. Corrections are saved safely on this iPhone and sync when Quipsly reconnects; creating notes, goals, or tasks waits for reconnection.",
                             tint: .gray,
                             icon: "lock.shield.fill"
                         )
@@ -2674,9 +2674,11 @@ struct CaptureTranscriptReviewView: View {
                     if client.pendingTranscriptDecisionCount > 0 || client.heldTranscriptDecisionCount > 0 {
                         reviewNotice(
                             title: client.heldTranscriptDecisionCount > 0
-                                ? "Transcript decision needs review"
-                                : "Transcript review protected on this iPhone",
-                            detail: "\(client.pendingTranscriptDecisionCount) waiting · \(client.heldTranscriptDecisionCount) held. Provider evidence and media time remain unchanged until Nest acknowledges the exact decision.",
+                                ? "Transcript change needs attention"
+                                : "Transcript changes saved on this iPhone",
+                            detail: client.heldTranscriptDecisionCount > 0
+                                ? "\(client.heldTranscriptDecisionCount) change\(client.heldTranscriptDecisionCount == 1 ? "" : "s") could not sync. Open the saved-changes button to review."
+                                : "\(client.pendingTranscriptDecisionCount) change\(client.pendingTranscriptDecisionCount == 1 ? " is" : "s are") waiting to sync.",
                             tint: client.heldTranscriptDecisionCount > 0 ? .orange : .blue,
                             icon: client.heldTranscriptDecisionCount > 0 ? "exclamationmark.shield.fill" : "arrow.triangle.2.circlepath"
                         )
@@ -2686,9 +2688,11 @@ struct CaptureTranscriptReviewView: View {
                     if client.pendingSpeakerAttributionCount > 0 || client.heldSpeakerAttributionCount > 0 {
                         reviewNotice(
                             title: client.heldSpeakerAttributionCount > 0
-                                ? "Voice identity needs review"
-                                : "Voice identity protected on this iPhone",
-                            detail: "\(client.pendingSpeakerAttributionCount) waiting · \(client.heldSpeakerAttributionCount) held. Nest must recheck the participant, full provider voice cluster, release gate, and every playback receipt. No words are marked reviewed.",
+                                ? "Voice label needs attention"
+                                : "Voice labels saved on this iPhone",
+                            detail: client.heldSpeakerAttributionCount > 0
+                                ? "\(client.heldSpeakerAttributionCount) voice label\(client.heldSpeakerAttributionCount == 1 ? "" : "s") could not sync. Open the saved-changes button to review."
+                                : "\(client.pendingSpeakerAttributionCount) voice label\(client.pendingSpeakerAttributionCount == 1 ? " is" : "s are") waiting to sync.",
                             tint: client.heldSpeakerAttributionCount > 0 ? .orange : .indigo,
                             icon: client.heldSpeakerAttributionCount > 0 ? "exclamationmark.shield.fill" : "person.wave.2.fill"
                         )
@@ -2705,6 +2709,7 @@ struct CaptureTranscriptReviewView: View {
                     } else if let desk = client.desk {
                         sourceTruth(desk)
                             .id("source-truth")
+                        transcriptSegments(desk, scrollProxy: scrollProxy)
                         if let evidence = desk.evidence?.transcript {
                             transcriptEvidenceSummary(evidence)
                                 .id("transcript-evidence")
@@ -2717,9 +2722,6 @@ struct CaptureTranscriptReviewView: View {
                         }
                         speakerIdentitySection(desk)
                             .id("speaker-identities")
-                        if focusSegmentID != nil {
-                            transcriptSegments(desk, scrollProxy: scrollProxy)
-                        }
                         if let packetReviewError = client.packetReviewError {
                             reviewNotice(
                                 title: "Packet follow-through unavailable",
@@ -2750,9 +2752,6 @@ struct CaptureTranscriptReviewView: View {
                                 accessibilityFocusedSegmentID = segmentID
                             }
                             .id("packet-candidate-review")
-                        }
-                        if focusSegmentID == nil {
-                            transcriptSegments(desk, scrollProxy: scrollProxy)
                         }
                     } else if client.errorMessage == nil {
                         ContentUnavailableView("Transcript unavailable", systemImage: "text.magnifyingglass")
@@ -2818,9 +2817,9 @@ struct CaptureTranscriptReviewView: View {
                             .frame(minWidth: 28, minHeight: 28)
                         }
                         .accessibilityLabel(
-                            "Protected review outbox, \(totalOutboxCount - totalHeldOutboxCount) waiting, \(totalHeldOutboxCount) held"
+                            "Saved changes, \(totalOutboxCount - totalHeldOutboxCount) waiting to sync, \(totalHeldOutboxCount) need attention"
                         )
-                        .accessibilityHint("Shows the protected decisions saved on this iPhone.")
+                        .accessibilityHint("Shows transcript and voice-label changes saved on this iPhone.")
                         .accessibilityIdentifier("CaptureTranscriptReviewOutboxBoundary")
                         .accessibilityValue(
                             totalHeldOutboxCount > 0 ? "Held" : "Queued"
@@ -3270,11 +3269,11 @@ struct CaptureTranscriptReviewView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Listen before changing truth", systemImage: "waveform.and.magnifyingglass")
+            Label("Review and correct", systemImage: "waveform.and.magnifyingglass")
                 .font(.title2.weight(.bold))
             Text(sessionTitle)
                 .font(.headline)
-            Text("Provider words and timestamps stay immutable. Reviewed corrections are versioned overlays; AI suggestions remain proposals until a person accepts them against playback.")
+            Text("Read the conversation, play any passage, and correct words or speaker names. The original recording stays unchanged.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -3336,12 +3335,12 @@ struct CaptureTranscriptReviewView: View {
             } ?? false
         } ?? false
         return VStack(alignment: .leading, spacing: 10) {
-            Label(exactMatch ? "Exact local source matched" : "Review-only on this iPhone", systemImage: exactMatch ? "checkmark.shield.fill" : "iphone.slash")
+            Label(exactMatch ? "Recording ready to play" : "Transcript ready to review", systemImage: exactMatch ? "checkmark.circle.fill" : "text.bubble")
                 .font(.headline)
                 .foregroundStyle(exactMatch ? Color.green : Color.orange)
             Text(exactMatch
-                ? "Playback uses the retained local original for recording asset \(desk.playback?.recordingAssetId ?? "unknown")."
-                : "Acceptance stays locked unless this iPhone holds the exact recording asset backing the transcript. You can review remote-only media in Nest.")
+                ? "Quipsly found the matching recording on this iPhone."
+                : "This iPhone does not have the matching recording, so playback and source-confirmed corrections remain available in Nest.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

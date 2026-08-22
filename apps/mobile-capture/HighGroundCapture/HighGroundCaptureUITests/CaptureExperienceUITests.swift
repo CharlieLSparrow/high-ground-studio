@@ -1896,13 +1896,23 @@ final class CaptureExperienceUITests: XCTestCase {
         reviewLink.tap()
 
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptEvidenceSummary"].exists)
+        let previewBoundary = app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"].firstMatch
+        reveal(previewBoundary)
+        XCTAssertTrue(previewBoundary.exists)
+        let reviewOnlyBoundary = app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].firstMatch
+        reveal(reviewOnlyBoundary, searchAboveFirst: false)
+        XCTAssertTrue(reviewOnlyBoundary.exists)
+        let evidenceSummary = app.descendants(matching: .any)["CaptureTranscriptEvidenceSummary"].firstMatch
+        reveal(evidenceSummary, searchAboveFirst: false)
+        XCTAssertTrue(evidenceSummary.exists)
         XCTAssertTrue(app.buttons["CaptureTranscriptEvidenceReviewFirst"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptImpactSummary"].exists)
+        let impactSummary = app.descendants(matching: .any)["CaptureTranscriptImpactSummary"].firstMatch
+        reveal(impactSummary, searchAboveFirst: false)
+        XCTAssertTrue(impactSummary.exists)
         XCTAssertTrue(app.buttons["CaptureTranscriptImpactReviewFirst"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerIdentitySection"].exists)
+        let speakerIdentity = app.descendants(matching: .any)["CaptureTranscriptSpeakerIdentitySection"].firstMatch
+        reveal(speakerIdentity, searchAboveFirst: false)
+        XCTAssertTrue(speakerIdentity.exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerGroup_Speaker"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerWordReviewBoundary_Speaker"].exists)
         XCTAssertFalse(

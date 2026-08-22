@@ -430,6 +430,11 @@ failure shapes recur often enough to influence the architecture:
   clip, and headphones. Scripts and clips are optional; once a shared clip is
   actually selected, its local preparation and private listening route become
   real readiness requirements for that Session.
+- Put the iPhone's familiar conversation transcript immediately after its
+  recording status instead of making people pass evidence, voice identity, and
+  automated follow-through panels first. Offline and saved-change states now
+  use ordinary sync language; exact receipts and immutable provider evidence
+  remain in the underlying contract rather than the happy-path copy.
 
 ## Acceptance consequences
 
