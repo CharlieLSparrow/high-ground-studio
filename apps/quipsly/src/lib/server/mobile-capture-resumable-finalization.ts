@@ -13,6 +13,10 @@ import {
 import { isRetryableCaptureRoomTransactionError } from "@/lib/server/capture-room-state-ledger";
 import { toGcsUri } from "@/lib/server/gcs";
 import { recordMobileCaptureIngestion } from "@/lib/server/mobile-capture-records";
+import {
+  MOBILE_CAPTURE_INTERRUPTION_REPAIR_CONTRACT,
+  mobileCaptureInterruptionRepairRequired,
+} from "@/lib/server/mobile-capture-interruption-repair";
 import { bindVerifiedMobileCaptureExpectation } from "@/lib/server/mobile-capture-source-expectation";
 import type {
   MobileCaptureObjectEvidence,
@@ -684,6 +688,110 @@ async function preserveRecordingCaptureAlignment(args: {
   });
 }
 
+async function queueInterruptionRepair(args: {
+  transaction: any;
+  manifest: MobileCaptureResumableManifest;
+  object: MobileCaptureObjectEvidence;
+  recordingAssetId: string;
+}) {
+  const { transaction, manifest, object, recordingAssetId } = args;
+  const workflowInput = {
+    contractKind: MOBILE_CAPTURE_INTERRUPTION_REPAIR_CONTRACT,
+    recordingAssetId,
+    callRoomId: manifest.callRoomId,
+    participantId: manifest.participantId,
+    uploadSessionId: manifest.uploadSessionId,
+    captureId: manifest.captureId,
+    captureGroupId: manifest.captureGroupId,
+    projectId: manifest.projectId,
+    projectSlug: manifest.projectSlug,
+    episodeSlug: manifest.episodeSlug,
+    actorUserId: manifest.actorUserId,
+    actorEmail: manifest.actorEmail,
+    source: {
+      storageBackend: manifest.storageBackend,
+      bucketName: object.bucketName,
+      objectName: object.objectName,
+      generation: object.generation,
+      localFilePath: object.localFilePath,
+      sizeBytes: object.sizeBytes,
+      sha256: manifest.sha256,
+      contentType: manifest.contentType,
+    },
+    originalRemainsSourceTruth: true,
+    streamCopyPreferred: true,
+  };
+  const candidateJobs = await transaction.studioWorkflowJob.findMany({
+    where: {
+      projectId: manifest.projectId,
+      type: "capture-interruption-repair",
+      source: "mobile-capture-finalization",
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      status: true,
+      inputJson: true,
+      createdAt: true,
+    },
+  });
+  const existingJob = candidateJobs.find(
+    (job: any) => asObject(job.inputJson).recordingAssetId === recordingAssetId,
+  );
+  const repairJob = existingJob
+    ? await transaction.studioWorkflowJob.update({
+        where: { id: existingJob.id },
+        data: {
+          requestedByEmail: manifest.actorEmail,
+          inputJson: {
+            ...asObject(existingJob.inputJson),
+            ...workflowInput,
+          },
+        },
+      })
+    : await transaction.studioWorkflowJob.create({
+        data: {
+          projectId: manifest.projectId,
+          assetId: null,
+          type: "capture-interruption-repair",
+          status: "queued",
+          source: "mobile-capture-finalization",
+          requestedByEmail: manifest.actorEmail,
+          inputJson: workflowInput,
+        },
+      });
+  const recordingAsset = await transaction.recordingAsset.findUnique({
+    where: { id: recordingAssetId },
+    select: { localManifestJson: true },
+  });
+  const priorRepair = asObject(asObject(recordingAsset?.localManifestJson).interruptionRepair);
+  const terminalStatus = ["verified", "completed"].includes(
+    String(priorRepair.status || "").toLowerCase(),
+  );
+  const queuedAt = typeof priorRepair.queuedAt === "string"
+    ? priorRepair.queuedAt
+    : (repairJob.createdAt instanceof Date
+      ? repairJob.createdAt.toISOString()
+      : new Date().toISOString());
+  await transaction.recordingAsset.update({
+    where: { id: recordingAssetId },
+    data: {
+      localManifestJson: {
+        ...asObject(recordingAsset?.localManifestJson),
+        interruptionRepair: {
+          ...priorRepair,
+          contractKind: MOBILE_CAPTURE_INTERRUPTION_REPAIR_CONTRACT,
+          status: terminalStatus ? priorRepair.status : "queued",
+          jobId: repairJob.id,
+          queuedAt,
+          originalRemainsSourceTruth: true,
+        },
+      },
+    },
+  });
+  return repairJob;
+}
+
 function captureRecordInput(args: {
   transaction: any;
   manifest: MobileCaptureResumableManifest;
@@ -856,15 +964,22 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
       return evidence;
     }
 
-    const studioMedia = await createOrReuseStudioMedia({ transaction, manifest, object });
+    const interruptionRepairRequired =
+      mobileCaptureInterruptionRepairRequired(manifest.sourceProfileJson);
+    // Exact recovered bytes remain canonical source truth. An abruptly ended
+    // container must be repaired into a separate derivative before Studio can
+    // treat it as editable media.
+    const studioMedia = interruptionRepairRequired
+      ? null
+      : await createOrReuseStudioMedia({ transaction, manifest, object });
     const captureRecords = await recordMobileCaptureIngestion(captureRecordInput({
       transaction,
       manifest,
       object,
       actorIsStaff: input.actorIsStaff,
       processingDecision,
-      mediaAssetId: studioMedia.mediaAsset.id,
-      sourceId: studioMedia.source.id,
+      mediaAssetId: studioMedia?.mediaAsset.id ?? null,
+      sourceId: studioMedia?.source.id ?? null,
     }));
     const alignment = await captureAlignmentForManifest({
       transaction,
@@ -876,19 +991,28 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
       recordingAssetId: captureRecords.recordingAssetId,
       alignment,
     });
-    await attachEpisodeMediaWithoutLostUpdate({
-      transaction,
-      manifest,
-      object,
-      ...studioMedia,
-      captureRecords,
-      alignment,
-    });
+    if (studioMedia) {
+      await attachEpisodeMediaWithoutLostUpdate({
+        transaction,
+        manifest,
+        object,
+        ...studioMedia,
+        captureRecords,
+        alignment,
+      });
+    } else {
+      await queueInterruptionRepair({
+        transaction,
+        manifest,
+        object,
+        recordingAssetId: captureRecords.recordingAssetId,
+      });
+    }
     const evidence = finalizationEvidence({
       captureRecords,
       processingDecision,
-      sourceId: studioMedia.source.id,
-      mediaAssetId: studioMedia.mediaAsset.id,
+      sourceId: studioMedia?.source.id ?? null,
+      mediaAssetId: studioMedia?.mediaAsset.id ?? null,
     });
     evidence.releasedByUserId = priorReceipt?.releasedByUserId
       ?? evidence.releasedByUserId
@@ -1002,6 +1126,7 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
   );
   if (
     evidence.processingDisposition === "RELEASED"
+    && Boolean(evidence.mediaAssetId)
     && (
       manifest.sourceType === "video"
       || manifest.contentType.toLowerCase().startsWith("video/")
