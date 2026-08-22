@@ -39,6 +39,7 @@ function revoke(url: string | null) {
 
 export function StudioSoundCheck({
   getInputStream,
+  prepareInputStream,
   microphoneLabel,
   outputId,
   evidence,
@@ -47,6 +48,7 @@ export function StudioSoundCheck({
   disabled = false,
 }: {
   getInputStream: () => MediaStream | null;
+  prepareInputStream?: () => Promise<MediaStream | null | undefined>;
   microphoneLabel: string;
   outputId: string;
   evidence: StudioAudioMeterEvidence | null;
@@ -101,18 +103,28 @@ export function StudioSoundCheck({
     if (recorder?.state === "recording") recorder.stop();
   }, [clearTimers]);
 
-  const startRecording = useCallback(() => {
+  const startRecording = useCallback(async () => {
     if (disabled || phase === "recording") return;
     if (typeof MediaRecorder === "undefined") {
       setPhase("error");
       setMessage("This browser cannot create a private sound-check sample. The live meter still works; try current Safari or Chrome for playback verification.");
       return;
     }
-    const stream = getInputStream();
-    const audioTracks = stream?.getAudioTracks().filter((track) => track.readyState !== "ended") ?? [];
+    let stream = getInputStream();
+    let audioTracks = stream?.getAudioTracks().filter((track) => track.readyState !== "ended") ?? [];
+    if ((!stream || audioTracks.length === 0) && prepareInputStream) {
+      setMessage("Opening the selected microphone…");
+      try {
+        stream = await prepareInputStream() ?? null;
+        audioTracks = stream?.getAudioTracks().filter((track) => track.readyState !== "ended") ?? [];
+      } catch {
+        stream = null;
+        audioTracks = [];
+      }
+    }
     if (!stream || audioTracks.length === 0) {
       setPhase("error");
-      setMessage("Run Test selected setup first so Quipsly can hear the exact microphone path you chose.");
+      setMessage("Quipsly could not open the selected microphone. Check browser access and try again.");
       return;
     }
 
@@ -174,7 +186,7 @@ export function StudioSoundCheck({
       setPhase("error");
       setMessage(error instanceof Error ? `Private sound check could not start: ${error.message}` : "Private sound check could not start.");
     }
-  }, [clearSample, clearTimers, disabled, getInputStream, microphoneLabel, phase, stopRecording]);
+  }, [clearSample, clearTimers, disabled, getInputStream, microphoneLabel, phase, prepareInputStream, stopRecording]);
 
   useEffect(() => {
     const audio = audioRef.current as (HTMLAudioElement & { setSinkId?: (sinkId: string) => Promise<void> }) | null;
@@ -261,7 +273,7 @@ export function StudioSoundCheck({
         {phase === "recording" ? (
           <button type="button" onClick={stopRecording} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white"><Square size={14} fill="currentColor" aria-hidden="true" />Stop and listen</button>
         ) : (
-          <button type="button" onClick={startRecording} disabled={disabled} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-45"><Mic2 size={15} aria-hidden="true" />Record private sample</button>
+          <button type="button" onClick={() => void startRecording()} disabled={disabled} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-45"><Mic2 size={15} aria-hidden="true" />Record private sample</button>
         )}
         {sampleUrl ? <button type="button" onClick={() => clearSample()} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-violet-950"><RotateCcw size={14} aria-hidden="true" />Clear sample</button> : null}
       </div>

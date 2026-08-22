@@ -979,10 +979,12 @@ export function LiveSessionRoom({
       setPreviewTested(true);
       suppressPreferenceWriteRef.current = false;
       setMessage("Preview is live. This is a device check only—nothing is sent or recorded.");
+      return stream;
     } catch (error) {
       setStatus("error");
       setCameraEvidence(null);
       setMessage(error instanceof Error ? `Selected device could not start: ${error.message}` : "Selected device could not start.");
+      return null;
     }
   }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId]);
 
@@ -1544,12 +1546,13 @@ export function LiveSessionRoom({
               <div className="mt-3">
               <StudioSoundCheck
                 getInputStream={currentPreflightStream}
+                prepareInputStream={startSelectedPreview}
                 microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
                 outputId={outputId}
                 evidence={meterEvidence}
                 setupKey={[microphoneId, cameraWanted ? cameraId : "camera-off", outputId || "system-output"].join(":")}
                 onDecision={saveSoundCheckDecision}
-                disabled={!preflightStreamRef.current || status !== "ready"}
+                disabled={!microphoneId || status === "checking" || status === "joining"}
               />
               </div>
             </details>

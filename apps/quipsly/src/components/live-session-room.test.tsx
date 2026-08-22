@@ -145,7 +145,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByText("Joining doesn’t start recording.")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Call-path microphone evidence" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Private studio sound check" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Record private sample" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Record private sample" })).toBeEnabled();
     expect(screen.getByText("Call-path input evidence")).toBeInTheDocument();
     expect(screen.getByText(/not LUFS, true peak, or proof of the retained source/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Join call/i })).toBeEnabled();

@@ -377,6 +377,11 @@ failure shapes recur often enough to influence the architecture:
   before joining; its protected sample stays on the device, never becomes a
   Session source, and is deleted automatically. Actual Session recording and
   transcription remain independently consent-gated.
+- Removed Preview as a prerequisite for the browser's private sound check.
+  Record private sample now opens the chosen microphone itself when necessary,
+  while Preview remains an optional camera-and-meter check for people who want
+  it. The first meaningful action owns the standard browser permission prompt;
+  users do not have to discover and complete a preparatory ritual first.
 
 ## Acceptance consequences
 

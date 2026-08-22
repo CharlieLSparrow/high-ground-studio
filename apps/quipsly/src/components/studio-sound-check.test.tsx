@@ -115,6 +115,26 @@ describe("StudioSoundCheck", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/no private audio was uploaded/i);
   });
 
+  it("opens the selected microphone itself when Preview has not run", async () => {
+    const stream = { getAudioTracks: () => [{ readyState: "live" }] } as unknown as MediaStream;
+    const prepareInputStream = jest.fn().mockResolvedValue(stream);
+    render(
+      <StudioSoundCheck
+        getInputStream={() => null}
+        prepareInputStream={prepareInputStream}
+        microphoneLabel="Shure MV7i"
+        outputId="mv7i-headphones"
+        evidence={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Record private sample" }));
+
+    expect(await screen.findByRole("button", { name: "Stop and listen" })).toBeInTheDocument();
+    expect(prepareInputStream).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status")).toHaveTextContent(/recording 10 private seconds from Shure MV7i/i);
+  });
+
   it("invalidates the tab-only sample when any selected studio endpoint changes", async () => {
     const stream = { getAudioTracks: () => [{ readyState: "live" }] } as unknown as MediaStream;
     const { rerender } = render(
