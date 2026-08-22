@@ -346,3 +346,19 @@ A retained dogfood journey passes only when the user-visible flow works, the
 canonical state matches it, another account is denied, no unapproved external
 effect occurred, and the evidence can be tied to an exact source/build. A row
 insert, mocked preview, or screenshot alone is not a product acceptance test.
+
+## Browser-source crash durability
+
+Before claiming that browser recordings survive an abrupt page or process loss,
+run the exact OPFS worker proof against the local Quipsly server:
+
+```bash
+pnpm quipsly:local:browser-source-crash-durability
+```
+
+The operation writes two synthetic chunks, waits for each durable
+acknowledgement, terminates the worker without a close message, and reads the
+exact bytes back from OPFS. It removes only its uniquely named synthetic file.
+This proves acknowledged chunk durability in the operated browser; it does not
+replace a physical-device interruption test or prove that an interrupted media
+container is decodable.

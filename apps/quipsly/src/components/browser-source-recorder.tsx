@@ -31,12 +31,13 @@ import {
 } from "@high-ground/quipsly-domain";
 import {
   browserSourceVaultReadiness,
-  createBrowserSourceFile,
+  createBrowserSourceDurableWriter,
   downloadBrowserSource,
   hashBrowserSourceFile,
   listBrowserSourceLedgers,
   loadBrowserSourceFile,
   saveBrowserSourceLedger,
+  type BrowserSourceDurableWriter,
 } from "@/lib/browser-source-vault";
 import { publishBrowserEndpointQueue } from "@/lib/browser-endpoint-queue";
 import {
@@ -279,7 +280,7 @@ export function BrowserSourceRecorder({
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const writableRef = useRef<FileSystemWritableFileStream | null>(null);
+  const durableWriterRef = useRef<BrowserSourceDurableWriter | null>(null);
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const ledgerRef = useRef<BrowserSourceCaptureLedger | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -1456,8 +1457,8 @@ export function BrowserSourceRecorder({
         supportedMime ||
         (sourceType === "video" ? "video/webm" : "audio/webm");
       const opfsFileName = `${captureId}.${browserSourceFileExtension(contentType)}.part`;
-      const { writable } = await createBrowserSourceFile(opfsFileName);
-      writableRef.current = writable;
+      durableWriterRef.current =
+        await createBrowserSourceDurableWriter(opfsFileName);
       const startedAt = new Date().toISOString();
       const monotonicStartedNanoseconds = browserMonotonicNanoseconds(
         performance.now(),
@@ -1554,8 +1555,8 @@ export function BrowserSourceRecorder({
         writeQueueRef.current = writeQueueRef.current
           .then(async () => {
             const current = ledgerRef.current;
-            const writableFile = writableRef.current;
-            if (!current || !writableFile)
+            const durableWriter = durableWriterRef.current;
+            if (!current || !durableWriter)
               throw new Error("Local source writer disappeared.");
             const chunk = {
               index: current.chunks.length,
@@ -1566,11 +1567,20 @@ export function BrowserSourceRecorder({
                 : null,
               receivedAt: new Date().toISOString(),
             };
-            await writableFile.write(event.data);
+            const committed = await durableWriter.write(
+              event.data,
+              current.sizeBytes,
+            );
+            const expectedSizeBytes = current.sizeBytes + event.data.size;
+            if (committed.committedSizeBytes !== expectedSizeBytes) {
+              throw new Error(
+                `Local source committed ${committed.committedSizeBytes} bytes; expected ${expectedSizeBytes}.`,
+              );
+            }
             await updateLedger({
               ...current,
               state: "recording",
-              sizeBytes: current.sizeBytes + event.data.size,
+              sizeBytes: committed.committedSizeBytes,
               chunks: [...current.chunks, chunk],
               updatedAt: chunk.receivedAt,
             });
@@ -1592,8 +1602,8 @@ export function BrowserSourceRecorder({
           timerRef.current = null;
           clearGuardianMonitoring();
           await writeQueueRef.current;
-          await writableRef.current?.close();
-          writableRef.current = null;
+          await durableWriterRef.current?.close();
+          durableWriterRef.current = null;
           streamRef.current?.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
           const stoppedAt = new Date().toISOString();
@@ -1739,6 +1749,8 @@ export function BrowserSourceRecorder({
         clearGuardianMonitoring();
         await stopRetainedSourceMeter(new Date().toISOString());
         stream?.getTracks().forEach((track) => track.stop());
+        await durableWriterRef.current?.close().catch(() => undefined);
+        durableWriterRef.current = null;
       }
       setStatus("error");
       setMessage(
@@ -1780,6 +1792,8 @@ export function BrowserSourceRecorder({
       } else {
         void stopRetainedSourceMeter(new Date().toISOString());
         streamRef.current?.getTracks().forEach((track) => track.stop());
+        void durableWriterRef.current?.close();
+        durableWriterRef.current = null;
       }
     },
     [clearGuardianMonitoring, stopRetainedSourceMeter],

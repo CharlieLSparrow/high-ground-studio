@@ -82,11 +82,164 @@ export async function listBrowserSourceLedgers(callRoomId?: string) {
   return rows.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
-export async function createBrowserSourceFile(opfsFileName: string) {
+export type BrowserSourceDurableWriter = {
+  readonly mode: "opfs-sync-flush-worker" | "opfs-transaction-per-chunk";
+  write: (
+    chunk: Blob,
+    byteOffset: number,
+  ) => Promise<{ committedSizeBytes: number }>;
+  close: () => Promise<void>;
+};
+
+type WorkerReply = {
+  id?: unknown;
+  ok?: unknown;
+  error?: unknown;
+  committedSizeBytes?: unknown;
+};
+
+async function createSyncFlushWorkerWriter(
+  opfsFileName: string,
+): Promise<BrowserSourceDurableWriter> {
+  if (typeof Worker !== "function") throw new Error("Worker is unavailable.");
+  const worker = new Worker("/workers/quipsly-opfs-source-writer-v1.js");
+  let sequence = 0;
+  let closed = false;
+  const pending = new Map<
+    number,
+    {
+      resolve: (reply: WorkerReply) => void;
+      reject: (error: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+
+  const rejectPending = (error: Error) => {
+    for (const request of pending.values()) {
+      clearTimeout(request.timer);
+      request.reject(error);
+    }
+    pending.clear();
+  };
+  worker.addEventListener("message", (event: MessageEvent<WorkerReply>) => {
+    const id = Number(event.data?.id);
+    const request = pending.get(id);
+    if (!request) return;
+    pending.delete(id);
+    clearTimeout(request.timer);
+    if (event.data?.ok === true) request.resolve(event.data);
+    else
+      request.reject(
+        new Error(
+          typeof event.data?.error === "string"
+            ? event.data.error
+            : "The durable source writer failed.",
+        ),
+      );
+  });
+  worker.addEventListener("error", () => {
+    rejectPending(new Error("The durable source writer stopped unexpectedly."));
+  });
+
+  const request = (
+    action: "init" | "write" | "close",
+    payload: Record<string, unknown> = {},
+    transfer: Transferable[] = [],
+  ) => {
+    const id = ++sequence;
+    return new Promise<WorkerReply>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error("The durable source writer timed out."));
+      }, 60_000);
+      pending.set(id, { resolve, reject, timer });
+      worker.postMessage({ id, action, ...payload }, transfer);
+    });
+  };
+
+  try {
+    await request("init", { opfsFileName });
+  } catch (error) {
+    worker.terminate();
+    rejectPending(
+      error instanceof Error ? error : new Error("OPFS worker setup failed."),
+    );
+    throw error;
+  }
+
+  return {
+    mode: "opfs-sync-flush-worker",
+    async write(chunk, byteOffset) {
+      if (closed) throw new Error("The durable source writer is closed.");
+      const bytes = await chunk.arrayBuffer();
+      const reply = await request(
+        "write",
+        { byteOffset, bytes },
+        [bytes],
+      );
+      const committedSizeBytes = Number(reply.committedSizeBytes);
+      if (!Number.isSafeInteger(committedSizeBytes) || committedSizeBytes < 0) {
+        throw new Error("The durable source writer returned an invalid size.");
+      }
+      return { committedSizeBytes };
+    },
+    async close() {
+      if (closed) return;
+      closed = true;
+      try {
+        await request("close");
+      } finally {
+        worker.terminate();
+        rejectPending(new Error("The durable source writer is closed."));
+      }
+    },
+  };
+}
+
+async function createTransactionalChunkWriter(
+  opfsFileName: string,
+): Promise<BrowserSourceDurableWriter> {
   const directory = await sourceDirectory(true);
   const handle = await directory.getFileHandle(opfsFileName, { create: true });
-  const writable = await handle.createWritable({ keepExistingData: false });
-  return { handle, writable };
+  const initial = await handle.createWritable({ keepExistingData: false });
+  await initial.close();
+  let closed = false;
+  return {
+    mode: "opfs-transaction-per-chunk",
+    async write(chunk, byteOffset) {
+      if (closed) throw new Error("The durable source writer is closed.");
+      const writable = await handle.createWritable({ keepExistingData: true });
+      try {
+        await writable.seek(byteOffset);
+        await writable.write(chunk);
+        await writable.close();
+      } catch (error) {
+        await writable.abort().catch(() => undefined);
+        throw error;
+      }
+      const committedSizeBytes = (await handle.getFile()).size;
+      const expectedSizeBytes = byteOffset + chunk.size;
+      if (committedSizeBytes !== expectedSizeBytes) {
+        throw new Error(
+          `The durable source committed ${committedSizeBytes} bytes; expected ${expectedSizeBytes}.`,
+        );
+      }
+      return { committedSizeBytes };
+    },
+    async close() {
+      closed = true;
+    },
+  };
+}
+
+export async function createBrowserSourceDurableWriter(
+  opfsFileName: string,
+): Promise<BrowserSourceDurableWriter> {
+  try {
+    return await createSyncFlushWorkerWriter(opfsFileName);
+  } catch {
+    return createTransactionalChunkWriter(opfsFileName);
+  }
 }
 
 export async function loadBrowserSourceFile(opfsFileName: string) {

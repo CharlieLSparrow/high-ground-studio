@@ -82,6 +82,7 @@
     "quipsly:retained:coaching-engagement-browser": "QUIPSLY_RETAINED_COACHING_ENGAGEMENT_BROWSER_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-coaching-engagement-browser-operation.mjs",
     "quipsly:retained:session-source-journey": "QUIPSLY_RETAINED_SOURCE_JOURNEY_OPERATION=1 node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-session-source-journey-operation.mjs",
     "quipsly:retained:browser-source": "QUIPSLY_RETAINED_BROWSER_SOURCE_OPERATION=1 node scripts/quipsly-retained-browser-source-operation.mjs",
+    "quipsly:local:browser-source-crash-durability": "QUIPSLY_BROWSER_SOURCE_CRASH_DURABILITY_OPERATION=1 node scripts/quipsly-browser-source-crash-durability-operation.mjs",
     "quipsly:retained:recording-health-ui": "node scripts/quipsly-retained-recording-health-browser-smoke.mjs",
     "quipsly:retained:session-transcript-source-focus": "QUIPSLY_RETAINED_TRANSCRIPT_SOURCE_FOCUS_OPERATION=1 node scripts/quipsly-retained-session-transcript-source-focus-operation.mjs",
     "quipsly:retained:session-transcript-quality": "QUIPSLY_RETAINED_TRANSCRIPT_QUALITY_OPERATION=1 node scripts/quipsly-retained-session-transcript-quality-operation.mjs",

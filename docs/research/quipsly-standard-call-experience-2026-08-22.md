@@ -249,6 +249,11 @@ failure shapes recur often enough to influence the architecture:
 - Kept the participant count visible beside call status even while advanced
   room details are closed. This preserves the familiar assurance that the
   other person actually arrived without reopening diagnostics.
+- Replaced the browser recorder's long-lived OPFS writable stream with a
+  dedicated worker using `FileSystemSyncAccessHandle` and `flush()` after every
+  acknowledged MediaRecorder chunk. Browsers without that worker capability
+  use a transaction-per-chunk OPFS fallback. The ledger advances only after the
+  corresponding file size is durably observable.
 
 ## Acceptance consequences
 
