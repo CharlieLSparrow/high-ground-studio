@@ -51,6 +51,11 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published private(set) var latestEpisodeWatchHint: MobileEpisodeWatchLiveHint?
     @Published private(set) var latestChatPersistedHint: MobileChatPersistedLiveHint?
 
+    /// CallKit can end a call from the system UI, a headset, or the lock
+    /// screen. CaptureExperienceModel installs this endpoint-local protection
+    /// boundary so that action cannot strand an active retained source.
+    var protectLocalSourceBeforeNativeCallEnd: (() async -> Bool)?
+
     private let callKitProvider: CXProvider
     private let callController = CXCallController()
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
@@ -571,6 +576,12 @@ extension ProviderRoomController: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         Task { @MainActor in
+            // Fulfill the system-owned action promptly. Local source protection
+            // starts before provider disconnect; CallKit may deactivate its
+            // audio lease independently while the already-issued recorder stop
+            // finishes closing durable bytes.
+            action.fulfill()
+            let localSourceProtected = await self.protectLocalSourceBeforeNativeCallEnd?() ?? true
             #if canImport(LiveKit)
             if self.isConnected || self.isConnecting {
                 await self.room.disconnect()
@@ -585,8 +596,9 @@ extension ProviderRoomController: CXProviderDelegate {
             self.activeOwnerSnapshot = nil
             self.clearEpisodeWatchBridge()
             self.connectionStateLabel = "Disconnected"
-            self.statusText = "Native call ended. Local upload and transcript work can continue."
-            action.fulfill()
+            self.statusText = localSourceProtected
+                ? "Native call ended. This iPhone's local source is protected; upload and transcript work can continue."
+                : "Native call ended. This iPhone is still closing its local source; keep Quipsly open until Library shows the result."
         }
     }
 

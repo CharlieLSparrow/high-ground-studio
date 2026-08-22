@@ -70,6 +70,16 @@ and release-source contract pass with this behavior compiled for both simulator
 architectures. Physical iPhone proof remains a release-acceptance step rather
 than something inferred from a simulator build.
 
+The same endpoint-local protection now covers CallKit hang-up actions initiated
+from the system call surface, lock screen, or a headset. CallKit is fulfilled
+promptly, Quipsly immediately closes the active local audio/video group, and the
+provider room disconnects without issuing a room-wide STOP. The recording
+coordinator now belongs to the Capture experience model rather than a transient
+view, allowing this system-owned path to publish honest STOPPED/STOP_FAILED
+state too. The native release-source contract and a clean dual-architecture
+simulator build pass; headset/lock-screen behavior remains explicitly reserved
+for physical-device acceptance.
+
 ## Release boundary
 
 This is post-Build-34 continuous work. Build 34 remains the sealed qualified

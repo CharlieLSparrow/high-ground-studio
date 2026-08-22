@@ -6364,7 +6364,6 @@ private struct CaptureRecorderView: View {
     @State private var isSafelyLeavingRoom = false
     @StateObject private var soundCheck = CaptureAudioSoundCheckController()
     @StateObject private var sessionPreflight = CaptureSessionPreflightClient()
-    @StateObject private var recordingCoordinator = CaptureRecordingCoordinator()
     @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
     @StateObject private var episodeWatch = MobileEpisodeWatchClient()
     @StateObject private var episodeChat = MobileEpisodeChatClient()
@@ -7168,6 +7167,10 @@ private struct CaptureRecorderView: View {
                   videoCapture.state != .paused else { return }
             Task { await videoCapture.shutdownPreview() }
         }
+    }
+
+    private var recordingCoordinator: CaptureRecordingCoordinator {
+        model.recordingCoordinator
     }
 
     private func matchingRecording(roomID: String, recordingAssetID: String?) -> LocalRecording? {

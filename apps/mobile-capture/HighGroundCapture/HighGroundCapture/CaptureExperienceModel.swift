@@ -289,6 +289,7 @@ final class CaptureExperienceModel: ObservableObject {
     let coachingRunwayClient = MobileCoachingRunwayClient()
     let sourceInboxClient = CaptureSourceInboxClient()
     let providerRoom = ProviderRoomController()
+    let recordingCoordinator = CaptureRecordingCoordinator()
     let readinessClient = CaptureReadinessClient()
     let reviewDigestClient = CaptureReviewDigestClient()
     let uploadManager = UploadManager.shared
@@ -344,6 +345,10 @@ final class CaptureExperienceModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         providerRoom.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        recordingCoordinator.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -409,6 +414,10 @@ final class CaptureExperienceModel: ObservableObject {
                 self?.preparedRoomJoin = nil
             }
             .store(in: &cancellables)
+        providerRoom.protectLocalSourceBeforeNativeCallEnd = { [weak self] in
+            guard let self else { return false }
+            return await self.protectLocalSourceForNativeCallEnd()
+        }
     }
 
     var sessions: [MobileCaptureSession] {
@@ -2227,6 +2236,71 @@ final class CaptureExperienceModel: ObservableObject {
         preparedRoomJoin = nil
     }
 
+    /// Protects only this device's source when CallKit ends the conversation
+    /// outside Quipsly's own Leave button. This is deliberately not a room-wide
+    /// STOP command: every participant owns an independent local master.
+    private func protectLocalSourceForNativeCallEnd() async -> Bool {
+        let sourceWasActive = localSourceIsActive
+        guard sourceWasActive else { return true }
+
+        message = "The call ended. Protecting this iPhone's recording…"
+        let session = activeRoomSession ?? selectedSession
+        let captureID = activeVideoCapture?.activeRecordingID
+            ?? activeAudioCapture?.activeLocalRecordingID
+        let activeStartDirective = recordingCoordinator.currentDirective.flatMap {
+            $0.action == .start ? $0 : nil
+        }
+        if let activeStartDirective {
+            recordingCoordinator.markHandled(activeStartDirective, state: .stopping)
+        }
+
+        if activeCoordinatedCaptureGroupID != nil,
+           let activeAudioCapture,
+           let activeVideoCapture {
+            await stopCoordinatedPodcastCapture(
+                using: activeAudioCapture,
+                videoCapture: activeVideoCapture
+            )
+        } else {
+            if activeCaptureSession != nil, let activeAudioCapture {
+                await stopCapture(using: activeAudioCapture)
+            }
+            if activeVideoCaptureSession != nil, let activeVideoCapture {
+                await stopVideoCapture(using: activeVideoCapture)
+                if activeVideoCapture.state == .finalizing {
+                    _ = await activeVideoCapture.waitUntilTerminal()
+                    reconcileVideoCaptureState(
+                        activeVideoCapture.state,
+                        using: activeVideoCapture
+                    )
+                }
+            }
+        }
+
+        let protected = !localSourceIsActive
+        if let session, let activeStartDirective {
+            let state: CaptureRecordingEndpointState = protected ? .stopped : .stopFailed
+            recordingCoordinator.markHandled(activeStartDirective, state: state)
+            Task {
+                await recordingCoordinator.acknowledge(
+                    roomID: session.callRoomId,
+                    directive: activeStartDirective,
+                    state: state,
+                    captureID: captureID,
+                    detail: protected
+                        ? "The native system call ended; this iPhone stopped and protected its retained source."
+                        : "The native system call ended while this iPhone's retained source was still closing."
+                )
+            }
+        }
+        if protected {
+            message = "Call ended. This iPhone's recording is safe; upload recovery continues automatically."
+        } else {
+            errorMessage = "The call ended while this iPhone was still closing its recording. Keep Quipsly open until Library shows the protected source."
+        }
+        return protected
+    }
+
     func toggleRoomMute() async {
         guard providerControlsAreAvailable() else { return }
         await providerRoom.setMuted(!providerRoom.isMuted)
@@ -2609,6 +2683,21 @@ final class CaptureExperienceModel: ObservableObject {
             return false
         }
         return true
+    }
+
+    private var localSourceIsActive: Bool {
+        if activeCoordinatedCaptureGroupID != nil { return true }
+        if let state = activeVideoCapture?.state,
+           state.isActive || state == .paused {
+            return true
+        }
+        guard let state = activeAudioCapture?.captureState else { return false }
+        switch state {
+        case .recording, .paused, .finalizing:
+            return true
+        default:
+            return false
+        }
     }
 
     private func pauseCaptureForAuthorityLoss(
