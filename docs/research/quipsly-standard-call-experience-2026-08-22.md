@@ -27,6 +27,37 @@ notes, goals, tasks, and collaborative follow-through.
   disagreement, crashes or source loss, stuck uploads, and transcript timing
   drift that makes text edits cut the wrong media.
 
+## Complaint pressure test
+
+Community reports are anecdotes rather than product telemetry, but several
+failure shapes recur often enough to influence the architecture:
+
+- [Zoom users report microphones changing or becoming unavailable between
+  rooms](https://community.zoom.com/meetings-2/external-microphone-stops-working-with-every-room-switch-20972), even after a successful device check. Quipsly should remember intent but
+  continuously display the actual active route and fall back visibly when the
+  preferred device disappears.
+- [Riverside explicitly warns that unfinished local tracks live in browser
+  storage](https://support.riverside.fm/hc/en-us/articles/17932486715549-Troubleshooting-Recording-stopped-because-of-low-storage), while users describe the anxiety of a participant track appearing lost
+  after a disruption. Quipsly must preserve participant-owned media first,
+  expose byte/upload/recovery state after re-entry, and never equate cloud
+  receipt creation with source safety.
+- [Riverside's own upload guidance asks hosts to watch per-participant upload
+  progress](https://support.riverside.fm/hc/en-us/articles/5287442440093-Confirm-that-participants-tracks-are-uploading). Quipsly should summarize this as a calm persistent state—safe on this
+  device, uploading, verified in Nest, or needs attention—without requiring the
+  host to babysit percentages.
+- [Descript users value text-based editing but report speaker omissions and want
+  selection-level retranscription](https://www.reddit.com/r/Descript/comments/1sgi96c/transcript_often_missing_second_speaker/). Preserve each participant track, make speaker attribution correctable,
+  and allow a bounded segment to be regenerated without replacing the trusted
+  transcript wholesale.
+- [Users also report word-alignment errors that can truncate word beginnings
+  during text edits](https://www.reddit.com/r/Descript/comments/1tuqxj7/beginnings_of_words_now_being_marked_as_grey/). Text edits therefore need visible media boundaries, handles, audition,
+  and reversible decisions rather than treating ASR timestamps as exact truth.
+- A positive pattern is equally clear: users praise an immediately synced,
+  transcribed project and timeline comments, even when they retain separate
+  local masters for final quality. Quipsly should make the fast collaborative
+  projection feel instant while keeping the independent source masters easy to
+  inspect and replace.
+
 ## Quipsly interaction contract
 
 1. **One obvious entry.** The Session shows `Join call` before production,
