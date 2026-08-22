@@ -24,8 +24,8 @@ describe("browser retained-source consent", () => {
     );
     expect(source).toContain("Agree and continue");
     expect(source).toContain('aria-label="Recording consent needed"');
-    expect(source).toContain('open={status === "recording"}');
-    expect(source).toContain("Recording options ·");
+    expect(source).not.toContain('open={status === "recording"}');
+    expect(source).toContain("Recording settings ·");
     expect(source).toContain("Recording still starts separately.");
     expect(source).toContain("Create a transcript and suggested notes/tasks");
     expect(source).toContain("conversationConnected = true");

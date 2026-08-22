@@ -1821,7 +1821,7 @@ export function BrowserSourceRecorder({
           </h3>
           <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
             {sessionKind === "coaching"
-              ? "This recording is separate from the call, so joining never records anyone by surprise. Confirm the source and consent below, then start the high-quality copy saved on this device."
+              ? "Joining never starts recording. Once everyone agrees, Record starts the high-quality copy on this device."
               : "This is independent from the live call. Chunks go to a private on-device file, survive refreshes, receive START/STOP and consent receipts, then use the same verified upload path as iPhone Capture. Every source in this Session shares one take identity while preserving its own clock and immutable bytes."}
           </p>
           <details className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]">
@@ -1863,16 +1863,15 @@ export function BrowserSourceRecorder({
 
       <details
         className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3"
-        open={status === "recording"}
       >
         <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
-          Recording options · {myConsentCoversSource ? "Saved" : "Change the default"}
+          Recording settings · {myConsentCoversSource ? "Saved" : "Review"}
         </summary>
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
           <div className="flex items-center justify-between gap-2">
             <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
-              1 · Source
+              Source
             </strong>
             <span className="text-[10px] font-bold text-[#8a7354]">
               {microphoneLabel || "Choose a mic above"}
@@ -1910,7 +1909,7 @@ export function BrowserSourceRecorder({
               onChange={(event) => setHeadphonesAttested(event.target.checked)}
               className="mt-1 accent-violet-800"
             />{" "}
-            I’m using headphones (recommended to prevent echo).
+            I’m using headphones (recommended).
           </label>
           {!headphonesAttested ? (
             <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
@@ -1921,10 +1920,10 @@ export function BrowserSourceRecorder({
 
         <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
           <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
-            2 · Recording choice
+            Transcript
           </strong>
           <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
-            Agree to record {sourceType === "video" ? "camera and audio" : "audio"} on this device. Each participant confirms their own choice.
+            Quipsly remembers this Session’s saved choice. Change it only when you want a different source or transcript setting.
           </p>
           <label className="mt-2 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
             <input
@@ -2002,7 +2001,7 @@ export function BrowserSourceRecorder({
             onClick={() => stop()}
             className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white"
           >
-            <Square size={16} fill="currentColor" /> Stop local source
+            <Square size={16} fill="currentColor" /> Stop recording
           </button>
         ) : (
           <button
@@ -2019,17 +2018,14 @@ export function BrowserSourceRecorder({
             ) : (
               <span className="h-3 w-3 rounded-full bg-white" />
             )}{" "}
-            {sessionKind === "coaching" ? "Record on this device" : "Record local source"}
+            {sessionKind === "coaching" ? "Record" : "Record source"}
           </button>
         )}
-        <span className="text-[10px] font-bold text-[#8a7354]">
-          Vault {vaultAvailable ? "ready" : "unavailable"} ·{" "}
-          {vaultPersistent
-            ? "persistent storage granted"
-            : "browser-managed retention"}{" "}
-          · {formatBytes(usageBytes)} / {formatBytes(quotaBytes)}
-        </span>
       </div>
+      <details className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]" open={!vaultAvailable || Boolean(preflightStorageIssue) || Boolean(operationalIssue)}>
+        <summary className="cursor-pointer">Recording health · {vaultAvailable && !preflightStorageIssue && !operationalIssue ? "Ready" : "Needs attention"}</summary>
+        <p className="mt-2">On-device protection {vaultAvailable ? "ready" : "unavailable"} · {vaultPersistent ? "persistent storage granted" : "browser-managed retention"} · {formatBytes(usageBytes)} / {formatBytes(quotaBytes)}</p>
+      </details>
       <p
         role="status"
         aria-live="assertive"
