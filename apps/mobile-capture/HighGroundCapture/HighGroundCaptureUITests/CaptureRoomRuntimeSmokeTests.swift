@@ -599,6 +599,22 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    private func openLocalRecorderIfNeeded(in app: XCUIApplication) {
+        let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
+        guard waitForRuntimeElement(localOnly, in: app, timeout: 4, swipeAttempts: 2),
+              localOnly.label == "Record without joining" else { return }
+        localOnly.tap()
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch,
+                in: app,
+                timeout: 8,
+                swipeAttempts: 3
+            ),
+            "The explicit local-only escape hatch should reveal the recording workspace without joining the provider room."
+        )
+    }
+
     private func quickEntryRetryButton(in app: XCUIApplication) -> XCUIElement {
         app.buttons.matching(
             NSPredicate(
@@ -4177,6 +4193,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         recordTab.tap()
 
         selectRequestedSession(in: app, credentials: credentials)
+        openLocalRecorderIfNeeded(in: app)
 
         XCTAssertTrue(
             app.otherElements["CaptureConsentStrip"].firstMatch.waitForExistence(timeout: 8),
@@ -4874,6 +4891,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         var app = try launchSignedInCaptureApp()
         tapRootTab("Record", in: app)
         selectRequestedSession(in: app, credentials: credentials)
+        openLocalRecorderIfNeeded(in: app)
 
         let confirmConsent = app.buttons["CaptureConfirmConsentButton"].firstMatch
         if waitForRuntimeElement(confirmConsent, in: app, timeout: 5, swipeAttempts: 3) {
@@ -5071,6 +5089,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         tapRootTab("Record", in: app)
         selectRequestedSession(in: app, credentials: credentials)
+        openLocalRecorderIfNeeded(in: app)
 
         let missingPlanReason = app.textFields.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "CaptureMissingPlannedSourceReason_")
@@ -5187,6 +5206,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         let app = try launchSignedInCaptureApp(initialTab: "record")
         selectRequestedSession(in: app, credentials: credentials)
+        openLocalRecorderIfNeeded(in: app)
 
         let confirmConsent = app.buttons["CaptureConfirmConsentButton"].firstMatch
         if waitForRuntimeElement(

@@ -6354,6 +6354,7 @@ private struct CaptureRecorderView: View {
     @State private var showsSessionContext = false
     @State private var showsSessionReadiness = false
     @State private var showsConsentConfirmation = false
+    @State private var localOnlyRecordingSessionID: String?
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var sessionNotesSession: MobileCaptureSession?
     @State private var recordingMode: CaptureRecordingMode = CaptureCallPreferences.recordingMode
@@ -6400,25 +6401,40 @@ private struct CaptureRecorderView: View {
                 }
 
                 if let session = model.selectedSession {
-                    // Keep the consent and recording controls in one eager,
-                    // bounded unit so VoiceOver and UI automation can reach
-                    // the recorder immediately. The much larger workflow
-                    // workspace below remains lazy.
-                    VStack(spacing: 16) {
                     ProviderRoomControls(
                         model: model,
                         session: session,
-                        inputRoute: audioCapture.inputRouteName
+                        inputRoute: audioCapture.inputRouteName,
+                        localRecordingWorkspaceOpen:
+                            model.providerRoom.isConnected
+                            || localOnlyRecordingSessionID == session.id
+                            || session.providerCanJoin == false,
+                        onToggleLocalRecordingWorkspace: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                localOnlyRecordingSessionID =
+                                    localOnlyRecordingSessionID == session.id
+                                    ? nil
+                                    : session.id
+                            }
+                        }
                     )
                     .captureCard()
 
-                    ConsentStrip(
-                        session: session,
-                        isBusy: model.isChangingConsent,
-                        isCaptureActive: captureIsActive,
-                        onGrant: { showsConsentConfirmation = true },
-                        onRevoke: { Task { await model.revokeConsent() } }
-                    )
+                    if model.providerRoom.isConnected
+                        || localOnlyRecordingSessionID == session.id
+                        || session.providerCanJoin == false {
+                        // Keep the consent and recording controls in one eager,
+                        // bounded unit after the person enters the call or chooses
+                        // the explicit local-only fallback. The larger workflow
+                        // workspace below remains lazy.
+                        VStack(spacing: 16) {
+                            ConsentStrip(
+                                session: session,
+                                isBusy: model.isChangingConsent,
+                                isCaptureActive: captureIsActive,
+                                onGrant: { showsConsentConfirmation = true },
+                                onRevoke: { Task { await model.revokeConsent() } }
+                            )
 
                     CaptureRecordingModePicker(
                         selection: $recordingMode,
@@ -6641,6 +6657,17 @@ private struct CaptureRecorderView: View {
                             }
                         }
                     )
+                        }
+                    } else {
+                        Label(
+                            "Join the call above. Recording controls appear after you connect.",
+                            systemImage: "arrow.up.circle.fill"
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
+                        .accessibilityIdentifier("CaptureOuterRoomNextStep")
                     }
 
                     CaptureSessionTranscriptReviewCard(
@@ -11503,6 +11530,8 @@ private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
     let session: MobileCaptureSession
     let inputRoute: String
+    let localRecordingWorkspaceOpen: Bool
+    let onToggleLocalRecordingWorkspace: () -> Void
     @AppStorage("quipsly.call.join-muted.v1") private var joinMuted = false
 
     var body: some View {
@@ -11580,6 +11609,24 @@ private struct ProviderRoomControls: View {
                 .disabled(providerControlsLocked || model.isChangingRoom || session.providerCanJoin != true)
                 .accessibilityHint(providerControlHint)
                 .accessibilityIdentifier("ProviderJoinRoomButton")
+
+                Button(
+                    localRecordingWorkspaceOpen
+                        ? "Hide recording controls"
+                        : "Record without joining",
+                    action: onToggleLocalRecordingWorkspace
+                )
+                .buttonStyle(.plain)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(CapturePalette.accent)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(providerControlsLocked || model.isChangingRoom)
+                .accessibilityHint(
+                    localRecordingWorkspaceOpen
+                        ? "Returns to the call lobby without changing any recording."
+                        : "Shows local recording controls for solo work or when the call is unavailable."
+                )
+                .accessibilityIdentifier("CaptureRecordWithoutJoiningButton")
             }
 
             if let detail = model.providerRoom.lastError ?? model.providerRoom.statusText.nonempty {

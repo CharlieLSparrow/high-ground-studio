@@ -268,6 +268,11 @@ failure shapes recur often enough to influence the architecture:
   the high-quality recorder and consent action appear only after the call
   connects. Internal states such as `preflight` are translated into ordinary
   labels such as `Ready to join` and `Needs attention`.
+- Applied the same outer-room boundary to iPhone. The Record surface stops at
+  the call controls before Join; consent, readiness, and recording controls
+  appear after connection. A quiet `Record without joining` escape hatch keeps
+  solo capture and provider-outage work available without mixing it into the
+  normal call path.
 
 ## Acceptance consequences
 

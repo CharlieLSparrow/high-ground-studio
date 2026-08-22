@@ -39,6 +39,7 @@ final class CaptureExperienceUITests: XCTestCase {
         }
         app.launch()
         if launchesWatchPreview {
+            openLocalRecorderIfNeeded()
             XCTAssertTrue(
                 app.otherElements["CaptureRecorderHero"]
                     .waitForExistence(timeout: 12),
@@ -71,6 +72,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["New session"].exists)
 
         app.buttons["CaptureOpenNextSessionButton"].tap()
+        openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureRecordingModePicker"].exists)
         XCTAssertTrue(app.buttons["CaptureStartButton"].isEnabled)
@@ -154,6 +156,12 @@ final class CaptureExperienceUITests: XCTestCase {
             "Opening a full Episode projection must not overflow SwiftUI's layout stack."
         )
         XCTAssertTrue(
+            app.buttons["ProviderJoinRoomButton"].waitForExistence(timeout: 5),
+            "Opening a Session should stop in the standard outer room before exposing recording administration."
+        )
+        XCTAssertFalse(app.buttons["CaptureConfirmConsentButton"].exists)
+        openLocalRecorderIfNeeded()
+        XCTAssertTrue(
             app.buttons["CaptureConfirmConsentButton"]
                 .waitForExistence(timeout: 5),
             "Consent-needed Sessions must open the in-recorder consent action."
@@ -163,6 +171,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testRecorderNamesItsAudioEvidenceInsteadOfShowingAnOpaquePercentage() {
         app.tabBars.buttons["Record"].tap()
+        openLocalRecorderIfNeeded()
 
         let evidence = app.descendants(matching: .any)[
             "CaptureRecorderInputEvidence"
@@ -188,12 +197,19 @@ final class CaptureExperienceUITests: XCTestCase {
         let joinMuted = app.switches["CaptureJoinMutedToggle"]
         let route = app.descendants(matching: .any)["CaptureCallInputRoute"]
         let consent = app.descendants(matching: .any)["CaptureConsentStrip"]
+        let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"]
+        let nextStep = app.descendants(matching: .any)["CaptureOuterRoomNextStep"]
 
         XCTAssertTrue(call.waitForExistence(timeout: 5))
         XCTAssertTrue(join.exists, "The green room should expose one obvious Join call action.")
         XCTAssertTrue(joinMuted.exists, "Mute state belongs in pre-join, not in a buried settings surface.")
         XCTAssertTrue(route.exists, "The current microphone route should be visible before joining.")
-        XCTAssertTrue(consent.exists)
+        XCTAssertTrue(localOnly.exists, "Local-only recording should remain one secondary escape hatch.")
+        XCTAssertTrue(nextStep.exists)
+        XCTAssertFalse(consent.exists, "Consent and recorder controls should not turn the outer room into a vertical checklist.")
+
+        localOnly.tap()
+        XCTAssertTrue(consent.waitForExistence(timeout: 5))
         XCTAssertLessThan(
             call.frame.minY,
             consent.frame.minY,
@@ -3069,6 +3085,18 @@ final class CaptureExperienceUITests: XCTestCase {
         waitForExpectations(timeout: 3)
     }
 
+    private func openLocalRecorderIfNeeded() {
+        let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
+        guard localOnly.waitForExistence(timeout: 2),
+              localOnly.label == "Record without joining" else { return }
+        localOnly.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureConsentStrip"]
+                .waitForExistence(timeout: 5),
+            "The explicit local-only escape hatch should reveal the recording workspace without joining or recording."
+        )
+    }
+
     private func dismissQuickEntryKeyboard() {
         let done = app.buttons["CaptureQuickEntryKeyboardDone"].firstMatch
         XCTAssertTrue(done.waitForExistence(timeout: 3), "Quick Capture must expose a reachable keyboard dismissal action.")
@@ -3351,6 +3379,7 @@ final class CaptureLoginExperienceUITests: XCTestCase {
             app.swipeUp()
         }
     }
+
 }
 
 final class ShareCaptureExtensionUITests: XCTestCase {
