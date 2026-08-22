@@ -552,14 +552,14 @@ describe("LiveSessionRoom", () => {
       render(<LiveSessionRoom callRoomId="room-provider-retry" captureGroupId="55555555-5555-4555-8555-555555555556" sessionTitle="Provider retry" kind="coaching" />);
     });
     await screen.findByRole("option", { name: "Shure MV7i" });
-    fireEvent.click(screen.getByText("Advanced room and recording details"));
-    fireEvent.click(await screen.findByRole("button", { name: "Review provider safety copy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start provider copy" }));
+    fireEvent.click(screen.getByText("More call and recording options"));
+    fireEvent.click(await screen.findByRole("button", { name: "Cloud recording backup" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start backup recording" }));
     await waitFor(() => expect(postBodies).toHaveLength(1));
     await screen.findByText(/Retry uses the same request ID/i);
 
-    fireEvent.click(screen.getByRole("button", { name: "Review provider safety copy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start provider copy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cloud recording backup" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start backup recording" }));
     await waitFor(() => expect(postBodies).toHaveLength(2));
     expect(postBodies[1].requestId).toBe(postBodies[0].requestId);
   });

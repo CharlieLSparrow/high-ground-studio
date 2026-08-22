@@ -231,6 +231,11 @@ failure shapes recur often enough to influence the architecture:
   `Update Google Calendar`, `Add to Apple or Outlook`, and `Remove from Google
   Calendar` actions. The explicit idempotent Add action no longer asks for a
   second confirmation; destructive removal still does.
+- Kept the connected-call surface focused on mic, camera, Leave, participant
+  media, and local source safety. The internal provider panel no longer opens
+  merely because a call connected; it is now an optional `Cloud recording
+  backup` and opens automatically only while recording or when attention is
+  required.
 
 ## Acceptance consequences
 

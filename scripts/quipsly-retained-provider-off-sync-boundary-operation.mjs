@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { createRequire } from "node:module";
+import { deleteApp, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 
 import {
   clearRenderedSession,
@@ -47,6 +49,31 @@ async function main() {
     account: OPERATOR_EMAIL,
   });
   assert(password, "The retained media operator has no Keychain password.");
+  process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
+  process.env.GCLOUD_PROJECT ||= "quipsly-reef";
+  process.env.GOOGLE_CLOUD_PROJECT ||= "quipsly-reef";
+  const firebaseApp = initializeApp(
+    { projectId: "quipsly-reef" },
+    `provider-off-boundary-${Date.now()}`,
+  );
+  const firebaseAuth = getAuth(firebaseApp);
+  try {
+    const existing = await firebaseAuth.getUserByEmail(OPERATOR_EMAIL);
+    await firebaseAuth.updateUser(existing.uid, {
+      password,
+      emailVerified: true,
+      disabled: false,
+    });
+  } catch (error) {
+    if (error?.code !== "auth/user-not-found") throw error;
+    await firebaseAuth.createUser({
+      uid: "retained-provider-off-operator",
+      email: OPERATOR_EMAIL,
+      password,
+      emailVerified: true,
+      displayName: "Retained provider-off operator",
+    });
+  }
 
   const prisma = new PrismaClient({
     adapter: new PrismaPg({ connectionString: databaseURL, max: 2 }),
@@ -95,15 +122,21 @@ async function main() {
     });
     await page.getByRole("heading", { name: SESSION_TITLE, exact: true }).first().waitFor();
 
-    const open = page.getByRole("button", { name: "Open mic, camera & call", exact: true });
-    if (await open.count()) await open.click();
-    const liveRegion = page.getByRole("region", {
-      name: "Meet with your coaching team from any device",
+    const open = page.getByRole("button", { name: /This browser/ });
+    await open.click();
+    const liveRegion = page.getByRole("complementary", {
+      name: `${SESSION_TITLE} live call dock`,
       exact: true,
     });
     await liveRegion.waitFor();
+    await liveRegion
+      .getByText("More call and recording options", { exact: true })
+      .click();
+    await liveRegion
+      .getByText("Backup recording details · Off", { exact: true })
+      .click();
     await liveRegion.getByRole("heading", {
-      name: "Provider safety copy: Off",
+      name: "Cloud recording backup: Off",
       exact: true,
     }).waitFor();
     await page.getByText(
@@ -113,9 +146,7 @@ async function main() {
     const liveText = await liveRegion.innerText();
     const normalizedLiveText = liveText.toLowerCase();
     for (const expected of [
-      "Conversation is not recording",
-      "Provider safety copy: Off",
-      "Optional witness",
+      "Cloud recording backup: Off",
       "Turning this copy off cannot change take synchronization",
       "shared capture group",
       "device clock and START receipts",
@@ -129,33 +160,23 @@ async function main() {
       );
     }
     assert(
-      await liveRegion.getByRole("button", { name: "Start provider copy", exact: true }).count() === 0,
+      await liveRegion.getByRole("button", { name: "Start backup recording", exact: true }).count() === 0,
       "Provider START remained reachable while the local provider was deliberately unavailable.",
     );
 
     await page.goto(`${baseURL}/coaching`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Capture rooms", exact: true }).waitFor();
-    const captureRoomsPanel = page.getByRole("heading", { name: "Capture rooms", exact: true })
+    await page.getByRole("heading", { name: "Session workspaces", exact: true }).waitFor();
+    const captureRoomsPanel = page.getByRole("heading", { name: "Session workspaces", exact: true })
       .locator("xpath=../../..");
     const runwayRoom = captureRoomsPanel.locator("article")
       .filter({ hasText: SESSION_TITLE })
       .first();
     await runwayRoom.waitFor();
-    await runwayRoom.getByText("optional provider safety copy", { exact: true }).waitFor();
-    await runwayRoom.getByText("off", { exact: true }).waitFor();
-    const runwayText = (await runwayRoom.innerText()).toLowerCase();
-    for (const expected of [
-      "turning it off cannot change take synchronization",
-      "durable reservation is created automatically",
-      "protected local masters",
-      "device clock receipts",
-      "capture-group timing remain authoritative",
-    ]) {
-      assert(
-        runwayText.includes(expected),
-        `Coaching runway lost provider-off boundary: ${expected}`,
-      );
-    }
+    await runwayRoom.getByRole("link", { name: "Open Session", exact: true }).waitFor();
+    assert(
+      await runwayRoom.getByText("optional provider safety copy", { exact: true }).count() === 0,
+      "The ordinary Session workspace exposed provider implementation controls.",
+    );
     assert(
       await runwayRoom.getByRole("button", { name: "Prepare slot", exact: true }).count() === 0,
       "Coaching runway still exposed legacy provider receipt-slot ceremony.",
@@ -195,7 +216,7 @@ async function main() {
       providerCommandsCreatedByView: 0,
       providerAssetsCreatedByView: 0,
       synchronizationBoundaryVisible: true,
-      coachingRunwayBoundaryVisible: true,
+      coachingHappyPathProviderAdminHidden: true,
       legacyPrepareSlotVisible: false,
       localProtectedCaptureUnaffected: true,
       browserExceptions: 0,
@@ -206,6 +227,7 @@ async function main() {
     await context.close();
     await browser.close();
     await prisma.$disconnect();
+    await deleteApp(firebaseApp);
   }
 }
 

@@ -1505,8 +1505,8 @@ export function LiveSessionRoom({
         </div>
 
         <aside className="space-y-3">
-          <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={connected || ["recording", "needs-review"].includes(providerRecordingState)}>
-            <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Advanced room and recording details</summary>
+          <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={["recording", "needs-review"].includes(providerRecordingState)}>
+            <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">More call and recording options</summary>
             <div className="mt-3 space-y-3">
           <p className="rounded-xl bg-[#fffaf0] p-3 text-xs font-semibold leading-5 text-[#765f40]">{experience.liveDescription}</p>
           <details className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-950" open={["recording", "needs-review"].includes(providerRecordingState)}>
@@ -1515,7 +1515,7 @@ export function LiveSessionRoom({
             <div className="flex items-start justify-between gap-3">
               <div>
                 {providerRecordingState === "recording" ? <Cloud className="text-rose-800" aria-hidden="true" /> : providerRecordingState === "needs-review" ? <CircleAlert className="text-amber-800" aria-hidden="true" /> : <CloudOff className="text-sky-800" aria-hidden="true" />}
-                <h3 className="mt-2 font-serif text-xl font-black">Provider safety copy: {providerRecordingStateLabel}</h3>
+                <h3 className="mt-2 font-serif text-xl font-black">Cloud recording backup: {providerRecordingStateLabel}</h3>
               </div>
             </div>
             <p className="mt-2 text-xs font-bold leading-5">{providerRecordingMessage}</p>
@@ -1523,27 +1523,27 @@ export function LiveSessionRoom({
 
             {providerRecording?.canOperate && providerRecordingState === "recording" ? (
               <button type="button" disabled={providerRecordingBusy} onClick={() => void runProviderRecordingAction("STOP_EGRESS")} className="mt-3 min-h-10 rounded-full bg-rose-900 px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">
-                {providerRecordingBusy ? "Stopping safely…" : "Stop provider safety copy"}
+                {providerRecordingBusy ? "Stopping safely…" : "Stop backup recording"}
               </button>
             ) : null}
 
             {providerRecording?.canOperate && !["recording", "starting", "stopping", "needs-review"].includes(providerRecordingState) && providerRecording.configured && providerRecording.enabled ? (
               providerStartArmed ? (
                 <div className="mt-3 rounded-xl border border-sky-300 bg-white p-3">
-                  <p className="text-xs font-black">Start the optional provider room composite?</p>
-                  <p className="mt-1 text-[10px] font-bold leading-4">This creates a safety reference only. It does not replace or synchronize the retained local masters.</p>
+                  <p className="text-xs font-black">Start an optional cloud recording backup?</p>
+                  <p className="mt-1 text-[10px] font-bold leading-4">This creates a convenient reference copy. It does not replace the high-quality recordings saved on each device.</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" disabled={providerRecordingBusy} onClick={() => void runProviderRecordingAction("START_EGRESS")} className="min-h-10 rounded-full bg-sky-900 px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{providerRecordingBusy ? "Starting safely…" : "Start provider copy"}</button>
+                    <button type="button" disabled={providerRecordingBusy} onClick={() => void runProviderRecordingAction("START_EGRESS")} className="min-h-10 rounded-full bg-sky-900 px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{providerRecordingBusy ? "Starting safely…" : "Start backup recording"}</button>
                     <button type="button" disabled={providerRecordingBusy} onClick={() => setProviderStartArmed(false)} className="min-h-10 rounded-full border border-sky-300 bg-white px-4 text-xs font-black uppercase tracking-wide">Cancel</button>
                   </div>
                 </div>
               ) : (
-                <button type="button" onClick={() => setProviderStartArmed(true)} className="mt-3 min-h-10 rounded-full border border-sky-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-sky-950">Review provider safety copy</button>
+                <button type="button" onClick={() => setProviderStartArmed(true)} className="mt-3 min-h-10 rounded-full border border-sky-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-sky-950">Cloud recording backup</button>
               )
             ) : null}
 
             {providerRecording?.canOperate && (!providerRecording.configured || !providerRecording.enabled) ? (
-              <p className="mt-3 text-[10px] font-black uppercase tracking-wide">Provider copy is deliberately unavailable. Local recording remains fully usable.</p>
+              <p className="mt-3 text-[10px] font-black uppercase tracking-wide">Cloud backup is unavailable. Local recording remains fully usable.</p>
             ) : null}
           </div>
           </details>
