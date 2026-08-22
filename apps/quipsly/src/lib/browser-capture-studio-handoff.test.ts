@@ -1,4 +1,5 @@
 import {
+  browserCaptureAutoHandoffAttempt,
   browserCaptureStudioHandoff,
   browserCaptureStudioReviewHref,
 } from "./browser-capture-studio-handoff";
@@ -185,5 +186,43 @@ describe("browser Capture Studio handoff", () => {
       episodeSlug: null,
       captureGroupId: "take-9",
     })).toBeNull();
+  });
+
+  it("creates one stable automatic preparation attempt only for a verified destination-bound take", () => {
+    const ready = browserCaptureStudioHandoff({
+      sessions: [{
+        id: "room-auto",
+        projectSlug: "coaching-home",
+        captureSources: [
+          {
+            recordingAssetId: "client-audio",
+            captureGroupId: "take-auto",
+            kind: "LOCAL_AUDIO",
+            recordingStatus: "VERIFIED",
+            exactBytesVerified: true,
+            processingDisposition: "RELEASED",
+            mediaAssetId: null,
+          },
+          {
+            recordingAssetId: "coach-audio",
+            captureGroupId: "take-auto",
+            kind: "LOCAL_AUDIO",
+            recordingStatus: "VERIFIED",
+            exactBytesVerified: true,
+            processingDisposition: "RELEASED",
+            mediaAssetId: null,
+          },
+        ],
+      }],
+    }, "room-auto", "take-auto");
+
+    expect(browserCaptureAutoHandoffAttempt(ready)).toEqual({
+      key: "take-auto:client-audio:coach-audio",
+      projectSlug: "coaching-home",
+      recordingAssetIds: ["client-audio", "coach-audio"],
+    });
+    expect(browserCaptureAutoHandoffAttempt({ ...ready!, complete: true })).toBeNull();
+    expect(browserCaptureAutoHandoffAttempt({ ...ready!, ready: false })).toBeNull();
+    expect(browserCaptureAutoHandoffAttempt({ ...ready!, projectSlug: null })).toBeNull();
   });
 });

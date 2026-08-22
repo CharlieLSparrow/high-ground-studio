@@ -46,6 +46,7 @@ import {
   measureBrowserCaptureClockBurst,
 } from "@/lib/browser-capture-clock";
 import {
+  browserCaptureAutoHandoffAttempt,
   browserCaptureStudioHandoff,
   browserCaptureStudioReviewHref,
   type BrowserCaptureStudioHandoff,
@@ -323,6 +324,7 @@ export function BrowserSourceRecorder({
   const retainedMeterNodeRef = useRef<AudioNode | null>(null);
   const retainedMeterFrameRef = useRef<number | null>(null);
   const retainedMeterSequenceRef = useRef<number | null>(null);
+  const autoHandoffAttemptRef = useRef<string | null>(null);
   const retainedMeterFlushResolverRef = useRef<(() => void) | null>(null);
   const retainedMeterSummaryRef =
     useRef<BrowserSourceCaptureMeterSummaryV2 | null>(null);
@@ -1186,6 +1188,19 @@ export function BrowserSourceRecorder({
     episodeSlug,
     projectSlug,
     refreshStudioHandoff,
+    studioHandoff,
+  ]);
+
+  useEffect(() => {
+    if (handoffBusy) return;
+    const attempt = browserCaptureAutoHandoffAttempt(studioHandoff, projectSlug);
+    if (!attempt || autoHandoffAttemptRef.current === attempt.key) return;
+    autoHandoffAttemptRef.current = attempt.key;
+    void promoteStudioHandoff();
+  }, [
+    handoffBusy,
+    projectSlug,
+    promoteStudioHandoff,
     studioHandoff,
   ]);
 
@@ -2523,11 +2538,11 @@ export function BrowserSourceRecorder({
         {activeLedger?.sourceProfile.captureMeter ? (
           <section
             className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sky-950"
-            aria-label="Retained source capture-time meter evidence"
+            aria-label="Audio quality"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <strong className="text-[10px] uppercase tracking-wide">
-                Capture-time meter receipt
+                Audio quality
               </strong>
               <span className="font-mono text-[10px] font-bold">
                 {(
@@ -2541,7 +2556,7 @@ export function BrowserSourceRecorder({
             </div>
             <div className="mt-2 grid gap-2 text-xs font-bold sm:grid-cols-3">
               <span>
-                Highest observed RMS
+                Highest level
                 <br />
                 <span className="font-mono">
                   {formattedDbfs(
@@ -2552,7 +2567,7 @@ export function BrowserSourceRecorder({
                 </span>
               </span>
               <span>
-                Sample peak
+                Peak
                 <br />
                 <span className="font-mono">
                   {formattedDbfs(
@@ -2561,7 +2576,7 @@ export function BrowserSourceRecorder({
                 </span>
               </span>
               <span>
-                Near-full-scale samples
+                Possible clipping
                 <br />
                 <span className="font-mono">
                   {captureMeterDisplayEvidence(
@@ -2570,26 +2585,27 @@ export function BrowserSourceRecorder({
                 </span>
               </span>
             </div>
-            <p className="mt-2 text-[10px] font-bold leading-4 opacity-75">
-              {activeLedger.sourceProfile.captureMeter.measurement ===
-              "audio-worklet-render-quantum-aggregate"
-                ? "Audio-render observations"
-                : "Animation-frame fallback observations"}{" "}
-              are stored with this source profile ·{" "}
-              {
-                captureMeterDisplayEvidence(
-                  activeLedger.sourceProfile.captureMeter,
-                ).missingMessageCount
-              }{" "}
-              sequence gaps ·{" "}
-              {
-                captureMeterDisplayEvidence(
-                  activeLedger.sourceProfile.captureMeter,
-                ).tailLabel
-              }
-              . This is not a complete decode, integrated loudness, or true-peak
-              result; those belong to verified post-capture analysis.
-            </p>
+            <details className="mt-2 text-[10px] font-bold leading-4 opacity-75">
+              <summary className="cursor-pointer">How this was measured</summary>
+              <p className="mt-2">
+                {activeLedger.sourceProfile.captureMeter.measurement ===
+                "audio-worklet-render-quantum-aggregate"
+                  ? "Audio-render observations"
+                  : "Animation-frame fallback observations"}{" "}
+                are stored with this recording ·{" "}
+                {
+                  captureMeterDisplayEvidence(
+                    activeLedger.sourceProfile.captureMeter,
+                  ).missingMessageCount
+                }{" "}
+                sequence gaps ·{" "}
+                {
+                  captureMeterDisplayEvidence(
+                    activeLedger.sourceProfile.captureMeter,
+                  ).tailLabel
+                }. Full loudness and true-peak analysis runs after capture.
+              </p>
+            </details>
           </section>
         ) : null}
 
@@ -2672,10 +2688,41 @@ export function BrowserSourceRecorder({
             </div>
           </details>
         ) : null}
-        <section
-          className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4"
-          aria-labelledby={`studio-handoff-${callRoomId}`}
-        >
+        {studioHandoff?.complete && sessionKind === "coaching" ? (
+          <a
+            href={`/sessions/${encodeURIComponent(callRoomId)}?mode=recordings`}
+            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
+          >
+            <ExternalLink size={15} /> Review recording
+          </a>
+        ) : null}
+        {studioHandoff?.complete &&
+        sessionKind === "episode" &&
+        browserCaptureStudioReviewHref({
+          projectSlug: projectSlug || studioHandoff.projectSlug,
+          episodeSlug: episodeSlug || studioHandoff.episodeSlug,
+          captureGroupId,
+        }) ? (
+          <a
+            href={browserCaptureStudioReviewHref({
+              projectSlug: projectSlug || studioHandoff.projectSlug,
+              episodeSlug: episodeSlug || studioHandoff.episodeSlug,
+              captureGroupId,
+            })!}
+            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
+          >
+            <ExternalLink size={15} /> Edit recording
+          </a>
+        ) : null}
+        <details className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-black text-violet-950">
+            <span className="flex items-center gap-2"><Layers3 size={14} /> Recording processing</span>
+            <span>{studioHandoff?.complete ? "Ready" : handoffBusy ? "Finishing…" : "In progress"}</span>
+          </summary>
+          <section
+            className="mt-3"
+            aria-labelledby={`studio-handoff-${callRoomId}`}
+          >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-violet-800">
@@ -2798,7 +2845,7 @@ export function BrowserSourceRecorder({
                 disabled={handoffBusy || !studioHandoff?.ready}
                 className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-40"
               >
-                <UploadCloud size={15} /> Attach complete take
+                <UploadCloud size={15} /> Retry processing
               </button>
             ) : null}
             {sessionKind === "episode" &&
@@ -2836,17 +2883,18 @@ export function BrowserSourceRecorder({
             late-drift, and playback review still decide placement and the
             approved master.
           </p>
-        </section>
-        {activeLedger?.state === "verified" ? (
-          <p className="mt-3 text-[10px] font-bold text-emerald-800">
-            Verified editor evidence:{" "}
-            {activeLedger.serverRecordingAssetId || "recording receipt created"}
-            . Session take {activeLedger.captureGroupId.slice(0, 8)} has{" "}
-            {clockEvidenceLabel(activeLedger)}; clock drift remains a bounded
-            proposal and waveform/listening review still decides final
-            placement. Local deletion remains unavailable by design.
-          </p>
-        ) : null}
+          </section>
+          {activeLedger?.state === "verified" ? (
+            <p className="mt-3 text-[10px] font-bold text-emerald-800">
+              Verified editor evidence:{" "}
+              {activeLedger.serverRecordingAssetId || "recording receipt created"}
+              . Session take {activeLedger.captureGroupId.slice(0, 8)} has{" "}
+              {clockEvidenceLabel(activeLedger)}; clock drift remains a bounded
+              proposal and waveform/listening review still decides final
+              placement. Local deletion remains unavailable by design.
+            </p>
+          ) : null}
+        </details>
       </div>
     </section>
   );

@@ -309,6 +309,16 @@ failure shapes recur often enough to influence the architecture:
   merely because a call connected; it is now an optional `Cloud recording
   backup` and opens automatically only while recording or when attention is
   required.
+- Removed the source-to-editor handoff as a normal post-call chore. Once the
+  exact required track set is verified and has a Nest destination, Quipsly now
+  performs the idempotent internal attachment automatically. The ordinary
+  surface offers `Review recording` or `Edit recording`; source rosters,
+  fingerprints, and a manual retry remain under `Recording processing` for
+  exceptional diagnosis.
+- Kept useful audio evidence visible without exposing measurement vocabulary as
+  the primary UI. People see highest level, peak, and possible clipping, while
+  sampling method, gaps, and post-capture analysis limits stay under `How this
+  was measured`.
 - Made rescheduling a direct save and cancellation a single inline destructive
   confirmation. The ordinary surface now speaks in appointments, Sessions,
   dates, and duration rather than app-owned truth, provider evidence, or audit

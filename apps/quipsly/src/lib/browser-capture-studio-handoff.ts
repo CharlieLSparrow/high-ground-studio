@@ -32,6 +32,12 @@ export type BrowserCaptureStudioHandoff = {
   sources: BrowserCaptureStudioHandoffSource[];
 };
 
+export type BrowserCaptureAutoHandoffAttempt = {
+  key: string;
+  projectSlug: string;
+  recordingAssetIds: string[];
+};
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -169,4 +175,28 @@ export function browserCaptureStudioReviewHref(input: {
     captureGroup: captureGroupId,
   });
   return `/editor?${query.toString()}#guided-sync-wizard`;
+}
+
+/**
+ * Returns one stable, idempotent attempt identity only after the exact required
+ * source set is verified and has a destination. Attaching sources is an
+ * internal preparation step, not publication, so callers can perform it
+ * automatically and leave manual retry for exceptional failures.
+ */
+export function browserCaptureAutoHandoffAttempt(
+  handoff: BrowserCaptureStudioHandoff | null,
+  preferredProjectSlug?: string | null,
+): BrowserCaptureAutoHandoffAttempt | null {
+  const projectSlug = text(preferredProjectSlug) || text(handoff?.projectSlug);
+  if (!handoff?.ready || handoff.complete || !projectSlug) return null;
+  const recordingAssetIds = handoff.sources
+    .filter((source) => source.requiredForStudio || source.verifiedForStudio)
+    .map((source) => source.recordingAssetId)
+    .sort();
+  if (!recordingAssetIds.length) return null;
+  return {
+    key: `${handoff.captureGroupId}:${recordingAssetIds.join(":")}`,
+    projectSlug,
+    recordingAssetIds,
+  };
 }
