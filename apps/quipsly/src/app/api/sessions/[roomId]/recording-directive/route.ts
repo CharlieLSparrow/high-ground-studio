@@ -46,11 +46,28 @@ function uuid(value: unknown) {
     : "";
 }
 
-function directiveView(directive: any, viewerParticipantId?: string | null) {
+function opaqueEndpointId(roomId: string, clientInstanceId: string) {
+  return `recording-endpoint-${createHash("sha256")
+    .update(`${roomId}\0${clientInstanceId}`)
+    .digest("hex")
+    .slice(0, 20)}`;
+}
+
+function directiveView(
+  directive: any,
+  options: {
+    viewerParticipantId?: string | null;
+    includeAllEndpoints?: boolean;
+    participantLabels?: Map<string, string>;
+  } = {},
+) {
   if (!directive) return null;
   const latestByEndpoint = new Map<string, any>();
   for (const receipt of directive.receipts ?? []) {
-    if (viewerParticipantId && receipt.participantId !== viewerParticipantId) {
+    if (
+      !options.includeAllEndpoints &&
+      receipt.participantId !== options.viewerParticipantId
+    ) {
       continue;
     }
     if (!latestByEndpoint.has(receipt.clientInstanceId))
@@ -65,9 +82,12 @@ function directiveView(directive: any, viewerParticipantId?: string | null) {
     issuedByCurrentActor: directive.issuedByCurrentActor === true,
     shouldRecord: directive.action === "START",
     endpointReceipts: [...latestByEndpoint.values()].map((receipt) => ({
-      clientInstanceId: receipt.clientInstanceId,
+      id: opaqueEndpointId(directive.roomId, receipt.clientInstanceId),
       clientKind: receipt.clientKind,
       deviceLabel: receipt.deviceLabel,
+      participantLabel:
+        options.participantLabels?.get(receipt.participantId) ??
+        "Session participant",
       state: receipt.state,
       captureId: receipt.captureId ?? null,
       detail: receipt.detail ?? null,
@@ -111,8 +131,8 @@ export async function GET(
       id: true,
       captureGroupId: true,
       participants: {
-        where: { userId: session.user.id, accessStatus: "ACTIVE" },
-        select: { id: true, role: true },
+        where: { accessStatus: "ACTIVE" },
+        select: { id: true, userId: true, role: true, displayName: true },
       },
     },
   });
@@ -125,14 +145,33 @@ export async function GET(
       },
       404,
     );
+  const viewerParticipant = room.participants.find(
+    (participant: any) => participant.userId === session.user.id,
+  );
+  const controller = await prisma.callRoom.findFirst({
+    where: sessionInvitationAccessWhere(room.id, session.user),
+    select: { id: true },
+  });
+  const participantLabels = new Map<string, string>(
+    room.participants.map((participant: any) => [
+      participant.id,
+      text(participant.displayName) ||
+        (participant.id === viewerParticipant?.id ? "You" : "Session participant"),
+    ]),
+  );
   const latest = await readLatest(prisma, room.id, session.user.id);
   return privateJson({
     ok: true,
-    directive: directiveView(latest, room.participants[0]?.id),
+    directive: directiveView(latest, {
+      viewerParticipantId: viewerParticipant?.id,
+      includeAllEndpoints: Boolean(controller),
+      participantLabels,
+    }),
     captureGroupId: room.captureGroupId,
     boundaries: {
       directiveIsIntentNotRecordedMedia: true,
       endpointReceiptIsNotVerifiedUpload: true,
+      controllerCanSeeAllEndpointStates: Boolean(controller),
       joiningNeverStartsRecording: true,
     },
   });
@@ -178,7 +217,7 @@ export async function POST(
       status: true,
       participants: {
         where: { accessStatus: "ACTIVE" },
-        select: { id: true, userId: true, role: true },
+        select: { id: true, userId: true, role: true, displayName: true },
       },
       recordingConsents: true,
     },
@@ -197,6 +236,13 @@ export async function POST(
     room.participants.find(
       (participant: any) => participant.userId === session.user.id,
     ) ?? null;
+  const participantLabels = new Map<string, string>(
+    room.participants.map((participant: any) => [
+      participant.id,
+      text(participant.displayName) ||
+        (participant.id === actorParticipant?.id ? "You" : "Session participant"),
+    ]),
+  );
   const consentVersions = buildMobileCaptureConsentVersions({
     participants: room.participants,
     consents: room.recordingConsents,
@@ -282,7 +328,10 @@ export async function POST(
           ok: false,
           code: "ALREADY_RECORDING",
           error: "This Session already has an active recording command.",
-          directive: directiveView(result.directive, actorParticipant?.id),
+          directive: directiveView(result.directive, {
+            includeAllEndpoints: true,
+            participantLabels,
+          }),
         },
         409,
       );
@@ -292,7 +341,10 @@ export async function POST(
           ok: false,
           code: "NOT_RECORDING",
           error: "This Session is not currently under a recording command.",
-          directive: directiveView(result.directive, actorParticipant?.id),
+          directive: directiveView(result.directive, {
+            includeAllEndpoints: true,
+            participantLabels,
+          }),
         },
         409,
       );
@@ -301,7 +353,10 @@ export async function POST(
       {
         ok: true,
         idempotentReplay: result.replay,
-        directive: directiveView(result.directive, actorParticipant?.id),
+        directive: directiveView(result.directive, {
+          includeAllEndpoints: true,
+          participantLabels,
+        }),
       },
       result.replay ? 200 : 201,
     );

@@ -6446,7 +6446,10 @@ private struct CaptureRecorderView: View {
                         CaptureRecordingCoordinationStatus(
                             message: coordinationMessage,
                             isRecording: captureIsActive,
-                            joinConfirmationRequired: recordingCoordinator.joinConfirmationRequired
+                            joinConfirmationRequired: recordingCoordinator.joinConfirmationRequired,
+                            endpointReceipts: session.canControlRecording == true
+                                ? (recordingCoordinator.currentDirective?.endpointReceipts ?? [])
+                                : []
                         )
                     }
 
@@ -10771,21 +10774,63 @@ private struct CaptureRecordingCoordinationStatus: View {
     let message: String
     let isRecording: Bool
     let joinConfirmationRequired: Bool
+    let endpointReceipts: [CaptureRecordingEndpointReceipt]
 
     var body: some View {
-        Label(
-            message,
-            systemImage: isRecording
-                ? "record.circle.fill"
-                : joinConfirmationRequired
-                    ? "person.crop.circle.badge.checkmark"
-                    : "checkmark.circle.fill"
-        )
-        .font(.subheadline.weight(.semibold))
-        .foregroundStyle(isRecording ? .red : CapturePalette.accent)
+        VStack(alignment: .leading, spacing: 10) {
+            Label(
+                message,
+                systemImage: isRecording
+                    ? "record.circle.fill"
+                    : joinConfirmationRequired
+                        ? "person.crop.circle.badge.checkmark"
+                        : "checkmark.circle.fill"
+            )
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(isRecording ? .red : CapturePalette.accent)
+
+            if !endpointReceipts.isEmpty {
+                Divider()
+                Text("Recording devices")
+                    .font(.caption.weight(.bold))
+                ForEach(endpointReceipts) { receipt in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(receipt.participantLabel) · \(receipt.deviceLabel)")
+                            .font(.caption)
+                            .lineLimit(2)
+                        Spacer()
+                        Text(endpointLabel(receipt.state))
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(endpointTint(receipt.state))
+                    }
+                }
+                Text("Device status is live. Upload verification remains separate and automatic.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
         .captureCard()
         .accessibilityIdentifier("CaptureRecordingCoordinationStatus")
+    }
+
+    private func endpointLabel(_ state: CaptureRecordingEndpointState) -> String {
+        switch state {
+        case .started: "Recording"
+        case .startFailed, .stopFailed: "Needs attention"
+        case .stopping: "Stopping"
+        case .stopped: "Stopped safely"
+        case .observed: "Getting ready"
+        }
+    }
+
+    private func endpointTint(_ state: CaptureRecordingEndpointState) -> Color {
+        switch state {
+        case .started: .red
+        case .startFailed, .stopFailed, .stopping: .orange
+        case .stopped: .green
+        case .observed: CapturePalette.accent
+        }
     }
 }
 

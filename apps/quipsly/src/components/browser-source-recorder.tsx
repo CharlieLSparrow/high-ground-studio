@@ -124,6 +124,22 @@ function retainedRecorderStatusLabel(
   return "Ready";
 }
 
+function recordingEndpointStatus(state: string) {
+  switch (state.toUpperCase()) {
+    case "STARTED":
+      return { label: "Recording", tone: "bg-rose-100 text-rose-950" };
+    case "START_FAILED":
+    case "STOP_FAILED":
+      return { label: "Needs attention", tone: "bg-amber-100 text-amber-950" };
+    case "STOPPING":
+      return { label: "Stopping", tone: "bg-amber-100 text-amber-950" };
+    case "STOPPED":
+      return { label: "Stopped safely", tone: "bg-emerald-100 text-emerald-950" };
+    default:
+      return { label: "Getting ready", tone: "bg-violet-100 text-violet-950" };
+  }
+}
+
 function formattedDbfs(value: number) {
   if (!Number.isFinite(value) || value <= -120) return "below −120 dBFS";
   return `${value.toFixed(1).replace("-", "−")} dBFS`;
@@ -2342,6 +2358,41 @@ export function BrowserSourceRecorder({
             </span>
           )}
         </div>
+        {canControlRoom && recordingDirective?.endpointReceipts.length ? (
+          <section
+            className="mt-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3"
+            aria-label="Recording devices"
+            aria-live="polite"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <strong className="text-xs text-violet-950">Recording devices</strong>
+              <span className="text-[10px] font-bold text-violet-800">
+                Live status from each Quipsly endpoint
+              </span>
+            </div>
+            <ul className="mt-2 space-y-2">
+              {recordingDirective.endpointReceipts.map((receipt) => {
+                const endpointStatus = recordingEndpointStatus(receipt.state);
+                return (
+                  <li
+                    key={receipt.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#5b472f]"
+                  >
+                    <span>
+                      {receipt.participantLabel} · {receipt.deviceLabel}
+                    </span>
+                    <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${endpointStatus.tone}`}>
+                      {endpointStatus.label}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="mt-2 text-[10px] font-semibold leading-4 text-violet-900">
+              This confirms recorder state, not upload completion. Quipsly keeps each local source until exact-byte verification succeeds.
+            </p>
+          </section>
+        ) : null}
         <details
           className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]"
           open={

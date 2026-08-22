@@ -8,9 +8,15 @@ export type BrowserRecordingDirective = {
   issuedAt: string;
   shouldRecord: boolean;
   endpointReceipts: Array<{
-    clientInstanceId: string;
+    id: string;
+    clientKind: string;
+    deviceLabel: string;
+    participantLabel: string;
     state: string;
     captureId: string | null;
+    detail: string | null;
+    occurredAt: string;
+    receivedAt: string;
   }>;
 };
 

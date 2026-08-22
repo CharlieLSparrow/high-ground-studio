@@ -23,6 +23,19 @@ struct CaptureRecordingDirective: Codable, Equatable, Identifiable {
     let captureGroupId: String
     let issuedAt: String
     let shouldRecord: Bool
+    let endpointReceipts: [CaptureRecordingEndpointReceipt]?
+}
+
+struct CaptureRecordingEndpointReceipt: Codable, Equatable, Identifiable {
+    let id: String
+    let clientKind: String
+    let deviceLabel: String
+    let participantLabel: String
+    let state: CaptureRecordingEndpointState
+    let captureId: String?
+    let detail: String?
+    let occurredAt: String
+    let receivedAt: String
 }
 
 private struct CaptureRecordingDirectiveResponse: Decodable {

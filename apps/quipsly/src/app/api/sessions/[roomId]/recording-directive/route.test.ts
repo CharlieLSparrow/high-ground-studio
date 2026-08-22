@@ -25,7 +25,20 @@ const room = {
   id: "room-1",
   captureGroupId: "11111111-1111-4111-8111-111111111111",
   status: "OPEN",
-  participants: [{ id: "participant-1", userId: "coach-1", role: "COACH" }],
+  participants: [
+    {
+      id: "participant-1",
+      userId: "coach-1",
+      role: "COACH",
+      displayName: "Coach Taylor",
+    },
+    {
+      id: "participant-2",
+      userId: "guest-2",
+      role: "CLIENT",
+      displayName: "Jordan Client",
+    },
+  ],
   recordingConsents: [{ id: "consent-1" }],
 };
 const directive = {
@@ -139,7 +152,7 @@ describe("Session recording directive route", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it("returns the latest private directive and endpoint states without actor identifiers", async () => {
+  it("lets a controller see every endpoint state without exposing installation or actor identifiers", async () => {
     prisma.callRecordingDirective.findFirst.mockResolvedValue({
       ...directive,
       receipts: [
@@ -175,15 +188,112 @@ describe("Session recording directive route", () => {
       ok: true,
       directive: {
         shouldRecord: true,
-        endpointReceipts: [{ state: "STARTED", deviceLabel: "Mac" }],
+        endpointReceipts: [
+          {
+            state: "STARTED",
+            deviceLabel: "Mac",
+            participantLabel: "Coach Taylor",
+          },
+          {
+            state: "STARTED",
+            deviceLabel: "Guest's iPhone",
+            participantLabel: "Jordan Client",
+          },
+        ],
       },
-      boundaries: { directiveIsIntentNotRecordedMedia: true },
+      boundaries: {
+        directiveIsIntentNotRecordedMedia: true,
+        controllerCanSeeAllEndpointStates: true,
+      },
     });
     expect(JSON.stringify(packet)).not.toContain("coach@example.test");
     expect(JSON.stringify(packet)).not.toContain("actorUserId");
     expect(JSON.stringify(packet)).not.toContain("participant-1");
     expect(JSON.stringify(packet)).not.toContain("participant-2");
     expect(JSON.stringify(packet)).not.toContain("ios-private-installation");
+  });
+
+  it("keeps a non-controller scoped to their own endpoint state", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "guest-2", primaryEmail: "guest@example.test" },
+    } as never);
+    prisma.callRoom.findFirst
+      .mockResolvedValueOnce(room)
+      .mockResolvedValueOnce(null);
+    prisma.callRecordingDirective.findFirst.mockResolvedValue({
+      ...directive,
+      receipts: [
+        {
+          participantId: "participant-1",
+          clientInstanceId: "browser-1",
+          clientKind: "web",
+          deviceLabel: "Coach Mac",
+          state: "STARTED",
+          captureId: null,
+          detail: null,
+          occurredAt: new Date("2026-08-22T22:30:02.000Z"),
+          receivedAt: new Date("2026-08-22T22:30:03.000Z"),
+        },
+        {
+          participantId: "participant-2",
+          clientInstanceId: "browser-2",
+          clientKind: "web",
+          deviceLabel: "Client browser",
+          state: "OBSERVED",
+          captureId: null,
+          detail: null,
+          occurredAt: new Date("2026-08-22T22:30:04.000Z"),
+          receivedAt: new Date("2026-08-22T22:30:05.000Z"),
+        },
+      ],
+    });
+
+    const response = await GET(request("GET"), context);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      directive: {
+        endpointReceipts: [
+          {
+            participantLabel: "Jordan Client",
+            deviceLabel: "Client browser",
+            state: "OBSERVED",
+          },
+        ],
+      },
+      boundaries: { controllerCanSeeAllEndpointStates: false },
+    });
+  });
+
+  it("does not expose endpoint state to a room viewer without a participant identity", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "project-viewer", primaryEmail: "viewer@example.test" },
+    } as never);
+    prisma.callRoom.findFirst
+      .mockResolvedValueOnce(room)
+      .mockResolvedValueOnce(null);
+    prisma.callRecordingDirective.findFirst.mockResolvedValue({
+      ...directive,
+      receipts: [
+        {
+          participantId: "participant-1",
+          clientInstanceId: "browser-1",
+          clientKind: "web",
+          deviceLabel: "Coach Mac",
+          state: "STARTED",
+          captureId: null,
+          detail: null,
+          occurredAt: new Date("2026-08-22T22:30:02.000Z"),
+          receivedAt: new Date("2026-08-22T22:30:03.000Z"),
+        },
+      ],
+    });
+
+    const response = await GET(request("GET"), context);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      directive: { endpointReceipts: [] },
+      boundaries: { controllerCanSeeAllEndpointStates: false },
+    });
   });
 
   it("accepts an idempotent endpoint acknowledgment only from a known installation", async () => {
