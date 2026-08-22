@@ -1610,6 +1610,7 @@ export function TranscriptCorrectionDesk({
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [playbackState, setPlaybackState] = useState<"absent" | "loading" | "ready" | "error">("absent");
   const [showQualityDetails, setShowQualityDetails] = useState(false);
+  const [showSpeakerIdentity, setShowSpeakerIdentity] = useState(false);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
   const playbackReady = Boolean(desk?.playback) && playbackState === "ready";
@@ -1979,18 +1980,35 @@ export function TranscriptCorrectionDesk({
         </div> : null}
       </section>
 
-      {desk.gate.allowed && (
-        <SpeakerAttributionPanel
-          roomId={roomId}
-          groups={desk.speakerGroups ?? []}
-          participants={desk.participants ?? []}
-          playbackReady={playbackReady}
-          currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
-          busy={busy}
-          onPlayAt={playFromTime}
-          onSaved={saved}
-        />
-      )}
+      {desk.gate.allowed && (desk.speakerGroups ?? []).length > 0 ? (
+        <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 shadow-sm" aria-labelledby="voice-labels-heading">
+          <button
+            type="button"
+            aria-expanded={showSpeakerIdentity}
+            aria-controls="voice-labels-details"
+            onClick={() => setShowSpeakerIdentity((current) => !current)}
+            className="flex min-h-11 w-full items-center justify-between gap-4 rounded-xl text-left"
+          >
+            <span>
+              <span id="voice-labels-heading" className="block text-sm font-black text-indigo-950">Voice labels</span>
+              <span className="mt-1 block text-xs font-semibold leading-5 text-indigo-950/75">{identifiedSpeakerCount}/{desk.speakerGroups.length} voices identified. Listen once to apply a person&apos;s name across their provider-labelled turns.</span>
+            </span>
+            <span className="shrink-0 rounded-full border border-indigo-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-indigo-900">{showSpeakerIdentity ? "Hide" : identifiedSpeakerCount === desk.speakerGroups.length ? "Review" : "Identify voices"}</span>
+          </button>
+          {showSpeakerIdentity ? <div id="voice-labels-details" className="mt-4">
+            <SpeakerAttributionPanel
+              roomId={roomId}
+              groups={desk.speakerGroups ?? []}
+              participants={desk.participants ?? []}
+              playbackReady={playbackReady}
+              currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
+              busy={busy}
+              onPlayAt={playFromTime}
+              onSaved={saved}
+            />
+          </div> : null}
+        </section>
+      ) : null}
 
       {desk.gate.allowed && (desk.segments.length ? (
         <section aria-labelledby="linear-transcript-heading">

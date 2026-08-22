@@ -295,6 +295,9 @@ describe("TranscriptCorrectionDesk", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
+    const voiceLabels = await screen.findByRole("button", { name: /voice labels/i });
+    expect(screen.queryByText("Identify a voice once")).not.toBeInTheDocument();
+    fireEvent.click(voiceLabels);
     await screen.findByText("Identify a voice once");
     expect(document.getElementById("speaker-attribution-review")).toBeInTheDocument();
     expect(screen.getByText(/does not mark those words playback-reviewed/i)).toBeInTheDocument();

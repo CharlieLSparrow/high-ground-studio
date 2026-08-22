@@ -396,6 +396,10 @@ failure shapes recur often enough to influence the architecture:
   lazy-load behind one clearly labeled `Audio, timing, and accuracy` control.
   This keeps the ordinary review path calm and avoids doing advanced analysis
   work merely because a person opened the transcript.
+- Made provider voice-cluster assignment a compact `Voice labels` control above
+  the transcript instead of a full diarization desk blocking the reading path.
+  Unresolved and stale clusters remain visible, but the listening samples and
+  assignment form mount only when someone chooses to identify or review voices.
 
 ## Acceptance consequences
 
