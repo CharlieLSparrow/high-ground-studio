@@ -590,6 +590,17 @@ describe("TranscriptCorrectionDesk", () => {
     });
   });
 
+  it("links coaching transcript review directly to the in-Session recording editor", async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" canEditRecording />);
+
+    expect(await screen.findByRole("link", { name: "Trim recording" })).toHaveAttribute(
+      "href",
+      "/sessions/room-1?mode=outputs#recording-share",
+    );
+  });
+
   it("saves a deliberate client-safe Session note with the exact transcript identity", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })

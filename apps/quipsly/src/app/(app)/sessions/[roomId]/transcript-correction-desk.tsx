@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AudioLines, Check, CircleAlert, Download, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, ShieldCheck, Share2, Sparkles, Target, TriangleAlert, X } from "lucide-react";
+import { AudioLines, Check, CircleAlert, Download, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, Scissors, ShieldCheck, Share2, Sparkles, Target, TriangleAlert, X } from "lucide-react";
 
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
 import { AudibleEventQualificationLab } from "@/components/audio/AudibleEventQualificationLab";
@@ -1595,11 +1595,13 @@ export function TranscriptCorrectionDesk({
   sessionTitle = "Quipsly Session",
   recordingAssetId = null,
   canUseProjectTeamNotes = false,
+  canEditRecording = false,
 }: {
   roomId: string;
   sessionTitle?: string;
   recordingAssetId?: string | null;
   canUseProjectTeamNotes?: boolean;
+  canEditRecording?: boolean;
 }) {
   const [desk, setDesk] = useState<Desk | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1839,6 +1841,7 @@ export function TranscriptCorrectionDesk({
             {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{reviewedSegmentCount} of {desk.segments.length} segments playback-reviewed</p>}
           </div>
           <div className="flex flex-wrap gap-2">
+            {canEditRecording ? <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=outputs#recording-share`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />Trim recording</Link> : null}
             <button type="button" onClick={() => void prepareTranscriptFile()} disabled={busy || !desk.gate.allowed || !desk.segments.length} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Share2 size={15} aria-hidden="true" />Prepare transcript file</button>
             <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh truth</button>
           </div>

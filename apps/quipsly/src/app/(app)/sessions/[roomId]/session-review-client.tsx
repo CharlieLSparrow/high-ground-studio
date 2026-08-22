@@ -6753,6 +6753,7 @@ export function SessionReviewClient({
               sessionTitle={sessionTitle}
               recordingAssetId={focusedRecordingAssetId}
               canUseProjectTeamNotes={canUseProjectTeamNotes}
+              canEditRecording={purpose === "COACHING"}
             />
           </>
         )

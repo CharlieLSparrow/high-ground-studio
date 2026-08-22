@@ -405,6 +405,11 @@ failure shapes recur often enough to influence the architecture:
   Play, confirm, and correct remain immediate; Quipsly's source-linked workflow
   appears when wanted instead of turning a readable transcript into a stack of
   forms and policy prose.
+- Connected coaching transcript review directly to the existing in-Session
+  `Trim recording` surface. A coach no longer has to infer that `Outputs` is
+  where basic range trimming, transcript-based passage removal, private preview,
+  proof-listening, and client release live; Studio remains unnecessary for this
+  everyday edit-and-share workflow.
 
 ## Acceptance consequences
 
