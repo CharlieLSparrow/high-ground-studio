@@ -4223,14 +4223,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         sessionTruth.tap()
 
-        let liveRoom = app.descendants(matching: .any)["CaptureLiveRoomDisclosure"].firstMatch
+        let liveRoom = app.descendants(matching: .any)["CaptureProviderRoomControls"].firstMatch
         XCTAssertTrue(
             scrollRuntimeElementIntoHittableView(liveRoom, in: app),
-            "Provider-room controls should be subordinate to and reachable below the local recorder."
+            "The standard call controls should be directly reachable before recorder details."
         )
-        liveRoom.tap()
-        XCTAssertTrue(waitForRuntimeElement(app.descendants(matching: .any)["CaptureProviderRoomBoundaryCopy"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "The live-room boundary copy and controls should be available on demand.")
-        XCTAssertTrue(waitForRuntimeElement(app.buttons["ProviderJoinRoomButton"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "Joining a room must remain a distinct action from starting local recording.")
+        XCTAssertTrue(waitForRuntimeElement(app.switches["CaptureJoinMutedToggle"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "The standard green room should expose a remembered join-muted choice.")
+        XCTAssertTrue(waitForRuntimeElement(app.buttons["ProviderJoinRoomButton"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "Joining a call must remain a distinct action from starting local recording.")
         XCTAssertTrue(waitForRuntimeElement(app.descendants(matching: .any)["CaptureSourceTruthFootnote"].firstMatch, in: app), "The selected-microphone source boundary should remain visible in the runtime path.")
 
         XCTAssertTrue(app.tabBars.buttons["Library"].firstMatch.exists)
@@ -4787,12 +4786,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         tapRootTab("Record", in: app)
         selectRequestedSession(in: app, credentials: credentials)
 
-        let liveRoom = app.descendants(matching: .any)["CaptureLiveRoomDisclosure"].firstMatch
+        let liveRoom = app.descendants(matching: .any)["CaptureProviderRoomControls"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(liveRoom, in: app, timeout: 18, swipeAttempts: 8),
-            "The selected production Session should expose its separate provider-room controls."
+            "The selected production Session should expose its standard call controls."
         )
-        liveRoom.tap()
 
         let join = app.buttons["ProviderJoinRoomButton"].firstMatch
         XCTAssertTrue(

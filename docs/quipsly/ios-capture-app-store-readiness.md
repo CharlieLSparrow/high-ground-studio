@@ -380,7 +380,7 @@ QUIPSLY_CAPTURE_UI_TEST_BASE_URL="http://127.0.0.1:3012" \
 apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh
 ```
 
-This does not bypass auth. It makes the real native Firebase login and Quipsly bearer verification point at the intended Nest backend in DEBUG builds. The smoke expects a signed-in account with at least one capture session, then verifies the five-tab shell, selected session, consent strip, dominant local recorder, subordinate provider-room disclosure, join control, and source-truth copy.
+This does not bypass auth. It makes the real native Firebase login and Quipsly bearer verification point at the intended Nest backend in DEBUG builds. The smoke expects a signed-in account with at least one capture session, then verifies the five-tab shell, selected session, direct standard call controls, remembered join-muted choice, consent strip, local recorder, and source-truth copy.
 
 For a one-shot generated-user proof, run the generated mobile capture auth smoke with runtime UI enabled:
 
@@ -400,8 +400,9 @@ Stable runtime landmarks:
 - `CaptureConsentStrip`
 - `CaptureRecorderHero`
 - `CaptureStartButton`
-- `CaptureLiveRoomDisclosure`
 - `CaptureProviderRoomControls`
+- `CaptureCallInputRoute`
+- `CaptureJoinMutedToggle`
 - `ProviderJoinRoomButton`
 - `CaptureSourceTruthFootnote`
 - `CaptureStudioHandoffCard_<session-id>`

@@ -60,8 +60,9 @@ assertIncludes("ProviderRoomController", controller, "didDeactivate audioSession
 for (const needle of [
   'accessibilityIdentifier("CaptureRecorderView")',
   'accessibilityIdentifier("CaptureSessionTruthPanel")',
-  'accessibilityIdentifier("CaptureLiveRoomDisclosure")',
   'accessibilityIdentifier("CaptureProviderRoomControls")',
+  'accessibilityIdentifier("CaptureCallInputRoute")',
+  'accessibilityIdentifier("CaptureJoinMutedToggle")',
   'accessibilityIdentifier("ProviderJoinRoomButton")',
   'accessibilityIdentifier("ProviderToggleMuteButton")',
   'accessibilityIdentifier("ProviderLeaveRoomButton")',
@@ -70,9 +71,8 @@ for (const needle of [
   "model.providerRoom.providerRuntimeDetail",
   "readiness.providerEgressLabel",
   "readiness.providerEgressDetail",
-  "Joining, CallKit, consent, local recording, and server recording remain separate states in Nest.",
   "Creates only the Nest receipt slot. It does not join the room or start recording.",
-  "remote provider audio requires separate participant tracks or verified provider egress",
+  "Joins the conversation. Recording starts only when someone taps Record.",
 ]) {
   assertIncludes("CapturePhoneShell", phoneShell, needle, "the shipping Session workflow must distinguish app runtime, server egress, receipt, live-room, and local-recording truth");
 }

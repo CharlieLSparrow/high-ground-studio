@@ -903,9 +903,10 @@ for (const needle of [
   "privacy/account-deletion",
   "Review transcript",
   "AI proposals stay outside transcript truth until you listen and decide.",
-  "CaptureLiveRoomDisclosure",
   "CaptureProviderRoomControls",
-  "ProviderControlsCaptureLockNotice",
+  "CaptureCallInputRoute",
+  "CaptureJoinMutedToggle",
+  "Join call",
   "CaptureStudioHandoffCard_",
   "CaptureSourceTruthFootnote",
   "CaptureLibraryJournalWarning",
@@ -953,8 +954,8 @@ for (const needle of [
   "CaptureConsentSaveChoicesButton",
   "Local source is production truth",
   "GlobalCaptureBanner",
-  "ProviderControlsCaptureLockNotice",
-  "Live room controls locked for this take",
+  "CaptureJoinMutedToggle",
+  "Finish this take to change the call",
   ".disabled(providerControlsLocked",
   "CaptureRecordingModePicker",
   "CaptureVideoRecorderHero",
@@ -1564,19 +1565,16 @@ assert(!audioSoundCheckText.includes("UploadManager"), "Sound check must not ent
 assert(!audioSoundCheckText.includes("LocalRecordingLibrary"), "Sound check must not create a canonical local source.", { forbidden: "LocalRecordingLibrary" });
 requireIncludes(audioSoundCheckModelText, "safeNearFullScaleObservationCount > 0", "sound check retains near-full-scale risk across later quiet windows");
 requireIncludes(audioSoundCheckModelText, "Listen back for mouth noise", "healthy electrical evidence still requires perceptual review");
-requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureLiveRoomDisclosure")', "shipping recorder exposes live room controls");
 requireIncludes(capturePhoneShellText, "ProviderRoomControls(", "shipping recorder reaches provider room controls");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureProviderRoomControls")', "shipping provider controls have a stable automation identity");
+requireIncludes(capturePhoneShellText, '@AppStorage("quipsly.call.join-muted.v1")', "shipping call entry remembers the safe join-muted choice on this device");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCallInputRoute")', "shipping call entry names the current microphone route");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinMutedToggle")', "shipping call entry exposes an addressable join-muted control");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderJoinRoomButton")', "shipping provider join action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderToggleMuteButton")', "shipping provider mute action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderLeaveRoomButton")', "shipping provider leave action is addressable");
-requireIncludes(
-  capturePhoneShellText,
-  "The live room lets people hear each other. The local source records only this iPhone's selected microphone; remote provider audio requires separate participant tracks or verified provider egress.",
-  "shipping room controls state the remote-audio recording boundary",
-);
-requireIncludes(capturePhoneShellText, "Live room controls locked for this take", "shipping room controls cannot reconfigure active local capture");
-requireIncludes(capturePhoneShellText, "Joining never starts local recording.", "shipping live-room disclosure preserves explicit recording start");
+requireIncludes(capturePhoneShellText, "Finish this take to change the call", "shipping room controls cannot reconfigure active local capture");
+requireIncludes(capturePhoneShellText, "Joins the conversation. Recording starts only when someone taps Record.", "shipping call control hint preserves explicit recording start");
 requireIncludes(capturePhoneShellText, "CaptureConsentConfirmationSheet(", "shipping recorder reaches explicit participant consent");
 requireIncludes(capturePhoneShellText, "Recording still starts separately.", "shipping consent does not imply recording");
 requireIncludes(capturePhoneShellText, "CaptureSessionContextPanel(", "shipping recorder reaches session context");
