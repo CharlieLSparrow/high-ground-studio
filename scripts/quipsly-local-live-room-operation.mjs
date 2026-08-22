@@ -273,7 +273,7 @@ const saveRenderedConsent = async (journey) => {
   if (!(await consentAction.isVisible())) {
     await journey.page
       .locator("summary")
-      .filter({ hasText: "Recording options" })
+      .filter({ hasText: /^Recording options/ })
       .click();
   }
   const [response] = await Promise.all([
@@ -473,7 +473,7 @@ try {
     if (!(await transcriptionConsent.isVisible())) {
       await journey.page
         .locator("summary")
-        .filter({ hasText: "Recording options" })
+        .filter({ hasText: /^Recording options/ })
         .click();
     }
     await transcriptionConsent.waitFor({ timeout: 20_000 });
