@@ -337,7 +337,7 @@ try {
     });
     await consentButton.waitFor({ state: "visible", timeout: 20_000 });
     const join = page.getByRole("button", {
-      name: "Join live room",
+      name: "Join call",
       exact: true,
     });
     await join.waitFor({ state: "visible", timeout: 20_000 });

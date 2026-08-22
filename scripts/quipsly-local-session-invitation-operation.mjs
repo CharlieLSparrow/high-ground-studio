@@ -385,7 +385,7 @@ try {
     await allowMicrophone.waitFor({ timeout: 20_000 });
     await allowMicrophone.click();
     const join = journey.page.getByRole("button", {
-      name: "Join live room",
+      name: "Join call",
       exact: true,
     });
     await join.waitFor({ state: "visible", timeout: 20_000 });
@@ -707,7 +707,7 @@ try {
     })
     .waitFor({ timeout: 20_000 });
   await guestPage
-    .getByRole("button", { name: "Join live room", exact: true })
+    .getByRole("button", { name: "Join call", exact: true })
     .waitFor({ timeout: 20_000 });
   assert(
     (await guestPage

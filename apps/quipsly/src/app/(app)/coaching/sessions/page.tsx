@@ -304,7 +304,7 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
             <div><dt className="text-[10px] font-black uppercase tracking-wide">Transcript</dt><dd className="font-bold">{titleCase(session.latestTranscriptStatus || "not started")}</dd></div>
           </dl>
           <div className="mt-4 grid gap-2">
-            {session.providerCanJoin ? <Link href={`${workspaceHref}?mode=live`} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-violet-700"><Video size={15} aria-hidden="true" /> Join live room</Link> : null}
+            {session.providerCanJoin ? <Link href={`${workspaceHref}?mode=live`} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-violet-700"><Video size={15} aria-hidden="true" /> Join call</Link> : null}
             <Link href={workspaceHref} className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#3d3122] px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-[#5a472f]">
               Open workspace
             </Link>
