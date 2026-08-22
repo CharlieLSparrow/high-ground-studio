@@ -1898,10 +1898,12 @@ function SessionSourceEvidenceCard({
           </p>
           {signalObservationCount > 0 ? (
             <a
-              href="#transcript-correction-review"
+              href="#transcript-audio-review"
               className="mt-3 inline-flex min-h-11 items-center rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-950"
             >
-              Review audio moments
+              {signalObservationCount === 1
+                ? "Check this audio moment"
+                : `Check ${signalObservationCount} audio moments`}
             </a>
           ) : null}
         </div>

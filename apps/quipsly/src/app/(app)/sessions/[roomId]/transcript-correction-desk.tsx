@@ -1659,9 +1659,20 @@ export function TranscriptCorrectionDesk({
   }, [desk?.transcriptStatus, load]);
 
   useEffect(() => {
+    const revealLinkedAudioReview = () => {
+      if (window.location.hash === "#transcript-audio-review") {
+        setShowQualityDetails(true);
+      }
+    };
+    revealLinkedAudioReview();
+    window.addEventListener("hashchange", revealLinkedAudioReview);
+    return () => window.removeEventListener("hashchange", revealLinkedAudioReview);
+  }, []);
+
+  useEffect(() => {
     if (!desk || typeof window === "undefined") return;
     const targetId = window.location.hash.slice(1);
-    if (targetId !== "speaker-attribution-review" && targetId !== "transcript-correction-review" && !targetId.startsWith("transcript-segment-")) return;
+    if (targetId !== "speaker-attribution-review" && targetId !== "transcript-correction-review" && targetId !== "transcript-audio-review" && !targetId.startsWith("transcript-segment-")) return;
     const frame = window.requestAnimationFrame(() => {
       const target = document.getElementById(targetId);
       if (!target) return;
@@ -1669,7 +1680,7 @@ export function TranscriptCorrectionDesk({
       target.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [desk]);
+  }, [desk, showQualityDetails]);
 
   const spectralTranscriptWords = useMemo(
     () => transcriptWordsForAudioEvidence(desk?.segments ?? []),
@@ -1919,7 +1930,7 @@ export function TranscriptCorrectionDesk({
         )}
       </div>
 
-      <section className="rounded-2xl border border-sky-200 bg-sky-50/45 p-4 shadow-sm" aria-labelledby="transcript-quality-heading">
+      <section id="transcript-audio-review" tabIndex={-1} className="rounded-2xl border border-sky-200 bg-sky-50/45 p-4 shadow-sm" aria-labelledby="transcript-quality-heading">
         <button
           type="button"
           aria-expanded={showQualityDetails}

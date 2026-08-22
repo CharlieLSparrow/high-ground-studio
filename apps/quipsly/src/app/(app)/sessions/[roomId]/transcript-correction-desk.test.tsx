@@ -129,6 +129,18 @@ describe("TranscriptCorrectionDesk", () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    window.history.replaceState(null, "", window.location.pathname);
+  });
+
+  it("opens audio evidence automatically from a recording-health deep link", async () => {
+    window.history.replaceState(null, "", "#transcript-audio-review");
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+
+    const qualityToggle = await screen.findByRole("button", { name: /audio, timing, and accuracy/i });
+    await waitFor(() => expect(qualityToggle).toHaveAttribute("aria-expanded", "true"));
+    expect(document.getElementById("transcript-audio-review")).toBeInTheDocument();
   });
 
   it("sends the exact room, provider evidence, and played media position when a reviewer accepts", async () => {

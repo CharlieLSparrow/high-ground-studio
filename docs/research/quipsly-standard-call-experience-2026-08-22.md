@@ -469,7 +469,9 @@ failure shapes recur often enough to influence the architecture:
   codecs, and signal measurements remain available under `Technical recording
   details`; they prove the state without becoming homework. An audio warning
   links directly to its transcript/audio review surface instead of opening a
-  separate diagnostics workflow.
+  separate diagnostics workflow. Deep links automatically reveal the otherwise
+  collapsed audio evidence, so a warning never lands on a page that appears to
+  contain no matching next step.
 
 ## Acceptance consequences
 

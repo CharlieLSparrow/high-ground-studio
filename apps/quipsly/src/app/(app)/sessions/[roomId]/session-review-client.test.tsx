@@ -1918,7 +1918,7 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText(/every participant recording reached private storage intact/i)).toBeInTheDocument();
     expect(screen.getByText("Safely stored")).toBeInTheDocument();
     expect(screen.getByText("1 moment worth checking")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Review audio moments" })).toHaveAttribute("href", "#transcript-correction-review");
+    expect(screen.getByRole("link", { name: "Check this audio moment" })).toHaveAttribute("href", "#transcript-audio-review");
     expect(screen.getByText("Technical recording details")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download technical receipt" })).toHaveAttribute(
       "href",
