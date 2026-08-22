@@ -83,6 +83,31 @@ struct CaptureAudioSoundCheckModelHarness {
             CaptureAudioSoundCheckHealth.healthy.guidance.contains("Listen back"),
             "healthy electrical level must still require human listen-back"
         )
+        require(
+            CaptureAudioSoundCheckPrompt.forRemainingSeconds(10).heading
+                .contains("normal voice"),
+            "the check must begin with representative normal speech"
+        )
+        require(
+            CaptureAudioSoundCheckPrompt.forRemainingSeconds(7).heading
+                .contains("loudest likely sentence"),
+            "the check must include expected emphasis before its peak reading"
+        )
+        require(
+            CaptureAudioSoundCheckPrompt.forRemainingSeconds(4).detail
+                .contains("plosives"),
+            "the check must explain its plosive-heavy listen-back phrase"
+        )
+        require(
+            CaptureAudioSoundCheckPrompt.forRemainingSeconds(2).heading
+                .contains("stay quiet"),
+            "the check must include a quiet tail for room and routing review"
+        )
+        require(
+            CaptureAudioSoundCheckPrompt.forRemainingSeconds(.nan).heading
+                .contains("normal voice"),
+            "invalid timer evidence must return to the safe first prompt"
+        )
 
         do {
             let original = summary(average: -24, peak: -9)

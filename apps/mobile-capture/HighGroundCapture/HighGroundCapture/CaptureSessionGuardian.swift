@@ -241,7 +241,7 @@ enum CaptureSessionGuardianProjector {
             "Session Guardian",
             "iPhone paths are ready for a deliberate start",
             "Session readiness, the selected local source, and the live conversation have no observed blocker.",
-            "Confirm the sound check and start the retained source explicitly.",
+            "Start recording when everyone is ready. The private sound check remains optional.",
             evidence
         )
     }

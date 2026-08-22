@@ -45,6 +45,36 @@ enum CaptureAudioSoundCheckPlaybackDecision: String, Codable, Equatable, Sendabl
     }
 }
 
+struct CaptureAudioSoundCheckPrompt: Equatable, Sendable {
+    let heading: String
+    let detail: String
+
+    static func forRemainingSeconds(_ remainingSeconds: TimeInterval) -> Self {
+        guard remainingSeconds.isFinite, remainingSeconds <= 7 else {
+            return Self(
+                heading: "Use your normal voice",
+                detail: "Speak at the distance and energy you expect during the Session."
+            )
+        }
+        if remainingSeconds > 4 {
+            return Self(
+                heading: "Try your loudest likely sentence",
+                detail: "This checks whether ordinary emphasis still has headroom."
+            )
+        }
+        if remainingSeconds > 2 {
+            return Self(
+                heading: "Say: Better conversations put people first",
+                detail: "The B and P sounds make plosives and close-mic technique easier to hear on playback."
+            )
+        }
+        return Self(
+            heading: "Pause and stay quiet",
+            detail: "Listen back for room echo, fans, hiss, hum, or an unexpected open microphone."
+        )
+    }
+}
+
 struct CaptureAudioSoundCheckSummary: Codable, Equatable, Sendable {
     static let clippingRiskPeakDBFS: Float = -1
     static let hotPeakDBFS: Float = -3

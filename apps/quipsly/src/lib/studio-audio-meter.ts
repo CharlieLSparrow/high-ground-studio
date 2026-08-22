@@ -198,7 +198,7 @@ export function studioSoundCheckPrompt(remainingSeconds: number) {
     detail: "This reveals whether ordinary emphasis will run out of headroom.",
   };
   if (remainingSeconds > 2) return {
-    heading: "Say: Better podcasts put people first",
+    heading: "Say: Better conversations put people first",
     detail: "The repeated B and P sounds make plosives and close-mic technique easier to hear on playback.",
   };
   return {

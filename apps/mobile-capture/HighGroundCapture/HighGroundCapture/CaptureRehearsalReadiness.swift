@@ -213,7 +213,6 @@ struct CaptureRehearsalReadinessCard: View {
         ]
         if mode.requiresAudioConsent {
             result.append(soundCheckItem)
-            result.append(sharedPreflightItem)
         }
         if mode.recordsVideo {
             result.append(cameraItem)
@@ -260,9 +259,9 @@ struct CaptureRehearsalReadinessCard: View {
         guard hasEpisodeContext else {
             return item(
                 "session",
-                "Session destination",
-                "\(session.displayTitle) is selected, but it is not bound to an episode.",
-                .action
+                "Session",
+                "\(session.displayTitle) is selected for this recording.",
+                .ready
             )
         }
         return item(
@@ -349,114 +348,64 @@ struct CaptureRehearsalReadinessCard: View {
             if soundCheck.state == .recording {
                 return item(
                     "sound-check",
-                    "Listen-back sound check",
-                    "Speak at normal episode level while Quipsly records up to ten local-only seconds.",
-                    .action
+                    "Optional sound check",
+                    "Speak at normal Session level while Quipsly records up to ten local-only seconds.",
+                    .action,
+                    required: false
                 )
             }
             return item(
                 "sound-check",
-                "Listen-back sound check",
-                "Record and replay normal speech on the selected microphone before the real take.",
-                .action
+                "Optional sound check",
+                "Record and replay a private sample when the microphone or room has changed.",
+                .action,
+                required: false
             )
         }
         guard summary.routeName == audioCapture.inputRouteName else {
             return item(
                 "sound-check",
-                "Listen-back sound check",
+                "Optional sound check",
                 "The check used \(summary.routeName), but the selected route is now \(audioCapture.inputRouteName). Run it again.",
-                .blocked
+                .blocked,
+                required: false
             )
         }
         guard summary.duration >= soundCheck.minimumUsefulDuration else {
             return item(
                 "sound-check",
-                "Listen-back sound check",
+                "Optional sound check",
                 "The check lasted \(formattedDuration(summary.duration)). Run at least three seconds of normal speech so the level evidence is representative.",
-                .action
+                .action,
+                required: false
             )
         }
         guard soundCheck.playbackCompleted else {
             return item(
                 "sound-check",
-                "Listen-back sound check",
+                "Optional sound check",
                 "The level reading is available, but the complete private sample has not been heard yet.",
-                .action
+                .action,
+                required: false
             )
         }
         guard let decision = soundCheck.playbackDecision else {
             return item(
                 "sound-check",
-                "Listen-back sound check",
+                "Optional sound check",
                 "Full playback completed on \(soundCheck.playbackOutputRouteName ?? "the current output"). Record whether it sounded clear or needs adjustment.",
-                .action
+                .action,
+                required: false
             )
         }
         let detail = "\(summary.routeName) · average \(formattedDBFS(summary.averagePowerDBFS)) · peak \(formattedDBFS(summary.peakPowerDBFS)). \(summary.health.guidance)"
         return item(
             "sound-check",
-            "Listen-back sound check",
+            "Optional sound check",
             detail,
-            summary.health == .healthy && decision == .heardClear ? .ready : .blocked
+            summary.health == .healthy && decision == .heardClear ? .ready : .blocked,
+            required: false
         )
-    }
-
-    private var sharedPreflightItem: CaptureRehearsalCheckItem {
-        guard let checkID = soundCheck.checkID,
-              soundCheck.playbackDecision != nil else {
-            return item(
-                "shared-preflight",
-                "Shared setup receipt",
-                "Complete the private listen-back before this iPhone can share exact setup evidence with collaborators.",
-                .action
-            )
-        }
-        guard let receipt = preflight.receipt(
-            roomID: session.callRoomId,
-            checkID: checkID
-        ) else {
-            return item(
-                "shared-preflight",
-                "Shared setup receipt",
-                "The listening decision has not yet been committed to the protected iPhone outbox.",
-                .action
-            )
-        }
-        switch receipt.deliveryState {
-        case .pending:
-            return item(
-                "shared-preflight",
-                "Shared setup receipt",
-                "Saved on this iPhone and waiting for Nest. Local capture remains available; collaborators do not see a current receipt yet.",
-                .action
-            )
-        case .rejected:
-            return item(
-                "shared-preflight",
-                "Shared setup receipt",
-                receipt.serverError ?? "Nest held this receipt. Run a fresh check.",
-                .blocked
-            )
-        case .acknowledged:
-            if receipt.isCurrentReady {
-                return item(
-                    "shared-preflight",
-                    "Shared setup receipt",
-                    "Nest verified this exact iPhone, microphone, output, full playback, and listener decision for the current Session.",
-                    .ready
-                )
-            }
-            let issues = receipt.serverIssueCodes.isEmpty
-                ? "This receipt is no longer a current ready claim."
-                : receipt.serverIssueCodes.joined(separator: ", ")
-            return item(
-                "shared-preflight",
-                "Shared setup receipt",
-                "Nest saved the evidence without painting it ready: \(issues)",
-                .blocked
-            )
-        }
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {
@@ -496,9 +445,10 @@ struct CaptureRehearsalReadinessCard: View {
         guard manuscript.hasReadableCopy else {
             return item(
                 "manuscript",
-                "Episode script",
-                "Load the canonical Nest manuscript before the take.",
-                .action
+                "Episode script (optional)",
+                "Add a script when this Episode needs one; it is not required to record.",
+                .action,
+                required: false
             )
         }
         let count = manuscript.writing?.blockCount ?? manuscript.blocks.count
@@ -514,9 +464,10 @@ struct CaptureRehearsalReadinessCard: View {
         guard let clip = watch.selectedClip else {
             return item(
                 "watch",
-                "First shared clip",
-                "Choose the first Episode Watch source.",
-                .blocked
+                "Shared clip (optional)",
+                "Add a clip only when everyone needs to watch one during this Session.",
+                .action,
+                required: false
             )
         }
         if previewOnly {
@@ -538,6 +489,15 @@ struct CaptureRehearsalReadinessCard: View {
     }
 
     private var headphonesItem: CaptureRehearsalCheckItem {
+        guard watch.selectedClip != nil else {
+            return item(
+                "headphones",
+                "Headphones (optional)",
+                "Headphones are recommended for calls and required only when shared playback must stay out of the microphone master.",
+                .action,
+                required: false
+            )
+        }
         if previewOnly {
             return item(
                 "headphones",
@@ -571,20 +531,31 @@ struct CaptureRehearsalReadinessCard: View {
         items.filter { $0.required && $0.state != .ready }.count
     }
 
+    private var optionalWarningCount: Int {
+        items.filter { !$0.required && $0.state == .blocked }.count
+    }
+
     private var summaryLabel: String {
         if previewOnly { return "Physical proof needed" }
-        if remainingRequiredCount == 0 { return "Ready for rehearsal" }
+        if remainingRequiredCount == 0 && optionalWarningCount == 0 {
+            return "Ready to record"
+        }
+        if remainingRequiredCount == 0 {
+            return "Ready · optional check needs attention"
+        }
         return "\(remainingRequiredCount) \(remainingRequiredCount == 1 ? "check" : "checks") left"
     }
 
     private var summarySystemImage: String {
-        remainingRequiredCount == 0 && !previewOnly
+        remainingRequiredCount == 0 && optionalWarningCount == 0 && !previewOnly
             ? "checkmark.seal.fill"
             : "checklist"
     }
 
     private var summaryTint: Color {
-        remainingRequiredCount == 0 && !previewOnly ? .green : .orange
+        remainingRequiredCount == 0 && optionalWarningCount == 0 && !previewOnly
+            ? .green
+            : .orange
     }
 
     private var readinessChevron: some View {
@@ -616,7 +587,7 @@ struct CaptureRehearsalReadinessCard: View {
         if previewOnly {
             return "Preview shows the checklist shape only. It never claims physical-device, consent, route, storage, protected-download, or room proof."
         }
-        return "This checklist does not grant consent, join the room, or start recording. A protected iPhone outbox can delay the collaboration receipt without blocking local capture. Existing capture guards remain authoritative; rerun after changing the microphone, camera, headphones, account, or Session."
+        return "Joining still does not start recording. Run the optional sound check after changing the microphone, room, or headphones; Quipsly keeps that private sample on this iPhone."
     }
 
     private var hasEpisodeContext: Bool {
@@ -705,6 +676,20 @@ private struct CaptureAudioSoundCheckControls: View {
             }
 
             if controller.state == .recording {
+                let prompt = CaptureAudioSoundCheckPrompt.forRemainingSeconds(
+                    controller.maximumDuration - controller.elapsed
+                )
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(prompt.heading)
+                        .font(.subheadline.weight(.bold))
+                    Text(prompt.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("CaptureSoundCheckPrompt")
+
                 InputLevelMeter(
                     averagePowerDB: controller.liveAveragePowerDBFS,
                     peakPowerDB: controller.livePeakPowerDBFS,
@@ -825,7 +810,7 @@ private struct CaptureAudioSoundCheckControls: View {
                         }
                         .frame(maxWidth: .infinity)
                     } else {
-                        Label("Record 10-second sound check", systemImage: "record.circle")
+                        Label("Record optional sound check", systemImage: "record.circle")
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -843,7 +828,7 @@ private struct CaptureAudioSoundCheckControls: View {
                     .accessibilityIdentifier("CaptureSoundCheckMessage")
             }
 
-            Text("This sample stays on this iPhone, is never uploaded or added to the Session, and is deleted automatically.")
+            Text("Optional. This sample stays on this iPhone, is never uploaded or added to the Session, and is deleted automatically.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

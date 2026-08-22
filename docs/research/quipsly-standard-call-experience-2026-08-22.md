@@ -116,6 +116,15 @@ failure shapes recur often enough to influence the architecture:
   unusable post-call media, audio/video drift, and editors that obscure the
   underlying tracks. The product lesson is to make entry boring and source
   health unusually transparent—not to add more setup choices.
+- Cross-product guest feedback keeps returning to the same minimum contract:
+  one link, no technical homework before or after the call, an obvious Join
+  action, and separate local tracks. Even useful setup tests become disliked
+  when they are framed as gates instead of optional confidence tools.
+- Recent Rooms feedback also describes transcription quality changing depending
+  on whether the same media came through the room or was re-imported as separate
+  files. Quipsly must bind transcription to the exact participant source and
+  channel layout, expose that provenance, and never let the collaborative room
+  mix silently replace better isolated masters.
 - Chrome's modern Page Lifecycle guidance treats `visibilitychange` to hidden as
   the last reliably observable mobile boundary and explicitly warns against
   pretending `unload` can save work. Quipsly therefore journals source chunks
@@ -410,6 +419,17 @@ failure shapes recur often enough to influence the architecture:
   where basic range trimming, transcript-based passage removal, private preview,
   proof-listening, and client release live; Studio remains unnecessary for this
   everyday edit-and-share workflow.
+- Removed the iPhone sound check and its internal receipt from the required
+  readiness count. A selected coaching Session is now a valid recording
+  destination without needing a podcast Episode binding, and internal receipt
+  delivery stays automatic instead of appearing as another user task.
+- Aligned the optional iPhone sound check with the browser: normal speech,
+  expected emphasis, a plosive-heavy phrase, and a quiet tail. Running it can
+  reveal a warning, but skipping it never blocks an otherwise valid recording.
+- Stopped treating every podcast Session as if it required a script, shared
+  clip, and headphones. Scripts and clips are optional; once a shared clip is
+  actually selected, its local preparation and private listening route become
+  real readiness requirements for that Session.
 
 ## Acceptance consequences
 

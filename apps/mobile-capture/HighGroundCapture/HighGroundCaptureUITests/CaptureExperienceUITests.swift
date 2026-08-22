@@ -491,15 +491,13 @@ final class CaptureExperienceUITests: XCTestCase {
             "CaptureRehearsalCheck_sound-check"
         ]
         XCTAssertTrue(soundCheck.exists)
-        XCTAssertTrue(soundCheck.label.contains("Listen-back sound check"))
-        XCTAssertTrue(soundCheck.label.contains("Record and replay normal speech"))
-        let sharedPreflight = app.descendants(matching: .any)[
-            "CaptureRehearsalCheck_shared-preflight"
-        ]
-        XCTAssertTrue(sharedPreflight.exists)
+        XCTAssertTrue(soundCheck.label.contains("Optional sound check"))
+        XCTAssertTrue(soundCheck.label.contains("Record and replay a private sample"))
         XCTAssertTrue(
-            sharedPreflight.label.contains("Complete the private listen-back"),
-            "The collaboration receipt must stay visibly separate from local meter evidence."
+            !app.descendants(matching: .any)[
+                "CaptureRehearsalCheck_shared-preflight"
+            ].exists,
+            "Internal receipt delivery must not become another pre-record task."
         )
         let soundCheckControls = app.descendants(matching: .any)[
             "CaptureSoundCheckControls"
@@ -2098,11 +2096,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(disclosure.waitForExistence(timeout: 8))
         disclosure.tap()
 
-        let sharedReceipt = app.descendants(matching: .any)[
-            "CaptureRehearsalCheck_shared-preflight"
-        ]
-        XCTAssertTrue(sharedReceipt.waitForExistence(timeout: 8))
-        XCTAssertTrue(sharedReceipt.label.contains("waiting for Nest"))
+        XCTAssertFalse(
+            app.descendants(matching: .any)[
+                "CaptureRehearsalCheck_shared-preflight"
+            ].exists,
+            "Receipt recovery must stay automatic instead of adding a visible setup chore."
+        )
         let firstIdentity = app.staticTexts["CaptureSessionPreflightOutboxReceiptID"]
         XCTAssertTrue(firstIdentity.waitForExistence(timeout: 8))
         let receiptID = firstIdentity.label
