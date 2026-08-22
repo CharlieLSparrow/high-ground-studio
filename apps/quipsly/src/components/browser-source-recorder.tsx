@@ -77,6 +77,7 @@ import {
   readBrowserRecordingDirective,
   type BrowserRecordingDirective,
 } from "@/lib/browser-recording-directive";
+import { useActiveMediaLifecycle } from "@/hooks/use-active-media-lifecycle";
 
 type ConsentPolicy = {
   version: string;
@@ -333,6 +334,22 @@ export function BrowserSourceRecorder({
   const directiveBaselineEstablishedRef = useRef(false);
   const recordingDirectiveRef = useRef<BrowserRecordingDirective | null>(null);
   const handledStopRequestVersionRef = useRef(0);
+
+  const flushPendingMedia = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    try {
+      recorder.requestData();
+    } catch {
+      // The periodic chunk journal remains the recovery boundary if the
+      // encoder transitions state during this best-effort visibility flush.
+    }
+  }, []);
+
+  useActiveMediaLifecycle({
+    hasUnsavedMedia: sourceLocked,
+    flushPendingMedia,
+  });
 
   useEffect(() => {
     directiveBaselineEstablishedRef.current = false;

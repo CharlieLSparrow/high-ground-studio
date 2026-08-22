@@ -103,6 +103,16 @@ failure shapes recur often enough to influence the architecture:
   local masters for final quality. Quipsly should make the fast collaborative
   projection feel instant while keeping the independent source masters easy to
   inspect and replace.
+- Chrome's modern Page Lifecycle guidance treats `visibilitychange` to hidden as
+  the last reliably observable mobile boundary and explicitly warns against
+  pretending `unload` can save work. Quipsly therefore journals source chunks
+  continuously, requests one more encoder chunk when the page becomes hidden,
+  and installs `beforeunload` only while a master is genuinely unsaved.
+- The Screen Wake Lock API is now available across the major browser engines,
+  but the OS may revoke or refuse it for visibility, battery, or power-policy
+  reasons. Quipsly quietly holds it only during a joined call or active source,
+  releases it immediately afterward, and treats refusal as a convenience loss,
+  never a media failure.
 
 ## Quipsly interaction contract
 
@@ -211,6 +221,13 @@ failure shapes recur often enough to influence the architecture:
   `Safe on this device`, `Uploading safely`, `Verified in Quipsly`, or
   `Needs attention`. Manual download and retry remain available as escape
   hatches, not the normal path.
+- Added browser lifecycle protection without another setup surface. A joined
+  call or active source asks the platform to keep the screen awake, releases the
+  request as soon as work ends, and reacquires it after a visible-tab return.
+  Active retained media alone installs the browser's standard leave/reload
+  confirmation, and a hidden-page transition requests a fresh MediaRecorder
+  chunk for the already-continuous durable journal. No `unload` callback is
+  trusted to finalize or invent source safety.
 - Separated transcript correction from media editing. Accepted corrections
   remain versioned text/speaker overlays on immutable provider evidence;
   removing a passage creates a separate source-hash-bound edit decision.

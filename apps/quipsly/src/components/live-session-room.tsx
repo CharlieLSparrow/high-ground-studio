@@ -77,6 +77,7 @@ import {
   projectSessionGuardian,
   type BrowserRetainedSourceGuardianEvidence,
 } from "@/lib/session-guardian";
+import { useActiveMediaLifecycle } from "@/hooks/use-active-media-lifecycle";
 
 type DeviceOption = { deviceId: string; label: string };
 type PreferredDevices = {
@@ -433,6 +434,10 @@ export function LiveSessionRoom({
   useEffect(() => {
     sourceLockedRef.current = sourceLocked;
   }, [sourceLocked]);
+
+  useActiveMediaLifecycle({
+    keepScreenAwake: connected || sourceLocked,
+  });
 
   useEffect(() => {
     const preferred = readPreferredDevices();
