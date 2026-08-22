@@ -231,6 +231,7 @@ export function BrowserSourceRecorder({
   cameraId,
   cameraLabel,
   conversationConnected = true,
+  stopRequestVersion = 0,
   onSourceLockChange,
   onGuardianEvidenceChange,
   onPreparationStateChange,
@@ -246,6 +247,7 @@ export function BrowserSourceRecorder({
   cameraId: string;
   cameraLabel: string;
   conversationConnected?: boolean;
+  stopRequestVersion?: number;
   onSourceLockChange?: (locked: boolean) => void;
   onGuardianEvidenceChange?: (
     evidence: BrowserRetainedSourceGuardianEvidence,
@@ -329,13 +331,20 @@ export function BrowserSourceRecorder({
   const directiveHandlingRef = useRef(new Map<string, string>());
   const directiveInFlightRef = useRef(new Set<string>());
   const directiveBaselineEstablishedRef = useRef(false);
+  const recordingDirectiveRef = useRef<BrowserRecordingDirective | null>(null);
+  const handledStopRequestVersionRef = useRef(0);
 
   useEffect(() => {
     directiveBaselineEstablishedRef.current = false;
     directiveHandlingRef.current.clear();
     directiveInFlightRef.current.clear();
     setRecordingDirective(null);
+    recordingDirectiveRef.current = null;
   }, [callRoomId]);
+
+  useEffect(() => {
+    recordingDirectiveRef.current = recordingDirective;
+  }, [recordingDirective]);
 
   const reconcileEndpointQueue = useCallback(() => {
     if (endpointQueueTimerRef.current !== null)
@@ -1251,6 +1260,16 @@ export function BrowserSourceRecorder({
     [callRoomId, captureGroupId],
   );
 
+  useEffect(() => {
+    if (
+      stopRequestVersion <= handledStopRequestVersionRef.current ||
+      status !== "recording"
+    )
+      return;
+    handledStopRequestVersionRef.current = stopRequestVersion;
+    stop("Stopping and protecting this local recording before leaving the call…");
+  }, [status, stop, stopRequestVersion]);
+
   const clearGuardianMonitoring = useCallback(() => {
     guardianCleanupRef.current?.();
     guardianCleanupRef.current = null;
@@ -1748,6 +1767,18 @@ export function BrowserSourceRecorder({
             };
             await updateLedger(current);
           }
+          const activeDirective = recordingDirectiveRef.current;
+          if (activeDirective?.action === "START") {
+            await acknowledgeBrowserRecordingDirective({
+              roomId: callRoomId,
+              directiveId: activeDirective.id,
+              state: "STOPPED",
+              captureId,
+              detail:
+                "This endpoint stopped its retained local source safely; upload recovery remains independent.",
+            }).catch(() => undefined);
+            directiveHandlingRef.current.set(activeDirective.id, "STOPPED");
+          }
           setStatus(current.state === "held" ? "held" : "ready");
           setMessage(
             current.state === "held"
@@ -1956,7 +1987,7 @@ export function BrowserSourceRecorder({
         if (terminal === "JOIN_REQUIRED") return;
         if (
           directive.action === "START" &&
-          ["STARTED", "START_FAILED"].includes(terminal || "")
+          ["STARTED", "START_FAILED", "STOPPED"].includes(terminal || "")
         )
           return;
         if (

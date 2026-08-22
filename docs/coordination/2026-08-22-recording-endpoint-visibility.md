@@ -35,9 +35,26 @@ verification.
   endpoint-health model and host status surface linked into Quipsly Capture.
 - `git diff --check` passed.
 
+## Safe browser leave follow-up
+
+The call-to-playback trace found that browser `Leave` could disconnect while a
+retained local master was active. Component teardown attempted to stop the
+encoder, but it did not give the person a durable completion boundary and
+could leave the Session's endpoint projection stale.
+
+The connected control now becomes `Stop recording & leave` only while this
+device owns an active retained source. One click requests the local stop,
+waits for queued chunks, writer close, full-file hash, and the durable STOP
+receipt, publishes this endpoint's `STOPPED` coordination state, then leaves
+automatically. A stale device-refresh result is generation-cancelled so it
+cannot overwrite the final safe-leave message. Upload remains an independent,
+recoverable operation over the protected local file.
+
+Focused call/coordination coverage is now 24/24, including the operated safe
+leave sequence. Quipsly typecheck and whitespace validation pass.
+
 ## Release boundary
 
 This is post-Build-34 continuous work. Build 34 remains the sealed qualified
 candidate at revision `120a9090`; endpoint visibility must receive a new build
 identity and release qualification after the matching Nest release is live.
-

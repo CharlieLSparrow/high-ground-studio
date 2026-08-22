@@ -347,6 +347,8 @@ export function LiveSessionRoom({
   const [supportsOutputSelection, setSupportsOutputSelection] = useState(false);
   const [supportsOutputPrompt, setSupportsOutputPrompt] = useState(false);
   const [sourceLocked, setSourceLocked] = useState(false);
+  const [leaveAfterSourceStops, setLeaveAfterSourceStops] = useState(false);
+  const [sourceStopRequestVersion, setSourceStopRequestVersion] = useState(0);
   const [retainedGuardianEvidence, setRetainedGuardianEvidence] = useState<BrowserRetainedSourceGuardianEvidence | null>(null);
   const [pageVisible, setPageVisible] = useState(true);
   const [providerRecording, setProviderRecording] = useState<ProviderRecordingState | null>(null);
@@ -979,16 +981,40 @@ export function LiveSessionRoom({
     }
   }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId]);
 
-  const leave = useCallback(async () => {
+  const completeLeave = useCallback((protectedSourceStopped = false) => {
+    // Invalidate any device refresh started when the retained source unlocked.
+    // A late preflight result must not overwrite the final safe-leave state.
+    deviceRefreshGenerationRef.current += 1;
     clearPreflightPreview();
     roomRef.current?.disconnect(true);
     roomRef.current = null;
     clearRemoteMedia();
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     setParticipants([]);
+    setSourceStopRequestVersion(0);
     setStatus("ended");
-    setMessage("You left the call.");
+    setMessage(
+      protectedSourceStopped
+        ? "You left the call. Your local recording stopped safely; upload recovery continues automatically."
+        : "You left the call.",
+    );
   }, [clearPreflightPreview, clearRemoteMedia]);
+
+  const leave = useCallback(async () => {
+    if (sourceLocked) {
+      setLeaveAfterSourceStops(true);
+      setSourceStopRequestVersion((version) => version + 1);
+      setMessage("Stopping and protecting your local recording before leaving…");
+      return;
+    }
+    completeLeave(false);
+  }, [completeLeave, sourceLocked]);
+
+  useEffect(() => {
+    if (!leaveAfterSourceStops || sourceLocked) return;
+    setLeaveAfterSourceStops(false);
+    completeLeave(true);
+  }, [completeLeave, leaveAfterSourceStops, sourceLocked]);
 
   const join = useCallback(async () => {
     let selectedMicrophoneId = microphoneIdRef.current;
@@ -1391,6 +1417,7 @@ export function LiveSessionRoom({
       cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
       conversationConnected={connected}
       onSourceLockChange={setSourceLocked}
+      stopRequestVersion={sourceStopRequestVersion}
       onGuardianEvidenceChange={setRetainedGuardianEvidence}
       onPreparationStateChange={handlePreparationStateChange}
     />
@@ -1467,7 +1494,7 @@ export function LiveSessionRoom({
             <div className="flex flex-wrap gap-2" aria-label="Call controls">
               <button type="button" onClick={() => void toggleMicrophone()} disabled={microphoneMuted && microphoneRecoveryHeld} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-45 ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
               <button type="button" onClick={() => void toggleCamera()} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:opacity-45 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
-              <button type="button" onClick={() => void leave()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white"><PhoneOff size={16} /> Leave</button>
+              <button type="button" onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white disabled:cursor-wait disabled:opacity-60"><PhoneOff size={16} /> {leaveAfterSourceStops ? "Finishing safely…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
             </div>
           ) : null}
 

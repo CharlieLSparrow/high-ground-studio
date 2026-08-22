@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 
 const mockRouterRefresh = jest.fn();
 
@@ -59,6 +60,7 @@ import { LiveSessionRoom } from "./live-session-room";
 
 type MockLiveKitRoom = {
   __reset: () => void;
+  disconnect: jest.Mock;
   switchActiveDevice: jest.Mock;
   localParticipant: {
     setMicrophoneEnabled: jest.Mock;
@@ -73,16 +75,21 @@ jest.mock("@/components/browser-source-recorder", () => ({
     captureGroupId,
     projectSlug,
     conversationConnected,
+    stopRequestVersion,
     onSourceLockChange,
     onPreparationStateChange,
   }: {
     captureGroupId: string;
     projectSlug?: string | null;
     conversationConnected?: boolean;
+    stopRequestVersion?: number;
     onSourceLockChange?: (locked: boolean) => void;
     onPreparationStateChange?: (state: { participantReady: boolean; everyoneReady: boolean }) => void;
-  }) => (
-    <div>
+  }) => {
+    useEffect(() => {
+      if (stopRequestVersion) onSourceLockChange?.(false);
+    }, [onSourceLockChange, stopRequestVersion]);
+    return <div>
       <span data-testid="browser-source-capture-group">{captureGroupId}</span>
       <span data-testid="browser-source-project">{projectSlug || "unbound"}</span>
       <span data-testid="browser-source-conversation">{conversationConnected ? "connected" : "lobby"}</span>
@@ -90,7 +97,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
       <button type="button" onClick={() => onPreparationStateChange?.({ participantReady: true, everyoneReady: false })}>Simulate recording choice ready</button>
     </div>
-  ),
+  },
 }));
 
 describe("LiveSessionRoom", () => {
@@ -536,6 +543,53 @@ describe("LiveSessionRoom", () => {
     await waitFor(() => expect(enumerateDevices).toHaveBeenCalledTimes(2));
     expect(screen.getByRole("combobox", { name: "Microphone" })).toBeEnabled();
     expect(screen.getByRole("combobox", { name: "Camera" })).toBeEnabled();
+  });
+
+  it("stops and protects a retained source before leaving the call", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/mobile/capture/rooms/join")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: "room-scoped-test-token",
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true }),
+      } as Response;
+    }) as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-safe-leave" captureGroupId="55555555-5555-4555-8555-555555555544" sessionTitle="Safe leave" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Simulate retained source start" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop recording & leave" }));
+
+    expect(await screen.findByText("Call ended")).toBeInTheDocument();
+    expect(screen.getByTestId("call-status-message")).toHaveTextContent(
+      /local recording stopped safely.*upload recovery continues automatically/i,
+    );
+    expect(mockLiveKitRoom.disconnect).toHaveBeenCalledWith(true);
   });
 
   it("keeps device testing and conversation available while missing capture identity holds retained recording", async () => {
