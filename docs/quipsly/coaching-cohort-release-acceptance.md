@@ -920,3 +920,23 @@ confusion, observer intervention, and unfinished use. “No event received” is
 unknown, never success. A support workaround can unblock a person, but the run
 remains failed for self-service acceptance until another minimally instructed
 person completes the repaired path unaided.
+
+## Standard call source-candidate checkpoint — 2026-08-22
+
+Committed source `739696687c2315e2407c2e99006f2a482043c1f8` now gives browser
+and iPhone callers the conventional green-room hierarchy: preview, visible
+microphone/camera state, one Join action, direct in-call controls, secondary
+device settings and sound check, and remembered safe choices. Recording and
+transcription consent remain a separate explicit Session decision.
+
+The detached-source Capture preflight, 68 operated simulator journeys, signed
+App Store archive/export, and packaged artifact verification passed. The exact
+Nest Session evidence suite passed 66/66 and its strict optimized production
+build completed. This is source-candidate evidence, not a cohort release: Build
+33 already points at older public source, Google Cloud authentication expired
+before preview checks, and physical iPhone, real two-person call, local media,
+sync, transcript, mailbox, and minimally instructed acceptance remain open.
+
+The complete source identity, artifact hash, flaky-test note, and validation
+ledger live in
+`docs/coordination/2026-08-22-standard-call-candidate.md`.
