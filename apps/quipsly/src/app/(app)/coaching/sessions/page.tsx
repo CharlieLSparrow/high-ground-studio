@@ -398,7 +398,7 @@ export default function CoachingSessionsPage() {
   }
 
   const sessions = useMemo(() => payload?.sessions ?? [], [payload?.sessions]);
-  const isFirstSessionSetup = Boolean(
+  const isEmptyCreator = Boolean(
     payload?.user?.canCreateCaptureSessions && sessions.length === 0,
   );
   const nextSession = sessions.find((session) => !sessionIsCompleted(session)) ?? sessions[0];
@@ -436,10 +436,6 @@ export default function CoachingSessionsPage() {
     setVisibleLimit(12);
   }, [purposeFilter, sessionQuery, viewFilter]);
 
-  useEffect(() => {
-    if (isFirstSessionSetup) setIsPlannerOpen(true);
-  }, [isFirstSessionSetup]);
-
   return (
     <div className="min-h-full w-full overflow-y-auto bg-[radial-gradient(circle_at_top_left,#fff7df,transparent_34%),linear-gradient(135deg,#fffaf1,#f7efe2_45%,#edf8ef)]">
       <header className="mx-auto max-w-6xl px-6 pb-4 pt-8">
@@ -448,17 +444,17 @@ export default function CoachingSessionsPage() {
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-[#b98036]">Your sessions</p>
               <h1 className="max-w-3xl text-4xl font-black leading-tight text-[#3d3122]">
-                {isFirstSessionSetup
-                  ? "Create your first coaching Session."
+                {isEmptyCreator
+                  ? "Your Sessions start here."
                   : "Prepare, capture, transcribe, and follow through in one calm place."}
               </h1>
               <p className="mt-3 max-w-3xl text-[#7b5c3b]">
-                {isFirstSessionSetup
-                  ? "Give it a name now. You can schedule it and invite your client from the Session workspace next."
+                {isEmptyCreator
+                  ? "For coaching, add the client and time in one step. Use the flexible planner only for podcasts, interviews, or internal work."
                   : "Podcast, coaching, interview, and internal sessions share one explicit chain of Nest, people, consent, source recording, transcript, review, goals, tasks, and notes."}
               </p>
             </div>
-            {!isFirstSessionSetup ? <div className="flex flex-wrap items-center gap-3">
+            {!isEmptyCreator ? <div className="flex flex-wrap items-center gap-3">
               <Pill
                 label={
                   payload?.user?.isStaff
@@ -485,7 +481,7 @@ export default function CoachingSessionsPage() {
               {error} If you expected a Session here, sign in with the invited email or ask your coach to resend the invitation.
             </div>
           )}
-          {!isFirstSessionSetup ? <div className="mt-6 grid gap-3 md:grid-cols-4">
+          {!isEmptyCreator ? <div className="mt-6 grid gap-3 md:grid-cols-4">
             <HumanStep icon={<CalendarDays size={18} />} title="When" detail={nextSession ? `${formatDateTime(nextSession.scheduledStart)} to ${formatDateTime(nextSession.scheduledEnd)}` : "Your time appears here after a Session is scheduled."} tone={nextSession ? "good" : "warm"} />
             <HumanStep
               icon={<Receipt size={18} />}
@@ -510,13 +506,14 @@ export default function CoachingSessionsPage() {
           <section className="rounded-[1.8rem] border border-sky-200 bg-white/85 p-6 shadow-sm" aria-labelledby="new-session-heading">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-sky-700">{isFirstSessionSetup ? "Your first step" : "New Session"}</p>
-                <h2 id="new-session-heading" className="mt-1 text-2xl font-black text-[#3d3122]">{isFirstSessionSetup ? "Name your coaching Session" : "Plan a real session"}</h2>
-                <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#6f5a3d]">{isFirstSessionSetup ? "This creates the private workspace where you will schedule, invite, meet, record, and follow up." : "Create a podcast, coaching, interview, or internal Session when you need one."}</p>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-sky-700">{isEmptyCreator ? "Start with the right path" : "New Session"}</p>
+                <h2 id="new-session-heading" className="mt-1 text-2xl font-black text-[#3d3122]">{isEmptyCreator ? "Schedule coaching—or plan another kind of Session" : "Plan a real session"}</h2>
+                <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#6f5a3d]">{isEmptyCreator ? "Coaching uses the simple client-and-time scheduler. The flexible planner remains here for podcasts, interviews, and internal meetings." : "Create a podcast, coaching, interview, or internal Session when you need one."}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {isEmptyCreator ? <Link href="/coaching#create-appointment" className="inline-flex min-h-11 items-center justify-center rounded-full bg-violet-800 px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-violet-900">Schedule coaching</Link> : null}
                 <button type="button" aria-expanded={isPlannerOpen} aria-controls="session-planner" onClick={() => setIsPlannerOpen((current) => !current)} className="inline-flex min-h-11 items-center justify-center rounded-full bg-sky-800 px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-sky-900">
-                  {isPlannerOpen ? "Close planner" : "Plan a session"}
+                  {isPlannerOpen ? "Close planner" : isEmptyCreator ? "Plan another kind" : "Plan a session"}
                 </button>
               </div>
             </div>
@@ -602,7 +599,7 @@ export default function CoachingSessionsPage() {
           </section>
         ) : null}
 
-        {sessions.length === 0 && !error && !isFirstSessionSetup ? (
+        {sessions.length === 0 && !error && !isEmptyCreator ? (
           <div className="rounded-[1.8rem] border border-dashed border-[#d6c5a5] bg-white/75 p-8 text-[#7b5c3b] shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-[#3d3122]">
               <Clock size={20} />

@@ -50,12 +50,15 @@ describe("CoachingSessionsPage", () => {
     });
   });
 
-  it("opens a first coach's quiet Session planner and creates only the explicit canonical Session", async () => {
+  it("routes first-time coaching to the canonical scheduler and keeps the generic planner secondary", async () => {
     const user = userEvent.setup();
     render(<CoachingSessionsPage />);
 
-    expect(await screen.findByRole("heading", { name: "Create your first coaching Session." })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Name your coaching Session" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Your Sessions start here." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Schedule coaching—or plan another kind of Session" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Schedule coaching" })).toHaveAttribute("href", "/coaching#create-appointment");
+    expect(screen.queryByLabelText("Session title")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Plan another kind" }));
     expect(await screen.findByLabelText("Session title")).toBeInTheDocument();
     expect(screen.getByText(/take you to the private Session workspace to schedule it and invite your client/i)).toBeInTheDocument();
     expect(screen.queryByText(/No external side effects/i)).not.toBeInTheDocument();
