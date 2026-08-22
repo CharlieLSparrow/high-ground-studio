@@ -390,6 +390,12 @@ failure shapes recur often enough to influence the architecture:
   mouth sounds, noise/echo, and route/delay problems while clearly reserving
   those judgments for human listening; the live meter still claims only level,
   sample peak, clipping observations, and reported browser processing.
+- Reordered Session transcript review around the familiar recording and linear
+  transcript. Speaker identification and passage correction remain direct;
+  waveform, spectral, timing, source-health, provider, and evaluation tools now
+  lazy-load behind one clearly labeled `Audio, timing, and accuracy` control.
+  This keeps the ordinary review path calm and avoids doing advanced analysis
+  work merely because a person opened the transcript.
 
 ## Acceptance consequences
 

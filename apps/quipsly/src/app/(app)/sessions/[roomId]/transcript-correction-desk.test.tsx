@@ -397,6 +397,8 @@ describe("TranscriptCorrectionDesk", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByRole("heading", { name: "Transcript" });
+    fireEvent.click(screen.getByRole("button", { name: /audio, timing, and accuracy/i }));
     expect(await screen.findByText("Build accuracy truth from real listening")).toBeInTheDocument();
     const media = screen.getByLabelText("Protected session recording");
     Object.defineProperty(media, "paused", { configurable: true, value: false });
@@ -492,6 +494,8 @@ describe("TranscriptCorrectionDesk", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByRole("heading", { name: "Transcript" });
+    fireEvent.click(screen.getByRole("button", { name: /audio, timing, and accuracy/i }));
     expect(await screen.findByText("Matched experiment queue")).toBeInTheDocument();
     expect(screen.getByText(/queued is not running/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /queue matched local run/i }));
@@ -760,6 +764,9 @@ describe("TranscriptCorrectionDesk", () => {
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
 
+    expect(await screen.findByRole("heading", { name: "Transcript" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /what quipsly heard/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /audio, timing, and accuracy/i }));
     expect(await screen.findByRole("heading", { name: /what quipsly heard/i })).toBeInTheDocument();
     expect(screen.getByText("85.0%", { selector: "p" })).toBeInTheDocument();
     expect(screen.getAllByText(/50\.0% WER/i)).toHaveLength(2);

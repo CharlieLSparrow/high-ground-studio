@@ -1609,6 +1609,7 @@ export function TranscriptCorrectionDesk({
   const [listenedSecondBins, setListenedSecondBins] = useState<Set<number>>(() => new Set());
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [playbackState, setPlaybackState] = useState<"absent" | "loading" | "ready" | "error">("absent");
+  const [showQualityDetails, setShowQualityDetails] = useState(false);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
   const playbackReady = Boolean(desk?.playback) && playbackState === "ready";
@@ -1819,6 +1820,8 @@ export function TranscriptCorrectionDesk({
   if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{message || "No transcript text is substituted and no evidence was changed."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
 
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
+  const identifiedSpeakerCount = (desk.speakerGroups ?? []).filter((group) => group.attribution && !group.staleAttribution).length;
+  const timingIntegrity = desk.evidence?.transcript.timingIntegrity ?? null;
 
   return (
     <section id="transcript-correction-review" tabIndex={-1} aria-labelledby="transcript-correction-heading" className="space-y-5">
@@ -1908,49 +1911,73 @@ export function TranscriptCorrectionDesk({
         )}
       </div>
 
-      {desk.evidence ? <AudioTranscriptEvidencePanel
-          evidence={desk.evidence}
-          segments={desk.segments}
-          playbackReady={playbackReady}
-          selectedSeconds={playbackSeconds}
-          onSelectTime={setPlaybackSeconds}
-          onPlayAt={playFromTime}
-        /> : null}
+      <section className="rounded-2xl border border-sky-200 bg-sky-50/45 p-4 shadow-sm" aria-labelledby="transcript-quality-heading">
+        <button
+          type="button"
+          aria-expanded={showQualityDetails}
+          aria-controls="transcript-quality-details"
+          onClick={() => setShowQualityDetails((current) => !current)}
+          className="flex min-h-11 w-full items-center justify-between gap-4 rounded-xl text-left"
+        >
+          <span>
+            <span id="transcript-quality-heading" className="block text-sm font-black text-sky-950">Audio, timing, and accuracy</span>
+            <span className="mt-1 block text-xs font-semibold leading-5 text-sky-950/75">The transcript stays first. Open this when you want waveform, timing, source-health, or accuracy evidence.</span>
+          </span>
+          <span className="shrink-0 rounded-full border border-sky-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-sky-900">{showQualityDetails ? "Hide details" : "Show details"}</span>
+        </button>
+        <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
+          <span className={`rounded-full px-3 py-1.5 ${playbackReady ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>{playbackReady ? "Recording ready" : "Recording needs attention"}</span>
+          <span className={`rounded-full px-3 py-1.5 ${timingIntegrity?.disposition === "structurally-consistent" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>{timingIntegrity ? `${timingIntegrity.editableSegmentCount}/${desk.segments.length} timed passages` : "Timing not measured"}</span>
+          {(desk.speakerGroups ?? []).length > 0 ? <span className={`rounded-full px-3 py-1.5 ${identifiedSpeakerCount === desk.speakerGroups.length ? "bg-emerald-100 text-emerald-900" : "bg-indigo-100 text-indigo-900"}`}>{identifiedSpeakerCount}/{desk.speakerGroups.length} voices identified</span> : null}
+          <span className="rounded-full bg-violet-100 px-3 py-1.5 text-violet-900">{reviewedSegmentCount}/{desk.segments.length} passages reviewed</span>
+        </div>
 
-      {desk.playback && desk.spectralContext ? <SpectralEvidenceViewer
-        projectSlug={desk.spectralContext.projectSlug}
-        assetId={desk.spectralContext.assetId}
-        sourceId={desk.spectralContext.sourceId}
-        selectedSeconds={playbackSeconds}
-        playbackReady={playbackReady}
-        onSelect={(seconds, play) => {
-          setPlaybackSeconds(seconds);
-          if (play) void playFromTime(seconds);
-        }}
-        transcriptWords={spectralTranscriptWords}
-        lowConfidenceThreshold={desk.evidence?.transcript.lowConfidenceThreshold ?? null}
-        transcriptEndSeconds={desk.evidence?.transcript.transcriptEndSeconds ?? null}
-        transcriptScopeLabel="Session timed transcript"
-        evidenceMarkers={spectralEvidenceMarkers}
-      /> : null}
+        {showQualityDetails ? <div id="transcript-quality-details" className="mt-5 space-y-5">
+          {desk.evidence ? <AudioTranscriptEvidencePanel
+              evidence={desk.evidence}
+              segments={desk.segments}
+              playbackReady={playbackReady}
+              selectedSeconds={playbackSeconds}
+              onSelectTime={setPlaybackSeconds}
+              onPlayAt={playFromTime}
+            /> : null}
 
-      {desk.playback && desk.spectralContext && detectorDurationSeconds > 0 ? <AudibleEventQualificationLab
-        projectSlug={desk.spectralContext.projectSlug}
-        assetId={desk.spectralContext.assetId}
-        sourceId={desk.spectralContext.sourceId}
-        sourceUrl={desk.playback.url}
-        durationSeconds={detectorDurationSeconds}
-        defaultWorkload={desk.evaluation?.suggestedWorkload ?? "coaching"}
-      /> : null}
+          {desk.playback && desk.spectralContext ? <SpectralEvidenceViewer
+            projectSlug={desk.spectralContext.projectSlug}
+            assetId={desk.spectralContext.assetId}
+            sourceId={desk.spectralContext.sourceId}
+            selectedSeconds={playbackSeconds}
+            playbackReady={playbackReady}
+            onSelect={(seconds, play) => {
+              setPlaybackSeconds(seconds);
+              if (play) void playFromTime(seconds);
+            }}
+            transcriptWords={spectralTranscriptWords}
+            lowConfidenceThreshold={desk.evidence?.transcript.lowConfidenceThreshold ?? null}
+            transcriptEndSeconds={desk.evidence?.transcript.transcriptEndSeconds ?? null}
+            transcriptScopeLabel="Session timed transcript"
+            evidenceMarkers={spectralEvidenceMarkers}
+          /> : null}
 
-      {desk.evaluation ? <TranscriptAccuracyCorpusPanel
-        roomId={roomId}
-        evaluation={desk.evaluation}
-        busy={busy}
-        listenedSecondBins={[...listenedSecondBins].sort((left, right) => left - right)}
-        playbackSourceId={playbackReady ? desk.playback?.sourceId ?? null : null}
-        onSaved={saved}
-      /> : null}
+          {desk.playback && desk.spectralContext && detectorDurationSeconds > 0 ? <AudibleEventQualificationLab
+            projectSlug={desk.spectralContext.projectSlug}
+            assetId={desk.spectralContext.assetId}
+            sourceId={desk.spectralContext.sourceId}
+            sourceUrl={desk.playback.url}
+            durationSeconds={detectorDurationSeconds}
+            defaultWorkload={desk.evaluation?.suggestedWorkload ?? "coaching"}
+          /> : null}
+
+          {desk.evaluation ? <TranscriptAccuracyCorpusPanel
+            roomId={roomId}
+            evaluation={desk.evaluation}
+            busy={busy}
+            listenedSecondBins={[...listenedSecondBins].sort((left, right) => left - right)}
+            playbackSourceId={playbackReady ? desk.playback?.sourceId ?? null : null}
+            onSaved={saved}
+          /> : null}
+        </div> : null}
+      </section>
 
       {desk.gate.allowed && (
         <SpeakerAttributionPanel
@@ -1966,7 +1993,13 @@ export function TranscriptCorrectionDesk({
       )}
 
       {desk.gate.allowed && (desk.segments.length ? (
-        <ol className="space-y-4">
+        <section aria-labelledby="linear-transcript-heading">
+          <div className="mb-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Review and correct</p>
+            <h3 id="linear-transcript-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Transcript</h3>
+            <p className="mt-1 text-sm font-semibold leading-6 text-[#765f40]">Play any passage, correct the words or speaker, or confirm it as heard. Notes, tasks, and goals stay attached to the exact source moment.</p>
+          </div>
+          <ol className="space-y-4">
           {desk.segments.map((segment) => (
             <CorrectionEditor
               key={segment.id}
@@ -1982,7 +2015,8 @@ export function TranscriptCorrectionDesk({
               onSaved={saved}
             />
           ))}
-        </ol>
+          </ol>
+        </section>
       ) : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No persisted transcript segments are available for this session.</div>)}
     </section>
   );
