@@ -1108,8 +1108,8 @@ export function BrowserSourceRecorder({
       setMessage(
         current.state === "verified"
           ? current.sourceProfile.interruptionRecovery
-            ? "Recovered bytes verified. The interrupted ending is marked for repair before final editing."
-            : "Exact bytes verified. The local source remains protected and the editor evidence is ready."
+            ? "Recording saved. Quipsly is preparing it for reliable playback."
+            : "Recording saved and verified in Quipsly."
           : "The source is durable and server verification is still running. Keep the local source and retry status later.",
       );
       await refreshRecovery();
@@ -2761,15 +2761,15 @@ export function BrowserSourceRecorder({
                       className={`rounded-full px-2 py-1 ${source.verifiedForStudio ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}
                     >
                       {source.verifiedForStudio
-                        ? "bytes released"
+                        ? "saved and ready"
                         : source.interruptionRepairRequired
-                          ? "interrupted ending · repair queued"
+                          ? "saved · preparing playback"
                         : `${source.recordingStatus} · ${source.processingDisposition}`}
                     </span>
                     <span
                       className={`rounded-full px-2 py-1 ${source.promotedToStudio ? "bg-violet-800 text-white" : "bg-violet-100 text-violet-950"}`}
                     >
-                      {source.promotedToStudio ? "in Studio" : "not attached"}
+                      {source.promotedToStudio ? "ready to edit" : "preparing"}
                     </span>
                   </span>
                 </div>
