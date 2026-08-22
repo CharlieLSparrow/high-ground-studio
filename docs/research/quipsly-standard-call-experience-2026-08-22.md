@@ -102,6 +102,14 @@ failure shapes recur often enough to influence the architecture:
   and output identity, with label fallback when browser device IDs rotate.
 - Applied pre-join mute before publishing browser call audio, avoiding a brief
   open-microphone interval during connection.
+- Added debounced hot-plug recovery that reconciles browser device lists with
+  the actual LiveKit microphone and camera routes. A lost source now either
+  switches the published call to an available device or visibly mutes/turns it
+  off; the UI never claims a fallback that the call did not start.
+- Preserved the person's preferred studio hardware through an automatic
+  fallback, exposed a secondary `Refresh devices` action, and automatically
+  retries recovery after a protected retained recording releases its source
+  lock. A recording in progress is never silently relabeled to new hardware.
 
 ## Acceptance consequences
 
@@ -111,3 +119,8 @@ physical proof of permission prompting, remembered choices after relaunch,
 route consistency, interruption recovery, two-person joining, recording,
 upload/readback, and account isolation. Human availability never blocks further
 implementation work; these checks remain on the release evidence ledger.
+
+The physical route check must include unplugging and reconnecting a USB
+microphone, camera, and headphone output both before joining and during a live
+call. Verify the audible/visible route, the displayed route, mute/camera state,
+remembered preference after reload, and retained-source identity separately.

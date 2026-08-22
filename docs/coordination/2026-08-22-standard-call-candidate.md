@@ -3,6 +3,10 @@
 Date: 2026-08-22
 Status: source-qualified; not uploaded or deployed
 
+> Later working-tree note: browser hot-plug reconciliation was implemented and
+> locally tested after the source revision recorded below. It is not part of
+> this qualified artifact and must ride a later exact-source Nest candidate.
+
 ## Product decision
 
 The call path follows the conventions people already know from Meet, Zoom,
@@ -98,6 +102,10 @@ green simulator or build evidence.
 4. Install the new TestFlight build on a physical iPhone and prove the standard
    lobby, remembered join-muted choice, microphone/camera permission retention,
    join, mute, camera, leave, reconnect, backgrounding, and crash-free reopen.
+   On the browser side, unplug and reconnect the selected USB microphone,
+   camera, and headphones before and during a call; confirm the actual media
+   route matches the UI, the call fails closed when a retained source is
+   locked, and the preferred studio setup survives automatic fallback.
 5. Complete a two-person iPhone/browser call using ordinary accounts and an
    ordinary product-created invitation.
 6. Record real local audio and video at both ends, verify upload and immutable

@@ -1,12 +1,72 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { LiveSessionRoom } from "./live-session-room";
-
 const mockRouterRefresh = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: mockRouterRefresh }),
 }));
+
+jest.mock("livekit-client", () => {
+  const actual = jest.requireActual("livekit-client") as typeof import("livekit-client");
+  let state = actual.ConnectionState.Disconnected;
+  const localParticipant = {
+    identity: "browser-test-person",
+    name: "Browser tester",
+    publishData: jest.fn().mockResolvedValue(undefined),
+    setMicrophoneEnabled: jest.fn().mockResolvedValue(undefined),
+    setCameraEnabled: jest.fn().mockResolvedValue(undefined),
+  };
+  type RoomMock = {
+    readonly state: import("livekit-client").ConnectionState;
+    activeSpeakers: never[];
+    remoteParticipants: Map<unknown, unknown>;
+    localParticipant: typeof localParticipant;
+    on: jest.Mock;
+    connect: jest.Mock;
+    disconnect: jest.Mock;
+    switchActiveDevice: jest.Mock;
+    __reset: () => void;
+  };
+  let room: RoomMock;
+  room = {
+    get state() { return state; },
+    activeSpeakers: [],
+    remoteParticipants: new Map(),
+    localParticipant,
+    on: jest.fn(function on() { return room; }),
+    connect: jest.fn(async () => { state = actual.ConnectionState.Connected; }),
+    disconnect: jest.fn(() => { state = actual.ConnectionState.Disconnected; }),
+    switchActiveDevice: jest.fn().mockResolvedValue(undefined),
+    __reset: () => {
+      state = actual.ConnectionState.Disconnected;
+      room.on.mockClear();
+      room.connect.mockClear();
+      room.disconnect.mockClear();
+      room.switchActiveDevice.mockClear();
+      localParticipant.publishData.mockClear();
+      localParticipant.setMicrophoneEnabled.mockClear();
+      localParticipant.setCameraEnabled.mockClear();
+    },
+  };
+  return {
+    ...actual,
+    Room: jest.fn(() => room),
+    __mockRoom: room,
+  };
+});
+
+import { LiveSessionRoom } from "./live-session-room";
+
+type MockLiveKitRoom = {
+  __reset: () => void;
+  switchActiveDevice: jest.Mock;
+  localParticipant: {
+    setMicrophoneEnabled: jest.Mock;
+    setCameraEnabled: jest.Mock;
+  };
+};
+
+const mockLiveKitRoom = (jest.requireMock("livekit-client") as { __mockRoom: MockLiveKitRoom }).__mockRoom;
 
 jest.mock("@/components/browser-source-recorder", () => ({
   BrowserSourceRecorder: ({
@@ -40,6 +100,8 @@ describe("LiveSessionRoom", () => {
   beforeEach(() => {
     window.localStorage.removeItem("quipsly-live-preferred-devices-v1");
     window.localStorage.removeItem("quipsly-live-preferred-devices-v2");
+    jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    mockLiveKitRoom.__reset();
   });
 
   afterEach(() => {
@@ -145,6 +207,113 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("combobox", { name: "Microphone" })).toHaveValue("new-mic-id");
     expect(screen.getByRole("combobox", { name: "Camera" })).toHaveValue("new-camera-id");
     expect(screen.getByRole("button", { name: "Join call" })).toBeEnabled();
+  });
+
+  it("debounces device changes, selects an honest fallback, and keeps the preferred studio microphone", async () => {
+    let onDeviceChange: (() => void) | undefined;
+    const enumerateDevices = jest.fn()
+      .mockResolvedValueOnce([
+        { kind: "audioinput", deviceId: "mv7i", label: "Shure MV7i" },
+        { kind: "audioinput", deviceId: "mac-mic", label: "MacBook Microphone" },
+      ])
+      .mockResolvedValue([
+        { kind: "audioinput", deviceId: "mac-mic", label: "MacBook Microphone" },
+      ]);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices,
+        addEventListener: jest.fn((event: string, listener: () => void) => {
+          if (event === "devicechange") onDeviceChange = listener;
+        }),
+        removeEventListener: jest.fn(),
+      },
+    });
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-device-recovery" captureGroupId="55555555-5555-4555-8555-555555555548" sessionTitle="Device recovery" kind="coaching" />);
+    });
+    expect(await screen.findByRole("combobox", { name: "Microphone" })).toHaveValue("mv7i");
+    expect(onDeviceChange).toBeDefined();
+
+    await act(async () => {
+      onDeviceChange?.();
+      onDeviceChange?.();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+
+    expect(enumerateDevices).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("combobox", { name: "Microphone" })).toHaveValue("mac-mic");
+    expect(screen.getByText(/Microphone disconnected.*MacBook Microphone/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Join call" })).toBeEnabled();
+    expect(JSON.parse(window.localStorage.getItem("quipsly-live-preferred-devices-v2") || "{}"))
+      .toMatchObject({ microphoneId: "mv7i", microphoneLabel: "Shure MV7i" });
+  });
+
+  it("switches the published call route when the connected microphone disappears", async () => {
+    let onDeviceChange: (() => void) | undefined;
+    const enumerateDevices = jest.fn()
+      .mockResolvedValueOnce([
+        { kind: "audioinput", deviceId: "mv7i", label: "Shure MV7i" },
+        { kind: "audioinput", deviceId: "mac-mic", label: "MacBook Microphone" },
+      ])
+      .mockResolvedValue([
+        { kind: "audioinput", deviceId: "mac-mic", label: "MacBook Microphone" },
+      ]);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices,
+        addEventListener: jest.fn((event: string, listener: () => void) => {
+          if (event === "devicechange") onDeviceChange = listener;
+        }),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/mobile/capture/rooms/join")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: "room-scoped-test-token",
+            recordingConsentGranted: true,
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true }),
+      } as Response;
+    }) as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-live-device-recovery" captureGroupId="55555555-5555-4555-8555-555555555546" sessionTitle="Live device recovery" kind="coaching" />);
+    });
+    await screen.findByRole("option", { name: "Shure MV7i" });
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    mockLiveKitRoom.switchActiveDevice.mockClear();
+    mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mockClear();
+
+    await act(async () => {
+      onDeviceChange?.();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+
+    expect(mockLiveKitRoom.switchActiveDevice).toHaveBeenCalledWith("audioinput", "mac-mic");
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(true, {
+      deviceId: "mac-mic",
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    });
+    expect(screen.getByRole("combobox", { name: "Microphone" })).toHaveValue("mac-mic");
+    expect(screen.getByText(/The call moved to MacBook Microphone/i)).toBeInTheDocument();
   });
 
   it("presents one familiar coaching green room with optional settings and separate recording consent", async () => {
@@ -282,14 +451,15 @@ describe("LiveSessionRoom", () => {
   });
 
   it("locks call device identity while a retained local source is active", async () => {
+    const enumerateDevices = jest.fn().mockResolvedValue([
+      { kind: "audioinput", deviceId: "mv7i", label: "Shure MV7i" },
+      { kind: "videoinput", deviceId: "canon-r8", label: "Canon EOS R8" },
+      { kind: "audiooutput", deviceId: "mv7i-headphones", label: "Shure MV7i Headphones" },
+    ]);
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
-        enumerateDevices: jest.fn().mockResolvedValue([
-          { kind: "audioinput", deviceId: "mv7i", label: "Shure MV7i" },
-          { kind: "videoinput", deviceId: "canon-r8", label: "Canon EOS R8" },
-          { kind: "audiooutput", deviceId: "mv7i-headphones", label: "Shure MV7i Headphones" },
-        ]),
+        enumerateDevices,
         addEventListener: jest.fn(),
         removeEventListener: jest.fn(),
       },
@@ -303,7 +473,10 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("combobox", { name: "Microphone" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "Camera" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Simulate retained source stop" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Simulate retained source stop" }));
+    });
+    await waitFor(() => expect(enumerateDevices).toHaveBeenCalledTimes(2));
     expect(screen.getByRole("combobox", { name: "Microphone" })).toBeEnabled();
     expect(screen.getByRole("combobox", { name: "Camera" })).toBeEnabled();
   });
