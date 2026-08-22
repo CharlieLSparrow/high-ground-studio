@@ -13,6 +13,12 @@ const transcriptSegment = {
   text: "Remove the scheduling detour from the shared copy.",
   startSeconds: 8,
   endSeconds: 12,
+  cutStartSeconds: 8.1,
+  cutEndSeconds: 11.9,
+  timingFingerprint: "c".repeat(64),
+  timingBasis: "provider-words",
+  cutSafety: "safe",
+  cutSafetyReason: "Word timing is bound to this exact source recording.",
 };
 
 const snapshot = {
@@ -64,7 +70,30 @@ describe("SessionRecordingShareCard", () => {
         transcriptJobId: transcriptSegment.transcriptJobId,
         segmentId: transcriptSegment.segmentId,
         providerTextSha256: transcriptSegment.providerTextSha256,
+        timingFingerprint: transcriptSegment.timingFingerprint,
       }],
     }));
+  });
+
+  it("keeps overlapping speech included and explains why", async () => {
+    const unsafeSnapshot = {
+      ...snapshot,
+      available: {
+        ...snapshot.available,
+        transcriptSegments: [{
+          ...transcriptSegment,
+          cutSafety: "overlapping-speech",
+          cutSafetyReason: "Another participant is speaking here. Keep the passage.",
+        }],
+      },
+    };
+    global.fetch = jest.fn(async (_input: RequestInfo | URL) => response(unsafeSnapshot)) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const passage = await screen.findByText(transcriptSegment.text);
+    const passageCheckbox = passage.closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(passageCheckbox).toBeChecked();
+    expect(passageCheckbox).toBeDisabled();
+    expect(screen.getByText(/another participant is speaking here/i)).toBeInTheDocument();
   });
 });

@@ -28,6 +28,9 @@ function job() {
         segmentId: "transcript_segment_0001",
         sourceRecordingAssetId: "recording_asset_0001",
         providerTextSha256: "d".repeat(64),
+        timingFingerprint: "e".repeat(64),
+        timingBasis: "provider-words",
+        cutSafety: "safe",
         startSeconds: 20,
         endSeconds: 24,
       }],
@@ -65,6 +68,8 @@ test("Session recording share contract preserves exact source, edit, and target 
   assert.equal(value.kind, "quipsly-session-recording-share-job-v2");
   assert.equal(value.edit.keptRanges.length, 2);
   assert.equal(value.edit.transcriptExclusions[0]?.segmentId, "transcript_segment_0001");
+  assert.equal(value.edit.transcriptExclusions[0]?.timingFingerprint, "e".repeat(64));
+  assert.equal(value.edit.transcriptExclusions[0]?.timingBasis, "provider-words");
   assert.equal(value.sources[0]?.recordingAssetId, "recording_asset_0001");
   assert.equal(value.sources[0]?.programOffsetSeconds, 0.125);
   assert.deepEqual(
@@ -104,6 +109,13 @@ test("Session recording share contract rejects overlapping edits and stale trans
       transcriptExclusions: [{ ...value.edit.transcriptExclusions[0], providerTextSha256: "not-current" }],
     },
   }), /SHA-256/i);
+  assert.throws(() => parseSessionRecordingShareJob({
+    ...value,
+    edit: {
+      ...value.edit,
+      transcriptExclusions: [{ ...value.edit.transcriptExclusions[0], cutSafety: "overlapping-speech" }],
+    },
+  }), /not safe to render/i);
 });
 
 test("Session recording share parser upgrades queued v1 jobs without changing their trim", () => {

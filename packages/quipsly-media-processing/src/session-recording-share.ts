@@ -9,6 +9,9 @@ export type SessionRecordingShareTranscriptExclusion = {
   segmentId: string;
   sourceRecordingAssetId: string;
   providerTextSha256: string;
+  timingFingerprint?: string;
+  timingBasis?: "provider-words" | "provider-segment";
+  cutSafety?: "safe";
   startSeconds: number;
   endSeconds: number;
 };
@@ -185,14 +188,29 @@ function parseEdit(value: unknown, legacy = false): SessionRecordingShareEdit {
     const exclusion = object(value);
     const exclusionStart = finite(exclusion.startSeconds);
     const exclusionEnd = finite(exclusion.endSeconds);
+    const timingFingerprint = text(exclusion.timingFingerprint).toLowerCase();
+    const timingBasis = text(exclusion.timingBasis);
+    const cutSafety = text(exclusion.cutSafety);
     if (exclusionStart < startSeconds || exclusionEnd > endSeconds || exclusionEnd <= exclusionStart) {
       throw new Error(`Session recording share transcript exclusion ${index + 1} is outside the edit range.`);
+    }
+    if (timingFingerprint && !SHA256.test(timingFingerprint)) {
+      throw new Error(`Session recording share transcript exclusion ${index + 1} timing fingerprint must be a SHA-256 digest.`);
+    }
+    if (timingBasis && timingBasis !== "provider-words" && timingBasis !== "provider-segment") {
+      throw new Error(`Session recording share transcript exclusion ${index + 1} timing basis is invalid.`);
+    }
+    if (cutSafety && cutSafety !== "safe") {
+      throw new Error(`Session recording share transcript exclusion ${index + 1} is not safe to render.`);
     }
     return {
       transcriptJobId: requiredId(exclusion.transcriptJobId, `Transcript exclusion ${index + 1} job`),
       segmentId: requiredId(exclusion.segmentId, `Transcript exclusion ${index + 1} segment`),
       sourceRecordingAssetId: requiredId(exclusion.sourceRecordingAssetId, `Transcript exclusion ${index + 1} source`),
       providerTextSha256: requiredSha(exclusion.providerTextSha256, `Transcript exclusion ${index + 1} provider text`),
+      ...(timingFingerprint ? { timingFingerprint } : {}),
+      ...(timingBasis ? { timingBasis: timingBasis as "provider-words" | "provider-segment" } : {}),
+      ...(cutSafety ? { cutSafety: "safe" as const } : {}),
       startSeconds: exclusionStart,
       endSeconds: exclusionEnd,
     };

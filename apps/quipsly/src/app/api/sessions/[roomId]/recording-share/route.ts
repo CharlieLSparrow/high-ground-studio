@@ -79,6 +79,7 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
                 transcriptJobId: text(item.transcriptJobId),
                 segmentId: text(item.segmentId),
                 providerTextSha256: text(item.providerTextSha256, 64).toLowerCase(),
+                timingFingerprint: text(item.timingFingerprint, 64).toLowerCase(),
               };
             })
           : [],

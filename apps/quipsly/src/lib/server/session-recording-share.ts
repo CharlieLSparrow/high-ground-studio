@@ -230,7 +230,7 @@ function sourceSummary(rows: any[]) {
   };
 }
 
-type RecordingShareTranscriptSegment = {
+export type RecordingShareTranscriptSegment = {
   transcriptJobId: string;
   segmentId: string;
   sourceRecordingAssetId: string;
@@ -239,7 +239,32 @@ type RecordingShareTranscriptSegment = {
   text: string;
   startSeconds: number;
   endSeconds: number;
+  cutStartSeconds: number;
+  cutEndSeconds: number;
+  timingFingerprint: string;
+  timingBasis: "provider-words" | "provider-segment";
+  cutSafety: "safe" | "timing-unavailable" | "overlapping-speech";
+  cutSafetyReason: string;
 };
+
+export function classifyRecordingShareTranscriptCutSafety(
+  segments: RecordingShareTranscriptSegment[],
+): RecordingShareTranscriptSegment[] {
+  return segments.map((segment) => {
+    if (segment.cutSafety !== "safe") return { ...segment };
+    const overlapsOtherSpeech = segments.some((other) => (
+      other.sourceRecordingAssetId !== segment.sourceRecordingAssetId
+      && Math.min(segment.cutEndSeconds, other.endSeconds) - Math.max(segment.cutStartSeconds, other.startSeconds) > 0.05
+    ));
+    return overlapsOtherSpeech
+      ? {
+          ...segment,
+          cutSafety: "overlapping-speech",
+          cutSafetyReason: "Another participant is speaking here. Keep the passage or use a source-aware editor so their voice is not cut.",
+        }
+      : { ...segment };
+  });
+}
 
 async function loadTranscriptEditSegments(client: RestoreClient, roomId: string, sources: any[]): Promise<RecordingShareTranscriptSegment[]> {
   if (!sources.length) return [];
@@ -260,6 +285,18 @@ async function loadTranscriptEditSegments(client: RestoreClient, roomId: string,
           startSeconds: true,
           endSeconds: true,
           text: true,
+          words: {
+            orderBy: [{ providerWordIndex: "asc" }, { id: "asc" }],
+            select: {
+              id: true,
+              providerWordIndex: true,
+              startSeconds: true,
+              endSeconds: true,
+              word: true,
+              punctuatedWord: true,
+              confidence: true,
+            },
+          },
           corrections: {
             where: { status: "accepted" },
             orderBy: { updatedAt: "desc" },
@@ -283,6 +320,40 @@ async function loadTranscriptEditSegments(client: RestoreClient, roomId: string,
       const startSeconds = offsetSeconds + Number(segment.startSeconds);
       const endSeconds = offsetSeconds + Number(segment.endSeconds);
       if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || endSeconds <= startSeconds) continue;
+      const providerWords = (segment.words || []).filter((word: any, index: number, words: any[]) => (
+        Number.isFinite(Number(word.startSeconds))
+        && Number.isFinite(Number(word.endSeconds))
+        && Number(word.startSeconds) >= Number(segment.startSeconds) - 0.1
+        && Number(word.endSeconds) <= Number(segment.endSeconds) + 0.1
+        && Number(word.endSeconds) > Number(word.startSeconds)
+        && (index === 0 || Number(word.startSeconds) >= Number(words[index - 1]?.startSeconds) - 0.02)
+      ));
+      const hasExactWordTiming = providerWords.length > 0 && providerWords.length === (segment.words || []).length;
+      const sourceCutStartSeconds = hasExactWordTiming ? Number(providerWords[0].startSeconds) : Number(segment.startSeconds);
+      const sourceCutEndSeconds = hasExactWordTiming ? Number(providerWords.at(-1).endSeconds) : Number(segment.endSeconds);
+      const cutStartSeconds = offsetSeconds + sourceCutStartSeconds;
+      const cutEndSeconds = offsetSeconds + sourceCutEndSeconds;
+      const timingBasis = hasExactWordTiming ? "provider-words" as const : "provider-segment" as const;
+      const timingFingerprint = sha256({
+        schema: "quipsly-transcript-cut-timing-v1",
+        transcriptJobId: job.id,
+        segmentId: segment.id,
+        sourceRecordingAssetId: job.assetId,
+        sourceSha256: clean(job.sourceSha256, 64).toLowerCase(),
+        providerTextSha256,
+        timingBasis,
+        sourceCutStartSeconds,
+        sourceCutEndSeconds,
+        words: providerWords.map((word: any) => ({
+          id: word.id,
+          providerWordIndex: word.providerWordIndex,
+          startSeconds: Number(word.startSeconds),
+          endSeconds: Number(word.endSeconds),
+          word: word.word,
+          punctuatedWord: word.punctuatedWord,
+          confidence: word.confidence,
+        })),
+      });
       projected.push({
         transcriptJobId: job.id,
         segmentId: segment.id,
@@ -292,22 +363,32 @@ async function loadTranscriptEditSegments(client: RestoreClient, roomId: string,
         text: clean(correction?.correctedText, 20_000) || clean(segment.text, 20_000),
         startSeconds,
         endSeconds,
+        cutStartSeconds,
+        cutEndSeconds,
+        timingFingerprint,
+        timingBasis,
+        cutSafety: hasExactWordTiming ? "safe" : "timing-unavailable",
+        cutSafetyReason: hasExactWordTiming
+          ? "Word timing is bound to this exact source recording."
+          : "Precise word timing is unavailable, so Quipsly will not ripple-delete this passage.",
       });
     }
   }
-  return projected.sort((left, right) => left.startSeconds - right.startSeconds || left.segmentId.localeCompare(right.segmentId));
+  return classifyRecordingShareTranscriptCutSafety(projected)
+    .sort((left, right) => left.startSeconds - right.startSeconds || left.segmentId.localeCompare(right.segmentId));
 }
 
 export function buildSessionRecordingShareEdit(input: {
   startSeconds: number;
   endSeconds: number;
   transcriptSegments: RecordingShareTranscriptSegment[];
-  excludedTranscriptSegments: Array<{ transcriptJobId: string; segmentId: string; providerTextSha256: string }>;
+  excludedTranscriptSegments: Array<{ transcriptJobId: string; segmentId: string; providerTextSha256: string; timingFingerprint: string }>;
 }) {
   const requested = input.excludedTranscriptSegments.map((item) => ({
     transcriptJobId: clean(item.transcriptJobId, 240),
     segmentId: clean(item.segmentId, 240),
     providerTextSha256: clean(item.providerTextSha256, 64).toLowerCase(),
+    timingFingerprint: clean(item.timingFingerprint, 64).toLowerCase(),
   }));
   const requestedKeys = requested.map((item) => `${item.transcriptJobId}:${item.segmentId}`);
   if (requested.length > 500 || new Set(requestedKeys).size !== requested.length) {
@@ -316,11 +397,14 @@ export function buildSessionRecordingShareEdit(input: {
   const available = new Map(input.transcriptSegments.map((segment) => [`${segment.transcriptJobId}:${segment.segmentId}`, segment]));
   const transcriptExclusions = requested.map((item) => {
     const segment = available.get(`${item.transcriptJobId}:${item.segmentId}`);
-    if (!segment || segment.providerTextSha256 !== item.providerTextSha256) {
+    if (!segment || segment.providerTextSha256 !== item.providerTextSha256 || segment.timingFingerprint !== item.timingFingerprint) {
       throw new SessionRecordingShareError(409, "TRANSCRIPT_EDIT_STALE", "The transcript changed since this edit was chosen. Refresh before preparing the recording.");
     }
-    const startSeconds = Math.max(input.startSeconds, segment.startSeconds);
-    const endSeconds = Math.min(input.endSeconds, segment.endSeconds);
+    if (segment.cutSafety !== "safe") {
+      throw new SessionRecordingShareError(409, "TRANSCRIPT_EDIT_UNSAFE", segment.cutSafetyReason);
+    }
+    const startSeconds = Math.max(input.startSeconds, segment.cutStartSeconds);
+    const endSeconds = Math.min(input.endSeconds, segment.cutEndSeconds);
     if (endSeconds <= startSeconds) {
       throw new SessionRecordingShareError(400, "TEXT_EDIT_OUTSIDE_RANGE", "A removed transcript passage is outside the selected recording range.");
     }
@@ -355,6 +439,9 @@ export function buildSessionRecordingShareEdit(input: {
       segmentId: segment.segmentId,
       sourceRecordingAssetId: segment.sourceRecordingAssetId,
       providerTextSha256: segment.providerTextSha256,
+      timingFingerprint: segment.timingFingerprint,
+      timingBasis: segment.timingBasis,
+      cutSafety: "safe" as const,
       startSeconds: segment.startSeconds,
       endSeconds: segment.endSeconds,
     })),
@@ -541,7 +628,7 @@ export async function prepareSessionRecordingShare(client: RestoreClient, input:
   startSeconds: number;
   endSeconds: number;
   title: string;
-  excludedTranscriptSegments: Array<{ transcriptJobId: string; segmentId: string; providerTextSha256: string }>;
+  excludedTranscriptSegments: Array<{ transcriptJobId: string; segmentId: string; providerTextSha256: string; timingFingerprint: string }>;
 }) {
   const room = await loadRoom(client, input.roomId, input.actor, "release");
   const allSources = await loadSources(client, room.id);

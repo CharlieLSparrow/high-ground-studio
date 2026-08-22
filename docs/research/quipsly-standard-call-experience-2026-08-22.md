@@ -254,6 +254,11 @@ failure shapes recur often enough to influence the architecture:
   acknowledged MediaRecorder chunk. Browsers without that worker capability
   use a transaction-per-chunk OPFS fallback. The ledger advances only after the
   corresponding file size is durably observable.
+- Bound transcript ripple edits to immutable provider-word timing fingerprints
+  on the exact recording asset. A passage without precise word timing stays in
+  the recording, and a passage that overlaps another participant's speech is
+  visibly kept rather than silently cutting both people. Browser and iPhone use
+  the same fail-closed contract; ordinary start/end trimming remains available.
 
 ## Acceptance consequences
 

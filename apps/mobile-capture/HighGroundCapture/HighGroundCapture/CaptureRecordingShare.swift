@@ -24,8 +24,15 @@ struct CaptureRecordingShareTranscriptSegment: Codable, Identifiable, Equatable 
     let text: String
     let startSeconds: TimeInterval
     let endSeconds: TimeInterval
+    let cutStartSeconds: TimeInterval?
+    let cutEndSeconds: TimeInterval?
+    let timingFingerprint: String?
+    let timingBasis: String?
+    let cutSafety: String?
+    let cutSafetyReason: String?
 
     var id: String { "\(transcriptJobId):\(segmentId)" }
+    var canRippleDelete: Bool { cutSafety == "safe" && !(timingFingerprint ?? "").isEmpty }
 }
 
 struct CaptureRecordingShareOutput: Codable, Identifiable, Equatable {
@@ -172,12 +179,16 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
                 "sourceIds": sourceIDs,
                 "startSeconds": startSeconds,
                 "endSeconds": endSeconds,
-                "excludedTranscriptSegments": exclusions.map {
-                    [
-                        "transcriptJobId": $0.transcriptJobId,
-                        "segmentId": $0.segmentId,
-                        "providerTextSha256": $0.providerTextSha256,
+                "excludedTranscriptSegments": exclusions.map { exclusion in
+                    var item: [String: Any] = [
+                        "transcriptJobId": exclusion.transcriptJobId,
+                        "segmentId": exclusion.segmentId,
+                        "providerTextSha256": exclusion.providerTextSha256,
                     ]
+                    if let timingFingerprint = exclusion.timingFingerprint {
+                        item["timingFingerprint"] = timingFingerprint
+                    }
+                    return item
                 },
             ]
         )
@@ -544,7 +555,7 @@ struct CaptureRecordingShareEditor: View {
                                 .font(.caption.weight(.bold))
                         }
                     }
-                    Text("Turn off a passage to remove its exact time from this private copy.")
+                    Text("Turn off a passage to remove its word-timed audio. Quipsly keeps passages that overlap another speaker.")
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(transcript) { segment in
                         Toggle(isOn: segmentBinding(segment.id)) {
@@ -562,9 +573,16 @@ struct CaptureRecordingShareEditor: View {
                             }
                         }
                         .tint(.indigo)
+                        .disabled(!segment.canRippleDelete)
                         .padding(10)
-                        .background(Color.indigo.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                        .background(segment.canRippleDelete ? Color.indigo.opacity(0.06) : Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityIdentifier("CaptureRecordingShareSegment_\(segment.segmentId)")
+                        if !segment.canRippleDelete {
+                            Text(segment.cutSafetyReason ?? "Precise source timing is unavailable, so this passage stays included.")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 10)
+                        }
                     }
                 }
 

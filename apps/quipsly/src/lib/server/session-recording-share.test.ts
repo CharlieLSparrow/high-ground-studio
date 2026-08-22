@@ -2,7 +2,12 @@
 
 jest.mock("server-only", () => ({}));
 
-import { buildSessionRecordingShareEdit, newestCoherentRecordingTake, stableJson } from "./session-recording-share";
+import {
+  buildSessionRecordingShareEdit,
+  classifyRecordingShareTranscriptCutSafety,
+  newestCoherentRecordingTake,
+  stableJson,
+} from "./session-recording-share";
 
 describe("Session recording share take selection", () => {
   it("keeps repeated calls in one room out of the newest take", () => {
@@ -39,6 +44,12 @@ describe("Session recording share text edits", () => {
     text: "This passage should not be in the shared copy.",
     startSeconds: 10,
     endSeconds: 14,
+    cutStartSeconds: 10.2,
+    cutEndSeconds: 13.8,
+    timingFingerprint: "c".repeat(64),
+    timingBasis: "provider-words" as const,
+    cutSafety: "safe" as const,
+    cutSafetyReason: "Word timing is bound to this exact source recording.",
   };
 
   it("turns source-bound transcript exclusions into reversible kept ranges", () => {
@@ -50,16 +61,20 @@ describe("Session recording share text edits", () => {
         transcriptJobId: transcriptSegment.transcriptJobId,
         segmentId: transcriptSegment.segmentId,
         providerTextSha256: transcriptSegment.providerTextSha256,
+        timingFingerprint: transcriptSegment.timingFingerprint,
       }],
     });
     expect(edit.keptRanges).toEqual([
-      expect.objectContaining({ startSeconds: 2, endSeconds: 10 }),
-      expect.objectContaining({ startSeconds: 14, endSeconds: 20 }),
+      expect.objectContaining({ startSeconds: 2, endSeconds: 10.2 }),
+      expect.objectContaining({ startSeconds: 13.8, endSeconds: 20 }),
     ]);
     expect(edit.transcriptExclusions).toEqual([expect.objectContaining({
       sourceRecordingAssetId: "recording_asset_0001",
-      startSeconds: 10,
-      endSeconds: 14,
+      startSeconds: 10.2,
+      endSeconds: 13.8,
+      timingFingerprint: "c".repeat(64),
+      timingBasis: "provider-words",
+      cutSafety: "safe",
     })]);
     expect(edit.joinCrossfadeSeconds).toBe(0.01);
   });
@@ -73,7 +88,60 @@ describe("Session recording share text edits", () => {
         transcriptJobId: transcriptSegment.transcriptJobId,
         segmentId: transcriptSegment.segmentId,
         providerTextSha256: "b".repeat(64),
+        timingFingerprint: transcriptSegment.timingFingerprint,
       }],
     })).toThrow(/transcript changed/i);
+  });
+
+  it("fails closed when immutable word timing no longer matches the selection", () => {
+    expect(() => buildSessionRecordingShareEdit({
+      startSeconds: 2,
+      endSeconds: 20,
+      transcriptSegments: [transcriptSegment],
+      excludedTranscriptSegments: [{
+        transcriptJobId: transcriptSegment.transcriptJobId,
+        segmentId: transcriptSegment.segmentId,
+        providerTextSha256: transcriptSegment.providerTextSha256,
+        timingFingerprint: "d".repeat(64),
+      }],
+    })).toThrow(/transcript changed/i);
+  });
+
+  it("keeps a passage when ripple deletion would cut overlapping speech", () => {
+    expect(() => buildSessionRecordingShareEdit({
+      startSeconds: 2,
+      endSeconds: 20,
+      transcriptSegments: [{
+        ...transcriptSegment,
+        cutSafety: "overlapping-speech",
+        cutSafetyReason: "Another participant is speaking here.",
+      }],
+      excludedTranscriptSegments: [{
+        transcriptJobId: transcriptSegment.transcriptJobId,
+        segmentId: transcriptSegment.segmentId,
+        providerTextSha256: transcriptSegment.providerTextSha256,
+        timingFingerprint: transcriptSegment.timingFingerprint,
+      }],
+    })).toThrow(/another participant is speaking/i);
+  });
+
+  it("detects overlapping speech before the editor offers a ripple delete", () => {
+    const [coach, client] = classifyRecordingShareTranscriptCutSafety([
+      transcriptSegment,
+      {
+        ...transcriptSegment,
+        transcriptJobId: "transcript_job_0002",
+        segmentId: "transcript_segment_0002",
+        sourceRecordingAssetId: "recording_asset_0002",
+        timingFingerprint: "e".repeat(64),
+        startSeconds: 12,
+        endSeconds: 15,
+        cutStartSeconds: 12.2,
+        cutEndSeconds: 14.8,
+      },
+    ]);
+    expect(coach?.cutSafety).toBe("overlapping-speech");
+    expect(client?.cutSafety).toBe("overlapping-speech");
+    expect(coach?.cutSafetyReason).toMatch(/another participant/i);
   });
 });
