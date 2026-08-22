@@ -28,6 +28,10 @@ function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function object(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
 function latestBy(rows, key) {
   const result = new Map();
   for (const row of rows) {
@@ -165,6 +169,34 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
   const sourceOverlapSeconds = requiredRecordingWindows.length === requiredVerifiedAssets.length && requiredRecordingWindows.length >= 2
     ? Math.max(0, (Math.min(...requiredRecordingWindows.map((row) => row.stoppedAt)) - Math.max(...requiredRecordingWindows.map((row) => row.startedAt))) / 1_000)
     : 0;
+  const verifiedAssembledPlaybacks = (room.sessionOutputs || []).flatMap((output) => {
+    if (output.kind !== "RECORDING_SHARE" || !["DRAFT", "RELEASED"].includes(String(output.status))) return [];
+    const render = object(object(output.bodyJson).render);
+    const sourceManifest = object(output.sourceManifestJson);
+    const declaredSourceIds = unique((Array.isArray(sourceManifest.sources) ? sourceManifest.sources : [])
+      .map((source) => object(source).recordingAssetId));
+    const assembledAsset = room.recordingAssets.find((asset) => asset.id === render.recordingAssetId);
+    const shareReceipt = object(object(assembledAsset?.localManifestJson).sessionRecordingShare);
+    const receiptSourceIds = unique(Array.isArray(shareReceipt.sourceRecordingAssetIds) ? shareReceipt.sourceRecordingAssetIds : []);
+    const requiredSourcesIncluded = requiredAssetIds.size >= 2
+      && [...requiredAssetIds].every((id) => declaredSourceIds.includes(id) && receiptSourceIds.includes(id));
+    const completeAssetReceipt = Boolean(assembledAsset
+      && assembledAsset.kind === "SERVER_MIX"
+      && assembledAsset.status === "VERIFIED"
+      && assembledAsset.checksum
+      && assembledAsset.byteSize != null
+      && Number(assembledAsset.durationSeconds) > 0
+      && assembledAsset.storageBucket
+      && assembledAsset.storageObjectPath
+      && assembledAsset.verifiedAt);
+    const exactOutputBinding = Boolean(assembledAsset
+      && render.status === "VERIFIED"
+      && shareReceipt.outputId === output.id
+      && Number(shareReceipt.sourceOutputRevision) <= Number(output.revision)
+      && shareReceipt.originalsRemainImmutable === true);
+    if (!requiredSourcesIncluded || !completeAssetReceipt || !exactOutputBinding) return [];
+    return [{ output, assembledAsset, declaredSourceIds }];
+  });
   const completedTranscriptByAssetId = new Map();
   for (const job of room.transcriptJobs || []) {
     if (job.assetId
@@ -214,6 +246,7 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
       && participantIds.every((id) => transcribedParticipantIds.includes(id)),
     sourceBoundTimedTranscriptForEveryParticipant: participantIds.length >= 2
       && participantIds.every((id) => timedTranscriptParticipantIds.includes(id)),
+    verifiedPrivateAssembledPlaybackAvailable: verifiedAssembledPlaybacks.length >= 1,
     endpointQueuesDrained: latestQueues.length >= 2
       && latestQueues.every((row) => row.queueState === "DRAINED" && row.pendingSourceCount === 0 && row.failedSourceCount === 0),
     sharedCollaborationWorkRetained: room.notes.some((row) => row.visibility === "SESSION_SHARED")
@@ -221,7 +254,7 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
   };
 
   return {
-    schema: "quipsly-coaching-post-call-readback-v4",
+    schema: "quipsly-coaching-post-call-readback-v5",
     auditedAt,
     authority: "read-only-canonical-postgresql-projection",
     room: {
@@ -314,6 +347,18 @@ export function summarizePostCallEvidence(room, finalizationReceipts, auditedAt 
         events: room.providerRecordingEvents.map((row) => ({ eventType: row.eventType, applied: row.applied, receivedAt: iso(row.receivedAt) })),
         authority: "reference-or-fallback-only",
       },
+      assembledPlaybacks: verifiedAssembledPlaybacks.map(({ output, assembledAsset, declaredSourceIds }) => ({
+        outputIdSha256: hash(output.id),
+        status: String(output.status),
+        revision: output.revision,
+        recipientUserIdSha256: hash(output.recipientUserId),
+        assembledAssetIdSha256: hash(assembledAsset.id),
+        sourceCount: declaredSourceIds.length,
+        durationSeconds: assembledAsset.durationSeconds,
+        byteSize: String(assembledAsset.byteSize),
+        checksumSha256: hash(assembledAsset.checksum),
+        verifiedAt: iso(assembledAsset.verifiedAt),
+      })),
     },
     transcriptEvidence: {
       transcribedParticipantCount: transcribedParticipantIds.length,
@@ -400,6 +445,11 @@ async function readRoom(prisma, roomId) {
     const notes = await tx.coachingNote.findMany({ where: { ...collaborationScope, visibility: "SESSION_SHARED" }, select: { id: true, visibility: true } });
     const actionItems = await tx.actionItem.findMany({ where: collaborationScope, select: { id: true, status: true } });
     const goals = await tx.goal.findMany({ where: collaborationScope, select: { id: true, status: true } });
+    const sessionOutputs = await tx.sessionOutput.findMany({
+      where: { roomId, kind: "RECORDING_SHARE", status: { in: ["DRAFT", "RELEASED"] } },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, kind: true, status: true, recipientUserId: true, bodyJson: true, sourceManifestJson: true, revision: true, updatedAt: true },
+    });
     return {
       room: {
         ...room,
@@ -418,6 +468,7 @@ async function readRoom(prisma, roomId) {
         notes,
         actionItems,
         goals,
+        sessionOutputs,
       },
       finalizationReceipts,
     };

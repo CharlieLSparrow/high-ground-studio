@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionRecordingShareCard } from "./session-recording-share-card";
@@ -60,7 +60,7 @@ describe("SessionRecordingShareCard", () => {
     expect(passageCheckbox).not.toBeChecked();
     expect(screen.getByText(/1 passage removed with short click-safe joins/i)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Prepare private preview" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create private preview" }));
     await waitFor(() => expect(requests.some((request) => request.method === "POST")).toBe(true));
     const prepare = requests.find((request) => request.method === "POST")?.body;
     expect(prepare).toEqual(expect.objectContaining({
@@ -95,5 +95,64 @@ describe("SessionRecordingShareCard", () => {
     expect(passageCheckbox).toBeChecked();
     expect(passageCheckbox).toBeDisabled();
     expect(screen.getByText(/another participant is speaking here/i)).toBeInTheDocument();
+  });
+
+  it("uses familiar trim controls while keeping technical source choices out of the main path", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(snapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const start = await screen.findByRole("slider", { name: "Recording start" });
+    const end = screen.getByRole("slider", { name: "Recording end" });
+    expect(start).toHaveValue("0");
+    expect(end).toHaveValue("30");
+    expect(screen.getByText(/name and recording sources/i).closest("details")).not.toHaveAttribute("open");
+
+    fireEvent.change(start, { target: { value: "5" } });
+    fireEvent.change(end, { target: { value: "25" } });
+    expect(screen.getByText("0:20 selected")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Create private preview" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({
+      action: "PREPARE",
+      sourceIds: ["recording_asset_0001"],
+      startSeconds: 5,
+      endSeconds: 25,
+    }));
+  });
+
+  it("shares a verified private preview with one explicit standard action", async () => {
+    const output = {
+      id: "session_output_0001",
+      status: "DRAFT",
+      title: "First coaching session recording",
+      revision: 1,
+      contentSha256: "d".repeat(64),
+      recipient: { id: "client_user_0001", label: "Client" },
+      render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
+      mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_0001",
+      body: { edit: { startSeconds: 0, endSeconds: 30, transcriptExclusions: [] } },
+    };
+    const draft = { ...snapshot, output };
+    const requests: Array<Record<string, unknown>> = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(draft);
+    }) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const share = await screen.findByRole("button", { name: "Share with Client" });
+    expect(share).toBeEnabled();
+    await userEvent.click(share);
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({
+      action: "RELEASE",
+      outputId: output.id,
+      expectedRevision: 1,
+    }));
   });
 });

@@ -20,9 +20,13 @@ function completeRoom() {
     endpointQueueReceipts: participants.map((row, index) => ({ participantId: row.id, clientInstanceId: `client-${index}`, clientKind: index ? "ios" : "web", queueState: "DRAINED", localSourceCount: 1, pendingSourceCount: 0, failedSourceCount: 0, reconciledAt: now })),
     expectedSources: participants.map((row) => ({ id: `expected-${row.id}`, participantId: row.id, sourceKind: "AUDIO", retentionRole: "REQUIRED_MASTER", status: "ACTIVE", recordingAssetId: `asset-${row.id}`, createdAt: now })),
     stateReceipts: participants.flatMap((row, index) => ["START_RECORDING", "STOP_RECORDING"].map((action, actionIndex) => ({ receiptId: `receipt-${index}-${actionIndex}`, actorUserId: row.userId, action, outcome: "APPLIED", stateApplied: true, occurredAt: now }))),
-    recordingAssets: participants.map((row) => ({ id: `asset-${row.id}`, participantId: row.id, kind: "LOCAL_AUDIO", status: "VERIFIED", checksum: "a".repeat(64), byteSize: 1000n, durationSeconds: 12, storageBucket: "private", storageObjectPath: `room/${row.id}`, verifiedAt: now, uploadedAt: now, recordedStartedAt: now, recordedStoppedAt: stopped })),
+    recordingAssets: [
+      ...participants.map((row) => ({ id: `asset-${row.id}`, participantId: row.id, kind: "LOCAL_AUDIO", status: "VERIFIED", checksum: "a".repeat(64), byteSize: 1000n, durationSeconds: 12, storageBucket: "private", storageObjectPath: `room/${row.id}`, localManifestJson: {}, verifiedAt: now, uploadedAt: now, recordedStartedAt: now, recordedStoppedAt: stopped })),
+      { id: "assembled-asset", participantId: null, kind: "SERVER_MIX", status: "VERIFIED", checksum: "b".repeat(64), byteSize: 2000n, durationSeconds: 12, storageBucket: "private", storageObjectPath: "room/assembled.m4a", verifiedAt: now, uploadedAt: now, localManifestJson: { sessionRecordingShare: { outputId: "recording-share-1", sourceOutputRevision: 1, sourceRecordingAssetIds: ["asset-p1", "asset-p2"], originalsRemainImmutable: true } } },
+    ],
     transcriptJobs: participants.map((row) => ({ id: `transcript-${row.id}`, assetId: `asset-${row.id}`, status: "COMPLETED", provider: "local-whisper", language: "en", sourceSha256: "a".repeat(64), completedAt: now, updatedAt: now, _count: { segments: 3, words: 24 }, segments: [{ startSeconds: 0.1, endSeconds: 3.5, confidence: 0.9 }, { startSeconds: 3.6, endSeconds: 7.5, confidence: 0.88 }, { startSeconds: 7.6, endSeconds: 11.8, confidence: 0.91 }] })),
     providerRecordingCommands: [], providerRecordingEvents: [], notes: [{ id: "note", visibility: "SESSION_SHARED" }], actionItems: [{ id: "task", status: "OPEN" }], goals: [],
+    sessionOutputs: [{ id: "recording-share-1", kind: "RECORDING_SHARE", status: "DRAFT", recipientUserId: "u2", revision: 2, bodyJson: { render: { status: "VERIFIED", recordingAssetId: "assembled-asset" } }, sourceManifestJson: { sources: [{ recordingAssetId: "asset-p1" }, { recordingAssetId: "asset-p2" }] } }],
   };
 }
 
@@ -43,7 +47,7 @@ test("parses exact room and output options", () => {
 
 test("complete canonical records pass automation but never claim human acceptance", () => {
   const receipt = summarizePostCallEvidence(completeRoom(), finalizations(), now.toISOString());
-  assert.equal(receipt.schema, "quipsly-coaching-post-call-readback-v4");
+  assert.equal(receipt.schema, "quipsly-coaching-post-call-readback-v5");
   assert.equal(receipt.automatedEvidencePassed, true);
   assert.equal(receipt.humanAcceptance.satisfied, false);
   assert.equal(receipt.invitationEvidence.emailDeliveryProven, true);
@@ -51,6 +55,7 @@ test("complete canonical records pass automation but never claim human acceptanc
   assert.equal(receipt.redaction.emailAddressesIncluded, false);
   assert.equal(JSON.stringify(receipt).includes("u2@example.test"), false);
   assert.equal(Object.values(receipt.automatedGates).every(Boolean), true);
+  assert.equal(receipt.recordingEvidence.assembledPlaybacks.length, 1);
 });
 
 test("an accepted private share link passes without inventing email delivery", () => {
@@ -82,7 +87,7 @@ test("a client-only recording transition cannot impersonate coach coordination",
 
 test("missing second retained source fails exact automated gates", () => {
   const room = completeRoom();
-  room.recordingAssets.pop();
+  room.recordingAssets = room.recordingAssets.filter((asset) => asset.id !== "asset-p2");
   const receipt = summarizePostCallEvidence(room, finalizations(), now.toISOString());
   assert.equal(receipt.automatedGates.verifiedLocalSourceForEveryParticipant, false);
   assert.equal(receipt.automatedGates.requiredSourcePlanSatisfied, false);
@@ -113,6 +118,24 @@ test("non-overlapping required masters cannot claim an assemblable call", () => 
   assert.equal(receipt.automatedEvidencePassed, false);
 });
 
+test("an unbound or incomplete derived file cannot claim playable assembly", () => {
+  const missing = completeRoom();
+  missing.sessionOutputs = [];
+  const missingReceipt = summarizePostCallEvidence(missing, finalizations(), now.toISOString());
+  assert.equal(missingReceipt.automatedGates.verifiedPrivateAssembledPlaybackAvailable, false);
+  assert.equal(missingReceipt.automatedEvidencePassed, false);
+
+  const wrongSources = completeRoom();
+  wrongSources.sessionOutputs[0].sourceManifestJson.sources.pop();
+  const wrongSourcesReceipt = summarizePostCallEvidence(wrongSources, finalizations(), now.toISOString());
+  assert.equal(wrongSourcesReceipt.automatedGates.verifiedPrivateAssembledPlaybackAvailable, false);
+
+  const wrongReceipt = completeRoom();
+  wrongReceipt.recordingAssets.find((asset) => asset.id === "assembled-asset").localManifestJson.sessionRecordingShare.outputId = "another-output";
+  const wrongReceiptResult = summarizePostCallEvidence(wrongReceipt, finalizations(), now.toISOString());
+  assert.equal(wrongReceiptResult.automatedGates.verifiedPrivateAssembledPlaybackAvailable, false);
+});
+
 test("transcript timing must remain source-bound and inside the retained asset", () => {
   const wrongHash = completeRoom();
   wrongHash.transcriptJobs[1].sourceSha256 = "b".repeat(64);
@@ -128,7 +151,7 @@ test("transcript timing must remain source-bound and inside the retained asset",
 
 test("timed transcript can use a coherent recording window when container duration is absent", () => {
   const room = completeRoom();
-  room.recordingAssets.forEach((asset) => { asset.durationSeconds = null; });
+  room.recordingAssets.filter((asset) => asset.kind === "LOCAL_AUDIO").forEach((asset) => { asset.durationSeconds = null; });
   const receipt = summarizePostCallEvidence(room, finalizations(), now.toISOString());
   assert.equal(receipt.automatedGates.sourceBoundTimedTranscriptForEveryParticipant, true);
   assert.equal(receipt.transcriptEvidence.jobs[0].timing.sourceDurationAuthority, "recording-window");

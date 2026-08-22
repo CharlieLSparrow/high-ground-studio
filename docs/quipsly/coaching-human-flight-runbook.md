@@ -152,8 +152,10 @@ identities, current consent, endpoint checks and grants, recording transitions,
 source expectations, verified local media, at least two seconds of overlap
 across the required masters, resumable-queue drainage, finalization, one
 completed participant-bound transcript per person whose immutable source hash
-matches and whose timed segments remain inside that source, and shared work to
-the exact canonical Session. Email delivery and accepted
+matches and whose timed segments remain inside that source, a verified private
+assembled playback whose immutable render receipt includes every required
+participant master, and shared work to the exact canonical Session. Email
+delivery and accepted
 share/copy handoff remain separate facts; either supported invitation path can
 satisfy the Session handoff. Names, addresses, content bodies, and storage
 locations are excluded.
