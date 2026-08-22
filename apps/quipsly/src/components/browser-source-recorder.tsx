@@ -1820,12 +1820,35 @@ export function BrowserSourceRecorder({
         </span>
       </div>
 
+      {!myConsentCoversSource ? (
+        <section className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950" aria-label="Recording consent needed">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black">
+                {sourceType === "video" ? "Camera and audio" : "Audio"} on this device · {transcriptionAllowed ? "Transcript on" : "Transcript off"}
+              </p>
+              <p className="mt-1 text-[10px] font-semibold leading-4">
+                Continue only after everyone who may be heard or seen has agreed. Recording still starts separately.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void grantConsent()}
+              disabled={!policy || status === "recording"}
+              className="min-h-11 rounded-full bg-emerald-800 px-5 text-xs font-black text-white disabled:opacity-50"
+            >
+              <ShieldCheck size={14} className="mr-1 inline" /> Agree and continue
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <details
         className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3"
-        open={!myConsentCoversSource || status === "recording"}
+        open={status === "recording"}
       >
         <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
-          Recording choices · {myConsentCoversSource ? "Saved" : "Action needed"}
+          Recording options · {myConsentCoversSource ? "Saved" : "Change the default"}
         </summary>
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
@@ -1899,17 +1922,16 @@ export function BrowserSourceRecorder({
           <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
             Continue only after everyone who may be heard or seen agrees.
           </p>
-          <button
-            type="button"
-            onClick={() => void grantConsent()}
-            disabled={
-              !policy || status === "recording"
-            }
-            className="mt-3 min-h-10 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-[10px] font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"
-          >
-            <ShieldCheck size={14} className="mr-1 inline" />
-            {myConsentCoversSource ? "Update choices" : "Agree and continue"}
-          </button>
+          {myConsentCoversSource ? (
+            <button
+              type="button"
+              onClick={() => void grantConsent()}
+              disabled={!policy || status === "recording"}
+              className="mt-3 min-h-10 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-[10px] font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"
+            >
+              <ShieldCheck size={14} className="mr-1 inline" /> Update choices
+            </button>
+          ) : null}
           <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
             {consentReady
               ? "Everyone is ready to record."

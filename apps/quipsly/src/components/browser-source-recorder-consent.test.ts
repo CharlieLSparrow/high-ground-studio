@@ -22,7 +22,11 @@ describe("browser retained-source consent", () => {
     expect(source).toContain(
       'disabled={!policy || status === "checking" || status === "recording"}',
     );
-    expect(source).toContain('"Agree and continue"');
+    expect(source).toContain("Agree and continue");
+    expect(source).toContain('aria-label="Recording consent needed"');
+    expect(source).toContain('open={status === "recording"}');
+    expect(source).toContain("Recording options ·");
+    expect(source).toContain("Recording still starts separately.");
     expect(source).toContain("Create a transcript and suggested notes/tasks");
     expect(source).toContain("conversationConnected = true");
     expect(source).toContain('className={conversationConnected ? "" : "hidden"}');
