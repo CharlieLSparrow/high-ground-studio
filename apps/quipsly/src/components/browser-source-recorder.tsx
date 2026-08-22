@@ -71,6 +71,12 @@ import {
   browserSourceSafetyLabel,
   resumeBrowserSourceUploads,
 } from "@/lib/browser-source-upload-recovery";
+import {
+  acknowledgeBrowserRecordingDirective,
+  issueBrowserRecordingDirective,
+  readBrowserRecordingDirective,
+  type BrowserRecordingDirective,
+} from "@/lib/browser-recording-directive";
 
 type ConsentPolicy = {
   version: string;
@@ -275,6 +281,9 @@ export function BrowserSourceRecorder({
   );
   const [operationalIssue, setOperationalIssue] =
     useState<BrowserRetainedSourceIssue | null>(null);
+  const [recordingDirective, setRecordingDirective] =
+    useState<BrowserRecordingDirective | null>(null);
+  const [directiveBusy, setDirectiveBusy] = useState(false);
   const sourceLocked =
     status === "starting" || status === "recording" || status === "stopping";
 
@@ -301,6 +310,8 @@ export function BrowserSourceRecorder({
   const endpointQueueTimerRef = useRef<number | null>(null);
   const automaticUploadRecoveryInFlightRef = useRef(false);
   const automaticUploadRecoveryAttemptedRef = useRef(new Set<string>());
+  const directiveHandlingRef = useRef(new Map<string, string>());
+  const directiveInFlightRef = useRef(new Set<string>());
 
   const reconcileEndpointQueue = useCallback(() => {
     if (endpointQueueTimerRef.current !== null)
@@ -589,9 +600,7 @@ export function BrowserSourceRecorder({
       setConsentId(session.recordingConsentId ?? null);
       setMyAudioConsent(session.recordingConsentCanRecordAudio === true);
       setMyVideoConsent(session.recordingConsentCanRecordVideo === true);
-      setTranscriptionChoice(
-        session.recordingConsentCanTranscribe === true,
-      );
+      setTranscriptionChoice(session.recordingConsentCanTranscribe === true);
       setParticipantId(session.participantId ?? null);
       setAllPartyAudioReady(
         session.allRegisteredParticipantConsentGranted === true,
@@ -1114,30 +1123,37 @@ export function BrowserSourceRecorder({
     [refreshRecovery, updateLedger, uploadLedger],
   );
 
-  const resumeProtectedUploads = useCallback(async (resetAttempts = false) => {
-    if (navigator.onLine === false || automaticUploadRecoveryInFlightRef.current) return;
-    if (resetAttempts) automaticUploadRecoveryAttemptedRef.current.clear();
-    automaticUploadRecoveryInFlightRef.current = true;
-    try {
-      await resumeBrowserSourceUploads({
-        attemptedCaptureIds: automaticUploadRecoveryAttemptedRef.current,
-        list: () => listBrowserSourceLedgers(callRoomId).catch(() => []),
-        resume: async (ledger) => {
-          setMessage("Finishing a recording already saved on this device…");
-          await retryUploadLedger(ledger);
-        },
-      });
-    } catch (error) {
-      setStatus("held");
-      setMessage(
-        error instanceof Error
-          ? `Automatic upload recovery paused: ${error.message}. The recording remains listed below; use Retry upload when ready.`
-          : "Automatic upload recovery paused. The recording remains listed below; use Retry upload when ready.",
-      );
-    } finally {
-      automaticUploadRecoveryInFlightRef.current = false;
-    }
-  }, [callRoomId, retryUploadLedger]);
+  const resumeProtectedUploads = useCallback(
+    async (resetAttempts = false) => {
+      if (
+        navigator.onLine === false ||
+        automaticUploadRecoveryInFlightRef.current
+      )
+        return;
+      if (resetAttempts) automaticUploadRecoveryAttemptedRef.current.clear();
+      automaticUploadRecoveryInFlightRef.current = true;
+      try {
+        await resumeBrowserSourceUploads({
+          attemptedCaptureIds: automaticUploadRecoveryAttemptedRef.current,
+          list: () => listBrowserSourceLedgers(callRoomId).catch(() => []),
+          resume: async (ledger) => {
+            setMessage("Finishing a recording already saved on this device…");
+            await retryUploadLedger(ledger);
+          },
+        });
+      } catch (error) {
+        setStatus("held");
+        setMessage(
+          error instanceof Error
+            ? `Automatic upload recovery paused: ${error.message}. The recording remains listed below; use Retry upload when ready.`
+            : "Automatic upload recovery paused. The recording remains listed below; use Retry upload when ready.",
+        );
+      } finally {
+        automaticUploadRecoveryInFlightRef.current = false;
+      }
+    },
+    [callRoomId, retryUploadLedger],
+  );
 
   useEffect(() => {
     void resumeProtectedUploads();
@@ -1404,7 +1420,7 @@ export function BrowserSourceRecorder({
   const start = useCallback(async () => {
     if (!retainedReadiness.ok || !consentId) {
       setMessage(retainedReadiness.reason);
-      return;
+      return null;
     }
     setStatus("starting");
     setMessage("Opening the selected source and durable local file…");
@@ -1742,6 +1758,7 @@ export function BrowserSourceRecorder({
       setMessage(
         "LOCAL SOURCE RECORDING · durable chunks are being written on this device. The call feed remains separate.",
       );
+      return captureId;
     } catch (error) {
       if (recorderRef.current?.state === "recording") {
         recorderRef.current.stop();
@@ -1758,6 +1775,7 @@ export function BrowserSourceRecorder({
           ? error.message
           : "The browser source could not start.",
       );
+      return null;
     }
   }, [
     callRoomId,
@@ -1781,6 +1799,144 @@ export function BrowserSourceRecorder({
     stopRetainedSourceMeter,
     updateLedger,
     uploadLedger,
+  ]);
+
+  const issueDirective = useCallback(
+    async (action: "START" | "STOP") => {
+      if (directiveBusy) return;
+      setDirectiveBusy(true);
+      try {
+        const next = await issueBrowserRecordingDirective(callRoomId, action);
+        setRecordingDirective(next);
+        setMessage(
+          action === "START"
+            ? "Starting recording on each ready device…"
+            : "Stopping recording on each device…",
+        );
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Recording coordination is temporarily unavailable.",
+        );
+      } finally {
+        setDirectiveBusy(false);
+      }
+    },
+    [callRoomId, directiveBusy],
+  );
+
+  useEffect(() => {
+    if (!conversationConnected) return;
+    let cancelled = false;
+    const coordinate = async () => {
+      try {
+        const directive = await readBrowserRecordingDirective(callRoomId);
+        if (cancelled || !directive) return;
+        setRecordingDirective(directive);
+        const terminal = directiveHandlingRef.current.get(directive.id);
+        if (
+          directive.action === "START" &&
+          ["STARTED", "START_FAILED"].includes(terminal || "")
+        )
+          return;
+        if (
+          directive.action === "STOP" &&
+          ["STOPPED", "STOP_FAILED"].includes(terminal || "")
+        )
+          return;
+        if (directiveInFlightRef.current.has(directive.id)) return;
+        directiveInFlightRef.current.add(directive.id);
+        try {
+          if (directive.action === "START") {
+            if (status === "recording") {
+              const captureId = ledgerRef.current?.captureId ?? null;
+              await acknowledgeBrowserRecordingDirective({
+                roomId: callRoomId,
+                directiveId: directive.id,
+                state: "STARTED",
+                captureId,
+              });
+              directiveHandlingRef.current.set(directive.id, "STARTED");
+            } else if (status === "ready" && retainedReadiness.ok) {
+              await acknowledgeBrowserRecordingDirective({
+                roomId: callRoomId,
+                directiveId: directive.id,
+                state: "OBSERVED",
+                detail:
+                  "Ready browser endpoint accepted the coordinated START.",
+              }).catch(() => undefined);
+              const captureId = await start();
+              const state = captureId
+                ? ("STARTED" as const)
+                : ("START_FAILED" as const);
+              await acknowledgeBrowserRecordingDirective({
+                roomId: callRoomId,
+                directiveId: directive.id,
+                state,
+                captureId,
+                detail: captureId
+                  ? "Durable local capture started."
+                  : "The local recorder could not start; no media success is claimed.",
+              }).catch(() => undefined);
+              directiveHandlingRef.current.set(directive.id, state);
+            } else if (
+              ["error", "held"].includes(status) ||
+              !retainedReadiness.ok
+            ) {
+              await acknowledgeBrowserRecordingDirective({
+                roomId: callRoomId,
+                directiveId: directive.id,
+                state: "START_FAILED",
+                detail: retainedReadiness.reason,
+              }).catch(() => undefined);
+              directiveHandlingRef.current.set(directive.id, "START_FAILED");
+            }
+          } else if (status === "recording") {
+            const captureId = ledgerRef.current?.captureId ?? null;
+            await acknowledgeBrowserRecordingDirective({
+              roomId: callRoomId,
+              directiveId: directive.id,
+              state: "STOPPING",
+              captureId,
+            }).catch(() => undefined);
+            directiveHandlingRef.current.set(directive.id, "STOPPING");
+            stop("Stopping because the Session host ended recording…");
+          } else if (!["starting", "stopping", "uploading"].includes(status)) {
+            const captureId = ledgerRef.current?.captureId ?? null;
+            await acknowledgeBrowserRecordingDirective({
+              roomId: callRoomId,
+              directiveId: directive.id,
+              state: "STOPPED",
+              captureId,
+              detail:
+                "This endpoint is no longer recording; upload recovery continues independently.",
+            }).catch(() => undefined);
+            directiveHandlingRef.current.set(directive.id, "STOPPED");
+          }
+        } finally {
+          directiveInFlightRef.current.delete(directive.id);
+        }
+      } catch {
+        // A temporary readback failure never stops or deletes a local source.
+      }
+    };
+    void coordinate();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void coordinate();
+    }, 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    callRoomId,
+    conversationConnected,
+    retainedReadiness.ok,
+    retainedReadiness.reason,
+    start,
+    status,
+    stop,
   ]);
 
   useEffect(
@@ -1809,7 +1965,10 @@ export function BrowserSourceRecorder({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-800">
-            <HardDrive size={14} /> {sessionKind === "coaching" ? "High-quality local recording" : "Retained local source"}
+            <HardDrive size={14} />{" "}
+            {sessionKind === "coaching"
+              ? "High-quality local recording"
+              : "Retained local source"}
           </p>
           <h3
             id={`browser-source-${callRoomId}`}
@@ -1825,9 +1984,13 @@ export function BrowserSourceRecorder({
               : "This is independent from the live call. Chunks go to a private on-device file, survive refreshes, receive START/STOP and consent receipts, then use the same verified upload path as iPhone Capture. Every source in this Session shares one take identity while preserving its own clock and immutable bytes."}
           </p>
           <details className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]">
-            <summary className="cursor-pointer">How source protection works</summary>
+            <summary className="cursor-pointer">
+              How source protection works
+            </summary>
             <p className="mt-2">
-              Quipsly keeps the call and each participant-owned recording as separate evidence, then aligns verified sources with the shared Session clock without rewriting the originals.
+              Quipsly keeps the call and each participant-owned recording as
+              separate evidence, then aligns verified sources with the shared
+              Session clock without rewriting the originals.
             </p>
           </details>
         </div>
@@ -1839,14 +2002,21 @@ export function BrowserSourceRecorder({
       </div>
 
       {!myConsentCoversSource ? (
-        <section className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950" aria-label="Recording consent needed">
+        <section
+          className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950"
+          aria-label="Recording consent needed"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black">
-                {sourceType === "video" ? "Camera and audio" : "Audio"} on this device · {transcriptionAllowed ? "Transcript on" : "Transcript off"}
+                {sourceType === "video" ? "Camera and audio" : "Audio"} on this
+                device ·{" "}
+                {transcriptionAllowed ? "Transcript on" : "Transcript off"}
               </p>
               <p className="mt-1 text-[10px] font-semibold leading-4">
-                Continue only after everyone who may be heard or seen has agreed. Recording still starts separately.
+                Continue only after everyone who may be heard or seen has
+                agreed. When the coach or host presses Record, this device
+                starts its own copy.
               </p>
             </div>
             <button
@@ -1855,113 +2025,122 @@ export function BrowserSourceRecorder({
               disabled={!policy || status === "recording"}
               className="min-h-11 rounded-full bg-emerald-800 px-5 text-xs font-black text-white disabled:opacity-50"
             >
-              <ShieldCheck size={14} className="mr-1 inline" /> Agree and continue
+              <ShieldCheck size={14} className="mr-1 inline" /> Agree and
+              continue
             </button>
           </div>
         </section>
       ) : null}
 
-      <details
-        className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3"
-      >
+      <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
         <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
           Recording settings · {myConsentCoversSource ? "Saved" : "Review"}
         </summary>
-      <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
-          <div className="flex items-center justify-between gap-2">
-            <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
-              Source
-            </strong>
-            <span className="text-[10px] font-bold text-[#8a7354]">
-              {microphoneLabel || "Choose a mic above"}
-            </span>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
+                Source
+              </strong>
+              <span className="text-[10px] font-bold text-[#8a7354]">
+                {microphoneLabel || "Choose a mic above"}
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={status === "recording"}
+                onClick={() => setSourceType("audio")}
+                className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "audio" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
+              >
+                <Mic2 size={15} className="mr-1 inline" /> Studio audio
+              </button>
+              <button
+                type="button"
+                disabled={status === "recording"}
+                onClick={() => setSourceType("video")}
+                className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "video" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
+              >
+                <Video size={15} className="mr-1 inline" /> Camera + audio
+              </button>
+            </div>
+            {sourceType === "video" ? (
+              <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
+                Camera: {cameraLabel || "Choose a camera above"}. USB webcam
+                output may be lower quality than the camera's internal
+                recording; Quipsly preserves the measured profile instead of
+                calling it 4K.
+              </p>
+            ) : null}
+            <label className="mt-3 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
+              <input
+                type="checkbox"
+                checked={headphonesAttested}
+                onChange={(event) =>
+                  setHeadphonesAttested(event.target.checked)
+                }
+                className="mt-1 accent-violet-800"
+              />{" "}
+              I’m using headphones (recommended).
+            </label>
+            {!headphonesAttested ? (
+              <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
+                You can still record without headphones.
+              </p>
+            ) : null}
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              disabled={status === "recording"}
-              onClick={() => setSourceType("audio")}
-              className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "audio" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
-            >
-              <Mic2 size={15} className="mr-1 inline" /> Studio audio
-            </button>
-            <button
-              type="button"
-              disabled={status === "recording"}
-              onClick={() => setSourceType("video")}
-              className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "video" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
-            >
-              <Video size={15} className="mr-1 inline" /> Camera + audio
-            </button>
-          </div>
-          {sourceType === "video" ? (
-            <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
-              Camera: {cameraLabel || "Choose a camera above"}. USB webcam
-              output may be lower quality than the camera's internal recording;
-              Quipsly preserves the measured profile instead of calling it 4K.
-            </p>
-          ) : null}
-          <label className="mt-3 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
-            <input
-              type="checkbox"
-              checked={headphonesAttested}
-              onChange={(event) => setHeadphonesAttested(event.target.checked)}
-              className="mt-1 accent-violet-800"
-            />{" "}
-            I’m using headphones (recommended).
-          </label>
-          {!headphonesAttested ? (
-            <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
-              You can still record without headphones.
-            </p>
-          ) : null}
-        </div>
 
-        <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
-          <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
-            Transcript
-          </strong>
-          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
-            Quipsly remembers this Session’s saved choice. Change it only when you want a different source or transcript setting.
-          </p>
-          <label className="mt-2 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
-            <input
-              ref={transcriptionChoiceInputRef}
-              type="checkbox"
-              checked={transcriptionAllowed}
-              disabled={!policy || status === "checking" || status === "recording"}
-              onChange={(event) => setTranscriptionChoice(event.target.checked)}
-              className="mt-1 accent-violet-800"
-            />{" "}
-            Create a transcript and suggested notes/tasks
-          </label>
-          <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
-            Continue only after everyone who may be heard or seen agrees.
-          </p>
-          {myConsentCoversSource ? (
-            <button
-              type="button"
-              onClick={() => void grantConsent()}
-              disabled={!policy || status === "recording"}
-              className="mt-3 min-h-10 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-[10px] font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"
-            >
-              <ShieldCheck size={14} className="mr-1 inline" /> Update choices
-            </button>
-          ) : null}
-          <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
-            {consentReady
-              ? "Everyone is ready to record."
-              : consentId
-                ? "Your choice is saved. Waiting for the other participant."
-                : "Not agreed yet."}
-          </p>
-          <details className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
-            <summary className="cursor-pointer">Recording and privacy details</summary>
-            <p className="mt-2">{policy?.text || "Loading details…"}</p>
-          </details>
+          <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
+            <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
+              Transcript
+            </strong>
+            <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
+              Quipsly remembers this Session’s saved choice. Change it only when
+              you want a different source or transcript setting.
+            </p>
+            <label className="mt-2 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
+              <input
+                ref={transcriptionChoiceInputRef}
+                type="checkbox"
+                checked={transcriptionAllowed}
+                disabled={
+                  !policy || status === "checking" || status === "recording"
+                }
+                onChange={(event) =>
+                  setTranscriptionChoice(event.target.checked)
+                }
+                className="mt-1 accent-violet-800"
+              />{" "}
+              Create a transcript and suggested notes/tasks
+            </label>
+            <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
+              Continue only after everyone who may be heard or seen agrees.
+            </p>
+            {myConsentCoversSource ? (
+              <button
+                type="button"
+                onClick={() => void grantConsent()}
+                disabled={!policy || status === "recording"}
+                className="mt-3 min-h-10 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-[10px] font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"
+              >
+                <ShieldCheck size={14} className="mr-1 inline" /> Update choices
+              </button>
+            ) : null}
+            <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
+              {consentReady
+                ? "Everyone is ready to record."
+                : consentId
+                  ? "Your choice is saved. Waiting for the other participant."
+                  : "Not agreed yet."}
+            </p>
+            <details className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
+              <summary className="cursor-pointer">
+                Recording and privacy details
+              </summary>
+              <p className="mt-2">{policy?.text || "Loading details…"}</p>
+            </details>
+          </div>
         </div>
-      </div>
       </details>
 
       {!conversationConnected ? (
@@ -1975,387 +2154,421 @@ export function BrowserSourceRecorder({
         className={conversationConnected ? "" : "hidden"}
         aria-hidden={!conversationConnected}
       >
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {["ENDED", "CANCELED", "FAILED"].includes(
-          roomStatus?.toUpperCase() ?? "",
-        ) ? (
-          canControlRoom ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {["ENDED", "CANCELED", "FAILED"].includes(
+            roomStatus?.toUpperCase() ?? "",
+          ) ? (
+            canControlRoom ? (
+              <button
+                type="button"
+                onClick={() => void reopenRoom()}
+                disabled={status === "checking"}
+                className="inline-flex min-h-12 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"
+              >
+                <RefreshCw size={16} /> Reopen Session to record
+              </button>
+            ) : (
+              <span className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-950">
+                This Session is closed. Ask the coach or host to reopen it
+                before recording another take.
+              </span>
+            )
+          ) : null}
+          {status === "recording" ||
+          (canControlRoom && recordingDirective?.shouldRecord === true) ? (
             <button
               type="button"
-              onClick={() => void reopenRoom()}
-              disabled={status === "checking"}
-              className="inline-flex min-h-12 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"
+              onClick={() =>
+                canControlRoom ? void issueDirective("STOP") : stop()
+              }
+              disabled={directiveBusy}
+              className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white"
             >
-              <RefreshCw size={16} /> Reopen Session to record
+              <Square size={16} fill="currentColor" />{" "}
+              {canControlRoom ? "Stop recording" : "Stop my recording"}
+            </button>
+          ) : canControlRoom ? (
+            <button
+              type="button"
+              onClick={() => void issueDirective("START")}
+              disabled={
+                !retainedReadiness.ok ||
+                directiveBusy ||
+                ["starting", "stopping", "uploading"].includes(status) ||
+                recordingDirective?.shouldRecord === true
+              }
+              className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"
+            >
+              {status === "starting" ? (
+                <LoaderCircle size={16} className="animate-spin" />
+              ) : (
+                <span className="h-3 w-3 rounded-full bg-white" />
+              )}{" "}
+              {sessionKind === "coaching" ? "Record" : "Record source"}
             </button>
           ) : (
-            <span className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-950">
-              This Session is closed. Ask the coach or host to reopen it before
-              recording another take.
+            <span className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-bold text-violet-950">
+              {recordingDirective?.shouldRecord
+                ? "Starting your recording…"
+                : "Recording starts when the coach or host presses Record."}
             </span>
-          )
-        ) : null}
-        {status === "recording" ? (
-          <button
-            type="button"
-            onClick={() => stop()}
-            className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white"
-          >
-            <Square size={16} fill="currentColor" /> Stop recording
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void start()}
-            disabled={
-              !retainedReadiness.ok ||
-              ["starting", "stopping", "uploading"].includes(status)
-            }
-            className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"
-          >
-            {status === "starting" ? (
-              <LoaderCircle size={16} className="animate-spin" />
-            ) : (
-              <span className="h-3 w-3 rounded-full bg-white" />
-            )}{" "}
-            {sessionKind === "coaching" ? "Record" : "Record source"}
-          </button>
-        )}
-      </div>
-      <details className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]" open={!vaultAvailable || Boolean(preflightStorageIssue) || Boolean(operationalIssue)}>
-        <summary className="cursor-pointer">Recording health · {vaultAvailable && !preflightStorageIssue && !operationalIssue ? "Ready" : "Needs attention"}</summary>
-        <p className="mt-2">On-device protection {vaultAvailable ? "ready" : "unavailable"} · {vaultPersistent ? "persistent storage granted" : "browser-managed retention"} · {formatBytes(usageBytes)} / {formatBytes(quotaBytes)}</p>
-      </details>
-      <p
-        role="status"
-        aria-live="assertive"
-        className={`mt-3 rounded-xl px-3 py-2 text-xs font-bold leading-5 ${status === "recording" ? "bg-rose-800 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-violet-50 text-violet-950"}`}
-      >
-        {message}
-      </p>
-
-      {activeLedger?.sourceProfile.captureMeter ? (
-        <section
-          className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sky-950"
-          aria-label="Retained source capture-time meter evidence"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <strong className="text-[10px] uppercase tracking-wide">
-              Capture-time meter receipt
-            </strong>
-            <span className="font-mono text-[10px] font-bold">
-              {(
-                activeLedger.sourceProfile.captureMeter.sampleRateHz / 1_000
-              ).toFixed(1)}{" "}
-              kHz ·{" "}
-              {activeLedger.sourceProfile.captureMeter.sourceChannelCount ??
-                "?"}{" "}
-              source ch
-            </span>
-          </div>
-          <div className="mt-2 grid gap-2 text-xs font-bold sm:grid-cols-3">
-            <span>
-              Highest observed RMS
-              <br />
-              <span className="font-mono">
-                {formattedDbfs(
-                  captureMeterDisplayEvidence(
-                    activeLedger.sourceProfile.captureMeter,
-                  ).highestObservedRmsDbfs,
-                )}
-              </span>
-            </span>
-            <span>
-              Sample peak
-              <br />
-              <span className="font-mono">
-                {formattedDbfs(
-                  activeLedger.sourceProfile.captureMeter.samplePeakDbfs,
-                )}
-              </span>
-            </span>
-            <span>
-              Near-full-scale samples
-              <br />
-              <span className="font-mono">
-                {captureMeterDisplayEvidence(
-                  activeLedger.sourceProfile.captureMeter,
-                ).nearFullScaleSampleCount.toLocaleString()}
-              </span>
-            </span>
-          </div>
-          <p className="mt-2 text-[10px] font-bold leading-4 opacity-75">
-            {activeLedger.sourceProfile.captureMeter.measurement ===
-            "audio-worklet-render-quantum-aggregate"
-              ? "Audio-render observations"
-              : "Animation-frame fallback observations"}{" "}
-            are stored with this source profile ·{" "}
-            {
-              captureMeterDisplayEvidence(
-                activeLedger.sourceProfile.captureMeter,
-              ).missingMessageCount
-            }{" "}
-            sequence gaps ·{" "}
-            {
-              captureMeterDisplayEvidence(
-                activeLedger.sourceProfile.captureMeter,
-              ).tailLabel
-            }
-            . This is not a complete decode, integrated loudness, or true-peak
-            result; those belong to verified post-capture analysis.
-          </p>
-        </section>
-      ) : null}
-
-      {recoveryRows.length ? (
+          )}
+        </div>
         <details
-          className="mt-4 border-t border-[#e5d8c0] pt-3"
-          open={recoverySummary.shouldExpand || undefined}
+          className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]"
+          open={
+            !vaultAvailable ||
+            Boolean(preflightStorageIssue) ||
+            Boolean(operationalIssue)
+          }
         >
-          <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wide text-[#5b472f]">
-            <span className="flex items-center gap-2">
-              <HardDrive size={14} /> Saved recordings · {recoveryRows.length}
-            </span>
-            <span>{recoverySummary.label}</span>
+          <summary className="cursor-pointer">
+            Recording health ·{" "}
+            {vaultAvailable && !preflightStorageIssue && !operationalIssue
+              ? "Ready"
+              : "Needs attention"}
           </summary>
-          <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
-            {recoverySummary.detail}
+          <p className="mt-2">
+            On-device protection {vaultAvailable ? "ready" : "unavailable"} ·{" "}
+            {vaultPersistent
+              ? "persistent storage granted"
+              : "browser-managed retention"}{" "}
+            · {formatBytes(usageBytes)} / {formatBytes(quotaBytes)}
           </p>
-          <div className="mt-2 space-y-2">
-            {recoveryRows.slice(0, 6).map((ledger) => (
-              <div
-                key={ledger.captureId}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fffaf0] px-3 py-2 text-xs font-bold text-[#5b472f]"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate">{ledger.fileName}</span>
-                  <span className="text-[10px] text-[#8a7354]">
-                    {browserSourceSafetyLabel(ledger)} · {formatBytes(ledger.sizeBytes)} ·{" "}
-                    {clockEvidenceLabel(ledger)} ·{" "}
-                    {new Date(ledger.startedAt).toLocaleString()}
-                  </span>
-                  {ledger.failureReason ? (
-                    <span className="mt-1 block text-[10px] font-semibold leading-4 text-amber-800">
-                      {ledger.failureReason}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void downloadBrowserSource(ledger)}
-                    className="inline-flex min-h-9 items-center gap-1 rounded-full border bg-white px-3 text-[10px] uppercase"
-                  >
-                    <Download size={13} /> Download
-                  </button>
-                  {browserSourceManualUploadRetryAvailable(ledger) ? (
-                    <button
-                      type="button"
-                      onClick={() => void retryUploadLedger(ledger)}
-                      className="inline-flex min-h-9 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-3 text-[10px] uppercase text-violet-950"
-                    >
-                      <UploadCloud size={13} /> Retry upload
-                    </button>
-                  ) : null}
-                  {ledger.state === "verified" ? (
-                    <CheckCircle2
-                      size={18}
-                      className="text-emerald-700"
-                      aria-label="Verified"
-                    />
-                  ) : ledger.state === "uploading" || ledger.state === "verifying" ? (
-                    <LoaderCircle
-                      size={18}
-                      className="animate-spin text-violet-700"
-                      aria-label="Uploading safely"
-                    />
-                  ) : ledger.state === "recording" ||
-                    ledger.state === "preparing" || ledger.state === "failed" ? (
-                    <AlertTriangle
-                      size={18}
-                      className="text-amber-700"
-                      aria-label="Interrupted take needs recovery"
-                    />
-                  ) : null}
-                </span>
-              </div>
-            ))}
-          </div>
         </details>
-      ) : null}
-      <section
-        className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4"
-        aria-labelledby={`studio-handoff-${callRoomId}`}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-violet-800">
-              <Layers3 size={14} /> Session take → Studio
-            </p>
-            <h4
-              id={`studio-handoff-${callRoomId}`}
-              className="mt-1 font-serif text-xl font-black text-violet-950"
-            >
-              Keep every device in the same take
-            </h4>
-            <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-violet-900">
-              This server snapshot includes browser, iPhone, and reconciled
-              provider sources with the exact capture-group identity. Refresh
-              after another device finishes. Quipsly refuses a changed or
-              partially verified source set at the attachment boundary.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void refreshStudioHandoff()}
-            disabled={handoffBusy}
-            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-violet-950 disabled:opacity-50"
-          >
-            <RefreshCw
-              size={14}
-              className={handoffBusy ? "animate-spin" : ""}
-            />{" "}
-            Refresh source set
-          </button>
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
-          <span className="rounded-full bg-white px-3 py-1.5 text-violet-950">
-            Take {captureGroupId.slice(0, 8)}
-          </span>
-          <span className="rounded-full bg-white px-3 py-1.5 text-violet-950">
-            {studioHandoff?.requiredSourceCount ?? 0} required masters
-          </span>
-          <span
-            className={`rounded-full px-3 py-1.5 ${studioHandoff?.ready ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}
-          >
-            {studioHandoff?.verifiedRequiredSourceCount ?? 0}/
-            {studioHandoff?.requiredSourceCount ?? 0} masters verified
-          </span>
-          <span
-            className={`rounded-full px-3 py-1.5 ${studioHandoff?.complete ? "bg-emerald-100 text-emerald-950" : "bg-white text-violet-950"}`}
-          >
-            {studioHandoff?.promotedRequiredSourceCount ?? 0}/
-            {studioHandoff?.requiredSourceCount ?? 0} masters in Studio
-          </span>
-          {studioHandoff?.providerWitnessCount ? (
-            <span className="rounded-full bg-sky-100 px-3 py-1.5 text-sky-950">
-              {studioHandoff.providerWitnessCount} provider witness
-            </span>
-          ) : null}
-        </div>
-
-        {studioHandoff?.sources.length ? (
-          <div
-            className="mt-3 space-y-2"
-            aria-label="Exact Session take source roster"
-          >
-            {studioHandoff.sources.map((source) => (
-              <div
-                key={source.recordingAssetId}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-100 bg-white px-3 py-2"
-              >
-                <span className="min-w-0 text-xs font-bold text-violet-950">
-                  <span className="block truncate">{source.fileName}</span>
-                  <span className="font-mono text-[10px] text-violet-700">
-                    {source.kind.replaceAll("_", " ")} ·{" "}
-                    {source.recordingAssetId.slice(0, 12)}
-                  </span>
-                </span>
-                <span className="flex flex-wrap items-center gap-1 text-[9px] font-black uppercase tracking-wide">
-                  {source.providerWitness ? (
-                    <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-950">
-                      optional witness · never blocks masters
-                    </span>
-                  ) : null}
-                  <span
-                    className={`rounded-full px-2 py-1 ${source.verifiedForStudio ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}
-                  >
-                    {source.verifiedForStudio
-                      ? "bytes released"
-                      : `${source.recordingStatus} · ${source.processingDisposition}`}
-                  </span>
-                  <span
-                    className={`rounded-full px-2 py-1 ${source.promotedToStudio ? "bg-violet-800 text-white" : "bg-violet-100 text-violet-950"}`}
-                  >
-                    {source.promotedToStudio ? "in Studio" : "not attached"}
-                  </span>
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-3 rounded-xl bg-white px-3 py-3 text-xs font-bold leading-5 text-violet-900">
-            No canonical source rows are visible for this exact take yet.
-            Browser files remain protected in the local vault;
-            upload/verification must finish before Studio attachment.
-          </p>
-        )}
-
         <p
           role="status"
-          aria-live="polite"
-          className="mt-3 text-xs font-bold leading-5 text-violet-950"
+          aria-live="assertive"
+          className={`mt-3 rounded-xl px-3 py-2 text-xs font-bold leading-5 ${status === "recording" ? "bg-rose-800 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-violet-50 text-violet-950"}`}
         >
-          {handoffMessage}
+          {message}
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {!studioHandoff?.complete ? (
+
+        {activeLedger?.sourceProfile.captureMeter ? (
+          <section
+            className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sky-950"
+            aria-label="Retained source capture-time meter evidence"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <strong className="text-[10px] uppercase tracking-wide">
+                Capture-time meter receipt
+              </strong>
+              <span className="font-mono text-[10px] font-bold">
+                {(
+                  activeLedger.sourceProfile.captureMeter.sampleRateHz / 1_000
+                ).toFixed(1)}{" "}
+                kHz ·{" "}
+                {activeLedger.sourceProfile.captureMeter.sourceChannelCount ??
+                  "?"}{" "}
+                source ch
+              </span>
+            </div>
+            <div className="mt-2 grid gap-2 text-xs font-bold sm:grid-cols-3">
+              <span>
+                Highest observed RMS
+                <br />
+                <span className="font-mono">
+                  {formattedDbfs(
+                    captureMeterDisplayEvidence(
+                      activeLedger.sourceProfile.captureMeter,
+                    ).highestObservedRmsDbfs,
+                  )}
+                </span>
+              </span>
+              <span>
+                Sample peak
+                <br />
+                <span className="font-mono">
+                  {formattedDbfs(
+                    activeLedger.sourceProfile.captureMeter.samplePeakDbfs,
+                  )}
+                </span>
+              </span>
+              <span>
+                Near-full-scale samples
+                <br />
+                <span className="font-mono">
+                  {captureMeterDisplayEvidence(
+                    activeLedger.sourceProfile.captureMeter,
+                  ).nearFullScaleSampleCount.toLocaleString()}
+                </span>
+              </span>
+            </div>
+            <p className="mt-2 text-[10px] font-bold leading-4 opacity-75">
+              {activeLedger.sourceProfile.captureMeter.measurement ===
+              "audio-worklet-render-quantum-aggregate"
+                ? "Audio-render observations"
+                : "Animation-frame fallback observations"}{" "}
+              are stored with this source profile ·{" "}
+              {
+                captureMeterDisplayEvidence(
+                  activeLedger.sourceProfile.captureMeter,
+                ).missingMessageCount
+              }{" "}
+              sequence gaps ·{" "}
+              {
+                captureMeterDisplayEvidence(
+                  activeLedger.sourceProfile.captureMeter,
+                ).tailLabel
+              }
+              . This is not a complete decode, integrated loudness, or true-peak
+              result; those belong to verified post-capture analysis.
+            </p>
+          </section>
+        ) : null}
+
+        {recoveryRows.length ? (
+          <details
+            className="mt-4 border-t border-[#e5d8c0] pt-3"
+            open={recoverySummary.shouldExpand || undefined}
+          >
+            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wide text-[#5b472f]">
+              <span className="flex items-center gap-2">
+                <HardDrive size={14} /> Saved recordings · {recoveryRows.length}
+              </span>
+              <span>{recoverySummary.label}</span>
+            </summary>
+            <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
+              {recoverySummary.detail}
+            </p>
+            <div className="mt-2 space-y-2">
+              {recoveryRows.slice(0, 6).map((ledger) => (
+                <div
+                  key={ledger.captureId}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fffaf0] px-3 py-2 text-xs font-bold text-[#5b472f]"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate">{ledger.fileName}</span>
+                    <span className="text-[10px] text-[#8a7354]">
+                      {browserSourceSafetyLabel(ledger)} ·{" "}
+                      {formatBytes(ledger.sizeBytes)} ·{" "}
+                      {clockEvidenceLabel(ledger)} ·{" "}
+                      {new Date(ledger.startedAt).toLocaleString()}
+                    </span>
+                    {ledger.failureReason ? (
+                      <span className="mt-1 block text-[10px] font-semibold leading-4 text-amber-800">
+                        {ledger.failureReason}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void downloadBrowserSource(ledger)}
+                      className="inline-flex min-h-9 items-center gap-1 rounded-full border bg-white px-3 text-[10px] uppercase"
+                    >
+                      <Download size={13} /> Download
+                    </button>
+                    {browserSourceManualUploadRetryAvailable(ledger) ? (
+                      <button
+                        type="button"
+                        onClick={() => void retryUploadLedger(ledger)}
+                        className="inline-flex min-h-9 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-3 text-[10px] uppercase text-violet-950"
+                      >
+                        <UploadCloud size={13} /> Retry upload
+                      </button>
+                    ) : null}
+                    {ledger.state === "verified" ? (
+                      <CheckCircle2
+                        size={18}
+                        className="text-emerald-700"
+                        aria-label="Verified"
+                      />
+                    ) : ledger.state === "uploading" ||
+                      ledger.state === "verifying" ? (
+                      <LoaderCircle
+                        size={18}
+                        className="animate-spin text-violet-700"
+                        aria-label="Uploading safely"
+                      />
+                    ) : ledger.state === "recording" ||
+                      ledger.state === "preparing" ||
+                      ledger.state === "failed" ? (
+                      <AlertTriangle
+                        size={18}
+                        className="text-amber-700"
+                        aria-label="Interrupted take needs recovery"
+                      />
+                    ) : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </details>
+        ) : null}
+        <section
+          className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4"
+          aria-labelledby={`studio-handoff-${callRoomId}`}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-violet-800">
+                <Layers3 size={14} /> Session take → Studio
+              </p>
+              <h4
+                id={`studio-handoff-${callRoomId}`}
+                className="mt-1 font-serif text-xl font-black text-violet-950"
+              >
+                Keep every device in the same take
+              </h4>
+              <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-violet-900">
+                This server snapshot includes browser, iPhone, and reconciled
+                provider sources with the exact capture-group identity. Refresh
+                after another device finishes. Quipsly refuses a changed or
+                partially verified source set at the attachment boundary.
+              </p>
+            </div>
             <button
               type="button"
-              onClick={() => void promoteStudioHandoff()}
-              disabled={handoffBusy || !studioHandoff?.ready}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-40"
+              onClick={() => void refreshStudioHandoff()}
+              disabled={handoffBusy}
+              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-violet-950 disabled:opacity-50"
             >
-              <UploadCloud size={15} /> Attach complete take
+              <RefreshCw
+                size={14}
+                className={handoffBusy ? "animate-spin" : ""}
+              />{" "}
+              Refresh source set
             </button>
-          ) : null}
-          {sessionKind === "episode" &&
-          studioHandoff?.complete &&
-          browserCaptureStudioReviewHref({
-            projectSlug: projectSlug || studioHandoff.projectSlug,
-            episodeSlug: episodeSlug || studioHandoff.episodeSlug,
-            captureGroupId,
-          }) ? (
-            <a
-              href={
-                browserCaptureStudioReviewHref({
-                  projectSlug: projectSlug || studioHandoff.projectSlug,
-                  episodeSlug: episodeSlug || studioHandoff.episodeSlug,
-                  captureGroupId,
-                })!
-              }
-              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
+            <span className="rounded-full bg-white px-3 py-1.5 text-violet-950">
+              Take {captureGroupId.slice(0, 8)}
+            </span>
+            <span className="rounded-full bg-white px-3 py-1.5 text-violet-950">
+              {studioHandoff?.requiredSourceCount ?? 0} required masters
+            </span>
+            <span
+              className={`rounded-full px-3 py-1.5 ${studioHandoff?.ready ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}
             >
-              <ExternalLink size={15} /> Open exact take in editor
-            </a>
-          ) : null}
-          {sessionKind === "coaching" && studioHandoff?.complete ? (
-            <a
-              href={`/sessions/${encodeURIComponent(callRoomId)}?mode=recordings`}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
+              {studioHandoff?.verifiedRequiredSourceCount ?? 0}/
+              {studioHandoff?.requiredSourceCount ?? 0} masters verified
+            </span>
+            <span
+              className={`rounded-full px-3 py-1.5 ${studioHandoff?.complete ? "bg-emerald-100 text-emerald-950" : "bg-white text-violet-950"}`}
             >
-              <ExternalLink size={15} /> Review Session recordings
-            </a>
-          ) : null}
-        </div>
-        <p className="mt-3 text-[10px] font-bold leading-4 text-violet-700">
-          Attachment preserves immutable originals and source identities.
-          Network clocks and rough anchors remain proposals; waveform,
-          late-drift, and playback review still decide placement and the
-          approved master.
-        </p>
-      </section>
-      {activeLedger?.state === "verified" ? (
-        <p className="mt-3 text-[10px] font-bold text-emerald-800">
-          Verified editor evidence:{" "}
-          {activeLedger.serverRecordingAssetId || "recording receipt created"}.
-          Session take {activeLedger.captureGroupId.slice(0, 8)} has{" "}
-          {clockEvidenceLabel(activeLedger)}; clock drift remains a bounded
-          proposal and waveform/listening review still decides final placement.
-          Local deletion remains unavailable by design.
-        </p>
-      ) : null}
+              {studioHandoff?.promotedRequiredSourceCount ?? 0}/
+              {studioHandoff?.requiredSourceCount ?? 0} masters in Studio
+            </span>
+            {studioHandoff?.providerWitnessCount ? (
+              <span className="rounded-full bg-sky-100 px-3 py-1.5 text-sky-950">
+                {studioHandoff.providerWitnessCount} provider witness
+              </span>
+            ) : null}
+          </div>
+
+          {studioHandoff?.sources.length ? (
+            <div
+              className="mt-3 space-y-2"
+              aria-label="Exact Session take source roster"
+            >
+              {studioHandoff.sources.map((source) => (
+                <div
+                  key={source.recordingAssetId}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-100 bg-white px-3 py-2"
+                >
+                  <span className="min-w-0 text-xs font-bold text-violet-950">
+                    <span className="block truncate">{source.fileName}</span>
+                    <span className="font-mono text-[10px] text-violet-700">
+                      {source.kind.replaceAll("_", " ")} ·{" "}
+                      {source.recordingAssetId.slice(0, 12)}
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap items-center gap-1 text-[9px] font-black uppercase tracking-wide">
+                    {source.providerWitness ? (
+                      <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-950">
+                        optional witness · never blocks masters
+                      </span>
+                    ) : null}
+                    <span
+                      className={`rounded-full px-2 py-1 ${source.verifiedForStudio ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}
+                    >
+                      {source.verifiedForStudio
+                        ? "bytes released"
+                        : `${source.recordingStatus} · ${source.processingDisposition}`}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-1 ${source.promotedToStudio ? "bg-violet-800 text-white" : "bg-violet-100 text-violet-950"}`}
+                    >
+                      {source.promotedToStudio ? "in Studio" : "not attached"}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 rounded-xl bg-white px-3 py-3 text-xs font-bold leading-5 text-violet-900">
+              No canonical source rows are visible for this exact take yet.
+              Browser files remain protected in the local vault;
+              upload/verification must finish before Studio attachment.
+            </p>
+          )}
+
+          <p
+            role="status"
+            aria-live="polite"
+            className="mt-3 text-xs font-bold leading-5 text-violet-950"
+          >
+            {handoffMessage}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {!studioHandoff?.complete ? (
+              <button
+                type="button"
+                onClick={() => void promoteStudioHandoff()}
+                disabled={handoffBusy || !studioHandoff?.ready}
+                className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-40"
+              >
+                <UploadCloud size={15} /> Attach complete take
+              </button>
+            ) : null}
+            {sessionKind === "episode" &&
+            studioHandoff?.complete &&
+            browserCaptureStudioReviewHref({
+              projectSlug: projectSlug || studioHandoff.projectSlug,
+              episodeSlug: episodeSlug || studioHandoff.episodeSlug,
+              captureGroupId,
+            }) ? (
+              <a
+                href={
+                  browserCaptureStudioReviewHref({
+                    projectSlug: projectSlug || studioHandoff.projectSlug,
+                    episodeSlug: episodeSlug || studioHandoff.episodeSlug,
+                    captureGroupId,
+                  })!
+                }
+                className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
+              >
+                <ExternalLink size={15} /> Open exact take in editor
+              </a>
+            ) : null}
+            {sessionKind === "coaching" && studioHandoff?.complete ? (
+              <a
+                href={`/sessions/${encodeURIComponent(callRoomId)}?mode=recordings`}
+                className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
+              >
+                <ExternalLink size={15} /> Review Session recordings
+              </a>
+            ) : null}
+          </div>
+          <p className="mt-3 text-[10px] font-bold leading-4 text-violet-700">
+            Attachment preserves immutable originals and source identities.
+            Network clocks and rough anchors remain proposals; waveform,
+            late-drift, and playback review still decide placement and the
+            approved master.
+          </p>
+        </section>
+        {activeLedger?.state === "verified" ? (
+          <p className="mt-3 text-[10px] font-bold text-emerald-800">
+            Verified editor evidence:{" "}
+            {activeLedger.serverRecordingAssetId || "recording receipt created"}
+            . Session take {activeLedger.captureGroupId.slice(0, 8)} has{" "}
+            {clockEvidenceLabel(activeLedger)}; clock drift remains a bounded
+            proposal and waveform/listening review still decides final
+            placement. Local deletion remains unavailable by design.
+          </p>
+        ) : null}
       </div>
     </section>
   );

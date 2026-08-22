@@ -2015,6 +2015,8 @@ model CallRoom {
   episodeBindingReceipts        CallRoomEpisodeBindingReceipt[]
   recordingConsents             RecordingConsent[]
   stateReceipts                 CaptureRoomStateReceipt[]
+  recordingDirectives           CallRecordingDirective[]
+  recordingDirectiveReceipts    CallRecordingEndpointReceipt[]
   providerRecordingCommands     ProviderRecordingCommand[]
   providerRecordingEvents       ProviderRecordingEventReceipt[]
   recordingAssets               RecordingAsset[]
@@ -2100,6 +2102,58 @@ model CaptureRoomStateReceipt {
   @@index([actorUserId, receivedAt])
   @@index([roomId, captureId, captureOwnerUserId])
   @@index([outcome, receivedAt])
+}
+
+// A controller's START/STOP request is coordination intent, not proof that any
+// endpoint recorded bytes. Each browser/iPhone acknowledges the directive in a
+// separate append-only receipt, then the canonical capture ledger and verified
+// RecordingAsset remain the authority for actual retained media.
+model CallRecordingDirective {
+  id                     String   @id @default(uuid()) @db.Uuid
+  requestId              String   @unique @db.Uuid
+  sequence               BigInt   @unique @default(autoincrement())
+  roomId                 String
+  captureGroupId         String   @db.Uuid
+  actorUserId            String
+  actorParticipantId     String?
+  action                 String
+  allPartyConsentVersion String?
+  requestSha256          String
+  issuedAt               DateTime
+  metadataJson           Json     @default("{}")
+  createdAt              DateTime @default(now())
+
+  room     CallRoom                       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  receipts CallRecordingEndpointReceipt[]
+
+  @@index([roomId, sequence])
+  @@index([roomId, action, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model CallRecordingEndpointReceipt {
+  id               String   @id @db.Uuid
+  directiveId      String   @db.Uuid
+  roomId           String
+  participantId    String
+  actorUserId      String
+  clientInstanceId String
+  clientKind       String
+  deviceLabel      String
+  state            String
+  captureId        String?  @db.Uuid
+  detail           String?
+  occurredAt       DateTime
+  receivedAt       DateTime @default(now())
+  evidenceJson     Json     @default("{}")
+
+  directive CallRecordingDirective @relation(fields: [directiveId], references: [id], onDelete: Cascade)
+  room      CallRoom               @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([directiveId, receivedAt])
+  @@index([roomId, participantId, receivedAt])
+  @@index([roomId, clientInstanceId, receivedAt])
+  @@index([captureId, receivedAt])
 }
 
 model MobileCaptureFinalizationReceipt {

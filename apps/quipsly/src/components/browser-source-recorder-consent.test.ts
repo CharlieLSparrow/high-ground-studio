@@ -12,24 +12,26 @@ describe("browser retained-source consent", () => {
       "const [transcriptionAllowed, setTranscriptionAllowed] = useState(true);",
     );
     expect(source).toContain("transcriptionAllowedRef.current = allowed;");
-    expect(source).toContain(
-      "transcriptionChoiceInputRef.current?.checked",
-    );
+    expect(source).toContain("transcriptionChoiceInputRef.current?.checked");
     expect(source).toContain("canTranscribe: submittedTranscriptionChoice");
     expect(source).toMatch(
       /ref=\{transcriptionChoiceInputRef\}\s+type="checkbox"\s+checked=\{transcriptionAllowed\}/,
     );
-    expect(source).toContain(
-      'disabled={!policy || status === "checking" || status === "recording"}',
+    expect(source).toMatch(
+      /disabled=\{\s*!policy \|\|\s*status === "checking" \|\|\s*status === "recording"\s*\}/,
     );
-    expect(source).toContain("Agree and continue");
+    expect(source).toMatch(/Agree and\s+continue/);
     expect(source).toContain('aria-label="Recording consent needed"');
     expect(source).not.toContain('open={status === "recording"}');
     expect(source).toContain("Recording settings ·");
-    expect(source).toContain("Recording still starts separately.");
+    expect(source).toMatch(
+      /When the coach or host presses Record, this device\s+starts its own copy\./,
+    );
     expect(source).toContain("Create a transcript and suggested notes/tasks");
     expect(source).toContain("conversationConnected = true");
-    expect(source).toContain('className={conversationConnected ? "" : "hidden"}');
+    expect(source).toContain(
+      'className={conversationConnected ? "" : "hidden"}',
+    );
     expect(source).toContain("the Record button appears after you join");
     expect(source).not.toContain("Save my consent receipt");
   });
