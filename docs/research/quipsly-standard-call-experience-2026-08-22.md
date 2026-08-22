@@ -119,6 +119,16 @@ failure shapes recur often enough to influence the architecture:
   `Safe on this device`, `Uploading safely`, `Verified in Quipsly`, or
   `Needs attention`. Manual download and retry remain available as escape
   hatches, not the normal path.
+- Separated transcript correction from media editing. Accepted corrections
+  remain versioned text/speaker overlays on immutable provider evidence;
+  removing a passage creates a separate source-hash-bound edit decision.
+- Upgraded private Session recording shares to ordered kept ranges with
+  click-safe joins. The renderer produces and verifies a new AAC copy while
+  leaving participant masters untouched, and a stale transcript selection
+  fails closed instead of cutting against changed text.
+- Added transcript passage controls directly to the Session recording surface.
+  Coaches can make another private edit after a first preview, listen before
+  release, and still keep release/revocation distinct from rendering.
 
 ## Acceptance consequences
 

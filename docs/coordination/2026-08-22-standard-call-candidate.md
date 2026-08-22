@@ -8,6 +8,12 @@ Status: source-qualified; not uploaded or deployed
 > source revision recorded below. They are not part of this qualified artifact
 > and must ride a later exact-source Nest candidate.
 
+> A subsequent working-tree slice also added source-bound transcript editing
+> for private Session recording shares: multiple retained ranges, immutable
+> transcript exclusion receipts, short click-safe joins, and a verified
+> non-destructive renderer. It is locally tested but is not part of the Build
+> 33 or Nest candidate identified below.
+
 ## Product decision
 
 The call path follows the conventions people already know from Meet, Zoom,

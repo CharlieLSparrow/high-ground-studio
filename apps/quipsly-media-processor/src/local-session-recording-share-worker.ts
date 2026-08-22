@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { copyFile, mkdir, readFile, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -87,8 +87,17 @@ async function verifySource(source: SessionRecordingShareJob["sources"][number],
 
 function receiptMatchesJob(receipt: LocalSessionRecordingShareReceipt, job: SessionRecordingShareJob) {
   const metadata = receipt.customMetadata;
+  const editSha256 = createHash("sha256").update(JSON.stringify(job.edit)).digest("hex");
+  const legacyFullRange = job.edit.keptRanges.length === 1
+    && job.edit.keptRanges[0]?.startSeconds === job.edit.startSeconds
+    && job.edit.keptRanges[0]?.endSeconds === job.edit.endSeconds
+    && job.edit.transcriptExclusions.length === 0
+    && job.edit.joinCrossfadeSeconds === 0;
   return receipt.contentType === job.target.contentType
-    && metadata.quipslyKind === "session-recording-share-v1"
+    && (
+      (metadata.quipslyKind === "session-recording-share-v2" && metadata.quipslyEditSha256 === editSha256)
+      || (metadata.quipslyKind === "session-recording-share-v1" && legacyFullRange)
+    )
     && metadata.quipslyJobId === job.jobId
     && metadata.quipslyRoomId === job.roomId
     && metadata.quipslyOutputId === job.outputId
@@ -212,7 +221,7 @@ export async function runOneLocalSessionRecordingShareJob(
       sizeBytes: rendered.bytes.length,
       contentType: job.target.contentType,
       customMetadata: {
-        quipslyKind: "session-recording-share-v1",
+        quipslyKind: "session-recording-share-v2",
         quipslyJobId: job.jobId,
         quipslyRoomId: job.roomId,
         quipslyOutputId: job.outputId,
@@ -220,6 +229,7 @@ export async function runOneLocalSessionRecordingShareJob(
         quipslyExpectedSha256: rendered.sha256,
         quipslyExpectedSizeBytes: String(rendered.bytes.length),
         quipslySourceSetSha256: job.sourceSetSha256,
+        quipslyEditSha256: createHash("sha256").update(JSON.stringify(job.edit)).digest("hex"),
         quipslyOriginalSourcesRemainImmutable: "true",
       },
       technical: rendered.technical,

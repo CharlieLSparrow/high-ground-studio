@@ -32,7 +32,7 @@ test("Session recording share FFmpeg recipe aligns exact sources and trims one c
       outputRevision: 1,
       requestedAt: "2026-08-19T23:45:00.000Z",
       sourceSetSha256: "b".repeat(64),
-      edit: { startSeconds: 2.5, endSeconds: 12.5 },
+      edit: { startSeconds: 2.5, endSeconds: 12.5, keptRanges: [{ id: "kept_range_0001", startSeconds: 2.5, endSeconds: 12.5 }], transcriptExclusions: [], joinCrossfadeSeconds: 0 },
       sources: [
         { ...base, recordingAssetId: "recording_asset_0001", participantId: "participant_0001", participantLabel: "Coach", programOffsetSeconds: 0 },
         { ...base, objectName: "mobile/client.webm", locator: "/tmp/quipsly/client.webm", recordingAssetId: "recording_asset_0002", participantId: "participant_0002", participantLabel: "Client", programOffsetSeconds: 0.375 },
@@ -45,6 +45,44 @@ test("Session recording share FFmpeg recipe aligns exact sources and trims one c
     assert.match(graph, /atrim=start=2\.5:end=12\.5/);
     assert.match(graph, /amix=inputs=2/);
     assert.match(graph, /loudnorm=I=-16:TP=-1\.5:LRA=11/);
+});
+
+test("Session recording share FFmpeg recipe joins transcript cuts with a short crossfade", () => {
+  const base = {
+    provider: "local" as const,
+    bucketName: "quipsly-local-development-vault",
+    objectName: "mobile/source.webm",
+    locator: "/tmp/quipsly/source.webm",
+    generation: "1",
+    sha256: "a".repeat(64),
+    sizeBytes: 1_000,
+    contentType: "audio/webm",
+  };
+  const job = newSessionRecordingShareJob({
+    jobId: "share_job_text_edit_0001",
+    roomId: "session_room_text_edit_0001",
+    outputId: "session_output_text_edit_0001",
+    outputRevision: 1,
+    requestedAt: "2026-08-19T23:45:00.000Z",
+    sourceSetSha256: "b".repeat(64),
+    edit: {
+      startSeconds: 0,
+      endSeconds: 12,
+      keptRanges: [
+        { id: "kept_range_text_0001", startSeconds: 0, endSeconds: 4 },
+        { id: "kept_range_text_0002", startSeconds: 7, endSeconds: 12 },
+      ],
+      transcriptExclusions: [],
+      joinCrossfadeSeconds: 0.01,
+    },
+    sources: [{ ...base, recordingAssetId: "recording_asset_text_0001", participantId: "participant_text_0001", participantLabel: "Coach", programOffsetSeconds: 0 }],
+    target: { provider: "local", bucketName: base.bucketName, objectName: "session-exports/output.m4a", locator: "/tmp/quipsly/output.m4a", contentType: "audio/mp4", codec: "aac-lc", sampleRateHz: 48_000, channels: 2 },
+  });
+  const graph = buildSessionRecordingShareFilterGraph(job);
+  assert.match(graph, /asplit=2/);
+  assert.match(graph, /atrim=start=0:end=4/);
+  assert.match(graph, /atrim=start=7:end=12/);
+  assert.match(graph, /acrossfade=d=0\.01:c1=tri:c2=tri/);
 });
 
 test("FFmpeg renders a verified aligned Session share without mutating sources", async () => {
@@ -65,7 +103,16 @@ test("FFmpeg renders a verified aligned Session share without mutating sources",
       outputRevision: 1,
       requestedAt: "2026-08-19T23:45:00.000Z",
       sourceSetSha256: "c".repeat(64),
-      edit: { startSeconds: 0.25, endSeconds: 2.5 },
+      edit: {
+        startSeconds: 0.25,
+        endSeconds: 2.5,
+        keptRanges: [
+          { id: "kept_range_render_0001", startSeconds: 0.25, endSeconds: 1 },
+          { id: "kept_range_render_0002", startSeconds: 1.5, endSeconds: 2.5 },
+        ],
+        transcriptExclusions: [],
+        joinCrossfadeSeconds: 0.01,
+      },
       sources: [
         { ...base, recordingAssetId: "recording_asset_render_0001", participantId: "participant_render_0001", participantLabel: "Coach", objectName: "coach.wav", locator: coach, sha256: coachSha, sizeBytes: coachStat.size, programOffsetSeconds: 0 },
         { ...base, recordingAssetId: "recording_asset_render_0002", participantId: "participant_render_0002", participantLabel: "Client", objectName: "client.wav", locator: client, sha256: clientSha, sizeBytes: clientStat.size, programOffsetSeconds: 0.25 },
@@ -75,7 +122,7 @@ test("FFmpeg renders a verified aligned Session share without mutating sources",
     const rendered = await new FfmpegSessionRecordingShareRenderer().render(job, output);
     assert.ok(rendered.bytes.length > 1_000);
     assert.match(rendered.sha256, /^[a-f0-9]{64}$/);
-    assert.ok(Math.abs(rendered.technical.durationSeconds - 2.25) <= 0.25);
+    assert.ok(Math.abs(rendered.technical.durationSeconds - 1.74) <= 0.25);
     assert.equal(rendered.technical.completeDecode, true);
     assert.equal(await sha256File(coach), coachSha);
     assert.equal(await sha256File(client), clientSha);
@@ -100,7 +147,7 @@ test("local worker recovers an exact durable render after losing its database cl
       outputRevision: 1,
       requestedAt: "2026-08-19T23:45:00.000Z",
       sourceSetSha256: "d".repeat(64),
-      edit: { startSeconds: 0, endSeconds: 1.5 },
+      edit: { startSeconds: 0, endSeconds: 1.5, keptRanges: [{ id: "kept_range_recovery_0001", startSeconds: 0, endSeconds: 1.5 }], transcriptExclusions: [], joinCrossfadeSeconds: 0 },
       sources: [
         { provider: "local", bucketName: "local", generation: "1", contentType: "audio/wav", objectName: "coach.wav", locator: coach, sha256: coachSha, sizeBytes: coachStat.size, recordingAssetId: "recovery_asset_coach", participantId: "recovery_participant_coach", participantLabel: "Coach", programOffsetSeconds: 0 },
         { provider: "local", bucketName: "local", generation: "1", contentType: "audio/wav", objectName: "client.wav", locator: client, sha256: clientSha, sizeBytes: clientStat.size, recordingAssetId: "recovery_asset_client", participantId: "recovery_participant_client", participantLabel: "Client", programOffsetSeconds: 0.1 },

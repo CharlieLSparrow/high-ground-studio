@@ -16,7 +16,23 @@ function job() {
     outputRevision: 1,
     requestedAt: "2026-08-19T23:45:00.000Z",
     sourceSetSha256: "a".repeat(64),
-    edit: { startSeconds: 2.25, endSeconds: 42.5 },
+    edit: {
+      startSeconds: 2.25,
+      endSeconds: 42.5,
+      keptRanges: [
+        { id: "kept_range_0001", startSeconds: 2.25, endSeconds: 20 },
+        { id: "kept_range_0002", startSeconds: 24, endSeconds: 42.5 },
+      ],
+      transcriptExclusions: [{
+        transcriptJobId: "transcript_job_0001",
+        segmentId: "transcript_segment_0001",
+        sourceRecordingAssetId: "recording_asset_0001",
+        providerTextSha256: "d".repeat(64),
+        startSeconds: 20,
+        endSeconds: 24,
+      }],
+      joinCrossfadeSeconds: 0.01,
+    },
     sources: [{
       recordingAssetId: "recording_asset_0001",
       participantId: "participant_0001",
@@ -46,8 +62,9 @@ function job() {
 
 test("Session recording share contract preserves exact source, edit, and target bindings", () => {
   const value = job();
-  assert.equal(value.kind, "quipsly-session-recording-share-job-v1");
-  assert.deepEqual(value.edit, { startSeconds: 2.25, endSeconds: 42.5 });
+  assert.equal(value.kind, "quipsly-session-recording-share-job-v2");
+  assert.equal(value.edit.keptRanges.length, 2);
+  assert.equal(value.edit.transcriptExclusions[0]?.segmentId, "transcript_segment_0001");
   assert.equal(value.sources[0]?.recordingAssetId, "recording_asset_0001");
   assert.equal(value.sources[0]?.programOffsetSeconds, 0.125);
   assert.deepEqual(
@@ -64,8 +81,42 @@ test("Session recording share contract rejects duplicate sources and unsafe time
     }), /sources must be unique/i);
   assert.throws(() => parseSessionRecordingShareJob({
       ...value,
-      edit: { startSeconds: 9, endSeconds: 8 },
+      edit: { ...value.edit, startSeconds: 9, endSeconds: 8 },
     }), /edit range is invalid/i);
+});
+
+test("Session recording share contract rejects overlapping edits and stale transcript hashes", () => {
+  const value = job();
+  assert.throws(() => parseSessionRecordingShareJob({
+    ...value,
+    edit: {
+      ...value.edit,
+      keptRanges: [
+        { id: "kept_range_0001", startSeconds: 2.25, endSeconds: 20 },
+        { id: "kept_range_0002", startSeconds: 19, endSeconds: 42.5 },
+      ],
+    },
+  }), /overlaps/i);
+  assert.throws(() => parseSessionRecordingShareJob({
+    ...value,
+    edit: {
+      ...value.edit,
+      transcriptExclusions: [{ ...value.edit.transcriptExclusions[0], providerTextSha256: "not-current" }],
+    },
+  }), /SHA-256/i);
+});
+
+test("Session recording share parser upgrades queued v1 jobs without changing their trim", () => {
+  const value = job();
+  const upgraded = parseSessionRecordingShareJob({
+    ...value,
+    kind: "quipsly-session-recording-share-job-v1",
+    version: 1,
+    edit: { startSeconds: 2.25, endSeconds: 42.5 },
+  });
+  assert.equal(upgraded.kind, "quipsly-session-recording-share-job-v2");
+  assert.deepEqual(upgraded.edit.keptRanges, [{ id: "legacy_full_range", startSeconds: 2.25, endSeconds: 42.5 }]);
+  assert.equal(upgraded.edit.joinCrossfadeSeconds, 0);
 });
 
 test("Session recording share result parser requires complete-decode and privacy boundaries", () => {
@@ -78,7 +129,7 @@ test("Session recording share result parser requires complete-decode and privacy
     sourceSetSha256: value.sourceSetSha256,
     edit: value.edit,
     sourceRecordingAssetIds: value.sources.map((source) => source.recordingAssetId),
-    output: { ...value.target, generation: "2", sha256: "c".repeat(64), sizeBytes: 80_000, durationSeconds: 40.25, completeDecode: true },
+    output: { ...value.target, generation: "2", sha256: "c".repeat(64), sizeBytes: 80_000, durationSeconds: 36.24, completeDecode: true },
     worker: { executionId: "execution_0001", buildId: "test", imageDigest: null, ffmpegVersion: "ffmpeg test" },
     completedAt: "2026-08-19T23:46:00.000Z",
   });

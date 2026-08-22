@@ -72,6 +72,16 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
         sourceIds: Array.isArray(body.sourceIds) ? body.sourceIds.map((value: unknown) => text(value)).filter(Boolean) : [],
         startSeconds: Number(body.startSeconds),
         endSeconds: Number(body.endSeconds),
+        excludedTranscriptSegments: Array.isArray(body.excludedTranscriptSegments)
+          ? body.excludedTranscriptSegments.map((value: unknown) => {
+              const item = object(value);
+              return {
+                transcriptJobId: text(item.transcriptJobId),
+                segmentId: text(item.segmentId),
+                providerTextSha256: text(item.providerTextSha256, 64).toLowerCase(),
+              };
+            })
+          : [],
       });
       return privateJson({ ok: true, ...result, boundaries: { sourceFilesMutated: false, releasedToClient: false, externalMessageSent: false } });
     }

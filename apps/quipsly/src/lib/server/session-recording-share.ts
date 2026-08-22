@@ -14,7 +14,7 @@ import {
   type SessionAccessActor,
 } from "./session-access";
 
-export const SESSION_RECORDING_SHARE_SCHEMA = "quipsly-session-recording-share-v1";
+export const SESSION_RECORDING_SHARE_SCHEMA = "quipsly-session-recording-share-v2";
 export const SESSION_RECORDING_SHARE_MANIFEST_SCHEMA = "quipsly-session-recording-share-manifest-v1";
 
 type RestoreClient = any;
@@ -230,6 +230,138 @@ function sourceSummary(rows: any[]) {
   };
 }
 
+type RecordingShareTranscriptSegment = {
+  transcriptJobId: string;
+  segmentId: string;
+  sourceRecordingAssetId: string;
+  providerTextSha256: string;
+  speakerLabel: string;
+  text: string;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+async function loadTranscriptEditSegments(client: RestoreClient, roomId: string, sources: any[]): Promise<RecordingShareTranscriptSegment[]> {
+  if (!sources.length) return [];
+  const sourceById = new Map(sources.map((source: any, index: number) => [source.id, { source, label: participantLabel(source, index) }]));
+  const originMs = Math.min(...sources.map((source: any) => source.recordedStartedAt.getTime()));
+  const jobs = await client.transcriptJob.findMany({
+    where: { roomId, status: "COMPLETED", assetId: { in: [...sourceById.keys()] } },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: {
+      id: true,
+      assetId: true,
+      sourceSha256: true,
+      segments: {
+        orderBy: [{ startSeconds: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          speakerLabel: true,
+          startSeconds: true,
+          endSeconds: true,
+          text: true,
+          corrections: {
+            where: { status: "accepted" },
+            orderBy: { updatedAt: "desc" },
+            take: 1,
+            select: { correctedText: true, correctedSpeakerLabel: true, baseTextSha256: true },
+          },
+        },
+      },
+    },
+  });
+  const chosenAssets = new Set<string>();
+  const projected: RecordingShareTranscriptSegment[] = [];
+  for (const job of jobs) {
+    const binding = job.assetId ? sourceById.get(job.assetId) : null;
+    if (!binding || chosenAssets.has(job.assetId) || clean(job.sourceSha256, 64).toLowerCase() !== clean(binding.source.checksum, 64).toLowerCase()) continue;
+    chosenAssets.add(job.assetId);
+    const offsetSeconds = (binding.source.recordedStartedAt.getTime() - originMs) / 1_000;
+    for (const segment of job.segments) {
+      const providerTextSha256 = sha256(segment.text);
+      const correction = segment.corrections[0]?.baseTextSha256 === providerTextSha256 ? segment.corrections[0] : null;
+      const startSeconds = offsetSeconds + Number(segment.startSeconds);
+      const endSeconds = offsetSeconds + Number(segment.endSeconds);
+      if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || endSeconds <= startSeconds) continue;
+      projected.push({
+        transcriptJobId: job.id,
+        segmentId: segment.id,
+        sourceRecordingAssetId: job.assetId,
+        providerTextSha256,
+        speakerLabel: clean(correction?.correctedSpeakerLabel, 160) || clean(segment.speakerLabel, 160) || binding.label,
+        text: clean(correction?.correctedText, 20_000) || clean(segment.text, 20_000),
+        startSeconds,
+        endSeconds,
+      });
+    }
+  }
+  return projected.sort((left, right) => left.startSeconds - right.startSeconds || left.segmentId.localeCompare(right.segmentId));
+}
+
+export function buildSessionRecordingShareEdit(input: {
+  startSeconds: number;
+  endSeconds: number;
+  transcriptSegments: RecordingShareTranscriptSegment[];
+  excludedTranscriptSegments: Array<{ transcriptJobId: string; segmentId: string; providerTextSha256: string }>;
+}) {
+  const requested = input.excludedTranscriptSegments.map((item) => ({
+    transcriptJobId: clean(item.transcriptJobId, 240),
+    segmentId: clean(item.segmentId, 240),
+    providerTextSha256: clean(item.providerTextSha256, 64).toLowerCase(),
+  }));
+  const requestedKeys = requested.map((item) => `${item.transcriptJobId}:${item.segmentId}`);
+  if (requested.length > 500 || new Set(requestedKeys).size !== requested.length) {
+    throw new SessionRecordingShareError(400, "TEXT_EDIT_INVALID", "Refresh the transcript before preparing this text edit.");
+  }
+  const available = new Map(input.transcriptSegments.map((segment) => [`${segment.transcriptJobId}:${segment.segmentId}`, segment]));
+  const transcriptExclusions = requested.map((item) => {
+    const segment = available.get(`${item.transcriptJobId}:${item.segmentId}`);
+    if (!segment || segment.providerTextSha256 !== item.providerTextSha256) {
+      throw new SessionRecordingShareError(409, "TRANSCRIPT_EDIT_STALE", "The transcript changed since this edit was chosen. Refresh before preparing the recording.");
+    }
+    const startSeconds = Math.max(input.startSeconds, segment.startSeconds);
+    const endSeconds = Math.min(input.endSeconds, segment.endSeconds);
+    if (endSeconds <= startSeconds) {
+      throw new SessionRecordingShareError(400, "TEXT_EDIT_OUTSIDE_RANGE", "A removed transcript passage is outside the selected recording range.");
+    }
+    return { ...segment, startSeconds, endSeconds };
+  });
+  const merged: Array<{ startSeconds: number; endSeconds: number }> = [];
+  for (const exclusion of [...transcriptExclusions].sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds)) {
+    const current = merged.at(-1);
+    if (current && exclusion.startSeconds <= current.endSeconds + 0.02) current.endSeconds = Math.max(current.endSeconds, exclusion.endSeconds);
+    else merged.push({ startSeconds: exclusion.startSeconds, endSeconds: exclusion.endSeconds });
+  }
+  const kept: Array<{ startSeconds: number; endSeconds: number }> = [];
+  let cursor = input.startSeconds;
+  for (const exclusion of merged) {
+    if (exclusion.startSeconds - cursor >= 0.05) kept.push({ startSeconds: cursor, endSeconds: exclusion.startSeconds });
+    cursor = Math.max(cursor, exclusion.endSeconds);
+  }
+  if (input.endSeconds - cursor >= 0.05) kept.push({ startSeconds: cursor, endSeconds: input.endSeconds });
+  if (!kept.length) {
+    throw new SessionRecordingShareError(400, "TEXT_EDIT_REMOVES_ALL", "Keep at least one passage in the shared recording.");
+  }
+  const keptRanges = kept.map((range) => ({
+    id: `kept_range_${sha256({ startSeconds: range.startSeconds, endSeconds: range.endSeconds }).slice(0, 24)}`,
+    ...range,
+  }));
+  return {
+    startSeconds: input.startSeconds,
+    endSeconds: input.endSeconds,
+    keptRanges,
+    transcriptExclusions: transcriptExclusions.map((segment) => ({
+      transcriptJobId: segment.transcriptJobId,
+      segmentId: segment.segmentId,
+      sourceRecordingAssetId: segment.sourceRecordingAssetId,
+      providerTextSha256: segment.providerTextSha256,
+      startSeconds: segment.startSeconds,
+      endSeconds: segment.endSeconds,
+    })),
+    joinCrossfadeSeconds: keptRanges.length > 1 ? 0.01 : 0,
+  };
+}
+
 async function reconcileRender(client: RestoreClient, output: any) {
   if (!output) return null;
   const body = object(output.bodyJson);
@@ -373,6 +505,7 @@ export async function readSessionRecordingShare(client: RestoreClient, input: { 
   });
   if (canPrepare && output?.status === "DRAFT") output = await reconcileRender(client, output);
   const sourceRows = canPrepare ? await loadSources(client, room.id) : [];
+  const transcriptSegments = canPrepare ? await loadTranscriptEditSegments(client, room.id, sourceRows) : [];
   return {
     role: canPrepare ? "COACH" as const : isRecipient ? "CLIENT" as const : "COLLABORATOR" as const,
     room: {
@@ -383,7 +516,7 @@ export async function readSessionRecordingShare(client: RestoreClient, input: { 
         : null,
       client: { id: room.booking.clientUser.id, label: room.booking.clientUser.name || room.booking.clientUser.primaryEmail || "Client" },
     },
-    available: sourceSummary(sourceRows),
+    available: { ...sourceSummary(sourceRows), transcriptSegments },
     output: serializeOutput(output),
     readiness: {
       canPrepare,
@@ -408,6 +541,7 @@ export async function prepareSessionRecordingShare(client: RestoreClient, input:
   startSeconds: number;
   endSeconds: number;
   title: string;
+  excludedTranscriptSegments: Array<{ transcriptJobId: string; segmentId: string; providerTextSha256: string }>;
 }) {
   const room = await loadRoom(client, input.roomId, input.actor, "release");
   const allSources = await loadSources(client, room.id);
@@ -420,6 +554,13 @@ export async function prepareSessionRecordingShare(client: RestoreClient, input:
   if (!Number.isFinite(input.startSeconds) || !Number.isFinite(input.endSeconds) || input.startSeconds < 0 || input.endSeconds <= input.startSeconds || input.endSeconds > summary.programDurationSeconds + 0.05) {
     throw new SessionRecordingShareError(400, "EDIT_RANGE_INVALID", "Choose a recording range within the verified participant masters.");
   }
+  const transcriptSegments = await loadTranscriptEditSegments(client, room.id, selected);
+  const edit = buildSessionRecordingShareEdit({
+    startSeconds: input.startSeconds,
+    endSeconds: input.endSeconds,
+    transcriptSegments,
+    excludedTranscriptSegments: input.excludedTranscriptSegments,
+  });
   const targetProbe = localRenderTarget("session-exports/probe.m4a");
   if (!targetProbe) {
     throw new SessionRecordingShareError(503, "RECORDING_RENDERER_UNAVAILABLE", "The production recording renderer is not deployed yet. No draft or release was created.");
@@ -465,7 +606,7 @@ export async function prepareSessionRecordingShare(client: RestoreClient, input:
   const title = clean(input.title, 500) || `${room.title || "Coaching Session"} recording`;
   const body = json({
     schema: SESSION_RECORDING_SHARE_SCHEMA,
-    edit: { startSeconds: input.startSeconds, endSeconds: input.endSeconds },
+    edit,
     render: { jobId, status: "QUEUED", sourceOutputRevision: 1 },
     recipient: { userId: room.booking.clientUserId },
     boundaries: { originalSourcesRemainImmutable: true, editIsNonDestructive: true, clientVisibility: "PRIVATE_UNTIL_RELEASE" },

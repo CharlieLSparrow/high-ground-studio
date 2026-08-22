@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
-import type { SessionRecordingShareJob } from "@high-ground/quipsly-media-processing";
+import {
+  sessionRecordingShareOutputDuration,
+  type SessionRecordingShareJob,
+} from "@high-ground/quipsly-media-processing";
 
 const execFileAsync = promisify(execFile);
 
@@ -32,7 +35,34 @@ export function buildSessionRecordingShareFilterGraph(job: SessionRecordingShare
   const inputs = job.sources.map((_, index) => `[track${index}]`).join("");
   tracks.push(
     `${inputs}amix=inputs=${job.sources.length}:duration=longest:dropout_transition=0:normalize=0,`
-      + `loudnorm=I=-16:TP=-1.5:LRA=11,alimiter=limit=0.944,atrim=duration=${duration}[share]`,
+      + `atrim=duration=${duration}[program]`,
+  );
+  const keptRanges = job.edit.keptRanges;
+  if (keptRanges.length === 1) {
+    const range = keptRanges[0]!;
+    tracks.push(
+      `[program]atrim=start=${range.startSeconds - job.edit.startSeconds}:end=${range.endSeconds - job.edit.startSeconds},`
+        + `asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11,alimiter=limit=0.944,`
+        + `atrim=duration=${sessionRecordingShareOutputDuration(job.edit)}[share]`,
+    );
+    return tracks.join(";");
+  }
+  tracks.push(`[program]asplit=${keptRanges.length}${keptRanges.map((_, index) => `[range${index}in]`).join("")}`);
+  for (const [index, range] of keptRanges.entries()) {
+    tracks.push(
+      `[range${index}in]atrim=start=${range.startSeconds - job.edit.startSeconds}:end=${range.endSeconds - job.edit.startSeconds},`
+        + `asetpts=PTS-STARTPTS[range${index}]`,
+    );
+  }
+  let joined = "[range0]";
+  for (let index = 1; index < keptRanges.length; index += 1) {
+    const output = `[joined${index}]`;
+    tracks.push(`${joined}[range${index}]acrossfade=d=${job.edit.joinCrossfadeSeconds}:c1=tri:c2=tri${output}`);
+    joined = output;
+  }
+  tracks.push(
+    `${joined}loudnorm=I=-16:TP=-1.5:LRA=11,alimiter=limit=0.944,`
+      + `atrim=duration=${sessionRecordingShareOutputDuration(job.edit)}[share]`,
   );
   return tracks.join(";");
 }
@@ -72,7 +102,7 @@ export class FfmpegSessionRecordingShareRenderer {
     };
     const durationSeconds = Number(value.format?.duration);
     const stream = value.streams?.[0];
-    const expectedDuration = job.edit.endSeconds - job.edit.startSeconds;
+    const expectedDuration = sessionRecordingShareOutputDuration(job.edit);
     if (
       !Number.isFinite(durationSeconds) ||
       Math.abs(durationSeconds - expectedDuration) > 0.25 ||

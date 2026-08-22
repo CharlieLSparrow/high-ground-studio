@@ -1,5 +1,31 @@
-export const SESSION_RECORDING_SHARE_JOB_KIND = "quipsly-session-recording-share-job-v1" as const;
-export const SESSION_RECORDING_SHARE_RESULT_KIND = "quipsly-session-recording-share-result-v1" as const;
+export const SESSION_RECORDING_SHARE_JOB_KIND = "quipsly-session-recording-share-job-v2" as const;
+export const SESSION_RECORDING_SHARE_RESULT_KIND = "quipsly-session-recording-share-result-v2" as const;
+
+const LEGACY_SESSION_RECORDING_SHARE_JOB_KIND = "quipsly-session-recording-share-job-v1";
+const LEGACY_SESSION_RECORDING_SHARE_RESULT_KIND = "quipsly-session-recording-share-result-v1";
+
+export type SessionRecordingShareTranscriptExclusion = {
+  transcriptJobId: string;
+  segmentId: string;
+  sourceRecordingAssetId: string;
+  providerTextSha256: string;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+export type SessionRecordingShareKeepRange = {
+  id: string;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+export type SessionRecordingShareEdit = {
+  startSeconds: number;
+  endSeconds: number;
+  keptRanges: SessionRecordingShareKeepRange[];
+  transcriptExclusions: SessionRecordingShareTranscriptExclusion[];
+  joinCrossfadeSeconds: number;
+};
 
 export type SessionRecordingShareSource = {
   recordingAssetId: string;
@@ -18,17 +44,14 @@ export type SessionRecordingShareSource = {
 
 export type SessionRecordingShareJob = {
   kind: typeof SESSION_RECORDING_SHARE_JOB_KIND;
-  version: 1;
+  version: 2;
   jobId: string;
   roomId: string;
   outputId: string;
   outputRevision: number;
   requestedAt: string;
   sourceSetSha256: string;
-  edit: {
-    startSeconds: number;
-    endSeconds: number;
-  };
+  edit: SessionRecordingShareEdit;
   sources: SessionRecordingShareSource[];
   target: {
     provider: "local" | "gcs";
@@ -44,7 +67,7 @@ export type SessionRecordingShareJob = {
 
 export type SessionRecordingShareResult = {
   kind: typeof SESSION_RECORDING_SHARE_RESULT_KIND;
-  version: 1;
+  version: 2;
   jobId: string;
   roomId: string;
   outputId: string;
@@ -113,17 +136,86 @@ function requiredIso(value: unknown, label: string) {
   return new Date(result).toISOString();
 }
 
-export function parseSessionRecordingShareJob(value: unknown): SessionRecordingShareJob {
-  const row = object(value);
-  if (row.kind !== SESSION_RECORDING_SHARE_JOB_KIND || row.version !== 1) {
-    throw new Error("Session recording share job kind or version is unsupported.");
-  }
-  const edit = object(row.edit);
+function parseEdit(value: unknown, legacy = false): SessionRecordingShareEdit {
+  const edit = object(value);
   const startSeconds = finite(edit.startSeconds);
   const endSeconds = finite(edit.endSeconds);
   if (startSeconds < 0 || endSeconds <= startSeconds || endSeconds - startSeconds > 8 * 60 * 60) {
     throw new Error("Session recording share edit range is invalid.");
   }
+  const joinCrossfadeSeconds = legacy ? 0 : finite(edit.joinCrossfadeSeconds);
+  if (joinCrossfadeSeconds < 0 || joinCrossfadeSeconds > 0.05) {
+    throw new Error("Session recording share edit crossfade is invalid.");
+  }
+  const rawRanges = legacy
+    ? [{ id: "legacy_full_range", startSeconds, endSeconds }]
+    : edit.keptRanges;
+  if (!Array.isArray(rawRanges) || rawRanges.length < 1 || rawRanges.length > 500) {
+    throw new Error("Session recording share edit requires one to 500 kept ranges.");
+  }
+  const keptRanges = rawRanges.map((value, index) => {
+    const range = object(value);
+    const rangeStart = finite(range.startSeconds);
+    const rangeEnd = finite(range.endSeconds);
+    if (
+      rangeStart < startSeconds
+      || rangeEnd > endSeconds
+      || rangeEnd - rangeStart < Math.max(0.05, joinCrossfadeSeconds * 2)
+      || (index > 0 && rangeStart < finite(object(rawRanges[index - 1]).endSeconds))
+    ) {
+      throw new Error(`Session recording share kept range ${index + 1} is invalid or overlaps another range.`);
+    }
+    return {
+      id: requiredId(range.id, `Kept range ${index + 1}`),
+      startSeconds: rangeStart,
+      endSeconds: rangeEnd,
+    };
+  });
+  if (new Set(keptRanges.map((range) => range.id)).size !== keptRanges.length) {
+    throw new Error("Session recording share kept range identities must be unique.");
+  }
+  if (keptRanges.length > 1 && joinCrossfadeSeconds <= 0) {
+    throw new Error("Session recording share multi-range edits require a short join crossfade.");
+  }
+  const rawExclusions = legacy ? [] : edit.transcriptExclusions;
+  if (!Array.isArray(rawExclusions) || rawExclusions.length > 500) {
+    throw new Error("Session recording share transcript exclusions are invalid.");
+  }
+  const transcriptExclusions = rawExclusions.map((value, index) => {
+    const exclusion = object(value);
+    const exclusionStart = finite(exclusion.startSeconds);
+    const exclusionEnd = finite(exclusion.endSeconds);
+    if (exclusionStart < startSeconds || exclusionEnd > endSeconds || exclusionEnd <= exclusionStart) {
+      throw new Error(`Session recording share transcript exclusion ${index + 1} is outside the edit range.`);
+    }
+    return {
+      transcriptJobId: requiredId(exclusion.transcriptJobId, `Transcript exclusion ${index + 1} job`),
+      segmentId: requiredId(exclusion.segmentId, `Transcript exclusion ${index + 1} segment`),
+      sourceRecordingAssetId: requiredId(exclusion.sourceRecordingAssetId, `Transcript exclusion ${index + 1} source`),
+      providerTextSha256: requiredSha(exclusion.providerTextSha256, `Transcript exclusion ${index + 1} provider text`),
+      startSeconds: exclusionStart,
+      endSeconds: exclusionEnd,
+    };
+  });
+  const exclusionKeys = transcriptExclusions.map((item) => `${item.transcriptJobId}:${item.segmentId}`);
+  if (new Set(exclusionKeys).size !== exclusionKeys.length) {
+    throw new Error("Session recording share transcript exclusions must be unique.");
+  }
+  return { startSeconds, endSeconds, keptRanges, transcriptExclusions, joinCrossfadeSeconds };
+}
+
+export function sessionRecordingShareOutputDuration(edit: SessionRecordingShareEdit) {
+  const retained = edit.keptRanges.reduce((total, range) => total + range.endSeconds - range.startSeconds, 0);
+  return retained - Math.max(0, edit.keptRanges.length - 1) * edit.joinCrossfadeSeconds;
+}
+
+export function parseSessionRecordingShareJob(value: unknown): SessionRecordingShareJob {
+  const row = object(value);
+  const legacy = row.kind === LEGACY_SESSION_RECORDING_SHARE_JOB_KIND && row.version === 1;
+  if (!legacy && (row.kind !== SESSION_RECORDING_SHARE_JOB_KIND || row.version !== 2)) {
+    throw new Error("Session recording share job kind or version is unsupported.");
+  }
+  const edit = parseEdit(row.edit, legacy);
   if (!Array.isArray(row.sources) || row.sources.length < 1 || row.sources.length > 16) {
     throw new Error("Session recording share requires one to sixteen sources.");
   }
@@ -178,14 +270,14 @@ export function parseSessionRecordingShareJob(value: unknown): SessionRecordingS
   if (outputRevision < 1) throw new Error("Session recording share output revision is invalid.");
   return {
     kind: SESSION_RECORDING_SHARE_JOB_KIND,
-    version: 1,
+    version: 2,
     jobId: requiredId(row.jobId, "Session recording share job"),
     roomId: requiredId(row.roomId, "Session"),
     outputId: requiredId(row.outputId, "Session output"),
     outputRevision,
     requestedAt: requiredIso(row.requestedAt, "Session recording share request time"),
     sourceSetSha256: requiredSha(row.sourceSetSha256, "Session recording source set"),
-    edit: { startSeconds, endSeconds },
+    edit,
     sources,
     target: {
       provider: targetProvider,
@@ -201,13 +293,13 @@ export function parseSessionRecordingShareJob(value: unknown): SessionRecordingS
 }
 
 export function newSessionRecordingShareJob(input: Omit<SessionRecordingShareJob, "kind" | "version">) {
-  return parseSessionRecordingShareJob({ kind: SESSION_RECORDING_SHARE_JOB_KIND, version: 1, ...input });
+  return parseSessionRecordingShareJob({ kind: SESSION_RECORDING_SHARE_JOB_KIND, version: 2, ...input });
 }
 
 export function newSessionRecordingShareResult(input: Omit<SessionRecordingShareResult, "kind" | "version" | "boundaries">): SessionRecordingShareResult {
   return {
     kind: SESSION_RECORDING_SHARE_RESULT_KIND,
-    version: 1,
+    version: 2,
     ...input,
     boundaries: {
       originalSourcesRemainImmutable: true,
@@ -222,14 +314,13 @@ export function parseSessionRecordingShareResult(value: unknown): SessionRecordi
   const row = object(value);
   const output = object(row.output);
   const worker = object(row.worker);
-  const edit = object(row.edit);
+  const legacy = row.kind === LEGACY_SESSION_RECORDING_SHARE_RESULT_KIND && row.version === 1;
   const boundaries = object(row.boundaries);
   const durationSeconds = finite(output.durationSeconds);
   const sizeBytes = integer(output.sizeBytes);
   const outputRevision = integer(row.outputRevision);
   if (
-    row.kind !== SESSION_RECORDING_SHARE_RESULT_KIND
-    || row.version !== 1
+    (!legacy && (row.kind !== SESSION_RECORDING_SHARE_RESULT_KIND || row.version !== 2))
     || outputRevision < 1
     || !Array.isArray(row.sourceRecordingAssetIds)
     || row.sourceRecordingAssetIds.length < 1
@@ -257,18 +348,20 @@ export function parseSessionRecordingShareResult(value: unknown): SessionRecordi
   ) {
     throw new Error("Session recording share result target is invalid.");
   }
-  const startSeconds = finite(edit.startSeconds);
-  const endSeconds = finite(edit.endSeconds);
-  if (startSeconds < 0 || endSeconds <= startSeconds) throw new Error("Session recording share result edit is invalid.");
+  const edit = parseEdit(row.edit, legacy);
+  const expectedDuration = sessionRecordingShareOutputDuration(edit);
+  if (Math.abs(durationSeconds - expectedDuration) > 0.25) {
+    throw new Error("Session recording share result duration does not match its edit decision.");
+  }
   return {
     kind: SESSION_RECORDING_SHARE_RESULT_KIND,
-    version: 1,
+    version: 2,
     jobId: requiredId(row.jobId, "Session recording share result job"),
     roomId: requiredId(row.roomId, "Session recording share result room"),
     outputId: requiredId(row.outputId, "Session recording share result output"),
     outputRevision,
     sourceSetSha256: requiredSha(row.sourceSetSha256, "Session recording share result source set"),
-    edit: { startSeconds, endSeconds },
+    edit,
     sourceRecordingAssetIds: row.sourceRecordingAssetIds.map((id, index) => requiredId(id, `Result source ${index + 1}`)),
     output: {
       provider,
