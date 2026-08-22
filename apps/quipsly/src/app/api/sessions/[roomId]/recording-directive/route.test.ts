@@ -73,11 +73,9 @@ describe("Session recording directive route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(getPrismaClient).mockReturnValue(prisma);
-    jest
-      .mocked(getQuipslySessionFromRequest)
-      .mockResolvedValue({
-        user: { id: "coach-1", primaryEmail: "coach@example.test" },
-      } as never);
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "coach-1", primaryEmail: "coach@example.test" },
+    } as never);
     prisma.callRoom.findFirst.mockResolvedValue(room);
     prisma.callRecordingDirective.findFirst.mockResolvedValue(null);
     prisma.callRecordingDirective.findUnique.mockResolvedValue(null);
@@ -157,6 +155,18 @@ describe("Session recording directive route", () => {
           occurredAt: new Date("2026-08-22T22:30:02.000Z"),
           receivedAt: new Date("2026-08-22T22:30:03.000Z"),
         },
+        {
+          id: "66666666-6666-4666-8666-666666666666",
+          participantId: "participant-2",
+          actorUserId: "guest-2",
+          clientInstanceId: "ios-private-installation",
+          clientKind: "ios",
+          deviceLabel: "Guest's iPhone",
+          state: "STARTED",
+          captureId: "77777777-7777-4777-8777-777777777777",
+          occurredAt: new Date("2026-08-22T22:30:02.000Z"),
+          receivedAt: new Date("2026-08-22T22:30:03.000Z"),
+        },
       ],
     });
     const response = await GET(request("GET"), context);
@@ -171,6 +181,9 @@ describe("Session recording directive route", () => {
     });
     expect(JSON.stringify(packet)).not.toContain("coach@example.test");
     expect(JSON.stringify(packet)).not.toContain("actorUserId");
+    expect(JSON.stringify(packet)).not.toContain("participant-1");
+    expect(JSON.stringify(packet)).not.toContain("participant-2");
+    expect(JSON.stringify(packet)).not.toContain("ios-private-installation");
   });
 
   it("accepts an idempotent endpoint acknowledgment only from a known installation", async () => {
@@ -194,7 +207,7 @@ describe("Session recording directive route", () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject({
       ok: true,
-      endpointReceipt: { id: receiptId, state: "STARTED" },
+      endpointReceipt: { state: "STARTED" },
     });
   });
 

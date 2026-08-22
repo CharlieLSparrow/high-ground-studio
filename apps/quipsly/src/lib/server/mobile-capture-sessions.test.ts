@@ -1,10 +1,18 @@
 /** @jest-environment node */
 
-jest.mock("@high-ground/quipsly-domain/coaching-lifecycle", () => ({ buildQuipslyCoachingLifecycle: jest.fn() }), { virtual: true });
-jest.mock("@high-ground/quipsly-domain/coaching-packet", () => ({
-  isTranscriptPacketSource: jest.fn(() => false),
-  isUnreviewedTranscriptActionItemSource: jest.fn(() => false),
-}), { virtual: true });
+jest.mock(
+  "@high-ground/quipsly-domain/coaching-lifecycle",
+  () => ({ buildQuipslyCoachingLifecycle: jest.fn() }),
+  { virtual: true },
+);
+jest.mock(
+  "@high-ground/quipsly-domain/coaching-packet",
+  () => ({
+    isTranscriptPacketSource: jest.fn(() => false),
+    isUnreviewedTranscriptActionItemSource: jest.fn(() => false),
+  }),
+  { virtual: true },
+);
 
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
 import {
@@ -14,6 +22,7 @@ import {
   canonicalMobileSessionProductionId,
   canonicalMobileSessionProject,
   mobilePacketReviewLanes,
+  mobileSessionCanControlRecording,
   releasedClientFollowUpForUser,
   registeredParticipantConsentSummary,
 } from "./mobile-capture-sessions";
@@ -25,60 +34,73 @@ import {
 
 describe("mobile packet review lane projection", () => {
   it("projects only persisted lane review truth and preserves no-side-effect receipts", () => {
-    expect(mobilePacketReviewLanes({
-      sourceJson: {
-        reviewLanes: [{
-          id: "client-follow-up",
-          label: "Client follow-up notes",
-          status: "APPROVED_FOR_INTERNAL_USE",
-          itemCount: 1,
-          meaning: "Candidate recap material.",
-          sourceTruth: "Derived from transcript packet evidence only.",
-          reviewRule: "Human approval is required before client delivery.",
-          humanApprovalRequired: false,
-          externalSideEffects: false,
-          humanReview: {
-            status: "APPROVED_FOR_INTERNAL_USE",
-            note: "Useful internally.",
-            reviewedAt: "2026-08-01T18:30:00.000Z",
-            reviewedByUserId: "coach-1",
-            externalSideEffects: false,
-            deliveryClaimed: false,
-            publicationClaimed: false,
-          },
-        }, { label: "Malformed lane without an id" }],
-      },
-    })).toEqual([{
-      id: "client-follow-up",
-      label: "Client follow-up notes",
-      status: "APPROVED_FOR_INTERNAL_USE",
-      itemCount: 1,
-      meaning: "Candidate recap material.",
-      sourceTruth: "Derived from transcript packet evidence only.",
-      reviewRule: "Human approval is required before client delivery.",
-      humanApprovalRequired: false,
-      externalSideEffects: false,
-      humanReview: {
+    expect(
+      mobilePacketReviewLanes({
+        sourceJson: {
+          reviewLanes: [
+            {
+              id: "client-follow-up",
+              label: "Client follow-up notes",
+              status: "APPROVED_FOR_INTERNAL_USE",
+              itemCount: 1,
+              meaning: "Candidate recap material.",
+              sourceTruth: "Derived from transcript packet evidence only.",
+              reviewRule: "Human approval is required before client delivery.",
+              humanApprovalRequired: false,
+              externalSideEffects: false,
+              humanReview: {
+                status: "APPROVED_FOR_INTERNAL_USE",
+                note: "Useful internally.",
+                reviewedAt: "2026-08-01T18:30:00.000Z",
+                reviewedByUserId: "coach-1",
+                externalSideEffects: false,
+                deliveryClaimed: false,
+                publicationClaimed: false,
+              },
+            },
+            { label: "Malformed lane without an id" },
+          ],
+        },
+      }),
+    ).toEqual([
+      {
+        id: "client-follow-up",
+        label: "Client follow-up notes",
         status: "APPROVED_FOR_INTERNAL_USE",
-        note: "Useful internally.",
-        reviewedAt: "2026-08-01T18:30:00.000Z",
-        reviewedByUserId: "coach-1",
+        itemCount: 1,
+        meaning: "Candidate recap material.",
+        sourceTruth: "Derived from transcript packet evidence only.",
+        reviewRule: "Human approval is required before client delivery.",
+        humanApprovalRequired: false,
         externalSideEffects: false,
-        deliveryClaimed: false,
-        publicationClaimed: false,
+        humanReview: {
+          status: "APPROVED_FOR_INTERNAL_USE",
+          note: "Useful internally.",
+          reviewedAt: "2026-08-01T18:30:00.000Z",
+          reviewedByUserId: "coach-1",
+          externalSideEffects: false,
+          deliveryClaimed: false,
+          publicationClaimed: false,
+        },
       },
-    }]);
+    ]);
   });
 });
 
 describe("mobile Session canonical project projection", () => {
   it("uses the relational project and reports legacy slug drift", () => {
-    expect(canonicalMobileSessionProject({
-      projectId: "project-1",
-      projectSlug: "stale-high-ground",
-      nestSlug: "older-high-ground",
-      project: { id: "project-1", slug: "high-ground", name: "High Ground Odyssey" },
-    })).toEqual({
+    expect(
+      canonicalMobileSessionProject({
+        projectId: "project-1",
+        projectSlug: "stale-high-ground",
+        nestSlug: "older-high-ground",
+        project: {
+          id: "project-1",
+          slug: "high-ground",
+          name: "High Ground Odyssey",
+        },
+      }),
+    ).toEqual({
       projectId: "project-1",
       projectSlug: "high-ground",
       projectName: "High Ground Odyssey",
@@ -88,7 +110,9 @@ describe("mobile Session canonical project projection", () => {
   });
 
   it("retains a labeled legacy fallback only when no canonical relation exists", () => {
-    expect(canonicalMobileSessionProject({ projectSlug: "legacy-coaching" })).toEqual({
+    expect(
+      canonicalMobileSessionProject({ projectSlug: "legacy-coaching" }),
+    ).toEqual({
       projectId: null,
       projectSlug: "legacy-coaching",
       projectName: null,
@@ -110,64 +134,80 @@ describe("mobile Session canonical project projection", () => {
 
 describe("mobile Session canonical episode projection", () => {
   it("uses the first-class same-project production before metadata or offering fallbacks", () => {
-    expect(canonicalMobileSessionEpisodeSlug({
-      id: "room-1",
-      purpose: "PODCAST",
-      projectId: "project-1",
-      episodeProductionId: "production-4",
-      episodeProduction: { projectId: "project-1", slug: "episode-4" },
-      metadataJson: { episodeSlug: "stale-episode" },
-      booking: { offering: { slug: "podcast-offering" } },
-    })).toBe("episode-4");
+    expect(
+      canonicalMobileSessionEpisodeSlug({
+        id: "room-1",
+        purpose: "PODCAST",
+        projectId: "project-1",
+        episodeProductionId: "production-4",
+        episodeProduction: { projectId: "project-1", slug: "episode-4" },
+        metadataJson: { episodeSlug: "stale-episode" },
+        booking: { offering: { slug: "podcast-offering" } },
+      }),
+    ).toBe("episode-4");
   });
 
   it("fails a cross-project relation closed instead of trusting legacy metadata", () => {
-    expect(canonicalMobileSessionEpisodeSlug({
-      id: "room-1",
-      purpose: "PODCAST",
-      projectId: "project-1",
-      episodeProductionId: "production-other",
-      episodeProduction: { projectId: "project-2", slug: "episode-other" },
-      metadataJson: { episodeSlug: "episode-4" },
-    })).toBe("room-1");
-    expect(canonicalMobileSessionEpisodeSlug({
-      id: "room-coaching",
-      purpose: "COACHING",
-      projectId: "project-1",
-      episodeProductionId: "production-4",
-      episodeProduction: { projectId: "project-1", slug: "episode-4" },
-      metadataJson: { episodeSlug: "episode-4" },
-    })).toBe("room-coaching");
+    expect(
+      canonicalMobileSessionEpisodeSlug({
+        id: "room-1",
+        purpose: "PODCAST",
+        projectId: "project-1",
+        episodeProductionId: "production-other",
+        episodeProduction: { projectId: "project-2", slug: "episode-other" },
+        metadataJson: { episodeSlug: "episode-4" },
+      }),
+    ).toBe("room-1");
+    expect(
+      canonicalMobileSessionEpisodeSlug({
+        id: "room-coaching",
+        purpose: "COACHING",
+        projectId: "project-1",
+        episodeProductionId: "production-4",
+        episodeProduction: { projectId: "project-1", slug: "episode-4" },
+        metadataJson: { episodeSlug: "episode-4" },
+      }),
+    ).toBe("room-coaching");
   });
 
   it("retains metadata, offering, and room fallbacks only for unbackfilled rows", () => {
-    expect(canonicalMobileSessionEpisodeSlug({
-      id: "room-legacy",
-      metadataJson: { episodeSlug: "episode-4-part-2" },
-      booking: { offering: { slug: "podcast-offering" } },
-    })).toBe("episode-4-part-2");
-    expect(canonicalMobileSessionEpisodeSlug({
-      id: "room-1",
-      booking: { offering: { slug: "legacy-offering" } },
-    })).toBe("legacy-offering");
+    expect(
+      canonicalMobileSessionEpisodeSlug({
+        id: "room-legacy",
+        metadataJson: { episodeSlug: "episode-4-part-2" },
+        booking: { offering: { slug: "podcast-offering" } },
+      }),
+    ).toBe("episode-4-part-2");
+    expect(
+      canonicalMobileSessionEpisodeSlug({
+        id: "room-1",
+        booking: { offering: { slug: "legacy-offering" } },
+      }),
+    ).toBe("legacy-offering");
     expect(canonicalMobileSessionEpisodeSlug({ id: "room-2" })).toBe("room-2");
   });
 });
 
 describe("mobile Session production destination projection", () => {
   it("requires the first-class production relation instead of trusting fallback metadata", () => {
-    expect(canonicalMobileSessionProductionId({
-      episodeProductionId: "production-4",
-      episodeProduction: { id: "production-4" },
-      metadataJson: { episodeSlug: "episode-4" },
-    })).toBe("production-4");
-    expect(canonicalMobileSessionProductionId({
-      metadataJson: { episodeSlug: "episode-4" },
-    })).toBeNull();
-    expect(canonicalMobileSessionProductionId({
-      episodeProductionId: "production-4",
-      episodeProduction: { id: "production-other" },
-    })).toBeNull();
+    expect(
+      canonicalMobileSessionProductionId({
+        episodeProductionId: "production-4",
+        episodeProduction: { id: "production-4" },
+        metadataJson: { episodeSlug: "episode-4" },
+      }),
+    ).toBe("production-4");
+    expect(
+      canonicalMobileSessionProductionId({
+        metadataJson: { episodeSlug: "episode-4" },
+      }),
+    ).toBeNull();
+    expect(
+      canonicalMobileSessionProductionId({
+        episodeProductionId: "production-4",
+        episodeProduction: { id: "production-other" },
+      }),
+    ).toBeNull();
   });
 });
 
@@ -211,6 +251,61 @@ describe("mobile client follow-up projection", () => {
   it("does not broaden follow-up visibility to staff or another Session participant", () => {
     expect(releasedClientFollowUpForUser(room, "producer-1")).toBeNull();
     expect(releasedClientFollowUpForUser(room, "staff-1")).toBeNull();
+  });
+});
+
+describe("mobile Session recording control projection", () => {
+  const base = {
+    isStaff: false,
+    userId: "user-1",
+    createdByUserId: "other-user",
+    participantRole: "GUEST",
+    bookingCoachUserId: "other-coach",
+    projectId: "project-1",
+    controlledProjectIds: new Set<string>(),
+  };
+
+  it.each(["HOST", "COACH", "PRODUCER"])(
+    "allows the conventional %s controller role",
+    (participantRole) => {
+      expect(
+        mobileSessionCanControlRecording({ ...base, participantRole }),
+      ).toBe(true);
+    },
+  );
+
+  it("keeps guests and observers under host recording control", () => {
+    expect(mobileSessionCanControlRecording(base)).toBe(false);
+    expect(
+      mobileSessionCanControlRecording({
+        ...base,
+        participantRole: "OBSERVER",
+      }),
+    ).toBe(false);
+  });
+
+  it("also recognizes the creator, booked coach, staff, and Nest controller", () => {
+    expect(
+      mobileSessionCanControlRecording({
+        ...base,
+        createdByUserId: base.userId,
+      }),
+    ).toBe(true);
+    expect(
+      mobileSessionCanControlRecording({
+        ...base,
+        bookingCoachUserId: base.userId,
+      }),
+    ).toBe(true);
+    expect(mobileSessionCanControlRecording({ ...base, isStaff: true })).toBe(
+      true,
+    );
+    expect(
+      mobileSessionCanControlRecording({
+        ...base,
+        controlledProjectIds: new Set(["project-1"]),
+      }),
+    ).toBe(true);
   });
 });
 
@@ -277,19 +372,21 @@ describe("mobile Session source-specific consent projection", () => {
   it("does not count stale policy evidence as source authority", () => {
     const summary = registeredParticipantConsentSummary({
       participants: [{ id: "host", userId: "user-host", role: "HOST" }],
-      recordingConsents: [{
-        id: "stale",
-        participantId: "host",
-        userId: "user-host",
-        status: "GRANTED",
-        policyVersion: "stale-policy",
-        canRecordAudio: true,
-        canRecordVideo: true,
-        consentedAt: new Date("2026-07-27T18:00:00Z"),
-        revokedAt: null,
-        updatedAt: new Date("2026-07-27T18:00:00Z"),
-        metadataJson: currentEvidence,
-      }],
+      recordingConsents: [
+        {
+          id: "stale",
+          participantId: "host",
+          userId: "user-host",
+          status: "GRANTED",
+          policyVersion: "stale-policy",
+          canRecordAudio: true,
+          canRecordVideo: true,
+          consentedAt: new Date("2026-07-27T18:00:00Z"),
+          revokedAt: null,
+          updatedAt: new Date("2026-07-27T18:00:00Z"),
+          metadataJson: currentEvidence,
+        },
+      ],
     });
 
     expect(summary).toMatchObject({
@@ -311,27 +408,34 @@ describe("mobile Session recording content readiness", () => {
   });
 
   it("labels short simulator artifacts as capture plumbing proof only", () => {
-    expect(recordingContentReadiness([
-      {
-        kind: "LOCAL_AUDIO",
-        status: "VERIFIED",
-        verifiedAt: "2026-08-02T18:00:00.000Z",
-        durationSeconds: null,
-        segmentsJson: [
-          { deviceKind: "Clone 1 of iPhone 17 Pro", durationSeconds: 3.75 },
-          { deviceKind: "Clone 1 of iPhone 17 Pro", durationSeconds: 1.57 },
+    expect(
+      recordingContentReadiness(
+        [
+          {
+            kind: "LOCAL_AUDIO",
+            status: "VERIFIED",
+            verifiedAt: "2026-08-02T18:00:00.000Z",
+            durationSeconds: null,
+            segmentsJson: [
+              { deviceKind: "Clone 1 of iPhone 17 Pro", durationSeconds: 3.75 },
+              { deviceKind: "Clone 1 of iPhone 17 Pro", durationSeconds: 1.57 },
+            ],
+            localManifestJson: { exactBytesVerified: true },
+          },
+          {
+            kind: "LOCAL_AUDIO",
+            status: "VERIFIED",
+            verifiedAt: "2026-08-02T18:00:00.000Z",
+            durationSeconds: 5,
+            segmentsJson: [
+              { deviceKind: "iPhone 17 Pro Simulator", durationSeconds: 5 },
+            ],
+            localManifestJson: { exactBytesVerified: true },
+          },
         ],
-        localManifestJson: { exactBytesVerified: true },
-      },
-      {
-        kind: "LOCAL_AUDIO",
-        status: "VERIFIED",
-        verifiedAt: "2026-08-02T18:00:00.000Z",
-        durationSeconds: 5,
-        segmentsJson: [{ deviceKind: "iPhone 17 Pro Simulator", durationSeconds: 5 }],
-        localManifestJson: { exactBytesVerified: true },
-      },
-    ], "PODCAST")).toMatchObject({
+        "PODCAST",
+      ),
+    ).toMatchObject({
       status: "capture-proof-only",
       label: "Capture plumbing proven",
       captureAssetCount: 2,
@@ -344,9 +448,21 @@ describe("mobile Session recording content readiness", () => {
   });
 
   it("requires known duration before calling an asset substantial", () => {
-    expect(recordingContentReadiness([
-      { kind: "LOCAL_AUDIO", status: "VERIFIED", verifiedAt: "2026-08-02T18:00:00.000Z", durationSeconds: null, segmentsJson: [], localManifestJson: { exactBytesVerified: true } },
-    ], "COACHING")).toMatchObject({
+    expect(
+      recordingContentReadiness(
+        [
+          {
+            kind: "LOCAL_AUDIO",
+            status: "VERIFIED",
+            verifiedAt: "2026-08-02T18:00:00.000Z",
+            durationSeconds: null,
+            segmentsJson: [],
+            localManifestJson: { exactBytesVerified: true },
+          },
+        ],
+        "COACHING",
+      ),
+    ).toMatchObject({
       status: "capture-proof-only",
       unknownDurationCount: 1,
       substantialRecordingCount: 0,
@@ -354,16 +470,21 @@ describe("mobile Session recording content readiness", () => {
   });
 
   it("recognizes a non-simulator take without claiming editorial readiness", () => {
-    const result = recordingContentReadiness([
-      {
-        kind: "LOCAL_AUDIO",
-        status: "VERIFIED",
-        verifiedAt: "2026-08-02T18:00:00.000Z",
-        durationSeconds: 120,
-        segmentsJson: [{ deviceKind: "Wall-E’s iPhone", durationSeconds: 120 }],
-        localManifestJson: { exactBytesVerified: true },
-      },
-    ], "PODCAST");
+    const result = recordingContentReadiness(
+      [
+        {
+          kind: "LOCAL_AUDIO",
+          status: "VERIFIED",
+          verifiedAt: "2026-08-02T18:00:00.000Z",
+          durationSeconds: 120,
+          segmentsJson: [
+            { deviceKind: "Wall-E’s iPhone", durationSeconds: 120 },
+          ],
+          localManifestJson: { exactBytesVerified: true },
+        },
+      ],
+      "PODCAST",
+    );
     expect(result).toMatchObject({
       status: "substantial",
       captureAssetCount: 1,
@@ -374,16 +495,37 @@ describe("mobile Session recording content readiness", () => {
   });
 
   it("does not count provider receipt slots or transcript references as source media", () => {
-    expect(recordingContentReadiness([
-      { kind: "SERVER_MIX", localManifestJson: { source: "provider-recording-receipt-slot" }, durationSeconds: 3600 },
-      { kind: "TRANSCRIPT_SOURCE", durationSeconds: 3600 },
-    ], "PODCAST")).toMatchObject({ status: "none", captureAssetCount: 0 });
+    expect(
+      recordingContentReadiness(
+        [
+          {
+            kind: "SERVER_MIX",
+            localManifestJson: { source: "provider-recording-receipt-slot" },
+            durationSeconds: 3600,
+          },
+          { kind: "TRANSCRIPT_SOURCE", durationSeconds: 3600 },
+        ],
+        "PODCAST",
+      ),
+    ).toMatchObject({ status: "none", captureAssetCount: 0 });
   });
 
   it("does not call local-only metadata substantial before uploaded bytes are verified", () => {
-    expect(recordingContentReadiness([
-      { kind: "LOCAL_AUDIO", status: "LOCAL_READY", durationSeconds: 600, segmentsJson: [{ deviceKind: "Wall-E’s iPhone", durationSeconds: 600 }] },
-    ], "PODCAST")).toMatchObject({
+    expect(
+      recordingContentReadiness(
+        [
+          {
+            kind: "LOCAL_AUDIO",
+            status: "LOCAL_READY",
+            durationSeconds: 600,
+            segmentsJson: [
+              { deviceKind: "Wall-E’s iPhone", durationSeconds: 600 },
+            ],
+          },
+        ],
+        "PODCAST",
+      ),
+    ).toMatchObject({
       status: "capture-proof-only",
       verifiedCaptureCount: 0,
       substantialRecordingCount: 0,
@@ -391,14 +533,21 @@ describe("mobile Session recording content readiness", () => {
   });
 
   it("counts independently verified bytes even when processing remains held", () => {
-    expect(recordingContentReadiness([{
-      kind: "LOCAL_AUDIO",
-      status: "HELD",
-      verifiedAt: "2026-08-02T18:00:00.000Z",
-      durationSeconds: null,
-      segmentsJson: [],
-      localManifestJson: { exactBytesVerified: true },
-    }], "COACHING")).toMatchObject({
+    expect(
+      recordingContentReadiness(
+        [
+          {
+            kind: "LOCAL_AUDIO",
+            status: "HELD",
+            verifiedAt: "2026-08-02T18:00:00.000Z",
+            durationSeconds: null,
+            segmentsJson: [],
+            localManifestJson: { exactBytesVerified: true },
+          },
+        ],
+        "COACHING",
+      ),
+    ).toMatchObject({
       status: "capture-proof-only",
       verifiedCaptureCount: 1,
       substantialRecordingCount: 0,
@@ -408,84 +557,102 @@ describe("mobile Session recording content readiness", () => {
 
 describe("mobile Session canonical capture sources", () => {
   it("projects exact verification, proxy, transcript, and take identity together", () => {
-    const [source] = captureSourceSummaries({
-      recordingAssets: [{
-        id: "recording-1",
-        fileName: "homer-iphone.mov",
-        kind: "LOCAL_VIDEO",
-        contentType: "video/quicktime",
-        byteSize: BigInt(4_000_000_000),
-        durationSeconds: 1_800,
-        status: "VERIFIED",
-        recordedStartedAt: new Date("2026-07-27T18:00:00Z"),
-        recordedStoppedAt: new Date("2026-07-27T18:30:00Z"),
-        localManifestJson: {
-          exactBytesVerified: true,
-          byteVerificationKind: "server-size-and-sha256",
-          captureGroupId: "take-1",
-          reportedSourceProfile: {
-            schemaVersion: 1,
-            codec: "hevc",
-            monotonicStartedNanoseconds: "1500000000",
-            clockSamples: [{
-              protocolVersion: 1,
-              sampleId: "sample-1",
-              callRoomId: "room-1",
+    const [source] = captureSourceSummaries(
+      {
+        recordingAssets: [
+          {
+            id: "recording-1",
+            fileName: "homer-iphone.mov",
+            kind: "LOCAL_VIDEO",
+            contentType: "video/quicktime",
+            byteSize: BigInt(4_000_000_000),
+            durationSeconds: 1_800,
+            status: "VERIFIED",
+            recordedStartedAt: new Date("2026-07-27T18:00:00Z"),
+            recordedStoppedAt: new Date("2026-07-27T18:30:00Z"),
+            localManifestJson: {
+              exactBytesVerified: true,
+              byteVerificationKind: "server-size-and-sha256",
               captureGroupId: "take-1",
-              clientKind: "ios",
-              deviceWallSentAt: "2026-07-27T17:59:59.500Z",
-              deviceMonotonicSentNanoseconds: "1000000000",
-              serverReceivedAt: "2026-07-27T17:59:59.560Z",
-              serverSentAt: "2026-07-27T17:59:59.570Z",
-              deviceWallReceivedAt: "2026-07-27T17:59:59.610Z",
-              deviceMonotonicReceivedNanoseconds: "1110000000",
-              networkRoundTripMilliseconds: 100,
-              serverOffsetMilliseconds: 10,
-              uncertaintyMilliseconds: 50,
-              wallClockDiscontinuityMilliseconds: 0,
-            }],
+              reportedSourceProfile: {
+                schemaVersion: 1,
+                codec: "hevc",
+                monotonicStartedNanoseconds: "1500000000",
+                clockSamples: [
+                  {
+                    protocolVersion: 1,
+                    sampleId: "sample-1",
+                    callRoomId: "room-1",
+                    captureGroupId: "take-1",
+                    clientKind: "ios",
+                    deviceWallSentAt: "2026-07-27T17:59:59.500Z",
+                    deviceMonotonicSentNanoseconds: "1000000000",
+                    serverReceivedAt: "2026-07-27T17:59:59.560Z",
+                    serverSentAt: "2026-07-27T17:59:59.570Z",
+                    deviceWallReceivedAt: "2026-07-27T17:59:59.610Z",
+                    deviceMonotonicReceivedNanoseconds: "1110000000",
+                    networkRoundTripMilliseconds: 100,
+                    serverOffsetMilliseconds: 10,
+                    uncertaintyMilliseconds: 50,
+                    wallClockDiscontinuityMilliseconds: 0,
+                  },
+                ],
+              },
+            },
+            transcriptJobs: [
+              {
+                id: "transcript-1",
+                status: "QUEUED",
+                provider: "pending",
+                updatedAt: new Date("2026-07-27T18:31:00Z"),
+                _count: { segments: 0 },
+              },
+            ],
           },
+        ],
+        stateReceipts: [
+          {
+            receiptId: "start-1",
+            roomId: "room-1",
+            captureId: "capture-1",
+            actorUserId: "user-1",
+            action: "START_RECORDING",
+            occurredAt: new Date("2026-07-27T17:59:59.900Z"),
+            receivedAt: new Date("2026-07-27T18:00:00.050Z"),
+            outcome: "APPLIED",
+            stateApplied: true,
+          },
+        ],
+        id: "room-1",
+      },
+      [
+        {
+          uploadSessionId: "upload-1",
+          captureId: "capture-1",
+          actorUserId: "user-1",
+          startReceiptId: "start-1",
+          recordingAssetId: "recording-1",
+          mediaAssetId: "media-1",
+          sourceId: "source-1",
+          processingDisposition: "RELEASED",
+          transcriptDisposition: "RELEASED",
         },
-        transcriptJobs: [{
-          id: "transcript-1",
-          status: "QUEUED",
-          provider: "pending",
-          updatedAt: new Date("2026-07-27T18:31:00Z"),
-          _count: { segments: 0 },
-        }],
-      }],
-      stateReceipts: [{
-        receiptId: "start-1",
-        roomId: "room-1",
-        captureId: "capture-1",
-        actorUserId: "user-1",
-        action: "START_RECORDING",
-        occurredAt: new Date("2026-07-27T17:59:59.900Z"),
-        receivedAt: new Date("2026-07-27T18:00:00.050Z"),
-        outcome: "APPLIED",
-        stateApplied: true,
-      }],
-      id: "room-1",
-    }, [{
-      uploadSessionId: "upload-1",
-      captureId: "capture-1",
-      actorUserId: "user-1",
-      startReceiptId: "start-1",
-      recordingAssetId: "recording-1",
-      mediaAssetId: "media-1",
-      sourceId: "source-1",
-      processingDisposition: "RELEASED",
-      transcriptDisposition: "RELEASED",
-    }], [{
-      id: "media-1",
-      url: "/api/ingest/media/source-1",
-      variants: [],
-      proxyAssets: [],
-      workflowJobs: [{
-        type: "asset-proxy",
-        status: "queued",
-      }],
-    }]);
+      ],
+      [
+        {
+          id: "media-1",
+          url: "/api/ingest/media/source-1",
+          variants: [],
+          proxyAssets: [],
+          workflowJobs: [
+            {
+              type: "asset-proxy",
+              status: "queued",
+            },
+          ],
+        },
+      ],
+    );
 
     expect(source).toMatchObject({
       recordingAssetId: "recording-1",
@@ -569,22 +736,24 @@ describe("mobile Session canonical capture sources", () => {
   });
 
   it("holds Studio handoff until every newest-group source is released", () => {
-    expect(captureGroupStudioHandoff([
-      {
-        recordingAssetId: "video-front",
-        captureGroupId: "take-3",
-        exactBytesVerified: true,
-        recordingStatus: "VERIFIED",
-        processingDisposition: "RELEASED",
-      },
-      {
-        recordingAssetId: "audio-master",
-        captureGroupId: "take-3",
-        exactBytesVerified: true,
-        recordingStatus: "VERIFIED",
-        processingDisposition: "HELD",
-      },
-    ])).toMatchObject({
+    expect(
+      captureGroupStudioHandoff([
+        {
+          recordingAssetId: "video-front",
+          captureGroupId: "take-3",
+          exactBytesVerified: true,
+          recordingStatus: "VERIFIED",
+          processingDisposition: "RELEASED",
+        },
+        {
+          recordingAssetId: "audio-master",
+          captureGroupId: "take-3",
+          exactBytesVerified: true,
+          recordingStatus: "VERIFIED",
+          processingDisposition: "HELD",
+        },
+      ]),
+    ).toMatchObject({
       captureGroupId: "take-3",
       sourceCount: 2,
       verifiedSourceCount: 1,
@@ -594,26 +763,28 @@ describe("mobile Session canonical capture sources", () => {
   });
 
   it("keeps provider room media optional for protected-master readiness", () => {
-    expect(captureGroupStudioHandoff([
-      {
-        recordingAssetId: "iphone-master",
-        captureGroupId: "take-4",
-        kind: "LOCAL_VIDEO",
-        exactBytesVerified: true,
-        recordingStatus: "VERIFIED",
-        processingDisposition: "RELEASED",
-        mediaAssetId: "media-iphone",
-      },
-      {
-        recordingAssetId: "provider-held",
-        captureGroupId: "take-4",
-        kind: "SERVER_MIX",
-        exactBytesVerified: false,
-        recordingStatus: "UPLOADING",
-        processingDisposition: "PENDING",
-        mediaAssetId: null,
-      },
-    ])).toMatchObject({
+    expect(
+      captureGroupStudioHandoff([
+        {
+          recordingAssetId: "iphone-master",
+          captureGroupId: "take-4",
+          kind: "LOCAL_VIDEO",
+          exactBytesVerified: true,
+          recordingStatus: "VERIFIED",
+          processingDisposition: "RELEASED",
+          mediaAssetId: "media-iphone",
+        },
+        {
+          recordingAssetId: "provider-held",
+          captureGroupId: "take-4",
+          kind: "SERVER_MIX",
+          exactBytesVerified: false,
+          recordingStatus: "UPLOADING",
+          processingDisposition: "PENDING",
+          mediaAssetId: null,
+        },
+      ]),
+    ).toMatchObject({
       sourceCount: 2,
       requiredSourceCount: 1,
       providerWitnessCount: 1,

@@ -818,6 +818,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let scheduledStart: String?
     let scheduledEnd: String?
     let participantId: String?
+    var canControlRecording: Bool? = nil
     let recordingConsentId: String?
     let recordingConsentStatus: String?
     let recordingConsentGranted: Bool

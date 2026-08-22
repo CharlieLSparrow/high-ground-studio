@@ -46,10 +46,13 @@ function uuid(value: unknown) {
     : "";
 }
 
-function directiveView(directive: any) {
+function directiveView(directive: any, viewerParticipantId?: string | null) {
   if (!directive) return null;
   const latestByEndpoint = new Map<string, any>();
   for (const receipt of directive.receipts ?? []) {
+    if (viewerParticipantId && receipt.participantId !== viewerParticipantId) {
+      continue;
+    }
     if (!latestByEndpoint.has(receipt.clientInstanceId))
       latestByEndpoint.set(receipt.clientInstanceId, receipt);
   }
@@ -62,8 +65,6 @@ function directiveView(directive: any) {
     issuedByCurrentActor: directive.issuedByCurrentActor === true,
     shouldRecord: directive.action === "START",
     endpointReceipts: [...latestByEndpoint.values()].map((receipt) => ({
-      id: receipt.id,
-      participantId: receipt.participantId,
       clientInstanceId: receipt.clientInstanceId,
       clientKind: receipt.clientKind,
       deviceLabel: receipt.deviceLabel,
@@ -127,8 +128,7 @@ export async function GET(
   const latest = await readLatest(prisma, room.id, session.user.id);
   return privateJson({
     ok: true,
-    directive: directiveView(latest),
-    participantId: room.participants[0]?.id ?? null,
+    directive: directiveView(latest, room.participants[0]?.id),
     captureGroupId: room.captureGroupId,
     boundaries: {
       directiveIsIntentNotRecordedMedia: true,
@@ -282,7 +282,7 @@ export async function POST(
           ok: false,
           code: "ALREADY_RECORDING",
           error: "This Session already has an active recording command.",
-          directive: directiveView(result.directive),
+          directive: directiveView(result.directive, actorParticipant?.id),
         },
         409,
       );
@@ -292,7 +292,7 @@ export async function POST(
           ok: false,
           code: "NOT_RECORDING",
           error: "This Session is not currently under a recording command.",
-          directive: directiveView(result.directive),
+          directive: directiveView(result.directive, actorParticipant?.id),
         },
         409,
       );
@@ -301,7 +301,7 @@ export async function POST(
       {
         ok: true,
         idempotentReplay: result.replay,
-        directive: directiveView(result.directive),
+        directive: directiveView(result.directive, actorParticipant?.id),
       },
       result.replay ? 200 : 201,
     );
@@ -452,7 +452,11 @@ export async function PATCH(
       return privateJson({
         ok: true,
         idempotentReplay: true,
-        endpointReceipt: existing,
+        endpointReceipt: {
+          state: existing.state,
+          captureId: existing.captureId ?? null,
+          occurredAt: existing.occurredAt.toISOString(),
+        },
       });
     }
     const receipt = await prisma.callRecordingEndpointReceipt.create({
@@ -477,7 +481,15 @@ export async function PATCH(
       },
     });
     return privateJson(
-      { ok: true, idempotentReplay: false, endpointReceipt: receipt },
+      {
+        ok: true,
+        idempotentReplay: false,
+        endpointReceipt: {
+          state: receipt.state,
+          captureId: receipt.captureId ?? null,
+          occurredAt: receipt.occurredAt.toISOString(),
+        },
+      },
       201,
     );
   } catch (error) {

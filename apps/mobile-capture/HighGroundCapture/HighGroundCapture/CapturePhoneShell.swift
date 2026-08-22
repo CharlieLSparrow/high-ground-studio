@@ -6363,6 +6363,7 @@ private struct CaptureRecorderView: View {
     @State private var isRunningRehearsalCheck = false
     @StateObject private var soundCheck = CaptureAudioSoundCheckController()
     @StateObject private var sessionPreflight = CaptureSessionPreflightClient()
+    @StateObject private var recordingCoordinator = CaptureRecordingCoordinator()
     @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
     @StateObject private var episodeWatch = MobileEpisodeWatchClient()
     @StateObject private var episodeChat = MobileEpisodeChatClient()
@@ -6440,6 +6441,14 @@ private struct CaptureRecorderView: View {
                         selection: $recordingMode,
                         isLocked: captureIsActive || model.isChangingCapture
                     )
+
+                    if let coordinationMessage = recordingCoordinator.statusMessage {
+                        CaptureRecordingCoordinationStatus(
+                            message: coordinationMessage,
+                            isRecording: captureIsActive,
+                            joinConfirmationRequired: recordingCoordinator.joinConfirmationRequired
+                        )
+                    }
 
                     VStack(alignment: .leading, spacing: 0) {
                         Button {
@@ -6529,12 +6538,18 @@ private struct CaptureRecorderView: View {
                             capturePipeline: audioCapture.capturePipelineLabel,
                             userMarkOffsets: audioCapture.userMarkOffsets,
                             isBusy: model.isChangingCapture,
+                            canStartRecording:
+                                session.canControlRecording == true
+                                || recordingCoordinator.joinConfirmationRequired,
+                            waitingForHost:
+                                session.canControlRecording != true
+                                && !recordingCoordinator.joinConfirmationRequired,
                             onPrimaryAction: {
                                 Task {
                                     if audioCaptureIsActive {
-                                        await model.stopCapture(using: audioCapture)
+                                        await requestCoordinatedStop(for: session)
                                     } else {
-                                        await model.startCapture(using: audioCapture)
+                                        await requestCoordinatedStart(for: session)
                                     }
                                 }
                             },
@@ -6560,7 +6575,14 @@ private struct CaptureRecorderView: View {
                             qualityIntent: $videoQualityIntent,
                             isBusy:
                                 model.isChangingCapture
-                                || model.isCoordinatingPodcastCapture,
+                                || model.isCoordinatingPodcastCapture
+                                || recordingCoordinator.isSending,
+                            canStartRecording:
+                                session.canControlRecording == true
+                                || recordingCoordinator.joinConfirmationRequired,
+                            waitingForHost:
+                                session.canControlRecording != true
+                                && !recordingCoordinator.joinConfirmationRequired,
                             onPrepare: {
                                 Task {
                                     await model.prepareVideoCapture(
@@ -6573,31 +6595,12 @@ private struct CaptureRecorderView: View {
                             },
                             onStart: {
                                 Task {
-                                    if recordingMode.isCoordinatedPodcastCapture {
-                                        await model.startCoordinatedPodcastCapture(
-                                            using: audioCapture,
-                                            videoCapture: videoCapture
-                                        )
-                                    } else {
-                                        await model.startVideoCapture(
-                                            using: videoCapture,
-                                            mode: recordingMode
-                                        )
-                                    }
+                                    await requestCoordinatedStart(for: session)
                                 }
                             },
                             onStop: {
                                 Task {
-                                    if recordingMode.isCoordinatedPodcastCapture {
-                                        await model.stopCoordinatedPodcastCapture(
-                                            using: audioCapture,
-                                            videoCapture: videoCapture
-                                        )
-                                    } else {
-                                        await model.stopVideoCapture(
-                                            using: videoCapture
-                                        )
-                                    }
+                                    await requestCoordinatedStop(for: session)
                                 }
                             },
                             onPauseResume: {
@@ -7132,6 +7135,20 @@ private struct CaptureRecorderView: View {
             #endif
             await sessionPreflight.flushPending()
         }
+        .task(id: recordingCoordinationTaskID) {
+            guard let session = model.selectedSession else { return }
+            recordingCoordinator.reset(roomID: session.callRoomId)
+            guard shouldCoordinateRecording(for: session) else { return }
+            while !Task.isCancelled {
+                if let directive = await recordingCoordinator.poll(
+                    roomID: session.callRoomId,
+                    localRecordingActive: captureIsActive
+                ) {
+                    await applyRecordingDirective(directive, for: session)
+                }
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
         .onDisappear {
             soundCheck.discard()
             guard !videoCapture.state.isActive,
@@ -7152,6 +7169,152 @@ private struct CaptureRecorderView: View {
 
     private var captureIsActive: Bool {
         audioCaptureIsActive || videoCaptureIsActive
+    }
+
+    private var recordingCoordinationTaskID: String {
+        let session = model.selectedSession
+        return [
+            session?.callRoomId ?? "none",
+            "joined=\(model.providerRoom.isConnected)",
+            "local=\(localOnlyRecordingSessionID == session?.id)",
+            "fallback=\(session?.providerCanJoin == false)",
+            "tab=\(visibleTab == .record)",
+        ].joined(separator: "|")
+    }
+
+    private func shouldCoordinateRecording(for session: MobileCaptureSession) -> Bool {
+        guard !model.usesPreviewData,
+              visibleTab == .record,
+              AuthManager.shared.networkActionsAllowed else { return false }
+        return model.providerRoom.isConnected
+            || localOnlyRecordingSessionID == session.id
+            || session.providerCanJoin == false
+    }
+
+    private func requestCoordinatedStart(for session: MobileCaptureSession) async {
+        if session.canControlRecording == true {
+            guard let directive = await recordingCoordinator.issue(
+                roomID: session.callRoomId,
+                action: .start
+            ) else { return }
+            await applyRecordingDirective(directive, for: session)
+            return
+        }
+        guard let directive = recordingCoordinator.acceptActiveRecording() else {
+            model.message = "Recording starts when the coach or host presses Record."
+            return
+        }
+        await applyRecordingDirective(directive, for: session)
+    }
+
+    private func requestCoordinatedStop(for session: MobileCaptureSession) async {
+        if session.canControlRecording == true {
+            guard let directive = await recordingCoordinator.issue(
+                roomID: session.callRoomId,
+                action: .stop
+            ) else { return }
+            await applyRecordingDirective(directive, for: session)
+            return
+        }
+        await stopLocalRecording()
+    }
+
+    private func applyRecordingDirective(
+        _ directive: CaptureRecordingDirective,
+        for session: MobileCaptureSession
+    ) async {
+        guard directive.action == .stop || shouldCoordinateRecording(for: session) else {
+            return
+        }
+        if directive.action == .start {
+            recordingCoordinator.markHandled(directive, state: .observed)
+            await recordingCoordinator.acknowledge(
+                roomID: session.callRoomId,
+                directive: directive,
+                state: .observed,
+                detail: "Ready iPhone endpoint accepted the coordinated START."
+            )
+            await startLocalRecording()
+            let captureID = videoCapture.activeRecordingID ?? audioCapture.activeLocalRecordingID
+            let started = captureIsActive && captureID != nil
+            let state: CaptureRecordingEndpointState = started ? .started : .startFailed
+            recordingCoordinator.markHandled(directive, state: state)
+            await recordingCoordinator.acknowledge(
+                roomID: session.callRoomId,
+                directive: directive,
+                state: state,
+                captureID: captureID,
+                detail: started
+                    ? "Protected local iPhone capture started."
+                    : "The local recorder did not start; no media success is claimed."
+            )
+            return
+        }
+
+        let captureID = videoCapture.activeRecordingID ?? audioCapture.activeLocalRecordingID
+        recordingCoordinator.markHandled(directive, state: .stopping)
+        await recordingCoordinator.acknowledge(
+            roomID: session.callRoomId,
+            directive: directive,
+            state: .stopping,
+            captureID: captureID
+        )
+        await stopLocalRecording()
+        let stopped = !captureIsActive
+        let state: CaptureRecordingEndpointState = stopped ? .stopped : .stopFailed
+        recordingCoordinator.markHandled(directive, state: state)
+        await recordingCoordinator.acknowledge(
+            roomID: session.callRoomId,
+            directive: directive,
+            state: state,
+            captureID: captureID,
+            detail: stopped
+                ? "Local source stopped; upload recovery remains independent."
+                : "The local source is still active or finalizing."
+        )
+    }
+
+    private func startLocalRecording() async {
+        if recordingMode == .audio {
+            await model.startCapture(using: audioCapture)
+            return
+        }
+        if videoCapture.state != .ready {
+            await model.prepareVideoCapture(
+                using: videoCapture,
+                mode: recordingMode,
+                position: cameraPosition,
+                qualityIntent: videoQualityIntent
+            )
+        }
+        guard videoCapture.state == .ready else { return }
+        if recordingMode.isCoordinatedPodcastCapture {
+            await model.startCoordinatedPodcastCapture(
+                using: audioCapture,
+                videoCapture: videoCapture
+            )
+        } else {
+            await model.startVideoCapture(
+                using: videoCapture,
+                mode: recordingMode
+            )
+        }
+    }
+
+    private func stopLocalRecording() async {
+        if model.activeCoordinatedCaptureGroupID != nil {
+            await model.stopCoordinatedPodcastCapture(
+                using: audioCapture,
+                videoCapture: videoCapture
+            )
+            return
+        }
+        if videoCaptureIsActive {
+            await model.stopVideoCapture(using: videoCapture)
+        }
+        if audioCaptureIsActive {
+            await model.stopCapture(using: audioCapture)
+        }
     }
 
     private var hasSelectedSessionRecording: Bool {
@@ -10594,6 +10757,28 @@ private struct CaptureRecordingModePicker: View {
     }
 }
 
+private struct CaptureRecordingCoordinationStatus: View {
+    let message: String
+    let isRecording: Bool
+    let joinConfirmationRequired: Bool
+
+    var body: some View {
+        Label(
+            message,
+            systemImage: isRecording
+                ? "record.circle.fill"
+                : joinConfirmationRequired
+                    ? "person.crop.circle.badge.checkmark"
+                    : "checkmark.circle.fill"
+        )
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(isRecording ? .red : CapturePalette.accent)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .captureCard()
+        .accessibilityIdentifier("CaptureRecordingCoordinationStatus")
+    }
+}
+
 @MainActor
 private final class CaptureVideoPreviewUIView: UIView {
     private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
@@ -10695,6 +10880,8 @@ private struct VideoRecorderHero: View {
     @Binding var cameraPosition: VideoCaptureCameraPosition
     @Binding var qualityIntent: VideoCaptureQualityIntent
     let isBusy: Bool
+    let canStartRecording: Bool
+    let waitingForHost: Bool
     let onPrepare: () -> Void
     let onStart: () -> Void
     let onStop: () -> Void
@@ -11034,7 +11221,8 @@ private struct VideoRecorderHero: View {
             return true
         }
         if controller.state == .ready {
-            return !videoReady
+            return !canStartRecording
+                || !videoReady
                 || (
                     mode.requiresAudioConsent
                     && !(session.canRecordAudioNow ?? session.canRecordNow)
@@ -11045,7 +11233,7 @@ private struct VideoRecorderHero: View {
 
     private var primaryTint: Color {
         if isCaptureGroupOpen { return .red }
-        if controller.state == .ready && !videoReady { return .gray }
+        if controller.state == .ready && (!videoReady || !canStartRecording) { return .gray }
         return CapturePalette.record
     }
 
@@ -11068,6 +11256,9 @@ private struct VideoRecorderHero: View {
                 : "Stop video capture group, \(controller.durationSeconds.captureDurationLabel) elapsed"
         }
         if controller.state == .ready {
+            if waitingForHost {
+                return "Recording starts when the coach or host presses Record"
+            }
             return videoReady
                 ? "Start \(mode.title.lowercased())"
                 : "Video recording unavailable until every participant's video consent is ready"
@@ -11080,7 +11271,11 @@ private struct VideoRecorderHero: View {
         case .idle: "Camera is off"
         case .preparing: "Verifying camera…"
         case .ready:
-            videoReady ? "Camera and consent ready" : "Camera ready · video consent needed"
+            waitingForHost
+                ? "Camera ready · waiting for host"
+                : videoReady
+                    ? "Camera and consent ready"
+                    : "Camera ready · video consent needed"
         case .arming: "Protecting source identity…"
         case .recording:
             switch mode {
@@ -11231,6 +11426,8 @@ private struct RecorderHero: View {
     let capturePipeline: String
     let userMarkOffsets: [TimeInterval]
     let isBusy: Bool
+    let canStartRecording: Bool
+    let waitingForHost: Bool
     let onPrimaryAction: () -> Void
     let onPauseResume: () -> Void
     let onMark: () -> Void
@@ -11355,11 +11552,18 @@ private struct RecorderHero: View {
     }
 
     private var primaryDisabled: Bool {
-        isBusy || captureState == .preparing || captureState == .finalizing || (!session.canRecordNow && !isCaptureActive)
+        isBusy
+            || captureState == .preparing
+            || captureState == .finalizing
+            || ((!session.canRecordNow || !canStartRecording) && !isCaptureActive)
     }
 
     private var primaryTint: Color {
-        isCaptureActive ? .red : session.canRecordNow ? CapturePalette.record : .gray
+        isCaptureActive
+            ? .red
+            : session.canRecordNow && canStartRecording
+                ? CapturePalette.record
+                : .gray
     }
 
     private var primarySystemImage: String {
@@ -11368,6 +11572,7 @@ private struct RecorderHero: View {
 
     private var primaryAccessibilityLabel: String {
         if isCaptureActive { return "Stop recording, \(formattedDuration) elapsed" }
+        if waitingForHost { return "Recording starts when the coach or host presses Record" }
         if session.canRecordNow { return "Start recording" }
         return "Start recording unavailable until session readiness and consent are confirmed"
     }
@@ -11375,6 +11580,7 @@ private struct RecorderHero: View {
     private var stateTitle: String {
         switch captureState {
         case .idle:
+            if waitingForHost { return "Ready · waiting for host" }
             if session.canRecordNow { return "Consent ready · mic checks on tap" }
             return session.recordingConsentGranted ? "Waiting for participant consent" : "Waiting for consent"
         case .preparing: return "Preparing microphone…"
