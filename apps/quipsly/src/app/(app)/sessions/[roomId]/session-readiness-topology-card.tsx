@@ -16,6 +16,7 @@ import {
   Video,
 } from "lucide-react";
 
+import { buildSessionRecordingStatus, type SessionRecordingStatus } from "@/lib/session-recording-status";
 import type { SessionReadinessExpectedSource, SessionReadinessSource, SessionReadinessTopology } from "./session-readiness-topology";
 
 type LiveDevice = {
@@ -48,7 +49,7 @@ function clientIcon(clientKind: string) {
 
 function statusTone(status: string) {
   const normalized = status.toLowerCase();
-  if (normalized.includes("verified") || normalized.includes("ready") || normalized === "live") {
+  if (normalized.includes("verified") || normalized.includes("ready") || normalized === "live" || normalized === "safe") {
     return "border-emerald-200 bg-emerald-50 text-emerald-900";
   }
   if (normalized === "not-required") return "border-sky-200 bg-sky-50 text-sky-900";
@@ -120,8 +121,10 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
 }) {
   const router = useRouter();
   const [presence, setPresence] = useState<ProviderPresence | null>(null);
+  const [recordingStatus, setRecordingStatus] = useState<SessionRecordingStatus>(() => buildSessionRecordingStatus({ roomId, roomStatus: "", topology }));
   const [refreshing, setRefreshing] = useState(false);
   const [presenceError, setPresenceError] = useState<string | null>(null);
+  const [recordingStatusError, setRecordingStatusError] = useState<string | null>(null);
   const [planBusy, setPlanBusy] = useState<string | null>(null);
   const [planMessage, setPlanMessage] = useState<string | null>(null);
   const [showPlanForm, setShowPlanForm] = useState(false);
@@ -157,6 +160,24 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
     }
   }, [roomId]);
 
+  const refreshRecordingStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/recording-status`, { cache: "no-store", credentials: "same-origin" });
+      const packet = await response.json().catch(() => null) as { ok?: boolean; status?: SessionRecordingStatus; error?: string } | null;
+      if (!response.ok || !packet?.ok || !packet.status) throw new Error(packet?.error || "Recording status is temporarily unavailable.");
+      setRecordingStatus(packet.status);
+      setRecordingStatusError(null);
+    } catch (error) {
+      setRecordingStatusError(error instanceof Error ? error.message : "Recording status is temporarily unavailable.");
+    }
+  }, [roomId]);
+
+  const refreshAll = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refreshPresence(false), refreshRecordingStatus()]);
+    setRefreshing(false);
+  }, [refreshPresence, refreshRecordingStatus]);
+
   useEffect(() => {
     if (!liveReadbackEnabled) return;
     void refreshPresence(false);
@@ -165,6 +186,14 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
     }, 20_000);
     return () => window.clearInterval(interval);
   }, [liveReadbackEnabled, refreshPresence]);
+  useEffect(() => {
+    if (!liveReadbackEnabled) return;
+    void refreshRecordingStatus();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshRecordingStatus();
+    }, recordingStatus.safeToLeave ? 30_000 : 8_000);
+    return () => window.clearInterval(interval);
+  }, [liveReadbackEnabled, recordingStatus.safeToLeave, refreshRecordingStatus]);
 
   const liveByParticipant = useMemo(() => {
     const result = new Map<string, LiveDevice[]>();
@@ -175,7 +204,7 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
     return result;
   }, [presence]);
   const unmatchedLive = (presence?.devices ?? []).filter((device) => !device.matchedToCanonicalParticipant);
-  const exitReady = topology.exitReadiness.safeToLeaveAllEndpoints;
+  const exitReady = recordingStatus.safeToLeave;
 
   const createExpectation = useCallback(async () => {
     if (!planDraft.label.trim() || planBusy) return;
@@ -265,9 +294,9 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
         <h2 id="session-readiness-topology-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Are everyone’s recordings safe?</h2>
         <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Stay on this Session until Quipsly says every required recording is safe. Technical details stay out of the way unless something needs attention.</p>
       </div>
-      <button type="button" onClick={() => void refreshPresence()} disabled={refreshing || !liveReadbackEnabled} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50">
+      <button type="button" onClick={() => void refreshAll()} disabled={refreshing || !liveReadbackEnabled} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50">
         <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
-        {refreshing ? "Reading room…" : "Refresh live room"}
+        {refreshing ? "Refreshing…" : "Refresh status"}
       </button>
     </div>
 
@@ -275,14 +304,16 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
           <p className={`text-[10px] font-black uppercase tracking-[0.18em] ${exitReady ? "text-sky-800" : "text-amber-800"}`}>Post-session source recovery</p>
-          <h3 id="session-exit-readiness-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{topology.exitReadiness.label}</h3>
-          <p className={`mt-2 text-xs font-bold leading-5 ${exitReady ? "text-sky-950" : "text-amber-950"}`}>{topology.exitReadiness.detail}</p>
+          <h3 id="session-exit-readiness-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{recordingStatus.label}</h3>
+          <p className={`mt-2 text-xs font-bold leading-5 ${exitReady ? "text-sky-950" : "text-amber-950"}`}>{recordingStatus.detail}</p>
         </div>
         <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${exitReady ? "border-sky-300 bg-white text-sky-950" : "border-amber-300 bg-white text-amber-950"}`}>
-          {topology.exitReadiness.serverSafeRequiredSourceCount}/{topology.exitReadiness.requiredSourceCount} server-safe masters
+          {recordingStatus.peopleSafeCount}/{recordingStatus.peopleRequiringRecordingCount} recording people safe
         </span>
       </div>
-      <p className={`mt-3 text-[10px] font-black uppercase tracking-wide ${exitReady ? "text-emerald-800" : "text-[#765f40]"}`}>Safe to leave every endpoint: {exitReady ? "yes" : "no"} · {topology.exitReadiness.drainedEndpointCount}/{topology.exitReadiness.endpointQueueCount} latest installation queue receipts drained</p>
+      {recordingStatus.people.length ? <ul className="mt-4 grid gap-2 sm:grid-cols-2" aria-label="Recording safety by person">{recordingStatus.people.map((person) => <li key={person.participantId} className="flex items-center justify-between gap-3 rounded-xl border border-white bg-white/90 px-3 py-2.5"><span className="min-w-0"><span className="block truncate text-xs font-black text-[#3d3122]">{person.label}{person.isCurrentActor ? " · You" : ""}</span><span className="block text-[10px] font-semibold text-[#765f40]">{person.detail}</span></span><span className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${statusTone(person.state)}`}>{person.labelText}</span></li>)}</ul> : null}
+      <p className={`mt-3 text-[10px] font-black uppercase tracking-wide ${exitReady ? "text-emerald-800" : "text-[#765f40]"}`}>Safe to leave every endpoint: {exitReady ? "yes" : "no"} · updated {timeLabel(recordingStatus.generatedAt)}</p>
+      {recordingStatusError ? <p className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-950" role="status">{recordingStatusError} Keep devices open until status refreshes.</p> : null}
     </section>
 
     <details className="mt-5 rounded-2xl border border-sky-200 bg-white/70 p-4" open={!exitReady || undefined} data-testid="recording-status-details">

@@ -10,6 +10,7 @@ jest.mock("next/navigation", () => ({
 
 import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
+import { buildSessionRecordingStatus } from "@/lib/session-recording-status";
 
 const originalFetch = global.fetch;
 
@@ -148,9 +149,13 @@ describe("Session readiness topology card", () => {
   });
 
   it("merges safe current presence into the durable person/source projection", async () => {
-    const fetchMock = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    const fetchMock = jest.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/recording-status")) return {
+        ok: true,
+        json: async () => ({ ok: true, status: buildSessionRecordingStatus({ roomId: "room-1", roomStatus: "RECORDING", topology }) }),
+      };
+      return { ok: true, json: async () => ({
         ok: true,
         presence: {
           status: "LIVE",
@@ -173,7 +178,7 @@ describe("Session readiness topology card", () => {
             matchedToCanonicalParticipant: true,
           }],
         },
-      }),
+      }) };
     });
     global.fetch = fetchMock as typeof fetch;
 
@@ -186,7 +191,9 @@ describe("Session readiness topology card", () => {
     expect(screen.getByText("Ready now")).toBeInTheDocument();
     expect(screen.getByText(/sample bytes stayed on that browser tab/i)).toBeInTheDocument();
     expect(screen.getByText("Governed action receipt · 12345678")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Server copy complete · check each recording device" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Server copies are safe" })).toBeInTheDocument();
+    expect(screen.getByText("Confirm device")).toBeInTheDocument();
+    expect(screen.getByText("0/1 recording people safe")).toBeInTheDocument();
     expect(screen.getByText(/Safe to leave every endpoint: no/i)).toBeInTheDocument();
     expect(screen.getByText("Server copy safe")).toBeInTheDocument();
     expect(screen.getByText("Upload upload-1")).toBeInTheDocument();
@@ -197,21 +204,35 @@ describe("Session readiness topology card", () => {
       "/api/sessions/room-1/presence",
       expect.objectContaining({ cache: "no-store" }),
     );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/sessions/room-1/recording-status",
+      expect.objectContaining({ cache: "no-store" }),
+    );
     expect(document.body.textContent).not.toContain("provider-secret");
     expect(screen.getByTestId("recording-status-details")).toHaveAttribute("open");
   });
 
   it("keeps technical receipts collapsed when every recording is safe", async () => {
-    const fetchMock = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        ok: true,
-        presence: { status: "EMPTY", observedAt: "2026-08-05T18:00:01.000Z", devices: [], nextAction: "No one is in the call." },
-      }),
-    });
-    global.fetch = fetchMock as typeof fetch;
     const safeTopology: SessionReadinessTopology = {
       ...topology,
+      people: topology.people.map((person) => ({
+        ...person,
+        endpointQueues: [{
+          id: "queue-1",
+          clientInstanceId: "ios-installation-1",
+          clientKind: "ios",
+          deviceLabel: "Quipsly Capture · iPhone 16",
+          queueRevision: "1",
+          queueState: "DRAINED",
+          localSourceCount: 1,
+          pendingSourceCount: 0,
+          failedSourceCount: 0,
+          observedCaptureIds: ["capture-1"],
+          recordingAssetIds: ["asset-1"],
+          latestLocalMutationAt: "2026-08-05T17:59:00.000Z",
+          reconciledAt: "2026-08-05T18:00:00.000Z",
+        }],
+      })),
       summary: { ...topology.summary, endpointQueueCount: 1, drainedEndpointCount: 1 },
       exitReadiness: {
         ...topology.exitReadiness,
@@ -224,12 +245,26 @@ describe("Session readiness topology card", () => {
         safeToLeaveAllEndpoints: true,
       },
     };
+    const fetchMock = jest.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/recording-status")) return {
+        ok: true,
+        json: async () => ({ ok: true, status: buildSessionRecordingStatus({ roomId: "room-safe", roomStatus: "ENDED", topology: safeTopology }) }),
+      };
+      return {
+        ok: true,
+        json: async () => ({ ok: true, presence: { status: "EMPTY", observedAt: "2026-08-05T18:00:01.000Z", devices: [], nextAction: "No one is in the call." } }),
+      };
+    });
+    global.fetch = fetchMock as typeof fetch;
 
     render(<SessionReadinessTopologyCard roomId="room-safe" topology={safeTopology} />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
     expect(screen.getByRole("heading", { name: "Are everyone’s recordings safe?" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Every recording is safe" })).toBeInTheDocument();
+    expect(screen.getByText("1/1 recording people safe")).toBeInTheDocument();
+    expect(screen.getByText("Safe")).toBeInTheDocument();
     expect(screen.getByTestId("recording-status-details")).not.toHaveAttribute("open");
     expect(screen.getByText("Recording details")).toBeInTheDocument();
   });
