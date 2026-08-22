@@ -127,7 +127,10 @@ try {
     await coachPage.reload({ waitUntil: "domcontentloaded" });
     coachCard = coachPage.locator("#recording-share");
   }
-  const prepareButton = coachCard.getByRole("button", { name: "Prepare private preview", exact: true });
+  const prepareButton = coachCard.getByRole("button", { name: "Create private preview", exact: true });
+  if (freshContext) {
+    await prepareButton.waitFor({ state: "visible", timeout: 30_000 });
+  }
   if (await prepareButton.count()) {
     const sourceCheckboxes = coachCard.locator('fieldset input[type="checkbox"]');
     assert(await sourceCheckboxes.count() >= 2, "Rendered preparation did not offer separately attributed participant masters.");
@@ -151,10 +154,9 @@ try {
   const output = await prisma.sessionOutput.findFirstOrThrow({ where: { roomId: ROOM_ID, kind: "RECORDING_SHARE", status: "DRAFT" }, orderBy: { updatedAt: "desc" }, select: { id: true, revision: true, contentSha256: true, bodyJson: true, sourceManifestJson: true } });
   const derived = await prisma.recordingAsset.findUniqueOrThrow({ where: { id: output.bodyJson.render.recordingAssetId }, select: { id: true, checksum: true, byteSize: true, storageBucket: true, storageObjectPath: true, localManifestJson: true } });
   assert(derived.localManifestJson?.sessionRecordingShare?.outputId === output.id, "Derived recording omitted exact output lineage.");
-  await coachCard.getByRole("checkbox", { name: /I listened to this reviewed copy/i }).check();
   const [releaseRequest] = await Promise.all([
     coachPage.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === `/api/sessions/${ROOM_ID}/recording-share` && request.postDataJSON()?.action === "RELEASE"),
-    coachCard.getByRole("button", { name: "Release inside client Session", exact: true }).click(),
+    coachCard.getByRole("button", { name: `Share with ${identities.client.displayName}`, exact: true }).click(),
   ]);
   const releaseBody = releaseRequest.postDataJSON();
   await coachCard.getByText(`Visible to ${identities.client.displayName}`, { exact: false }).waitFor({ timeout: 30_000 });

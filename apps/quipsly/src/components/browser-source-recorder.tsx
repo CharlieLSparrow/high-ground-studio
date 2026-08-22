@@ -412,6 +412,43 @@ export function BrowserSourceRecorder({
   }, [refreshStudioHandoff]);
 
   useEffect(() => {
+    if (!conversationConnected || status === "recording") return;
+    let cancelled = false;
+    const refreshCurrentConsent = async () => {
+      try {
+        const response = await fetch(
+          `/api/mobile/capture/consent?callRoomId=${encodeURIComponent(callRoomId)}`,
+          { cache: "no-store" },
+        );
+        const packet = await response.json().catch(() => ({}));
+        if (cancelled || !response.ok) return;
+        const session = packet?.session ?? {};
+        setConsentId(session.recordingConsentId ?? null);
+        setMyAudioConsent(session.recordingConsentCanRecordAudio === true);
+        setMyVideoConsent(session.recordingConsentCanRecordVideo === true);
+        setAllPartyAudioReady(
+          session.allRegisteredParticipantConsentGranted === true,
+        );
+        setAllPartyVideoReady(
+          session.allRegisteredParticipantVideoConsentGranted === true,
+        );
+      } catch {
+        // The explicit consent action and recording preflight remain
+        // fail-closed. A transient background refresh must not interrupt the
+        // live conversation or replace the last server-confirmed state.
+      }
+    };
+    const interval = window.setInterval(
+      () => void refreshCurrentConsent(),
+      2_500,
+    );
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [callRoomId, conversationConnected, status]);
+
+  useEffect(() => {
     let cancelled = false;
     const policyRequest =
       typeof globalThis.fetch === "function"

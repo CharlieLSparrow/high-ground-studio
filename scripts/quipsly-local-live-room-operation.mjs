@@ -273,7 +273,7 @@ const saveRenderedConsent = async (journey) => {
   if (!(await consentAction.isVisible())) {
     await journey.page
       .locator("summary")
-      .filter({ hasText: /^Recording options/ })
+      .filter({ hasText: /^Recording settings/ })
       .click();
   }
   const [response] = await Promise.all([
@@ -339,10 +339,6 @@ try {
     });
     await browserChoice.waitFor({ timeout: 20_000 });
     await browserChoice.click();
-    const consentButton = page.getByRole("button", {
-      name: /Agree and continue|Update choices/,
-    });
-    await consentButton.waitFor({ state: "visible", timeout: 20_000 });
     const join = page.getByRole("button", {
       name: "Join call",
       exact: true,
@@ -355,42 +351,43 @@ try {
       .getByText("Audio and video settings", { exact: true })
       .waitFor({ state: "visible", timeout: 20_000 });
     assert(
-      (await page.getByText("Optional sound check", { exact: true }).count()) === 1,
+      (await page
+        .getByText("Optional sound check", { exact: true })
+        .count()) === 1,
       `${identity.role} lobby lost its optional sound-check escape hatch.`,
     );
     assert(
       (await page
-        .getByRole("button", { name: /Record (?:on this device|local source)/ })
+        .getByRole("button", { name: /^Record(?: source)?$/ })
         .count()) === 0,
       `${identity.role} could see a recording action before joining.`,
     );
-    const transcriptionConsent = page.getByLabel(
-      "Create a transcript and suggested notes/tasks",
-      { exact: true },
-    );
-    if (!(await transcriptionConsent.isChecked()))
-      await transcriptionConsent.check();
-    await saveRenderedConsent({ identity, page });
     if (!(await join.isEnabled())) {
       const deviceSetup = page
         .getByText("Camera, microphone, and speakers", { exact: true })
         .locator("..");
-      if (!(await deviceSetup.evaluate((element) => element.hasAttribute("open")))) {
+      if (
+        !(await deviceSetup.evaluate((element) => element.hasAttribute("open")))
+      ) {
         await deviceSetup.locator("summary").click();
       }
       const allowMicrophone = page.getByRole("button", {
         name: /^Allow microphone(?: and camera)?$/,
       });
-      await allowMicrophone.waitFor({ timeout: 20_000 }).catch(async (error) => {
-        const visibleButtons = await page.getByRole("button").allInnerTexts();
-        const visibleHeadings = await page.getByRole("heading").allInnerTexts();
-        throw new Error(
-          `${identity.role} device-permission action did not appear when Join needed setup. ` +
-            `Buttons: ${JSON.stringify(visibleButtons)}. ` +
-            `Headings: ${JSON.stringify(visibleHeadings)}. ` +
-            `URL: ${page.url()}. ${error instanceof Error ? error.message : ""}`,
-        );
-      });
+      await allowMicrophone
+        .waitFor({ timeout: 20_000 })
+        .catch(async (error) => {
+          const visibleButtons = await page.getByRole("button").allInnerTexts();
+          const visibleHeadings = await page
+            .getByRole("heading")
+            .allInnerTexts();
+          throw new Error(
+            `${identity.role} device-permission action did not appear when Join needed setup. ` +
+              `Buttons: ${JSON.stringify(visibleButtons)}. ` +
+              `Headings: ${JSON.stringify(visibleHeadings)}. ` +
+              `URL: ${page.url()}. ${error instanceof Error ? error.message : ""}`,
+          );
+        });
       await allowMicrophone.click();
     }
     for (
@@ -425,8 +422,7 @@ try {
   for (const journey of journeys) {
     await journey.page
       .waitForFunction(
-        () =>
-          document.body.innerText.toLowerCase().includes("2 in call"),
+        () => document.body.innerText.toLowerCase().includes("2 in call"),
         null,
         { timeout: 20_000 },
       )
@@ -473,7 +469,7 @@ try {
     if (!(await transcriptionConsent.isVisible())) {
       await journey.page
         .locator("summary")
-        .filter({ hasText: /^Recording options/ })
+        .filter({ hasText: /^Recording settings/ })
         .click();
     }
     await transcriptionConsent.waitFor({ timeout: 20_000 });
@@ -481,60 +477,54 @@ try {
       await transcriptionConsent.check();
     await saveRenderedConsent(journey);
   }
-  // Refresh each actor's receipt after both independent choices exist so both
-  // rendered recorders hold current all-party readiness, not inferred consent.
+  // Each participant agrees exactly once. The product must refresh all-party
+  // readiness itself; the acceptance flight must not teach or depend on a
+  // second consent click.
   for (const journey of journeys) {
-    const packet = await saveRenderedConsent(journey);
-    assert(
-      packet?.session?.allRegisteredParticipantConsentGranted === true,
-      `${journey.identity.role} did not receive current all-party audio consent.`,
-    );
-    assert(
-      packet?.session?.allRegisteredParticipantTranscriptionConsentGranted ===
-        true,
-      `${journey.identity.role} did not receive current all-party transcription consent.`,
-    );
     await journey.page
-      .getByText(
-        "Everyone is ready to record.",
-        { exact: true },
-      )
+      .getByText("Everyone is ready to record.", { exact: true })
       .first()
       .waitFor({ timeout: 20_000 });
     const headphones = journey.page.getByLabel(
-      "I’m using headphones (recommended to prevent echo).",
+      "I’m using headphones (recommended).",
       { exact: true },
     );
     if (!(await headphones.isChecked())) await headphones.check();
   }
 
-  const recordButtons = journeys.map((journey) =>
-    journey.page.getByRole("button", {
-      name: /Record (?:on this device|local source)/,
-    }),
-  );
-  for (const recordButton of recordButtons) {
-    await recordButton.waitFor({ state: "visible", timeout: 20_000 });
-    for (
-      let attempt = 0;
-      attempt < 40 && !(await recordButton.isEnabled());
-      attempt += 1
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    assert(
-      await recordButton.isEnabled(),
-      "A consented browser endpoint did not become ready to retain its source.",
-    );
+  const coachRecordButton = journeys[0].page.getByRole("button", {
+    name: "Record",
+    exact: true,
+  });
+  await coachRecordButton.waitFor({ state: "visible", timeout: 20_000 });
+  for (
+    let attempt = 0;
+    attempt < 40 && !(await coachRecordButton.isEnabled());
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
+  assert(
+    await coachRecordButton.isEnabled(),
+    "The consented coach endpoint did not become ready to coordinate recording.",
+  );
+  await journeys[1].page
+    .getByText("Recording starts when the coach or host presses Record.", {
+      exact: true,
+    })
+    .waitFor({ state: "visible", timeout: 20_000 });
   const recordingWindowStartedAt = new Date();
-  await Promise.all(recordButtons.map((button) => button.click()));
-  const stopButtons = journeys.map((journey) =>
-    journey.page.getByRole("button", {
-      name: "Stop local source",
+  await coachRecordButton.click();
+  const stopButtons = [
+    journeys[0].page.getByRole("button", {
+      name: "Stop recording",
       exact: true,
     }),
-  );
+    journeys[1].page.getByRole("button", {
+      name: "Stop my recording",
+      exact: true,
+    }),
+  ];
   for (let index = 0; index < stopButtons.length; index += 1) {
     await stopButtons[index]
       .waitFor({ timeout: 20_000 })
@@ -554,7 +544,7 @@ try {
   await new Promise((resolve) =>
     setTimeout(resolve, requestedRecordingMilliseconds),
   );
-  await Promise.all(stopButtons.map((button) => button.click()));
+  await stopButtons[0].click();
   await Promise.all(
     journeys.map((journey) =>
       journey.page
@@ -573,6 +563,28 @@ try {
     },
     select: { id: true, userId: true },
   });
+  const directiveReceipts = await prisma.callRecordingEndpointReceipt.findMany({
+    where: {
+      roomId: ROOM_ID,
+      participantId: {
+        in: participantIds.map((participant) => participant.id),
+      },
+      state: { in: ["STARTED", "STOPPED"] },
+      receivedAt: { gte: recordingWindowStartedAt },
+    },
+    select: { participantId: true, state: true, captureId: true },
+  });
+  for (const participant of participantIds) {
+    const states = new Set(
+      directiveReceipts
+        .filter((receipt) => receipt.participantId === participant.id)
+        .map((receipt) => receipt.state),
+    );
+    assert(
+      states.has("STARTED") && states.has("STOPPED"),
+      `Participant ${participant.id} did not acknowledge both coordinated boundaries.`,
+    );
+  }
   const verifiedSources = await prisma.recordingAsset.findMany({
     where: {
       roomId: ROOM_ID,
@@ -649,6 +661,8 @@ try {
         independentParticipantSourcesVerified: new Set(
           verifiedSources.map((source) => source.participantId),
         ).size,
+        coordinatedRecordingDirective: "passed",
+        coordinatedEndpointBoundaries: directiveReceipts.length,
         verifiedSourceIds: verifiedSources.map((source) => source.id),
         browserSourceOverlapMilliseconds: overlapMilliseconds,
         allPartyConsentReceipts: "passed",
