@@ -254,6 +254,11 @@ failure shapes recur often enough to influence the architecture:
 - Rebuilt invitation entry as one compact outer-room card with one contextual
   action: Continue, Continue to Session, or Switch account. Device choice and
   setup expectations are secondary and appear only after the identity boundary.
+- Remembered the person’s browser-or-iPhone Session route on that device. A
+  returning browser user now goes directly to the ordinary call lobby; a
+  returning iPhone user sees one `Open Capture` action because browsers rightly
+  require a gesture before opening another app. `Use another device` remains a
+  quiet escape hatch instead of recurring setup.
 - Reduced host invitation setup to email plus one primary action. Name, role,
   expiry, raw URL, provider presence, join-key leases, and append-only access
   history remain available under progressive disclosure. Provider presence is

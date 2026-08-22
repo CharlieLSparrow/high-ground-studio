@@ -14,6 +14,7 @@ import {
 import type { SessionEntryChoice } from "@/lib/session-entry-choice";
 
 const CAPTURE_TESTFLIGHT_URL = "https://testflight.apple.com/join/XwRRcYUm";
+const SESSION_ENTRY_PREFERENCE_KEY = "quipsly.session-entry-preference.v1";
 
 type EntryChoiceMetrics = {
   BROWSER: number;
@@ -34,9 +35,11 @@ export function CaptureAppHandoff({
 }) {
   const captureURL = `quipsly://session/${encodeURIComponent(roomId)}?mode=live`;
   const [metrics, setMetrics] = useState<EntryChoiceMetrics | null>(null);
-  const [step, setStep] = useState<"choose" | "capture">("choose");
+  const [step, setStep] = useState<"choose" | "capture" | "preferred">("choose");
+  const [preferredEntry, setPreferredEntry] = useState<"BROWSER" | "CAPTURE_APP" | null>(null);
   const [interactive, setInteractive] = useState(false);
   const continueInBrowserRef = useRef(onContinueInBrowser);
+  const openedRememberedBrowserRef = useRef(false);
   continueInBrowserRef.current = onContinueInBrowser;
 
   function clearBrowserEntryIntent() {
@@ -51,8 +54,20 @@ export function CaptureAppHandoff({
     current.searchParams.set("entry", "browser");
     window.history.replaceState(window.history.state, "", current);
     recordChoice("BROWSER");
+    rememberEntry("BROWSER");
     onContinueInBrowser?.();
     window.setTimeout(clearBrowserEntryIntent, 15_000);
+  }
+
+  function rememberEntry(choice: "BROWSER" | "CAPTURE_APP") {
+    window.localStorage.setItem(SESSION_ENTRY_PREFERENCE_KEY, choice);
+    setPreferredEntry(choice);
+  }
+
+  function chooseAnotherDevice() {
+    window.localStorage.removeItem(SESSION_ENTRY_PREFERENCE_KEY);
+    setPreferredEntry(null);
+    setStep("choose");
   }
 
   function recordChoice(choice: SessionEntryChoice) {
@@ -69,6 +84,11 @@ export function CaptureAppHandoff({
   }
 
   useEffect(() => {
+    const saved = window.localStorage.getItem(SESSION_ENTRY_PREFERENCE_KEY);
+    if (saved === "BROWSER" || saved === "CAPTURE_APP") {
+      setPreferredEntry(saved);
+      setStep("preferred");
+    }
     setInteractive(true);
   }, []);
 
@@ -92,9 +112,24 @@ export function CaptureAppHandoff({
   useEffect(() => {
     const current = new URL(window.location.href);
     if (current.searchParams.get("entry") !== "browser") return;
+    if (window.localStorage.getItem(SESSION_ENTRY_PREFERENCE_KEY) === "BROWSER") {
+      clearBrowserEntryIntent();
+      return;
+    }
     continueInBrowserRef.current?.();
     clearBrowserEntryIntent();
   }, []);
+
+  useEffect(() => {
+    if (
+      !interactive
+      || preferredEntry !== "BROWSER"
+      || step !== "preferred"
+      || openedRememberedBrowserRef.current
+    ) return;
+    openedRememberedBrowserRef.current = true;
+    continueInBrowserRef.current?.();
+  }, [interactive, preferredEntry, step]);
 
   return (
     <section
@@ -129,7 +164,57 @@ export function CaptureAppHandoff({
       </div>
 
       <div className="mt-5 min-h-44 rounded-2xl border border-white/90 bg-white p-3 shadow-sm sm:p-4">
-        {step === "choose" ? (
+        {step === "preferred" && preferredEntry ? (
+          <div aria-label="Your usual Session device">
+            <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
+              Remembered on this device
+            </p>
+            <div className="mt-3 flex min-h-24 items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <span className="rounded-xl bg-white p-2 text-emerald-800 shadow-sm">
+                {preferredEntry === "BROWSER" ? <MonitorSmartphone size={22} aria-hidden="true" /> : <Smartphone size={22} aria-hidden="true" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-black text-[#3d3122]">
+                  {preferredEntry === "BROWSER" ? "Continue in this browser" : "Open Quipsly Capture"}
+                </span>
+                <span className="mt-0.5 block text-xs font-semibold leading-5 text-[#765f40]">
+                  {preferredEntry === "BROWSER"
+                    ? "Your call lobby opens automatically."
+                    : "Open this Session on your iPhone."}
+                </span>
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {preferredEntry === "BROWSER" ? (
+                <button
+                  type="button"
+                  onClick={continueInBrowser}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white"
+                >
+                  <MonitorSmartphone size={16} aria-hidden="true" /> Open call lobby
+                </button>
+              ) : (
+                <a
+                  href={captureURL}
+                  onClick={() => {
+                    rememberEntry("CAPTURE_APP");
+                    recordChoice("CAPTURE_APP");
+                  }}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white"
+                >
+                  <ExternalLink size={15} aria-hidden="true" /> Open Capture
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={chooseAnotherDevice}
+                className="inline-flex min-h-12 items-center rounded-full px-4 text-xs font-black text-[#5b472f]"
+              >
+                Use another device
+              </button>
+            </div>
+          </div>
+        ) : step === "choose" ? (
           <div aria-label="Choose a device for this Session">
             <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#765f40]">
               One choice now · setup comes next
@@ -156,7 +241,10 @@ export function CaptureAppHandoff({
               <button
                 type="button"
                 disabled={!interactive}
-                onClick={() => setStep("capture")}
+                onClick={() => {
+                  rememberEntry("CAPTURE_APP");
+                  setStep("capture");
+                }}
                 className="group flex min-h-24 items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800 disabled:cursor-wait disabled:opacity-60"
               >
                 <span className="rounded-xl bg-white p-2 text-violet-800 shadow-sm">
@@ -176,11 +264,11 @@ export function CaptureAppHandoff({
           <div aria-label="Open this Session in Quipsly Capture">
             <button
               type="button"
-              onClick={() => setStep("choose")}
+              onClick={chooseAnotherDevice}
               className="inline-flex min-h-11 items-center gap-2 rounded-full px-2 text-xs font-black text-violet-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800"
             >
               <ArrowLeft size={16} aria-hidden="true" />
-              Change device
+              Use another device
             </button>
             <div className="mt-1 flex items-start gap-3 px-1">
               <span className="rounded-xl bg-violet-50 p-2 text-violet-800">
@@ -196,7 +284,10 @@ export function CaptureAppHandoff({
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <a
                 href={captureURL}
-                onClick={() => recordChoice("CAPTURE_APP")}
+                onClick={() => {
+                  rememberEntry("CAPTURE_APP");
+                  recordChoice("CAPTURE_APP");
+                }}
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black uppercase tracking-wide text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800"
               >
                 <ExternalLink size={15} aria-hidden="true" />
