@@ -1225,6 +1225,7 @@ final class CaptureExperienceUITests: XCTestCase {
         add(screenshot)
         open.tap()
 
+        openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
         let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
         reveal(followUp, searchAboveFirst: false)
@@ -1254,6 +1255,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         action.tap()
 
+        openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
         XCTAssertTrue(
             app.staticTexts["Studio group ready"].exists,
@@ -1702,6 +1704,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testCoachFollowUpPreservesExactSourceWithoutReleasingPreview() throws {
         app.buttons["CaptureOpenNextSessionButton"].tap()
+        openLocalRecorderIfNeeded()
         let recorderHero = app.otherElements["CaptureRecorderHero"]
         reveal(recorderHero)
         XCTAssertTrue(recorderHero.waitForExistence(timeout: 5))
@@ -1757,6 +1760,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged() throws {
         app.buttons["CaptureOpenNextSessionButton"].tap()
+        openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
 
         let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
@@ -1801,6 +1805,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testCoachFollowUpHoldsReleaseForUnsavedEditorChanges() throws {
         app.buttons["CaptureOpenNextSessionButton"].tap()
+        openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
 
         let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
@@ -2232,6 +2237,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
         consentNeededSession.tap()
 
+        openLocalRecorderIfNeeded()
         let confirm = app.buttons["CaptureConfirmConsentButton"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
 
@@ -2426,6 +2432,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
         consentNeededSession.tap()
 
+        openLocalRecorderIfNeeded()
         app.buttons["CaptureConfirmConsentButton"].tap()
         let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
         XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
@@ -2504,6 +2511,7 @@ final class CaptureExperienceUITests: XCTestCase {
     func testPrimaryRecordSurfacePassesAccessibilityAudit() throws {
         app.tabBars.buttons["Record"].tap()
 
+        openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
         try app.performAccessibilityAudit(for: [
             .hitRegion,
@@ -2637,6 +2645,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testSessionPlanIsAvailableOnThePrimaryIPhoneRecorder() {
         app.tabBars.buttons["Record"].tap()
+        openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
 
         let disclosure = app.buttons["Session plan, Notes, goals & tasks"]

@@ -194,7 +194,7 @@ final class CaptureRecordingCoordinator: ObservableObject {
         } catch {
             // The local media state remains authoritative and protected. A
             // receipt failure is visible, but never rewrites capture success.
-            statusMessage = "Recording is safe locally; room status will retry. (error.localizedDescription)"
+            statusMessage = "Recording is safe locally; room status will retry. \(error.localizedDescription)"
         }
     }
 

@@ -6539,10 +6539,12 @@ private struct CaptureRecorderView: View {
                             userMarkOffsets: audioCapture.userMarkOffsets,
                             isBusy: model.isChangingCapture,
                             canStartRecording:
-                                session.canControlRecording == true
+                                !model.providerRoom.isConnected
+                                || session.canControlRecording == true
                                 || recordingCoordinator.joinConfirmationRequired,
                             waitingForHost:
-                                session.canControlRecording != true
+                                model.providerRoom.isConnected
+                                && session.canControlRecording != true
                                 && !recordingCoordinator.joinConfirmationRequired,
                             onPrimaryAction: {
                                 Task {
@@ -6578,10 +6580,12 @@ private struct CaptureRecorderView: View {
                                 || model.isCoordinatingPodcastCapture
                                 || recordingCoordinator.isSending,
                             canStartRecording:
-                                session.canControlRecording == true
+                                !model.providerRoom.isConnected
+                                || session.canControlRecording == true
                                 || recordingCoordinator.joinConfirmationRequired,
                             waitingForHost:
-                                session.canControlRecording != true
+                                model.providerRoom.isConnected
+                                && session.canControlRecording != true
                                 && !recordingCoordinator.joinConfirmationRequired,
                             onPrepare: {
                                 Task {
@@ -7187,11 +7191,13 @@ private struct CaptureRecorderView: View {
               visibleTab == .record,
               AuthManager.shared.networkActionsAllowed else { return false }
         return model.providerRoom.isConnected
-            || localOnlyRecordingSessionID == session.id
-            || session.providerCanJoin == false
     }
 
     private func requestCoordinatedStart(for session: MobileCaptureSession) async {
+        guard shouldCoordinateRecording(for: session) else {
+            await startLocalRecording()
+            return
+        }
         if session.canControlRecording == true {
             guard let directive = await recordingCoordinator.issue(
                 roomID: session.callRoomId,
@@ -7208,6 +7214,10 @@ private struct CaptureRecorderView: View {
     }
 
     private func requestCoordinatedStop(for session: MobileCaptureSession) async {
+        guard shouldCoordinateRecording(for: session) else {
+            await stopLocalRecording()
+            return
+        }
         if session.canControlRecording == true {
             guard let directive = await recordingCoordinator.issue(
                 roomID: session.callRoomId,
@@ -11831,16 +11841,18 @@ private struct ProviderRoomControls: View {
                 .accessibilityHint(providerControlHint)
                 .accessibilityIdentifier("ProviderJoinRoomButton")
 
-                Button(
-                    localRecordingWorkspaceOpen
-                        ? "Hide recording controls"
-                        : "Record without joining",
-                    action: onToggleLocalRecordingWorkspace
-                )
+                Button(action: onToggleLocalRecordingWorkspace) {
+                    Text(
+                        localRecordingWorkspaceOpen
+                            ? "Hide recording controls"
+                            : "Record without joining"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+                }
                 .buttonStyle(.plain)
-                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(CapturePalette.accent)
-                .frame(maxWidth: .infinity, minHeight: 44)
                 .disabled(providerControlsLocked || model.isChangingRoom)
                 .accessibilityHint(
                     localRecordingWorkspaceOpen
