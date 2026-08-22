@@ -6483,6 +6483,8 @@ private struct CaptureRecorderView: View {
                         // confirm the verified source or continue to review.
                         UploadSummaryCard(model: model)
 
+                        CaptureRecordingEditCard(session: session)
+
                         StudioHandoffCard(
                             model: model,
                             session: session,
@@ -11651,6 +11653,67 @@ private struct UploadSummaryCard: View {
     private var selectedSessionRecording: LocalRecording? {
         guard let callRoomID = model.selectedSession?.callRoomId else { return nil }
         return library.recordings.first { $0.callRoomId == callRoomID }
+    }
+}
+
+private struct CaptureRecordingEditCard: View {
+    let session: MobileCaptureSession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "scissors")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.indigo)
+                    .frame(width: 38, height: 38)
+                    .background(Color.indigo.opacity(0.1), in: Circle())
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Review recording")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Trim, listen, and share a private copy without changing the original recording.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            NavigationLink {
+                CaptureRecordingEditScreen(
+                    roomID: session.callRoomId,
+                    sessionTitle: session.title
+                )
+            } label: {
+                Label("Edit and share", systemImage: "waveform.badge.magnifyingglass")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.indigo)
+            .accessibilityHint("Opens simple trimming and transcript-based editing inside Quipsly Capture.")
+            .accessibilityIdentifier("CaptureRecordingEditLink_\(session.id)")
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureRecordingEditCard_\(session.id)")
+    }
+}
+
+private struct CaptureRecordingEditScreen: View {
+    let roomID: String
+    let sessionTitle: String
+
+    var body: some View {
+        ScrollView {
+            CaptureRecordingShareEditor(roomID: roomID)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle("Edit recording")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityLabel("Edit recording for \(sessionTitle)")
+        .accessibilityIdentifier("CaptureRecordingEditScreen")
     }
 }
 

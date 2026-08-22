@@ -136,6 +136,12 @@ failure shapes recur often enough to influence the architecture:
 - Reframed the phone's old `Continue in Studio` handoff as `Advanced sync and
   edit`. The deeper waveform/timeline surface remains available, but users are
   no longer told that ordinary Quipsly work requires a separate product.
+- Added a first-class phone `Review recording` card after a take. Basic trim,
+  transcript removal, private verified playback, release, and revocation now
+  stay inside Capture; Studio is needed only for genuinely advanced sync and
+  timeline work. Authenticated preview bytes must match the server's exact
+  size and SHA-256 receipt before playback, and an authorization change purges
+  the protected temporary copy.
 
 ## Acceptance consequences
 

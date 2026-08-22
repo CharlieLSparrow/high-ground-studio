@@ -2801,6 +2801,13 @@ final class CaptureExperienceUITests: XCTestCase {
             reveal(card)
             XCTAssertTrue(card.waitForExistence(timeout: 5))
 
+            let inAppEdit = app.descendants(matching: .any)["CaptureRecordingEditLink_\(sessionID)"]
+            XCTAssertTrue(
+                inAppEdit.exists,
+                "A completed take should expose simple in-app editing before the advanced Studio handoff."
+            )
+            XCTAssertEqual(inAppEdit.label, "Edit and share")
+
             let status = app.descendants(matching: .any)["CaptureStudioPromotionStatus_\(sessionID)"]
             XCTAssertEqual(status.label, expectedStatus)
 
@@ -2819,7 +2826,7 @@ final class CaptureExperienceUITests: XCTestCase {
             expectedStatus: "2 masters ready",
             expectedActionIdentifier:
                 "CaptureAttachToStudioButton_preview-studio-group-ready",
-            expectedActionLabel: "Attach group",
+            expectedActionLabel: "Prepare group",
             expectedActionEnabled: true,
             expectedDetail: "All 2 protected masters passed exact-byte verification and can move to Studio together."
         )
@@ -2840,7 +2847,7 @@ final class CaptureExperienceUITests: XCTestCase {
             expectedStatus: "1 of 2 masters in Studio",
             expectedActionIdentifier:
                 "CaptureAttachToStudioButton_preview-studio-group-partial",
-            expectedActionLabel: "Attach group",
+            expectedActionLabel: "Prepare group",
             expectedActionEnabled: true,
             expectedDetail: "1 of 2 protected masters reached Studio. Retry safely to continue the exact same handoff."
         )

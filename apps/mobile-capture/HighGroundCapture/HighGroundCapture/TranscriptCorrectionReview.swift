@@ -2993,6 +2993,11 @@ struct CaptureTranscriptReviewView: View {
                 }
             }
             .id(transcriptPresentationMode)
+
+            if !previewOnly {
+                CaptureRecordingShareEditor(roomID: roomID)
+                    .id("recording-share-\(roomID)")
+            }
         }
     }
 

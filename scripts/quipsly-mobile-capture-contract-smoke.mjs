@@ -1181,6 +1181,7 @@ function checkTranscriptCorrectionContractSources() {
   const serviceText = sourceText("apps/quipsly/src/lib/server/transcript-corrections.ts");
   const coachingPacketText = sourceText("apps/quipsly/src/lib/server/coaching-packets.ts");
   const nativeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptCorrectionReview.swift");
+  const nativeRecordingShareText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureRecordingShare.swift");
   const transcriptReviewOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptReviewDecisionOutbox.swift");
   const transcriptSpeakerAttributionOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptSpeakerAttributionOutbox.swift");
   const contentViewText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ContentView.swift");
@@ -1801,6 +1802,26 @@ function checkTranscriptCorrectionContractSources() {
     "A verified capture uses its canonical Session project, persists one idempotent Nest and episode handoff receipt with tag provenance, and exposes the source Session back inside Studio without mutating original media.",
   );
   expect(
+    shellText.includes("CaptureRecordingEditCard(session: session)")
+      && shellText.includes('Label("Edit and share"')
+      && shellText.includes('CaptureRecordingShareEditor(roomID: roomID)')
+      && nativeText.includes('CaptureRecordingShareEditor(roomID: roomID)')
+      && nativeRecordingShareText.includes("authenticatedData(for: request)")
+      && nativeRecordingShareText.includes("authenticatedDownload(")
+      && nativeRecordingShareText.includes("expectedOwnerAccountID: owner.ownerAccountID")
+      && nativeRecordingShareText.includes("digest.sha256 == expectedSHA256")
+      && nativeRecordingShareText.includes("digest.sizeBytes == expectedSizeBytes")
+      && nativeRecordingShareText.includes("FileProtectionType.complete")
+      && nativeRecordingShareText.includes("reconcilePlaybackAuthorization")
+      && nativeRecordingShareText.includes('action: "PREPARE"')
+      && nativeRecordingShareText.includes('action: "RELEASE"')
+      && nativeRecordingShareText.includes('action: "REVOKE"')
+      && nativeRecordingShareText.includes("Original recordings never change")
+      && nativeRecordingShareText.includes("providerTextSha256"),
+    "nativePrivateRecordingEditAndShare",
+    "Capture exposes source-bound private trim, exact receipt-verified playback, explicit release and revocation, and direct in-app reachability without mutating masters.",
+  );
+  expect(
     recordingPromotionText.includes("resolveCaptureGroupPromotionPlan")
       && recordingPromotionText.includes('"capture-group-source-set-changed"')
       && recordingPromotionText.includes('"capture-group-processing-held"')
@@ -1824,7 +1845,7 @@ function checkTranscriptCorrectionContractSources() {
       && bridgeText.includes("studioCaptureReviewURL")
       && bridgeText.includes('URLQueryItem(name: "captureGroup"')
       && captureExperienceText.includes("complete capture group")
-      && shellText.includes('"Attach group"')
+      && shellText.includes('"Prepare group"')
       && shellText.includes('"Review group sync"')
       && shellText.includes("CaptureOpenStudioReviewLink_")
       && editorText.includes("captureGroupEditorFocusPlan")
