@@ -341,38 +341,15 @@ try {
       exact: true,
     });
     await join.waitFor({ state: "visible", timeout: 20_000 });
-    const deviceGroup = page.getByRole("group", {
-      name: "Preflight studio devices",
-      exact: true,
-    });
-    const soundCheck = page.getByRole("region", {
-      name: "Private studio sound check",
-      exact: true,
-    });
-    await deviceGroup.waitFor({ state: "visible", timeout: 20_000 });
-    await soundCheck.waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByRole("region", { name: "Ready to join", exact: true })
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByText("Audio and video settings", { exact: true })
+      .waitFor({ state: "visible", timeout: 20_000 });
     assert(
-      await consentButton.evaluate(
-        (consent, elements) =>
-          Boolean(
-            consent.compareDocumentPosition(elements.device) &
-              Node.DOCUMENT_POSITION_FOLLOWING,
-          ) &&
-          Boolean(
-            elements.device.compareDocumentPosition(elements.soundCheck) &
-              Node.DOCUMENT_POSITION_FOLLOWING,
-          ) &&
-          Boolean(
-            elements.soundCheck.compareDocumentPosition(elements.join) &
-              Node.DOCUMENT_POSITION_FOLLOWING,
-          ),
-        {
-          device: await deviceGroup.elementHandle(),
-          soundCheck: await soundCheck.elementHandle(),
-          join: await join.elementHandle(),
-        },
-      ),
-      `${identity.role} lobby did not render consent, devices, sound check, then Join.`,
+      (await page.getByText("Optional sound check", { exact: true }).count()) === 1,
+      `${identity.role} lobby lost its optional sound-check escape hatch.`,
     );
     assert(
       (await page
