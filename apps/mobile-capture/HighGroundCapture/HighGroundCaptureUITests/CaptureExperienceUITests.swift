@@ -2310,6 +2310,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let consentNeededSession = app.staticTexts["High Ground pre-show"]
         XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
         consentNeededSession.tap()
+        openLocalRecorderIfNeeded()
         app.buttons["CaptureConfirmConsentButton"].tap()
 
         let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
@@ -2498,8 +2499,11 @@ final class CaptureExperienceUITests: XCTestCase {
 
         XCTAssertTrue(
             app.navigationBars["Record"].waitForExistence(timeout: 5),
-            "Creating a session should close the chooser and land on that session's recorder."
+            "Creating a session should close the chooser and land on that session's standard call lobby."
         )
+        XCTAssertTrue(app.buttons["ProviderJoinRoomButton"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["CaptureConfirmConsentButton"].exists)
+        openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
         let confirmConsent = app.buttons["CaptureConfirmConsentButton"]
         reveal(confirmConsent)
@@ -2564,6 +2568,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        openLocalRecorderIfNeeded()
         XCTAssertTrue(
             app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5)
         )

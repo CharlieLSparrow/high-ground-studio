@@ -2916,10 +2916,18 @@ struct CaptureTranscriptReviewView: View {
                 guard let focusSegmentID,
                       client.desk?.segments.contains(where: { $0.id == focusSegmentID }) == true else { return }
                 transcriptPresentationMode = .timeline
+                // A linked-work destination can arrive while the remembered
+                // conversation view is still on screen. Let SwiftUI replace
+                // that hierarchy before resolving the stable transcript-start
+                // target, then drive the reader directly so the exact source
+                // is visible rather than merely present below the speaker card.
+                scrollTargetSegmentID = nil
+                await Task.yield()
                 withAnimation(
                     reduceMotion ? nil : .easeOut(duration: 0.3)
                 ) {
-                    scrollTargetSegmentID = focusSegmentID
+                    scrollTargetSegmentID = linkedTranscriptScrollTargetID
+                    scrollProxy.scrollTo(linkedTranscriptScrollTargetID, anchor: .top)
                 }
                 accessibilityFocusedSegmentID = focusSegmentID
             }
@@ -2959,6 +2967,7 @@ struct CaptureTranscriptReviewView: View {
             )
         } else {
             transcriptPresentationPicker
+                .id(linkedTranscriptScrollTargetID)
             VStack(alignment: .leading, spacing: 16) {
                 if transcriptPresentationMode == .conversation {
                     let speakers = conversationSpeakerLabels(in: desk)
@@ -3033,6 +3042,11 @@ struct CaptureTranscriptReviewView: View {
         .reviewCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureTranscriptPresentationControls")
+    }
+
+    private var linkedTranscriptScrollTargetID: String {
+        guard let focusSegmentID else { return "transcript-presentation" }
+        return "linked-transcript-\(focusSegmentID)"
     }
 
     private func transcriptConversationTurn(
