@@ -835,7 +835,7 @@ describe("Session review goal candidates", () => {
 
     expect(await screen.findByText("Transcript review changed after this packet was built.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build current packet" })).toBeInTheDocument();
-    expect(screen.getByText(/Candidate decisions are held because transcript review changed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Quipsly is refreshing these suggestions after transcript changes/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve inside Quipsly" })).not.toBeInTheDocument();
   });
 
@@ -870,24 +870,24 @@ describe("Session review goal candidates", () => {
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
 
-    const queue = await screen.findByRole("heading", { name: "Turn this Session into trusted follow-through" });
+    const queue = await screen.findByRole("heading", { name: "Session follow-up" });
     const section = queue.closest("section");
     expect(section).not.toBeNull();
     const review = within(section!);
-    expect(review.getByRole("progressbar", { name: "Candidates handled" })).toHaveAttribute("aria-valuenow", "2");
-    expect(review.getByRole("button", { name: /To review.*2/i })).toHaveAttribute("aria-pressed", "true");
-    expect(review.getAllByText("Note candidate")).toHaveLength(1);
-    expect(review.getAllByText("Goal candidate")).toHaveLength(1);
+    expect(review.getByRole("progressbar", { name: "Suggestions reviewed" })).toHaveAttribute("aria-valuenow", "2");
+    expect(review.getByRole("button", { name: /To do.*2/i })).toHaveAttribute("aria-pressed", "true");
+    expect(review.getAllByText("Suggested note")).toHaveLength(1);
+    expect(review.getAllByText("Suggested goal")).toHaveLength(1);
     expect(review.queryByText("Send the revised episode outline")).not.toBeInTheDocument();
     expect(review.queryByText("Keep the decided goal")).not.toBeInTheDocument();
 
-    await user.click(review.getByRole("button", { name: /Deferred.*1/i }));
+    await user.click(review.getByRole("button", { name: /Later.*1/i }));
     expect(review.getByText("Send the revised episode outline")).toBeInTheDocument();
-    expect(review.getByText("Deferred intentionally")).toBeInTheDocument();
+    expect(review.getAllByText("Later")).toHaveLength(2);
 
-    await user.click(review.getByRole("button", { name: /Decided.*1/i }));
+    await user.click(review.getByRole("button", { name: /Done.*1/i }));
     expect(review.getByText("Keep the decided goal")).toBeInTheDocument();
-    expect(review.getByText("Decision saved")).toBeInTheDocument();
+    expect(review.getAllByText("Done")).toHaveLength(2);
   });
 
   it("finishes a fully handled queue without treating deferred candidates as canonical output", async () => {
@@ -911,15 +911,15 @@ describe("Session review goal candidates", () => {
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
 
-    const queue = await screen.findByRole("heading", { name: "Turn this Session into trusted follow-through" });
+    const queue = await screen.findByRole("heading", { name: "Session follow-up" });
     const section = queue.closest("section");
     expect(section).not.toBeNull();
     const review = within(section!);
-    expect(review.getByText("Queue handled")).toBeInTheDocument();
-    expect(review.getByRole("progressbar", { name: "Candidates handled" })).toHaveAttribute("aria-valuenow", "3");
-    expect(review.getByText(/1 deferred candidate remains noncanonical and excluded from client follow-up and Studio handoff/)).toBeInTheDocument();
-    expect(review.getByRole("link", { name: "Continue to Outputs" })).toHaveAttribute("href", "/sessions/room-1?mode=outputs");
-    expect(review.queryByRole("button", { name: "Continue review" })).not.toBeInTheDocument();
+    expect(review.getAllByText("All caught up")).toHaveLength(2);
+    expect(review.getByRole("progressbar", { name: "Suggestions reviewed" })).toHaveAttribute("aria-valuenow", "3");
+    expect(review.getByText(/1 suggestion is waiting for whenever you want to revisit it/)).toBeInTheDocument();
+    expect(review.getByRole("link", { name: "View session results" })).toHaveAttribute("href", "/sessions/room-1?mode=outputs");
+    expect(review.queryByRole("button", { name: "Review next suggestion" })).not.toBeInTheDocument();
   });
 
   it("distinguishes an empty packet from a handled review queue", async () => {
@@ -934,13 +934,31 @@ describe("Session review goal candidates", () => {
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
 
-    const queue = await screen.findByRole("heading", { name: "Turn this Session into trusted follow-through" });
+    const queue = await screen.findByRole("heading", { name: "Session follow-up" });
     const section = queue.closest("section");
     expect(section).not.toBeNull();
     const review = within(section!);
-    expect(review.getByText("No candidates")).toBeInTheDocument();
-    expect(review.queryByText("Queue handled")).not.toBeInTheDocument();
-    expect(review.queryByRole("link", { name: "Continue to Outputs" })).not.toBeInTheDocument();
+    expect(review.getByText("No suggestions yet")).toBeInTheDocument();
+    expect(review.queryByText("All caught up")).not.toBeInTheDocument();
+    expect(review.queryByRole("link", { name: "View session results" })).not.toBeInTheDocument();
+  });
+
+  it("keeps reversible follow-through available from provider transcript suggestions", async () => {
+    const providerPacket = packet({ ...candidate, transcriptReviewStatus: "provider" });
+    providerPacket.packet = {
+      ...providerPacket.packet!,
+      noteCandidates: [{ ...noteCandidate, transcriptReviewStatus: "provider" }],
+      actionCandidates: [{ ...actionCandidate, transcriptReviewStatus: "provider" }],
+    };
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(providerPacket)) as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    expect(await screen.findByRole("button", { name: "Review & save note" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Review and save goal" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Review and save task" })).toBeEnabled();
+    expect(screen.getAllByRole("link", { name: "Play this moment" })).toHaveLength(3);
+    expect(screen.getAllByText(/Edit it now, or play this moment if anything looks off/)).toHaveLength(3);
   });
 
   it("accepts only through the packet review ledger and preserves its success readback", async () => {
@@ -953,11 +971,11 @@ describe("Session review goal candidates", () => {
     const user = userEvent.setup();
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
-    expect(await screen.findByRole("heading", { name: "Turn this Session into trusted follow-through" })).toBeInTheDocument();
-    expect(screen.getByText(/“Review & create goal” writes one new actor-owned ACTIVE Goal/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Session follow-up" })).toBeInTheDocument();
+    expect(screen.getByText(/“Review and save goal” creates one editable goal/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: "Review & create goal" }));
+    await user.click(screen.getByRole("button", { name: "Review and save goal" }));
     expect(screen.getByRole("textbox", { name: "Goal title" })).toHaveValue("Build a repeatable coaching review habit.");
     expect(screen.getByText(/tasks, focus blocks, reminders, calendar placement, messages, delivery, and publication remain separate decisions/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Create goal" }));
@@ -978,8 +996,7 @@ describe("Session review goal candidates", () => {
       targetAt: null,
       tagIds: [],
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("One actor-owned canonical goal was created. No task, focus block, calendar event, message, or delivery was added.");
-    expect(screen.getByRole("status")).toHaveTextContent("Governed action receipt 12345678");
+    expect(await screen.findByRole("status")).toHaveTextContent("Goal saved.");
     expect(screen.getByRole("link", { name: "Open goal and source evidence" })).toHaveAttribute("href", "/work?goal=goal-1");
   });
 
@@ -1079,9 +1096,9 @@ describe("Session review goal candidates", () => {
     const user = userEvent.setup();
     const { rerender } = render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
 
-    expect(await screen.findByRole("button", { name: "Review & create task" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Review and save task" })).toBeInTheDocument();
     rerender(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} sessionTaxonomy={taxonomy} />);
-    await user.click(screen.getByRole("button", { name: "Review & create task" }));
+    await user.click(screen.getByRole("button", { name: "Review and save task" }));
 
     expect(screen.getByRole("checkbox", { name: "Follow-through" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Coaching" })).toBeChecked();
@@ -1105,8 +1122,7 @@ describe("Session review goal candidates", () => {
       dueAt: null,
       tagIds: ["tag-follow"],
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("One unassigned Quipsly task was created and 1 project tag");
-    expect(screen.getByRole("status")).toHaveTextContent("Governed action receipt 87654321");
+    expect(await screen.findByRole("status")).toHaveTextContent("Task saved and 1 tag.");
     expect(screen.getByRole("link", { name: "Open task" })).toHaveAttribute("href", "/work?task=task-1");
   });
 
@@ -1220,9 +1236,8 @@ describe("Session review goal candidates", () => {
       packetLaneId: "coaching-insights",
       decision: "ACCEPT",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("client-safe visibility under governed receipt");
+    expect(await screen.findByRole("status")).toHaveTextContent("Note saved for client-safe.");
     expect(screen.getByRole("link", { name: "Open notes" })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
-    expect(screen.getByText(/Governed receipt.*ote-1234/i)).toBeInTheDocument();
   });
 
   it("keeps an edited packet-note candidate non-canonical and auditable", async () => {
@@ -1240,7 +1255,7 @@ describe("Session review goal candidates", () => {
     const user = userEvent.setup();
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
 
-    await user.click(await screen.findByRole("button", { name: "Edit candidate" }));
+    await user.click(await screen.findByRole("button", { name: "Edit suggestion" }));
     const title = screen.getByRole("textbox", { name: /Note title/i });
     await user.clear(title);
     await user.type(title, "Weekly follow-through insight");
@@ -1252,7 +1267,7 @@ describe("Session review goal candidates", () => {
       title: "Weekly follow-through insight",
       packetNoteCandidateId: noteCandidate.id,
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("No canonical note");
+    expect(await screen.findByRole("status")).toHaveTextContent("Suggestion updated.");
     expect(screen.getByText("Edited For Review")).toBeInTheDocument();
   });
 
@@ -1286,9 +1301,8 @@ describe("Session review goal candidates", () => {
       mergedKind: "SESSION_NOTE",
       mergedVisibility: "AUTHOR_PRIVATE",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent(/new recoverable revision/i);
+    expect(await screen.findByRole("status")).toHaveTextContent(/earlier version and transcript source are still available/i);
     expect(screen.getByText(/Merged into one revisioned Session note/i)).toBeInTheDocument();
-    expect(screen.getByText(/Governed receipt.*rge-5678/i)).toBeInTheDocument();
   });
 
   it("persists an edited goal draft without creating a goal or task", async () => {
@@ -1300,15 +1314,15 @@ describe("Session review goal candidates", () => {
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
-    await screen.findByRole("heading", { name: "Turn this Session into trusted follow-through" });
-    await user.click(screen.getByRole("button", { name: "Edit candidate" }));
+    await screen.findByRole("heading", { name: "Session follow-up" });
+    await user.click(screen.getByRole("button", { name: "Edit suggestion" }));
     const title = screen.getByRole("textbox", { name: "Goal title" });
     await user.clear(title);
     await user.type(title, "Build the weekly review habit");
     await user.click(screen.getByRole("button", { name: "Save for review" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({ decision: "EDIT", title: "Build the weekly review habit" });
-    expect(await screen.findByRole("status")).toHaveTextContent("No goal or task was created");
+    expect(await screen.findByRole("status")).toHaveTextContent("Suggestion updated.");
     expect(screen.queryByRole("link", { name: "Open goal" })).not.toBeInTheDocument();
   });
 

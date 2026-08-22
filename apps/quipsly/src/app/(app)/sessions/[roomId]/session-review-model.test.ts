@@ -248,12 +248,12 @@ describe("session review model", () => {
     });
   });
 
-  it("permits refinement but refuses canonical creation from provider-only transcript text", () => {
+  it("permits reversible internal follow-through from provider transcript evidence", () => {
     expect(candidateReviewRequest({
       packet,
       candidate: { ...candidate, transcriptReviewStatus: "provider" },
       decision: "ACCEPT",
-    })).toBeNull();
+    })).toMatchObject({ decision: "ACCEPT" });
     expect(candidateReviewRequest({
       packet,
       candidate: { ...candidate, transcriptReviewStatus: "provider" },
@@ -274,7 +274,7 @@ describe("session review model", () => {
       reviewStatus: "READY_FOR_HUMAN_REVIEW",
       committedGoalId: null,
     } as any;
-    expect(goalCandidateReviewRequest({ packet, candidate: providerGoal, decision: "ACCEPT" })).toBeNull();
+    expect(goalCandidateReviewRequest({ packet, candidate: providerGoal, decision: "ACCEPT" })).toMatchObject({ decision: "ACCEPT", goalCandidateId: providerGoal.id });
     expect(goalCandidateReviewRequest({ packet, candidate: providerGoal, decision: "DEFER" })).toMatchObject({ decision: "DEFER" });
 
     const providerNote = {
@@ -299,7 +299,7 @@ describe("session review model", () => {
       body: "Still unreviewed.",
       kind: "SESSION_NOTE",
       visibility: "AUTHOR_PRIVATE",
-    })).toBeNull();
+    })).toMatchObject({ decision: "ACCEPT", packetNoteCandidateId: providerNote.id, body: "Still unreviewed." });
     expect(noteCandidateReviewRequest({
       packet,
       candidate: providerNote,
@@ -313,11 +313,11 @@ describe("session review model", () => {
       decision: "MERGE",
       mergeTargetNoteId: "existing-note-1",
       mergeExpectedUpdatedAt: "2026-08-03T14:00:00.000Z",
-      mergedTitle: "Still held",
-      mergedBody: "Provider-only evidence cannot be merged.",
+      mergedTitle: "Source-linked note",
+      mergedBody: "Provider evidence remains attached.",
       mergedKind: "SESSION_NOTE",
       mergedVisibility: "AUTHOR_PRIVATE",
-    })).toBeNull();
+    })).toMatchObject({ decision: "MERGE", mergeTargetNoteId: "existing-note-1" });
   });
 
   it("refuses every packet decision after transcript review makes the packet stale", () => {

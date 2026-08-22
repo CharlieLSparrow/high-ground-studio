@@ -2882,7 +2882,7 @@ struct CaptureTranscriptReviewView: View {
                                     scrollProxy.scrollTo("packet-candidate-review", anchor: .top)
                                 }
                             } label: {
-                                Label("Review queue", systemImage: "checklist.checked")
+                                Label("Session follow-up", systemImage: "checklist.checked")
                             }
                             .accessibilityIdentifier("CaptureTranscriptJumpToReviewQueue")
                         }

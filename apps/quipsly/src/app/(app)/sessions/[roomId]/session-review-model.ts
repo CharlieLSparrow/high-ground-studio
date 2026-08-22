@@ -364,8 +364,6 @@ export function noteCandidateReviewRequest(input: {
       || input.candidate.committedNoteId
       || input.candidate.reviewStatus === "ACCEPTED_AS_NOTE"
       || input.candidate.reviewStatus === "MERGED_INTO_NOTE") return null;
-  if ((input.decision === "ACCEPT" || input.decision === "MERGE")
-      && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
   if (input.decision === "ACCEPT"
       && (input.body === undefined || input.kind === undefined || input.visibility === undefined)) return null;
   if (input.decision === "EDIT"
@@ -430,7 +428,6 @@ export function goalCandidateReviewRequest(input: {
   const summaryNoteId = input.packet.packet?.summary?.id;
   const packetBuildId = input.packet.packet?.build?.packetBuildId;
   if (!summaryNoteId || !packetBuildId || !input.packet.transcriptJob?.asset?.id || input.candidate.committedGoalId || input.candidate.reviewStatus === "ACCEPTED_AS_GOAL" || input.candidate.reviewStatus === "MERGED_INTO_GOAL") return null;
-  if ((input.decision === "ACCEPT" || input.decision === "MERGE") && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
   if (input.decision === "MERGE" && (!input.mergeTargetGoalId?.trim() || !input.mergeExpectedUpdatedAt?.trim())) return null;
   if (input.packet.packet?.transcriptReview?.packetStale) return null;
   return {
@@ -479,7 +476,6 @@ export function candidateReviewRequest(input: {
 }) {
   const summaryNoteId = input.packet.packet?.summary?.id;
   const packetBuildId = input.packet.packet?.build?.packetBuildId;
-  if ((input.decision === "ACCEPT" || input.decision === "MERGE") && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
   if (input.packet.packet?.transcriptReview?.packetStale) return null;
   if (!summaryNoteId || !packetBuildId || !input.packet.transcriptJob?.asset?.id) return null;
   const acceptsCanonicalWork = input.decision === "ACCEPT";

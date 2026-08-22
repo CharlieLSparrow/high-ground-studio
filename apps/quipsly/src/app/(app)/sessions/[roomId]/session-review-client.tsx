@@ -3225,12 +3225,12 @@ function GoalCandidateCard({
         href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`}
         className="mt-3 inline-flex min-h-11 items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900 hover:underline"
       >
-        Review exact transcript source
+        Play this moment
       </a>
       {!accepted && !sourceReviewed ? (
-        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-black text-amber-950">
-          Listen through and confirm every segment in this source span before
-          creating a canonical goal.
+        <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]">
+          Suggested from the transcript. Edit it now, or play this moment if
+          anything looks off.
         </p>
       ) : null}
       {accepted && candidate.committedGoalId ? (
@@ -3239,7 +3239,7 @@ function GoalCandidateCard({
             <CheckCircle2 size={16} aria-hidden="true" />
             {candidate.reviewStatus === "MERGED_INTO_GOAL"
               ? "Added as reviewed evidence to one existing goal."
-              : "Accepted as one canonical goal."}{" "}
+              : "Saved as a goal."}{" "}
             <Link
               href={`/work?goal=${encodeURIComponent(candidate.committedGoalId)}`}
               className="underline"
@@ -3260,7 +3260,7 @@ function GoalCandidateCard({
         <div className="mt-4 space-y-4 rounded-xl border border-violet-200 bg-violet-50/50 p-4">
           <div>
             <p className="text-xs font-black uppercase tracking-wide text-violet-950">
-              Create one canonical goal
+              Save goal
             </p>
             <p className="mt-1 text-xs font-semibold leading-5 text-violet-900">
               Review every field. Only the title, definition, target date, and
@@ -3340,7 +3340,6 @@ function GoalCandidateCard({
               type="button"
               disabled={
                 busy ||
-                !sourceReviewed ||
                 !title.trim() ||
                 (hasTargetDate && !targetDate)
               }
@@ -3435,7 +3434,7 @@ function GoalCandidateCard({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy || !sourceReviewed || !mergeTargetId}
+              disabled={busy || !mergeTargetId}
               onClick={() => {
                 const target = mergeTargets.find(
                   (entry) => entry.id === mergeTargetId,
@@ -3518,15 +3517,15 @@ function GoalCandidateCard({
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={busy || !sourceReviewed}
+            disabled={busy}
             onClick={() => setCreating(true)}
             className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
           >
-            Review &amp; create goal
+            Review and save goal
           </button>
           <button
             type="button"
-            disabled={busy || !sourceReviewed || mergeTargets.length === 0}
+            disabled={busy || mergeTargets.length === 0}
             onClick={() => setMerging(true)}
             className="rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:opacity-50"
           >
@@ -3538,7 +3537,7 @@ function GoalCandidateCard({
             onClick={() => setEditing(true)}
             className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
           >
-            Edit candidate
+            Edit suggestion
           </button>
           <button
             type="button"
@@ -3566,7 +3565,7 @@ function GoalCandidateCard({
       )}
       {!accepted && !creating && !merging && (
         <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">
-          “Review &amp; create goal” writes one new actor-owned ACTIVE Goal.
+          “Review and save goal” creates one editable goal.
           “Add evidence to existing goal” appends one source receipt to an
           explicitly selected goal without changing its state. Edit, defer, and
           reject create no goal, task, date, focus block, reminder, calendar
@@ -3705,12 +3704,12 @@ function PacketNoteCandidateCard({
         href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`}
         className="mt-3 inline-flex min-h-11 items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-black text-orange-950 hover:underline"
       >
-        Review exact transcript source
+        Play this moment
       </a>
       {!accepted && !sourceReviewed ? (
-        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-black text-amber-950">
-          Listen through and confirm every segment in this source span before
-          saving a canonical note.
+        <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]">
+          Suggested from the transcript. Edit it now, or play this moment if
+          anything looks off.
         </p>
       ) : null}
       {accepted ? (
@@ -3719,7 +3718,7 @@ function PacketNoteCandidateCard({
             <CheckCircle2 size={16} aria-hidden="true" />
             {candidate.reviewStatus === "MERGED_INTO_NOTE"
               ? "Merged into one revisioned Session note."
-              : "Saved as one canonical Session note."}{" "}
+              : "Saved as a Session note."}{" "}
             <Link
               href={`/sessions/${encodeURIComponent(candidate.roomId)}?mode=notes`}
               className="underline"
@@ -3846,8 +3845,6 @@ function PacketNoteCandidateCard({
               disabled={
                 busy ||
                 !body.trim() ||
-                ((reviewMode === "ACCEPT" || reviewMode === "MERGE") &&
-                  !sourceReviewed) ||
                 (reviewMode === "MERGE" && !mergeTargetId)
               }
               onClick={() => {
@@ -3904,7 +3901,7 @@ function PacketNoteCandidateCard({
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={busy || laneRejected || !sourceReviewed}
+            disabled={busy || laneRejected}
             onClick={() => setReviewMode("ACCEPT")}
             className="rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
           >
@@ -3915,7 +3912,6 @@ function PacketNoteCandidateCard({
             disabled={
               busy ||
               laneRejected ||
-              !sourceReviewed ||
               mergeTargets.length === 0
             }
             onClick={() => setReviewMode("MERGE")}
@@ -3929,7 +3925,7 @@ function PacketNoteCandidateCard({
             onClick={() => setReviewMode("EDIT")}
             className="rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-950 disabled:opacity-50"
           >
-            Edit candidate
+            Edit suggestion
           </button>
           <button
             type="button"
@@ -4081,12 +4077,12 @@ function CandidateCard({
         href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`}
         className="mt-3 inline-flex min-h-11 items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900 hover:underline"
       >
-        Review exact transcript source
+        Play this moment
       </a>
       {!accepted && !sourceReviewed ? (
-        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-black text-amber-950">
-          Listen through and confirm every segment in this source span before
-          creating a canonical task.
+        <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]">
+          Suggested from the transcript. Edit it now, or play this moment if
+          anything looks off.
         </p>
       ) : null}
       {accepted ? (
@@ -4095,7 +4091,7 @@ function CandidateCard({
             <CheckCircle2 size={16} aria-hidden="true" />
             {candidate.reviewStatus === "MERGED_INTO_ACTION_ITEM"
               ? "Reviewed evidence added to canonical Quipsly work."
-              : "Committed as canonical Quipsly work."}
+              : "Saved as a task."}
             {candidate.committedActionItemId ? (
               <Link
                 href={`/work?task=${encodeURIComponent(candidate.committedActionItemId)}`}
@@ -4155,7 +4151,7 @@ function CandidateCard({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy || !sourceReviewed || !mergeTarget}
+              disabled={busy || !mergeTarget}
               onClick={() =>
                 mergeTarget &&
                 onDecision(candidate, "MERGE", {
@@ -4186,7 +4182,7 @@ function CandidateCard({
         <div className="mt-4 space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
           <div>
             <p className="text-xs font-black uppercase tracking-wide text-emerald-950">
-              Create one canonical task
+              Save task
             </p>
             <p className="mt-1 text-xs font-semibold leading-5 text-emerald-900">
               Review every field. Nothing is assigned, dated, tagged, reminded,
@@ -4273,7 +4269,7 @@ function CandidateCard({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy || !sourceReviewed || !title.trim()}
+              disabled={busy || !title.trim()}
               onClick={accept}
               className="rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
             >
@@ -4343,15 +4339,15 @@ function CandidateCard({
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={busy || !sourceReviewed}
+            disabled={busy}
             onClick={() => setCreating(true)}
             className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
           >
-            Review &amp; create task
+            Review and save task
           </button>
           <button
             type="button"
-            disabled={busy || !sourceReviewed || mergeTargets.length === 0}
+            disabled={busy || mergeTargets.length === 0}
             onClick={() => setMerging(true)}
             className="rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:opacity-50"
           >
@@ -4363,7 +4359,7 @@ function CandidateCard({
             onClick={() => setEditing(true)}
             className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
           >
-            Edit candidate
+            Edit suggestion
           </button>
           <button
             type="button"
@@ -4385,7 +4381,7 @@ function CandidateCard({
       )}
       {!accepted && !creating && !merging && (
         <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">
-          “Review &amp; create task” writes one canonical ActionItem after you
+          “Review and save task” creates one editable task after you
           inspect owner, due date, and tags. “Add to existing task” appends one
           source receipt without changing task state. Edit, defer, and reject
           preserve review history without creating work, assigning anyone,
@@ -4408,10 +4404,10 @@ function candidateKindLabel(kind: SessionCandidateReviewQueueItem["kind"]) {
 }
 
 function candidateStateLabel(state: SessionCandidateReviewQueueItem["state"]) {
-  if (state === "ready") return "Ready to decide";
-  if (state === "listen-first") return "Listen first";
-  if (state === "deferred") return "Deferred intentionally";
-  return "Decision saved";
+  if (state === "ready") return "Ready";
+  if (state === "listen-first") return "Source check available";
+  if (state === "deferred") return "Later";
+  return "Done";
 }
 
 function candidateStateTone(state: SessionCandidateReviewQueueItem["state"]) {
@@ -4568,11 +4564,11 @@ function SessionCandidateReviewQueue({
   }> = [
     {
       id: "open",
-      label: "To review",
+      label: "To do",
       count: progress.ready + progress.listenFirst,
     },
-    { id: "deferred", label: "Deferred", count: progress.deferred },
-    { id: "decided", label: "Decided", count: progress.decided },
+    { id: "deferred", label: "Later", count: progress.deferred },
+    { id: "decided", label: "Done", count: progress.decided },
     { id: "all", label: "All", count: progress.total },
   ];
 
@@ -4584,18 +4580,18 @@ function SessionCandidateReviewQueue({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-3xl">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-[#987443]">
-            One human review queue
+            After the call
           </p>
           <h2
             id="candidate-review-queue-heading"
             className="mt-2 font-serif text-3xl font-black text-[#3d3122]"
           >
-            Turn this Session into trusted follow-through
+            Session follow-up
           </h2>
           <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">
-            Notes, goals, and tasks follow the conversation’s source timeline.
-            Nothing becomes canonical work until you review that individual
-            candidate and make its explicit decision.
+            Review Quipsly’s suggestions, make any quick edits, and save the
+            notes, goals, and tasks that matter. Every suggestion stays linked
+            to the exact moment in the conversation.
           </p>
         </div>
         {openItems.length ? (
@@ -4605,15 +4601,15 @@ function SessionCandidateReviewQueue({
             disabled={reviewHeld}
             className="inline-flex min-h-11 items-center rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Continue review
+            Review next suggestion
           </button>
         ) : items.length ? (
           <span className="inline-flex min-h-11 items-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900">
-            Queue handled
+            All caught up
           </span>
         ) : (
           <span className="inline-flex min-h-11 items-center rounded-full border border-[#d8c7a7] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#765f40]">
-            No candidates
+            No suggestions yet
           </span>
         )}
       </div>
@@ -4626,7 +4622,7 @@ function SessionCandidateReviewQueue({
           >
             <div className="rounded-xl border border-[#eadfc9] bg-white p-3 sm:col-span-2 xl:col-span-1">
               <p className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-                Handled
+                Reviewed
               </p>
               <p className="mt-1 text-2xl font-black text-[#3d3122]">
                 {progress.handled}/{progress.total}
@@ -4634,7 +4630,7 @@ function SessionCandidateReviewQueue({
               <div
                 className="mt-2 h-2 overflow-hidden rounded-full bg-[#eee4d2]"
                 role="progressbar"
-                aria-label="Candidates handled"
+                aria-label="Suggestions reviewed"
                 aria-valuemin={0}
                 aria-valuemax={progress.total}
                 aria-valuenow={progress.handled}
@@ -4647,7 +4643,7 @@ function SessionCandidateReviewQueue({
             </div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-[10px] font-black uppercase tracking-wide text-emerald-800">
-                Ready now
+                Ready
               </p>
               <p className="mt-1 text-2xl font-black text-emerald-950">
                 {progress.ready}
@@ -4655,7 +4651,7 @@ function SessionCandidateReviewQueue({
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
               <p className="text-[10px] font-black uppercase tracking-wide text-amber-800">
-                Listen first
+                Source check
               </p>
               <p className="mt-1 text-2xl font-black text-amber-950">
                 {progress.listenFirst}
@@ -4663,7 +4659,7 @@ function SessionCandidateReviewQueue({
             </div>
             <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
               <p className="text-[10px] font-black uppercase tracking-wide text-orange-800">
-                Deferred
+                Later
               </p>
               <p className="mt-1 text-2xl font-black text-orange-950">
                 {progress.deferred}
@@ -4671,7 +4667,7 @@ function SessionCandidateReviewQueue({
             </div>
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
               <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">
-                Decided
+                Done
               </p>
               <p className="mt-1 text-2xl font-black text-sky-950">
                 {progress.decided}
@@ -4707,20 +4703,20 @@ function SessionCandidateReviewQueue({
             >
               <div className="max-w-3xl">
                 <p id="candidate-review-finish-heading" className="font-black">
-                  Review queue handled
+                  All caught up
                 </p>
                 <p className="mt-1 text-sm font-semibold leading-relaxed">
-                  Every candidate is either decided or deliberately deferred.{" "}
+                  Every suggestion is either saved, dismissed, or left for later.{" "}
                   {progress.deferred
-                    ? `${progress.deferred} deferred ${progress.deferred === 1 ? "candidate remains" : "candidates remain"} noncanonical and excluded from client follow-up and Studio handoff until someone explicitly revisits the decision.`
-                    : "Outputs will use only the canonical notes, goals, and tasks created through explicit decisions."}
+                    ? `${progress.deferred} ${progress.deferred === 1 ? "suggestion is" : "suggestions are"} waiting for whenever you want to revisit ${progress.deferred === 1 ? "it" : "them"}.`
+                    : "Your saved notes, goals, and tasks are ready in this Session."}
                 </p>
               </div>
               <Link
                 href={sessionWorkspaceHref(roomId, "outputs")}
                 className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-emerald-900 px-5 py-2 text-xs font-black uppercase tracking-wide text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-950"
               >
-                Continue to Outputs
+                View session results
               </Link>
             </div>
           ) : null}
@@ -4728,8 +4724,8 @@ function SessionCandidateReviewQueue({
           {reviewHeld ? (
             <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">
               {packetStale
-                ? "Candidate decisions are held because transcript review changed after this packet was built. Build the current append-only packet first."
-                : "Candidate decisions are held until the released transcript and recording evidence are valid. No note, task, or goal can be created here."}
+                ? "Quipsly is refreshing these suggestions after transcript changes. Your existing notes, tasks, and goals are safe."
+                : "Follow-up will be available as soon as the recording and transcript finish processing."}
             </div>
           ) : visibleItems.length ? (
             <ol
@@ -4752,7 +4748,7 @@ function SessionCandidateReviewQueue({
                         </span>
                       ) : null}
                       <span className="rounded-full border border-[#d8c7a7] bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-[#5b472f]">
-                        {candidateKindLabel(item.kind)} candidate
+                        Suggested {candidateKindLabel(item.kind).toLowerCase()}
                       </span>
                       <span
                         className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wide ${candidateStateTone(item.state)}`}
@@ -5672,19 +5668,20 @@ export function SessionReviewClient({
         throw new Error(
           "Nest returned incomplete or unsafe task evidence-merge proof.",
         );
-      const governedReceipt = body.governance?.actionId
-        ? ` Governed action receipt ${body.governance.actionId.slice(-8)}.`
-        : "";
       const successMessage =
         decision === "ACCEPT"
           ? body.idempotentReplay
-            ? `This exact candidate, owner, due-date, and tag choice was already accepted; nothing was duplicated.${governedReceipt}`
-            : `One ${body.actionItem?.assignedUserId ? "actor-owned" : "unassigned"} Quipsly task was created${body.actionItem?.dueAt ? " with a due date" : ""}${body.actionItem?.tagIds?.length ? ` and ${body.actionItem.tagIds.length} project tag${body.actionItem.tagIds.length === 1 ? "" : "s"}` : ""}.${governedReceipt}`
+            ? "That task was already saved. Nothing was duplicated."
+            : `Task saved${body.actionItem?.dueAt ? " with its due date" : ""}${body.actionItem?.tagIds?.length ? ` and ${body.actionItem.tagIds.length} tag${body.actionItem.tagIds.length === 1 ? "" : "s"}` : ""}.`
           : decision === "MERGE"
             ? body.idempotentReplay
               ? "This exact transcript evidence was already attached to that task; no receipt was duplicated."
               : "Reviewed transcript evidence was added to the selected task. Its identity, status, owner, dates, reminder, recurrence, tags, goals, and project did not change."
-            : `${humanize(decision)} saved as review state. No task was created.`;
+            : decision === "DEFER"
+              ? "Suggestion saved for later."
+              : decision === "REJECT"
+                ? "Suggestion dismissed."
+                : "Suggestion updated.";
       await load();
       setMessage(successMessage);
     } catch (error) {
@@ -5755,12 +5752,16 @@ export function SessionReviewClient({
         decision === "ACCEPT"
           ? payload.idempotentReplay
             ? "This exact packet note choice was already saved; nothing was duplicated."
-            : `One source-linked Session note was saved with ${sessionNoteVisibilityLabel(payload.note!.visibility as SessionNoteVisibility).toLowerCase()} visibility${payload.governance?.actionId ? ` under governed receipt ${payload.governance.actionId.slice(-8)}` : ""}. No message, delivery, calendar event, task, goal, or publication was created.`
+            : `Note saved for ${sessionNoteVisibilityLabel(payload.note!.visibility as SessionNoteVisibility).toLowerCase()}.`
           : decision === "MERGE"
             ? payload.idempotentReplay
               ? "This exact merge was already applied; no revision was duplicated."
-              : `The candidate was merged into one existing note as a new recoverable revision${payload.governance?.actionId ? ` under governed receipt ${payload.governance.actionId.slice(-8)}` : ""}. Its transcript source remains attached; nothing was sent.`
-            : `${humanize(decision)} saved as note review state. No canonical note, task, goal, message, or calendar event was created.`,
+              : "Added to the existing note. The earlier version and transcript source are still available."
+            : decision === "DEFER"
+              ? "Suggestion saved for later."
+              : decision === "REJECT"
+                ? "Suggestion dismissed."
+                : "Suggestion updated.",
       );
     } catch (error) {
       setMessage(
@@ -5873,19 +5874,20 @@ export function SessionReviewClient({
         throw new Error(
           "Nest returned incomplete or unsafe evidence-merge proof.",
         );
-      const governedReceipt = body.governance?.actionId
-        ? ` Governed action receipt ${body.governance.actionId.slice(-8)}.`
-        : "";
       const successMessage =
         decision === "ACCEPT"
           ? body.idempotentReplay
-            ? `This exact goal choice was already accepted; nothing was duplicated.${governedReceipt}`
-            : `One actor-owned canonical goal was created${body.goal?.targetAt ? " with its reviewed target date" : ""}${body.goal?.tags?.length ? " and project tags" : ""}. No task, focus block, calendar event, message, or delivery was added.${governedReceipt}`
+            ? "That goal was already saved. Nothing was duplicated."
+            : `Goal saved${body.goal?.targetAt ? " with its target date" : ""}${body.goal?.tags?.length ? " and tags" : ""}.`
           : decision === "MERGE"
             ? body.idempotentReplay
               ? "This exact transcript evidence was already attached to that goal; no evidence receipt was duplicated."
               : "Reviewed transcript evidence was added to the selected existing goal. Its definition, status, target, tags, tasks, and project did not change."
-            : `${humanize(decision)} saved as goal review state. No goal or task was created.`;
+            : decision === "DEFER"
+              ? "Suggestion saved for later."
+              : decision === "REJECT"
+                ? "Suggestion dismissed."
+                : "Suggestion updated.";
       await load();
       setMessage(successMessage);
     } catch (error) {

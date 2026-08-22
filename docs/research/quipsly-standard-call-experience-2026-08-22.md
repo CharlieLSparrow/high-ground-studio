@@ -455,6 +455,13 @@ failure shapes recur often enough to influence the architecture:
   missed nuance, wrong owners, and incomplete action extraction as the weak
   point of meeting assistants. The correction mechanism is quick editing plus
   “play this moment,” not a blocking verification ceremony.
+- Keep that follow-through contract identical in Capture and Nest. Nest now
+  presents one familiar `Session follow-up` checklist with suggested notes,
+  goals, and tasks; provider transcript evidence can open every reversible save
+  flow, while `Play this moment` remains adjacent and optional. The everyday
+  surface says `Ready`, `Later`, and `Done`; packet, canonical, governance, and
+  provenance terminology belongs in implementation contracts or optional
+  history—not in the coach's happy path.
 
 ## Acceptance consequences
 
