@@ -5115,7 +5115,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "CaptureOpenStudioReviewLink_\(sessionID)"
         ].firstMatch
         let openStudioReviewByLabel = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label == %@", "Review in Studio")
+            NSPredicate(format: "label == %@", "Open advanced edit")
         ).firstMatch
 
         if waitForRuntimeElement(attachToStudio, in: app, timeout: 20, swipeAttempts: 10) {

@@ -11673,7 +11673,7 @@ private struct StudioHandoffCard: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Continue in Studio")
+                    Text("Advanced sync and edit")
                         .font(.subheadline.weight(.semibold))
                     Text(session.recordingMediaVaultLine)
                         .font(.caption)
@@ -11721,7 +11721,7 @@ private struct StudioHandoffCard: View {
                     } label: {
                         if model.isPromotingRecordingToStudio {
                             ProgressView()
-                                .accessibilityLabel("Attaching capture group to Studio")
+                                .accessibilityLabel("Preparing capture group for advanced editing")
                         } else {
                             Label(
                                 studioHandoffActionLabel,
@@ -11742,7 +11742,7 @@ private struct StudioHandoffCard: View {
                 }
             }
 
-            Text("Attaching prepares immutable source material for Studio review. It never publishes, trims, or deletes your recording.")
+            Text("This prepares immutable source material for advanced waveform, sync, and timeline work. It never publishes, trims, or deletes your recording.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -11782,15 +11782,15 @@ private struct StudioHandoffCard: View {
     private var studioHandoffActionLabel: String {
         let sourceCount = session.studioRequiredHandoffSources.count
         if session.recordingPromotedToStudioMedia {
-            return sourceCount > 1 ? "Group in Studio" : "Attached to Studio"
+            return sourceCount > 1 ? "Group ready" : "Advanced edit ready"
         }
-        return sourceCount > 1 ? "Attach group" : "Attach to Studio"
+        return sourceCount > 1 ? "Prepare group" : "Prepare advanced edit"
     }
 
     private var studioReviewActionLabel: String {
         session.studioRequiredHandoffSources.count > 1
             ? "Review group sync"
-            : "Review in Studio"
+            : "Open advanced edit"
     }
 
     private var studioReviewURL: URL? {

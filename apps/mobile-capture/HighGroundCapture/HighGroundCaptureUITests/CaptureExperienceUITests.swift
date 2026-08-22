@@ -1834,6 +1834,45 @@ final class CaptureExperienceUITests: XCTestCase {
         add(unsavedScreenshot)
     }
 
+    func testTranscriptConversationReviewOpensTheExactTimelineSegment() {
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+
+        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
+        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
+        reviewLink.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+
+        let presentationControls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
+        reveal(presentationControls)
+        XCTAssertTrue(presentationControls.exists)
+        let presentationMode = app.segmentedControls["CaptureTranscriptPresentationMode"].firstMatch
+        XCTAssertTrue(presentationMode.waitForExistence(timeout: 5))
+        let conversationMode = presentationMode.buttons["Conversation"].firstMatch
+        XCTAssertTrue(conversationMode.waitForExistence(timeout: 5))
+        conversationMode.tap()
+        XCTAssertTrue(conversationMode.isSelected)
+
+        let transcriptScroll = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
+        let conversationTurn = app.descendants(matching: .any)["CaptureTranscriptConversationTurn_preview-segment"].firstMatch
+        if !conversationTurn.waitForExistence(timeout: 5) {
+            revealBelow(conversationTurn, in: transcriptScroll)
+        }
+        XCTAssertTrue(conversationTurn.waitForExistence(timeout: 5))
+        let review = app.buttons["CaptureTranscriptConversationReview_preview-segment"].firstMatch
+        XCTAssertTrue(review.isHittable)
+        review.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        let exactTimelineEditor = app.buttons["CaptureTranscriptCorrectButton_preview-segment"].firstMatch
+        if !exactTimelineEditor.waitForExistence(timeout: 5) {
+            revealBelow(exactTimelineEditor, in: transcriptScroll)
+        }
+        XCTAssertTrue(
+            exactTimelineEditor.waitForExistence(timeout: 5),
+            "Reviewing a conversation turn should disclose the exact source-bound timeline segment, not a separate editor handoff."
+        )
+    }
+
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
@@ -1904,6 +1943,15 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CapturePacketGoalSaveDraftButton"].isEnabled)
         app.buttons["CapturePacketGoalCancelEditButton"].tap()
 
+        let presentationControls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
+        reveal(presentationControls)
+        XCTAssertTrue(presentationControls.exists)
+        let presentationMode = app.segmentedControls["CaptureTranscriptPresentationMode"].firstMatch
+        XCTAssertTrue(presentationMode.waitForExistence(timeout: 5))
+        let timelineMode = presentationMode.buttons["Timeline"].firstMatch
+        XCTAssertTrue(timelineMode.waitForExistence(timeout: 5))
+        timelineMode.tap()
+        XCTAssertTrue(timelineMode.isSelected)
         let aiProposal = app.staticTexts["CaptureTranscriptAIProposal"]
         reveal(aiProposal)
         let downstreamImpact = app.descendants(matching: .any)["CaptureTranscriptImpact_task_preview-task"]

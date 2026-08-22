@@ -2569,6 +2569,27 @@ private enum CapturePacketCandidateReviewFilter: String, CaseIterable, Identifia
     }
 }
 
+private enum CaptureTranscriptPresentationMode: String, CaseIterable, Identifiable {
+    case conversation
+    case timeline
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .conversation: "Conversation"
+        case .timeline: "Timeline"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .conversation: "bubble.left.and.bubble.right.fill"
+        case .timeline: "waveform.and.magnifyingglass"
+        }
+    }
+}
+
 struct CaptureTranscriptReviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
@@ -2588,6 +2609,10 @@ struct CaptureTranscriptReviewView: View {
     @State private var packetCandidateFilter = CapturePacketCandidateReviewFilter.open
     @State private var recentPacketDecisionID: String?
     @State private var previousPacketCandidateStates: [String: CapturePacketCandidateReviewState] = [:]
+    private static let transcriptPresentationModeKey = "quipsly.capture.transcript.presentation-mode"
+    @State private var transcriptPresentationMode = CaptureTranscriptPresentationMode(
+        rawValue: UserDefaults.standard.string(forKey: transcriptPresentationModeKey) ?? ""
+    ) ?? .conversation
     @AccessibilityFocusState private var accessibilityFocusedSegmentID: String?
 
     init(
@@ -2693,7 +2718,7 @@ struct CaptureTranscriptReviewView: View {
                         speakerIdentitySection(desk)
                             .id("speaker-identities")
                         if focusSegmentID != nil {
-                            transcriptSegments(desk)
+                            transcriptSegments(desk, scrollProxy: scrollProxy)
                         }
                         if let packetReviewError = client.packetReviewError {
                             reviewNotice(
@@ -2727,7 +2752,7 @@ struct CaptureTranscriptReviewView: View {
                             .id("packet-candidate-review")
                         }
                         if focusSegmentID == nil {
-                            transcriptSegments(desk)
+                            transcriptSegments(desk, scrollProxy: scrollProxy)
                         }
                     } else if client.errorMessage == nil {
                         ContentUnavailableView("Transcript unavailable", systemImage: "text.magnifyingglass")
@@ -2890,6 +2915,7 @@ struct CaptureTranscriptReviewView: View {
                 await client.load(roomID: roomID, previewOnly: previewOnly)
                 guard let focusSegmentID,
                       client.desk?.segments.contains(where: { $0.id == focusSegmentID }) == true else { return }
+                transcriptPresentationMode = .timeline
                 withAnimation(
                     reduceMotion ? nil : .easeOut(duration: 0.3)
                 ) {
@@ -2914,7 +2940,10 @@ struct CaptureTranscriptReviewView: View {
     }
 
     @ViewBuilder
-    private func transcriptSegments(_ desk: CaptureTranscriptCorrectionDesk) -> some View {
+    private func transcriptSegments(
+        _ desk: CaptureTranscriptCorrectionDesk,
+        scrollProxy: ScrollViewProxy
+    ) -> some View {
         if !desk.gate.allowed {
             reviewNotice(
                 title: "Transcript review held",
@@ -2929,24 +2958,162 @@ struct CaptureTranscriptReviewView: View {
                 description: Text("Run the recording-backed transcript before reviewing corrections.")
             )
         } else {
-            ForEach(orderedSegments(in: desk)) { segment in
-                CaptureTranscriptSegmentCard(
-                    roomID: roomID,
-                    segment: segment,
-                    recording: recording,
-                    expectedRecordingAssetID: desk.playback?.recordingAssetId,
-                    attention: desk.evidence?.transcript.attentionSegments.first(where: { $0.segmentId == segment.id }),
-                    previewOnly: previewOnly,
-                    decisionsLocked: client.isUsingProtectedCache,
-                    canUseProjectTeamNotes: canUseProjectTeamNotes,
-                    client: client,
-                    playback: playback,
-                    library: library
-                )
-                .id(segment.id)
-                .accessibilityFocused($accessibilityFocusedSegmentID, equals: segment.id)
+            transcriptPresentationPicker
+            VStack(alignment: .leading, spacing: 16) {
+                if transcriptPresentationMode == .conversation {
+                    let speakers = conversationSpeakerLabels(in: desk)
+                    ForEach(orderedSegments(in: desk)) { segment in
+                        transcriptConversationTurn(
+                            segment,
+                            desk: desk,
+                            speakers: speakers,
+                            scrollProxy: scrollProxy
+                        )
+                            .id(segment.id)
+                            .accessibilityFocused($accessibilityFocusedSegmentID, equals: segment.id)
+                    }
+                } else {
+                    ForEach(orderedSegments(in: desk)) { segment in
+                        CaptureTranscriptSegmentCard(
+                            roomID: roomID,
+                            segment: segment,
+                            recording: recording,
+                            expectedRecordingAssetID: desk.playback?.recordingAssetId,
+                            attention: desk.evidence?.transcript.attentionSegments.first(where: { $0.segmentId == segment.id }),
+                            previewOnly: previewOnly,
+                            decisionsLocked: client.isUsingProtectedCache,
+                            canUseProjectTeamNotes: canUseProjectTeamNotes,
+                            client: client,
+                            playback: playback,
+                            library: library
+                        )
+                        .id(segment.id)
+                        .accessibilityFocused($accessibilityFocusedSegmentID, equals: segment.id)
+                    }
+                }
             }
+            .id(transcriptPresentationMode)
         }
+    }
+
+    private var transcriptPresentationPicker: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Label("Transcript", systemImage: transcriptPresentationMode.systemImage)
+                    .font(.headline)
+                Spacer()
+                Text("Remembered on this iPhone")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            Picker("Transcript view", selection: $transcriptPresentationMode) {
+                ForEach(CaptureTranscriptPresentationMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("CaptureTranscriptPresentationMode")
+            .onChange(of: transcriptPresentationMode) { _, mode in
+                UserDefaults.standard.set(mode.rawValue, forKey: Self.transcriptPresentationModeKey)
+            }
+            Text(
+                transcriptPresentationMode == .conversation
+                    ? "Read the Session like a familiar conversation. Tap Review when a passage needs correction or follow-through."
+                    : "Listen at exact timestamps, correct words or speakers, and create source-backed notes, tasks, and goals."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .reviewCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptPresentationControls")
+    }
+
+    private func transcriptConversationTurn(
+        _ segment: CaptureTranscriptSegment,
+        desk: CaptureTranscriptCorrectionDesk,
+        speakers: [String],
+        scrollProxy: ScrollViewProxy
+    ) -> some View {
+        let label = captureTranscriptNonempty(segment.speakerLabel) ?? "Unlabelled speaker"
+        let trails = (speakers.firstIndex(of: label) ?? 0).isMultiple(of: 2) == false
+        return HStack {
+            if trails { Spacer(minLength: 40) }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(label)
+                        .font(.caption.weight(.bold))
+                    Spacer(minLength: 8)
+                    Text(segment.startSeconds.captureTranscriptTimestamp)
+                        .font(.caption2.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(segment.text)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Button {
+                        playback.play(
+                            segment: segment,
+                            recording: recording,
+                            library: library,
+                            expectedRecordingAssetID: desk.playback?.recordingAssetId
+                        )
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
+                            .frame(minHeight: 36)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!hasExactLocalSource(expectedRecordingAssetID: desk.playback?.recordingAssetId) || client.isMutating)
+                    Button("Review") {
+                        transcriptPresentationMode = .timeline
+                        // The conversation row and precision editor intentionally
+                        // share the source segment ID. Give SwiftUI one render turn
+                        // to replace the row before applying the scroll/focus target;
+                        // otherwise ScrollView can retain the old row position and
+                        // leave the disclosed timeline editor off-screen.
+                        scrollTargetSegmentID = nil
+                        Task { @MainActor in
+                            await Task.yield()
+                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+                                scrollTargetSegmentID = segment.id
+                                scrollProxy.scrollTo(segment.id, anchor: .center)
+                            }
+                            accessibilityFocusedSegmentID = segment.id
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 36)
+                    .accessibilityIdentifier("CaptureTranscriptConversationReview_\(segment.id)")
+                }
+            }
+            .padding(13)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                trails ? Color.indigo.opacity(0.1) : Color.blue.opacity(0.09),
+                in: RoundedRectangle(cornerRadius: 17, style: .continuous)
+            )
+            if !trails { Spacer(minLength: 40) }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptConversationTurn_\(segment.id)")
+    }
+
+    private func conversationSpeakerLabels(in desk: CaptureTranscriptCorrectionDesk) -> [String] {
+        orderedSegments(in: desk).reduce(into: [String]()) { labels, candidate in
+            let label = captureTranscriptNonempty(candidate.speakerLabel) ?? "Unlabelled speaker"
+            if !labels.contains(label) { labels.append(label) }
+        }
+    }
+
+    private func hasExactLocalSource(expectedRecordingAssetID: String?) -> Bool {
+        guard let recording,
+              recording.status.isPlaybackEligible,
+              let expectedRecordingAssetID,
+              recording.recordingAssetId == expectedRecordingAssetID,
+              library.fileURL(for: recording) != nil else { return false }
+        return true
     }
 
     private func orderedSegments(in desk: CaptureTranscriptCorrectionDesk) -> [CaptureTranscriptSegment] {

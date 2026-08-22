@@ -129,6 +129,13 @@ failure shapes recur often enough to influence the architecture:
 - Added transcript passage controls directly to the Session recording surface.
   Coaches can make another private edit after a first preview, listen before
   release, and still keep release/revocation distinct from rendering.
+- Made the Capture transcript open as a familiar two-sided conversation with a
+  remembered Conversation/Timeline choice. A passage can switch directly into
+  exact-time listening, correction, and source-backed follow-through without
+  making the whole transcript a wall of editorial controls.
+- Reframed the phone's old `Continue in Studio` handoff as `Advanced sync and
+  edit`. The deeper waveform/timeline surface remains available, but users are
+  no longer told that ordinary Quipsly work requires a separate product.
 
 ## Acceptance consequences
 
