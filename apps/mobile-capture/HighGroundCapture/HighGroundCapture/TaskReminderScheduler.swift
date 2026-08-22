@@ -116,6 +116,41 @@ private final class AppleTaskReminderNotificationCenter: TaskReminderNotificatio
     }
 }
 
+#if DEBUG && targetEnvironment(simulator)
+/// Deterministic notification boundary for the release UI suite.
+///
+/// The shipping app always uses `AppleTaskReminderNotificationCenter`. The UI
+/// suite uses this implementation to prove the contextual save, protected
+/// ledger, relaunch recovery, and account partition without depending on an
+/// iOS-owned SpringBoard alert. The real authorization transition is covered by
+/// `TaskReminderSchedulerHarness`, which asserts that an explicit reminder save
+/// requests permission exactly once before scheduling.
+@MainActor
+private final class PreviewTaskReminderNotificationCenter: TaskReminderNotificationCenter {
+    private var pending = Set<String>()
+
+    func permission() async -> TaskReminderNotificationPermission { .authorized }
+
+    func requestAuthorization() async throws -> Bool { true }
+
+    func add(
+        identifier: String,
+        fireAt: Date,
+        title: String,
+        body: String,
+        userInfo: [String: String]
+    ) async throws {
+        pending.insert(identifier)
+    }
+
+    func pendingIdentifiers() async -> Set<String> { pending }
+
+    func removePending(identifiers: [String]) {
+        pending.subtract(identifiers)
+    }
+}
+#endif
+
 private struct ProtectedTaskReminderIntent: Codable, Equatable, Identifiable {
     enum ProjectionState: String, Codable {
         case awaitingPermission
@@ -176,7 +211,19 @@ final class TaskReminderScheduler: ObservableObject {
         now: @escaping () -> Date = Date.init
     ) {
         self.fileManager = fileManager
-        self.notificationCenter = notificationCenter ?? AppleTaskReminderNotificationCenter()
+        if let notificationCenter {
+            self.notificationCenter = notificationCenter
+        } else {
+            #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--capture-reminder-deterministic-ui-test") {
+                self.notificationCenter = PreviewTaskReminderNotificationCenter()
+            } else {
+                self.notificationCenter = AppleTaskReminderNotificationCenter()
+            }
+            #else
+            self.notificationCenter = AppleTaskReminderNotificationCenter()
+            #endif
+        }
         self.now = now
         let support = directoryURL
             ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?

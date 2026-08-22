@@ -164,9 +164,9 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
-    static var usesReminderSystemUITest: Bool {
+    static var usesReminderDeterministicUITest: Bool {
         #if DEBUG && targetEnvironment(simulator)
-        ProcessInfo.processInfo.arguments.contains("--capture-reminder-system-ui-test")
+        ProcessInfo.processInfo.arguments.contains("--capture-reminder-deterministic-ui-test")
         #else
         false
         #endif
@@ -640,7 +640,7 @@ final class CaptureExperienceModel: ObservableObject {
         let session = kind == .source || saveToHomeNest || destinationProjectID != nil
             ? nil
             : selectedSession
-        if usesPreviewData && !CaptureLaunchConfiguration.usesReminderSystemUITest {
+        if usesPreviewData && !CaptureLaunchConfiguration.usesReminderDeterministicUITest {
             quickEntrySyncMessage = "Preview only — no note, task, goal, or source was saved."
             return true
         }

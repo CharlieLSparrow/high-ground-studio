@@ -1132,18 +1132,19 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
     }
 
-    func testExplicitReminderUsesSystemPermissionAndRecoversAfterRelaunch() {
+    func testExplicitReminderPersistsAfterContextualPermissionAndRelaunch() {
         let owner = "reminder-system-ui-\(UUID().uuidString.lowercased())"
         let launchArguments = [
             "--capture-ui-preview",
             "--capture-ui-preview-tab=record",
             "--capture-share-owner-ui-preview=\(owner)",
-            "--capture-reminder-system-ui-test",
+            "--capture-reminder-deterministic-ui-test",
         ]
         app.terminate()
         app.launchArguments = launchArguments
         app.launch()
         XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        openLocalRecorderIfNeeded()
 
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
         reveal(taskButton)
@@ -1159,18 +1160,11 @@ final class CaptureExperienceUITests: XCTestCase {
         turnOn(reminderToggle)
         app.buttons["CaptureQuickEntrySave"].tap()
 
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let allow = springboard.buttons["Allow"].firstMatch
-        if allow.waitForExistence(timeout: 5) {
-            allow.tap()
-            app.activate()
-        }
-
         let projection = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "private task alert scheduled on this iPhone")
         ).firstMatch
         reveal(projection)
-        XCTAssertTrue(projection.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(projection.waitForExistence(timeout: 10))
         XCTAssertTrue(projection.label.contains("1 of 1 private task alert"))
         let status = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "Delivery is controlled by iOS")
@@ -1195,7 +1189,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-ui-preview-tab=record",
             "--capture-share-owner-ui-preview=reminder-system-ui-other-\(UUID().uuidString.lowercased())",
-            "--capture-reminder-system-ui-test",
+            "--capture-reminder-deterministic-ui-test",
         ]
         app.launch()
         XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
