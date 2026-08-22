@@ -325,6 +325,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
                 if path.status == .satisfied {
                     self?.networkQuality = "Excellent"
                     self?.webrtcVideoEnabled = true
+                    self?.reassociateBackgroundSession(resumePendingUploads: true)
                     print("📡 NETWORK RECOVERED: WebRTC video restored.")
                 } else {
                     self?.networkQuality = "Poor (Audio Only)"
@@ -2409,7 +2410,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         refreshRecoverableUploadCount()
         let visibleCount = activeUploads.keys.filter(sessionBelongsToActiveOwner).count
         if visibleCount > 0 {
-            statusText = "Recovered \(visibleCount) pending upload\(visibleCount == 1 ? "" : "s"). Tap retry when ready."
+            statusText = "Recovered \(visibleCount) pending upload\(visibleCount == 1 ? "" : "s"). Quipsly will resume automatically when the connection and account are ready."
             lastRecoveryDetail = "Quipsly found preserved local recording upload metadata from a previous session."
         }
     }

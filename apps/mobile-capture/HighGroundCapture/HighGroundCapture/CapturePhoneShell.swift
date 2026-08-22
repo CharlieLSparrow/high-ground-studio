@@ -9587,14 +9587,6 @@ private struct CaptureLibraryView: View {
         .background(CaptureCanvas())
         .navigationTitle("Library")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if model.uploadManager.recoverableUploadCount > 0 {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Retry") { model.retryUploads() }
-                        .disabled(model.uploadManager.isUploading || captureIsActive)
-                }
-            }
-        }
         .accessibilityIdentifier("CaptureLibraryView")
         .sheet(item: $recordingPendingLocalDeletion) { requestedRecording in
             let recording = library.recording(id: requestedRecording.id) ?? requestedRecording
@@ -11897,7 +11889,7 @@ private struct UploadActivityCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label(model.uploadManager.isUploading ? "Uploading" : "Upload recovery", systemImage: "icloud.and.arrow.up")
+                Label(model.uploadManager.isUploading ? "Uploading safely" : "Safe on this iPhone", systemImage: "icloud.and.arrow.up")
                     .font(.headline)
                 Spacer()
                 if model.uploadManager.isUploading {
@@ -11910,8 +11902,9 @@ private struct UploadActivityCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if model.uploadManager.recoverableUploadCount > 0 && !model.uploadManager.isUploading {
-                Button("Retry preserved uploads") { model.retryUploads() }
+                Button("Try again now") { model.retryUploads() }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityHint("Retries every eligible protected upload. Originals stay on this iPhone until Quipsly verifies them.")
             }
         }
         .captureCard()

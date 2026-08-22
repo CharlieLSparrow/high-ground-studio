@@ -140,6 +140,14 @@ failure shapes recur often enough to influence the architecture:
   failures retry when connectivity returns. Retries are idempotent by the
   existing upload-session identity, attempted once per recovery event, and
   never loop on incomplete, verified, policy-held, or corrupt sources.
+- Collapsed browser recovery into one saved-recordings summary. Healthy rows
+  stay secondary, active uploads no longer offer a redundant Retry action, and
+  only a genuinely interrupted or failed source opens automatically. One failed
+  participant source explicitly leaves already-verified sources usable.
+- Made iPhone upload recovery resume when its network path returns, in addition
+  to launch and background-session reconciliation. Library now presents one
+  calm `Uploading safely` / `Safe on this iPhone` card and one `Try again now`
+  escape hatch instead of duplicate manual Retry controls.
 - Replaced raw ledger states with the user-facing safety model people need:
   `Safe on this device`, `Uploading safely`, `Verified in Quipsly`, or
   `Needs attention`. Manual download and retry remain available as escape

@@ -898,7 +898,7 @@ for (const needle of [
   "Consent needed",
   "Button(\"Cancel\")",
   "Revoke",
-  "Retry preserved uploads",
+  "Try again now",
   "Request account deletion",
   "privacy/account-deletion",
   "Review transcript",

@@ -23,6 +23,7 @@ const [
   offlineView,
   playback,
   providerAudio,
+  uploadManager,
 ] = await Promise.all([
   readFile(path.join(captureRoot, "AudioCaptureController.swift"), "utf8"),
   readFile(path.join(captureRoot, "VideoCaptureController.swift"), "utf8"),
@@ -34,6 +35,7 @@ const [
   readFile(path.join(captureRoot, "ContentView.swift"), "utf8"),
   readFile(path.join(captureRoot, "LocalRecordingPlaybackController.swift"), "utf8"),
   readFile(path.join(captureRoot, "ProviderAudioMasterRecorder.swift"), "utf8"),
+  readFile(path.join(captureRoot, "UploadManager.swift"), "utf8"),
 ]);
 
 const checks = [];
@@ -363,6 +365,25 @@ check("needs-repair playback is disabled in primary Library", phoneShell.include
 check("needs-repair playback is disabled offline", offlineView.includes("recording.status.isPlaybackEligible"));
 check("playback controller rejects unvalidated status", playback.includes("guard recording.status.isPlaybackEligible else"));
 check("auto-stop result reaches coordinator UX", model.includes("activeAudioCapture?.automaticStopReason"));
+const networkRecovery = uploadManager.slice(
+  uploadManager.indexOf("pathMonitor.pathUpdateHandler"),
+  uploadManager.indexOf("pathMonitor.start"),
+);
+check(
+  "network return automatically resumes protected uploads",
+  networkRecovery.includes("path.status == .satisfied")
+    && networkRecovery.includes("reassociateBackgroundSession(resumePendingUploads: true)"),
+);
+check(
+  "relaunch recovery promises automatic resume rather than a required ritual",
+  uploadManager.includes("Quipsly will resume automatically when the connection and account are ready."),
+);
+check(
+  "Library has one calm aggregate upload recovery action",
+  phoneShell.includes('Label(model.uploadManager.isUploading ? "Uploading safely" : "Safe on this iPhone"')
+    && phoneShell.includes('Button("Try again now") { model.retryUploads() }')
+    && !phoneShell.includes('Button("Retry preserved uploads")'),
+);
 
 console.log(`quipsly iOS capture durability contract: ${checks.length}/${checks.length} checks passed`);
 for (const name of checks) console.log(`  ✓ ${name}`);

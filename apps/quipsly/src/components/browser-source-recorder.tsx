@@ -65,6 +65,8 @@ import type {
 } from "@/lib/session-guardian";
 import { browserRetainedStorageIssue } from "@/lib/session-guardian";
 import {
+  browserSourceManualUploadRetryAvailable,
+  browserSourceRecoverySummary,
   browserSourceSafetyLabel,
   resumeBrowserSourceUploads,
 } from "@/lib/browser-source-upload-recovery";
@@ -1783,6 +1785,8 @@ export function BrowserSourceRecorder({
     [clearGuardianMonitoring, stopRetainedSourceMeter],
   );
 
+  const recoverySummary = browserSourceRecoverySummary(recoveryRows);
+
   return (
     <section
       className={`rounded-2xl border p-4 ${status === "recording" ? "border-rose-400 bg-rose-50 ring-4 ring-rose-100" : "border-[#d8c7a7] bg-white"}`}
@@ -2094,13 +2098,18 @@ export function BrowserSourceRecorder({
       ) : null}
 
       {recoveryRows.length ? (
-        <div className="mt-4 border-t border-[#e5d8c0] pt-3">
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-[#5b472f]">
-            <HardDrive size={14} /> Recordings saved on this device ·{" "}
-            {recoveryRows.length}
-          </div>
-          <p className="mt-1 text-[10px] font-semibold leading-4 text-[#8a7354]">
-            Quipsly resumes unfinished uploads when this Session is open and your connection returns.
+        <details
+          className="mt-4 border-t border-[#e5d8c0] pt-3"
+          open={recoverySummary.shouldExpand || undefined}
+        >
+          <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wide text-[#5b472f]">
+            <span className="flex items-center gap-2">
+              <HardDrive size={14} /> Saved recordings · {recoveryRows.length}
+            </span>
+            <span>{recoverySummary.label}</span>
+          </summary>
+          <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
+            {recoverySummary.detail}
           </p>
           <div className="mt-2 space-y-2">
             {recoveryRows.slice(0, 6).map((ledger) => (
@@ -2115,6 +2124,11 @@ export function BrowserSourceRecorder({
                     {clockEvidenceLabel(ledger)} ·{" "}
                     {new Date(ledger.startedAt).toLocaleString()}
                   </span>
+                  {ledger.failureReason ? (
+                    <span className="mt-1 block text-[10px] font-semibold leading-4 text-amber-800">
+                      {ledger.failureReason}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="flex gap-2">
                   <button
@@ -2124,13 +2138,7 @@ export function BrowserSourceRecorder({
                   >
                     <Download size={13} /> Download
                   </button>
-                  {[
-                    "stopped",
-                    "held",
-                    "failed",
-                    "uploading",
-                    "verifying",
-                  ].includes(ledger.state) && ledger.sha256 ? (
+                  {browserSourceManualUploadRetryAvailable(ledger) ? (
                     <button
                       type="button"
                       onClick={() => void retryUploadLedger(ledger)}
@@ -2145,8 +2153,14 @@ export function BrowserSourceRecorder({
                       className="text-emerald-700"
                       aria-label="Verified"
                     />
+                  ) : ledger.state === "uploading" || ledger.state === "verifying" ? (
+                    <LoaderCircle
+                      size={18}
+                      className="animate-spin text-violet-700"
+                      aria-label="Uploading safely"
+                    />
                   ) : ledger.state === "recording" ||
-                    ledger.state === "preparing" ? (
+                    ledger.state === "preparing" || ledger.state === "failed" ? (
                     <AlertTriangle
                       size={18}
                       className="text-amber-700"
@@ -2157,7 +2171,7 @@ export function BrowserSourceRecorder({
               </div>
             ))}
           </div>
-        </div>
+        </details>
       ) : null}
       <section
         className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4"
