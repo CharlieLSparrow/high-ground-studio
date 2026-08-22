@@ -236,6 +236,11 @@ failure shapes recur often enough to influence the architecture:
   merely because a call connected; it is now an optional `Cloud recording
   backup` and opens automatically only while recording or when attention is
   required.
+- Made rescheduling a direct save and cancellation a single inline destructive
+  confirmation. The ordinary surface now speaks in appointments, Sessions,
+  dates, and duration rather than app-owned truth, provider evidence, or audit
+  metadata. Switching live Sessions now remounts the room by its exact ID so an
+  old transport cannot survive under a new Session title.
 
 ## Acceptance consequences
 

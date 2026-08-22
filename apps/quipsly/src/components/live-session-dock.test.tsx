@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -7,6 +7,11 @@ import {
   LiveSessionDockProvider,
   type LiveSessionDockConfig,
 } from "./live-session-dock";
+
+const mockRoomLifecycle = {
+  mounted: jest.fn(),
+  unmounted: jest.fn(),
+};
 
 jest.mock("./live-session-room", () => ({
   LiveSessionRoom: ({
@@ -18,7 +23,12 @@ jest.mock("./live-session-room", () => ({
     captureGroupId: string;
     onStatusChange?: (status: string) => void;
   }) => {
+    const mountedRoomId = useRef(callRoomId).current;
     useEffect(() => onStatusChange?.("connected"), [onStatusChange]);
+    useEffect(() => {
+      mockRoomLifecycle.mounted(mountedRoomId);
+      return () => mockRoomLifecycle.unmounted(mountedRoomId);
+    }, [mountedRoomId]);
     return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId} · take {captureGroupId}</div>;
   },
 }));
@@ -51,6 +61,11 @@ const coachingConfig: LiveSessionDockConfig = {
 };
 
 describe("LiveSessionDockProvider", () => {
+  beforeEach(() => {
+    mockRoomLifecycle.mounted.mockClear();
+    mockRoomLifecycle.unmounted.mockClear();
+  });
+
   it("keeps the real room mounted while the controls are minimized", async () => {
     const user = userEvent.setup();
     render(
@@ -106,5 +121,7 @@ describe("LiveSessionDockProvider", () => {
     await user.click(screen.getByRole("button", { name: "Leave & switch" }));
     expect(await screen.findByTestId("live-room-coaching-session-2")).toBeInTheDocument();
     expect(screen.queryByTestId("live-room-episode-session-1")).not.toBeInTheDocument();
+    expect(mockRoomLifecycle.unmounted).toHaveBeenCalledWith("episode-session-1");
+    expect(mockRoomLifecycle.mounted).toHaveBeenCalledWith("coaching-session-2");
   });
 });

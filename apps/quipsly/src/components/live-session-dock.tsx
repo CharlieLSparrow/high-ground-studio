@@ -225,6 +225,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
 
             <div className="mt-3 space-y-3">
               <LiveSessionRoom
+                key={active.callRoomId}
                 callRoomId={active.callRoomId}
                 captureGroupId={active.captureGroupId}
                 sessionTitle={active.sessionTitle}

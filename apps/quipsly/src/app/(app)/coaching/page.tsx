@@ -852,6 +852,9 @@ export default function CoachingPage() {
   const [bookingBusyById, setBookingBusyById] = useState<
     Record<string, boolean>
   >({});
+  const [cancelArmedById, setCancelArmedById] = useState<
+    Record<string, boolean>
+  >({});
   const [providerRecordingStatusByRoom, setProviderRecordingStatusByRoom] =
     useState<Record<string, string>>({});
   const [providerRecordingBusyByRoom, setProviderRecordingBusyByRoom] =
@@ -1282,6 +1285,7 @@ export default function CoachingPage() {
   async function cancelBooking(
     booking: NonNullable<CoachingRunway["upcomingBookings"]>[number],
   ) {
+    setCancelArmedById((current) => ({ ...current, [booking.id]: false }));
     setBookingBusyById((current) => ({ ...current, [booking.id]: true }));
     setBookingStatusById((current) => ({
       ...current,
@@ -2808,18 +2812,17 @@ export default function CoachingPage() {
                       {canManageCoaching && (
                         <details className="mt-4 rounded-2xl border border-[#e8dcc4] bg-white/80 p-3">
                           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                            Reschedule or cancel
+                            Change appointment
                           </summary>
                           <div className="mt-3">
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <div>
                                 <p className="text-xs font-black uppercase tracking-wide text-[#b98036]">
-                                  Change session safely
+                                  Reschedule or cancel
                                 </p>
                                 <p className="text-xs text-[#7b5c3b]">
-                                  Reschedule or cancel Quipsly truth first.
-                                  External calendar/payment evidence remains
-                                  separate.
+                                  Choose a new time or cancel this Session.
+                                  Notes, recordings, and history stay safe.
                                 </p>
                               </div>
                               {!canChangeSchedule && (
@@ -2831,7 +2834,7 @@ export default function CoachingPage() {
                             </div>
                             <div className="grid gap-2 md:grid-cols-[1fr_0.45fr]">
                               <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                                New start
+                                New date and time
                                 <input
                                   type="datetime-local"
                                   value={draft.scheduledStart}
@@ -2848,7 +2851,7 @@ export default function CoachingPage() {
                                 />
                               </label>
                               <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                                Minutes
+                                Duration (minutes)
                                 <input
                                   type="number"
                                   min="15"
@@ -2868,7 +2871,7 @@ export default function CoachingPage() {
                               </label>
                             </div>
                             <label className="mt-2 block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                              Reason / note
+                              Note (optional)
                               <input
                                 type="text"
                                 value={draft.reason}
@@ -2877,7 +2880,7 @@ export default function CoachingPage() {
                                     reason: event.target.value,
                                   })
                                 }
-                                placeholder="Optional. Visible in Quipsly audit metadata."
+                                placeholder="Add a note for your records"
                                 disabled={
                                   !canChangeSchedule ||
                                   bookingBusyById[booking.id]
@@ -2895,19 +2898,44 @@ export default function CoachingPage() {
                                 }
                                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                <Clock size={14} /> Reschedule
+                                <Clock size={14} /> Save new time
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => void cancelBooking(booking)}
-                                disabled={
-                                  !canChangeSchedule ||
-                                  bookingBusyById[booking.id]
-                                }
-                                className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <AlertCircle size={14} /> Cancel booking
-                              </button>
+                              {cancelArmedById[booking.id] ? (
+                                <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-rose-950 sm:col-span-2">
+                                  <p className="text-sm font-black">Cancel this Session?</p>
+                                  <p className="mt-1 text-xs font-semibold leading-5">The call link will close for everyone. Notes, recordings, and history stay available.</p>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void cancelBooking(booking)}
+                                      disabled={bookingBusyById[booking.id]}
+                                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-rose-900 px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
+                                    >
+                                      <AlertCircle size={14} /> Confirm cancellation
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setCancelArmedById((current) => ({ ...current, [booking.id]: false }))}
+                                      disabled={bookingBusyById[booking.id]}
+                                      className="min-h-10 rounded-full border border-rose-300 bg-white px-4 text-xs font-black uppercase tracking-wide"
+                                    >
+                                      Keep Session
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setCancelArmedById((current) => ({ ...current, [booking.id]: true }))}
+                                  disabled={
+                                    !canChangeSchedule ||
+                                    bookingBusyById[booking.id]
+                                  }
+                                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <AlertCircle size={14} /> Cancel Session
+                                </button>
+                              )}
                             </div>
                           </div>
                         </details>
