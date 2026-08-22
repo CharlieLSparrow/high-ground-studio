@@ -400,6 +400,11 @@ failure shapes recur often enough to influence the architecture:
   the transcript instead of a full diarization desk blocking the reading path.
   Unresolved and stale clusters remain visible, but the listening samples and
   assignment form mount only when someone chooses to identify or review voices.
+- Collapsed the four note/task/goal/writing forms repeated under every
+  transcript passage into one standard `Create from this moment` disclosure.
+  Play, confirm, and correct remain immediate; Quipsly's source-linked workflow
+  appears when wanted instead of turning a readable transcript into a stack of
+  forms and policy prose.
 
 ## Acceptance consequences
 

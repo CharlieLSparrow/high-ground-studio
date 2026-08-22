@@ -573,6 +573,7 @@ describe("TranscriptCorrectionDesk", () => {
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
     await markProtectedPlaybackReady();
+    fireEvent.click(screen.getByText("Create from this moment"));
     fireEvent.click(screen.getByRole("button", { name: /make this my task/i }));
     fireEvent.change(screen.getByLabelText(/task title/i), { target: { value: "Prepare the opening" } });
     fireEvent.click(screen.getByRole("button", { name: /create my task/i }));
@@ -603,6 +604,7 @@ describe("TranscriptCorrectionDesk", () => {
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
     await markProtectedPlaybackReady();
+    fireEvent.click(screen.getByText("Create from this moment"));
     fireEvent.click(screen.getByRole("button", { name: /save as session note/i }));
     fireEvent.change(screen.getByLabelText(/note title/i), { target: { value: "Coaching insight" } });
     fireEvent.change(screen.getByLabelText(/^note$/i), { target: { value: "Ask what support would make the next step realistic." } });
@@ -635,6 +637,7 @@ describe("TranscriptCorrectionDesk", () => {
     const { rerender } = render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
     await markProtectedPlaybackReady();
+    fireEvent.click(screen.getByText("Create from this moment"));
     fireEvent.click(screen.getByRole("button", { name: /save as session note/i }));
     expect(screen.queryByRole("option", { name: "Production note" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Project team" })).not.toBeInTheDocument();
@@ -653,6 +656,7 @@ describe("TranscriptCorrectionDesk", () => {
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
     await markProtectedPlaybackReady();
+    fireEvent.click(screen.getByText("Create from this moment"));
     fireEvent.click(screen.getByRole("button", { name: /start source-linked draft/i }));
     fireEvent.change(screen.getByLabelText(/page title/i), { target: { value: "Episode opening" } });
     fireEvent.change(screen.getByLabelText(/starting thought/i), { target: { value: "This is why the story matters." } });
