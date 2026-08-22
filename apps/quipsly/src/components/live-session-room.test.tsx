@@ -179,6 +179,7 @@ describe("LiveSessionRoom", () => {
     expect(join).toBeEnabled();
     expect(screen.getByTestId("call-device-settings")).not.toHaveAttribute("open");
     expect(screen.queryByTestId("call-status-message")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record private sample" })).toBeEnabled();
     fireEvent.click(join);
     expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false });
     await screen.findByText(/Microphone access is off/i);

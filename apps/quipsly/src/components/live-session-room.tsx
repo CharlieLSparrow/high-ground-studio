@@ -894,9 +894,9 @@ export function LiveSessionRoom({
     if (wasLocked && !sourceLocked) void refreshDevices("none", "manual");
   }, [refreshDevices, sourceLocked]);
 
-  const startSelectedPreview = useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia || !microphoneId) return;
-    if (cameraWanted && !cameraId) {
+  const startSelectedPreview = useCallback(async (audioOnly = false) => {
+    if (!navigator.mediaDevices?.getUserMedia) return null;
+    if (!audioOnly && cameraWanted && !cameraId) {
       setStatus("error");
       setMessage("Choose a usable camera or turn off Join with camera before testing this setup.");
       return;
@@ -907,12 +907,12 @@ export function LiveSessionRoom({
       clearPreflightPreview();
       const stream = await getUserMediaWithTimeout({
         audio: {
-          deviceId: { exact: microphoneId },
+          ...(microphoneId ? { deviceId: { exact: microphoneId } } : {}),
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         },
-        video: cameraWanted && cameraId ? {
+        video: !audioOnly && cameraWanted && cameraId ? {
           deviceId: { exact: cameraId },
           width: { ideal: 1920 },
           height: { ideal: 1080 },
@@ -920,11 +920,11 @@ export function LiveSessionRoom({
         } : false,
       });
       preflightStreamRef.current = stream;
-      if (localVideoRef.current) {
+      if (!audioOnly && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         await localVideoRef.current.play().catch(() => undefined);
       }
-      const videoTrack = stream.getVideoTracks()[0];
+      const videoTrack = audioOnly ? undefined : stream.getVideoTracks()[0];
       setCameraEvidence(videoTrack
         ? studioCameraInputEvidence(
             cameras.find((device) => device.deviceId === cameraId)?.label || videoTrack.label || "Selected camera",
@@ -978,7 +978,9 @@ export function LiveSessionRoom({
       setStatus("ready");
       setPreviewTested(true);
       suppressPreferenceWriteRef.current = false;
-      setMessage("Preview is live. This is a device check only—nothing is sent or recorded.");
+      setMessage(audioOnly
+        ? "Microphone is open for the private sound check. Nothing is sent or retained."
+        : "Preview is live. This is a device check only—nothing is sent or recorded.");
       return stream;
     } catch (error) {
       setStatus("error");
@@ -1546,13 +1548,13 @@ export function LiveSessionRoom({
               <div className="mt-3">
               <StudioSoundCheck
                 getInputStream={currentPreflightStream}
-                prepareInputStream={startSelectedPreview}
+                prepareInputStream={() => startSelectedPreview(true)}
                 microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
                 outputId={outputId}
                 evidence={meterEvidence}
                 setupKey={[microphoneId, cameraWanted ? cameraId : "camera-off", outputId || "system-output"].join(":")}
                 onDecision={saveSoundCheckDecision}
-                disabled={!microphoneId || status === "checking" || status === "joining"}
+                disabled={status === "checking" || status === "joining"}
               />
               </div>
             </details>

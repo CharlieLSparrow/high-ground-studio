@@ -380,8 +380,10 @@ failure shapes recur often enough to influence the architecture:
 - Removed Preview as a prerequisite for the browser's private sound check.
   Record private sample now opens the chosen microphone itself when necessary,
   while Preview remains an optional camera-and-meter check for people who want
-  it. The first meaningful action owns the standard browser permission prompt;
-  users do not have to discover and complete a preparatory ritual first.
+  it. This also works before a browser has revealed device names: the first
+  meaningful action owns the standard microphone prompt and opens the default
+  input, instead of disabling the sound check until a separate permission or
+  device-selection ritual has run.
 - Made the optional ten-second sample do useful work without becoming a gate.
   It now prompts normal speech, the loudest expected sentence, a plosive-heavy
   phrase, and a short quiet tail. Playback offers concise physical fixes for
