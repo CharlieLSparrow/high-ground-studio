@@ -27,6 +27,7 @@ import {
 } from "@/lib/episode-room/episode-room-source-alignment";
 import { getPrismaClient } from "@/lib/prisma";
 import { reconcileCaptureProxyResults } from "@/lib/server/capture-proxy-reconciliation";
+import { reconcileInterruptionRepairResults } from "@/lib/server/capture-interruption-repair-reconciliation";
 import {
   episodeRoomWritingUpdatedAt,
   episodeRoomWritingVersion,
@@ -927,6 +928,11 @@ async function reconcileEpisodeCaptureProxies(
     select: { id: true },
   });
   if (!project) return;
+  await reconcileInterruptionRepairResults({
+    prisma,
+    projectIds: [project.id],
+    limit: 4,
+  });
   await reconcileCaptureProxyResults({
     prisma,
     projectIds: [project.id],

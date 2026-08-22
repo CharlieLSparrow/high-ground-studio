@@ -9,6 +9,7 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere, coachingEngagementActorAccessWhere } from "@/lib/server/coaching-engagement";
 import { reconcileCaptureProxyResults } from "@/lib/server/capture-proxy-reconciliation";
+import { reconcileInterruptionRepairResults } from "@/lib/server/capture-interruption-repair-reconciliation";
 import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import {
   MobileSessionScheduleError,
@@ -216,6 +217,22 @@ export async function GET(request: Request) {
   const userId = session.user.id;
   const isStaff = session.user.isStaff;
   const actorEmail = text(session.user.primaryEmail || session.user.email).toLowerCase();
+  const accessibleCaptureProjects =
+    await listAccessibleStudioProjectSummariesForEmail(
+      session.user.primaryEmail,
+      prisma,
+    );
+  const accessibleProjectIds = accessibleCaptureProjects.map((project) => project.id);
+  await reconcileInterruptionRepairResults({
+    prisma,
+    projectIds: accessibleProjectIds,
+    limit: 6,
+  });
+  await reconcileCaptureProxyResults({
+    prisma,
+    projectIds: accessibleProjectIds,
+    limit: 6,
+  });
   const roomAccessWhere = isStaff
     ? {}
     : {
@@ -281,16 +298,6 @@ export async function GET(request: Request) {
         },
       },
     },
-  });
-  const accessibleCaptureProjects =
-    await listAccessibleStudioProjectSummariesForEmail(
-      session.user.primaryEmail,
-      prisma,
-    );
-  await reconcileCaptureProxyResults({
-    prisma,
-    projectIds: accessibleCaptureProjects.map((project) => project.id),
-    limit: 6,
   });
   const recordingAssetIds = rooms.flatMap((room: any) => room.recordingAssets.map((asset: any) => asset.id));
   const finalizationReceipts = recordingAssetIds.length
