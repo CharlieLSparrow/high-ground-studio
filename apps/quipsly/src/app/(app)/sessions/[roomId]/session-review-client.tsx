@@ -1794,6 +1794,21 @@ function SessionSourceEvidenceCard({
     const visibleSignal = source.analysis?.completeDecode
       ? source.analysis.signal
       : audio.signal;
+    const signalObservationCount = visibleSignal?.observations.length ?? 0;
+    const recordingSafetyLabel = verified
+      ? "Safely stored"
+      : drift
+        ? "Needs attention"
+        : "Still processing";
+    const audioHealthLabel = !visibleSignal
+      ? "Audio analysis pending"
+      : visibleSignal.status === "signal-present" && signalObservationCount === 0
+        ? "Audio looks clear"
+        : visibleSignal.status === "near-digital-silence"
+          ? "Audio may be too quiet"
+          : signalObservationCount > 0
+            ? `${signalObservationCount} ${signalObservationCount === 1 ? "moment" : "moments"} worth checking`
+            : "Audio needs a quick check";
     const audioSampleRate =
       analyzedMedia?.sampleRateHz ??
       audio.decodedSampleRateHz ??
@@ -1865,7 +1880,37 @@ function SessionSourceEvidenceCard({
           </span>
         </div>
 
-        <dl className="mt-4 grid gap-2 sm:grid-cols-2">
+        <div
+          className={`mt-4 rounded-xl border p-4 ${verified ? "border-emerald-200 bg-emerald-50" : drift ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}
+        >
+          <p className="font-black text-[#3d3122]">{recordingSafetyLabel}</p>
+          <p className="mt-1 text-sm font-semibold leading-5 text-[#765f40]">
+            {verified
+              ? "Quipsly matched this recording to the copy in private storage."
+              : drift
+                ? "Quipsly found a mismatch that should be resolved before editing or sharing."
+                : "Quipsly is still confirming this recording and its private copy."}
+          </p>
+          <p
+            className={`mt-2 text-xs font-black ${visibleSignal?.status === "signal-present" && signalObservationCount === 0 ? "text-emerald-800" : visibleSignal ? "text-amber-900" : "text-sky-800"}`}
+          >
+            {audioHealthLabel}
+          </p>
+          {signalObservationCount > 0 ? (
+            <a
+              href="#transcript-correction-review"
+              className="mt-3 inline-flex min-h-11 items-center rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-950"
+            >
+              Review audio moments
+            </a>
+          ) : null}
+        </div>
+
+        <details className="mt-3 rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3">
+          <summary className="cursor-pointer text-xs font-black text-[#5b472f]">
+            Technical recording details
+          </summary>
+          <dl className="mt-4 grid gap-2 sm:grid-cols-2">
           <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3">
             <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
               Capture runtime
@@ -1963,9 +2008,9 @@ function SessionSourceEvidenceCard({
               </dd>
             </div>
           ) : null}
-        </dl>
+          </dl>
 
-        {visibleSignal ? (
+          {visibleSignal ? (
           <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs font-bold leading-5 text-sky-950">
             <p className="font-black uppercase tracking-wide">
               Complete decoded signal scan · {humanize(visibleSignal.status)}
@@ -1985,14 +2030,14 @@ function SessionSourceEvidenceCard({
               Transcript review.
             </p>
           </div>
-        ) : (
+          ) : (
           <p className="mt-3 rounded-lg border border-dashed border-sky-200 bg-white p-3 text-xs font-bold leading-5 text-sky-950">
             No complete decoded signal scan is attached to this source. Nest
             does not infer audio health from transcript confidence.
           </p>
-        )}
+          )}
 
-        <div className="mt-3 grid gap-2 text-[10px] font-bold text-[#765f40] sm:grid-cols-2">
+          <div className="mt-3 grid gap-2 text-[10px] font-bold text-[#765f40] sm:grid-cols-2">
           <div>
             <p className="font-black uppercase tracking-wide text-[#8a7354]">
               Capture / group
@@ -2015,7 +2060,8 @@ function SessionSourceEvidenceCard({
               STOP {source.stopBoundary?.receiptId || "absent"}
             </p>
           </div>
-        </div>
+          </div>
+        </details>
 
         {source.boundaryAuthority === "STAFF_REVIEWED_EXTERNAL_IMPORT" &&
         source.releaseAudit ? (
@@ -2212,37 +2258,36 @@ function SessionSourceEvidenceCard({
           </span>
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
-              Independent source comparison
+              Recording quality
             </p>
             <h2
               id="source-evidence-heading"
               className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
             >
-              Source → private vault → Nest evidence
+              Your recordings are safe and ready
             </h2>
             <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
-              This projection recomputes the match from Nest’s immutable
-              finalization receipt, canonical recording row, private-vault
-              identity, and any applied capture boundaries. Phone exports and
-              browser claims are never treated as authority.
+              Quipsly checks that every participant recording reached private
+              storage intact, then keeps the technical proof available without
+              putting it in the way of normal editing and sharing.
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 text-[10px] font-black uppercase tracking-wide">
           <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-emerald-800">
-            {exact} exact
+            {exact} safe
           </span>
           <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-amber-900">
-            {held} held
+            {held} processing
           </span>
           <span className="rounded-full border border-rose-200 bg-white px-2.5 py-1 text-rose-900">
-            {needsReview} review
+            {needsReview} attention
           </span>
           <a
             href={`/api/sessions/${encodeURIComponent(roomId)}/source-evidence`}
             className="inline-flex min-h-11 items-center rounded-full border border-emerald-300 bg-white px-3 py-2 text-emerald-900 normal-case tracking-normal"
           >
-            Download Nest receipt
+            Download technical receipt
           </a>
         </div>
       </div>
@@ -2251,8 +2296,7 @@ function SessionSourceEvidenceCard({
       </div>
       {evidence.sources.length === 0 ? (
         <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-950">
-          No canonical local capture source exists for this Session. A receipt
-          slot, consent row, or provider join is not shown as source media.
+          No recording has arrived for this Session yet.
         </div>
       ) : null}
     </section>

@@ -1846,6 +1846,23 @@ describe("Session review goal candidates", () => {
           deviceModel: "iPhone17,3",
           operatingSystem: "iOS 26.2",
           audioRoute: "Shure MV7i · USBAudio",
+          audioFormat: {
+            signal: {
+              status: "attention",
+              rmsDbfs: -20.1,
+              samplePeakDbfs: -0.2,
+              clippedFrameCount: 15,
+              nearSilentFrameFraction: 0.01,
+              observations: [{
+                kind: "sample-clipping",
+                severity: "attention",
+                startSeconds: 18,
+                endSeconds: 19,
+                detail: "A brief peak may be clipped.",
+                requiresListening: true,
+              }],
+            },
+          } as any,
           videoFormat: {
             requestedQuality: "production-4k-24",
             intentFulfilled: true,
@@ -1886,7 +1903,7 @@ describe("Session review goal candidates", () => {
       sourceEvidence={sourceEvidence}
     />);
 
-    expect(screen.getByRole("heading", { name: "Source → private vault → Nest evidence" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your recordings are safe and ready" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "homer-camera.mov" })).toBeInTheDocument();
     expect(screen.getByText("Verified Match")).toBeInTheDocument();
     expect(screen.getByText("Quipsly Capture 1.0 (9)")).toBeInTheDocument();
@@ -1898,8 +1915,12 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("Recorded 3840×2160 · 24 fps · HVC1 · 1 video track")).toBeInTheDocument();
     expect(screen.getByText("Front camera · Landscape · pressure at Start Nominal")).toBeInTheDocument();
     expect(screen.getByText("4,096 bytes · generation 1742")).toBeInTheDocument();
-    expect(screen.getByText(/Phone exports and browser claims are never treated as authority/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Download Nest receipt" })).toHaveAttribute(
+    expect(screen.getByText(/every participant recording reached private storage intact/i)).toBeInTheDocument();
+    expect(screen.getByText("Safely stored")).toBeInTheDocument();
+    expect(screen.getByText("1 moment worth checking")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review audio moments" })).toHaveAttribute("href", "#transcript-correction-review");
+    expect(screen.getByText("Technical recording details")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download technical receipt" })).toHaveAttribute(
       "href",
       "/api/sessions/room-1/source-evidence",
     );

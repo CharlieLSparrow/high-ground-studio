@@ -462,6 +462,14 @@ failure shapes recur often enough to influence the architecture:
   surface says `Ready`, `Later`, and `Done`; packet, canonical, governance, and
   provenance terminology belongs in implementation contracts or optional
   history—not in the coach's happy path.
+- Apply the same progressive disclosure to source health. The everyday Session
+  view says whether each recording is `Safely stored`, `Still processing`, or
+  `Needs attention`, and summarizes decoded audio as clear, quiet, or a count of
+  exact moments worth checking. Hashes, cloud generations, capture boundaries,
+  codecs, and signal measurements remain available under `Technical recording
+  details`; they prove the state without becoming homework. An audio warning
+  links directly to its transcript/audio review surface instead of opening a
+  separate diagnostics workflow.
 
 ## Acceptance consequences
 
