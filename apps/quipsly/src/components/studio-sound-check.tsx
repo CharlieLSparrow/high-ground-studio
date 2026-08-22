@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   studioSoundCheckGuidance,
+  studioSoundCheckPrompt,
   type StudioAudioMeterEvidence,
 } from "@/lib/studio-audio-meter";
 
@@ -74,6 +75,7 @@ export function StudioSoundCheck({
   const sampleRequestIdRef = useRef<string | null>(null);
   const previousSetupKeyRef = useRef(setupKey || microphoneLabel);
   const guidance = studioSoundCheckGuidance(evidence);
+  const spokenPrompt = studioSoundCheckPrompt(remainingSeconds);
 
   const clearTimers = useCallback(() => {
     if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
@@ -278,6 +280,13 @@ export function StudioSoundCheck({
         {sampleUrl ? <button type="button" onClick={() => clearSample()} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-violet-950"><RotateCcw size={14} aria-hidden="true" />Clear sample</button> : null}
       </div>
 
+      {phase === "recording" ? (
+        <div className="mt-3 rounded-xl border border-violet-300 bg-white p-3" aria-live="polite">
+          <p className="text-sm font-black text-violet-950">{spokenPrompt.heading}</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-violet-950/75">{spokenPrompt.detail}</p>
+        </div>
+      ) : null}
+
       {sampleUrl ? (
         <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3">
           <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wide text-violet-900"><span className="flex items-center gap-2"><Volume2 size={14} aria-hidden="true" />Call-path sample</span><span>{sampleDurationSeconds?.toFixed(1)} seconds · tab only</span></div>
@@ -299,6 +308,14 @@ export function StudioSoundCheck({
             <button type="button" onClick={() => void decide("NEEDS_ADJUSTMENT")} disabled={!playbackComplete || reviewBusy} className="min-h-11 rounded-full border border-amber-300 bg-amber-50 px-4 text-xs font-black uppercase tracking-wide text-amber-950 disabled:cursor-not-allowed disabled:opacity-45">Needs adjustment</button>
           </div>
           {!playbackComplete ? <p className="mt-2 text-[10px] font-bold leading-4 text-violet-950/70">Play the sample from beginning to end before recording a setup result. The meter alone cannot certify mouth noise, room sound, delay, or output routing.</p> : null}
+          <details className="mt-3 rounded-lg border border-violet-100 bg-violet-50/60 p-3">
+            <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-900">If something sounds wrong</summary>
+            <ul className="mt-2 space-y-2 text-xs font-semibold leading-5 text-violet-950/80">
+              <li><span className="font-black text-violet-950">Clicks or popping B/P sounds:</span> move the microphone slightly farther away and 20–45° off axis; keep the pop filter between you and the mic.</li>
+              <li><span className="font-black text-violet-950">Hiss, hum, or room echo:</span> move closer before raising gain, quiet nearby fans or appliances, and keep headphones on.</li>
+              <li><span className="font-black text-violet-950">Delay, doubling, or the wrong voice:</span> confirm the chosen input and headphone output. Do not try to fix a routing problem with processing.</li>
+            </ul>
+          </details>
         </div>
       ) : null}
 

@@ -10,6 +10,7 @@ import {
   studioAudioMeterEvidence,
   studioAudioSignalState,
   studioSoundCheckGuidance,
+  studioSoundCheckPrompt,
 } from "./studio-audio-meter";
 
 describe("studio audio meter evidence", () => {
@@ -79,6 +80,14 @@ describe("studio audio meter evidence", () => {
     expect(studioSoundCheckGuidance(studioAudioMeterEvidence(
       analyseStudioAudioFrame(new Float32Array([1, -1])),
     )).heading).toMatch(/lower gain/i);
+  });
+
+  it("guides one short sample through normal speech, headroom, plosives, and room tone", () => {
+    expect(studioSoundCheckPrompt(10).heading).toMatch(/normal voice/i);
+    expect(studioSoundCheckPrompt(7).heading).toMatch(/loudest likely sentence/i);
+    expect(studioSoundCheckPrompt(4).detail).toMatch(/plosives/i);
+    expect(studioSoundCheckPrompt(2).heading).toMatch(/stay quiet/i);
+    expect(studioSoundCheckPrompt(Number.NaN).heading).toMatch(/normal voice/i);
   });
 
   it("versions capture-time observations without claiming complete-decode mastering evidence", () => {

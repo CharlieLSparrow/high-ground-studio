@@ -188,6 +188,25 @@ export function studioSoundCheckGuidance(evidence: StudioAudioMeterEvidence | nu
   }
 }
 
+export function studioSoundCheckPrompt(remainingSeconds: number) {
+  if (!finite(remainingSeconds) || remainingSeconds > 7) return {
+    heading: "Use your normal voice",
+    detail: "Speak at the distance and energy you expect during the Session.",
+  };
+  if (remainingSeconds > 4) return {
+    heading: "Try your loudest likely sentence",
+    detail: "This reveals whether ordinary emphasis will run out of headroom.",
+  };
+  if (remainingSeconds > 2) return {
+    heading: "Say: Better podcasts put people first",
+    detail: "The repeated B and P sounds make plosives and close-mic technique easier to hear on playback.",
+  };
+  return {
+    heading: "Pause and stay quiet",
+    detail: "Listen back for room echo, fans, hiss, hum, or an unexpected open microphone.",
+  };
+}
+
 export function createBrowserCaptureMeterSummary(input: {
   startedAt: string;
   sampleRateHz: number;

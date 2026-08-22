@@ -98,11 +98,13 @@ describe("StudioSoundCheck", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Record private sample" }));
+    expect(screen.getByText("Use your normal voice")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Stop and listen" }));
 
     const clearButton = await screen.findByRole("button", { name: "Sounds clear in headphones" });
     expect(clearButton).toBeDisabled();
     const audio = screen.getByLabelText("Private call-path sound-check sample");
+    expect(screen.getByText("If something sounds wrong")).toBeInTheDocument();
     fireEvent.ended(audio);
     expect(clearButton).toBeEnabled();
     fireEvent.click(clearButton);

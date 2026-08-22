@@ -382,6 +382,12 @@ failure shapes recur often enough to influence the architecture:
   while Preview remains an optional camera-and-meter check for people who want
   it. The first meaningful action owns the standard browser permission prompt;
   users do not have to discover and complete a preparatory ritual first.
+- Made the optional ten-second sample do useful work without becoming a gate.
+  It now prompts normal speech, the loudest expected sentence, a plosive-heavy
+  phrase, and a short quiet tail. Playback offers concise physical fixes for
+  mouth sounds, noise/echo, and route/delay problems while clearly reserving
+  those judgments for human listening; the live meter still claims only level,
+  sample peak, clipping observations, and reported browser processing.
 
 ## Acceptance consequences
 
