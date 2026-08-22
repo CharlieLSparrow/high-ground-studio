@@ -2168,6 +2168,14 @@ final class CaptureExperienceModel: ObservableObject {
             message = "Room join is disabled in preview mode."
             return
         }
+        guard await providerRoom.prepareMicrophonePermissionForJoin() else {
+            errorMessage = providerRoom.lastError
+            return
+        }
+        guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+            errorMessage = providerRoomOwnerChangedMessage
+            return
+        }
         activeRoomSession = session
         selectedSessionID = session.id
         let preparedJoin = await sessionClient.prepareRoomJoin(for: session)

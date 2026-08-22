@@ -35,6 +35,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var connectionStateLabel = "Disconnected"
     @Published var isConnecting = false
     @Published var isConnected = false
+    @Published var isReconnecting = false
     @Published var isMuted = true
     @Published var isNativeCallPresentationActive = false
     @Published var nativeCallPresentationLabel = "CallKit ready"
@@ -91,6 +92,40 @@ final class ProviderRoomController: NSObject, ObservableObject {
         }
     }
 
+    /// iOS remembers this system decision. Quipsly asks only from the person's
+    /// Join action, before minting a short-lived room token or opening CallKit.
+    func prepareMicrophonePermissionForJoin() async -> Bool {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
+            lastError = nil
+            return true
+        case .denied:
+            fail("Allow microphone access in Settings to join the call.")
+            return false
+        case .undetermined:
+            isConnecting = true
+            lastError = nil
+            connectionStateLabel = "Checking microphone"
+            statusText = "Allow microphone access to join the call. Quipsly will remember the iPhone setting."
+            let allowed = await withCheckedContinuation { continuation in
+                AVAudioApplication.requestRecordPermission { granted in
+                    continuation.resume(returning: granted)
+                }
+            }
+            isConnecting = false
+            if allowed {
+                connectionStateLabel = "Ready"
+                statusText = "Microphone ready."
+                return true
+            }
+            fail("Allow microphone access in Settings to join the call.")
+            return false
+        @unknown default:
+            fail("Microphone access is unavailable. Check Quipsly in Settings, then try again.")
+            return false
+        }
+    }
+
     func connect(
         using join: MobileCaptureRoomJoinResponse?,
         session: MobileCaptureSession,
@@ -132,6 +167,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         }
 
         isConnecting = true
+        isReconnecting = false
         lastError = nil
         statusText = "Connecting to \(join.provider ?? session.providerLabel)..."
         connectionStateLabel = "Connecting"
@@ -182,6 +218,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             }
             isMuted = initiallyMuted
             isConnected = true
+            isReconnecting = false
             activeRoomName = room.name ?? join.roomName ?? session.displayTitle
             remoteParticipantCount = room.remoteParticipants.count
             connectionStateLabel = "\(room.connectionState)".capitalized
@@ -194,6 +231,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             activeOwnerSnapshot = nil
             clearEpisodeWatchBridge()
             isConnected = false
+            isReconnecting = false
             isMuted = true
             remoteParticipantCount = 0
             activeRoomName = nil
@@ -201,6 +239,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         }
 
         isConnecting = false
+        isReconnecting = false
         #else
         fail("LiveKit SDK is not linked into this app build yet. Nest room keys may be ready, but real provider media is held. Local consented recording is still available.")
         #endif
@@ -297,6 +336,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         audioSessionCoordinator.providerDidDisconnect()
         isConnecting = false
         isConnected = false
+        isReconnecting = false
         isMuted = true
         remoteParticipantCount = 0
         activeRoomName = nil
@@ -309,6 +349,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         audioSessionCoordinator.providerDidDisconnect()
         isConnected = false
         isConnecting = false
+        isReconnecting = false
         isMuted = true
         activeOwnerSnapshot = nil
         clearEpisodeWatchBridge()
@@ -319,12 +360,14 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     func refreshState() {
         #if canImport(LiveKit)
-        isConnected = room.connectionState == .connected
+        isConnected = room.connectionState == .connected || room.connectionState == .reconnecting
+        isReconnecting = room.connectionState == .reconnecting
         connectionStateLabel = "\(room.connectionState)".capitalized
         remoteParticipantCount = room.remoteParticipants.count
         activeRoomName = room.name ?? activeRoomName
         #else
         isConnected = false
+        isReconnecting = false
         connectionStateLabel = "SDK unavailable"
         remoteParticipantCount = 0
         providerRuntimeAvailable = ProviderRoomRuntime.liveKitSDKAvailable
@@ -336,6 +379,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private func fail(_ message: String) {
         isConnecting = false
         if !isConnected {
+            isReconnecting = false
             activeOwnerSnapshot = nil
             clearEpisodeWatchBridge()
         }
@@ -458,6 +502,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         callAudioSessionLabel = "Call audio idle"
         isConnecting = false
         isConnected = false
+        isReconnecting = false
         isMuted = true
         remoteParticipantCount = 0
         activeRoomName = nil
@@ -478,6 +523,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         callAudioSessionLabel = "Call audio needs attention"
         isConnecting = false
         isConnected = false
+        isReconnecting = false
         isMuted = true
         remoteParticipantCount = 0
         activeRoomName = nil
@@ -508,6 +554,7 @@ extension ProviderRoomController: CXProviderDelegate {
             self.audioSessionCoordinator.providerDidDisconnect()
             self.isConnected = false
             self.isConnecting = false
+            self.isReconnecting = false
             self.isMuted = true
             self.isCallAudioSessionActive = false
             self.callAudioSessionLabel = "Call audio idle"
@@ -533,6 +580,7 @@ extension ProviderRoomController: CXProviderDelegate {
             self.audioSessionCoordinator.providerDidDisconnect()
             self.isConnected = false
             self.isConnecting = false
+            self.isReconnecting = false
             self.isMuted = true
             self.activeOwnerSnapshot = nil
             self.clearEpisodeWatchBridge()
@@ -595,12 +643,25 @@ extension ProviderRoomController: RoomDelegate {
                     await self.abortForAccountChange()
                     return
                 }
+                let recovered = self.isReconnecting
                 self.isConnecting = false
                 self.isConnected = true
+                self.isReconnecting = false
                 self.lastError = nil
+                if recovered {
+                    self.statusText = "Reconnected."
+                }
+            case .reconnecting:
+                self.isConnecting = false
+                self.isConnected = true
+                self.isReconnecting = true
+                self.lastError = nil
+                self.connectionStateLabel = "Reconnecting"
+                self.statusText = "Reconnecting…"
             case .disconnected:
                 self.isConnecting = false
                 self.isConnected = false
+                self.isReconnecting = false
                 self.isMuted = true
                 self.remoteParticipantCount = 0
                 self.audioSessionCoordinator.providerDidDisconnect()
@@ -610,6 +671,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.statusText = "Provider room disconnected. Local recording and preserved uploads remain separate."
             default:
                 self.isConnecting = true
+                self.isReconnecting = false
             }
         }
     }

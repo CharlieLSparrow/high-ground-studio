@@ -67,6 +67,17 @@ failure shapes recur often enough to influence the architecture:
 - [Users also report word-alignment errors that can truncate word beginnings
   during text edits](https://www.reddit.com/r/Descript/comments/1tuqxj7/beginnings_of_words_now_being_marked_as_grey/). Text edits therefore need visible media boundaries, handles, audition,
   and reversible decisions rather than treating ASR timestamps as exact truth.
+- [A Descript Rooms user reports that the mobile layout hid Join, a phone source
+  did not appear, and recording defaults were not reusable](https://www.reddit.com/r/Descript/comments/1rntnu4/descript_rooms_and_squadcast/). Mobile call entry must therefore be a tested first-class path, not a
+  responsive afterthought; safe preferences should persist without trapping a
+  Session inside an editor-specific workflow.
+- [Zoom's `Join Audio` wording is repeatedly interpreted as merely unmuting the
+  microphone](https://www.reddit.com/r/Zoom/comments/11rthlg/do_i_have_to_join_audio_to_hear/). Quipsly should say `Join call`, start with the remembered mute choice,
+  and never add a second audio-joining ceremony after the room opens.
+- [Recent Riverside reports describe permission failures, dropped Sessions,
+  slow uploads, and unrecoverable audio/video sync](https://www.reddit.com/r/RiversideFM/comments/1ulnezw/talking_to_riversides_community_director_if_you/). The competitive bar is not feature count: independent local masters,
+  explicit synchronization evidence, resumable per-source upload, and recovery
+  that does not discard already-safe participants are the product foundation.
 - A positive pattern is equally clear: users praise an immediately synced,
   transcribed project and timeline comments, even when they retain separate
   local masters for final quality. Quipsly should make the fast collaborative
@@ -273,6 +284,12 @@ failure shapes recur often enough to influence the architecture:
   appear after connection. A quiet `Record without joining` escape hatch keeps
   solo capture and provider-outage work available without mixing it into the
   normal call path.
+- Made the native Join action the one-time microphone permission boundary.
+  iOS remembers the decision, Quipsly requests it before minting a short-lived
+  room token, and a prior denial becomes one Settings recovery action instead
+  of another in-app ceremony. LiveKit reconnecting is now a distinct honest
+  state with a calm progress label; it never masquerades as a fresh join or a
+  finished disconnection.
 
 ## Acceptance consequences
 

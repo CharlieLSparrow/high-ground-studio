@@ -11537,7 +11537,16 @@ private struct ProviderRoomControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label(model.providerRoom.isConnected ? "Call in progress" : "Ready to join", systemImage: model.providerRoom.isConnected ? "person.2.wave.2.fill" : "person.2.wave.2")
+                Label(
+                    model.providerRoom.isReconnecting
+                        ? "Reconnecting"
+                        : model.providerRoom.isConnected
+                            ? "Call in progress"
+                            : "Ready to join",
+                    systemImage: model.providerRoom.isConnected
+                        ? "person.2.wave.2.fill"
+                        : "person.2.wave.2"
+                )
                     .font(.headline)
                 Spacer()
                 Text("Audio call")
@@ -11558,6 +11567,12 @@ private struct ProviderRoomControls: View {
             }
 
             if model.providerRoom.isConnected {
+                if model.providerRoom.isReconnecting {
+                    Label("Restoring the call…", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("CaptureProviderRoomReconnecting")
+                }
                 HStack(spacing: 10) {
                     Button {
                         Task { await model.toggleRoomMute() }
@@ -11565,7 +11580,7 @@ private struct ProviderRoomControls: View {
                         Label(model.providerRoom.isMuted ? "Unmute" : "Mute", systemImage: model.providerRoom.isMuted ? "mic.slash" : "mic")
                     }
                     .buttonStyle(.bordered)
-                    .disabled(providerControlsLocked || model.isChangingRoom)
+                    .disabled(providerControlsLocked || model.isChangingRoom || model.providerRoom.isReconnecting)
                     .accessibilityHint(providerControlHint)
                     .accessibilityIdentifier("ProviderToggleMuteButton")
 
@@ -11629,10 +11644,10 @@ private struct ProviderRoomControls: View {
                 .accessibilityIdentifier("CaptureRecordWithoutJoiningButton")
             }
 
-            if let detail = model.providerRoom.lastError ?? model.providerRoom.statusText.nonempty {
+            if let detail = model.providerRoom.lastError {
                 Text(detail)
                     .font(.caption)
-                    .foregroundStyle(model.providerRoom.lastError == nil ? Color.secondary : Color.orange)
+                    .foregroundStyle(.orange)
             }
 
             if AVAudioApplication.shared.recordPermission == .denied {
