@@ -147,10 +147,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByText(/Turning this copy off cannot change take synchronization/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Session Guardian" })).toHaveTextContent(/Checking the retained-source recorder/i);
     expect(screen.getByText("Why Quipsly says this")).toBeInTheDocument();
-    expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent(
-      "55555555-5555-4555-8555-555555555551",
-    );
-    expect(screen.getByTestId("browser-source-project")).toHaveTextContent("high-ground-odyssey");
+    expect(screen.queryByTestId("browser-source-capture-group")).not.toBeInTheDocument();
   });
 
   it("asks for media only from Join and continues without a separate permission ritual", async () => {
@@ -352,7 +349,6 @@ describe("LiveSessionRoom", () => {
     expect(greenRoom).toHaveTextContent(/Preview optional/i);
     expect(greenRoom).toHaveTextContent(/Joining doesn’t start recording/i);
     const join = screen.getByRole("button", { name: /Join call/i });
-    const recorder = screen.getByTestId("browser-source-capture-group");
     const devices = screen.getByRole("group", { name: "Preflight studio devices" });
     const soundCheck = screen.getByRole("region", { name: "Private studio sound check" });
     const preview = view!.container.querySelector("video");
@@ -364,13 +360,54 @@ describe("LiveSessionRoom", () => {
       devices.compareDocumentPosition(soundCheck)
         & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(
-      devices.compareDocumentPosition(recorder)
-        & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
     expect(join).toBeEnabled();
-    expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("lobby");
+    expect(screen.queryByTestId("browser-source-conversation")).not.toBeInTheDocument();
     expect(preview?.parentElement).toHaveClass("h-28");
+  });
+
+  it("reveals recording only after the participant enters the call", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/mobile/capture/rooms/join")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: "room-scoped-test-token",
+            recordingConsentGranted: false,
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true }),
+      } as Response;
+    }) as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-outer-room" captureGroupId="55555555-5555-4555-8555-555555555545" sessionTitle="Outer room" kind="coaching" />);
+    });
+
+    expect(screen.getByText("Ready to join", { selector: "span" })).toBeInTheDocument();
+    expect(screen.queryByTestId("browser-source-capture-group")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent("55555555-5555-4555-8555-555555555545");
+    expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
   });
 
   it("keeps camera permission independent from an audio-only coaching join", async () => {
@@ -470,11 +507,23 @@ describe("LiveSessionRoom", () => {
         removeEventListener: jest.fn(),
       },
     });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/mobile/capture/rooms/join")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, canJoin: true, serverUrl: "wss://live.test", participantToken: "room-scoped-test-token" }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
+    }) as typeof fetch;
 
     await act(async () => {
       render(<LiveSessionRoom callRoomId="room-5" captureGroupId="55555555-5555-4555-8555-555555555555" sessionTitle="Locked source" kind="episode" />);
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Simulate retained source start" }));
     expect(screen.getByRole("combobox", { name: "Microphone" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "Camera" })).toBeDisabled();
@@ -499,15 +548,26 @@ describe("LiveSessionRoom", () => {
         removeEventListener: jest.fn(),
       },
     });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/mobile/capture/rooms/join")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, canJoin: true, serverUrl: "wss://live.test", participantToken: "room-scoped-test-token" }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
+    }) as typeof fetch;
 
     await act(async () => {
       render(<LiveSessionRoom callRoomId="room-unbound" captureGroupId={null} sessionTitle="Unbound take" kind="episode" />);
     });
 
-    expect(await screen.findByRole("region", { name: "Retained source unavailable" })).toHaveTextContent(/recording held/i);
     expect(screen.getByRole("button", { name: /Test selected setup/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Join call/i })).toBeEnabled();
     expect(screen.queryByTestId("browser-source-capture-group")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    expect(await screen.findByRole("region", { name: "Retained source unavailable" })).toHaveTextContent(/recording held/i);
   });
 
   it("reuses the same provider START request after an ambiguous transport failure", async () => {

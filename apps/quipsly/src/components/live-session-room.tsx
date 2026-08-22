@@ -377,7 +377,18 @@ export function LiveSessionRoom({
   });
 
   const connected = status === "connected" || status === "reconnecting";
-  const statusLabel = useMemo(() => status.replace(/\b\w/g, (letter) => letter.toUpperCase()), [status]);
+  const statusLabel = useMemo(() => {
+    switch (status) {
+      case "preflight": return "Ready to join";
+      case "checking": return "Checking devices";
+      case "ready": return "Ready to join";
+      case "joining": return "Joining";
+      case "connected": return "You’re connected";
+      case "reconnecting": return "Reconnecting";
+      case "ended": return "Call ended";
+      case "error": return "Needs attention";
+    }
+  }, [status]);
   const providerRecordingState = providerRecording?.state || "off";
   const providerRecordingStateLabel = providerRecordingState === "needs-review"
     ? "Needs review"
@@ -1498,7 +1509,7 @@ export function LiveSessionRoom({
           ) : null}
           </details>
 
-          {experience.captureProfile === "coaching" ? retainedSourceControls : null}
+          {experience.captureProfile === "coaching" && connected ? retainedSourceControls : null}
           <p role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
 
           <div ref={remoteMediaRef} className="grid gap-3 md:grid-cols-2" aria-label="Remote participant media" />
@@ -1567,7 +1578,7 @@ export function LiveSessionRoom({
         </aside>
       </div>
       <div className="mt-5 space-y-4">
-        {experience.captureProfile === "episode" ? retainedSourceControls : null}
+        {experience.captureProfile === "episode" && connected ? retainedSourceControls : null}
         <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
             Recording safety details

@@ -263,6 +263,11 @@ failure shapes recur often enough to influence the architecture:
   measured WER, and human review coverage. It checks word ranges, segment
   containment, ordering, and overlap; it explicitly does not claim measured
   timing accuracy. Held passages link back to exact protected playback time.
+- Enforced the familiar outer-room boundary in the browser. Before joining,
+  people see only the green room, preview, normal device controls, and Join;
+  the high-quality recorder and consent action appear only after the call
+  connects. Internal states such as `preflight` are translated into ordinary
+  labels such as `Ready to join` and `Needs attention`.
 
 ## Acceptance consequences
 
