@@ -595,7 +595,7 @@ try {
   );
   const guestDisconnectSignalObserved = await guestPage
     .getByText(
-      "The live conversation ended. Joining never started a recording.",
+      "The call ended.",
       { exact: true },
     )
     .waitFor({ timeout: 5_000 })

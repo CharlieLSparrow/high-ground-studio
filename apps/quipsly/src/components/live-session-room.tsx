@@ -351,7 +351,7 @@ export function LiveSessionRoom({
   const [providerRecording, setProviderRecording] = useState<ProviderRecordingState | null>(null);
   const [providerRecordingBusy, setProviderRecordingBusy] = useState(false);
   const [providerRecordingMessage, setProviderRecordingMessage] = useState(
-    "Provider safety recording is optional and never supplies the Session sync clock.",
+    "Cloud recording backup is off. Local recording remains available.",
   );
   const [providerStartArmed, setProviderStartArmed] = useState(false);
 
@@ -961,7 +961,7 @@ export function LiveSessionRoom({
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     setParticipants([]);
     setStatus("ended");
-    setMessage("You left the live room. No provider recording was started by joining or leaving.");
+    setMessage("You left the call.");
   }, [clearPreflightPreview, clearRemoteMedia]);
 
   const join = useCallback(async () => {
@@ -983,7 +983,7 @@ export function LiveSessionRoom({
       return;
     }
     setStatus("joining");
-    setMessage("Requesting a short-lived, room-scoped key…");
+    setMessage("Joining…");
     try {
       clearPreflightPreview();
       const response = await fetch("/api/mobile/capture/rooms/join", {
@@ -1039,15 +1039,15 @@ export function LiveSessionRoom({
         })
         .on(RoomEvent.Reconnecting, () => {
           setStatus("reconnecting");
-          setMessage("Network changed. Quipsly is reconnecting this live conversation…");
+          setMessage("Connection interrupted. Reconnecting… Any local recording continues safely on this device.");
         })
         .on(RoomEvent.Reconnected, () => {
           setStatus("connected");
-          setMessage("Reconnected. Local source recording remains separate from this conversation feed.");
+          setMessage("Reconnected.");
         })
         .on(RoomEvent.Disconnected, () => {
           setStatus("ended");
-          setMessage("The live conversation ended. Joining never started a recording.");
+          setMessage("The call ended.");
           setParticipants([]);
           clearRemoteMedia();
         });
@@ -1083,8 +1083,8 @@ export function LiveSessionRoom({
       updateRoster(room);
       setStatus("connected");
       setMessage(packet.recordingConsentGranted
-        ? "Live conversation connected. Recording is still off until a separate visible recording action creates evidence."
-        : "Live conversation connected. Recording is held until every participant’s consent is current.");
+        ? "You’re connected. Recording is off."
+        : "You’re connected. Recording will stay off until everyone consents.");
     } catch (error) {
       roomRef.current?.disconnect(true);
       roomRef.current = null;
@@ -1218,7 +1218,7 @@ export function LiveSessionRoom({
         setStatus("preflight");
       }
       const label = microphones.find((device) => device.deviceId === nextId)?.label || "selected microphone";
-      setMessage(connected ? `Live microphone switched to ${label}. The retained local source remains off until you start it separately.` : `Microphone selected: ${label}. Run the confidence check before joining.`);
+      setMessage(connected ? `Microphone switched to ${label}.` : `Microphone selected: ${label}.`);
     } catch (error) {
       setMicrophoneId(previousId);
       microphoneIdRef.current = previousId;
@@ -1254,7 +1254,7 @@ export function LiveSessionRoom({
         setCameraEvidence(null);
       }
       const label = cameras.find((device) => device.deviceId === nextId)?.label || "selected camera";
-      setMessage(connected ? `Live camera switched to ${label}. This does not alter or restart retained recording.` : `Camera selected: ${label}. Run the preview before joining.`);
+      setMessage(connected ? `Camera switched to ${label}.` : `Camera selected: ${label}.`);
     } catch (error) {
       setCameraId(previousId);
       cameraIdRef.current = previousId;
@@ -1267,7 +1267,7 @@ export function LiveSessionRoom({
     setOutputId(nextId);
     outputIdRef.current = nextId;
     const label = outputs.find((device) => device.deviceId === nextId)?.label || "system default";
-    setMessage(`Remote conversation audio will use ${label}. This does not change the retained microphone source.`);
+    setMessage(`Speaker output set to ${label}.`);
   }, [outputs]);
 
   const chooseAudioOutput = useCallback(async () => {
@@ -1285,7 +1285,7 @@ export function LiveSessionRoom({
       setOutputId(option.deviceId);
       outputIdRef.current = option.deviceId;
       suppressPreferenceWriteRef.current = false;
-      setMessage(`Headphone output selected: ${option.label}. Quipsly will route remote call audio there.`);
+      setMessage(`Speaker output set to ${option.label}.`);
     } catch (error) {
       setMessage(error instanceof Error ? `Headphone output was not changed: ${error.message}` : "Headphone output was not changed.");
     }

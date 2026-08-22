@@ -241,6 +241,11 @@ failure shapes recur often enough to influence the architecture:
   dates, and duration rather than app-owned truth, provider evidence, or audit
   metadata. Switching live Sessions now remounts the room by its exact ID so an
   old transport cannot survive under a new Session title.
+- Replaced transport and provider jargon in ordinary call status with familiar
+  states: `Joining`, `You’re connected`, `Reconnecting`, `Reconnected`, and
+  `The call ended`. The reconnect message still reassures participants that an
+  independent local recording remains safe without making them learn the sync
+  architecture.
 
 ## Acceptance consequences
 
