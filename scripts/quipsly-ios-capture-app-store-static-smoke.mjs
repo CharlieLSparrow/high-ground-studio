@@ -58,6 +58,7 @@ const files = {
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
+  captureRecordingShare: path.join(sourceRoot, "CaptureRecordingShare.swift"),
   transcriptReview: path.join(sourceRoot, "TranscriptCorrectionReview.swift"),
   transcriptReviewDecisionOutbox: path.join(sourceRoot, "TranscriptReviewDecisionOutbox.swift"),
   onDeviceTranscriptManager: path.join(sourceRoot, "OnDeviceTranscriptManager.swift"),
@@ -205,6 +206,7 @@ const captureRehearsalReadinessText = read(files.captureRehearsalReadiness);
 const captureSessionGuardianText = read(files.captureSessionGuardian);
 const captureCalendarEventEditorText = read(files.captureCalendarEventEditor);
 const captureSupportSnapshotText = read(files.captureSupportSnapshot);
+const captureRecordingShareText = read(files.captureRecordingShare);
 const transcriptReviewText = read(files.transcriptReview);
 const transcriptReviewDecisionOutboxText = read(files.transcriptReviewDecisionOutbox);
 const onDeviceTranscriptManagerText = read(files.onDeviceTranscriptManager);
@@ -971,6 +973,22 @@ for (const needle of [
 ]) {
   requireIncludes(capturePhoneShellText, needle, "capture-first iPhone UX");
 }
+for (const needle of [
+  "1 · Trim the beginning and end",
+  "2 · Remove any passages",
+  "3 · Create private preview",
+  "Name and recording sources",
+  "Share with \\(output.recipient.label)",
+  'accessibilityIdentifier("CaptureRecordingSharePrepare")',
+  'accessibilityIdentifier("CaptureRecordingShareRelease")',
+]) {
+  requireAnyIncludes(captureRecordingShareText, [needle, needle.replace("\\\\(", "\\(")], "standard native recording finish flow");
+}
+requireExcludes(
+  captureRecordingShareText,
+  "I listened and intend to share only with",
+  "redundant native share attestation",
+);
 for (const needle of [
   "Help & diagnostics",
   "Share support snapshot",

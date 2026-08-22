@@ -419,7 +419,6 @@ struct CaptureRecordingShareEditor: View {
     @State private var endSeconds: TimeInterval = 0
     @State private var title = ""
     @State private var initializedSnapshot = false
-    @State private var releaseConfirmed = false
     @State private var editing = false
 
     var body: some View {
@@ -520,35 +519,74 @@ struct CaptureRecordingShareEditor: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.orange)
             } else {
-                Text("Participant masters")
-                    .font(.subheadline.weight(.bold))
-                ForEach(sources) { source in
-                    Toggle(isOn: sourceBinding(source.id)) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(source.participantLabel).font(.subheadline.weight(.semibold))
-                            Text(source.kind == "LOCAL_VIDEO" ? "Camera master audio" : "Local audio master")
-                                .font(.caption2).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("1 · Trim the beginning and end")
+                        .font(.subheadline.weight(.bold))
+                    recordingRangeSlider(
+                        "Start",
+                        value: $startSeconds,
+                        lowerBound: 0,
+                        upperBound: max(0, endSeconds - 0.1)
+                    )
+                    recordingRangeSlider(
+                        "End",
+                        value: $endSeconds,
+                        lowerBound: min(duration, startSeconds + 0.1),
+                        upperBound: duration
+                    )
+                    HStack {
+                        Text("\(captureRecordingShareTime(startSeconds))–\(captureRecordingShareTime(endSeconds))")
+                        Spacer()
+                        Text("\(captureRecordingShareTime(max(0, endSeconds - startSeconds))) selected")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    DisclosureGroup("Precise timing") {
+                        HStack(spacing: 12) {
+                            timeField("Start", value: $startSeconds, maximum: duration)
+                            timeField("End", value: $endSeconds, maximum: duration)
+                        }
+                        .padding(.top, 8)
+                    }
+                    .font(.caption.weight(.bold))
+                }
+                .padding(12)
+                .background(Color.indigo.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+
+                DisclosureGroup("Name and recording sources (\(selectedSourceIDs.count) selected)") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("Recording title", text: $title)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("CaptureRecordingShareTitle")
+                        Text("Quipsly already chose one high-quality track for each person. Change this only when you need a different recording.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(sources) { source in
+                            Toggle(isOn: sourceBinding(source.id)) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(source.participantLabel).font(.subheadline.weight(.semibold))
+                                    Text(source.kind == "LOCAL_VIDEO" ? "Camera audio" : "Local audio")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                            .tint(.indigo)
+                            .accessibilityIdentifier("CaptureRecordingShareSource_\(source.id)")
                         }
                     }
-                    .tint(.indigo)
-                    .accessibilityIdentifier("CaptureRecordingShareSource_\(source.id)")
+                    .padding(.top, 8)
                 }
-
-                TextField("Recording title", text: $title)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureRecordingShareTitle")
-
-                HStack(spacing: 12) {
-                    timeField("Start", value: $startSeconds, maximum: duration)
-                    timeField("End", value: $endSeconds, maximum: duration)
-                }
+                .font(.caption.weight(.bold))
 
                 if transcript.isEmpty {
-                    Text("Source-bound transcript passages will appear here when ready. Start/end trimming still works now.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("2 · Remove any passages")
+                            .font(.subheadline.weight(.bold))
+                        Text("The transcript will appear here when it is ready. You can create a simple trimmed preview now.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 } else {
                     HStack {
-                        Text("Edit by transcript").font(.subheadline.weight(.bold))
+                        Text("2 · Remove any passages").font(.subheadline.weight(.bold))
                         Spacer()
                         if !excludedSegmentIDs.isEmpty {
                             Button("Include all") { excludedSegmentIDs.removeAll() }
@@ -606,7 +644,7 @@ struct CaptureRecordingShareEditor: View {
                     if client.busyAction == "PREPARE" {
                         ProgressView().frame(maxWidth: .infinity)
                     } else {
-                        Text("Prepare private preview").frame(maxWidth: .infinity)
+                        Text("3 · Create private preview").frame(maxWidth: .infinity)
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -685,20 +723,15 @@ struct CaptureRecordingShareEditor: View {
             }
 
             if coach && output.status == "DRAFT" && output.render.status == "VERIFIED" {
-                Toggle("I listened and intend to share only with \(output.recipient.label).", isOn: $releaseConfirmed)
+                Text("Listen once, then share this private copy with \(output.recipient.label).")
                     .font(.caption.weight(.semibold))
-                    .tint(.green)
-                    .accessibilityIdentifier("CaptureRecordingShareReleaseConfirmation")
-                Button("Release inside client Session") {
-                    Task {
-                        if await client.changeVisibility(roomID: roomID, action: "RELEASE") {
-                            releaseConfirmed = false
-                        }
-                    }
+                    .foregroundStyle(.secondary)
+                Button("Share with \(output.recipient.label)") {
+                    Task { _ = await client.changeVisibility(roomID: roomID, action: "RELEASE") }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
-                .disabled(!releaseConfirmed || client.busyAction != nil)
+                .disabled(client.busyAction != nil)
                 .accessibilityIdentifier("CaptureRecordingShareRelease")
             }
 
@@ -760,6 +793,31 @@ struct CaptureRecordingShareEditor: View {
                 .keyboardType(.decimalPad)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityValue("\(captureRecordingShareTime(value.wrappedValue)) of \(captureRecordingShareTime(maximum))")
+        }
+    }
+
+    private func recordingRangeSlider(
+        _ label: String,
+        value: Binding<TimeInterval>,
+        lowerBound: TimeInterval,
+        upperBound: TimeInterval
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(label).font(.caption.weight(.bold))
+                Spacer()
+                Text(captureRecordingShareTime(value.wrappedValue))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            Slider(
+                value: value,
+                in: min(lowerBound, upperBound)...max(lowerBound, upperBound),
+                step: 0.1
+            )
+            .tint(.indigo)
+            .accessibilityLabel("Recording \(label.lowercased())")
+            .accessibilityValue(captureRecordingShareTime(value.wrappedValue))
         }
     }
 

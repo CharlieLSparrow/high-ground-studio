@@ -332,6 +332,12 @@ failure shapes recur often enough to influence the architecture:
   the recording, and a passage that overlaps another participant's speech is
   visibly kept rather than silently cutting both people. Browser and iPhone use
   the same fail-closed contract; ordinary start/end trimming remains available.
+- Aligned the browser and iPhone finishing path around the same ordinary verbs:
+  trim the beginning and end, optionally remove transcript passages, create a
+  private preview, listen, and share with the named client. Exact timing and
+  source-track choices remain available under disclosure, while the duplicate
+  iPhone share-attestation checkbox was removed because the named Share action
+  is already the explicit consequential decision.
 - Added a separate edit-timing integrity measure beside provider confidence,
   measured WER, and human review coverage. It checks word ranges, segment
   containment, ordering, and overlap; it explicitly does not claim measured
