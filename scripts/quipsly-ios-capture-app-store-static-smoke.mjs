@@ -1572,8 +1572,9 @@ requireIncludes(captureSessionGuardianText, "Retained master continues while the
 requireIncludes(captureSessionGuardianText, "No useful microphone signal is reaching the master", "shipping Guardian exposes retained-source signal loss");
 requireIncludes(capturePhoneShellText, "CaptureAudioSoundCheckController()", "shipping recorder owns the local sound-check lifecycle");
 requireIncludes(captureRehearsalReadinessText, 'accessibilityIdentifier("CaptureSoundCheckStart")', "shipping rehearsal exposes an addressable sound-check action");
-requireIncludes(captureRehearsalReadinessText, "Consent is still required because another person could be audible.", "shipping sound check retains participant-consent truth");
-requireIncludes(captureRehearsalReadinessText, "Quipsly never uploads it, creates no Session source", "shipping sound check declares its no-upload boundary");
+assert(!captureRehearsalReadinessText.includes("consentReady"), "Private local sound check must not depend on Session recording consent.", { forbidden: "consentReady" });
+requireIncludes(captureRehearsalReadinessText, "never uploaded or added to the Session", "shipping sound check declares its local-only boundary");
+requireIncludes(captureRehearsalReadinessText, "deleted automatically", "shipping sound check declares automatic cleanup");
 requireIncludes(audioSoundCheckText, "coordinator.activateLocalCapture()", "sound check shares the process audio-session lease");
 requireIncludes(audioSoundCheckText, "coordinator.beginLocalPlayback()", "sound check listen-back shares the process playback lease");
 requireIncludes(audioSoundCheckText, "purgeAbandonedChecks()", "sound check purges abandoned temporary files on launch");

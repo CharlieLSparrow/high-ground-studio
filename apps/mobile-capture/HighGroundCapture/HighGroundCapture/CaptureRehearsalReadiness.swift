@@ -141,9 +141,6 @@ struct CaptureRehearsalReadinessCard: View {
                         CaptureAudioSoundCheckControls(
                             controller: soundCheck,
                             routeName: audioCapture.inputRouteName,
-                            consentReady:
-                                session.canRecordAudioNow
-                                ?? session.canRecordNow,
                             previewOnly: previewOnly,
                             providerConnected: providerConnected,
                             captureIsActive: isCaptureActive,
@@ -674,7 +671,6 @@ struct CaptureRehearsalReadinessCard: View {
 private struct CaptureAudioSoundCheckControls: View {
     @ObservedObject var controller: CaptureAudioSoundCheckController
     let routeName: String
-    let consentReady: Bool
     let previewOnly: Bool
     let providerConnected: Bool
     let captureIsActive: Bool
@@ -682,7 +678,6 @@ private struct CaptureAudioSoundCheckControls: View {
 
     private var canStart: Bool {
         !previewOnly
-            && consentReady
             && !providerConnected
             && !captureIsActive
             && !controller.state.isBusy
@@ -848,7 +843,7 @@ private struct CaptureAudioSoundCheckControls: View {
                     .accessibilityIdentifier("CaptureSoundCheckMessage")
             }
 
-            Text("This explicit check records only a temporary protected file on this iPhone. Quipsly never uploads it, creates no Session source, and deletes abandoned checks on launch. Consent is still required because another person could be audible.")
+            Text("This sample stays on this iPhone, is never uploaded or added to the Session, and is deleted automatically.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -870,9 +865,6 @@ private struct CaptureAudioSoundCheckControls: View {
     private var startHint: String {
         if previewOnly {
             return "Preview shows the sound-check workflow without opening a microphone or inventing level evidence."
-        }
-        if !consentReady {
-            return "Save current audio consent before recording a sound check."
         }
         if providerConnected {
             return "Leave the live room before opening a separate microphone sound check."

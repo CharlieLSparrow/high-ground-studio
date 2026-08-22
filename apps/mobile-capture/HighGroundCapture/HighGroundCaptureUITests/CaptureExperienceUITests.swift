@@ -517,8 +517,8 @@ final class CaptureExperienceUITests: XCTestCase {
             "CaptureSoundCheckBoundary"
         ]
         XCTAssertTrue(soundCheckBoundary.exists)
-        XCTAssertTrue(soundCheckBoundary.label.contains("never uploads"))
-        XCTAssertTrue(soundCheckBoundary.label.contains("Consent is still required"))
+        XCTAssertTrue(soundCheckBoundary.label.contains("never uploaded"))
+        XCTAssertTrue(soundCheckBoundary.label.contains("deleted automatically"))
 
         let runCheck = app.buttons["CaptureRehearsalRunCheck"]
         XCTAssertTrue(runCheck.exists)

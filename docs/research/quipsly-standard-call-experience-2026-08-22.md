@@ -372,6 +372,11 @@ failure shapes recur often enough to influence the architecture:
   names no longer force advanced settings open or show normal-state diagnostic
   prose. Join remains the permission boundary; settings stay optional until a
   real failure needs one actionable recovery message.
+- Removed Session recording consent as a prerequisite for the iPhone's private
+  local sound check. Like a conventional pre-call microphone test, it can run
+  before joining; its protected sample stays on the device, never becomes a
+  Session source, and is deleted automatically. Actual Session recording and
+  transcription remain independently consent-gated.
 
 ## Acceptance consequences
 
