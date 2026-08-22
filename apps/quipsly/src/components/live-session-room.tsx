@@ -327,6 +327,7 @@ export function LiveSessionRoom({
   );
   const [status, setStatus] = useState<LiveSessionRoomStatus>("preflight");
   const [message, setMessage] = useState("Preparing your microphone and camera…");
+  const [showCallNotice, setShowCallNotice] = useState(false);
   const [microphones, setMicrophones] = useState<DeviceOption[]>([]);
   const [cameras, setCameras] = useState<DeviceOption[]>([]);
   const [outputs, setOutputs] = useState<DeviceOption[]>([]);
@@ -638,12 +639,15 @@ export function LiveSessionRoom({
     const generation = ++deviceRefreshGenerationRef.current;
     const room = roomRef.current;
     const preserveLiveConnection = Boolean(room && room.state !== ConnectionState.Disconnected);
+    if (!preserveLiveConnection && permission === "none" && cause === "initial") {
+      setShowCallNotice(false);
+    }
     if (!navigator.mediaDevices?.enumerateDevices) {
       if (!preserveLiveConnection) setStatus("error");
       setMessage("This browser cannot access media devices. Use HTTPS, localhost, or Quipsly Capture on iPhone.");
       return;
     }
-    if (!preserveLiveConnection) {
+    if (!preserveLiveConnection && (permission !== "none" || cause !== "initial")) {
       setStatus("checking");
       setMessage(permission === "microphone"
         ? "Waiting for browser microphone permission…"
@@ -836,23 +840,34 @@ export function LiveSessionRoom({
       const microphoneNamesVisible = nextMicrophones.some((device) => !/^Microphone \d+$/.test(device.label));
       const cameraNamesVisible = nextCameras.some((device) => !/^Camera \d+$/.test(device.label));
       if (recoveryMessages.length) {
+        setShowCallNotice(true);
         if (!preserveLiveConnection) setStatus(nextMicrophones.length && (!cameraWantedRef.current || nextCameras.length) ? "ready" : "preflight");
         setMessage(recoveryMessages.join(" "));
       } else if ((permission === "camera" || permission === "media") && !nextCameras.length) {
+        setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("error");
         setMessage("Camera access did not expose a usable device. Open this site's camera controls, choose the Canon or desired camera, then try again—or turn off Join with camera.");
       } else if (permission === "camera" || permission === "media") {
+        setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("ready");
         setMessage(cameraNamesVisible ? "Camera names are visible. Choose the exact camera and run the preview." : "Camera access is available. Use the preview to verify the selected source.");
       } else if (!nextMicrophones.length) {
-        if (!preserveLiveConnection) setStatus(rawMicrophones.length ? "preflight" : "error");
-        setMessage(rawMicrophones.length
-          ? "A microphone is present, but the browser is hiding the usable device until you allow microphone access."
-          : "No microphone was found. Check the cable and macOS Sound settings, then scan again.");
+        setShowCallNotice(false);
+        const waitingForJoinPermission = permission === "none" && cause === "initial";
+        if (!preserveLiveConnection) {
+          setStatus(waitingForJoinPermission || rawMicrophones.length ? "preflight" : "error");
+        }
+        setMessage(waitingForJoinPermission
+          ? "Tap Join call to use your microphone."
+          : rawMicrophones.length
+            ? "Microphone access is off. Allow it in this site's browser settings, then join again."
+            : "No microphone was found. Check the cable and system sound settings, then try again.");
       } else if (cameraWantedRef.current && !nextCameras.length) {
+        setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("preflight");
         setMessage("Microphone names are visible. Allow and choose a camera, or turn off Join with camera for an audio-only call.");
       } else {
+        setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("ready");
         if (preserveLiveConnection) {
           if (cause !== "devicechange") setMessage("Call devices refreshed. The conversation stayed connected.");
@@ -1456,7 +1471,7 @@ export function LiveSessionRoom({
             </div>
           ) : null}
 
-          <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={!connected && (!microphoneId || (cameraWanted && !cameraId))}>
+          <details data-testid="call-device-settings" className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Audio and video settings</summary>
           <div className="mt-4 grid gap-3 md:grid-cols-2" role="group" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
             <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Microphone
@@ -1510,7 +1525,9 @@ export function LiveSessionRoom({
           </details>
 
           {experience.captureProfile === "coaching" && connected ? retainedSourceControls : null}
-          <p role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
+          {showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status) ? (
+            <p data-testid="call-status-message" role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
+          ) : null}
 
           <div ref={remoteMediaRef} className="grid gap-3 md:grid-cols-2" aria-label="Remote participant media" />
 

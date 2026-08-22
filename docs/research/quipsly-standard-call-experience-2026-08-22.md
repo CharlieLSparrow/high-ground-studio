@@ -290,6 +290,10 @@ failure shapes recur often enough to influence the architecture:
   of another in-app ceremony. LiveKit reconnecting is now a distinct honest
   state with a calm progress label; it never masquerades as a fresh join or a
   finished disconnection.
+- Removed the browser's duplicate pre-join permission ceremony. Missing device
+  names no longer force advanced settings open or show normal-state diagnostic
+  prose. Join remains the permission boundary; settings stay optional until a
+  real failure needs one actionable recovery message.
 
 ## Acceptance consequences
 
