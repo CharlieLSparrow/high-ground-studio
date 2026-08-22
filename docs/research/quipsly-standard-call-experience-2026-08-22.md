@@ -259,6 +259,10 @@ failure shapes recur often enough to influence the architecture:
   the recording, and a passage that overlaps another participant's speech is
   visibly kept rather than silently cutting both people. Browser and iPhone use
   the same fail-closed contract; ordinary start/end trimming remains available.
+- Added a separate edit-timing integrity measure beside provider confidence,
+  measured WER, and human review coverage. It checks word ranges, segment
+  containment, ordering, and overlap; it explicitly does not claim measured
+  timing accuracy. Held passages link back to exact protected playback time.
 
 ## Acceptance consequences
 

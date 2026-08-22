@@ -150,6 +150,16 @@ async function main() {
     );
     assert(packet.status === 200 && packet.body?.transcriptJob?.id === job.id, "Exact-source Session readback did not select the completed transcript.");
     assert(packet.body?.transcriptJob?.segmentCount === job.segments.length, "Session readback lost immutable transcript segments.");
+    const review = await requestJSON(
+      baseURL,
+      idToken,
+      `/api/mobile/capture/transcripts/corrections?callRoomId=${encodeURIComponent(ROOM_ID)}&recordingAssetId=${encodeURIComponent(RECORDING_ASSET_ID)}`,
+    );
+    const timingIntegrity = review.body?.evidence?.transcript?.timingIntegrity;
+    assert(review.status === 200 && review.body?.transcriptJobId === job.id, "Exact-source transcript review did not select the completed transcript.");
+    assert(timingIntegrity?.timingIntegrityIsNotMeasuredAccuracy === true, "Transcript review blurred structural timing checks with measured timing accuracy.");
+    assert(timingIntegrity?.disposition === "structurally-consistent", `Retained provider word timing needs review (${timingIntegrity?.disposition || "missing"}).`);
+    assert(timingIntegrity?.editableSegmentCount === job.segments.length, "Not every retained transcript passage is structurally eligible for source-bound editing.");
 
     const after = await Promise.all([
       prisma.transcriptJob.count({ where: { assetId: RECORDING_ASSET_ID } }),
@@ -184,6 +194,7 @@ async function main() {
         wordErrorRate: Number(consistency.rate.toFixed(6)),
         humanAccuracyClaimed: false,
       },
+      timingIntegrity,
       providerText: candidateText,
       exactSourceHTTPReadback: true,
       createdTranscriptVersions: after[0] - before[0],

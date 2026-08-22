@@ -1,6 +1,7 @@
 import {
   buildAudioTranscriptEvidence,
   parseAudioSignalEvidence,
+  transcriptTimingIntegrity,
   transcriptWordEditDistance,
 } from "./transcript-evidence";
 
@@ -224,6 +225,13 @@ describe("audio and transcript evidence", () => {
       providerSpeakerClusterCount: 2,
       attributedSpeakerClusterCount: 1,
       endsBeforeRecordingBySeconds: 5,
+      timingIntegrity: {
+        disposition: "structurally-consistent",
+        structurallyValidWordCount: 6,
+        editableSegmentCount: 2,
+        timingIntegrityIsNotMeasuredAccuracy: true,
+        attentionSegments: [],
+      },
     });
     expect(evidence.transcript.confidenceIsNotMeasuredAccuracy).toBe(true);
     expect(evidence.transcript.attentionSegments[0]).toMatchObject({
@@ -253,8 +261,43 @@ describe("audio and transcript evidence", () => {
       lowConfidenceWordCount: null,
       measuredWordErrorRate: null,
       measuredScope: "NONE",
+      timingIntegrity: {
+        disposition: "unavailable",
+        editableSegmentCount: 0,
+      },
     });
     expect(evidence.audio.formatComparison).toBe("NOT_MEASURED");
+  });
+
+  it("holds structurally unsafe word timing without calling the check timing accuracy", () => {
+    const timing = transcriptTimingIntegrity([{
+      id: "segment-unsafe",
+      startSeconds: 1,
+      endSeconds: 3,
+      providerText: "one two three",
+      text: "one two three",
+      confidence: null,
+      words: [
+        { word: "one", punctuatedWord: "One", startSeconds: 1, endSeconds: 1.8, confidence: null },
+        { word: "two", punctuatedWord: "two", startSeconds: 1.6, endSeconds: 2.1, confidence: null },
+        { word: "three", punctuatedWord: "three", startSeconds: 3.1, endSeconds: 3.4, confidence: null },
+      ],
+      acceptedCorrection: null,
+      acceptedVerification: null,
+    }]);
+
+    expect(timing).toMatchObject({
+      disposition: "review-required",
+      structurallyValidWordCount: 1,
+      overlappingWordCount: 1,
+      outsideSegmentWordCount: 1,
+      editableSegmentCount: 0,
+      timingIntegrityIsNotMeasuredAccuracy: true,
+      attentionSegments: [{
+        segmentId: "segment-unsafe",
+        reasons: expect.arrayContaining(["overlapping-words", "outside-segment"]),
+      }],
+    });
   });
 
   it("accepts an explicit receipt-owned confidence triage threshold without pretending it is accuracy", () => {

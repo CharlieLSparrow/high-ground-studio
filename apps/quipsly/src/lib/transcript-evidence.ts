@@ -148,6 +148,22 @@ export type AudioTranscriptEvidence = {
     recordingDurationSeconds: number | null;
     startsAfterRecordingBySeconds: number | null;
     endsBeforeRecordingBySeconds: number | null;
+    timingIntegrity: {
+      disposition: "structurally-consistent" | "review-required" | "unavailable";
+      structurallyValidWordCount: number;
+      invalidWordTimingCount: number;
+      outsideSegmentWordCount: number;
+      nonMonotonicWordCount: number;
+      overlappingWordCount: number;
+      editableSegmentCount: number;
+      timingIntegrityIsNotMeasuredAccuracy: true;
+      attentionSegments: Array<{
+        segmentId: string;
+        startSeconds: number;
+        endSeconds: number;
+        reasons: Array<"no-word-timing" | "invalid-word-range" | "outside-segment" | "non-monotonic" | "overlapping-words">;
+      }>;
+    };
     attentionSegments: Array<{
       segmentId: string;
       startSeconds: number;
@@ -260,6 +276,76 @@ export function transcriptWordEditDistance(hypothesis: string, reference: string
     prior = current;
   }
   return { errors: prior[right.length] ?? 0, referenceWords: right.length };
+}
+
+export function transcriptTimingIntegrity(segments: AudioTranscriptEvidenceSegment[]): AudioTranscriptEvidence["transcript"]["timingIntegrity"] {
+  let structurallyValidWordCount = 0;
+  let invalidWordTimingCount = 0;
+  let outsideSegmentWordCount = 0;
+  let nonMonotonicWordCount = 0;
+  let overlappingWordCount = 0;
+  let editableSegmentCount = 0;
+  const attentionSegments: AudioTranscriptEvidence["transcript"]["timingIntegrity"]["attentionSegments"] = [];
+
+  for (const segment of segments) {
+    const reasons = new Set<(typeof attentionSegments)[number]["reasons"][number]>();
+    let previousStart = Number.NEGATIVE_INFINITY;
+    let previousEnd = Number.NEGATIVE_INFINITY;
+    if (!segment.words.length) reasons.add("no-word-timing");
+    for (const word of segment.words) {
+      const start = word.startSeconds;
+      const end = word.endSeconds;
+      const valid = Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start;
+      if (!valid) {
+        invalidWordTimingCount += 1;
+        reasons.add("invalid-word-range");
+        continue;
+      }
+      let structurallyValid = true;
+      if (start < segment.startSeconds - 0.1 || end > segment.endSeconds + 0.1) {
+        outsideSegmentWordCount += 1;
+        reasons.add("outside-segment");
+        structurallyValid = false;
+      }
+      if (start < previousStart - 0.001) {
+        nonMonotonicWordCount += 1;
+        reasons.add("non-monotonic");
+        structurallyValid = false;
+      }
+      if (start < previousEnd - 0.02) {
+        overlappingWordCount += 1;
+        reasons.add("overlapping-words");
+        structurallyValid = false;
+      }
+      if (structurallyValid) structurallyValidWordCount += 1;
+      previousStart = start;
+      previousEnd = Math.max(previousEnd, end);
+    }
+    if (reasons.size === 0 && segment.words.length > 0) editableSegmentCount += 1;
+    else attentionSegments.push({
+      segmentId: segment.id,
+      startSeconds: segment.startSeconds,
+      endSeconds: segment.endSeconds,
+      reasons: [...reasons],
+    });
+  }
+
+  const wordCount = segments.reduce((total, segment) => total + segment.words.length, 0);
+  return {
+    disposition: wordCount === 0
+      ? "unavailable"
+      : attentionSegments.length
+        ? "review-required"
+        : "structurally-consistent",
+    structurallyValidWordCount,
+    invalidWordTimingCount,
+    outsideSegmentWordCount,
+    nonMonotonicWordCount,
+    overlappingWordCount,
+    editableSegmentCount,
+    timingIntegrityIsNotMeasuredAccuracy: true,
+    attentionSegments,
+  };
 }
 
 function sourceAudio(
@@ -604,6 +690,7 @@ function captureTimelineEvents(input: {
 export function buildAudioTranscriptEvidence(input: EvidenceInput): AudioTranscriptEvidence {
   const segments = Array.isArray(input.segments) ? input.segments : [];
   const words = segments.flatMap((segment) => segment.words.map((word) => ({ ...word, segment })));
+  const timingIntegrity = transcriptTimingIntegrity(segments);
   const confidences = words.map((entry) => confidence(entry.confidence)).filter((value): value is number => value !== null);
   const sortedConfidences = [...confidences].sort((left, right) => left - right);
   const meanWordConfidence = confidences.length
@@ -732,6 +819,7 @@ export function buildAudioTranscriptEvidence(input: EvidenceInput): AudioTranscr
       endsBeforeRecordingBySeconds: transcriptEndSeconds === null || recordingDurationSeconds === null
         ? null
         : rounded(Math.max(0, recordingDurationSeconds - transcriptEndSeconds)),
+      timingIntegrity,
       attentionSegments,
     },
   };
