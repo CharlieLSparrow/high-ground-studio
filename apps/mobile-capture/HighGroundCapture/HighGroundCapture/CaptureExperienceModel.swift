@@ -2153,7 +2153,7 @@ final class CaptureExperienceModel: ObservableObject {
         message = "Moment marked in the source timeline."
     }
 
-    func joinRoom() async {
+    func joinRoom(initiallyMuted: Bool = false) async {
         guard let session = selectedSession, !isChangingRoom else { return }
         guard providerControlsAreAvailable() else { return }
         guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
@@ -2192,7 +2192,8 @@ final class CaptureExperienceModel: ObservableObject {
         await providerRoom.connect(
             using: join,
             session: session,
-            expectedOwnerSnapshot: ownerSnapshot
+            expectedOwnerSnapshot: ownerSnapshot,
+            initiallyMuted: initiallyMuted
         )
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
             await providerRoom.disconnect()

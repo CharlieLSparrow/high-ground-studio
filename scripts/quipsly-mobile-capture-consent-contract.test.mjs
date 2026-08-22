@@ -9,7 +9,7 @@ const api = readFileSync(
   "utf8",
 );
 const web = readFileSync(
-  new URL("../apps/quipsly/src/app/(app)/coaching/sessions/page.tsx", import.meta.url),
+  new URL("../apps/quipsly/src/components/browser-source-recorder.tsx", import.meta.url),
   "utf8",
 );
 
@@ -32,7 +32,7 @@ for (const needle of [
 ]) {
   assert.ok(web.includes(needle), `web consent UI/request missing ${needle}`);
 }
-assert.match(web, /Saving consent does not start recording/);
+assert.match(web, /does not start recording/);
 assert.match(api, /Date\.now\(\) - 30 \* 60 \* 1_000/,
   "stale presentation evidence must not be replayable indefinitely");
 assert.match(api, /serverConfirmedAt: now\.toISOString\(\)/);

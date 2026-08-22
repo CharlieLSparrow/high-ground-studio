@@ -94,7 +94,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     func connect(
         using join: MobileCaptureRoomJoinResponse?,
         session: MobileCaptureSession,
-        expectedOwnerSnapshot: AuthManager.StableOwnerSnapshot
+        expectedOwnerSnapshot: AuthManager.StableOwnerSnapshot,
+        initiallyMuted: Bool = false
     ) async {
         #if canImport(LiveKit)
         guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
@@ -172,12 +173,14 @@ final class ProviderRoomController: NSObject, ObservableObject {
                 await abortForAccountChange()
                 return
             }
-            try await room.localParticipant.setMicrophone(enabled: true)
+            // Apply pre-join mute before publishing the microphone so a person
+            // who chose Join muted is never briefly audible while the UI catches up.
+            try await room.localParticipant.setMicrophone(enabled: !initiallyMuted)
             guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
                 await abortForAccountChange()
                 return
             }
-            isMuted = false
+            isMuted = initiallyMuted
             isConnected = true
             activeRoomName = room.name ?? join.roomName ?? session.displayTitle
             remoteParticipantCount = room.remoteParticipants.count

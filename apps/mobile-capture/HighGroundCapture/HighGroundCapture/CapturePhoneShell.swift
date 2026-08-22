@@ -6293,6 +6293,57 @@ private struct NewCaptureProjectSheet: View {
     }
 }
 
+/// Safe, device-local call choices survive navigation and relaunches. These
+/// are convenience preferences only: session authority, recording consent,
+/// and capture readiness are always revalidated by their canonical services.
+private enum CaptureCallPreferences {
+    private static let recordingModeKey = "quipsly.capture.preferred-recording-mode.v1"
+    private static let cameraPositionKey = "quipsly.capture.preferred-camera-position.v1"
+    private static let videoQualityKey = "quipsly.capture.preferred-video-quality.v1"
+
+    static var recordingMode: CaptureRecordingMode {
+        get {
+            if ProcessInfo.processInfo.arguments.contains("--capture-ui-preview") {
+                return .audio
+            }
+            guard let rawValue = UserDefaults.standard.string(forKey: recordingModeKey),
+                  let value = CaptureRecordingMode(rawValue: rawValue) else {
+                return .audio
+            }
+            return value
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: recordingModeKey) }
+    }
+
+    static var cameraPosition: VideoCaptureCameraPosition {
+        get {
+            if ProcessInfo.processInfo.arguments.contains("--capture-ui-preview") {
+                return .front
+            }
+            guard let rawValue = UserDefaults.standard.string(forKey: cameraPositionKey),
+                  let value = VideoCaptureCameraPosition(rawValue: rawValue) else {
+                return .front
+            }
+            return value
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: cameraPositionKey) }
+    }
+
+    static var videoQualityIntent: VideoCaptureQualityIntent {
+        get {
+            if ProcessInfo.processInfo.arguments.contains("--capture-ui-preview") {
+                return .production4K24
+            }
+            guard let rawValue = UserDefaults.standard.string(forKey: videoQualityKey),
+                  let value = VideoCaptureQualityIntent(rawValue: rawValue) else {
+                return .production4K24
+            }
+            return value
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: videoQualityKey) }
+    }
+}
+
 private struct CaptureRecorderView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
@@ -6300,15 +6351,14 @@ private struct CaptureRecorderView: View {
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var showsSessionPicker = false
-    @State private var showsRoomDetails = false
     @State private var showsSessionContext = false
     @State private var showsSessionReadiness = false
     @State private var showsConsentConfirmation = false
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var sessionNotesSession: MobileCaptureSession?
-    @State private var recordingMode: CaptureRecordingMode = .audio
-    @State private var cameraPosition: VideoCaptureCameraPosition = .front
-    @State private var videoQualityIntent: VideoCaptureQualityIntent = .production4K24
+    @State private var recordingMode: CaptureRecordingMode = CaptureCallPreferences.recordingMode
+    @State private var cameraPosition: VideoCaptureCameraPosition = CaptureCallPreferences.cameraPosition
+    @State private var videoQualityIntent: VideoCaptureQualityIntent = CaptureCallPreferences.videoQualityIntent
     @State private var isRunningRehearsalCheck = false
     @StateObject private var soundCheck = CaptureAudioSoundCheckController()
     @StateObject private var sessionPreflight = CaptureSessionPreflightClient()
@@ -6355,6 +6405,13 @@ private struct CaptureRecorderView: View {
                     // the recorder immediately. The much larger workflow
                     // workspace below remains lazy.
                     VStack(spacing: 16) {
+                    ProviderRoomControls(
+                        model: model,
+                        session: session,
+                        inputRoute: audioCapture.inputRouteName
+                    )
+                    .captureCard()
+
                     ConsentStrip(
                         session: session,
                         isBusy: model.isChangingConsent,
@@ -6406,8 +6463,7 @@ private struct CaptureRecorderView: View {
                     }
                     .captureCard()
 
-                    if session.recordingCount > 0,
-                       let sourceExit = model.selectedSessionSourceExitReadiness {
+                    if let sourceExit = model.selectedSessionSourceExitReadiness {
                         CaptureSourceRecoveryCard(
                             session: session,
                             readiness: sourceExit,
@@ -6420,17 +6476,19 @@ private struct CaptureRecorderView: View {
                         )
                     }
 
-                    // Recovery and the next durable action belong together.
-                    // A coach who just resolved a failed take should not have
-                    // to traverse recorder controls and rehearsal tooling to
-                    // confirm the verified source or continue to review.
-                    UploadSummaryCard(model: model)
+                    if session.recordingCount > 0 || hasSelectedSessionRecording {
+                        // Recovery and the next durable action belong together.
+                        // A coach who just resolved a failed take should not have
+                        // to traverse recorder controls and rehearsal tooling to
+                        // confirm the verified source or continue to review.
+                        UploadSummaryCard(model: model)
 
-                    StudioHandoffCard(
-                        model: model,
-                        session: session,
-                        captureIsActive: captureIsActive
-                    )
+                        StudioHandoffCard(
+                            model: model,
+                            session: session,
+                            captureIsActive: captureIsActive
+                        )
+                    }
 
                     CaptureSessionGuardianCard(
                         audioCapture: audioCapture,
@@ -6880,26 +6938,6 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    DisclosureGroup(isExpanded: $showsRoomDetails) {
-                        ProviderRoomControls(
-                            model: model,
-                            session: session
-                        )
-                            .padding(.top, 12)
-                    } label: {
-                        HStack {
-                            Label("Live room", systemImage: "person.2.wave.2")
-                                .font(.headline)
-                            Spacer()
-                            Text(model.providerControlsLockedForLocalCapture ? "Locked for take" : model.providerRoom.isConnected ? "Connected" : session.providerBadgeLabel)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(model.providerControlsLockedForLocalCapture ? Color.orange : model.providerRoom.isConnected ? Color.green : Color.secondary)
-                        }
-                    }
-                    .captureCard()
-                    .accessibilityHint(model.providerControlsLockedForLocalCapture ? model.providerControlsLockMessage : "Shows optional live room controls. Joining never starts local recording.")
-                    .accessibilityIdentifier("CaptureLiveRoomDisclosure")
-
                     SourceTruthFootnote(mode: recordingMode)
                 } else if model.isRefreshing {
                     CaptureLoadingCard(label: "Loading capture sessions…")
@@ -6992,6 +7030,7 @@ private struct CaptureRecorderView: View {
         .interactiveDismissDisabled(captureIsActive)
         .onChange(of: recordingMode) { oldMode, newMode in
             guard oldMode != newMode else { return }
+            CaptureCallPreferences.recordingMode = newMode
             if newMode == .audio {
                 Task { await videoCapture.shutdownPreview() }
             } else if videoCapture.state == .ready,
@@ -7007,7 +7046,9 @@ private struct CaptureRecorderView: View {
             }
         }
         .onChange(of: cameraPosition) { oldPosition, newPosition in
-            guard oldPosition != newPosition,
+            guard oldPosition != newPosition else { return }
+            CaptureCallPreferences.cameraPosition = newPosition
+            guard
                   recordingMode.recordsVideo,
                   videoCapture.state == .ready else { return }
             Task {
@@ -7020,7 +7061,9 @@ private struct CaptureRecorderView: View {
             }
         }
         .onChange(of: videoQualityIntent) { oldQuality, newQuality in
-            guard oldQuality != newQuality,
+            guard oldQuality != newQuality else { return }
+            CaptureCallPreferences.videoQualityIntent = newQuality
+            guard
                   recordingMode.recordsVideo,
                   videoCapture.state == .ready else { return }
             Task {
@@ -7074,6 +7117,11 @@ private struct CaptureRecorderView: View {
 
     private var captureIsActive: Bool {
         audioCaptureIsActive || videoCaptureIsActive
+    }
+
+    private var hasSelectedSessionRecording: Bool {
+        guard let roomID = model.selectedSession?.callRoomId else { return false }
+        return library.recordings.contains { $0.callRoomId == roomID }
     }
 
     private var audioCaptureIsActive: Bool {
@@ -11441,27 +11489,34 @@ struct InputLevelMeter: View {
 private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
     let session: MobileCaptureSession
+    let inputRoute: String
+    @AppStorage("quipsly.call.join-muted.v1") private var joinMuted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("The live room lets people hear each other. The local source records only this iPhone's selected microphone; remote provider audio requires separate participant tracks or verified provider egress.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("CaptureProviderRoomBoundaryCopy")
-
-            if providerControlsLocked {
-                Label("Live room controls locked for this take", systemImage: "lock.shield.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.orange)
-                Text(model.providerControlsLockMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("ProviderControlsCaptureLockNotice")
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Label(model.providerRoom.isConnected ? "Call in progress" : "Ready to join", systemImage: model.providerRoom.isConnected ? "person.2.wave.2.fill" : "person.2.wave.2")
+                    .font(.headline)
+                Spacer()
+                Text("Audio call")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(model.providerRoom.isConnected ? Color.green : Color.secondary)
             }
 
-            HStack(spacing: 10) {
-                if model.providerRoom.isConnected {
+            Label(inputRoute, systemImage: "mic.fill")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .accessibilityIdentifier("CaptureCallInputRoute")
+
+            if providerControlsLocked {
+                Label("Finish this take to change the call", systemImage: "lock.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+
+            if model.providerRoom.isConnected {
+                HStack(spacing: 10) {
                     Button {
                         Task { await model.toggleRoomMute() }
                     } label: {
@@ -11481,21 +11536,37 @@ private struct ProviderRoomControls: View {
                     .disabled(providerControlsLocked || model.isChangingRoom)
                     .accessibilityHint(providerControlHint)
                     .accessibilityIdentifier("ProviderLeaveRoomButton")
-                } else {
-                    Button {
-                        Task { await model.joinRoom() }
-                    } label: {
+                }
+            } else {
+                Toggle(isOn: $joinMuted) {
+                    Label("Join muted", systemImage: joinMuted ? "mic.slash.fill" : "mic.fill")
+                        .font(.subheadline)
+                }
+                .toggleStyle(.switch)
+                .disabled(providerControlsLocked || model.isChangingRoom)
+                .accessibilityIdentifier("CaptureJoinMutedToggle")
+
+                Button {
+                    Task {
+                        await model.joinRoom(initiallyMuted: joinMuted)
+                    }
+                } label: {
+                    HStack {
+                        Spacer()
                         if model.isChangingRoom {
                             ProgressView()
                         } else {
-                            Label("Join room", systemImage: "phone.fill")
+                            Label("Join call", systemImage: "phone.fill")
                         }
+                        Spacer()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(providerControlsLocked || model.isChangingRoom || session.providerCanJoin != true)
-                    .accessibilityHint(providerControlHint)
-                    .accessibilityIdentifier("ProviderJoinRoomButton")
+                    .frame(minHeight: 28)
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(providerControlsLocked || model.isChangingRoom || session.providerCanJoin != true)
+                .accessibilityHint(providerControlHint)
+                .accessibilityIdentifier("ProviderJoinRoomButton")
             }
 
             if let detail = model.providerRoom.lastError ?? model.providerRoom.statusText.nonempty {
@@ -11514,8 +11585,8 @@ private struct ProviderRoomControls: View {
 
     private var providerControlHint: String {
         providerControlsLocked
-            ? model.providerControlsLockMessage
-            : "Live room audio is separate from the local source recorder."
+            ? "Finish or stop the current take first."
+            : "Joins the conversation. Recording starts only when someone taps Record."
     }
 }
 

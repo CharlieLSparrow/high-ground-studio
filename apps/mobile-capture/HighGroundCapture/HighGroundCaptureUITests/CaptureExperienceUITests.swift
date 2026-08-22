@@ -180,6 +180,28 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testRecorderLeadsWithAStandardCallGreenRoom() {
+        app.tabBars.buttons["Record"].tap()
+
+        let call = app.descendants(matching: .any)["CaptureProviderRoomControls"]
+        let join = app.buttons["ProviderJoinRoomButton"]
+        let joinMuted = app.switches["CaptureJoinMutedToggle"]
+        let route = app.descendants(matching: .any)["CaptureCallInputRoute"]
+        let consent = app.descendants(matching: .any)["CaptureConsentStrip"]
+
+        XCTAssertTrue(call.waitForExistence(timeout: 5))
+        XCTAssertTrue(join.exists, "The green room should expose one obvious Join call action.")
+        XCTAssertTrue(joinMuted.exists, "Mute state belongs in pre-join, not in a buried settings surface.")
+        XCTAssertTrue(route.exists, "The current microphone route should be visible before joining.")
+        XCTAssertTrue(consent.exists)
+        XCTAssertLessThan(
+            call.frame.minY,
+            consent.frame.minY,
+            "The normal call path must come before recording administration and production tools."
+        )
+        XCTAssertTrue(app.state == .runningForeground)
+    }
+
     func testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation() {
         app.tabBars.buttons["Record"].tap()
 
