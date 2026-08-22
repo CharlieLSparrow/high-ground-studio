@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
+  ArrowRight,
   CalendarDays,
   CheckCircle2,
   CircleAlert,
+  CircleDashed,
   Clapperboard,
   ClipboardList,
   FileAudio,
@@ -146,6 +148,70 @@ function liveRoomReadinessLabel(preparation: SessionPreparation | null) {
   if (preparation.providerReadiness === "livekit-needs-room-id")
     return "Live room not prepared";
   return "Local-only Session";
+}
+
+function SessionPostCallPath({
+  roomId,
+  hasRecording,
+  transcriptStatus,
+  transcriptSegmentCount,
+  reviewMaterialReady,
+  packetStale,
+  held,
+  followUpReady,
+}: {
+  roomId: string;
+  hasRecording: boolean;
+  transcriptStatus: string;
+  transcriptSegmentCount: number;
+  reviewMaterialReady: boolean;
+  packetStale: boolean;
+  held: boolean;
+  followUpReady: boolean;
+}) {
+  const transcriptReady = transcriptStatus === "COMPLETED" && transcriptSegmentCount > 0;
+  const reviewReady = reviewMaterialReady && !packetStale;
+  const steps = [
+    { label: "Recording", ready: hasRecording },
+    { label: "Transcript", ready: transcriptReady },
+    { label: "Review", ready: reviewReady },
+    { label: "Follow-up", ready: followUpReady },
+  ];
+  const running = ["RUNNING", "PROCESSING"].includes(transcriptStatus);
+  const next = !hasRecording
+    ? { label: "Review recordings", href: sessionWorkspaceHref(roomId, "recordings"), detail: "A verified recording is needed before transcription." }
+    : held
+      ? { label: "Review consent", href: sessionWorkspaceHref(roomId, "prepare"), detail: "Transcription is waiting for current consent and release evidence." }
+      : !transcriptReady
+        ? { label: running ? "Transcription is running" : "Start or retry transcription", href: "#transcript-status", detail: running ? "Quipsly is processing the source in the background; this page refreshes automatically." : "Use the verified recording to create the timed transcript." }
+        : !reviewReady
+          ? { label: packetStale ? "Rebuild review material" : "Build review material", href: "#review-material", detail: "Turn the completed transcript into editable suggestions for review." }
+          : !followUpReady
+            ? { label: "Review transcript and suggestions", href: "#transcript-correction-review", detail: "Correct words and speakers, then choose which notes, tasks, and goals to keep." }
+            : { label: "Open shared follow-up", href: sessionWorkspaceHref(roomId, "outputs"), detail: "The released follow-up is ready to review or share." };
+
+  return (
+    <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 shadow-sm" aria-label="Post-call workflow">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">After the call</p>
+          <h2 className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Recording to useful follow-up</h2>
+        </div>
+        <a href={next.href} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 py-2 text-xs font-black uppercase tracking-wide text-white">
+          {next.label} <ArrowRight size={14} aria-hidden="true" />
+        </a>
+      </div>
+      <ol className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {steps.map((step) => (
+          <li key={step.label} className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wide ${step.ready ? "border-emerald-200 bg-white text-emerald-900" : "border-violet-100 bg-white/65 text-violet-800"}`}>
+            {step.ready ? <CheckCircle2 size={15} aria-label="Done" /> : <CircleDashed size={15} aria-label="Not finished" />}
+            {step.label}
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 text-xs font-bold leading-5 text-violet-950">{next.detail}</p>
+    </section>
+  );
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -5839,6 +5905,9 @@ export function SessionReviewClient({
   const held = packet?.transcriptProcessingGate?.allowed === false;
   const packetStale = packet?.packet?.transcriptReview?.packetStale === true;
   const reviewHeld = held || packetStale;
+  const clientFollowUpReady = finishingEvidence.outputs.some(
+    (output) => output.kind === "CLIENT_FOLLOW_UP" && output.status === "RELEASED",
+  );
   const reviewLanes = packet?.packet?.reviewLanes ?? [];
   const actionableReviewLanes = reviewLanes.filter(
     (lane) => lane.itemCount > 0,
@@ -6239,11 +6308,21 @@ export function SessionReviewClient({
           </section>
         ) : (
           <>
+            <SessionPostCallPath
+              roomId={roomId}
+              hasRecording={Boolean(packet.selectedRecordingAsset || packet.transcriptJob?.asset)}
+              transcriptStatus={packet.transcriptJob?.status || "NOT_STARTED"}
+              transcriptSegmentCount={packet.transcriptJob?.segmentCount ?? 0}
+              reviewMaterialReady={Boolean(packet.packet?.summary)}
+              packetStale={packetStale}
+              held={held}
+              followUpReady={clientFollowUpReady}
+            />
             <section
               className="grid gap-4 lg:grid-cols-3"
               aria-label="Session evidence status"
             >
-              <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5">
+              <div id="transcript-status" className="rounded-2xl border border-[#e5d5b7] bg-white p-5 scroll-mt-24">
                 <ShieldCheck className="text-sky-700" aria-hidden="true" />
                 <p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">
                   Consent & release
@@ -6354,8 +6433,9 @@ export function SessionReviewClient({
             </section>
 
             <section
+              id="review-material"
               aria-labelledby="summary-heading"
-              className="rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm"
+              className="scroll-mt-24 rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm"
             >
               <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
                 Human review material

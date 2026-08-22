@@ -522,6 +522,9 @@ describe("Session review goal candidates", () => {
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 3, granted: 3, transcriptionPermitted: 3 }} />);
     const start = await screen.findByRole("button", { name: "Start transcription" });
+    const workflow = screen.getByRole("region", { name: "Post-call workflow" });
+    expect(within(workflow).getByRole("link", { name: /Start or retry transcription/i })).toHaveAttribute("href", "#transcript-status");
+    expect(within(workflow).getByText("Recording")).toBeInTheDocument();
     expect(screen.getByText(/creates derived text—not notes, tasks, goals, or client delivery/i)).toBeInTheDocument();
     await user.click(start);
 
@@ -712,6 +715,7 @@ describe("Session review goal candidates", () => {
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
 
     expect(await screen.findByRole("heading", { name: "Review notes by purpose" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Review transcript and suggestions/i })).toHaveAttribute("href", "#transcript-correction-review");
     expect(screen.getByText("1 category has no candidates")).toBeInTheDocument();
     expect(screen.getByText("1 review category has no candidates")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Goals and tasks" })).not.toBeInTheDocument();
@@ -749,6 +753,7 @@ describe("Session review goal candidates", () => {
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
     const build = await screen.findByRole("button", { name: "Build review packet" });
+    expect(screen.getByRole("link", { name: /Build review material/i })).toHaveAttribute("href", "#review-material");
     expect(screen.getByText(/creates no task or goal and sends or publishes nothing/i)).toBeInTheDocument();
 
     await user.click(build);
