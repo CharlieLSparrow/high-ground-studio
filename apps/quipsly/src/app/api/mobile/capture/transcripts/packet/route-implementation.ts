@@ -24,6 +24,7 @@ import {
   transcriptPacketSnapshot,
 } from "@/lib/server/coaching-packets";
 import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
+import { buildSessionTranscriptConfidence } from "@/lib/session-transcript-confidence";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { readGovernedActionSourceReference } from "@/lib/server/governed-action-runtime";
@@ -730,7 +731,7 @@ export async function GET(request: Request) {
           where: { status: "active" },
           orderBy: { updatedAt: "desc" },
         },
-        _count: { select: { segments: true } },
+        _count: { select: { segments: true, words: true } },
       },
     }),
   ]);
@@ -754,6 +755,11 @@ export async function GET(request: Request) {
         error: "Transcript processing requires bound recording asset evidence.",
       };
   const transcriptProcessingAllowed = transcriptGate.allowed;
+  const transcriptConfidence = buildSessionTranscriptConfidence({
+    job: latestTranscriptJob,
+    asset: selectedTranscriptAsset,
+    processingAllowed: transcriptProcessingAllowed,
+  });
   const transcriptHeld = Boolean(selectedTranscriptAsset) && !transcriptProcessingAllowed;
   const packetNotes = transcriptProcessingAllowed
     ? notes.filter((note: any) => {
@@ -951,6 +957,8 @@ export async function GET(request: Request) {
           status: latestTranscriptJob.status,
           provider: latestTranscriptJob.provider,
           segmentCount: latestTranscriptJob._count?.segments ?? 0,
+          wordCount: latestTranscriptJob._count?.words ?? 0,
+          readiness: transcriptConfidence,
           asset: latestTranscriptJob.asset
             ? {
                 id: latestTranscriptJob.asset.id,

@@ -214,6 +214,31 @@ function SessionPostCallPath({
   );
 }
 
+function TranscriptConfidenceSummary({ confidence }: {
+  confidence: NonNullable<NonNullable<SessionReviewPacket["transcriptJob"]>["readiness"]>;
+}) {
+  const checks = [
+    { label: confidence.exactSourceBound ? "Exact recording" : "Check recording", ready: confidence.exactSourceBound },
+    { label: confidence.segmentTimingReady ? "Timed transcript" : "Timing attention", ready: confidence.segmentTimingReady },
+    { label: confidence.wordEditingReady ? "Text editing ready" : "Word timing needed", ready: confidence.wordEditingReady },
+    { label: `${confidence.attributedSpeakerClusterCount}/${confidence.speakerClusterCount} speakers identified`, ready: confidence.speakerAttributionComplete },
+    { label: `${confidence.reviewedSegmentCount}/${confidence.segmentCount} segments reviewed`, ready: confidence.humanReviewComplete },
+  ];
+  const healthy = confidence.state === "READY_TO_REVIEW" || confidence.state === "REVIEWED";
+  return <div className={`mt-4 rounded-xl border p-4 ${healthy ? "border-emerald-200 bg-emerald-50/70" : "border-amber-200 bg-amber-50/70"}`} data-testid="transcript-confidence-summary">
+    <p className="text-sm font-black text-[#3d3122]">{confidence.label}</p>
+    <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">{confidence.detail}</p>
+    <ul className="mt-3 flex flex-wrap gap-2" aria-label="Transcript readiness checks">
+      {checks.map((check) => <li key={check.label} className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-wide ${check.ready ? "border-emerald-200 bg-white text-emerald-900" : "border-amber-200 bg-white text-amber-950"}`}>{check.ready ? "✓ " : ""}{check.label}</li>)}
+    </ul>
+    <p className="mt-3 text-xs font-bold leading-5 text-[#3d3122]">{confidence.nextAction}</p>
+    <details className="mt-3 border-t border-current/10 pt-3">
+      <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-[#765f40]">How Quipsly decides</summary>
+      <p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">A completed provider job is not enough by itself. Quipsly separately checks exact recording bytes, usable timing, reviewed speaker identities, and playback-reviewed corrections. Provider confidence is never presented as measured accuracy.</p>
+    </details>
+  </div>;
+}
+
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -6383,6 +6408,7 @@ export function SessionReviewClient({
                     packet.selectedRecordingAsset?.fileName ||
                     "no bound recording asset"}
                 </p>
+                {packet.transcriptJob?.readiness ? <TranscriptConfidenceSummary confidence={packet.transcriptJob.readiness} /> : null}
                 {packet.selectedRecordingAsset?.explicitlySelected ? (
                   <p className="mt-2 break-all font-mono text-[10px] font-bold text-violet-800">
                     Focused RecordingAsset · {packet.selectedRecordingAsset.id}

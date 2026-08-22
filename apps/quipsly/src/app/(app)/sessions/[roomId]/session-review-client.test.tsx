@@ -536,6 +536,42 @@ describe("Session review goal candidates", () => {
     expect(screen.queryByRole("button", { name: "Start transcription" })).not.toBeInTheDocument();
   });
 
+  it("summarizes source, timing, speaker, and human-review confidence without exposing diagnostics by default", async () => {
+    const ready = packet();
+    ready.transcriptJob!.wordCount = 14;
+    ready.transcriptJob!.readiness = {
+      schema: "quipsly-session-transcript-confidence-v1",
+      state: "READY_TO_REVIEW",
+      label: "Transcript ready to review",
+      detail: "Timed text is bound to the exact recording. Listen, correct words, and identify speakers where needed.",
+      exactSourceBound: true,
+      segmentTimingReady: true,
+      wordEditingReady: true,
+      speakerAttributionComplete: false,
+      humanReviewComplete: false,
+      segmentCount: 1,
+      wordCount: 14,
+      reviewedSegmentCount: 0,
+      speakerClusterCount: 1,
+      attributedSpeakerClusterCount: 0,
+      transcriptStartSeconds: 0.2,
+      transcriptEndSeconds: 5.4,
+      nextAction: "Listen to a sample from each speaker and confirm who they are.",
+      boundaries: { providerConfidenceIsNotMeasuredAccuracy: true, speakerLabelIsNotParticipantIdentity: true, completedJobAloneIsNotExactSourceProof: true, textEditingRequiresImmutableWordTiming: true },
+    };
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(ready)) as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    expect(await screen.findByTestId("transcript-confidence-summary")).toHaveTextContent("Transcript ready to review");
+    expect(screen.getByText("✓ Exact recording")).toBeInTheDocument();
+    expect(screen.getByText("✓ Timed transcript")).toBeInTheDocument();
+    expect(screen.getByText("✓ Text editing ready")).toBeInTheDocument();
+    expect(screen.getByText("0/1 speakers identified")).toBeInTheDocument();
+    expect(screen.getByText("0/1 segments reviewed")).toBeInTheDocument();
+    expect(screen.getByText("How Quipsly decides")).toBeInTheDocument();
+  });
+
   it("updates a running transcript to completed without a manual refresh", async () => {
     jest.useFakeTimers();
     const running = packetReadyToBuild();

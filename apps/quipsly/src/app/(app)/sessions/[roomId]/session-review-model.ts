@@ -5,6 +5,7 @@ import {
   type TranscriptNoteReviewDecision,
 } from "@high-ground/quipsly-domain/coaching-packet";
 import type { EditableSessionNoteKind, SessionNoteVisibility } from "@/lib/session-note-contract";
+import type { SessionTranscriptConfidence } from "@/lib/session-transcript-confidence";
 
 export type SessionReviewGovernedActionReference = {
   actionId: string;
@@ -164,6 +165,8 @@ export type SessionReviewPacket = {
     status: string;
     provider: string;
     segmentCount: number;
+    wordCount?: number;
+    readiness?: SessionTranscriptConfidence;
     asset: { id: string; fileName: string | null; status: string; kind: string } | null;
   } | null;
   selectedRecordingAsset?: {
