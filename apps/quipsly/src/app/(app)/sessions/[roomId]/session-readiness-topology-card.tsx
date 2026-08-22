@@ -261,9 +261,9 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
   return <section className="rounded-3xl border border-sky-200 bg-sky-50/45 p-5 shadow-sm sm:p-7" aria-labelledby="session-readiness-topology-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="max-w-3xl">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-800">Person · endpoint · retained source</p>
-        <h2 id="session-readiness-topology-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Who is here, what they joined with, and what is actually safe</h2>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Each person can use several call endpoints and preserve several local masters. Quipsly keeps those identities separate so a green call icon can never masquerade as an uploaded recording.</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-800">Recording safety</p>
+        <h2 id="session-readiness-topology-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Are everyone’s recordings safe?</h2>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Stay on this Session until Quipsly says every required recording is safe. Technical details stay out of the way unless something needs attention.</p>
       </div>
       <button type="button" onClick={() => void refreshPresence()} disabled={refreshing || !liveReadbackEnabled} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50">
         <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
@@ -285,6 +285,9 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
       <p className={`mt-3 text-[10px] font-black uppercase tracking-wide ${exitReady ? "text-emerald-800" : "text-[#765f40]"}`}>Safe to leave every endpoint: {exitReady ? "yes" : "no"} · {topology.exitReadiness.drainedEndpointCount}/{topology.exitReadiness.endpointQueueCount} latest installation queue receipts drained</p>
     </section>
 
+    <details className="mt-5 rounded-2xl border border-sky-200 bg-white/70 p-4" open={!exitReady || undefined} data-testid="recording-status-details">
+      <summary className="cursor-pointer text-sm font-black text-sky-950">{exitReady ? "Recording details" : "Recording details and recovery"}</summary>
+      <div className="mt-5">
     <section className="mt-5 rounded-2xl border border-violet-200 bg-violet-50/55 p-5" aria-labelledby="session-recording-plan-heading">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
@@ -397,5 +400,7 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
       <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><ShieldCheck size={15} className="mr-1 inline" aria-hidden="true" />RecordingAsset is the durable retained-source authority. START/STOP receipts remain visible while bytes are still local or uploading.</p>
       <p className="rounded-xl border border-sky-200 bg-white p-4 text-sky-950"><Radio size={15} className="mr-1 inline" aria-hidden="true" />Provider presence is a current observation only. Join grants are history; call tracks are conversation media; neither proves a master recording.</p>
     </div>
+      </div>
+    </details>
   </section>;
 }

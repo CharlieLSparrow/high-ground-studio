@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import "@testing-library/jest-dom";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 
 const refresh = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -198,5 +198,39 @@ describe("Session readiness topology card", () => {
       expect.objectContaining({ cache: "no-store" }),
     );
     expect(document.body.textContent).not.toContain("provider-secret");
+    expect(screen.getByTestId("recording-status-details")).toHaveAttribute("open");
+  });
+
+  it("keeps technical receipts collapsed when every recording is safe", async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        presence: { status: "EMPTY", observedAt: "2026-08-05T18:00:01.000Z", devices: [], nextAction: "No one is in the call." },
+      }),
+    });
+    global.fetch = fetchMock as typeof fetch;
+    const safeTopology: SessionReadinessTopology = {
+      ...topology,
+      summary: { ...topology.summary, endpointQueueCount: 1, drainedEndpointCount: 1 },
+      exitReadiness: {
+        ...topology.exitReadiness,
+        state: "SAFE_TO_LEAVE",
+        label: "Every recording is safe",
+        detail: "All required recordings are verified and every device upload queue is empty.",
+        endpointQueueCount: 1,
+        drainedEndpointCount: 1,
+        allEndpointQueuesConfirmedEmpty: true,
+        safeToLeaveAllEndpoints: true,
+      },
+    };
+
+    render(<SessionReadinessTopologyCard roomId="room-safe" topology={safeTopology} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    expect(screen.getByRole("heading", { name: "Are everyone’s recordings safe?" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Every recording is safe" })).toBeInTheDocument();
+    expect(screen.getByTestId("recording-status-details")).not.toHaveAttribute("open");
+    expect(screen.getByText("Recording details")).toBeInTheDocument();
   });
 });
