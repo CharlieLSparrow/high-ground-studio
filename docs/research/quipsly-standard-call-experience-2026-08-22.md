@@ -11,15 +11,15 @@ notes, goals, tasks, and collaborative follow-through.
 
 ## Evidence reviewed
 
-- Google Meet exposes a pre-call self-check with a camera preview, microphone,
+- [Google Meet](https://support.google.com/meet/answer/10409699?hl=en) exposes a pre-call self-check with a camera preview, microphone,
   speaker, and device selectors.
-- Zoom makes its speaker-and-microphone test optional, supports changing devices
+- [Zoom](https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0062765) makes its speaker-and-microphone test optional, supports changing devices
   during a meeting, and can remember automatic computer-audio joining.
-- Microsoft Teams keeps the common audio source and mute controls in pre-join,
+- [Microsoft Teams](https://support.microsoft.com/en-us/teams/meetings/manage-audio-settings-in-microsoft-teams-meetings) keeps the common audio source and mute controls in pre-join,
   with advanced settings secondary.
-- Riverside presents a device check, preview, microphone/camera toggles, and one
+- [Riverside](https://support.riverside.com/hc/en-us/articles/5251967324573-Join-a-studio-as-a-host) presents a device check, preview, microphone/camera toggles, and one
   `Join Studio` action. Guests receive a deliberately simplified workspace.
-- Apple requires camera and microphone permission at the protected-resource
+- [Apple](https://developer.apple.com/documentation/uikit/requesting-access-to-protected-resources?changes=_2) requires camera and microphone permission at the protected-resource
   boundary and remembers the system response. Purpose strings should be concise,
   accurate, and specific.
 - Recurring user complaints across meeting and remote-recording products concern
@@ -63,6 +63,14 @@ notes, goals, tasks, and collaborative follow-through.
 - Removed empty upload and Studio handoff cards before the first take.
 - Kept recording consent separate and Session-scoped; joining still never starts
   recording.
+- Replaced the browser's four-step progress rail with one familiar green room:
+  current devices, direct mic/camera state, preview, and one `Join call` action.
+- Put browser device selection and the optional audio confidence check behind
+  secondary disclosures when the remembered setup is usable.
+- Remembered browser camera and join-muted choices alongside microphone, camera,
+  and output identity, with label fallback when browser device IDs rotate.
+- Applied pre-join mute before publishing browser call audio, avoiding a brief
+  open-microphone interval during connection.
 
 ## Acceptance consequences
 

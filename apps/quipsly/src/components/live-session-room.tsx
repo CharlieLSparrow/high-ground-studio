@@ -5,7 +5,6 @@ import {
   CameraOff,
   CheckCircle2,
   CircleAlert,
-  CircleDashed,
   Cloud,
   CloudOff,
   Headphones,
@@ -87,6 +86,8 @@ type PreferredDevices = {
   cameraLabel?: string;
   outputId?: string;
   outputLabel?: string;
+  cameraWanted?: boolean;
+  joinMuted?: boolean;
 };
 type JoinPacket = {
   ok?: boolean;
@@ -100,53 +101,6 @@ type JoinPacket = {
   recordingConsentStatus?: string;
   nextAction?: string;
 };
-
-function SessionLobbyProgress({
-  recordingReady,
-  devicesReady,
-  previewReady,
-  connected,
-}: {
-  recordingReady: boolean;
-  devicesReady: boolean;
-  previewReady: boolean;
-  connected: boolean;
-}) {
-  const steps = [
-    { label: "Recording choice", ready: recordingReady },
-    { label: "Devices", ready: devicesReady },
-    { label: "Preview", ready: previewReady },
-    { label: "Join", ready: connected },
-  ];
-  const current = steps.findIndex((step) => !step.ready);
-
-  return (
-    <section className="mt-5 rounded-2xl border border-violet-200 bg-violet-50/70 p-3" aria-label="Session lobby progress">
-      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {steps.map((step, index) => {
-          const isCurrent = current === index;
-          return (
-            <li key={step.label} className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wide ${step.ready ? "border-emerald-200 bg-white text-emerald-900" : isCurrent ? "border-violet-300 bg-white text-violet-950 ring-2 ring-violet-100" : "border-transparent bg-violet-50 text-violet-700/65"}`}>
-              {step.ready ? <CheckCircle2 size={15} aria-label="Done" /> : <CircleDashed size={15} aria-label={isCurrent ? "Next" : "Later"} />}
-              <span>{step.label}</span>
-            </li>
-          );
-        })}
-      </ol>
-      <p className="mt-2 px-1 text-xs font-bold leading-5 text-violet-950">
-        {connected
-          ? "You’re in the room. Recording still starts with its own visible button."
-          : current === 0
-            ? "Confirm what may be recorded. Your choice is remembered for this Session."
-            : current === 1
-              ? "Choose the microphone and optional camera you want to use."
-              : current === 2
-                ? "Preview your setup. The private sound check is recommended, not required."
-                : "Your setup is ready. Join when you are comfortable."}
-      </p>
-    </section>
-  );
-}
 
 type ProviderRecordingState = {
   state: "off" | "starting" | "recording" | "stopping" | "needs-review" | "held";
@@ -215,11 +169,16 @@ function audioOutputSupported(element: HTMLMediaElement | null) {
   return Boolean(element && "setSinkId" in element);
 }
 
-const PREFERRED_DEVICES_KEY = "quipsly-live-preferred-devices-v1";
+const PREFERRED_DEVICES_KEY = "quipsly-live-preferred-devices-v2";
+const LEGACY_PREFERRED_DEVICES_KEY = "quipsly-live-preferred-devices-v1";
 
 function readPreferredDevices(): PreferredDevices {
   try {
-    const value = JSON.parse(window.localStorage.getItem(PREFERRED_DEVICES_KEY) || "{}");
+    const value = JSON.parse(
+      window.localStorage.getItem(PREFERRED_DEVICES_KEY)
+        || window.localStorage.getItem(LEGACY_PREFERRED_DEVICES_KEY)
+        || "{}",
+    );
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
   } catch {
     return {};
@@ -375,11 +334,11 @@ export function LiveSessionRoom({
   const [cameraId, setCameraId] = useState("");
   const [outputId, setOutputId] = useState("");
   const [cameraWanted, setCameraWanted] = useState(experience.defaultCamera);
+  const [joinMuted, setJoinMuted] = useState(false);
   const [microphoneMuted, setMicrophoneMuted] = useState(false);
   const [cameraMuted, setCameraMuted] = useState(false);
   const [participants, setParticipants] = useState<Array<{ identity: string; name: string; speaking: boolean }>>([]);
   const [recordingConsentGranted, setRecordingConsentGranted] = useState(false);
-  const [recordingConsentStatus, setRecordingConsentStatus] = useState("not checked");
   const [allRecordingChoicesReady, setAllRecordingChoicesReady] = useState(false);
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
   const [cameraEvidence, setCameraEvidence] = useState<StudioCameraInputEvidence | null>(null);
@@ -409,8 +368,6 @@ export function LiveSessionRoom({
   });
 
   const connected = status === "connected" || status === "reconnecting";
-  const devicesReady = Boolean(microphoneId && (!cameraWanted || cameraId));
-  const previewReady = connected || previewTested;
   const statusLabel = useMemo(() => status.replace(/\b\w/g, (letter) => letter.toUpperCase()), [status]);
   const providerRecordingState = providerRecording?.state || "off";
   const providerRecordingStateLabel = providerRecordingState === "needs-review"
@@ -429,6 +386,17 @@ export function LiveSessionRoom({
   useEffect(() => {
     cameraWantedRef.current = cameraWanted;
   }, [cameraWanted]);
+
+  useEffect(() => {
+    const preferred = readPreferredDevices();
+    if (typeof preferred.cameraWanted === "boolean") {
+      setCameraWanted(preferred.cameraWanted);
+    }
+    if (typeof preferred.joinMuted === "boolean") {
+      setJoinMuted(preferred.joinMuted);
+      setMicrophoneMuted(preferred.joinMuted);
+    }
+  }, []);
 
   useEffect(() => {
     const changed = () => setPageVisible(document.visibilityState === "visible");
@@ -818,7 +786,6 @@ export function LiveSessionRoom({
       });
       const packet = await response.json().catch(() => ({})) as JoinPacket;
       setRecordingConsentGranted(packet.recordingConsentGranted === true);
-      setRecordingConsentStatus(packet.recordingConsentStatus || "not created");
       if (!response.ok || !packet.ok || !packet.canJoin || !packet.serverUrl || !packet.participantToken) {
         throw new Error(packet.error || packet.nextAction || "This Session is not ready for a live room.");
       }
@@ -875,12 +842,13 @@ export function LiveSessionRoom({
 
       await room.connect(packet.serverUrl, packet.participantToken);
       await room.switchActiveDevice("audioinput", microphoneId);
-      await room.localParticipant.setMicrophoneEnabled(true, {
+      await room.localParticipant.setMicrophoneEnabled(!joinMuted, {
         deviceId: microphoneId,
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       });
+      setMicrophoneMuted(joinMuted);
       if (cameraWanted && cameraId) {
         await room.switchActiveDevice("videoinput", cameraId);
         const publication = await room.localParticipant.setCameraEnabled(true, {
@@ -909,7 +877,7 @@ export function LiveSessionRoom({
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "The live room could not connect.");
     }
-  }, [attachRemoteTrack, callRoomId, cameraId, cameraWanted, clearPreflightPreview, clearRemoteMedia, episodeSlug, microphoneId, onEpisodeWatchHint, projectSlug, updateRoster]);
+  }, [attachRemoteTrack, callRoomId, cameraId, cameraWanted, clearPreflightPreview, clearRemoteMedia, episodeSlug, joinMuted, microphoneId, onEpisodeWatchHint, projectSlug, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
@@ -1119,8 +1087,10 @@ export function LiveSessionRoom({
       cameraLabel: camera?.label,
       outputId: output?.deviceId,
       outputLabel: output?.label,
+      cameraWanted,
+      joinMuted,
     } satisfies PreferredDevices));
-  }, [cameraId, cameras, microphoneId, microphones, outputId, outputs]);
+  }, [cameraId, cameraWanted, cameras, joinMuted, microphoneId, microphones, outputId, outputs]);
 
   useEffect(() => {
     if (!connected || !outputId) return;
@@ -1180,14 +1150,63 @@ export function LiveSessionRoom({
         <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${connected ? "border-emerald-300 bg-emerald-50 text-emerald-900" : status === "error" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-violet-200 bg-violet-50 text-violet-900"}`}>{statusLabel}</span>
       </div>
 
-      <SessionLobbyProgress recordingReady={recordingConsentGranted} devicesReady={devicesReady} previewReady={previewReady} connected={connected} />
-
       <div className={`mt-5 grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
         <div className="space-y-4">
-          {experience.captureProfile === "coaching" ? retainedSourceControls : null}
+          {!connected ? (
+            <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4" aria-label="Ready to join">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Ready to join?</p>
+                  <h3 className="mt-1 font-serif text-2xl font-black text-violet-950">Check how you’ll enter the call</h3>
+                  <p className="mt-1 text-xs font-bold leading-5 text-violet-900">
+                    {microphones.find((device) => device.deviceId === microphoneId)?.label || "Microphone not available yet"}
+                    {cameraWanted ? ` · ${cameras.find((device) => device.deviceId === cameraId)?.label || "Camera not available yet"}` : " · Camera off"}
+                  </p>
+                </div>
+                <span className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${previewTested ? "bg-emerald-100 text-emerald-950" : "bg-white text-violet-950"}`}>
+                  {previewTested ? "Preview checked" : "Preview optional"}
+                </span>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setJoinMuted((current) => !current)}
+                  className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black ${joinMuted ? "bg-rose-100 text-rose-950" : "border border-violet-200 bg-white text-violet-950"}`}
+                  aria-pressed={joinMuted}
+                >
+                  {joinMuted ? <MicOff size={16} /> : <Mic size={16} />}{joinMuted ? "Muted" : "Mic on"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraWanted((current) => !current)}
+                  className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black ${cameraWanted ? "border border-violet-200 bg-white text-violet-950" : "bg-rose-100 text-rose-950"}`}
+                  aria-pressed={cameraWanted}
+                >
+                  {cameraWanted ? <Camera size={16} /> : <CameraOff size={16} />}{cameraWanted ? "Camera on" : "Camera off"}
+                </button>
+                <button type="button" onClick={() => void join()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-6 text-xs font-black text-white disabled:opacity-50">
+                  {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} Join call
+                </button>
+              </div>
+            </section>
+          ) : null}
 
-          <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={!connected}>
-            <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Camera, microphone, and speakers</summary>
+          <div className={`relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14] ${!connected && !cameraWanted ? "h-28" : ""}`}>
+            <video ref={localVideoRef} muted playsInline className={`w-full object-cover ${!connected && !cameraWanted ? "h-full" : "aspect-video"} ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`} />
+            {!cameraWanted || cameraMuted ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
+            <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">You · {sessionTitle}</div>
+          </div>
+
+          {connected ? (
+            <div className="flex flex-wrap gap-2" aria-label="Call controls">
+              <button type="button" onClick={() => void toggleMicrophone()} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
+              <button type="button" onClick={() => void toggleCamera()} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:opacity-45 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
+              <button type="button" onClick={() => void leave()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white"><PhoneOff size={16} /> Leave</button>
+            </div>
+          ) : null}
+
+          <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={!connected && (!microphoneId || (cameraWanted && !cameraId))}>
+            <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Audio and video settings</summary>
           <div className="mt-4 grid gap-3 md:grid-cols-2" role="group" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
             <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Microphone
               <select value={microphoneId} disabled={sourceLocked} onChange={(event) => void chooseMicrophone(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
@@ -1206,22 +1225,24 @@ export function LiveSessionRoom({
               {!supportsOutputSelection ? <span className="mt-1 block text-[10px] font-bold normal-case tracking-normal text-[#8a7354]">This browser uses the macOS or system output. Choose the MV7i headphones there.</span> : null}
               {supportsOutputPrompt ? <button type="button" onClick={() => void chooseAudioOutput()} className="mt-2 min-h-9 rounded-full border border-sky-300 bg-sky-50 px-3 text-[10px] font-black normal-case tracking-normal text-sky-950">Choose headphone output…</button> : null}
             </label>
-            {!connected ? <label className="flex min-h-12 items-center gap-3 self-end rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-black text-[#5b472f]">
-              <input type="checkbox" checked={cameraWanted} onChange={(event) => setCameraWanted(event.target.checked)} className="h-4 w-4 accent-violet-800" /> Join with camera
-            </label> : <div className={`flex min-h-12 items-center rounded-xl border px-3 text-xs font-black leading-5 ${sourceLocked ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
+            {!connected ? <div className="flex min-h-12 items-center rounded-xl border border-[#d8c7a7] bg-[#fffaf0] px-3 text-xs font-bold leading-5 text-[#765f40]">
+              Your choices above are remembered on this browser. If a device is unplugged, Quipsly safely falls back to an available one.
+            </div> : <div className={`flex min-h-12 items-center rounded-xl border px-3 text-xs font-black leading-5 ${sourceLocked ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
               {sourceLocked ? "Device switching is locked until this retained take stops." : "You can switch call devices live. Retained recording still starts separately."}
             </div>}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
-            {!connected ? <>
+            {!connected && (!microphoneId || (cameraWanted && !cameraId)) ? <>
               <button type="button" aria-label={`Allow microphone${cameraWanted ? " and camera" : ""}`} onClick={() => void refreshDevices(cameraWanted ? "media" : "microphone")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">{status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : <Mic size={15} />} Use microphone{cameraWanted ? " and camera" : ""}</button>
-              <button type="button" aria-label="Test selected setup" onClick={() => void startSelectedPreview()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Video size={15} /> Preview</button>
             </> : null}
+            {!connected ? <button type="button" aria-label="Test selected setup" onClick={() => void startSelectedPreview()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Video size={15} /> Preview</button> : null}
           </div>
 
           {!connected ? (
-            <div className="mt-4">
+            <details className="mt-4 rounded-xl border border-violet-100 bg-violet-50/50 p-3">
+              <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-900">Optional sound check</summary>
+              <div className="mt-3">
               <StudioSoundCheck
                 getInputStream={currentPreflightStream}
                 microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
@@ -1231,26 +1252,14 @@ export function LiveSessionRoom({
                 onDecision={saveSoundCheckDecision}
                 disabled={!preflightStreamRef.current || status !== "ready"}
               />
-            </div>
+              </div>
+            </details>
           ) : null}
           </details>
 
-          <div className="flex flex-wrap gap-2">
-            {!connected ? <>
-              <button type="button" onClick={() => void join()} disabled={!microphoneId || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} Join live room</button>
-            </> : <>
-              <button type="button" onClick={() => void toggleMicrophone()} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
-              <button type="button" onClick={() => void toggleCamera()} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:opacity-45 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
-              <button type="button" onClick={() => void leave()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white"><PhoneOff size={16} /> Leave</button>
-            </>}
-          </div>
+          {experience.captureProfile === "coaching" ? retainedSourceControls : null}
           <p role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
 
-          <div className={`relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14] ${!connected && !cameraWanted ? "h-28" : ""}`}>
-            <video ref={localVideoRef} muted playsInline className={`w-full object-cover ${!connected && !cameraWanted ? "h-full" : "aspect-video"} ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`} />
-            {!cameraWanted || cameraMuted ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
-            <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">You · {sessionTitle}</div>
-          </div>
           <div ref={remoteMediaRef} className="grid gap-3 md:grid-cols-2" aria-label="Remote participant media" />
 
           <StudioInputEvidenceMeter evidence={meterEvidence} />

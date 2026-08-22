@@ -37,6 +37,11 @@ describe("LiveSessionRoom", () => {
   const originalMediaDevices = navigator.mediaDevices;
   const originalFetch = global.fetch;
 
+  beforeEach(() => {
+    window.localStorage.removeItem("quipsly-live-preferred-devices-v1");
+    window.localStorage.removeItem("quipsly-live-preferred-devices-v2");
+  });
+
   afterEach(() => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -73,7 +78,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("button", { name: "Record private sample" })).toBeDisabled();
     expect(screen.getByText("Call-path input evidence")).toBeInTheDocument();
     expect(screen.getByText(/not LUFS, true peak, or proof of the retained source/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Join live room/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Join call/i })).toBeEnabled();
     expect(screen.getByRole("heading", { name: /Record the episode together from browser and iPhone/i })).toBeInTheDocument();
     expect(screen.getByText(/live call, each retained local source, shared Watch, and the production timeline/i)).toBeInTheDocument();
     expect(screen.getByText(/Turning this copy off cannot change take synchronization/i)).toBeInTheDocument();
@@ -110,7 +115,39 @@ describe("LiveSessionRoom", () => {
     await screen.findByText(/No microphone was found/i);
   });
 
-  it("presents coaching consent, device readiness, sound check, then Join", async () => {
+  it("remembers safe join choices and falls back by device label when browser ids rotate", async () => {
+    window.localStorage.setItem("quipsly-live-preferred-devices-v2", JSON.stringify({
+      microphoneId: "old-mic-id",
+      microphoneLabel: "Shure MV7i",
+      cameraId: "old-camera-id",
+      cameraLabel: "Canon EOS R8",
+      cameraWanted: false,
+      joinMuted: true,
+    }));
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "new-mic-id", label: "Shure MV7i" },
+          { kind: "videoinput", deviceId: "new-camera-id", label: "Canon EOS R8" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-remembered" captureGroupId="55555555-5555-4555-8555-555555555547" sessionTitle="Remembered setup" kind="episode" />);
+    });
+
+    expect(await screen.findByRole("button", { name: "Muted" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Camera off" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("combobox", { name: "Microphone" })).toHaveValue("new-mic-id");
+    expect(screen.getByRole("combobox", { name: "Camera" })).toHaveValue("new-camera-id");
+    expect(screen.getByRole("button", { name: "Join call" })).toBeEnabled();
+  });
+
+  it("presents one familiar coaching green room with optional settings and separate recording consent", async () => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -138,27 +175,30 @@ describe("LiveSessionRoom", () => {
     expect(
       screen.getByRole("heading", { name: "Start this coaching call" }),
     ).toBeInTheDocument();
-    const progress = screen.getByRole("region", { name: "Session lobby progress" });
-    expect(progress).toHaveTextContent(/Confirm what may be recorded/i);
+    const greenRoom = screen.getByRole("region", { name: "Ready to join" });
+    expect(greenRoom).toHaveTextContent(/Check how you’ll enter the call/i);
+    expect(greenRoom).toHaveTextContent(/Coach microphone/i);
+    expect(greenRoom).toHaveTextContent(/Preview optional/i);
     fireEvent.click(screen.getByRole("button", { name: "Simulate recording choice ready" }));
-    expect(progress).toHaveTextContent(/private sound check is recommended, not required/i);
-    const join = screen.getByRole("button", { name: /Join live room/i });
+    expect(screen.getByRole("heading", { name: "Joining does not record" })).toBeInTheDocument();
+    const join = screen.getByRole("button", { name: /Join call/i });
     const recorder = screen.getByTestId("browser-source-capture-group");
     const devices = screen.getByRole("group", { name: "Preflight studio devices" });
     const soundCheck = screen.getByRole("region", { name: "Private studio sound check" });
     const preview = view!.container.querySelector("video");
     expect(preview).not.toBeNull();
     expect(
-      recorder.compareDocumentPosition(devices) & Node.DOCUMENT_POSITION_FOLLOWING,
+      preview!.compareDocumentPosition(devices) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
       devices.compareDocumentPosition(soundCheck)
         & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      soundCheck.compareDocumentPosition(join)
+      devices.compareDocumentPosition(recorder)
         & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    expect(join).toBeEnabled();
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("lobby");
     expect(preview?.parentElement).toHaveClass("h-28");
   });
@@ -184,11 +224,15 @@ describe("LiveSessionRoom", () => {
     });
     expect(screen.queryByRole("button", { name: /Allow camera/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("checkbox", { name: /Join with camera/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Allow microphone and camera/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Camera off/i }));
+    expect(getUserMedia).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Test selected setup/i }));
     await act(async () => undefined);
 
-    expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: true });
+    expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({
+      audio: expect.objectContaining({ deviceId: { exact: "mv7i" } }),
+      video: expect.objectContaining({ deviceId: { exact: "canon-r8" } }),
+    }));
   });
 
   it("does not claim a camera join is ready when the browser exposes no usable camera id", async () => {
@@ -211,7 +255,7 @@ describe("LiveSessionRoom", () => {
 
     expect(screen.getByRole("combobox", { name: "Camera" })).toHaveValue("");
     expect(screen.getByRole("button", { name: /Test selected setup/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Join live room/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Join call/i })).toBeDisabled();
   });
 
   it("turns the Canon virtual-camera ownership failure into explicit preflight guidance", async () => {
@@ -283,7 +327,7 @@ describe("LiveSessionRoom", () => {
 
     expect(await screen.findByRole("region", { name: "Retained source unavailable" })).toHaveTextContent(/recording held/i);
     expect(screen.getByRole("button", { name: /Test selected setup/i })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /Join live room/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Join call/i })).toBeEnabled();
     expect(screen.queryByTestId("browser-source-capture-group")).not.toBeInTheDocument();
   });
 
