@@ -1326,15 +1326,10 @@ export default function CoachingPage() {
   async function syncGoogleCalendar(
     booking: NonNullable<CoachingRunway["upcomingBookings"]>[number],
   ) {
-    const confirmed = window.confirm(
-      "Create or update a Google Calendar event for this Quipsly booking? Quipsly remains the source of truth, and guest invites are not sent unless calendar attendee sending is explicitly enabled on the server.",
-    );
-    if (!confirmed) return;
-
     setBookingBusyById((current) => ({ ...current, [booking.id]: true }));
     setBookingStatusById((current) => ({
       ...current,
-      [booking.id]: "Syncing Google Calendar receipt...",
+      [booking.id]: "Adding this Session to Google Calendar...",
     }));
 
     try {
@@ -1354,7 +1349,7 @@ export default function CoachingPage() {
       setBookingStatusById((current) => ({
         ...current,
         [booking.id]:
-          payload.result?.nextAction || "Google Calendar receipt synced.",
+          payload.result?.nextAction || "Google Calendar is up to date.",
       }));
       await loadRunway();
     } catch (cause) {
@@ -1374,13 +1369,13 @@ export default function CoachingPage() {
     booking: NonNullable<CoachingRunway["upcomingBookings"]>[number],
   ) {
     const confirmed = window.confirm(
-      "Cancel the receipt-backed Google Calendar event for this already-canceled Quipsly booking? Guest cancellation updates follow the server's explicit Google Calendar send-updates setting.",
+      "Remove this canceled Session from Google Calendar? The Quipsly Session and its history will remain.",
     );
     if (!confirmed) return;
     setBookingBusyById((current) => ({ ...current, [booking.id]: true }));
     setBookingStatusById((current) => ({
       ...current,
-      [booking.id]: "Canceling the Google Calendar event...",
+      [booking.id]: "Removing this Session from Google Calendar...",
     }));
     try {
       const response = await fetch("/api/coaching/runway", {
@@ -1400,7 +1395,7 @@ export default function CoachingPage() {
         ...current,
         [booking.id]:
           payload.result?.nextAction ||
-          "Google Calendar cancellation receipt attached.",
+          "The Session was removed from Google Calendar.",
       }));
       await loadRunway();
     } catch (cause) {
@@ -2593,7 +2588,7 @@ export default function CoachingPage() {
                             href={`/api/coaching/bookings/${encodeURIComponent(booking.id)}/calendar`}
                             className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-[#fffaf1]"
                           >
-                            <CalendarIcon size={14} /> Add with iCalendar
+                            <CalendarIcon size={14} /> Add to Apple or Outlook
                           </a>
                           {canManageCoaching &&
                             readiness?.calendarReadiness?.accessOk === true && (
@@ -2604,8 +2599,8 @@ export default function CoachingPage() {
                                 <p className="mt-1 text-xs font-bold text-[#3d3122]">
                                   {booking.calendarReadyPacket
                                     ?.externalCalendarUpdated
-                                    ? "Receipt-backed event is attached. Quipsly still owns session truth."
-                                    : "Create/update the external event only when the Quipsly time looks right."}
+                                    ? "This Session is on your connected calendar."
+                                    : "Add this Session to your connected calendar."}
                                 </p>
                                 <button
                                   type="button"
@@ -2620,8 +2615,11 @@ export default function CoachingPage() {
                                 >
                                   <CalendarIcon size={14} />{" "}
                                   {bookingBusyById[booking.id]
-                                    ? "Syncing..."
-                                    : "Sync calendar receipt"}
+                                    ? "Updating..."
+                                    : booking.calendarReadyPacket
+                                          ?.externalCalendarUpdated
+                                      ? "Update Google Calendar"
+                                      : "Add to Google Calendar"}
                                 </button>
                                 {booking.status === "CANCELED" &&
                                 booking.calendarReadyPacket
@@ -2634,8 +2632,8 @@ export default function CoachingPage() {
                                     disabled={bookingBusyById[booking.id]}
                                     className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
-                                    <CalendarIcon size={14} /> Cancel external
-                                    event
+                                    <CalendarIcon size={14} /> Remove from Google
+                                    Calendar
                                   </button>
                                 ) : null}
                               </div>

@@ -51,6 +51,12 @@ describe("coaching release surfaces", () => {
     expect(compact).not.toContain("Set up your coach profile first");
     expect(compact).not.toContain("Appointment type");
     expect(compact).not.toContain("Purpose <select");
+    expect(compact).toContain("Add to Google Calendar");
+    expect(compact).toContain("Add to Apple or Outlook");
+    expect(compact).not.toContain("Sync calendar receipt");
+    expect(compact).not.toContain(
+      "Create or update a Google Calendar event for this Quipsly booking?",
+    );
   });
 
   it("creates durable coach defaults on the first scheduled Session instead of blocking on setup", () => {

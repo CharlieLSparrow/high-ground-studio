@@ -223,6 +223,14 @@ failure shapes recur often enough to influence the architecture:
   timezone override, and payment remain available under `More options`.
 - Made `Schedule and send invite` the default operation. The Session survives
   an email-provider failure and keeps copy/share/resend escape hatches.
+- Converged an empty `/coaching/sessions` index on the canonical coaching
+  scheduler instead of opening a second title/purpose/Nest wizard. The generic
+  planner remains a deliberate secondary path for podcasts, interviews, and
+  internal Sessions.
+- Replaced calendar-receipt language with familiar `Add to Google Calendar`,
+  `Update Google Calendar`, `Add to Apple or Outlook`, and `Remove from Google
+  Calendar` actions. The explicit idempotent Add action no longer asks for a
+  second confirmation; destructive removal still does.
 
 ## Acceptance consequences
 

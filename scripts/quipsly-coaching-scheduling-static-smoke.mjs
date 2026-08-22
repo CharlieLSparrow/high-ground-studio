@@ -165,7 +165,7 @@ addCheck(
     "externalCalendarEventExists",
   ]) && includesAll(page, [
     "cancelGoogleCalendar",
-    "Cancel external event",
+    "Remove from Google",
   ]),
   "Provider cancellation is a separately confirmed action after Quipsly cancellation, treats absent events idempotently, and attaches provider evidence without deleting booking history.",
 );
