@@ -357,19 +357,26 @@ describe("action candidate review route", () => {
     expect((harness.summary.sourceJson as any).actionCandidateReviewReceipts).toEqual([]);
   });
 
-  it("keeps ACCEPT quarantined until every source segment is playback-reviewed", async () => {
+  it("creates reversible internal work from provider transcript evidence without claiming human review", async () => {
     harness.segments[0]!.verifications = [];
     const { projected: _projected, ...snapshot } = transcriptPacketSnapshot(harness.segments);
     (harness.summary.sourceJson as any).transcriptSnapshot = snapshot;
 
     const response = await POST(reviewRequest("ACCEPT"));
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      ok: false,
-      errorCode: "ACTION_CANDIDATE_TRANSCRIPT_REVIEW_REQUIRED",
+      ok: true,
+      actionItem: { source: { sourceReviewState: "provider-transcript", automaticallySuggested: true } },
+      boundaries: {
+        humanReviewedSourceRequired: false,
+        sourceReviewState: "provider-transcript",
+        sourceReviewRecommended: true,
+        noClientDelivery: true,
+        noCalendarMutation: true,
+      },
     });
-    expect(harness.prisma.actionItem.create).not.toHaveBeenCalled();
-    expect(harness.prisma.coachingNote.update).not.toHaveBeenCalled();
+    expect(harness.prisma.actionItem.create).toHaveBeenCalledTimes(1);
+    expect(harness.prisma.coachingNote.update).toHaveBeenCalledTimes(1);
   });
 
   it("serializes concurrent ACCEPT repeats into exactly one provenance-rich, unassigned ActionItem", async () => {
@@ -699,7 +706,7 @@ describe("action candidate review route", () => {
     expect(harness.prisma.coachingNote.update).not.toHaveBeenCalled();
   });
 
-  it("requires reviewed playback evidence for MERGE just as it does for ACCEPT", async () => {
+  it("can attach provider transcript evidence to an existing internal task without rewriting it", async () => {
     harness.segments[0]!.verifications = [];
     const { projected: _projected, ...snapshot } = transcriptPacketSnapshot(harness.segments);
     (harness.summary.sourceJson as any).transcriptSnapshot = snapshot;
@@ -710,9 +717,16 @@ describe("action candidate review route", () => {
       mergeExpectedUpdatedAt: target.updatedAt.toISOString(),
     }));
 
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({ errorCode: "ACTION_CANDIDATE_TRANSCRIPT_REVIEW_REQUIRED" });
-    expect(harness.prisma.actionItemEvidenceReceipt.create).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      boundaries: {
+        humanReviewedSourceRequired: false,
+        sourceReviewState: "provider-transcript",
+        mergeAppendsOneActorOwnedTaskEvidenceReceipt: true,
+      },
+    });
+    expect(harness.prisma.actionItemEvidenceReceipt.create).toHaveBeenCalledTimes(1);
   });
 
   it("rejects archived or cross-project tags before creating the task", async () => {

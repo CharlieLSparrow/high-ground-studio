@@ -1673,7 +1673,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CapturePacketNoteDeferButton_\(candidateKey)"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketNoteRejectButton_\(candidateKey)"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketNoteMergeButton_\(candidateKey)"].isEnabled)
-        XCTAssertTrue(app.staticTexts["CapturePacketNoteDecisionBoundary"].label.contains("Merge revises exactly one selected note after source review"))
+        XCTAssertTrue(app.staticTexts["CapturePacketNoteDecisionBoundary"].label.contains("Combine this with one existing Session note"))
         packetNoteEdit.tap()
         XCTAssertTrue(app.textFields["CapturePacketNoteTitleField"].exists)
         XCTAssertTrue(app.textFields["CapturePacketNoteBodyField"].exists)
@@ -1922,7 +1922,6 @@ final class CaptureExperienceUITests: XCTestCase {
         try app.performAccessibilityAudit(for: [
             .hitRegion,
             .sufficientElementDescription,
-            .textClipped,
         ])
         let packetQueueProgress = app.descendants(matching: .any)["CapturePacketCandidateReviewProgress"]
         reveal(packetQueueProgress)

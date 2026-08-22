@@ -22,6 +22,7 @@ notes, goals, tasks, and collaborative follow-through.
 - [Riverside's guest flow](https://support.riverside.com/hc/en-us/articles/5252042203037-Join-a-studio-as-a-guest) uses one invitation link, one device check, and one Join action; mobile links open the app and the same lobby supports front/back-camera choice.
 - [Descript Rooms](https://help.descript.com/hc/en-us/articles/30293678303885-Managing-and-inviting-participants-to-a-Descript-Room) defaults invitees to Guest and keeps role configuration secondary, while a recording started from a project returns its sources to that project.
 - [Google Calendar appointment schedules](https://support.google.com/calendar/answer/11608416?hl=en-au) center the ordinary booking path on available time and a shared link; conflict checks, reminders, payment, buffers, and availability policy are reusable settings rather than questions repeated for every appointment.
+- [Fathom](https://help.fathom.video/en/articles/640768) automatically detects meeting action items and assignees, while [Otter](https://help.otter.ai/hc/en-us/articles/5093228433687-Conversation-Page-Overview) places generated action items on the conversation page and lets people assign them. Both establish immediate editable follow-through as the familiar post-call pattern.
 - [Zoom scheduling](https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0060700) offers many meeting controls, but places waiting-room, join-before-host, authentication, and media defaults in secondary security and advanced sections rather than making them the basic date-and-time path.
 - [Apple](https://developer.apple.com/documentation/uikit/requesting-access-to-protected-resources?changes=_2) requires camera and microphone permission at the protected-resource
   boundary and remembers the system response. Purpose strings should be concise,
@@ -100,6 +101,7 @@ failure shapes recur often enough to influence the architecture:
   masters for external DAWs. Quipsly should do both without a forked workflow:
   the Session receives a ready collaborative projection automatically, and
   every authorized participant master remains directly downloadable.
+- Meeting-assistant users repeatedly report [missed transcript sections and weak action-item extraction](https://www.reddit.com/r/ProductManagement/comments/1866ags/is_otterai_worth_it_for_meeting_minutes/) and say the useful test is whether the output preserves owners, dates, decisions, and enough source context to act. Quipsly should make every suggestion editable and source-linked without making source playback a prerequisite for reversible internal work.
 - The loudest recent Riverside criticism is that AI and editing additions do
   not compensate for unreliable source files. Quipsly therefore treats call,
   local capture, recovery, source health, and direct export as the release
@@ -435,6 +437,24 @@ failure shapes recur often enough to influence the architecture:
   automated follow-through panels first. Offline and saved-change states now
   use ordinary sync language; exact receipts and immutable provider evidence
   remain in the underlying contract rather than the happy-path copy.
+- Treat post-call notes, goals, and tasks as reversible internal work rather
+  than an external side effect. Fathom automatically extracts action items and
+  Otter places generated action items directly on the conversation page; the
+  useful convention is therefore immediate, editable suggestions—not forcing
+  a person to replay every cited sentence before saving anything. Quipsly now
+  records `provider-transcript` versus `human-reviewed` source state and keeps
+  exact recording pointers, while allowing either source state to become an
+  internal note, task, or goal. Client delivery, calendar mutation, reminders,
+  and publication remain separate explicit actions.
+- Roll the note contract out server-first. The response temporarily retains the
+  legacy positive review acknowledgement expected by existing Capture builds
+  while adding an explicit `humanReviewedSourceRequiredForInternalWork: false`
+  capability for the new app. This compatibility field is internal and can be
+  removed only after the older TestFlight cohort is retired.
+- Preserve the source jump because complaint research consistently identifies
+  missed nuance, wrong owners, and incomplete action extraction as the weak
+  point of meeting assistants. The correction mechanism is quick editing plus
+  “play this moment,” not a blocking verification ceremony.
 
 ## Acceptance consequences
 

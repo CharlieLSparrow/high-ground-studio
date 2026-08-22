@@ -13,6 +13,7 @@ import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/s
 import {
   buildTranscriptSourceAnchorFields,
   resolveTranscriptSpanSegments,
+  transcriptSpanReviewState,
 } from "@/lib/server/transcript-source-span";
 
 // Kept outside route.ts so transaction helpers remain directly testable.
@@ -131,7 +132,7 @@ export async function resolveTranscriptEvidenceInTransaction(input: {
   const sourceAnchor = evidenceSegments
     ? buildTranscriptSourceAnchorFields(evidenceSegments)
     : null;
-  if (!sourceAnchor) {
+  if (!sourceAnchor || !evidenceSegments) {
     throw new TranscriptCorrectionError(
       "The transcript evidence span changed or is unavailable.",
       409,
@@ -154,7 +155,7 @@ export async function resolveTranscriptEvidenceInTransaction(input: {
       "STALE_TRANSCRIPT_SPAN_EVIDENCE",
     );
   }
-  return { desk, playback, sourceAnchor };
+  return { desk, playback, sourceAnchor, sourceReviewState: transcriptSpanReviewState(evidenceSegments) };
 }
 
 // Compatibility alias for the existing goal routes. New evidence consumers
@@ -181,7 +182,7 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
 }) {
   const { tx, actor, goal: request } = input;
   const id = goalIdentity(actor.id, request.clientRequestId);
-  const { desk, playback, sourceAnchor } = await resolveTranscriptGoalEvidenceInTransaction({
+  const { desk, playback, sourceAnchor, sourceReviewState } = await resolveTranscriptGoalEvidenceInTransaction({
     tx,
     actor,
     roomId: request.roomId,
@@ -320,6 +321,8 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
         roomId: request.roomId,
         transcriptJobId: desk.transcriptJobId,
         ...sourceAnchor,
+        sourceReviewState,
+        automaticallySuggested: true,
         recordingAssetId: playback.recordingAssetId,
         playbackSourceId: playback.sourceId,
         materializationIntent: requestedIntent,

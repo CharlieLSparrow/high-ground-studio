@@ -7,7 +7,11 @@ import {
 } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { projectTranscriptSegmentsForPacket } from "./coaching-packets";
-import { buildTranscriptSourceAnchorFields, resolveTranscriptSpanSegments } from "./transcript-source-span";
+import {
+  buildTranscriptSourceAnchorFields,
+  resolveTranscriptSpanSegments,
+  transcriptSpanReviewState,
+} from "./transcript-source-span";
 
 describe("versioned transcript source spans", () => {
   const segments = projectTranscriptSegmentsForPacket([
@@ -74,5 +78,13 @@ describe("versioned transcript source spans", () => {
       primarySegmentId: "segment-1",
       segments: interleaved,
     })).toBeNull();
+  });
+
+  it("labels source trust honestly without blocking reversible internal follow-through", () => {
+    expect(transcriptSpanReviewState(segments)).toBe("provider-transcript");
+    expect(transcriptSpanReviewState(segments.map((segment) => ({
+      ...segment,
+      reviewStatus: "human-reviewed",
+    })))).toBe("human-reviewed");
   });
 });

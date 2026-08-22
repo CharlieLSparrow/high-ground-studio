@@ -45,7 +45,7 @@ import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/s
 import {
   buildTranscriptSourceAnchorFields,
   resolveTranscriptSpanSegments,
-  unreviewedTranscriptSpanSegmentIds,
+  transcriptSpanReviewState,
 } from "@/lib/server/transcript-source-span";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +81,7 @@ function noteIdentity(userId: string, clientRequestId: string) {
   return `transcript-note-${createHash("sha256").update(`${userId}|${clientRequestId}`).digest("hex").slice(0, 24)}`;
 }
 
-function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate = false, noteRevised = false) {
+function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate = false, noteRevised = false, sourceReviewState: "human-reviewed" | "provider-transcript" = "provider-transcript") {
   return {
     explicitHumanAction: true,
     canonicalIdentity: true,
@@ -91,7 +91,12 @@ function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate =
     explicitVisibility: true,
     packetCandidateReviewed: packetCandidate,
     packetSnapshotRechecked: packetCandidate,
+    // Retained as true for Capture builds that predate the risk-based source
+    // policy and require this legacy acknowledgement on successful writes.
     humanReviewedSourceRequired: packetCandidate,
+    humanReviewedSourceRequiredForInternalWork: false,
+    sourceReviewState,
+    sourceReviewRecommended: sourceReviewState !== "human-reviewed",
     noteCreated,
     noteRevised,
     providerTranscriptMutated: false,
@@ -545,6 +550,7 @@ export async function POST(request: Request) {
       if (!sourceAnchor) {
         throw new TranscriptCorrectionError("The transcript evidence span changed or is unavailable.", 409, "STALE_TRANSCRIPT_SEGMENT");
       }
+      const sourceReviewState = transcriptSpanReviewState(evidenceSegments);
       if (sourceAnchor.providerTextSha256 !== expectedProviderTextSha256) {
         throw new TranscriptCorrectionError("Provider transcript evidence changed. Refresh before saving the note.", 409, "STALE_PROVIDER_EVIDENCE");
       }
@@ -641,17 +647,6 @@ export async function POST(request: Request) {
         return { note: replay, receipt: null, decision, idempotentReplay: true };
       }
 
-      if (packetContext && (decision === "ACCEPT" || decision === "MERGE")) {
-        const unreviewedSegmentIds = unreviewedTranscriptSpanSegmentIds(evidenceSegments);
-        if (unreviewedSegmentIds.length) {
-          throw new TranscriptCorrectionError(
-            `Listen to and confirm every source segment before saving this packet note. ${unreviewedSegmentIds.length} segment${unreviewedSegmentIds.length === 1 ? " remains" : "s remain"} provider-only.`,
-            409,
-            "PACKET_NOTE_TRANSCRIPT_REVIEW_REQUIRED",
-          );
-        }
-      }
-
       if (packetContext && ["EDIT", "DEFER", "REJECT"].includes(decision || "")) {
         if (!packetSummarySource || !packetCandidateDraftBefore || !packetDraftAfter) {
           throw new TranscriptCorrectionError("The packet note review state is unavailable. Refresh before deciding.", 409, "STALE_PACKET_NOTE_CANDIDATE");
@@ -744,6 +739,8 @@ export async function POST(request: Request) {
           roomId,
           transcriptJobId: desk.transcriptJobId,
           ...sourceAnchor,
+          sourceReviewState,
+          automaticallySuggested: true,
           recordingAssetId: desk.playback.recordingAssetId,
           playbackSourceId: desk.playback.sourceId,
         };
@@ -777,6 +774,7 @@ export async function POST(request: Request) {
           transcriptSnapshotSha256: packetTranscriptSnapshotSha256,
           providerTextSha256: sourceAnchor.providerTextSha256,
           sourceSpan: sourceAnchor.sourceSpan,
+          sourceReviewState,
           reviewedAt,
           reviewedByUserId: actor.id,
           reviewNote,
@@ -847,7 +845,7 @@ export async function POST(request: Request) {
           },
         });
         const noteBoundaries = {
-          ...transcriptDerivedNoteBoundaries(false, true, true),
+          ...transcriptDerivedNoteBoundaries(false, true, true, sourceReviewState),
           titleChanged: mergeTarget.title !== (mergedTitle || null),
           bodyChanged: mergeTarget.body !== mergedBody,
           purposeChanged: String(mergeTarget.kind) !== mergedKind,
@@ -963,6 +961,7 @@ export async function POST(request: Request) {
         roomId,
         transcriptJobId: desk.transcriptJobId,
         ...sourceAnchor,
+        sourceReviewState,
         recordingAssetId: desk.playback.recordingAssetId,
         playbackSourceId: desk.playback.sourceId,
         initialTitle: title,
@@ -980,7 +979,8 @@ export async function POST(request: Request) {
           reviewReceiptId,
         } : {}),
         aiGenerated: false,
-        boundaries: transcriptDerivedNoteBoundaries(true, Boolean(packetContext)),
+        automaticallySuggested: Boolean(packetContext),
+        boundaries: transcriptDerivedNoteBoundaries(true, Boolean(packetContext), false, sourceReviewState),
       };
       let note = await tx.coachingNote.create({
         data: {
@@ -1014,7 +1014,7 @@ export async function POST(request: Request) {
         const targetAfter = canonicalNoteState(note);
         const audience = noteAudience(visibility as SessionNoteVisibility);
         const noteBoundaries = {
-          ...transcriptDerivedNoteBoundaries(true, true),
+          ...transcriptDerivedNoteBoundaries(true, true, false, sourceReviewState),
           audienceAfter: audience,
           priorContentRetainedInRevision: true,
           clientFollowUpCreated: false,
@@ -1099,6 +1099,7 @@ export async function POST(request: Request) {
           transcriptSnapshotSha256: packetTranscriptSnapshotSha256,
           providerTextSha256: sourceAnchor.providerTextSha256,
           sourceSpan: sourceAnchor.sourceSpan,
+          sourceReviewState,
           reviewedAt: createdAt,
           reviewedByUserId: actor.id,
           reviewNote,
@@ -1127,7 +1128,7 @@ export async function POST(request: Request) {
           },
         });
       }
-      return { note, receipt, governance, decision, idempotentReplay: false };
+      return { note, receipt, governance, decision, idempotentReplay: false, sourceReviewState };
     }, { isolationLevel: "Serializable" });
 
     return NextResponse.json({
@@ -1145,6 +1146,11 @@ export async function POST(request: Request) {
         Boolean(result.note) && result.decision !== "MERGE" && !result.idempotentReplay,
         Boolean(packetContext),
         "noteRevised" in result && result.noteRevised === true,
+        ("sourceReviewState" in result && result.sourceReviewState === "human-reviewed")
+          || record(result.receipt).sourceReviewState === "human-reviewed"
+          || record(result.note?.sourceJson).sourceReviewState === "human-reviewed"
+          ? "human-reviewed"
+          : "provider-transcript",
       ),
     });
   } catch (error) {

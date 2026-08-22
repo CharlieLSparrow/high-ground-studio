@@ -255,7 +255,7 @@ describe("packet goal review route", () => {
     expect((state.summary.sourceJson.goalCandidateReviewReceipts as any[])).toEqual([]);
   });
 
-  it("keeps ACCEPT outside canonical Goals until every source segment is playback-reviewed", async () => {
+  it("creates an internal Goal from provider transcript evidence without claiming human review", async () => {
     const state = harness();
     state.segments[0]!.verifications = [];
     const { projected: _projected, ...snapshot } = transcriptPacketSnapshot(state.segments);
@@ -263,6 +263,26 @@ describe("packet goal review route", () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test", isStaff: false } } as any);
     jest.mocked(getPrismaClient).mockReturnValue(state.prisma);
     jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({
+      roomId,
+      projectId: "project-1",
+      transcriptJobId,
+      gate: { allowed: true },
+      playback: { sourceId: "source-1", recordingAssetId },
+      segments: [{
+        id: "segment-1",
+        startSeconds: 10,
+        endSeconds: 15,
+        providerText: "My goal is to build a repeatable review habit.",
+        providerTextSha256: createHash("sha256").update("My goal is to build a repeatable review habit.").digest("hex"),
+        providerSpeakerLabel: "Homer",
+        text: "My goal is to build a repeatable review habit.",
+        speakerLabel: "Homer",
+        acceptedCorrection: null,
+        acceptedVerification: null,
+        reviewStatus: "provider",
+      }],
+    } as any);
 
     const response = await POST(request({
       callRoomId: roomId,
@@ -273,13 +293,24 @@ describe("packet goal review route", () => {
       goalCandidateId,
       decision: "ACCEPT",
     }));
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      ok: false,
-      errorCode: "GOAL_CANDIDATE_TRANSCRIPT_REVIEW_REQUIRED",
+      ok: true,
+      goal: { title: "Build a repeatable review habit." },
+      boundaries: {
+        humanReviewedSourceRequired: false,
+        sourceReviewState: "provider-transcript",
+        sourceReviewRecommended: true,
+        externalDelivery: false,
+        calendarMutated: false,
+      },
     });
-    expect(state.goalCreate).not.toHaveBeenCalled();
-    expect(state.prisma.coachingNote.update).not.toHaveBeenCalled();
+    expect(state.goalCreate).toHaveBeenCalledTimes(1);
+    expect(state.prisma.coachingNote.update).toHaveBeenCalledTimes(1);
+    expect(state.goals[0]?.sourceJson).toMatchObject({
+      sourceReviewState: "provider-transcript",
+      automaticallySuggested: true,
+    });
   });
 
   it("persists an edited review receipt without creating a Goal or task", async () => {

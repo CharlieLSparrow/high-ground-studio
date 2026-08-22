@@ -28,7 +28,7 @@ import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-adviso
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
-import { unreviewedTranscriptSpanSegmentIds } from "@/lib/server/transcript-source-span";
+import { transcriptSpanReviewState } from "@/lib/server/transcript-source-span";
 import {
   readGovernedActionSourceReference,
   recordSucceededTranscriptWorkAction,
@@ -81,10 +81,12 @@ function decision(value: unknown): TranscriptGoalReviewDecision | null {
   return isTranscriptGoalReviewDecision(normalized) ? normalized : null;
 }
 
-function boundaries(input: { targetDateCreated?: boolean; tagsApplied?: boolean; goalEvidenceAppended?: boolean } = {}) {
+function boundaries(input: { targetDateCreated?: boolean; tagsApplied?: boolean; goalEvidenceAppended?: boolean; sourceReviewState?: "human-reviewed" | "provider-transcript" } = {}) {
   return {
     explicitHumanDecision: true,
-    humanReviewedSourceRequired: true,
+    humanReviewedSourceRequired: false,
+    sourceReviewState: input.sourceReviewState ?? "provider-transcript",
+    sourceReviewRecommended: input.sourceReviewState !== "human-reviewed",
     acceptCreatesOneActorOwnedGoal: true,
     mergeAppendsOneActorOwnedGoalEvidenceReceipt: input.goalEvidenceAppended === true,
     mergeChangesNoGoalDefinitionStatusTargetOrTags: true,
@@ -467,16 +469,7 @@ export async function POST(request: Request) {
       if (candidate.committedGoalId && reviewDecision !== "ACCEPT") {
         throw new GoalReviewBoundaryError(409, "GOAL_CANDIDATE_ALREADY_ACCEPTED", "This candidate is already bound to a canonical Goal.");
       }
-      if (reviewDecision === "ACCEPT" || reviewDecision === "MERGE") {
-        const unreviewedSegmentIds = unreviewedTranscriptSpanSegmentIds(evidenceSegments);
-        if (unreviewedSegmentIds.length) {
-          throw new GoalReviewBoundaryError(
-            409,
-            "GOAL_CANDIDATE_TRANSCRIPT_REVIEW_REQUIRED",
-            `Listen to and confirm every source segment before creating this goal. ${unreviewedSegmentIds.length} segment${unreviewedSegmentIds.length === 1 ? " remains" : "s remain"} provider-only.`,
-          );
-        }
-      }
+      const sourceReviewState = transcriptSpanReviewState(evidenceSegments);
 
       const reviewedAt = new Date().toISOString();
       const receiptId = randomUUID();
@@ -569,6 +562,8 @@ export async function POST(request: Request) {
           roomId,
           transcriptJobId,
           ...resolvedEvidence.sourceAnchor,
+          sourceReviewState,
+          automaticallySuggested: true,
           recordingAssetId,
           playbackSourceId: resolvedEvidence.playback.sourceId,
         };
@@ -612,7 +607,7 @@ export async function POST(request: Request) {
         });
         goal = mergeTarget;
         mergeTargetAfter = mergeTargetSnapshot(mergeTarget);
-        const mergeBoundaries = boundaries({ goalEvidenceAppended: true });
+        const mergeBoundaries = boundaries({ goalEvidenceAppended: true, sourceReviewState });
         governance = await recordSucceededTranscriptWorkAction(tx, {
           capabilityId: TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID,
           clientRequestId: receiptId,
@@ -690,6 +685,7 @@ export async function POST(request: Request) {
         mergeTargetBefore,
         mergeTargetAfter,
         candidateSource,
+        sourceReviewState,
         externalSideEffects: false,
         taskCreated: false,
         goalCreated: reviewDecision === "ACCEPT",
@@ -736,6 +732,9 @@ export async function POST(request: Request) {
         targetDateCreated: reviewDecision === "ACCEPT" && targetAt !== null,
         tagsApplied: reviewDecision === "ACCEPT" && tagIds.length > 0,
         goalEvidenceAppended: reviewDecision === "MERGE",
+        sourceReviewState: result.candidate.transcriptReviewStatus === "human-reviewed"
+          ? "human-reviewed"
+          : "provider-transcript",
       }),
       nextAction: reviewDecision === "ACCEPT"
         ? `The reviewed draft is now one actor-owned canonical Goal${targetAt ? " with an explicit target date" : ""}${tagIds.length ? " and reviewed project tags" : ""}. Tasks, focus blocks, reminders, calendar events, messages, and delivery remain separate explicit actions.`

@@ -39,6 +39,19 @@ export function transcriptSpanIsFullyHumanReviewed(segments: any[]) {
   return segments.length > 0 && unreviewedTranscriptSpanSegmentIds(segments).length === 0;
 }
 
+export type TranscriptSourceReviewState = "human-reviewed" | "provider-transcript";
+
+/**
+ * Internal, reversible follow-through may retain provider transcript evidence
+ * without pretending a person listened to it. External delivery and source
+ * correction continue to use their stricter, playback-confirmed policies.
+ */
+export function transcriptSpanReviewState(segments: any[]): TranscriptSourceReviewState {
+  return transcriptSpanIsFullyHumanReviewed(segments)
+    ? "human-reviewed"
+    : "provider-transcript";
+}
+
 export function transcriptSpanSegmentIds(value: unknown, primarySegmentId: string) {
   const ids = Array.isArray(value)
     ? value.map((candidate) => text(candidate)).filter(Boolean)

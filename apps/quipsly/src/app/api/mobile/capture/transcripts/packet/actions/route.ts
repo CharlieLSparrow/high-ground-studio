@@ -30,7 +30,7 @@ import {
 } from "@/lib/server/coaching-packets";
 import {
   buildTranscriptSourceAnchorFields,
-  unreviewedTranscriptSpanSegmentIds,
+  transcriptSpanReviewState,
 } from "@/lib/server/transcript-source-span";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
@@ -256,7 +256,7 @@ function acceptedActionMatches(item: any, input: {
     && text(source.packetBuildId) === input.packetBuildId;
 }
 
-function responseBoundaries(input: { assignedToActor?: boolean; dueDateCreated?: boolean; tagsApplied?: boolean; taskEvidenceAppended?: boolean } = {}) {
+function responseBoundaries(input: { assignedToActor?: boolean; dueDateCreated?: boolean; tagsApplied?: boolean; taskEvidenceAppended?: boolean; sourceReviewState?: "human-reviewed" | "provider-transcript" } = {}) {
   return {
     humanDecisionRequired: true,
     noExternalAssignment: true,
@@ -272,7 +272,9 @@ function responseBoundaries(input: { assignedToActor?: boolean; dueDateCreated?:
     projectTagsApplied: input.tagsApplied === true,
     editRejectDeferCreateNoOpenWork: true,
     recordingAndTranscriptEvidenceRequired: true,
-    humanReviewedSourceRequired: true,
+    humanReviewedSourceRequired: false,
+    sourceReviewState: input.sourceReviewState ?? "provider-transcript",
+    sourceReviewRecommended: input.sourceReviewState !== "human-reviewed",
     canonicalSessionAccess: true,
     canonicalSessionMutationAccess: true,
     sessionAccessRechecked: true,
@@ -725,16 +727,7 @@ export async function POST(request: Request) {
         );
       }
 
-      if (decision === "ACCEPT" || decision === "MERGE") {
-        const unreviewedSegmentIds = unreviewedTranscriptSpanSegmentIds(evidenceSegments);
-        if (unreviewedSegmentIds.length) {
-          throw new ReviewBoundaryError(
-            409,
-            "ACTION_CANDIDATE_TRANSCRIPT_REVIEW_REQUIRED",
-            `Listen to and confirm every source segment before creating this task. ${unreviewedSegmentIds.length} segment${unreviewedSegmentIds.length === 1 ? " remains" : "s remain"} provider-only.`,
-          );
-        }
-      }
+      const sourceReviewState = transcriptSpanReviewState(evidenceSegments);
 
       const reviewedAt = new Date().toISOString();
       const receiptId = randomUUID();
@@ -837,6 +830,8 @@ export async function POST(request: Request) {
               transcriptSnapshotSha256,
               roomId,
               ...sourceAnchor,
+              sourceReviewState,
+              automaticallySuggested: true,
               playbackSourceId: sourcePlaybackId,
               acceptedAt: reviewedAt,
               acceptedByUserId: userId,
@@ -870,6 +865,7 @@ export async function POST(request: Request) {
           assignedToActor: Boolean(actionItem.assignedUserId),
           dueDateCreated: Boolean(actionItem.dueAt),
           tagsApplied: tagIds.length > 0,
+          sourceReviewState,
         });
         governance = await recordSucceededTranscriptWorkAction(tx, {
           capabilityId: TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID,
@@ -973,6 +969,8 @@ export async function POST(request: Request) {
           roomId,
           transcriptJobId,
           ...resolvedEvidence.sourceAnchor,
+          sourceReviewState,
+          automaticallySuggested: true,
           recordingAssetId,
           playbackSourceId: resolvedEvidence.playback.sourceId,
         };
@@ -1020,7 +1018,7 @@ export async function POST(request: Request) {
         });
         actionItem = mergeTarget;
         mergeTargetAfter = mergeTargetSnapshot(mergeTarget);
-        const mergeBoundaries = responseBoundaries({ taskEvidenceAppended: true });
+        const mergeBoundaries = responseBoundaries({ taskEvidenceAppended: true, sourceReviewState });
         governance = await recordSucceededTranscriptWorkAction(tx, {
           capabilityId: TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID,
           clientRequestId: receiptId,
@@ -1091,6 +1089,7 @@ export async function POST(request: Request) {
         mergeTargetBefore,
         mergeTargetAfter,
         candidateSource,
+        sourceReviewState,
         externalSideEffects: false,
         assignmentClaimed: assignToMe,
         deliveryClaimed: false,
@@ -1162,6 +1161,9 @@ export async function POST(request: Request) {
         dueDateCreated: decision === "ACCEPT" && Boolean(result.actionItem?.dueAt),
         tagsApplied: decision === "ACCEPT" && Array.isArray(result.receipt?.materializationIntent?.tagIds) && result.receipt.materializationIntent.tagIds.length > 0,
         taskEvidenceAppended: decision === "MERGE",
+        sourceReviewState: result.candidate.transcriptReviewStatus === "human-reviewed"
+          ? "human-reviewed"
+          : "provider-transcript",
       }),
       nextAction: decision === "ACCEPT"
         ? `The accepted draft is now one ${result.actionItem?.assignedUserId ? "actor-owned" : "unassigned"} Quipsly task${result.actionItem?.dueAt ? " with an explicit due date" : ""}${Array.isArray(result.receipt?.materializationIntent?.tagIds) && result.receipt.materializationIntent.tagIds.length > 0 ? " and reviewed project tags" : ""}. Calendar placement, reminders, delivery, and publication remain separate explicit actions.`
