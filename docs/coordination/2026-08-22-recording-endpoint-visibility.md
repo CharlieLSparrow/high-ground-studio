@@ -53,6 +53,23 @@ recoverable operation over the protected local file.
 Focused call/coordination coverage is now 24/24, including the operated safe
 leave sequence. Quipsly typecheck and whitespace validation pass.
 
+## Safe iPhone leave follow-up
+
+Quipsly Capture now uses the same ordinary one-tap contract. While this iPhone
+is retaining a local source, `Leave` becomes `Stop recording & leave`. It stops
+and validates only this endpoint's source, waits for an AVFoundation movie to
+finish finalizing, then disconnects automatically. It does not issue the
+room-wide STOP directive, so another participant's phone or browser keeps its
+independent master. If iOS is still finalizing or the local stop fails, Quipsly
+keeps the call connected and explains why instead of risking the source.
+
+The endpoint STOPPED/STOP_FAILED update is sent independently after the local
+truth is known, so room-status latency cannot delay the safe disconnect and
+upload recovery remains separate. The full native simulator application build
+and release-source contract pass with this behavior compiled for both simulator
+architectures. Physical iPhone proof remains a release-acceptance step rather
+than something inferred from a simulator build.
+
 ## Release boundary
 
 This is post-Build-34 continuous work. Build 34 remains the sealed qualified

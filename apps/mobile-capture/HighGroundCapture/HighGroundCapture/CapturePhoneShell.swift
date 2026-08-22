@@ -6361,6 +6361,7 @@ private struct CaptureRecorderView: View {
     @State private var cameraPosition: VideoCaptureCameraPosition = CaptureCallPreferences.cameraPosition
     @State private var videoQualityIntent: VideoCaptureQualityIntent = CaptureCallPreferences.videoQualityIntent
     @State private var isRunningRehearsalCheck = false
+    @State private var isSafelyLeavingRoom = false
     @StateObject private var soundCheck = CaptureAudioSoundCheckController()
     @StateObject private var sessionPreflight = CaptureSessionPreflightClient()
     @StateObject private var recordingCoordinator = CaptureRecordingCoordinator()
@@ -6406,10 +6407,15 @@ private struct CaptureRecorderView: View {
                         model: model,
                         session: session,
                         inputRoute: audioCapture.inputRouteName,
+                        localRecordingActive: captureIsActive,
+                        isSafelyLeaving: isSafelyLeavingRoom,
                         localRecordingWorkspaceOpen:
                             model.providerRoom.isConnected
                             || localOnlyRecordingSessionID == session.id
                             || session.providerCanJoin == false,
+                        onLeave: {
+                            Task { await leaveRoomSafely(for: session) }
+                        },
                         onToggleLocalRecordingWorkspace: {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 localOnlyRecordingSessionID =
@@ -7230,6 +7236,67 @@ private struct CaptureRecorderView: View {
             return
         }
         await stopLocalRecording()
+    }
+
+    /// Leaving a conversation is an endpoint action, not a room-wide recording
+    /// command. Protect this iPhone's source first, then disconnect without
+    /// stopping another participant's independently retained master.
+    private func leaveRoomSafely(for session: MobileCaptureSession) async {
+        guard !isSafelyLeavingRoom else { return }
+        isSafelyLeavingRoom = true
+        defer { isSafelyLeavingRoom = false }
+
+        let protectedLocalSource = captureIsActive
+        if protectedLocalSource {
+            model.message = "Stopping and protecting this iPhone's recording before leaving…"
+            let captureID = videoCapture.activeRecordingID ?? audioCapture.activeLocalRecordingID
+            let activeStartDirective = recordingCoordinator.currentDirective.flatMap {
+                $0.action == .start ? $0 : nil
+            }
+            if let activeStartDirective {
+                recordingCoordinator.markHandled(activeStartDirective, state: .stopping)
+            }
+
+            await stopLocalRecording()
+            if videoCapture.state == .finalizing {
+                _ = await videoCapture.waitUntilTerminal()
+            }
+            guard !captureIsActive else {
+                if let activeStartDirective {
+                    recordingCoordinator.markHandled(activeStartDirective, state: .stopFailed)
+                    Task {
+                        await recordingCoordinator.acknowledge(
+                            roomID: session.callRoomId,
+                            directive: activeStartDirective,
+                            state: .stopFailed,
+                            captureID: captureID,
+                            detail: "This iPhone kept the call connected because its local source is still active or finalizing."
+                        )
+                    }
+                }
+                model.message = "This iPhone is still protecting the recording, so Quipsly kept the call connected. Try Leave again when saving finishes."
+                return
+            }
+
+            if let activeStartDirective {
+                recordingCoordinator.markHandled(activeStartDirective, state: .stopped)
+                Task {
+                    await recordingCoordinator.acknowledge(
+                        roomID: session.callRoomId,
+                        directive: activeStartDirective,
+                        state: .stopped,
+                        captureID: captureID,
+                        detail: "This endpoint stopped its retained local source safely before leaving; upload recovery remains independent."
+                    )
+                }
+            }
+        }
+
+        await model.leaveRoom()
+        guard !model.providerRoom.isConnected else { return }
+        model.message = protectedLocalSource
+            ? "You left the call. This iPhone's recording is safe; upload recovery continues automatically."
+            : "You left the call."
     }
 
     private func applyRecordingDirective(
@@ -11791,7 +11858,10 @@ private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
     let session: MobileCaptureSession
     let inputRoute: String
+    let localRecordingActive: Bool
+    let isSafelyLeaving: Bool
     let localRecordingWorkspaceOpen: Bool
+    let onLeave: () -> Void
     let onToggleLocalRecordingWorkspace: () -> Void
     @AppStorage("quipsly.call.join-muted.v1") private var joinMuted = false
 
@@ -11822,9 +11892,9 @@ private struct ProviderRoomControls: View {
                 .accessibilityIdentifier("CaptureCallInputRoute")
 
             if providerControlsLocked {
-                Label("Finish this take to change the call", systemImage: "lock.fill")
+                Label("Your recording will be saved before you leave", systemImage: "checkmark.shield.fill")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.secondary)
             }
 
             if model.providerRoom.isConnected {
@@ -11846,13 +11916,28 @@ private struct ProviderRoomControls: View {
                     .accessibilityIdentifier("ProviderToggleMuteButton")
 
                     Button(role: .destructive) {
-                        Task { await model.leaveRoom() }
+                        onLeave()
                     } label: {
-                        Label("Leave", systemImage: "phone.down.fill")
+                        Label(
+                            isSafelyLeaving
+                                ? "Finishing safely…"
+                                : providerControlsLocked
+                                    ? "Stop recording & leave"
+                                    : "Leave",
+                            systemImage: "phone.down.fill"
+                        )
                     }
                     .buttonStyle(.bordered)
-                    .disabled(providerControlsLocked || model.isChangingRoom)
-                    .accessibilityHint(providerControlHint)
+                    .disabled(
+                        isSafelyLeaving
+                            || model.isChangingRoom
+                            || (model.isChangingCapture && !localRecordingActive)
+                    )
+                    .accessibilityHint(
+                        providerControlsLocked
+                            ? "Stops and saves only this iPhone's local recording, then leaves the call. Other devices keep recording."
+                            : providerControlHint
+                    )
                     .accessibilityIdentifier("ProviderLeaveRoomButton")
                 }
             } else {
