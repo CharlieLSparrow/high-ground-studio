@@ -110,6 +110,15 @@ failure shapes recur often enough to influence the architecture:
   fallback, exposed a secondary `Refresh devices` action, and automatically
   retries recovery after a protected retained recording releases its source
   lock. A recording in progress is never silently relabeled to new hardware.
+- Made resumable browser recordings actually resume without a recovery ritual:
+  complete local sources continue on Session reopen, and transient network
+  failures retry when connectivity returns. Retries are idempotent by the
+  existing upload-session identity, attempted once per recovery event, and
+  never loop on incomplete, verified, policy-held, or corrupt sources.
+- Replaced raw ledger states with the user-facing safety model people need:
+  `Safe on this device`, `Uploading safely`, `Verified in Quipsly`, or
+  `Needs attention`. Manual download and retry remain available as escape
+  hatches, not the normal path.
 
 ## Acceptance consequences
 

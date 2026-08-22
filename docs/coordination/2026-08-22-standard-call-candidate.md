@@ -3,9 +3,10 @@
 Date: 2026-08-22
 Status: source-qualified; not uploaded or deployed
 
-> Later working-tree note: browser hot-plug reconciliation was implemented and
-> locally tested after the source revision recorded below. It is not part of
-> this qualified artifact and must ride a later exact-source Nest candidate.
+> Later working-tree note: browser hot-plug reconciliation and automatic
+> resumable-upload recovery were implemented and locally tested after the
+> source revision recorded below. They are not part of this qualified artifact
+> and must ride a later exact-source Nest candidate.
 
 ## Product decision
 

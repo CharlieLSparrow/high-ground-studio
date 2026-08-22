@@ -64,6 +64,10 @@ import type {
   BrowserRetainedSourceStatus,
 } from "@/lib/session-guardian";
 import { browserRetainedStorageIssue } from "@/lib/session-guardian";
+import {
+  browserSourceSafetyLabel,
+  resumeBrowserSourceUploads,
+} from "@/lib/browser-source-upload-recovery";
 
 type ConsentPolicy = {
   version: string;
@@ -95,6 +99,20 @@ function formatBytes(bytes: number | null) {
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+function retainedRecorderStatusLabel(
+  status: BrowserRetainedSourceStatus,
+  elapsedSeconds: number,
+) {
+  if (status === "recording") return `Recording ${elapsedSeconds}s`;
+  if (status === "checking") return "Getting ready";
+  if (status === "starting") return "Starting";
+  if (status === "stopping") return "Saving safely";
+  if (status === "uploading") return "Uploading safely";
+  if (status === "held") return "Safe on this device";
+  if (status === "error") return "Needs attention";
+  return "Ready";
 }
 
 function formattedDbfs(value: number) {
@@ -278,6 +296,8 @@ export function BrowserSourceRecorder({
   const guardianCleanupRef = useRef<(() => void) | null>(null);
   const lastDurableChunkAtRef = useRef<number | null>(null);
   const endpointQueueTimerRef = useRef<number | null>(null);
+  const automaticUploadRecoveryInFlightRef = useRef(false);
+  const automaticUploadRecoveryAttemptedRef = useRef(new Set<string>());
 
   const reconcileEndpointQueue = useCallback(() => {
     if (endpointQueueTimerRef.current !== null)
@@ -416,14 +436,16 @@ export function BrowserSourceRecorder({
         setRoomStatus(consentPacket?.session?.roomStatus ?? null);
         setCanControlRoom(consentPacket?.session?.canControlRoom === true);
         setRecoveryRows(rows);
-        setStatus(
-          vault.available && consentPacket?.currentPolicy ? "ready" : "held",
-        );
-        setMessage(
-          vault.available
-            ? "Durable local source vault is ready. Review consent and retain the selected source when everyone is ready."
-            : "This browser cannot provide Quipsly's durable local vault. Use Quipsly Capture or a supported desktop browser.",
-        );
+        if (!automaticUploadRecoveryInFlightRef.current) {
+          setStatus(
+            vault.available && consentPacket?.currentPolicy ? "ready" : "held",
+          );
+          setMessage(
+            vault.available
+              ? "Durable local source vault is ready. Review consent and retain the selected source when everyone is ready."
+              : "This browser cannot provide Quipsly's durable local vault. Use Quipsly Capture or a supported desktop browser.",
+          );
+        }
       })
       .catch((error) => {
         if (cancelled) return;
@@ -1088,6 +1110,45 @@ export function BrowserSourceRecorder({
     },
     [refreshRecovery, updateLedger, uploadLedger],
   );
+
+  const resumeProtectedUploads = useCallback(async (resetAttempts = false) => {
+    if (navigator.onLine === false || automaticUploadRecoveryInFlightRef.current) return;
+    if (resetAttempts) automaticUploadRecoveryAttemptedRef.current.clear();
+    automaticUploadRecoveryInFlightRef.current = true;
+    try {
+      await resumeBrowserSourceUploads({
+        attemptedCaptureIds: automaticUploadRecoveryAttemptedRef.current,
+        list: () => listBrowserSourceLedgers(callRoomId).catch(() => []),
+        resume: async (ledger) => {
+          setMessage("Finishing a recording already saved on this device…");
+          await retryUploadLedger(ledger);
+        },
+      });
+    } catch (error) {
+      setStatus("held");
+      setMessage(
+        error instanceof Error
+          ? `Automatic upload recovery paused: ${error.message}. The recording remains listed below; use Retry upload when ready.`
+          : "Automatic upload recovery paused. The recording remains listed below; use Retry upload when ready.",
+      );
+    } finally {
+      automaticUploadRecoveryInFlightRef.current = false;
+    }
+  }, [callRoomId, retryUploadLedger]);
+
+  useEffect(() => {
+    void resumeProtectedUploads();
+    const online = () => void resumeProtectedUploads(true);
+    const visible = () => {
+      if (document.visibilityState === "visible") void resumeProtectedUploads();
+    };
+    window.addEventListener("online", online);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      window.removeEventListener("online", online);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [resumeProtectedUploads]);
 
   const stop = useCallback(
     (reason?: string) => {
@@ -1755,7 +1816,7 @@ export function BrowserSourceRecorder({
         <span
           className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${status === "recording" ? "bg-rose-700 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-emerald-100 text-emerald-950"}`}
         >
-          {status === "recording" ? `Recording ${elapsedSeconds}s` : status}
+          {retainedRecorderStatusLabel(status, elapsedSeconds)}
         </span>
       </div>
 
@@ -2013,9 +2074,12 @@ export function BrowserSourceRecorder({
       {recoveryRows.length ? (
         <div className="mt-4 border-t border-[#e5d8c0] pt-3">
           <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-[#5b472f]">
-            <HardDrive size={14} /> Protected takes on this browser ·{" "}
+            <HardDrive size={14} /> Recordings saved on this device ·{" "}
             {recoveryRows.length}
           </div>
+          <p className="mt-1 text-[10px] font-semibold leading-4 text-[#8a7354]">
+            Quipsly resumes unfinished uploads when this Session is open and your connection returns.
+          </p>
           <div className="mt-2 space-y-2">
             {recoveryRows.slice(0, 6).map((ledger) => (
               <div
@@ -2025,7 +2089,7 @@ export function BrowserSourceRecorder({
                 <span className="min-w-0">
                   <span className="block truncate">{ledger.fileName}</span>
                   <span className="text-[10px] text-[#8a7354]">
-                    {ledger.state} · {formatBytes(ledger.sizeBytes)} ·{" "}
+                    {browserSourceSafetyLabel(ledger)} · {formatBytes(ledger.sizeBytes)} ·{" "}
                     {clockEvidenceLabel(ledger)} ·{" "}
                     {new Date(ledger.startedAt).toLocaleString()}
                   </span>
@@ -2050,7 +2114,7 @@ export function BrowserSourceRecorder({
                       onClick={() => void retryUploadLedger(ledger)}
                       className="inline-flex min-h-9 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-3 text-[10px] uppercase text-violet-950"
                     >
-                      <UploadCloud size={13} /> Retry handoff
+                      <UploadCloud size={13} /> Retry upload
                     </button>
                   ) : null}
                   {ledger.state === "verified" ? (
