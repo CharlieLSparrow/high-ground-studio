@@ -76,8 +76,11 @@ check(
 check(
   "Episode Room tells the iPhone whether this collaborator can control Watch",
   episodeRoute.includes("roleAllowsAction")
-    && episodeRoute.includes("...runtime,\n      canEdit,")
-    && watch.includes("canEdit = payload.canEdit == true"),
+    && episodeRoute.includes('roleAllowsAction(readAccess.access.role, "write")')
+    && episodeRoute.includes("canEdit: canEdit && !projection.selectedRangeUnsupported")
+    && watch.includes("let nextCanEdit = payload.canEdit == true")
+    && watch.includes("canEdit = nextCanEdit")
+    && watch.includes("guard canEdit else"),
 );
 check(
   "one-second native polls use a lightweight projection instead of the manuscript runtime",
@@ -291,7 +294,8 @@ check(
   watch.includes("func projectedPosition(")
     && watch.includes('status == "playing"')
     && watch.includes("abs(current - target) > 0.5")
-    && watch.includes("Task.sleep(for: .seconds(1))"),
+    && watch.includes("let delaySeconds = consecutivePollFailures >= 3 ? 5.0 : 1.0")
+    && watch.includes("Task.sleep(for: .seconds(delaySeconds))"),
 );
 check(
   "server time is mapped onto the local midpoint with explicit uncertainty",
