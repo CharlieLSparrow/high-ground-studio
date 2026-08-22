@@ -1619,6 +1619,7 @@ export function TranscriptCorrectionDesk({
   const [showSpeakerIdentity, setShowSpeakerIdentity] = useState(false);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
+  const automaticPlaybackPreparationRef = useRef<string | null>(null);
   const playbackReady = Boolean(desk?.playback) && playbackState === "ready";
   const detectorDurationSeconds = desk?.playback?.durationSeconds ?? desk?.evaluation?.sourceDurationSeconds ?? desk?.evidence?.audio.signal?.durationSeconds ?? 0;
 
@@ -1681,6 +1682,19 @@ export function TranscriptCorrectionDesk({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [desk, showQualityDetails]);
+
+  useEffect(() => {
+    const recordingId = desk?.recording?.id;
+    if (
+      !desk?.gate.allowed
+      || desk.playback
+      || !desk.recording?.eligibleForProtectedPlaybackPreparation
+      || !recordingId
+      || automaticPlaybackPreparationRef.current === recordingId
+    ) return;
+    automaticPlaybackPreparationRef.current = recordingId;
+    void prepareProtectedPlayback(true);
+  }, [desk]);
 
   const spectralTranscriptWords = useMemo(
     () => transcriptWordsForAudioEvidence(desk?.segments ?? []),
@@ -1766,7 +1780,7 @@ export function TranscriptCorrectionDesk({
     setBusy(false);
   }
 
-  async function prepareProtectedPlayback() {
+  async function prepareProtectedPlayback(automatic = false) {
     const recordingAssetId = desk?.recording?.id;
     if (!recordingAssetId) return;
     setPreparingPlayback(true);
@@ -1786,10 +1800,16 @@ export function TranscriptCorrectionDesk({
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || payload.message || "Protected playback could not be prepared.");
       }
-      setMessage(payload.message || "Protected playback is ready from the verified recording source.");
+      setMessage(automatic
+        ? "Recording ready."
+        : payload.message || "Recording ready.");
       await load(true);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Protected playback could not be prepared.");
+      setMessage(error instanceof Error
+        ? error.message
+        : automatic
+          ? "Quipsly could not make the recording playable automatically. Try again."
+          : "The recording could not be made playable.");
     } finally {
       setPreparingPlayback(false);
     }
@@ -1834,7 +1854,7 @@ export function TranscriptCorrectionDesk({
     setMessage("The transcript file is prepared below. This embedded browser did not open a system share sheet.");
   }
 
-  if (loading) return <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Loading protected playback and correction history…</section>;
+  if (loading) return <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Loading transcript and recording…</section>;
   if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{message || "No transcript text is substituted and no evidence was changed."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
 
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
@@ -1846,21 +1866,21 @@ export function TranscriptCorrectionDesk({
       <div className="rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Playback-verified evidence</p>
-            <h2 id="transcript-correction-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Listen, correct, preserve the source</h2>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">Corrections sit above provider output as reviewable revisions. Media timing never moves, and AI proposals never become transcript truth without a person listening here.</p>
-            {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{reviewedSegmentCount} of {desk.segments.length} segments playback-reviewed</p>}
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Transcript</p>
+            <h2 id="transcript-correction-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Review and edit the transcript</h2>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">Play any passage to check it, then correct the words or speaker name. Quipsly keeps every change reversible and lined up with the recording.</p>
+            {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{reviewedSegmentCount} of {desk.segments.length} passages checked</p>}
           </div>
           <div className="flex flex-wrap gap-2">
             {canEditRecording ? <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=outputs#recording-share`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />Trim recording</Link> : null}
-            <button type="button" onClick={() => void prepareTranscriptFile()} disabled={busy || !desk.gate.allowed || !desk.segments.length} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Share2 size={15} aria-hidden="true" />Prepare transcript file</button>
-            <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh truth</button>
+            <button type="button" onClick={() => void prepareTranscriptFile()} disabled={busy || !desk.gate.allowed || !desk.segments.length} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50"><Share2 size={15} aria-hidden="true" />Share transcript</button>
+            <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh</button>
           </div>
         </div>
         {message && <p role="status" className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-900">{message}</p>}
         {preparedTranscript ? <a href={preparedTranscript.url} download={preparedTranscript.filename} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"><Download size={15} aria-hidden="true" />Download prepared transcript</a> : null}
         {desk.processing && (
-          <div className="mt-5 grid gap-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div className="mt-5 grid gap-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.16em] text-[#987443]">
                 {desk.transcriptStatus === "COMPLETED"
@@ -1872,19 +1892,20 @@ export function TranscriptCorrectionDesk({
               <p className="mt-1 text-sm font-semibold leading-relaxed text-[#5f4d37]">
                 {desk.processing.message
                   || (desk.transcriptStatus === "RUNNING"
-                    ? "You can leave this page. Quipsly keeps the exact recording generation, retries transient provider failures, and will refresh this desk when word evidence lands."
-                    : "The provider response, source binding, and worker receipt stay attached to this transcript version.")}
+                    ? "You can leave this page and come back when it is ready."
+                    : "Ready to review, correct, and share.")}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2 text-[0.68rem] font-black uppercase tracking-wide">
-              <span className={`rounded-full px-3 py-1.5 ${desk.processing.sourceBound ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>source bound</span>
-              <span className={`rounded-full px-3 py-1.5 ${desk.processing.providerReceiptReceived ? "bg-emerald-100 text-emerald-900" : "bg-stone-200 text-stone-700"}`}>provider receipt</span>
-            </div>
-            {desk.processing.routing && (
-              <details className="sm:col-span-2 rounded-xl border border-indigo-200 bg-white p-4">
-                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-indigo-900">
-                  Why Quipsly chose this transcript route
-                </summary>
+            <details className="rounded-xl border border-indigo-200 bg-white p-4">
+              <summary className="cursor-pointer text-xs font-black text-indigo-900">
+                Transcription details
+              </summary>
+              <div className="mt-3 flex flex-wrap gap-2 text-[0.68rem] font-black uppercase tracking-wide">
+                <span className={`rounded-full px-3 py-1.5 ${desk.processing.sourceBound ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>recording matched</span>
+                <span className={`rounded-full px-3 py-1.5 ${desk.processing.providerReceiptReceived ? "bg-emerald-100 text-emerald-900" : "bg-stone-200 text-stone-700"}`}>provider receipt</span>
+              </div>
+              {desk.processing.routing ? (
+                <div>
                 <p className="mt-2 text-sm font-semibold leading-relaxed text-indigo-950">
                   {desk.processing.routing.sourceTopology === "participant-isolated"
                     ? `${desk.processing.routing.participantLabel || "This participant"} owns this isolated source, so source identity outranks inferred diarization.`
@@ -1899,15 +1920,16 @@ export function TranscriptCorrectionDesk({
                   <div className="rounded-lg bg-indigo-50 p-3"><dt className="font-black uppercase tracking-wide text-indigo-700">Vocabulary</dt><dd className="mt-1 font-bold text-indigo-950">{desk.processing.routing.terminologyKeytermCount > 0 ? `${desk.processing.routing.terminologyKeytermCount} frozen keyterms` : "No provider keyterms"}</dd></div>
                 </dl>
                 <p className="mt-3 text-[0.7rem] font-bold leading-relaxed text-indigo-800">Timing: {humanize(desk.processing.routing.timingGranularity || "unknown")} · Language: {desk.processing.routing.language || "provider default"} · Provider output remains immutable evidence; corrections and verified speaker identity are separate.</p>
-              </details>
-            )}
+                </div>
+              ) : null}
+            </details>
           </div>
         )}
         {!desk.gate.allowed ? (
           <p className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-900">{desk.gate.error || "Transcript evidence remains held by consent and release policy."}</p>
         ) : desk.playback ? (
           <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
-            <p className="mb-3 text-xs font-black uppercase tracking-wide text-sky-900">Protected source · {desk.playback.label}</p>
+            <p className="mb-3 text-xs font-black text-sky-900">Recording · {desk.playback.label}</p>
             {desk.playback.kind === "video"
               ? <video ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
               : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
@@ -1916,14 +1938,14 @@ export function TranscriptCorrectionDesk({
           </div>
         ) : (
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-relaxed text-amber-950">
-            <p>The transcript is readable, but accepted correction is disabled until the verified recording is prepared as protected Quipsly playback. This prevents “I listened” from becoming a paperwork checkbox with no playable source.</p>
+            <p>{preparingPlayback ? "Quipsly is making the verified recording playable…" : "The transcript is ready, but the recording still needs attention before it can be checked or corrected."}</p>
             {desk.recording?.eligibleForProtectedPlaybackPreparation ? (
               <div className="mt-4">
-                <button type="button" onClick={() => void prepareProtectedPlayback()} disabled={preparingPlayback || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" onClick={() => void prepareProtectedPlayback(false)} disabled={preparingPlayback || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
                   {preparingPlayback ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={15} aria-hidden="true" />}
-                  {preparingPlayback ? "Preparing protected playback…" : "Prepare protected playback"}
+                  {preparingPlayback ? "Getting recording ready…" : "Try again"}
                 </button>
-                <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">Registers the existing verified source behind Quipsly’s access and release checks. It does not copy or alter the recording, rerun transcription, create work, send anything, or publish.</p>
+                <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">This does not change the original recording.</p>
               </div>
             ) : null}
           </div>

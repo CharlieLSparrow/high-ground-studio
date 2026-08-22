@@ -472,6 +472,14 @@ failure shapes recur often enough to influence the architecture:
   separate diagnostics workflow. Deep links automatically reveal the otherwise
   collapsed audio evidence, so a warning never lands on a page that appears to
   contain no matching next step.
+- Treat protected playback materialization as infrastructure, not a coach task.
+  Current Capture finalization already registers verified sources with their
+  permission-filtered playback route. When an older verified source lacks that
+  projection, transcript review now prepares it once automatically and shows a
+  plain `Try again` escape hatch only after the automatic path cannot finish.
+  The everyday transcript surface says `Review and edit`, `Share transcript`,
+  and `Refresh`; provider routing and receipts live under `Transcription
+  details`.
 
 ## Acceptance consequences
 

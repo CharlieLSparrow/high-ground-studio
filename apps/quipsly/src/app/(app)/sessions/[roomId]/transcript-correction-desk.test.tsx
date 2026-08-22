@@ -195,7 +195,7 @@ describe("TranscriptCorrectionDesk", () => {
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => routed })) as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
-    const summary = await screen.findByText("Why Quipsly chose this transcript route");
+    const summary = await screen.findByText("Transcription details");
     fireEvent.click(summary);
     expect(screen.getByText(/scott sparrow owns this isolated source/i)).toBeInTheDocument();
     expect(screen.getByText(/nova-3@latest.*moving latest/i)).toBeInTheDocument();
@@ -347,11 +347,13 @@ describe("TranscriptCorrectionDesk", () => {
   });
 
   it("keeps correction controls disabled when no protected playback exists", async () => {
-    global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(false) })) as unknown as typeof fetch;
+    const unavailable = desk(false);
+    unavailable.recording.eligibleForProtectedPlaybackPreparation = false;
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => unavailable })) as unknown as typeof fetch;
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     const button = await screen.findByRole("button", { name: /correct against playback/i });
     expect(button).toBeDisabled();
-    expect(screen.getByText(/prevents “I listened” from becoming a paperwork checkbox/i)).toBeInTheDocument();
+    expect(screen.getByText(/recording still needs attention/i)).toBeInTheDocument();
   });
 
   it("revokes playback authority when protected source bytes fail to load", async () => {
@@ -366,7 +368,7 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/historical review receipts remain visible/i);
   });
 
-  it("prepares protected playback through the canonical recording handoff", async () => {
+  it("makes a verified recording playable automatically", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => desk(false) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, message: "Verified recording is now available as Quipsly media." }) })
@@ -374,7 +376,6 @@ describe("TranscriptCorrectionDesk", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
-    fireEvent.click(await screen.findByRole("button", { name: /prepare protected playback/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/recordings/promote");
