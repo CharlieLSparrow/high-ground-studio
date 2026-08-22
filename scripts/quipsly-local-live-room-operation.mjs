@@ -267,15 +267,22 @@ if (sharedBrowser) browsers.push(sharedBrowser);
 const journeys = [];
 
 const saveRenderedConsent = async (journey) => {
+  const consentAction = journey.page.getByRole("button", {
+    name: /Agree and continue|Update choices/,
+  });
+  if (!(await consentAction.isVisible())) {
+    await journey.page
+      .locator("summary")
+      .filter({ hasText: "Recording choices" })
+      .click();
+  }
   const [response] = await Promise.all([
     journey.page.waitForResponse(
       (candidate) =>
         candidate.request().method() === "POST" &&
         new URL(candidate.url()).pathname === "/api/mobile/capture/consent",
     ),
-    journey.page
-      .getByRole("button", { name: /Agree and continue|Update choices/ })
-      .click(),
+    consentAction.click(),
   ]);
   const packet = await response.json().catch(() => null);
   assert(
@@ -463,6 +470,12 @@ try {
       "Create a transcript and suggested notes/tasks",
       { exact: true },
     );
+    if (!(await transcriptionConsent.isVisible())) {
+      await journey.page
+        .locator("summary")
+        .filter({ hasText: "Recording choices" })
+        .click();
+    }
     await transcriptionConsent.waitFor({ timeout: 20_000 });
     if (!(await transcriptionConsent.isChecked()))
       await transcriptionConsent.check();
