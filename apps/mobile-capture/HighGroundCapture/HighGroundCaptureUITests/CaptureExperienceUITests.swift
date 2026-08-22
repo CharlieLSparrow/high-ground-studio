@@ -444,6 +444,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord() {
         app.tabBars.buttons["Record"].tap()
+        openLocalRecorderIfNeeded()
 
         let card = app.descendants(matching: .any)[
             "CaptureRehearsalReadinessCard"
@@ -2098,6 +2099,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launchArguments = ownerArguments
         app.launch()
         XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        openLocalRecorderIfNeeded()
         let disclosure = app.buttons["CaptureRehearsalReadinessDisclosure"]
         XCTAssertTrue(disclosure.waitForExistence(timeout: 8))
         disclosure.tap()
@@ -2116,6 +2118,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launchArguments = ownerArguments
         app.launch()
         XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        openLocalRecorderIfNeeded()
         app.buttons["CaptureRehearsalReadinessDisclosure"].tap()
         let recoveredIdentity = app.staticTexts["CaptureSessionPreflightOutboxReceiptID"]
         XCTAssertTrue(recoveredIdentity.waitForExistence(timeout: 8))
@@ -2134,6 +2137,7 @@ final class CaptureExperienceUITests: XCTestCase {
         ]
         app.launch()
         XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        openLocalRecorderIfNeeded()
         app.buttons["CaptureRehearsalReadinessDisclosure"].tap()
         let otherIdentity = app.staticTexts["CaptureSessionPreflightOutboxReceiptID"]
         XCTAssertTrue(otherIdentity.waitForExistence(timeout: 8))
@@ -2147,6 +2151,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launchArguments = ownerArguments
         app.launch()
         XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        openLocalRecorderIfNeeded()
         app.buttons["CaptureRehearsalReadinessDisclosure"].tap()
         XCTAssertEqual(
             app.staticTexts["CaptureSessionPreflightOutboxReceiptID"].label,
@@ -2335,6 +2340,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testVideoModesExplainAndExposeTheExactLocalSourceBeforeCameraPermission() {
         app.tabBars.buttons["Record"].tap()
+        openLocalRecorderIfNeeded()
 
         let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
         XCTAssertTrue(modePicker.waitForExistence(timeout: 5))
@@ -2405,6 +2411,7 @@ final class CaptureExperienceUITests: XCTestCase {
         ]
         app.launch()
 
+        openLocalRecorderIfNeeded()
         let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
         XCTAssertTrue(modePicker.waitForExistence(timeout: 12))
         modePicker.buttons["A/V"].tap()
@@ -2825,6 +2832,7 @@ final class CaptureExperienceUITests: XCTestCase {
             XCTAssertTrue(row.exists, "The deterministic capture-group fixture must be reachable in the real session picker.")
             XCTAssertTrue(row.isHittable)
             row.tap()
+            openLocalRecorderIfNeeded()
         }
 
         func assertHandoff(
