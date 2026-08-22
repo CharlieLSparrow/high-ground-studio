@@ -4,9 +4,15 @@ import userEvent from "@testing-library/user-event";
 import { CaptureAppHandoff } from "./capture-app-handoff";
 
 describe("CaptureAppHandoff", () => {
+  const originalUserAgent = window.navigator.userAgent;
+
   beforeEach(() => {
     window.localStorage.clear();
     window.history.replaceState({}, "", "/");
+    Object.defineProperty(window.navigator, "userAgent", {
+      configurable: true,
+      value: originalUserAgent,
+    });
   });
 
   it("advances in place and hands off only canonical Session identity", async () => {
@@ -29,29 +35,37 @@ describe("CaptureAppHandoff", () => {
     expect(
       screen.getByRole("region", { name: "Join your Session" }),
     ).toHaveAttribute("data-session-entry-ready", "true");
-    expect(screen.queryByRole("link", { name: "Open Capture" })).not.toBeInTheDocument();
-    expect(screen.getByText(/one choice now · setup comes next/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /iPhone Capture/i }));
-    expect(screen.getByRole("link", { name: "Open Capture" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Join call" })).toBeInTheDocument();
+    expect(screen.getByText(/recommended on this device/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Use Quipsly Capture on iPhone/i })).toHaveAttribute(
       "href",
       "quipsly://session/room-safe_42?mode=live",
     );
     expect(
-      screen.getByRole("link", { name: "Get iPhone beta" }),
+      screen.getByRole("link", { name: /Get the beta/i }),
     ).toHaveAttribute("href", "https://testflight.apple.com/join/XwRRcYUm");
-    expect(
-      screen.getByText(/install the public beta, sign in with the invited/i),
-    ).toBeInTheDocument();
     expect(
       screen.getByText(/same private Session/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/continue in this browser/i)).toBeInTheDocument();
     expect(screen.queryByText(/laptop/i)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Use another device" }));
-    expect(screen.queryByRole("link", { name: "Open Capture" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /This browser/i }));
+    await user.click(screen.getByRole("button", { name: "Join call" }));
     expect(onContinueInBrowser).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes Capture the one-tap recommendation on iPhone and keeps browser entry secondary", () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X)",
+    });
+
+    render(<CaptureAppHandoff roomId="room-iphone" />);
+
+    expect(screen.getByText("Recommended on this iPhone")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Quipsly Capture" })).toHaveAttribute(
+      "href",
+      "quipsly://session/room-iphone?mode=live",
+    );
+    expect(screen.getByRole("button", { name: "Join in browser" })).toBeInTheDocument();
   });
 
   it("recovers a browser handoff when the invitation page remounts", () => {
@@ -77,7 +91,7 @@ describe("CaptureAppHandoff", () => {
     const first = render(
       <CaptureAppHandoff roomId="room-first" onContinueInBrowser={firstContinue} />,
     );
-    await user.click(screen.getByRole("button", { name: /This browser/i }));
+    await user.click(screen.getByRole("button", { name: "Join call" }));
     expect(window.localStorage.getItem("quipsly.session-entry-preference.v1")).toBe("BROWSER");
     first.unmount();
 
@@ -85,7 +99,7 @@ describe("CaptureAppHandoff", () => {
     render(<CaptureAppHandoff roomId="room-next" onContinueInBrowser={nextContinue} />);
     expect(await screen.findByText("Continue in this browser")).toBeInTheDocument();
     expect(nextContinue).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/one choice now/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/recommended on this device/i)).not.toBeInTheDocument();
   });
 
   it("remembers Capture but still requires a user gesture before opening another app", async () => {

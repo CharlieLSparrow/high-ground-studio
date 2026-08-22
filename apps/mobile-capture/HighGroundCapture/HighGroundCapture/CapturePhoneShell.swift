@@ -10340,8 +10340,8 @@ private struct NextCaptureCard: View {
                 }
                 Spacer(minLength: 12)
                 CaptureStatusPill(
-                    label: session.canRecordNow ? "Ready" : "Consent needed",
-                    systemImage: session.canRecordNow ? "checkmark" : "exclamationmark",
+                    label: session.canRecordNow ? "Ready" : "Setup needed",
+                    systemImage: session.canRecordNow ? "checkmark" : "ellipsis",
                     tint: session.canRecordNow ? .green : .orange
                 )
             }
@@ -10408,9 +10408,9 @@ private struct SessionListRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Image(systemName: session.hasCurrentRecordingConsent ? "checkmark.shield.fill" : "shield.lefthalf.filled.badge.checkmark")
-                    .foregroundStyle(session.hasCurrentRecordingConsent ? .green : .orange)
-                    .accessibilityLabel(session.hasCurrentRecordingConsent ? "Consent granted" : "Consent needed")
+                Image(systemName: session.canRecordNow ? "checkmark.circle.fill" : "ellipsis.circle.fill")
+                    .foregroundStyle(session.canRecordNow ? .green : .orange)
+                    .accessibilityLabel(session.canRecordNow ? "Ready" : "Setup needed")
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.tertiary)

@@ -895,7 +895,7 @@ for (const needle of [
   "CaptureRehearsalReadinessCard",
   "CaptureConsentConfirmationSheet",
   "Only continue after everyone who may be seen or heard agrees. Each signed-in participant confirms for themselves.",
-  "Consent needed",
+  "Setup needed",
   "Button(\"Cancel\")",
   "Revoke",
   "Try again now",
@@ -955,7 +955,7 @@ for (const needle of [
   "Local source is production truth",
   "GlobalCaptureBanner",
   "CaptureJoinMutedToggle",
-  "Finish this take to change the call",
+  "Finish or stop the current take first.",
   ".disabled(providerControlsLocked",
   "CaptureRecordingModePicker",
   "CaptureVideoRecorderHero",
@@ -1573,7 +1573,7 @@ requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinMute
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderJoinRoomButton")', "shipping provider join action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderToggleMuteButton")', "shipping provider mute action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderLeaveRoomButton")', "shipping provider leave action is addressable");
-requireIncludes(capturePhoneShellText, "Finish this take to change the call", "shipping room controls cannot reconfigure active local capture");
+requireIncludes(capturePhoneShellText, "Finish or stop the current take first.", "shipping room controls cannot reconfigure active local capture");
 requireIncludes(capturePhoneShellText, "Joins the conversation. Recording starts only when someone taps Record.", "shipping call control hint preserves explicit recording start");
 requireIncludes(capturePhoneShellText, "CaptureConsentConfirmationSheet(", "shipping recorder reaches explicit participant consent");
 requireIncludes(capturePhoneShellText, "Recording still starts separately.", "shipping consent does not imply recording");

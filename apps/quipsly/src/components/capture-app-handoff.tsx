@@ -2,8 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft,
-  ChevronRight,
   Download,
   ExternalLink,
   MonitorSmartphone,
@@ -22,6 +20,11 @@ type EntryChoiceMetrics = {
   TESTFLIGHT: number;
 };
 
+function prefersCaptureOnThisDevice() {
+  const userAgent = window.navigator.userAgent;
+  return /iPhone|iPod/i.test(userAgent);
+}
+
 export function CaptureAppHandoff({
   roomId,
   joinedFromInvitation = false,
@@ -35,8 +38,9 @@ export function CaptureAppHandoff({
 }) {
   const captureURL = `quipsly://session/${encodeURIComponent(roomId)}?mode=live`;
   const [metrics, setMetrics] = useState<EntryChoiceMetrics | null>(null);
-  const [step, setStep] = useState<"choose" | "capture" | "preferred">("choose");
+  const [step, setStep] = useState<"choose" | "preferred">("choose");
   const [preferredEntry, setPreferredEntry] = useState<"BROWSER" | "CAPTURE_APP" | null>(null);
+  const [captureRecommended, setCaptureRecommended] = useState(false);
   const [interactive, setInteractive] = useState(false);
   const continueInBrowserRef = useRef(onContinueInBrowser);
   const openedRememberedBrowserRef = useRef(false);
@@ -84,6 +88,7 @@ export function CaptureAppHandoff({
   }
 
   useEffect(() => {
+    setCaptureRecommended(prefersCaptureOnThisDevice());
     const saved = window.localStorage.getItem(SESSION_ENTRY_PREFERENCE_KEY);
     if (saved === "BROWSER" || saved === "CAPTURE_APP") {
       setPreferredEntry(saved);
@@ -154,11 +159,12 @@ export function CaptureAppHandoff({
             id="capture-handoff-heading"
             className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
           >
-            {joinedFromInvitation ? "Join your Session" : "Choose where to join"}
+            {joinedFromInvitation ? "Join your Session" : "Ready to join?"}
           </h2>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">
-            Continue in this browser or open the same Session in Quipsly
-            Capture on iPhone.
+            {captureRecommended
+              ? "Open the Session in Quipsly Capture, or continue in this browser."
+              : "Continue in this browser. Quipsly Capture is also available on iPhone."}
           </p>
         </div>
       </div>
@@ -217,98 +223,64 @@ export function CaptureAppHandoff({
         ) : step === "choose" ? (
           <div aria-label="Choose a device for this Session">
             <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#765f40]">
-              One choice now · setup comes next
+              {captureRecommended ? "Recommended on this iPhone" : "Recommended on this device"}
             </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                disabled={!interactive}
-                onClick={continueInBrowser}
-                className="group flex min-h-24 items-center gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-900 disabled:cursor-wait disabled:opacity-60"
-              >
-                <span className="rounded-xl bg-white p-2 text-sky-800 shadow-sm">
-                  <MonitorSmartphone size={22} aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-black text-[#3d3122]">This browser</span>
-                  <span className="mt-0.5 block text-xs font-semibold leading-5 text-[#765f40]">
-                    Set up and join here
-                  </span>
-                </span>
-                <ChevronRight className="shrink-0 text-sky-800" size={18} aria-hidden="true" />
-              </button>
-
-              <button
-                type="button"
-                disabled={!interactive}
-                onClick={() => {
-                  rememberEntry("CAPTURE_APP");
-                  setStep("capture");
-                }}
-                className="group flex min-h-24 items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800 disabled:cursor-wait disabled:opacity-60"
-              >
-                <span className="rounded-xl bg-white p-2 text-violet-800 shadow-sm">
-                  <Smartphone size={22} aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-black text-[#3d3122]">iPhone Capture</span>
-                  <span className="mt-0.5 block text-xs font-semibold leading-5 text-[#765f40]">
-                    Open on this iPhone
-                  </span>
-                </span>
-                <ChevronRight className="shrink-0 text-violet-800" size={18} aria-hidden="true" />
-              </button>
+            <div className="mt-3 space-y-2">
+              {captureRecommended ? (
+                <>
+                  <a
+                    href={captureURL}
+                    onClick={() => {
+                      rememberEntry("CAPTURE_APP");
+                      recordChoice("CAPTURE_APP");
+                    }}
+                    className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-violet-800 px-5 text-sm font-black text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800"
+                  >
+                    <ExternalLink size={18} aria-hidden="true" /> Open Quipsly Capture
+                  </a>
+                  <button
+                    type="button"
+                    disabled={!interactive}
+                    onClick={continueInBrowser}
+                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-sky-200 bg-white px-4 text-xs font-black text-sky-950 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <MonitorSmartphone size={16} aria-hidden="true" /> Join in browser
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    disabled={!interactive}
+                    onClick={continueInBrowser}
+                    className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-violet-800 px-5 text-sm font-black text-white disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <MonitorSmartphone size={18} aria-hidden="true" /> Join call
+                  </button>
+                  <a
+                    href={captureURL}
+                    onClick={() => {
+                      rememberEntry("CAPTURE_APP");
+                      recordChoice("CAPTURE_APP");
+                    }}
+                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-violet-200 bg-white px-4 text-xs font-black text-violet-950"
+                  >
+                    <Smartphone size={16} aria-hidden="true" /> Use Quipsly Capture on iPhone
+                  </a>
+                </>
+              )}
             </div>
-          </div>
-        ) : (
-          <div aria-label="Open this Session in Quipsly Capture">
-            <button
-              type="button"
-              onClick={chooseAnotherDevice}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full px-2 text-xs font-black text-violet-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800"
+            <a
+              href={CAPTURE_TESTFLIGHT_URL}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => recordChoice("TESTFLIGHT")}
+              className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full px-2 text-xs font-black text-violet-900"
             >
-              <ArrowLeft size={16} aria-hidden="true" />
-              Use another device
-            </button>
-            <div className="mt-1 flex items-start gap-3 px-1">
-              <span className="rounded-xl bg-violet-50 p-2 text-violet-800">
-                <Smartphone size={22} aria-hidden="true" />
-              </span>
-              <div>
-                <h3 className="font-black text-[#3d3122]">Continue on this iPhone</h3>
-                <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">
-                  Capture opens this Session so you can check your setup and join.
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              <a
-                href={captureURL}
-                onClick={() => {
-                  rememberEntry("CAPTURE_APP");
-                  recordChoice("CAPTURE_APP");
-                }}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black uppercase tracking-wide text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800"
-              >
-                <ExternalLink size={15} aria-hidden="true" />
-                Open Capture
-              </a>
-              <a
-                href={CAPTURE_TESTFLIGHT_URL}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => recordChoice("TESTFLIGHT")}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-xs font-black text-violet-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800"
-              >
-                <Download size={15} aria-hidden="true" />
-                Get iPhone beta
-              </a>
-            </div>
-            <p className="mt-3 text-[10px] font-bold leading-4 text-[#765f40]">
-              First time? Install the public beta, sign in with the invited account, return here, and tap Open Capture.
-            </p>
+              <Download size={15} aria-hidden="true" /> Need the iPhone app? Get the beta
+            </a>
           </div>
-        )}
+        ) : null}
       </div>
 
       <p className="mt-4 flex gap-2 rounded-xl border border-white/80 bg-white/75 p-3 text-[11px] font-bold leading-5 text-[#5b472f]">

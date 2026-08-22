@@ -26,6 +26,13 @@ notes, goals, tasks, and collaborative follow-through.
 - [Apple](https://developer.apple.com/documentation/uikit/requesting-access-to-protected-resources?changes=_2) requires camera and microphone permission at the protected-resource
   boundary and remembers the system response. Purpose strings should be concise,
   accurate, and specific.
+- [Apple's AVFoundation guidance](https://developer.apple.com/documentation/avfoundation/requesting-authorization-to-capture-and-save-media) confirms that iOS remembers each camera and microphone response, so an app
+  should ask at the actual Join/Record boundary and must not build its own
+  recurring permission ritual around the system choice.
+- [MDN's `getUserMedia` guidance](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia) requires an explicit browser permission at least once and permits browsers to
+  offer persistent site access. Quipsly can remember device intent, but it must
+  respect whether the browser grants one-time or ongoing access and cannot
+  promise to suppress a prompt controlled by the browser.
 - Recurring user complaints across meeting and remote-recording products concern
   forgotten device/mute choices, buried settings, preflight and in-call route
   disagreement, crashes or source loss, stuck uploads, and transcript timing
@@ -103,6 +110,12 @@ failure shapes recur often enough to influence the architecture:
   local masters for final quality. Quipsly should make the fast collaborative
   projection feel instant while keeping the independent source masters easy to
   inspect and replace.
+- Positive reviews consistently praise the combination of a guest link,
+  separate participant tracks, and local quality that survives a poor live
+  connection. Negative reviews cluster around recordings stuck near completion,
+  unusable post-call media, audio/video drift, and editors that obscure the
+  underlying tracks. The product lesson is to make entry boring and source
+  health unusually transparent—not to add more setup choices.
 - Chrome's modern Page Lifecycle guidance treats `visibilitychange` to hidden as
   the last reliably observable mobile boundary and explicitly warns against
   pretending `unload` can save work. Quipsly therefore journals source chunks
@@ -259,6 +272,13 @@ failure shapes recur often enough to influence the architecture:
   returning iPhone user sees one `Open Capture` action because browsers rightly
   require a gesture before opening another app. `Use another device` remains a
   quiet escape hatch instead of recurring setup.
+- Replaced the first visit's two equal device cards and extra Capture handoff
+  screen with one contextual primary action. Desktop and ordinary browsers get
+  `Join call`; iPhone gets `Open Quipsly Capture`. The alternate path remains a
+  single secondary action, and the public beta link remains available without
+  interrupting the happy path. The selected route is still measured and
+  remembered, but the person no longer has to understand Quipsly's client
+  architecture before entering a call.
 - Reduced host invitation setup to email plus one primary action. Name, role,
   expiry, raw URL, provider presence, join-key leases, and append-only access
   history remain available under progressive disclosure. Provider presence is

@@ -1023,7 +1023,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     var captureReadinessLabel: String {
         let label = captureReadiness?.label?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let label, !label.isEmpty { return label }
-        return recordingConsentGranted ? "Ready locally" : "Consent needed"
+        return recordingConsentGranted ? "Ready" : "Setup needed"
     }
 
     var hasCurrentRecordingConsent: Bool {
@@ -1033,7 +1033,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     var captureReadinessDetail: String {
         let detail = captureReadiness?.detail?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let detail, !detail.isEmpty { return detail }
-        return nextAction ?? "Choose a Quipsly session, grant consent, then start capture."
+        return nextAction ?? "Choose a Session, check your setup, then start recording."
     }
 
     var captureReadinessNextAction: String {
