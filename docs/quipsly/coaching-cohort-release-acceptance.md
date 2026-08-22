@@ -821,7 +821,7 @@ in-app browser returned `auth/network-request-failed` for the same operation,
 so that result is classified as test-harness failure rather than product auth
 failure. The signed-in production coaching response returned the real dashboard
 with `Set coach profile`, `Create session`, `Meet and record`, `Review and
-share`, `Upcoming sessions`, `Capture rooms`, `Create appointment`, and
+share`, `Upcoming sessions`, `Capture rooms`, `Schedule a Session`, and
 `Requests`, and contained no retained acceptance account or release-smoke
 marker.
 

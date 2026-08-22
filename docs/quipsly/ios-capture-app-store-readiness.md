@@ -288,7 +288,7 @@ aligned. It does not sign in, mutate data, charge, invite, publish, or record.
    preset`.
 5. Confirm the account email is `reviewer-capture@dev.test`, or replace it with
    the actual reviewer account.
-6. Use `Schedule and create the private Session` when the goal is a visible iOS capture
+6. Use `Schedule and send invite` when the goal is a visible iOS capture
    session. Do not use a hold-only path for App Review.
 7. Confirm the session appears in authenticated mobile capture sessions before
    claiming the app is review-ready.
@@ -297,8 +297,9 @@ aligned. It does not sign in, mutate data, charge, invite, publish, or record.
    handoff notes.
 
 Boundary: the reviewer session setup writes Quipsly-owned booking, room,
-requested consent, and calendar receipt-slot state. It does not charge, invite,
-publish, start recording, or create an external calendar event.
+requested consent, invitation, and calendar receipt-slot state. It sends only
+the named participant invitation; it does not charge, publish, start recording,
+or create an external calendar event.
 
 Scheduling evidence follows the same rule. Quipsly owns booking holds,
 confirmed bookings, planned capture rooms, reschedule/cancel state, and calendar

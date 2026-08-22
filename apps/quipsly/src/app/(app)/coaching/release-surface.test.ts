@@ -30,7 +30,7 @@ describe("coaching release surfaces", () => {
     expect(source).not.toContain('purpose: "PODCAST",');
   });
 
-  it("carries the coach timezone into the ordinary appointment form and request", () => {
+  it("keeps the ordinary appointment path to email, time, and remembered defaults", () => {
     const source = readFileSync(join(coachingRoot, "page.tsx"), "utf8");
     const compact = source.replace(/\s+/g, " ");
 
@@ -45,8 +45,27 @@ describe("coaching release surfaces", () => {
     expect(compact).toContain(
       "Both people will see the timezone with the appointment.",
     );
-    expect(compact).toContain("Advanced appointment options");
-    expect(compact).toContain("Schedule and create the private Session");
+    expect(compact).toContain("More options");
+    expect(compact).toContain("Schedule and prepare the invitation");
+    expect(compact).toContain("Schedule and send invite");
+    expect(compact).not.toContain("Set up your coach profile first");
+    expect(compact).not.toContain("Appointment type");
+    expect(compact).not.toContain("Purpose <select");
+  });
+
+  it("creates durable coach defaults on the first scheduled Session instead of blocking on setup", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/app/api/coaching/runway/route.ts"),
+      "utf8",
+    );
+    const compact = source.replace(/\s+/g, " ");
+
+    expect(compact).toContain('setupMode: "automatic-on-first-session"');
+    expect(compact).toContain('role: "COACH"');
+    expect(compact).toContain('title: "Coaching session"');
+    expect(compact).not.toContain(
+      "Set up your coach profile before changing coaching sessions from this runway.",
+    );
   });
 
   it("keeps operator evidence out of the ordinary coach journey and preserves durable session actions", () => {

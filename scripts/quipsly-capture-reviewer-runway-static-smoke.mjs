@@ -72,12 +72,12 @@ const appStoreReadiness = read(paths.appStoreReadiness);
 ].forEach((marker) => assertIncludes(adminActions, marker, paths.adminActions));
 
 [
-  "Set up your coaching space",
+  "Schedule your first coaching session",
   "Optional. Leave blank to start without a payment link.",
   "create-booking-room",
-  "Schedule and create the private Session",
+  "Schedule and send invite",
   "/coaching/sessions",
-  "Quipsly never charges, emails, or writes an external calendar event just because you create the appointment. Those remain separate, explicit actions.",
+  "External calendar changes and charges always stay visible before they happen.",
 ].forEach((marker) => assertIncludes(coachingPage, marker, paths.coachingPage));
 
 [
@@ -102,7 +102,8 @@ const appStoreReadiness = read(paths.appStoreReadiness);
 ].forEach((marker) => assertIncludes(coacheeSessionsPage, marker, paths.coacheeSessionsPage));
 
 [
-  "Set up your coach profile before changing coaching sessions from this runway.",
+  "Schedule your first Session before changing coaching preferences.",
+  "automatic-on-first-session",
   "\"create-booking-room\"",
   "\"create-booking-hold\"",
   "actingCoachProfile",
@@ -232,7 +233,7 @@ const appStoreReadiness = read(paths.appStoreReadiness);
 [
   "Capture reviewer setup",
   "Reviewer-safe capture session",
-  "Schedule and create the private Session",
+  "Schedule and send invite",
   "/api/mobile/capture/review-digest",
   "MobileCaptureReviewDigestPanel",
   "quipsly-capture-consent-room-live-proof.sh",
@@ -243,9 +244,9 @@ const appStoreReadiness = read(paths.appStoreReadiness);
   "Reviewer account and visible-session setup",
   "Capture reviewer setup",
   "Reviewer-safe capture session",
-  "Schedule and create the private Session",
-  "It does not charge, invite,",
-  "publish, start recording, or create an external calendar event.",
+  "Schedule and send invite",
+  "It sends only",
+  "it does not charge, publish, start recording,",
   "quipsly-capture-consent-room-live-proof.sh",
   "LiveKit join token",
 ].forEach((marker) => assertIncludes(appStoreReadiness, marker, paths.appStoreReadiness));
@@ -270,7 +271,7 @@ const setupSequence = [
     step: "create-visible-session",
     route: "/coaching",
     card: "Ordinary coach appointment form",
-    action: "Schedule and create the private Session",
+    action: "Schedule and send invite",
     outcome: "A coach enters the dedicated reviewer identity through the same booking, capture-room, participant, requested-consent, and calendar-receipt workflow used for a real client.",
   },
   {

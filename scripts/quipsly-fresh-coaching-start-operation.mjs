@@ -186,47 +186,6 @@ try {
     "/coaching",
   );
   await coachPage
-    .getByRole("heading", { name: "Coach profile", exact: true })
-    .waitFor({ timeout: 30_000 });
-  await coachPage
-    .getByRole("heading", {
-      name: "Set up your coaching space",
-      exact: true,
-    })
-    .waitFor({ timeout: 30_000 });
-  await coachPage
-    .getByRole("link", { name: "Set up coaching", exact: true })
-    .waitFor({ timeout: 30_000 });
-  await assertNoHorizontalOverflow(
-    coachPage.locator("main").last(),
-    "fresh coach setup at phone width",
-  );
-  const coachProfile = coachPage.locator("#coach-setup");
-  await coachProfile.waitFor({ state: "visible", timeout: 30_000 });
-  await coachProfile
-    .getByText("needs setup", { exact: true })
-    .waitFor({ timeout: 30_000 });
-  await coachProfile
-    .getByLabel("Coach name", { exact: true })
-    .fill(identities.coach.displayName);
-  await coachProfile
-    .getByLabel("Timezone", { exact: true })
-    .fill("America/Denver");
-  await coachProfile
-    .getByLabel("Usual Session length (minutes)", { exact: true })
-    .fill("45");
-  await coachProfile
-    .getByRole("button", { name: "Set up coach profile", exact: true })
-    .click();
-  await coachPage
-    .getByText("coach ready", { exact: true })
-    .waitFor({ timeout: 30_000 });
-  assert.equal(
-    await coachProfile.getAttribute("open"),
-    null,
-    "Completed coach profile did not collapse out of the scheduling path.",
-  );
-  await coachPage
     .getByRole("heading", {
       name: "Schedule your first coaching session",
       exact: true,
@@ -235,22 +194,49 @@ try {
   await coachPage
     .getByRole("link", { name: "Schedule a session", exact: true })
     .waitFor({ timeout: 30_000 });
+  await assertNoHorizontalOverflow(
+    coachPage.locator("main").last(),
+    "fresh coach scheduling at phone width",
+  );
+  const coachProfile = coachPage.locator("#coach-setup");
+  await coachProfile.waitFor({ state: "visible", timeout: 30_000 });
+  await coachProfile
+    .getByText("automatic", { exact: true })
+    .waitFor({ timeout: 30_000 });
+  assert.equal(
+    await coachProfile.getAttribute("open"),
+    null,
+    "Optional coaching preferences opened before the scheduling path.",
+  );
 
   const appointment = coachPage.locator("#create-appointment");
   await appointment.waitFor({ state: "visible", timeout: 30_000 });
   await appointment
     .getByLabel("Client email", { exact: true })
     .fill(identities.client.email);
+  await appointment.getByText("More options", { exact: true }).click();
   await appointment
     .getByLabel("Client name", { exact: true })
     .fill(identities.client.displayName);
   await appointment
-    .getByLabel("Session title", { exact: true })
+    .getByLabel("Session name", { exact: true })
     .fill(sessionTitle);
   await appointment.getByLabel("Minutes", { exact: true }).fill("45");
-  await appointment
-    .getByRole("button", { name: "Create appointment", exact: true })
-    .click();
+  const [invitationResponse] = await Promise.all([
+    coachPage.waitForResponse(
+      (candidate) => {
+        const pathname = new URL(candidate.url()).pathname;
+        return (
+          candidate.request().method() === "POST" &&
+          /^\/api\/sessions\/[^/]+\/invitations$/.test(pathname)
+        );
+      },
+      { timeout: 20_000 },
+    ).catch(() => null),
+    appointment
+      .getByRole("button", { name: "Schedule and send invite", exact: true })
+      .click(),
+  ]);
   const handoff = coachPage.locator(
     '[aria-labelledby="created-coaching-handoff-heading"]',
   );
@@ -266,22 +252,7 @@ try {
     "fresh client handoff at phone width",
   );
 
-  const [invitationResponse] = await Promise.all([
-    coachPage.waitForResponse(
-      (candidate) => {
-        const pathname = new URL(candidate.url()).pathname;
-        return (
-          candidate.request().method() === "POST" &&
-          /^\/api\/sessions\/[^/]+\/invitations$/.test(pathname)
-        );
-      },
-      { timeout: 20_000 },
-    ).catch(() => null),
-    handoff
-      .getByRole("button", { name: "Send invitation email", exact: true })
-      .click(),
-  ]);
-  assert(invitationResponse, "Rendered invitation action emitted no delivery response.");
+  assert(invitationResponse, "Scheduling emitted no invitation delivery response.");
   const invitationPacket = await invitationResponse.json().catch(() => null);
   assert.equal(invitationResponse.status(), 201);
   assert.equal(invitationPacket?.ok, true);
@@ -338,7 +309,7 @@ try {
     waitUntil: "domcontentloaded",
   });
   const clientSignInGate = clientPage.getByRole("link", {
-    name: "Sign in",
+    name: "Continue",
     exact: true,
   });
   await clientSignInGate.waitFor({ timeout: 20_000 });
@@ -360,7 +331,7 @@ try {
     invitationEntryPath,
   );
   const acceptInvitation = clientPage.getByRole("button", {
-    name: "Accept invitation",
+    name: "Continue to Session",
     exact: true,
   });
   await acceptInvitation.waitFor({ timeout: 20_000 });
@@ -448,13 +419,15 @@ try {
     "Client-only coaching home did not return to the exact private Session.",
   );
   assert.equal(
-    await clientPage.getByRole("heading", { name: "Coach profile" }).count(),
+    await clientPage
+      .getByRole("heading", { name: "Coaching preferences" })
+      .count(),
     0,
     "Client-only coaching home exposed coach setup.",
   );
   assert.equal(
     await clientPage
-      .getByRole("heading", { name: "Create appointment" })
+      .getByRole("heading", { name: "Schedule a Session" })
       .count(),
     0,
     "Client-only coaching home exposed coach scheduling controls.",
@@ -546,7 +519,7 @@ try {
   evidence.coachUserId = coachUser.id;
   evidence.clientUserId = clientUser.id;
   evidence.clientHasNoStaffAuthority = true;
-  evidence.coachSetupThroughRenderedProduct = true;
+  evidence.coachIdentityCreatedOnFirstSession = true;
   evidence.appointmentCreatedThroughRenderedProduct = true;
   evidence.clientEntryCopiedFromRenderedProduct = true;
   evidence.clientInvitationAcceptedThroughRenderedProduct = true;

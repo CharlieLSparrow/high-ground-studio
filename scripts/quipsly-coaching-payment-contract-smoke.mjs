@@ -286,19 +286,19 @@ function checkStaticStripeBoundaries() {
       && texts.runway.includes("role: \"COACH\"")
       && texts.runway.includes("serviceOffering.upsert")
       && texts.runway.includes("availabilityWindow")
-      && texts.runway.includes("Set up your coach profile before changing coaching sessions from this runway.")
+      && texts.runway.includes('setupMode: "automatic-on-first-session"')
       && texts.runway.includes("isCoach: coachProfiles.length > 0"),
     "runwayCoachSetupBoundary",
-    "Coaching runway can set up a coach profile, role, offer, and flexible scheduling clue before non-staff coaches manage sessions.",
+    "Coaching runway creates durable coach defaults automatically on the first Session while retaining optional editable preferences.",
   );
   expect(
-    texts.runwayPage.includes("Coach profile")
-      && texts.runwayPage.includes("Finish your coach workspace once")
+    texts.runwayPage.includes("Coaching preferences")
+      && texts.runwayPage.includes("Optional · Quipsly starts with sensible defaults")
       && texts.runwayPage.includes("setupCoachProfile")
-      && texts.runwayPage.includes("canManageCoaching")
-      && includesNormalized(texts.runwayPage, "Set up your coach profile first, then this appointment form unlocks."),
+      && texts.runwayPage.includes("canScheduleCoaching")
+      && includesNormalized(texts.runwayPage, "Schedule and send invite"),
     "runwayCoachSetupUi",
-    "Coaching runway UI exposes a Homer-friendly coach setup card before the appointment and payment form.",
+    "Coaching runway keeps editable preferences available without putting a setup gate before scheduling.",
   );
   expect(
     texts.publicRoute.includes("Custom quote")

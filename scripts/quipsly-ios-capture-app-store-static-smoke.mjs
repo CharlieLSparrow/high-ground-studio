@@ -1710,9 +1710,9 @@ requireIncludes(privacyPageText, "Google API Services User Data Policy", "public
 requireIncludes(privacyPageText, "Limited Use requirements", "public privacy Google Limited Use disclosure");
 requireIncludes(privacyPageText, "disconnect Google Calendar from Quipsly at any time", "public privacy calendar revocation disclosure");
 requireIncludes(deletionPageText, "account deletion", "public account deletion page");
-requireIncludes(coachingPageText, "Set up your coaching space", "first-time coach setup entry");
-requireIncludes(coachingPageText, "Schedule and create the private Session", "ordinary coaching Session creation action");
-requireIncludes(coachingPageText, "Quipsly never charges, emails, or writes an external calendar event just because you create the appointment. Those remain separate, explicit actions.", "coaching Session side-effect boundary");
+requireIncludes(coachingPageText, "Schedule your first coaching session", "first-time coach scheduling entry");
+requireIncludes(coachingPageText, "Schedule and send invite", "ordinary coaching Session creation action");
+requireIncludes(coachingPageText, "External calendar changes and charges always stay visible before they happen.", "coaching Session side-effect boundary");
 requireExcludes(coachingPageText, "Reviewer-safe capture session preset loaded.", "reviewer preset status");
 requireExcludes(coachingPageText, "reviewer-capture@dev.test", "reviewer preset email");
 requireExcludes(coachingPageText, "Reviewer test capture session", "reviewer preset title");

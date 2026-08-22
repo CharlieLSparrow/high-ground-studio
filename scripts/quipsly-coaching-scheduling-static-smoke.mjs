@@ -125,14 +125,15 @@ addCheck(
   "runwayRequiresStaffOrCoachForMutations",
   includesAll(route, [
     "Sign in before changing the coaching runway.",
-    "Set up your coach profile before changing coaching sessions from this runway.",
+    'setupMode: "automatic-on-first-session"',
+    "Schedule your first Session before changing coaching preferences.",
     "actingCoachProfile",
     "if (!session.user.isStaff && !actingCoachProfile)",
     "Only the assigned coach, room creator, or Quipsly staff can reschedule this booking.",
     "Only the assigned coach, room creator, or Quipsly staff can cancel this booking.",
     "Only the assigned coach, room creator, or Quipsly staff can attach calendar evidence here.",
   ]),
-  "Scheduling mutations require authenticated Quipsly staff access or a configured coach profile.",
+  "Scheduling requires an authenticated account, creates minimal coach defaults on first use, and keeps later mutations actor-scoped.",
 );
 
 addCheck(

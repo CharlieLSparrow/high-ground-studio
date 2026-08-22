@@ -21,6 +21,8 @@ notes, goals, tasks, and collaborative follow-through.
   `Join Studio` action. Guests receive a deliberately simplified workspace.
 - [Riverside's guest flow](https://support.riverside.com/hc/en-us/articles/5252042203037-Join-a-studio-as-a-guest) uses one invitation link, one device check, and one Join action; mobile links open the app and the same lobby supports front/back-camera choice.
 - [Descript Rooms](https://help.descript.com/hc/en-us/articles/30293678303885-Managing-and-inviting-participants-to-a-Descript-Room) defaults invitees to Guest and keeps role configuration secondary, while a recording started from a project returns its sources to that project.
+- [Google Calendar appointment schedules](https://support.google.com/calendar/answer/11608416?hl=en-au) center the ordinary booking path on available time and a shared link; conflict checks, reminders, payment, buffers, and availability policy are reusable settings rather than questions repeated for every appointment.
+- [Zoom scheduling](https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0060700) offers many meeting controls, but places waiting-room, join-before-host, authentication, and media defaults in secondary security and advanced sections rather than making them the basic date-and-time path.
 - [Apple](https://developer.apple.com/documentation/uikit/requesting-access-to-protected-resources?changes=_2) requires camera and microphone permission at the protected-resource
   boundary and remembers the system response. Purpose strings should be concise,
   accurate, and specific.
@@ -97,6 +99,26 @@ failure shapes recur often enough to influence the architecture:
 10. **Transcript edits are media edits only with evidence.** Word timing,
     speaker attribution, source identity, and edit boundaries remain reviewable;
     uncertain timing must never silently delete extra audio or video.
+
+## Scheduling contract
+
+1. The direct one-to-one path asks for the client's email and a start time.
+   Duration starts from the coach's saved preference; Session name, client name,
+   timezone override, a temporary hold, and optional payment stay under `More
+   options`.
+2. `Schedule and send invite` creates one canonical Session, one relationship,
+   and one invitation attempt. Email delivery failure never loses the Session;
+   copy and system-share remain available from the same result.
+3. A first Session creates the minimal durable coach role, profile, and default
+   offering automatically. Coach setup is not a prerequisite or a wizard.
+4. Timezone is detected and shown in plain language. Duration and timezone are
+   durable defaults, but actual appointment values remain explicit.
+5. Calendar integration projects the canonical Quipsly appointment into the
+   selected provider. Connecting Google or Apple Calendar, choosing a calendar,
+   conflict policy, buffers, and reminders are preferences—not per-Session
+   paperwork.
+6. Charges, external calendar writes, and publication remain visible mutations.
+   Remembering preferences must never turn those side effects into surprises.
 
 ## Implementation landed with this decision
 
@@ -193,6 +215,14 @@ failure shapes recur often enough to influence the architecture:
   still requires the exact accepting account and its active canonical Session
   participant. Removal immediately blocks re-entry; restoration can revive the
   same route without creating a second identity.
+- Removed coach-profile setup as a first-Session gate. Scheduling now creates a
+  minimal coach identity and reusable 60-minute/default-timezone preferences at
+  the same durable boundary as the Session.
+- Reduced the ordinary coaching scheduler to client email, start time, and the
+  already-defaulted duration. Client name, Session name, hold behavior,
+  timezone override, and payment remain available under `More options`.
+- Made `Schedule and send invite` the default operation. The Session survives
+  an email-provider failure and keeps copy/share/resend escape hatches.
 
 ## Acceptance consequences
 

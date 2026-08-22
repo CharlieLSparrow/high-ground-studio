@@ -121,7 +121,7 @@ describe("CoachingSessionsPage", () => {
     render(<CoachingSessionsPage />);
 
     expect(await screen.findByRole("heading", { name: "No sessions are visible yet." })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Set up coaching" })).toHaveAttribute("href", "/coaching");
+    expect(screen.getByRole("link", { name: "Schedule coaching" })).toHaveAttribute("href", "/coaching");
     expect(screen.getByText(/use the private link from your coach/i)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Plan a real session" })).not.toBeInTheDocument();
   });

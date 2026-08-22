@@ -879,7 +879,7 @@ export default function CoachingPage() {
     runwayAction: "create-booking-room",
     clientEmail: "",
     clientName: "",
-    title: "Coaching capture session",
+    title: "Coaching session",
     scheduledStart: "",
     durationMinutes: "60",
     timezone: "",
@@ -925,6 +925,10 @@ export default function CoachingPage() {
         timezone: payload.user?.isStaff
           ? current.timezone
           : payload.coaches?.[0]?.timezone || current.timezone,
+        durationMinutes:
+          current.durationMinutes === "60"
+            ? String(payload.offerings?.[0]?.durationMinutes || 60)
+            : current.durationMinutes,
       }));
       setStatus("Coaching runway ready");
     } catch (cause) {
@@ -1814,7 +1818,7 @@ export default function CoachingPage() {
         payload.result?.callRoomId &&
         payload.result?.clientEntryPath
       ) {
-        setCreatedHandoff({
+        const handoff = {
           bookingId: payload.result.bookingId,
           callRoomId: payload.result.callRoomId,
           engagementId: payload.result.engagementId || null,
@@ -1829,6 +1833,13 @@ export default function CoachingPage() {
           clientName: submitted.clientName.trim() || null,
           title: submitted.title,
           scheduledStart: submitted.scheduledStart,
+        };
+        setCreatedHandoff(handoff);
+        await sendClientSessionInvitation({
+          bookingId: handoff.bookingId,
+          callRoomId: handoff.callRoomId,
+          clientEmail: handoff.clientEmail,
+          clientName: handoff.clientName,
         });
       }
       setCreateForm((current) => ({
@@ -1875,6 +1886,7 @@ export default function CoachingPage() {
     bookings.some((booking) => booking.clientUserId === runway.user?.id),
   );
   const isClientOnly = isCoachingClient && !canManageCoaching;
+  const canScheduleCoaching = Boolean(runway?.user) && !isClientOnly;
   const nextBooking = bookings.find(
     (booking) => !["CANCELED", "COMPLETED", "NO_SHOW"].includes(booking.status),
   );
@@ -1882,11 +1894,11 @@ export default function CoachingPage() {
     if (!canManageCoaching && !isClientOnly) {
       return {
         eyebrow: "First step",
-        title: "Set up your coaching space",
+        title: "Schedule your first coaching session",
         detail:
-          "Confirm your name, timezone, and usual session length once. Then Quipsly can schedule your first client.",
-        label: "Set up coaching",
-        href: "#coach-setup",
+          "Choose the client and time. Quipsly will create the private Session and remember the useful defaults.",
+        label: "Schedule a session",
+        href: "#create-appointment",
       };
     }
     if (isClientOnly && nextBooking?.liveSessionPath) {
@@ -2052,20 +2064,20 @@ export default function CoachingPage() {
               <>
                 <FriendlyStepCard
                   step="1"
-                  title="Set up coaching"
-                  detail="Confirm your name, timezone, and usual session length once."
-                  ready={canManageCoaching}
-                />
-                <FriendlyStepCard
-                  step="2"
                   title="Schedule and invite"
-                  detail="Choose a client and time, then send the private invitation Quipsly creates."
+                  detail="Choose a client and time. Quipsly creates the private Session and invitation."
                   ready={(counts?.upcomingBookings ?? 0) > 0}
                 />
                 <FriendlyStepCard
-                  step="3"
+                  step="2"
                   title="Meet and record"
-                  detail="Check each device, confirm consent, and record only when everyone is ready."
+                  detail="Join with your usual devices. Recording stays obvious and starts only after consent."
+                  ready={(counts?.roomsWithRecordings ?? 0) > 0}
+                />
+                <FriendlyStepCard
+                  step="3"
+                  title="Review the session"
+                  detail="Correct the transcript and trim the recording without leaving the Session."
                   ready={(counts?.roomsWithRecordings ?? 0) > 0}
                 />
                 <FriendlyStepCard
@@ -3272,28 +3284,25 @@ export default function CoachingPage() {
             <>
               <details
                 id="coach-setup"
-                open={!canManageCoaching}
                 className="scroll-mt-6 rounded-[1.7rem] border border-emerald-100 bg-emerald-50/80 p-6 shadow-sm"
               >
                 <summary className="mb-3 flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <h2 className="flex items-center gap-2 text-xl font-black text-[#214531]">
-                      <Users className="text-emerald-700" /> Coach profile
+                      <Users className="text-emerald-700" /> Coaching preferences
                     </h2>
                     <p className="mt-1 text-xs font-bold uppercase tracking-wide text-emerald-700">
-                      {canManageCoaching
-                        ? "Ready · open to edit defaults"
-                        : "Finish your coach workspace once"}
+                      Optional · Quipsly starts with sensible defaults
                     </p>
                   </div>
                   <StatusPill
-                    label={canManageCoaching ? "coach ready" : "needs setup"}
-                    tone={canManageCoaching ? "good" : "warn"}
+                    label={canManageCoaching ? "saved" : "automatic"}
+                    tone="good"
                   />
                 </summary>
                 <p className="mb-4 text-sm leading-6 text-[#315641]">
-                  Confirm your name, timezone, and usual Session length. You can
-                  change offer and pricing defaults later.
+                  Quipsly detects your timezone and starts with a 60-minute
+                  Session. Open this only when you want different defaults.
                 </p>
                 <form className="space-y-3" onSubmit={setupCoachProfile}>
                   <p className="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 text-xs font-bold text-[#315641]">
@@ -3416,7 +3425,7 @@ export default function CoachingPage() {
                     <ShieldCheck size={16} />{" "}
                     {isSettingUpCoach
                       ? "Setting up..."
-                      : "Set up coach profile"}
+                      : "Save preferences"}
                   </button>
                   {setupStatus && (
                     <p className="rounded-xl bg-white/80 p-3 text-xs font-bold text-[#315641]">
@@ -3437,8 +3446,8 @@ export default function CoachingPage() {
                       id="create-appointment-heading"
                       className="flex items-center gap-2 text-xl font-black text-[#3d3122]"
                     >
-                      <CalendarIcon className="text-[#b98036]" /> Create
-                      appointment
+                      <CalendarIcon className="text-[#b98036]" /> Schedule a
+                      Session
                     </h2>
                     <p className="mt-1 text-xs font-bold uppercase tracking-wide text-[#b98036]">
                       Schedule, invite, capture, and follow through
@@ -3446,9 +3455,8 @@ export default function CoachingPage() {
                   </div>
                 </div>
                 <p className="mb-4 text-sm text-[#7b5c3b]">
-                  Choose the client, time, and Session name. Quipsly will create
-                  the private coaching home and give you the exact client entry
-                  to send.
+                  Add the client and time. Quipsly creates the private coaching
+                  home and invitation; the rest stays out of your way.
                 </p>
                 <form className="space-y-3" onSubmit={createLocalSession}>
                   <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
@@ -3465,36 +3473,10 @@ export default function CoachingPage() {
                       placeholder="client@example.com"
                       className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                       required
-                    />
-                  </label>
-                  <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                    Client name
-                    <input
-                      type="text"
-                      value={createForm.clientName}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          clientName: event.target.value,
-                        }))
-                      }
-                      placeholder="Optional"
-                      className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                    />
-                  </label>
-                  <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                    Session title
-                    <input
-                      type="text"
-                      value={createForm.title}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          title: event.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                      required
+                      inputMode="email"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      spellCheck={false}
                     />
                   </label>
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
@@ -3538,11 +3520,42 @@ export default function CoachingPage() {
                   </p>
                   <details className="rounded-xl border border-[#d6c5a5] bg-white p-3">
                     <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                      Advanced appointment options
+                      More options
                     </summary>
                     <div className="mt-4 space-y-3">
                       <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                        Appointment type
+                        Client name
+                        <input
+                          type="text"
+                          value={createForm.clientName}
+                          onChange={(event) =>
+                            setCreateForm((current) => ({
+                              ...current,
+                              clientName: event.target.value,
+                            }))
+                          }
+                          placeholder="Optional"
+                          autoComplete="name"
+                          className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                        />
+                      </label>
+                      <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                        Session name
+                        <input
+                          type="text"
+                          value={createForm.title}
+                          onChange={(event) =>
+                            setCreateForm((current) => ({
+                              ...current,
+                              title: event.target.value,
+                            }))
+                          }
+                          className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                          required
+                        />
+                      </label>
+                      <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                        Scheduling behavior
                         <select
                           value={createForm.runwayAction}
                           onChange={(event) =>
@@ -3554,10 +3567,10 @@ export default function CoachingPage() {
                           className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                         >
                           <option value="create-booking-room">
-                            Schedule and create the private Session
+                            Schedule and prepare the invitation
                           </option>
                           <option value="create-booking-hold">
-                            Hold the time without inviting yet
+                            Hold the time without preparing an invitation
                           </option>
                         </select>
                       </label>
@@ -3576,28 +3589,6 @@ export default function CoachingPage() {
                           className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                           required
                         />
-                      </label>
-                      <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                        Purpose
-                        <select
-                          value={createForm.purpose}
-                          onChange={(event) =>
-                            setCreateForm((current) => ({
-                              ...current,
-                              purpose: event.target.value,
-                            }))
-                          }
-                          className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                        >
-                          <option value="COACHING">Coaching</option>
-                          <option value="PODCAST">Podcast</option>
-                          <option value="RESEARCH_INTERVIEW">
-                            Research interview
-                          </option>
-                          <option value="INTERNAL_MEETING">
-                            Internal meeting
-                          </option>
-                        </select>
                       </label>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
@@ -3641,9 +3632,8 @@ export default function CoachingPage() {
                         </label>
                       </div>
                       <p className="text-[11px] font-semibold leading-5 text-[#7b5c3b]">
-                        Quipsly never charges, emails, or writes an external
-                        calendar event just because you create the appointment.
-                        Those remain separate, explicit actions.
+                        Payment remains optional. External calendar changes and
+                        charges always stay visible before they happen.
                       </p>
                     </div>
                   </details>
@@ -3657,7 +3647,7 @@ export default function CoachingPage() {
                     )}
                   <button
                     type="submit"
-                    disabled={isCreating || !canManageCoaching}
+                    disabled={isCreating || !canScheduleCoaching}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#3d3122] px-4 py-3 text-sm font-black text-white transition hover:bg-[#5a472f] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <CalendarIcon size={16} />{" "}
@@ -3665,14 +3655,8 @@ export default function CoachingPage() {
                       ? "Creating..."
                       : createForm.runwayAction === "create-booking-hold"
                         ? "Hold slot"
-                        : "Create appointment"}
+                        : "Schedule and send invite"}
                   </button>
-                  {!canManageCoaching && (
-                    <p className="text-xs font-bold text-amber-700">
-                      Set up your coach profile first, then this appointment
-                      form unlocks.
-                    </p>
-                  )}
                   {createStatus && (
                     <p className="rounded-xl bg-[#f8f3e6] p-3 text-xs font-bold text-[#7b5c3b]">
                       {createStatus}
@@ -3695,11 +3679,10 @@ export default function CoachingPage() {
                           createdHandoff.clientEmail}
                       </h3>
                       <p className="mt-2 text-xs font-bold leading-5 text-emerald-950">
-                        One private coaching relationship and one exact Session
-                        now exist. Send the client entry below; Quipsly will
-                        require {createdHandoff.clientEmail} to sign in with
-                        Google or a verified Quipsly email before anything
-                        opens.
+                        The private Session is ready and Quipsly tried the
+                        invitation email automatically. The client signs in
+                        with {createdHandoff.clientEmail}; you can copy or share
+                        the same entry below whenever useful.
                       </p>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2">
                         <button

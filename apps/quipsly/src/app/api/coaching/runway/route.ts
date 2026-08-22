@@ -1429,18 +1429,99 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, action, result });
   }
 
-  const actingCoachProfile = session.user.isStaff
+  let actingCoachProfile = session.user.isStaff
     ? null
     : await prisma.coachProfile.findFirst({
         where: { userId: session.user.id, isActive: true },
-        select: { id: true },
+        select: { id: true, slug: true },
       });
 
   if (!session.user.isStaff && !actingCoachProfile) {
-    return NextResponse.json(
-      { ok: false, error: "Set up your coach profile before changing coaching sessions from this runway." },
-      { status: 403 },
-    );
+    if (!["create-booking-room", "create-booking-hold"].includes(action)) {
+      return NextResponse.json(
+        { ok: false, error: "Schedule your first Session before changing coaching preferences." },
+        { status: 403 },
+      );
+    }
+
+    const coachEmail = text(session.user.primaryEmail).toLowerCase();
+    const coachName = text(session.user.name) || coachEmail;
+    const timezone = text(body.timezone) || getCoachingDefaultTimezone();
+    const defaultDurationMinutes = integer(body.durationMinutes) || 60;
+
+    if (!coachEmail || !coachEmail.includes("@")) {
+      return NextResponse.json(
+        { ok: false, error: "A verified account email is required before scheduling a Session." },
+        { status: 400 },
+      );
+    }
+
+    actingCoachProfile = await prisma.$transaction(async (tx: any) => {
+      await tx.userRole.upsert({
+        where: {
+          userId_role: {
+            userId: session.user.id,
+            role: "COACH",
+          },
+        },
+        update: {},
+        create: {
+          userId: session.user.id,
+          role: "COACH",
+        },
+      });
+
+      const baseSlug =
+        slugify(coachName) || slugify(coachEmail.split("@")[0]) || "coach";
+      const profileSlug = `${baseSlug}-${session.user.id.slice(-6)}`;
+      const profile = await tx.coachProfile.upsert({
+        where: { userId: session.user.id },
+        update: {
+          displayName: coachName,
+          timezone,
+          isActive: true,
+        },
+        create: {
+          userId: session.user.id,
+          slug: profileSlug,
+          displayName: coachName,
+          timezone,
+          isActive: true,
+          metadataJson: {
+            source: "quipsly-coaching-runway",
+            setupMode: "automatic-on-first-session",
+            createdByUserId: session.user.id,
+          },
+        },
+      });
+
+      await tx.serviceOffering.upsert({
+        where: { slug: `${profile.slug || profileSlug}-coaching` },
+        update: {
+          coachProfileId: profile.id,
+          durationMinutes: defaultDurationMinutes,
+          isActive: true,
+        },
+        create: {
+          coachProfileId: profile.id,
+          slug: `${profile.slug || profileSlug}-coaching`,
+          title: "Coaching session",
+          description:
+            "A private coaching Session with calling, recording, transcript, notes, tasks, and goals in Quipsly.",
+          kind: "ONE_TO_ONE_COACHING",
+          paymentPolicy: "MANUAL",
+          durationMinutes: defaultDurationMinutes,
+          currency: "USD",
+          isActive: true,
+          metadataJson: {
+            source: "quipsly-coaching-runway",
+            setupMode: "automatic-on-first-session",
+          },
+        },
+      });
+
+      return { id: profile.id, slug: profile.slug };
+    });
   }
 
   if (action === "attach-calendar-receipt") {

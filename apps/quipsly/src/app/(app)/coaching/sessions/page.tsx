@@ -611,7 +611,7 @@ export default function CoachingSessionsPage() {
             <p className="max-w-2xl text-sm font-bold leading-relaxed">
               {payload?.user?.canCreateCaptureSessions
                 ? "Create your first Session above. Once it exists, this page will keep its schedule, consent, recording, transcript, and follow-up together."
-                : "If you are meeting with a coach, open the private invitation they sent. If you want to host coaching Sessions, set up your coach profile first."}
+                : "If you are meeting with a coach, open the private invitation they sent. If you want to host coaching Sessions, schedule one from Coaching."}
             </p>
             {!payload?.user?.canCreateCaptureSessions ? (
               <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -619,7 +619,7 @@ export default function CoachingSessionsPage() {
                   href="/coaching"
                   className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#3d3122] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#5a472f]"
                 >
-                  Set up coaching
+                  Schedule coaching
                 </Link>
                 <p className="max-w-xl text-xs font-bold leading-5 text-[#806a4d]">
                   Already invited? Use the private link from your coach so Quipsly opens the right Session and account.

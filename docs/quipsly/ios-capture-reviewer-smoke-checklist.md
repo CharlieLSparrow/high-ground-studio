@@ -149,7 +149,7 @@ bash scripts/quipsly-capture-consent-room-live-proof.sh
   mutation, no Calendar mutation, no invite, and no media/storage mutation.
 - If the visible-session smoke fails with no sessions, follow its
   `setupRunbook`: create or repair the login in `/admin/users`, then use the
-  `/coaching` reviewer preset with `Schedule and create the private Session`. A signed-in
+  `/coaching` reviewer preset with `Schedule and send invite`. A signed-in
   empty shell is not enough for TestFlight or App Review.
 
 - Confirm a reviewer/test account exists and can sign in.
@@ -165,11 +165,12 @@ bash scripts/quipsly-capture-consent-room-live-proof.sh
     preset`.
   - Confirm the email is `reviewer-capture@dev.test`, or replace it with the
     actual reviewer account.
-  - Use `Schedule and create the private Session`, not a hold-only path, when the goal
+  - Use `Schedule and send invite`, not a hold-only path, when the goal
     is a reviewable iOS capture session.
   - Keep the side-effect boundary intact: this creates Quipsly-owned booking,
-    room, requested consent, and calendar receipt-slot state. It does not
-    charge, invite, publish, or create an external calendar event.
+    room, requested consent, invitation, and calendar receipt-slot state. It
+    sends only the named participant invitation; it does not charge, publish,
+    start recording, or create an external calendar event.
 - Confirm the account has at least one planned coaching or podcast capture session.
 - Confirm the authenticated review digest loads:
   `/api/mobile/capture/review-digest`.
