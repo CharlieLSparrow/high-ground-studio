@@ -44,7 +44,13 @@ Status: implementation complete; production rollout pending
 ## Evidence still required
 
 - Production migration receipt and deploy revision.
-- Authenticated browser-to-browser runtime result.
+- Deployed authenticated browser-to-browser runtime result. The local fresh-user
+  product flight passed on 2026-08-22 at source `5b0558fa`: two rendered
+  participants, one host Record/Stop, four endpoint directive receipts, two
+  independently verified participant masters, 25.772 seconds of source
+  overlap, protected playback, source-bound transcription, light editing,
+  recipient playback, release, and revoke. Its machine-readable receipt is
+  `artifacts/coaching-acceptance/68827737/fresh-coaching-flight-receipt.json`.
 - Physical iPhone plus browser runtime result, including late join.
 - Background/interruption recovery and final upload completion.
 - Cross-account negative read proving one participant cannot inspect another

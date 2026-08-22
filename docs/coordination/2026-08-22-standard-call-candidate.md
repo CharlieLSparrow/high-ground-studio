@@ -21,6 +21,13 @@ Status: source-qualified; not uploaded or deployed
 > presence, removal denial, restoration, and restored re-entry. This remains
 > later working-tree evidence, not part of the candidate identity below.
 
+> The next deliberate train is now Build 34. The committed source adds a shared
+> host Record/Stop directive across browser and iPhone endpoints, explicit
+> late-join confirmation, remembered one-time Session choices, and automatic
+> all-party readiness refresh. A fresh local product flight passed the complete
+> signup-to-revoke path; the exact Build 34 archive qualification and deployed
+> preview remain separate gates.
+
 ## Product decision
 
 The call path follows the conventions people already know from Meet, Zoom,
@@ -131,7 +138,8 @@ green simulator or build evidence.
 
 ## Release cadence
 
-Keep Build 33 public while useful work is bundled. Qualify source candidates as
-often as needed, but create Build 34 only when the matching Nest preview and the
-physical call plan are ready. This preserves momentum without turning every
-small change into tester churn.
+Keep Build 33 public while Build 34 is qualified and the matching Nest preview
+is deployed. Do not change the canonical public release target until Build 34
+is uploaded, assigned, approved, and its installation page is directly
+verified. This preserves momentum without turning every small change into
+tester churn.
