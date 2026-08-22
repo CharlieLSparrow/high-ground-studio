@@ -312,6 +312,14 @@ export function BrowserSourceRecorder({
   const automaticUploadRecoveryAttemptedRef = useRef(new Set<string>());
   const directiveHandlingRef = useRef(new Map<string, string>());
   const directiveInFlightRef = useRef(new Set<string>());
+  const directiveBaselineEstablishedRef = useRef(false);
+
+  useEffect(() => {
+    directiveBaselineEstablishedRef.current = false;
+    directiveHandlingRef.current.clear();
+    directiveInFlightRef.current.clear();
+    setRecordingDirective(null);
+  }, [callRoomId]);
 
   const reconcileEndpointQueue = useCallback(() => {
     if (endpointQueueTimerRef.current !== null)
@@ -1804,6 +1812,7 @@ export function BrowserSourceRecorder({
   const issueDirective = useCallback(
     async (action: "START" | "STOP") => {
       if (directiveBusy) return;
+      directiveBaselineEstablishedRef.current = true;
       setDirectiveBusy(true);
       try {
         const next = await issueBrowserRecordingDirective(callRoomId, action);
@@ -1826,15 +1835,72 @@ export function BrowserSourceRecorder({
     [callRoomId, directiveBusy],
   );
 
+  const joinActiveRecording = useCallback(async () => {
+    const directive = recordingDirective;
+    if (
+      directiveBusy ||
+      directive?.action !== "START" ||
+      status !== "ready" ||
+      !retainedReadiness.ok
+    ) {
+      return;
+    }
+    setDirectiveBusy(true);
+    try {
+      await acknowledgeBrowserRecordingDirective({
+        roomId: callRoomId,
+        directiveId: directive.id,
+        state: "OBSERVED",
+        detail: "The participant explicitly joined an active recording.",
+      }).catch(() => undefined);
+      const captureId = await start();
+      const state = captureId
+        ? ("STARTED" as const)
+        : ("START_FAILED" as const);
+      await acknowledgeBrowserRecordingDirective({
+        roomId: callRoomId,
+        directiveId: directive.id,
+        state,
+        captureId,
+        detail: captureId
+          ? "Durable local capture started after explicit late-join confirmation."
+          : "The local recorder could not start; no media success is claimed.",
+      }).catch(() => undefined);
+      directiveHandlingRef.current.set(directive.id, state);
+    } finally {
+      setDirectiveBusy(false);
+    }
+  }, [
+    callRoomId,
+    directiveBusy,
+    recordingDirective,
+    retainedReadiness.ok,
+    start,
+    status,
+  ]);
+
   useEffect(() => {
     if (!conversationConnected) return;
     let cancelled = false;
     const coordinate = async () => {
       try {
         const directive = await readBrowserRecordingDirective(callRoomId);
-        if (cancelled || !directive) return;
+        if (cancelled) return;
+        if (!directiveBaselineEstablishedRef.current) {
+          directiveBaselineEstablishedRef.current = true;
+          if (directive?.action === "START" && status !== "recording") {
+            setRecordingDirective(directive);
+            directiveHandlingRef.current.set(directive.id, "JOIN_REQUIRED");
+            setMessage(
+              "Recording is already in progress. Join it when you are ready.",
+            );
+          }
+          return;
+        }
+        if (!directive) return;
         setRecordingDirective(directive);
         const terminal = directiveHandlingRef.current.get(directive.id);
+        if (terminal === "JOIN_REQUIRED") return;
         if (
           directive.action === "START" &&
           ["STARTED", "START_FAILED"].includes(terminal || "")
@@ -2176,17 +2242,33 @@ export function BrowserSourceRecorder({
           ) : null}
           {status === "recording" ||
           (canControlRoom && recordingDirective?.shouldRecord === true) ? (
-            <button
-              type="button"
-              onClick={() =>
-                canControlRoom ? void issueDirective("STOP") : stop()
-              }
-              disabled={directiveBusy}
-              className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white"
-            >
-              <Square size={16} fill="currentColor" />{" "}
-              {canControlRoom ? "Stop recording" : "Stop my recording"}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  canControlRoom ? void issueDirective("STOP") : stop()
+                }
+                disabled={directiveBusy}
+                className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white"
+              >
+                <Square size={16} fill="currentColor" />{" "}
+                {canControlRoom ? "Stop recording" : "Stop my recording"}
+              </button>
+              {canControlRoom &&
+              status === "ready" &&
+              directiveHandlingRef.current.get(recordingDirective?.id || "") ===
+                "JOIN_REQUIRED" ? (
+                <button
+                  type="button"
+                  onClick={() => void joinActiveRecording()}
+                  disabled={directiveBusy || !retainedReadiness.ok}
+                  className="inline-flex min-h-12 items-center gap-2 rounded-full border border-rose-300 bg-white px-5 text-xs font-black uppercase tracking-wide text-rose-950 disabled:opacity-40"
+                >
+                  <span className="h-3 w-3 rounded-full bg-rose-700" /> Start my
+                  recording
+                </button>
+              ) : null}
+            </>
           ) : canControlRoom ? (
             <button
               type="button"
@@ -2205,6 +2287,15 @@ export function BrowserSourceRecorder({
                 <span className="h-3 w-3 rounded-full bg-white" />
               )}{" "}
               {sessionKind === "coaching" ? "Record" : "Record source"}
+            </button>
+          ) : recordingDirective?.shouldRecord && status === "ready" ? (
+            <button
+              type="button"
+              onClick={() => void joinActiveRecording()}
+              disabled={directiveBusy || !retainedReadiness.ok}
+              className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"
+            >
+              <span className="h-3 w-3 rounded-full bg-white" /> Join recording
             </button>
           ) : (
             <span className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-bold text-violet-950">
