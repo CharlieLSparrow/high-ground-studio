@@ -45,6 +45,13 @@ failure shapes recur often enough to influence the architecture:
   progress](https://support.riverside.fm/hc/en-us/articles/5287442440093-Confirm-that-participants-tracks-are-uploading). Quipsly should summarize this as a calm persistent state—safe on this
   device, uploading, verified in Nest, or needs attention—without requiring the
   host to babysit percentages.
+- Riverside also documents both [stuck local tracks](https://support.riverside.com/hc/en-us/articles/19135749320093-My-track-is-stuck-uploading)
+  and [an editor that can remain blocked while a participant track is still
+  processing](https://support.riverside.com/hc/en-us/articles/20320773272989-I-can-t-edit-my-recording-the-editor-is-blocked).
+  Community reports add the human cost: uncertainty about whether a guest's
+  source survived, reconnecting a guest only to finish an upload, and one held
+  fragment preventing otherwise-ready work. Quipsly should let ready sources
+  remain inspectable and editable while incomplete sources recover independently.
 - [Descript users value text-based editing but report speaker omissions and want
   selection-level retranscription](https://www.reddit.com/r/Descript/comments/1sgi96c/transcript_often_missing_second_speaker/). Preserve each participant track, make speaker attribution correctable,
   and allow a bounded segment to be regenerated without replacing the trusted
@@ -94,6 +101,15 @@ failure shapes recur often enough to influence the architecture:
 - Removed empty upload and Studio handoff cards before the first take.
 - Kept recording consent separate and Session-scoped; joining still never starts
   recording.
+- Reduced first-time consent to the familiar default summary and one `Agree and
+  continue` action on both browser and iPhone. Audio and transcription are the
+  coaching defaults; camera is a podcast default. Less-common changes remain in
+  a `Recording options` disclosure, and saved consent stays compact for the rest
+  of that Session.
+- Confirmed microphone and camera prompts are not requested when Capture launches
+  or a Session opens. They occur only after Join, Record, Sound Check, or Prepare
+  Camera. When iOS access was previously denied, the affected call or recorder
+  surface now provides one direct `Allow ... in Settings` recovery action.
 - Replaced the browser's four-step progress rail with one familiar green room:
   current devices, direct mic/camera state, preview, and one `Join call` action.
 - Put browser device selection and the optional audio confidence check behind

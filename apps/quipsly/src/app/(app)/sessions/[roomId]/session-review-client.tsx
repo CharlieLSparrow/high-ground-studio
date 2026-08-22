@@ -1137,46 +1137,15 @@ function SessionConsentControl({
         </div>
       ) : (
         <>
-          <p className="mt-4 text-sm font-semibold leading-6 text-[#6b5538]">
-            {MOBILE_CAPTURE_CONSENT_TEXT}
-          </p>
-          <div className="mt-4 grid gap-3 text-sm font-bold text-[#3d3122] md:grid-cols-2">
-            <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-white p-3">
-              <input
-                type="checkbox"
-                checked={canRecordAudio}
-                onChange={(event) => setCanRecordAudio(event.target.checked)}
-                disabled={busy || closed}
-                className="mt-1"
-              />
-              Allow audio recording of my participation.
-            </label>
-            <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-white p-3">
-              <input
-                type="checkbox"
-                checked={canRecordVideo}
-                onChange={(event) => setCanRecordVideo(event.target.checked)}
-                disabled={busy || closed}
-                className="mt-1"
-              />
-              Allow video recording of my participation.
-            </label>
-            <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-white p-3">
-              <input
-                type="checkbox"
-                checked={canTranscribe}
-                onChange={(event) => setCanTranscribe(event.target.checked)}
-                disabled={busy || closed}
-                className="mt-1"
-              />
-              Separately allow transcription of my recorded participation.
-            </label>
-          </div>
-          <p className="mt-3 text-xs font-bold leading-5 text-[#765f40]">
-            By continuing, you confirm that anyone else nearby who may be seen
-            or heard has also agreed.
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950">
+            <div>
+              <p className="text-sm font-black">
+                {canRecordVideo ? "Camera and audio" : "Audio"} on this device · {canTranscribe ? "Transcript on" : "Transcript off"}
+              </p>
+              <p className="mt-1 text-xs font-semibold leading-5">
+                Continue only after everyone who may be heard or seen has agreed. Recording starts separately.
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => void saveConsent("GRANT")}
@@ -1189,6 +1158,51 @@ function SessionConsentControl({
                   ? "Save changes"
                   : "Agree and continue"}
             </button>
+          </div>
+
+          <details className="mt-3 rounded-xl border border-amber-200 bg-white p-3">
+            <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
+              Recording options
+            </summary>
+            <div className="mt-3 grid gap-3 text-sm font-bold text-[#3d3122] md:grid-cols-2">
+              <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-[#fffaf0] p-3">
+                <input
+                  type="checkbox"
+                  checked={canRecordAudio}
+                  onChange={(event) => setCanRecordAudio(event.target.checked)}
+                  disabled={busy || closed}
+                  className="mt-1"
+                />
+                Record audio from this device
+              </label>
+              <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-[#fffaf0] p-3">
+                <input
+                  type="checkbox"
+                  checked={canRecordVideo}
+                  onChange={(event) => setCanRecordVideo(event.target.checked)}
+                  disabled={busy || closed}
+                  className="mt-1"
+                />
+                Record camera video from this device
+              </label>
+              <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-[#fffaf0] p-3">
+                <input
+                  type="checkbox"
+                  checked={canTranscribe}
+                  onChange={(event) => setCanTranscribe(event.target.checked)}
+                  disabled={busy || closed}
+                  className="mt-1"
+                />
+                Create a transcript and suggested notes/tasks
+              </label>
+            </div>
+            <details className="mt-3 text-xs font-semibold leading-5 text-[#765f40]">
+              <summary className="cursor-pointer font-black">Recording and privacy details</summary>
+              <p className="mt-2">{MOBILE_CAPTURE_CONSENT_TEXT}</p>
+            </details>
+          </details>
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
             {consent?.recordingReady ? (
               <button
                 type="button"

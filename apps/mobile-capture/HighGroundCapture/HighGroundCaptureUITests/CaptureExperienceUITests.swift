@@ -2227,6 +2227,10 @@ final class CaptureExperienceUITests: XCTestCase {
         let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
         XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
 
+        let recordingOptions = app.buttons["Recording options"]
+        XCTAssertTrue(recordingOptions.waitForExistence(timeout: 3))
+        recordingOptions.tap()
+
         let saveChoices = app.buttons["CaptureConsentSaveChoicesButton"]
         XCTAssertTrue(saveChoices.exists)
         XCTAssertTrue(
@@ -2409,6 +2413,10 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["CaptureConfirmConsentButton"].tap()
         let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
         XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
+
+        let recordingOptions = app.buttons["Recording options"]
+        XCTAssertTrue(recordingOptions.waitForExistence(timeout: 3))
+        recordingOptions.tap()
 
         let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
         let recordVideo = app.switches["CaptureConsentRecordVideoToggle"]
@@ -3103,6 +3111,9 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertTrue(
             app.otherElements["CaptureConsentConfirmationSheet"].waitForExistence(timeout: 5)
         )
+        let recordingOptions = app.buttons["Recording options"]
+        XCTAssertTrue(recordingOptions.waitForExistence(timeout: 3))
+        recordingOptions.tap()
         turnOnConsentChoice("CaptureConsentRecordAudioToggle")
         turnOnConsentChoice("CaptureConsentRecordVideoToggle")
         turnOnConsentChoice("CaptureConsentTranscriptionToggle")

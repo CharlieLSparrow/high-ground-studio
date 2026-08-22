@@ -6525,6 +6525,12 @@ private struct CaptureRecorderView: View {
                             onPauseResume: { Task { await model.togglePause(using: audioCapture) } },
                             onMark: { model.markMoment(using: audioCapture) }
                         )
+                        if audioCapture.microphonePreflightState == .denied {
+                            CapturePermissionRecoveryButton(
+                                title: "Allow microphone in Settings",
+                                detail: "Microphone access is off. Turn it on once, then return to Quipsly."
+                            )
+                        }
                     } else {
                         VideoRecorderHero(
                             session: session,
@@ -10324,6 +10330,7 @@ struct CaptureConsentConfirmationSheet: View {
     @State private var canRecordVideo: Bool
     @State private var canTranscribe: Bool
     @State private var isSubmitting = false
+    @State private var showsRecordingOptions = false
     @State private var presentedAt = Date()
     @State private var presentationOwnerSnapshot: AuthManager.StableOwnerSnapshot?
     @State private var localErrorMessage: String?
@@ -10349,7 +10356,7 @@ struct CaptureConsentConfirmationSheet: View {
         _canRecordVideo = State(
             initialValue: session.hasCurrentRecordingConsent
                 ? session.recordingConsentCanRecordVideo == true
-                : true
+                : session.purpose?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == "PODCAST"
         )
         _canTranscribe = State(
             initialValue: session.hasCurrentRecordingConsent
@@ -10363,9 +10370,11 @@ struct CaptureConsentConfirmationSheet: View {
             Form {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("Record and transcribe this Session?", systemImage: "checkmark.shield.fill")
+                        Label("Record this Session?", systemImage: "checkmark.shield.fill")
                             .font(.title3.weight(.semibold))
-                        Text("Your choice is saved for this Session and shared across Quipsly Capture and the browser. Recording only starts when someone taps Record.")
+                        Text(defaultConsentSummary)
+                            .font(.subheadline.weight(.semibold))
+                        Text("Your choice is saved for this Session. Recording only starts when someone taps Record.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -10374,35 +10383,37 @@ struct CaptureConsentConfirmationSheet: View {
                     Text(session.displayTitle)
                 }
 
-                Section("Included") {
-                    Toggle(isOn: $canRecordAudio) {
-                        ConsentChoiceLabel(
-                            title: "Record audio",
-                            detail: "Capture the conversation audio.",
-                            systemImage: "waveform"
-                        )
-                    }
-                    .accessibilityIdentifier("CaptureConsentRecordAudioToggle")
-
-                    Toggle(isOn: $canRecordVideo) {
-                        ConsentChoiceLabel(
-                            title: "Record video",
-                            detail: "Capture camera video when enabled.",
-                            systemImage: "video"
-                        )
-                    }
-                    .accessibilityIdentifier("CaptureConsentRecordVideoToggle")
-                }
-
                 Section {
-                    Toggle(isOn: $canTranscribe) {
-                        ConsentChoiceLabel(
-                            title: "Create a transcript",
-                            detail: "Create the transcript, notes, and follow-up items.",
-                            systemImage: "text.bubble"
-                        )
+                    DisclosureGroup(isExpanded: $showsRecordingOptions) {
+                        Toggle(isOn: $canRecordAudio) {
+                            ConsentChoiceLabel(
+                                title: "Record audio",
+                                detail: "Capture the conversation audio.",
+                                systemImage: "waveform"
+                            )
+                        }
+                        .accessibilityIdentifier("CaptureConsentRecordAudioToggle")
+
+                        Toggle(isOn: $canRecordVideo) {
+                            ConsentChoiceLabel(
+                                title: "Record video",
+                                detail: "Capture camera video when enabled.",
+                                systemImage: "video"
+                            )
+                        }
+                        .accessibilityIdentifier("CaptureConsentRecordVideoToggle")
+
+                        Toggle(isOn: $canTranscribe) {
+                            ConsentChoiceLabel(
+                                title: "Create a transcript",
+                                detail: "Create the transcript, notes, and follow-up items.",
+                                systemImage: "text.bubble"
+                            )
+                        }
+                        .accessibilityIdentifier("CaptureConsentTranscriptionToggle")
+                    } label: {
+                        Label("Recording options", systemImage: "slider.horizontal.3")
                     }
-                    .accessibilityIdentifier("CaptureConsentTranscriptionToggle")
                 }
 
                 Section {
@@ -10420,14 +10431,6 @@ struct CaptureConsentConfirmationSheet: View {
                     }
                 }
 
-                Section {
-                    Text(consentSummary)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } header: {
-                    Text("Your choices")
-                }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 consentActionBar
@@ -10510,18 +10513,9 @@ struct CaptureConsentConfirmationSheet: View {
         }
     }
 
-    private var consentSummary: String {
-        let recording: String
-        if canRecordAudio && canRecordVideo {
-            recording = "audio and video recording"
-        } else if canRecordVideo {
-            recording = "video recording"
-        } else if canRecordAudio {
-            recording = "audio recording"
-        } else {
-            recording = "no recording"
-        }
-        return "You are allowing \(recording). Transcription is \(canTranscribe ? "on" : "off") as a separate choice."
+    private var defaultConsentSummary: String {
+        let recording = canRecordVideo ? "Camera and audio" : "Audio"
+        return "\(recording) on this iPhone · \(canTranscribe ? "Transcript on" : "Transcript off")"
     }
 }
 
@@ -10913,6 +10907,12 @@ private struct VideoRecorderHero: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CaptureVideoErrorMessage")
             }
+            if cameraPermissionIsBlocked || microphonePermissionIsBlocked {
+                CapturePermissionRecoveryButton(
+                    title: permissionRecoveryTitle,
+                    detail: "Turn access on once, then return to Quipsly and prepare the camera again."
+                )
+            }
 
             Text(sourceBoundary)
                 .font(.caption2)
@@ -10984,6 +10984,25 @@ private struct VideoRecorderHero: View {
 
     private var isCaptureGroupOpen: Bool {
         controller.state.isActive || controller.state == .paused
+    }
+
+    private var cameraPermissionIsBlocked: Bool {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        return status == .denied || status == .restricted
+    }
+
+    private var microphonePermissionIsBlocked: Bool {
+        guard mode.movieIncludesAudio else { return false }
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        return status == .denied || status == .restricted
+    }
+
+    private var permissionRecoveryTitle: String {
+        cameraPermissionIsBlocked && microphonePermissionIsBlocked
+            ? "Allow camera and microphone in Settings"
+            : cameraPermissionIsBlocked
+                ? "Allow camera in Settings"
+                : "Allow microphone in Settings"
     }
 
     private var videoReady: Bool {
@@ -11575,6 +11594,13 @@ private struct ProviderRoomControls: View {
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(model.providerRoom.lastError == nil ? Color.secondary : Color.orange)
+            }
+
+            if AVAudioApplication.shared.recordPermission == .denied {
+                CapturePermissionRecoveryButton(
+                    title: "Allow microphone in Settings",
+                    detail: "Microphone access is off. Turn it on once, then return and join the call."
+                )
             }
         }
         .accessibilityElement(children: .contain)
@@ -12939,6 +12965,32 @@ private struct CaptureInlineWarning: View {
             .padding(12)
             .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .accessibilityIdentifier("CapturePausedReason")
+    }
+}
+
+private struct CapturePermissionRecoveryButton: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            } label: {
+                Label(title, systemImage: "gear")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .accessibilityIdentifier("CaptureOpenPermissionSettingsButton")
+        }
+        .padding(12)
+        .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

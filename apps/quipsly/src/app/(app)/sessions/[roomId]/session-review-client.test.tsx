@@ -1405,8 +1405,8 @@ describe("Session review goal candidates", () => {
       }}
     />);
 
-    expect(screen.getByLabelText("Allow audio recording of my participation.")).toBeChecked();
-    expect(screen.getByLabelText("Separately allow transcription of my recorded participation.")).toBeChecked();
+    expect(screen.getByLabelText("Record audio from this device")).toBeChecked();
+    expect(screen.getByLabelText("Create a transcript and suggested notes/tasks")).toBeChecked();
     await user.click(screen.getByRole("button", { name: "Agree and continue" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -1485,8 +1485,8 @@ describe("Session review goal candidates", () => {
     expect(within(control).getByText("Transcript")).toBeInTheDocument();
 
     await user.click(within(control).getByRole("button", { name: "Change" }));
-    expect(within(control).getByLabelText("Allow audio recording of my participation.")).toBeChecked();
-    expect(within(control).getByLabelText("Separately allow transcription of my recorded participation.")).toBeChecked();
+    expect(within(control).getByLabelText("Record audio from this device")).toBeChecked();
+    expect(within(control).getByLabelText("Create a transcript and suggested notes/tasks")).toBeChecked();
     expect(within(control).queryByLabelText(/anyone else who may be heard/i)).not.toBeInTheDocument();
     expect(within(control).getByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });

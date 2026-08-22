@@ -4881,6 +4881,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             let consentSheet = app.descendants(matching: .any)["CaptureConsentConfirmationSheet"].firstMatch
             XCTAssertTrue(consentSheet.waitForExistence(timeout: 8))
 
+            let recordingOptions = app.buttons["Recording options"].firstMatch
+            XCTAssertTrue(recordingOptions.waitForExistence(timeout: 5))
+            recordingOptions.tap()
+
             let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
             let transcription = app.switches["CaptureConsentTranscriptionToggle"]
             XCTAssertTrue(recordAudio.exists)
@@ -5196,6 +5200,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "CaptureConsentConfirmationSheet"
             ].firstMatch
             XCTAssertTrue(consentSheet.waitForExistence(timeout: 8))
+            let recordingOptions = app.buttons["Recording options"].firstMatch
+            XCTAssertTrue(recordingOptions.waitForExistence(timeout: 5))
+            recordingOptions.tap()
             turnOn(app.switches["CaptureConsentRecordVideoToggle"], in: app)
             let save = app.buttons["CaptureConsentSaveChoicesButton"]
             XCTAssertTrue(
