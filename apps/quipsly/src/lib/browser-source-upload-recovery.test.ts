@@ -1,9 +1,11 @@
 import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
 import {
+  browserSourceInterruptedRecoveryCandidate,
   browserSourceSafetyLabel,
   browserSourceManualUploadRetryAvailable,
   browserSourceRecoverySummary,
   browserSourceUploadCanResumeAutomatically,
+  finalizeInterruptedBrowserSourceLedger,
   nextBrowserSourceUploadRecovery,
   resumeBrowserSourceUploads,
 } from "./browser-source-upload-recovery";
@@ -38,6 +40,48 @@ describe("browser source upload recovery", () => {
     expect(browserSourceUploadCanResumeAutomatically(ledger("verified"))).toBe(false);
     expect(browserSourceUploadCanResumeAutomatically(ledger("failed", { failureReason: "Checksum mismatch" }))).toBe(false);
     expect(browserSourceUploadCanResumeAutomatically(ledger("held", { failureReason: "Upload allowance exceeded" }))).toBe(false);
+  });
+
+  it("recovers only contiguous acknowledged chunks after an abrupt recorder loss", () => {
+    const interrupted = ledger("recording", {
+      captureId: "interrupted",
+      stoppedAt: null,
+      sha256: null,
+      sizeBytes: 12,
+      chunks: [
+        { index: 0, byteOffset: 0, sizeBytes: 5, recorderTimecodeMs: 2_000, receivedAt: "2026-08-22T12:00:02.000Z" },
+        { index: 1, byteOffset: 5, sizeBytes: 7, recorderTimecodeMs: 4_000, receivedAt: "2026-08-22T12:00:04.000Z" },
+      ],
+      sourceProfile: {
+        monotonicStartedNanoseconds: "1000000000",
+      } as unknown as BrowserSourceCaptureLedger["sourceProfile"],
+    });
+    expect(browserSourceInterruptedRecoveryCandidate(interrupted)).toBe(true);
+    expect(browserSourceInterruptedRecoveryCandidate(interrupted, "interrupted")).toBe(false);
+    expect(browserSourceInterruptedRecoveryCandidate({
+      ...interrupted,
+      chunks: [{ ...interrupted.chunks[0], byteOffset: 1 }],
+    })).toBe(false);
+
+    const recovered = finalizeInterruptedBrowserSourceLedger({
+      ledger: interrupted,
+      sha256: "b".repeat(64),
+      sizeBytes: 12,
+      recoveredAt: "2026-08-22T12:01:00.000Z",
+    });
+    expect(recovered).toMatchObject({
+      state: "stopped",
+      stoppedAt: "2026-08-22T12:00:04.000Z",
+      sha256: "b".repeat(64),
+      sourceProfile: {
+        monotonicStoppedNanoseconds: "5000000000",
+        interruptionRecovery: {
+          originalState: "recording",
+          mediaTailMayBeIncomplete: true,
+          stopBoundaryInferredFromLastDurableChunk: true,
+        },
+      },
+    });
   });
 
   it("selects the next unattempted source and provides calm safety labels", () => {

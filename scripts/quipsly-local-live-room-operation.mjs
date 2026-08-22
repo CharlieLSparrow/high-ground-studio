@@ -56,6 +56,14 @@ const fixtureIdentifiersUsed = freshContext?.fixtureIdentifiersUsed ?? true;
 const keepRoomOpenForInterop =
   Boolean(freshContext) ||
   process.env.QUIPSLY_LOCAL_LIVE_ROOM_KEEP_OPEN === "1";
+const interruptCoachUpload =
+  process.env.QUIPSLY_LOCAL_LIVE_ROOM_INTERRUPT_COACH_UPLOAD === "1";
+const crashCoachRecorder =
+  process.env.QUIPSLY_LOCAL_LIVE_ROOM_CRASH_COACH_RECORDER === "1";
+assert(
+  !(interruptCoachUpload && crashCoachRecorder),
+  "Choose either upload interruption or recorder crash recovery per operation.",
+);
 const requestedRecordingMilliseconds = Number.parseInt(
   process.env.QUIPSLY_LOCAL_LIVE_ROOM_RECORDING_MS || "3000",
   10,
@@ -323,6 +331,31 @@ try {
       reducedMotion: "reduce",
     });
     const page = await context.newPage();
+    let interruptedUploadRequest = false;
+    const localUploadPattern = "**/api/mobile/capture/uploads/local/**";
+    const interruptLocalUpload = async (route) => {
+      if (
+        identity.role === "coach" &&
+        interruptCoachUpload &&
+        !interruptedUploadRequest &&
+        route.request().method() === "PUT"
+      ) {
+        interruptedUploadRequest = true;
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error: "Deliberate local upload interruption.",
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    };
+    if (identity.role === "coach" && interruptCoachUpload) {
+      await page.route(localUploadPattern, interruptLocalUpload);
+    }
     const callbackPath = `/sessions/${ROOM_ID}?mode=live`;
     await signInThroughRenderedLogin({
       page,
@@ -405,7 +438,15 @@ try {
       await join.isEnabled(),
       `${identity.role} live-room join did not become ready. Microphones: ${JSON.stringify(microphoneOptions)}`,
     );
-    journeys.push({ identity, context, page, join });
+    journeys.push({
+      identity,
+      context,
+      page,
+      join,
+      localUploadPattern,
+      interruptLocalUpload,
+      uploadWasInterrupted: () => interruptedUploadRequest,
+    });
   }
 
   // Finish both rendered lobbies before either endpoint joins. In local Next
@@ -544,17 +585,94 @@ try {
   await new Promise((resolve) =>
     setTimeout(resolve, requestedRecordingMilliseconds),
   );
-  await stopButtons[0].click();
+  const coachJourney = journeys.find(
+    (journey) => journey.identity.role === "coach",
+  );
+  assert(coachJourney, "The operated coach journey is unavailable.");
+  if (crashCoachRecorder) {
+    await coachJourney.page.close({ runBeforeUnload: false });
+    await stopButtons[1].click();
+    const recoveryPage = await coachJourney.context.newPage();
+    coachJourney.page = recoveryPage;
+    await recoveryPage.goto(`${baseURL}/sessions/${ROOM_ID}?mode=live`, {
+      waitUntil: "domcontentloaded",
+    });
+    await recoveryPage
+      .locator('[data-session-entry-ready="true"]')
+      .waitFor({ state: "visible", timeout: 20_000 });
+    const recoveryJoin = recoveryPage.getByRole("button", {
+      name: "Join call",
+      exact: true,
+    });
+    await recoveryJoin
+      .waitFor({ state: "visible", timeout: 3_000 })
+      .catch(async () => {
+        await recoveryPage
+          .getByRole("button", { name: /This browser/i })
+          .click();
+        await recoveryJoin.waitFor({ state: "visible", timeout: 20_000 });
+      });
+    await recoveryJoin.click();
+    await recoveryPage
+      .getByRole("button", { name: "Leave", exact: true })
+      .waitFor({ timeout: 20_000 });
+  } else {
+    await stopButtons[0].click();
+  }
+  if (interruptCoachUpload) {
+    await coachJourney.page
+      .getByText("Safe on this device", { exact: true })
+      .first()
+      .waitFor({ state: "visible", timeout: 90_000 });
+    await coachJourney.page
+      .getByText("Durable byte upload failed (503).", { exact: true })
+      .waitFor({ state: "attached", timeout: 20_000 });
+    assert(
+      coachJourney.uploadWasInterrupted(),
+      "The coach source upload was not deliberately interrupted.",
+    );
+    await coachJourney.page.unroute(
+      coachJourney.localUploadPattern,
+      coachJourney.interruptLocalUpload,
+    );
+    await coachJourney.page.reload({ waitUntil: "domcontentloaded" });
+    await coachJourney.page
+      .locator('[data-session-entry-ready="true"]')
+      .waitFor({ state: "visible", timeout: 20_000 });
+    const recoveryJoin = coachJourney.page.getByRole("button", {
+      name: "Join call",
+      exact: true,
+    });
+    await recoveryJoin
+      .waitFor({ state: "visible", timeout: 3_000 })
+      .catch(async () => {
+        await coachJourney.page
+          .getByRole("button", { name: /This browser/i })
+          .click();
+        await recoveryJoin.waitFor({ state: "visible", timeout: 20_000 });
+      });
+    await recoveryJoin.click();
+    await coachJourney.page
+      .getByRole("button", { name: "Leave", exact: true })
+      .waitFor({ timeout: 20_000 });
+  }
   await Promise.all(
     journeys.map((journey) =>
       journey.page
         .getByText(
-          "Exact bytes verified. The local source remains protected and the editor evidence is ready.",
-          { exact: true },
+          /^(?:Exact bytes verified\. The local source remains protected and the editor evidence is ready\.|Recovered bytes verified\. The interrupted ending is marked for repair before final editing\.)$/,
         )
         .waitFor({ timeout: 90_000 }),
     ),
   );
+  if (crashCoachRecorder) {
+    await coachJourney.page
+      .getByRole("button", { name: "Stop recording", exact: true })
+      .click();
+    await coachJourney.page
+      .getByRole("button", { name: "Record", exact: true })
+      .waitFor({ state: "visible", timeout: 20_000 });
+  }
 
   const participantIds = await prisma.callParticipant.findMany({
     where: {
@@ -563,17 +681,32 @@ try {
     },
     select: { id: true, userId: true },
   });
-  const directiveReceipts = await prisma.callRecordingEndpointReceipt.findMany({
-    where: {
-      roomId: ROOM_ID,
-      participantId: {
-        in: participantIds.map((participant) => participant.id),
+  let directiveReceipts = [];
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    directiveReceipts = await prisma.callRecordingEndpointReceipt.findMany({
+      where: {
+        roomId: ROOM_ID,
+        participantId: {
+          in: participantIds.map((participant) => participant.id),
+        },
+        state: { in: ["STARTED", "STOPPED"] },
+        receivedAt: { gte: recordingWindowStartedAt },
       },
-      state: { in: ["STARTED", "STOPPED"] },
-      receivedAt: { gte: recordingWindowStartedAt },
-    },
-    select: { participantId: true, state: true, captureId: true },
-  });
+      select: { participantId: true, state: true, captureId: true },
+    });
+    if (
+      participantIds.every((participant) => {
+        const states = new Set(
+          directiveReceipts
+            .filter((receipt) => receipt.participantId === participant.id)
+            .map((receipt) => receipt.state),
+        );
+        return states.has("STARTED") && states.has("STOPPED");
+      })
+    )
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
   for (const participant of participantIds) {
     const states = new Set(
       directiveReceipts
@@ -604,6 +737,7 @@ try {
       recordedStartedAt: true,
       recordedStoppedAt: true,
       verifiedAt: true,
+      localManifestJson: true,
     },
   });
   assert(
@@ -622,6 +756,42 @@ try {
         source.recordedStoppedAt &&
         source.verifiedAt,
       `Verified browser source ${source.id} is missing immutable-byte or timing evidence.`,
+    );
+  }
+  const recoveredSources = verifiedSources.filter((source) => {
+    const manifest =
+      source.localManifestJson &&
+      typeof source.localManifestJson === "object" &&
+      !Array.isArray(source.localManifestJson)
+        ? source.localManifestJson
+        : {};
+    const profile =
+      manifest.reportedSourceProfile &&
+      typeof manifest.reportedSourceProfile === "object" &&
+      !Array.isArray(manifest.reportedSourceProfile)
+        ? manifest.reportedSourceProfile
+        : {};
+    const recovery =
+      profile.interruptionRecovery &&
+      typeof profile.interruptionRecovery === "object" &&
+      !Array.isArray(profile.interruptionRecovery)
+        ? profile.interruptionRecovery
+        : {};
+    return (
+      recovery.contractKind ===
+        "quipsly-browser-source-interruption-recovery-v1" &&
+      recovery.mediaTailMayBeIncomplete === true
+    );
+  });
+  if (crashCoachRecorder) {
+    const coachParticipantId = participantIds.find(
+      (participant) =>
+        participant.userId === userByUid.get(coachJourney.identity.uid),
+    )?.id;
+    assert(
+      recoveredSources.length === 1 &&
+        recoveredSources[0].participantId === coachParticipantId,
+      "The crashed coach source did not retain its explicit interruption-recovery evidence.",
     );
   }
   const overlapStartedAt = new Date(
@@ -661,6 +831,9 @@ try {
         independentParticipantSourcesVerified: new Set(
           verifiedSources.map((source) => source.participantId),
         ).size,
+        interruptedCoachUploadRecoveredAfterReload: interruptCoachUpload,
+        crashedCoachRecorderRecoveredAfterReload: crashCoachRecorder,
+        interruptedSourceProfilesVerified: recoveredSources.length,
         coordinatedRecordingDirective: "passed",
         coordinatedEndpointBoundaries: directiveReceipts.length,
         verifiedSourceIds: verifiedSources.map((source) => source.id),

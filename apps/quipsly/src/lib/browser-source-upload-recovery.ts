@@ -3,6 +3,89 @@ import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
 const AUTO_RESUMABLE_STATES = new Set(["stopped", "uploading", "verifying"]);
 const TRANSIENT_FAILURE = /failed to fetch|network|offline|connection|transport|timed out|timeout|http 408|http 429|http 5\d\d|failed \((?:408|429|5\d\d)\)|verification needs a retry/i;
 
+const INTERRUPTED_STATES = new Set(["preparing", "recording", "held", "failed"]);
+type InterruptedBrowserSourceLedger = BrowserSourceCaptureLedger & {
+  state: "preparing" | "recording" | "held" | "failed";
+};
+
+export function browserSourceInterruptedRecoveryCandidate(
+  ledger: BrowserSourceCaptureLedger,
+  activeCaptureId?: string | null,
+): ledger is InterruptedBrowserSourceLedger {
+  if (ledger.captureId === activeCaptureId) return false;
+  if (!INTERRUPTED_STATES.has(ledger.state)) return false;
+  if (ledger.stoppedAt || ledger.sha256 || ledger.sizeBytes <= 0) return false;
+  if (!ledger.recordingConsentId || !ledger.participantId) return false;
+  if (!ledger.chunks.length) return false;
+  let expectedOffset = 0;
+  for (const chunk of ledger.chunks) {
+    if (
+      chunk.index < 0 ||
+      chunk.byteOffset !== expectedOffset ||
+      chunk.sizeBytes <= 0
+    )
+      return false;
+    expectedOffset += chunk.sizeBytes;
+  }
+  return expectedOffset === ledger.sizeBytes;
+}
+
+function inferredMonotonicStop(ledger: BrowserSourceCaptureLedger) {
+  const lastTimecode = ledger.chunks.reduce<number | null>((latest, chunk) => {
+    if (chunk.recorderTimecodeMs == null || !Number.isFinite(chunk.recorderTimecodeMs))
+      return latest;
+    return latest == null
+      ? chunk.recorderTimecodeMs
+      : Math.max(latest, chunk.recorderTimecodeMs);
+  }, null);
+  if (lastTimecode == null) return null;
+  try {
+    return (
+      BigInt(ledger.sourceProfile.monotonicStartedNanoseconds) +
+      BigInt(Math.max(0, Math.round(lastTimecode * 1_000_000)))
+    ).toString();
+  } catch {
+    return null;
+  }
+}
+
+export function finalizeInterruptedBrowserSourceLedger(input: {
+  ledger: BrowserSourceCaptureLedger;
+  sha256: string;
+  sizeBytes: number;
+  recoveredAt: string;
+}): BrowserSourceCaptureLedger {
+  const { ledger } = input;
+  if (!browserSourceInterruptedRecoveryCandidate(ledger)) {
+    throw new Error("This browser source is not a complete durable interruption candidate.");
+  }
+  if (input.sizeBytes !== ledger.sizeBytes || !/^[a-f0-9]{64}$/i.test(input.sha256)) {
+    throw new Error("Recovered browser source bytes do not match the durable chunk ledger.");
+  }
+  const lastDurableChunkAt = ledger.chunks.at(-1)!.receivedAt;
+  const monotonicStoppedNanoseconds = inferredMonotonicStop(ledger);
+  return {
+    ...ledger,
+    state: "stopped" as const,
+    stoppedAt: lastDurableChunkAt,
+    sha256: input.sha256.toLowerCase(),
+    sourceProfile: {
+      ...ledger.sourceProfile,
+      monotonicStoppedNanoseconds,
+      interruptionRecovery: {
+        contractKind: "quipsly-browser-source-interruption-recovery-v1" as const,
+        originalState: ledger.state,
+        recoveredAt: input.recoveredAt,
+        lastDurableChunkAt,
+        stopBoundaryInferredFromLastDurableChunk: true as const,
+        mediaTailMayBeIncomplete: true as const,
+      },
+    },
+    failureReason: null,
+    updatedAt: input.recoveredAt,
+  } satisfies BrowserSourceCaptureLedger;
+}
+
 export function browserSourceUploadCanResumeAutomatically(
   ledger: BrowserSourceCaptureLedger,
 ) {

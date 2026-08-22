@@ -491,6 +491,52 @@ describe("capture Session to Studio handoff boundary", () => {
     expect(promoteOne).not.toHaveBeenCalled();
   });
 
+  it("holds an interrupted master until a verified container repair exists", async () => {
+    const recovered = {
+      id: "recovered-audio",
+      roomId: "room-1",
+      kind: "LOCAL_AUDIO",
+      status: "VERIFIED",
+      recordedStartedAt: new Date("2026-08-22T12:00:00.000Z"),
+      localManifestJson: {
+        captureGroupId: "take-recovered",
+        reportedSourceProfile: {
+          interruptionRecovery: { mediaTailMayBeIncomplete: true },
+        },
+      },
+    };
+    const prisma = {
+      recordingAsset: { findMany: jest.fn().mockResolvedValue([recovered]) },
+      mobileCaptureFinalizationReceipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const processingGate = jest.fn().mockResolvedValue({ allowed: true });
+    const promoteOne = jest.fn();
+
+    const result = await promoteRecordingCaptureGroupToStudioMedia({
+      prisma,
+      roomId: "room-1",
+      captureGroupId: "take-recovered",
+      expectedRecordingAssetIds: ["recovered-audio"],
+      actorUserId: "user-1",
+      actorEmail: "user@example.test",
+      processingGate: processingGate as any,
+      promoteOne: promoteOne as any,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: "capture-group-processing-held",
+      holds: [{
+        recordingAssetId: "recovered-audio",
+        errorCode: "CAPTURE_INTERRUPTED_CONTAINER_REPAIR_REQUIRED",
+      }],
+    });
+    expect(processingGate).not.toHaveBeenCalled();
+    expect(promoteOne).not.toHaveBeenCalled();
+  });
+
   it("promotes protected masters while an unfinished provider file remains optional", async () => {
     const assets = [
       {

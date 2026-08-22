@@ -66,9 +66,11 @@ import type {
 } from "@/lib/session-guardian";
 import { browserRetainedStorageIssue } from "@/lib/session-guardian";
 import {
+  browserSourceInterruptedRecoveryCandidate,
   browserSourceManualUploadRetryAvailable,
   browserSourceRecoverySummary,
   browserSourceSafetyLabel,
+  finalizeInterruptedBrowserSourceLedger,
   resumeBrowserSourceUploads,
 } from "@/lib/browser-source-upload-recovery";
 import {
@@ -1105,7 +1107,9 @@ export function BrowserSourceRecorder({
       setStatus(current.state === "verified" ? "ready" : "uploading");
       setMessage(
         current.state === "verified"
-          ? "Exact bytes verified. The local source remains protected and the editor evidence is ready."
+          ? current.sourceProfile.interruptionRecovery
+            ? "Recovered bytes verified. The interrupted ending is marked for repair before final editing."
+            : "Exact bytes verified. The local source remains protected and the editor evidence is ready."
           : "The source is durable and server verification is still running. Keep the local source and retry status later.",
       );
       await refreshRecovery();
@@ -1220,6 +1224,51 @@ export function BrowserSourceRecorder({
       if (resetAttempts) automaticUploadRecoveryAttemptedRef.current.clear();
       automaticUploadRecoveryInFlightRef.current = true;
       try {
+        const interrupted = (await listBrowserSourceLedgers(callRoomId)).filter(
+          (ledger) =>
+            browserSourceInterruptedRecoveryCandidate(
+              ledger,
+              recorderRef.current?.state === "recording"
+                ? ledgerRef.current?.captureId
+                : null,
+            ) &&
+            !automaticUploadRecoveryAttemptedRef.current.has(ledger.captureId),
+        );
+        for (const ledger of interrupted) {
+          automaticUploadRecoveryAttemptedRef.current.add(ledger.captureId);
+          setStatus("uploading");
+          setMessage(
+            "Recovering the recording saved before this browser closed…",
+          );
+          const file = await loadBrowserSourceFile(ledger.opfsFileName);
+          const hash = await hashBrowserSourceFile(file);
+          let recovered = finalizeInterruptedBrowserSourceLedger({
+            ledger,
+            sha256: hash.sha256,
+            sizeBytes: hash.sizeBytes,
+            recoveredAt: new Date().toISOString(),
+          });
+          await updateLedger(recovered);
+          try {
+            await postRoomReceipt({
+              callRoomId,
+              action: "STOP_RECORDING",
+              receiptId: ledger.stopReceiptId,
+              captureId: ledger.captureId,
+              occurredAt: recovered.stoppedAt!,
+            });
+            recovered = {
+              ...recovered,
+              stopReceiptPersisted: true,
+              updatedAt: new Date().toISOString(),
+            };
+            await updateLedger(recovered);
+          } catch {
+            // Local bytes and their inferred interruption boundary remain the
+            // authority. The coordination receipt is repaired opportunistically.
+          }
+          await retryUploadLedger(recovered);
+        }
         await resumeBrowserSourceUploads({
           attemptedCaptureIds: automaticUploadRecoveryAttemptedRef.current,
           list: () => listBrowserSourceLedgers(callRoomId).catch(() => []),
@@ -1239,7 +1288,7 @@ export function BrowserSourceRecorder({
         automaticUploadRecoveryInFlightRef.current = false;
       }
     },
-    [callRoomId, retryUploadLedger],
+    [callRoomId, retryUploadLedger, updateLedger],
   );
 
   useEffect(() => {
@@ -2713,6 +2762,8 @@ export function BrowserSourceRecorder({
                     >
                       {source.verifiedForStudio
                         ? "bytes released"
+                        : source.interruptionRepairRequired
+                          ? "interrupted ending · repair queued"
                         : `${source.recordingStatus} · ${source.processingDisposition}`}
                     </span>
                     <span

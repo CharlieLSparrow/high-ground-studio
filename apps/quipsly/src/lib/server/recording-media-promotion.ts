@@ -1302,7 +1302,23 @@ export async function promoteRecordingCaptureGroupToStudioMedia(
     error: string;
   }> = [];
   for (const source of plan.sources) {
-    const asset = assetsById.get(source.recordingAssetId);
+    const asset: any = assetsById.get(source.recordingAssetId);
+    const manifest = asRecord(asset?.localManifestJson);
+    const profile = asRecord(manifest.reportedSourceProfile);
+    const recovery = asRecord(profile.interruptionRecovery);
+    const repair = asRecord(manifest.interruptionRepair);
+    if (
+      recovery.mediaTailMayBeIncomplete === true &&
+      text(repair.status).toLowerCase() !== "verified"
+    ) {
+      processingHolds.push({
+        recordingAssetId: source.recordingAssetId,
+        errorCode: "CAPTURE_INTERRUPTED_CONTAINER_REPAIR_REQUIRED",
+        error:
+          "The protected bytes survived a browser interruption, but their container ending must be repaired and verified before Studio handoff.",
+      });
+      continue;
+    }
     const gate = await processingGate({
       prisma,
       recordingAsset: asset,
@@ -1327,7 +1343,7 @@ export async function promoteRecordingCaptureGroupToStudioMedia(
       ),
       holds: processingHolds,
       message:
-        "Studio handoff is held because at least one source lacks released consent or exact-byte processing evidence.",
+        "Studio handoff is held because at least one source still needs consent, exact-byte verification, or interrupted-container repair.",
       boundaries: {
         sourceSetMatched: true,
         promotedSourceCount: 0,

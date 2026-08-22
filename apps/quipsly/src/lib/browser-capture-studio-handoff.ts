@@ -8,6 +8,7 @@ export type BrowserCaptureStudioHandoffSource = {
   processingDisposition: string;
   mediaAssetId: string | null;
   playbackUrl: string | null;
+  interruptionRepairRequired: boolean;
   verifiedForStudio: boolean;
   promotedToStudio: boolean;
   providerWitness: boolean;
@@ -80,10 +81,13 @@ export function browserCaptureStudioHandoff(
       const recordingStatus = text(source.recordingStatus).toUpperCase();
       const processingDisposition = text(source.processingDisposition).toUpperCase();
       const mediaAssetId = nullableText(source.mediaAssetId);
+      const interruptionRepairRequired =
+        source.interruptionRepairRequired === true;
       const verifiedForStudio =
         source.exactBytesVerified === true
         && recordingStatus === "VERIFIED"
-        && processingDisposition === "RELEASED";
+        && processingDisposition === "RELEASED"
+        && !interruptionRepairRequired;
       return [{
         recordingAssetId,
         captureGroupId: text(source.captureGroupId).toLowerCase(),
@@ -94,6 +98,7 @@ export function browserCaptureStudioHandoff(
         processingDisposition: processingDisposition || "UNKNOWN",
         mediaAssetId,
         playbackUrl: nullableText(source.playbackUrl),
+        interruptionRepairRequired,
         verifiedForStudio,
         promotedToStudio: Boolean(mediaAssetId),
         providerWitness: text(source.kind).toUpperCase() === "SERVER_MIX",

@@ -283,6 +283,13 @@ export function captureSourceSummaries(
         label(receipt?.mediaAssetId) || label(promotion.mediaAssetId);
       const media = mediaAssetId ? (mediaById.get(mediaAssetId) as any) : null;
       const sourceProfile = sourceJson(manifest.reportedSourceProfile);
+      const interruptionRecovery = sourceJson(
+        sourceProfile.interruptionRecovery,
+      );
+      const interruptionRepair = sourceJson(manifest.interruptionRepair);
+      const interruptionRepairRequired =
+        interruptionRecovery.mediaTailMayBeIncomplete === true &&
+        (label(interruptionRepair.status) || "").toLowerCase() !== "verified";
       const transcriptJob = Array.isArray(asset.transcriptJobs)
         ? asset.transcriptJobs[0] || null
         : null;
@@ -358,6 +365,11 @@ export function captureSourceSummaries(
         mediaAssetId,
         playbackUrl: label(media?.url) || label(promotion.playbackUrl),
         sourceProfile,
+        interruptionRepairRequired,
+        interruptionRepair:
+          Object.keys(interruptionRepair).length > 0
+            ? interruptionRepair
+            : null,
         alignment,
         proxy: {
           required: isVideo,

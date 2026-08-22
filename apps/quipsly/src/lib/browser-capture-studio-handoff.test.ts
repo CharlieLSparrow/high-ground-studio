@@ -146,6 +146,32 @@ describe("browser Capture Studio handoff", () => {
       .toBeNull();
   });
 
+  it("keeps exact interrupted bytes visible but out of Studio until their container is repaired", () => {
+    expect(browserCaptureStudioHandoff({
+      sessions: [{
+        id: "room-recovered",
+        captureSources: [{
+          recordingAssetId: "recovered-audio",
+          captureGroupId: "take-recovered",
+          recordingStatus: "VERIFIED",
+          exactBytesVerified: true,
+          processingDisposition: "RELEASED",
+          interruptionRepairRequired: true,
+        }],
+      }],
+    }, "room-recovered", "take-recovered")).toMatchObject({
+      verifiedSourceCount: 0,
+      ready: false,
+      complete: false,
+      sources: [{
+        recordingAssetId: "recovered-audio",
+        exactBytesVerified: true,
+        interruptionRepairRequired: true,
+        verifiedForStudio: false,
+      }],
+    });
+  });
+
   it("builds only an exact episode and take review link", () => {
     expect(browserCaptureStudioReviewHref({
       projectSlug: "high-ground-odyssey",

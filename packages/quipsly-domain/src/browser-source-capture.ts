@@ -116,6 +116,14 @@ export type BrowserSourceCaptureProfile = {
   readonly headphonesAttested: boolean;
   readonly localVault: "opfs";
   readonly localRetentionRequired: true;
+  readonly interruptionRecovery?: {
+    readonly contractKind: "quipsly-browser-source-interruption-recovery-v1";
+    readonly originalState: "preparing" | "recording" | "held" | "failed";
+    readonly recoveredAt: string;
+    readonly lastDurableChunkAt: string;
+    readonly stopBoundaryInferredFromLastDurableChunk: true;
+    readonly mediaTailMayBeIncomplete: true;
+  };
 };
 
 export type BrowserSourceCaptureLedger = {

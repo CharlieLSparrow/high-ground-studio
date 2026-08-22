@@ -87,6 +87,8 @@
     "quipsly:retained:session-transcript-source-focus": "QUIPSLY_RETAINED_TRANSCRIPT_SOURCE_FOCUS_OPERATION=1 node scripts/quipsly-retained-session-transcript-source-focus-operation.mjs",
     "quipsly:retained:session-transcript-quality": "QUIPSLY_RETAINED_TRANSCRIPT_QUALITY_OPERATION=1 node scripts/quipsly-retained-session-transcript-quality-operation.mjs",
     "quipsly:local:live-room": "QUIPSLY_LOCAL_LIVE_ROOM_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-live-room-operation.mjs",
+    "quipsly:local:live-room-upload-recovery": "QUIPSLY_LOCAL_LIVE_ROOM_OPERATION=1 QUIPSLY_LOCAL_LIVE_ROOM_INTERRUPT_COACH_UPLOAD=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-live-room-operation.mjs",
+    "quipsly:local:live-room-recorder-crash-recovery": "QUIPSLY_LOCAL_LIVE_ROOM_OPERATION=1 QUIPSLY_LOCAL_LIVE_ROOM_CRASH_COACH_RECORDER=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-live-room-operation.mjs",
     "quipsly:local:coaching-transcript": "QUIPSLY_LOCAL_COACHING_TRANSCRIPT_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-coaching-transcript-operation.mjs",
     "quipsly:local:recording-share": "QUIPSLY_LOCAL_RECORDING_SHARE_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-recording-share-operation.mjs",
     "quipsly:fresh:coaching-start": "QUIPSLY_FRESH_COACHING_START_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-start-operation.mjs",

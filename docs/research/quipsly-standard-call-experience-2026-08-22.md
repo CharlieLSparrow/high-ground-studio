@@ -334,6 +334,52 @@ failure shapes recur often enough to influence the architecture:
 
 ## Acceptance consequences
 
+### Operated local resilience evidence
+
+The retained local two-browser operation passed against the real Quipsly app,
+PostgreSQL, and LiveKit development room. Two independent participant endpoints
+joined, exchanged chat, acknowledged the coordinated Record directive, retained
+separate browser sources, uploaded both sources, and verified overlapping source
+time. All recording and transcription consent receipts were present. Provider
+cloud recording was deliberately not part of this participant-master proof.
+
+The browser source crash-durability operation also passed after deliberately
+terminating the OPFS writer before its normal close action. Both acknowledged
+chunks were recovered in order and byte-for-byte from the persisted partial
+file; the recovered file size exactly matched the last acknowledged committed
+offset. This proves the transaction boundary for synthetic bytes. It does not
+claim that a particular human microphone, browser process crash, or physical
+device has passed release acceptance.
+
+The full two-browser operation then returned a deliberate HTTP 503 for the
+coach's first source upload while the client's independent master completed
+normally. The coach reloaded the Session, Quipsly remembered the browser route,
+the coach used the ordinary Join action, and automatic recovery verified the
+same protected source without a recovery wizard or duplicate recording. Both
+participant-owned masters were read back from PostgreSQL as verified, with
+distinct participant ownership and 4.369 seconds of measured overlap. This is
+real local application, database, LiveKit, OPFS, upload, and verification
+evidence over synthetic media; natural speech and human comprehension remain
+unclaimed.
+
+A second two-browser operation killed the coach page while MediaRecorder was
+actively writing instead of allowing any Stop or component-cleanup callback.
+After ordinary re-entry, Quipsly reconstructed the source only from contiguous
+acknowledged chunks, inferred the stop from the last durable chunk rather than
+the later reload time, hashed and uploaded the preserved bytes, and retained an
+explicit interruption-recovery profile. The client's independently stopped
+master remained verified, both endpoints eventually acknowledged the shared
+STOP boundary, and the recovered and clean sources overlapped by 2.1 seconds.
+`ffprobe` recognized the interrupted source as 48 kHz stereo Opus; a lossless
+FFmpeg remux produced a verified 4.02-second WebM without touching the original.
+
+Exact-byte verification alone does not call that interrupted source
+editor-ready. The Session projection and Studio promotion boundary now hold it
+as `interrupted ending · repair queued` until a separate repair derivative has
+its own verified receipt. Transcription may continue against the preserved
+source where the provider can decode it, but Studio cannot silently treat a
+missing container tail as a clean master.
+
 Automated previews should prove hierarchy, persistence keys, accessibility
 identifiers, and failure states. A release candidate still needs deferred
 physical proof of permission prompting, remembered choices after relaunch,
