@@ -19,6 +19,8 @@ notes, goals, tasks, and collaborative follow-through.
   with advanced settings secondary.
 - [Riverside](https://support.riverside.com/hc/en-us/articles/5251967324573-Join-a-studio-as-a-host) presents a device check, preview, microphone/camera toggles, and one
   `Join Studio` action. Guests receive a deliberately simplified workspace.
+- [Riverside's guest flow](https://support.riverside.com/hc/en-us/articles/5252042203037-Join-a-studio-as-a-guest) uses one invitation link, one device check, and one Join action; mobile links open the app and the same lobby supports front/back-camera choice.
+- [Descript Rooms](https://help.descript.com/hc/en-us/articles/30293678303885-Managing-and-inviting-participants-to-a-Descript-Room) defaults invitees to Guest and keeps role configuration secondary, while a recording started from a project returns its sources to that project.
 - [Apple](https://developer.apple.com/documentation/uikit/requesting-access-to-protected-resources?changes=_2) requires camera and microphone permission at the protected-resource
   boundary and remembers the system response. Purpose strings should be concise,
   accurate, and specific.
@@ -26,6 +28,10 @@ notes, goals, tasks, and collaborative follow-through.
   forgotten device/mute choices, buried settings, preflight and in-call route
   disagreement, crashes or source loss, stuck uploads, and transcript timing
   drift that makes text edits cut the wrong media.
+- Users also describe project-versus-room structure and repeated reinvitation as
+  needless complexity. A Quipsly invitation should therefore become a durable
+  route back to the exact Session after acceptance, while the canonical account
+  and active participant record—not the link—remain the authority.
 
 ## Complaint pressure test
 
@@ -175,6 +181,18 @@ failure shapes recur often enough to influence the architecture:
   timeline work. Authenticated preview bytes must match the server's exact
   size and SHA-256 receipt before playback, and an authorization change purges
   the protected temporary copy.
+- Rebuilt invitation entry as one compact outer-room card with one contextual
+  action: Continue, Continue to Session, or Switch account. Device choice and
+  setup expectations are secondary and appear only after the identity boundary.
+- Reduced host invitation setup to email plus one primary action. Name, role,
+  expiry, raw URL, provider presence, join-key leases, and append-only access
+  history remain available under progressive disclosure. Provider presence is
+  polled only while that advanced view is open.
+- Preserved the accepted invitation HMAC as a safe re-entry locator. Reopening
+  the original email no longer dead-ends, but the token grants nothing: Quipsly
+  still requires the exact accepting account and its active canonical Session
+  participant. Removal immediately blocks re-entry; restoration can revive the
+  same route without creating a second identity.
 
 ## Acceptance consequences
 

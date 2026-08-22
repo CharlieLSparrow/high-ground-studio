@@ -91,9 +91,7 @@ describe("SessionInvitations", () => {
       render(<SessionInvitations roomId="room-1" purpose="PODCAST" />);
     });
     await waitFor(() =>
-      expect(
-        screen.getByText(/Private invitation/i),
-      ).toBeInTheDocument(),
+      expect(screen.getByText(/Invite by email/i)).toBeInTheDocument(),
     );
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "guest@example.test" },
@@ -102,22 +100,22 @@ describe("SessionInvitations", () => {
       target: { value: "Guest" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: /Create invitation/i }),
+      screen.getByRole("button", { name: /Create link/i }),
     );
 
     await waitFor(() =>
       expect(
-        screen.getByText(/Quipsly has not emailed or messaged anyone/i),
+        screen.getByText(/Invitation ready to share/i),
       ).toBeInTheDocument(),
     );
     expect(
       screen.getByText(/sessions\/join\?token=qsinv_/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Copy invitation message" }),
+      screen.getByRole("button", { name: "Copy invitation" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Copy link only" }),
+      screen.getByRole("button", { name: "Copy link" }),
     ).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       2,
@@ -189,12 +187,12 @@ describe("SessionInvitations", () => {
       target: { value: "Client" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Send email invitation" }),
+      screen.getByRole("button", { name: "Send invitation" }),
     );
 
     await waitFor(() =>
       expect(
-        screen.getByText(/Invitation email sent to client@example.test/i),
+        screen.getByText(/Invitation sent to client@example.test/i),
       ).toBeInTheDocument(),
     );
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
@@ -502,7 +500,7 @@ describe("SessionInvitations", () => {
     await act(async () => {
       render(<SessionInvitations roomId="room-1" purpose="PODCAST" />);
     });
-    await screen.findByText("Access activity");
+    await screen.findByText("Access and device history");
     const details = screen
       .getByText("Invite someone to this Session", { exact: true })
       .closest("details");
@@ -510,6 +508,14 @@ describe("SessionInvitations", () => {
     if (!details) return;
     details.open = true;
     fireEvent(details, new Event("toggle"));
+
+    const accessDetails = screen
+      .getByText("Access and device history", { exact: true })
+      .closest("details");
+    expect(accessDetails).not.toBeNull();
+    if (!accessDetails) return;
+    accessDetails.open = true;
+    fireEvent(accessDetails, new Event("toggle"));
 
     expect(
       await screen.findByText("LiveKit reports these devices in the room."),

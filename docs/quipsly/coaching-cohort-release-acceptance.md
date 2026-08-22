@@ -940,3 +940,31 @@ sync, transcript, mailbox, and minimally instructed acceptance remain open.
 The complete source identity, artifact hash, flaky-test note, and validation
 ledger live in
 `docs/coordination/2026-08-22-standard-call-candidate.md`.
+
+## Standard invitation and re-entry checkpoint — 2026-08-22
+
+The current working tree now treats invitation administration as an exception
+surface rather than the client journey. A host enters one email and sends the
+invitation or creates a shareable link. Name, role, expiry, raw URL, provider
+presence, join-key leases, and immutable access history remain available under
+progressive disclosure. Opening the general invitation manager no longer
+starts repeated provider-presence reads; those occur only while the explicit
+access and device history view is open.
+
+The invitation link now has two distinct cryptographic states. Pending
+acceptance authority is single-claim and consumed atomically. Its HMAC then
+moves to a separate re-entry locator that carries no authorization: reopening
+the original email requires the exact accepting account and an active canonical
+Session participant. Participant removal immediately denies the route, while a
+deliberate restoration revives it without creating another identity.
+
+The retained local flight passed the simplified host UI, wrong-account denial,
+phone-width immediate-action ordering, pending acceptance, accepted-link
+re-entry, two-browser LiveKit audio, Session chat round-trip, two-device
+provider readback, canonical removal and provider disconnect, removed Session
+and chat denial, removed-link denial, restoration without automatic media join,
+and restored-link re-entry. It sent no external invitation, started no retained
+source or provider recording, and exposed no provider credential or identity.
+This is strong local product evidence, not physical-iPhone, production-mailbox,
+natural-speech, or minimally instructed human evidence; those ledger items
+remain open and do not block further independent development.

@@ -1,11 +1,16 @@
 /** @jest-environment node */
 
 jest.mock("server-only", () => ({}));
+jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+
+import { getPrismaClient } from "@/lib/prisma";
 
 import {
+  acceptSessionInvitation,
   cleanSessionInvitationToken,
   createSessionInvitationToken,
   hashSessionInvitationToken,
+  inspectSessionInvitation,
   maskInvitationEmail,
   sessionInvitationExpiry,
   sessionInvitationRole,
@@ -20,7 +25,7 @@ describe("Session invitation token policy", () => {
     else process.env.AUTH_SECRET = originalAuthSecret;
   });
 
-  it("creates opaque one-time-link material and stores only a stable HMAC", () => {
+  it("creates opaque invitation material and stores only a stable HMAC", () => {
     const invitation = createSessionInvitationToken();
     expect(invitation.token).toMatch(/^qsinv_[A-Za-z0-9_-]+$/);
     expect(invitation.tokenHash).toMatch(/^[a-f0-9]{64}$/);
@@ -45,5 +50,82 @@ describe("Session invitation token policy", () => {
 
   it("masks recipient identity in the lobby", () => {
     expect(maskInvitationEmail("Scott.Homer@example.test")).toBe("s••••••@example.test");
+  });
+
+  it("recognizes an accepted link only as a route to active canonical access", async () => {
+    const { token, tokenHash } = createSessionInvitationToken();
+    jest.mocked(getPrismaClient).mockReturnValue({
+      callRoomInvitation: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "invite-1",
+          email: "coach@example.test",
+          displayName: "Coach",
+          role: "CLIENT",
+          status: "ACCEPTED",
+          expiresAt: new Date("2026-08-01T12:00:00.000Z"),
+          acceptedByUserId: "user-1",
+          participant: { id: "participant-1", userId: "user-1", accessStatus: "ACTIVE" },
+          room: {
+            id: "room-1",
+            title: "Coaching Session",
+            purpose: "COACHING",
+            status: "OPEN",
+            scheduledStart: null,
+            scheduledEnd: null,
+            createdByUser: { name: "Homer" },
+          },
+        }),
+      },
+    } as never);
+
+    const inspected = await inspectSessionInvitation(token);
+
+    expect(inspected).toEqual(expect.objectContaining({
+      status: "ACCEPTED",
+      available: false,
+      reentryAvailable: true,
+      acceptedByUserId: "user-1",
+      participant: expect.objectContaining({ accessStatus: "ACTIVE" }),
+    }));
+    expect(jest.mocked(getPrismaClient)().callRoomInvitation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { OR: [{ tokenHash }, { acceptedTokenHash: tokenHash }] } }),
+    );
+  });
+
+  it("lets only the accepting account reuse a link with active participant access", async () => {
+    const { token, tokenHash } = createSessionInvitationToken();
+    const findParticipant = jest.fn().mockResolvedValue({
+      id: "participant-1",
+      userId: "user-1",
+      accessStatus: "ACTIVE",
+      role: "CLIENT",
+    });
+    jest.mocked(getPrismaClient).mockReturnValue({
+      callRoomInvitation: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "invite-1",
+          roomId: "room-1",
+          email: "coach@example.test",
+          status: "ACCEPTED",
+          acceptedTokenHash: tokenHash,
+          acceptedByUserId: "user-1",
+          participantId: "participant-1",
+          revokedAt: null,
+          expiresAt: new Date("2026-08-01T12:00:00.000Z"),
+          room: { id: "room-1", title: "Coaching Session", purpose: "COACHING", status: "OPEN" },
+        }),
+      },
+      callParticipant: { findUnique: findParticipant },
+    } as never);
+
+    await expect(acceptSessionInvitation({
+      token,
+      actor: { id: "user-1", email: "coach@example.test" },
+    })).resolves.toEqual(expect.objectContaining({
+      roomId: "room-1",
+      participantId: "participant-1",
+      participantCreated: false,
+    }));
+    expect(findParticipant).toHaveBeenCalledWith({ where: { id: "participant-1" } });
   });
 });

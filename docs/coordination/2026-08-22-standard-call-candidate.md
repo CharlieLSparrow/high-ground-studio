@@ -14,6 +14,13 @@ Status: source-qualified; not uploaded or deployed
 > non-destructive renderer. It is locally tested but is not part of the Build
 > 33 or Nest candidate identified below.
 
+> A later invitation slice replaced the vertical acceptance page with one
+> compact outer-room card, reduced host setup to email plus one action, and
+> added exact-account accepted-link re-entry. The retained two-account local
+> flight passed pending claim, repeat entry, LiveKit audio, chat, authoritative
+> presence, removal denial, restoration, and restored re-entry. This remains
+> later working-tree evidence, not part of the candidate identity below.
+
 ## Product decision
 
 The call path follows the conventions people already know from Meet, Zoom,

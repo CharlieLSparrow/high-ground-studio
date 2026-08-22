@@ -46,7 +46,7 @@ Key routes:
   to the canonical Episode Room, its long-lived episode thread, and editor.
   Coaching, research, and team Sessions instead expose their own continuity and
   follow-through language over the same call/evidence kernel.
-- `/api/sessions/<roomId>/invitations`: expiring, exact-email, one-time Session
+- `/api/sessions/<roomId>/invitations`: expiring, exact-email, single-claim Session
   invitation ledger. Creating a link does not send it or start media.
 - `/api/sessions/<roomId>/participants/<participantId>/access`: revision-guarded
   removal, restoration, and provider reconciliation for invitation-owned

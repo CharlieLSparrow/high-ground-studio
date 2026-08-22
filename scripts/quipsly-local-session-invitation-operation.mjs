@@ -208,13 +208,9 @@ try {
     .getByText("Invite someone to this Session", { exact: true })
     .click();
   await hostPage.getByLabel("Email", { exact: true }).fill(guest.email);
-  await hostPage
-    .getByLabel("Name, optional", { exact: true })
-    .fill(guest.displayName);
   const invitationForm = hostPage
     .locator("form")
-    .filter({ hasText: "Expiring, email-bound invitation" });
-  await invitationForm.locator("select").first().selectOption("CLIENT");
+    .filter({ hasText: "Invite by email" });
   const invitationRequests = [];
   hostPage.on("request", (request) => {
     if (request.url().includes(`/api/sessions/${ROOM_ID}/invitations`)) {
@@ -230,7 +226,7 @@ try {
     .then((response) => ({ response, error: null }))
     .catch((error) => ({ response: null, error }));
   await hostPage
-    .getByRole("button", { name: "Create private link", exact: true })
+    .getByRole("button", { name: /^(?:Create link|Get shareable link)$/ })
     .click();
   let invitationResponse;
   try {
@@ -239,8 +235,7 @@ try {
     invitationResponse = result.response;
   } catch (error) {
     const button = hostPage.getByRole("button", {
-      name: "Create private link",
-      exact: true,
+      name: /^(?:Create link|Get shareable link)$/,
     });
     const deliveryStatus = await hostPage
       .getByText("Delivery and status", { exact: true })
@@ -272,7 +267,7 @@ try {
   );
   const operatedInviteURL = inviteURL;
   await hostPage
-    .getByText(/Quipsly has not emailed or messaged anyone/i)
+    .getByText("Invitation ready to share.", { exact: true })
     .waitFor({ timeout: 20_000 });
 
   const wrongAccountPage = await hostContext.newPage();
@@ -284,7 +279,7 @@ try {
     .waitFor({ timeout: 20_000 });
   assert(
     (await wrongAccountPage
-      .getByRole("button", { name: "Accept invitation", exact: true })
+      .getByRole("button", { name: "Continue to Session", exact: true })
       .count()) === 0,
     "Wrong account was offered invitation acceptance.",
   );
@@ -323,15 +318,15 @@ try {
     })
     .waitFor({ timeout: 20_000 });
   await guestPage
-    .getByText(`Signed in as ${guest.email}`, { exact: true })
+    .getByText(guest.email, { exact: true })
     .waitFor();
   const acceptInvitationButton = guestPage.getByRole("button", {
-    name: "Accept invitation",
+    name: "Continue to Session",
     exact: true,
   });
   const [acceptBox, nextStepsBox] = await Promise.all([
     acceptInvitationButton.boundingBox(),
-    guestPage.getByRole("heading", { name: "What happens next", exact: true }).boundingBox(),
+    guestPage.getByText("What to expect", { exact: true }).boundingBox(),
   ]);
   assert(
     acceptBox && nextStepsBox && acceptBox.y < nextStepsBox.y,
@@ -347,16 +342,14 @@ try {
     waitUntil: "domcontentloaded",
   });
   await replayPage
-    .getByRole("heading", {
-      name: "This link cannot open a Session.",
-      exact: true,
-    })
+    .getByRole("button", { name: "Continue to Session", exact: true })
     .waitFor({ timeout: 20_000 });
-  assert(
-    (await replayPage
-      .getByRole("button", { name: "Accept invitation", exact: true })
-      .count()) === 0,
-    "Consumed invitation was offered a second acceptance.",
+  await replayPage
+    .getByRole("button", { name: "Continue to Session", exact: true })
+    .click();
+  await replayPage.waitForURL(
+    new RegExp(`/sessions/${ROOM_ID}\\?mode=live&joined=1$`),
+    { timeout: 20_000 },
   );
   await replayPage.close();
 
@@ -379,11 +372,6 @@ try {
     await journey.page
       .locator(`aside[aria-label="Retained email-bound Session invitation rehearsal live call dock"]`)
       .waitFor({ state: "visible", timeout: 20_000 });
-    const allowMicrophone = journey.page.getByRole("button", {
-      name: /^Allow microphone(?: and camera)?$/,
-    });
-    await allowMicrophone.waitFor({ timeout: 20_000 });
-    await allowMicrophone.click();
     const join = journey.page.getByRole("button", {
       name: "Join call",
       exact: true,
@@ -397,7 +385,7 @@ try {
       await journey.page.waitForTimeout(250);
     assert(
       await join.isEnabled(),
-      `${journey.identity.role} device setup did not become join-ready.`,
+      `${journey.identity.role} green room did not become join-ready.`,
     );
     await join.click();
     const leave = journey.page.getByRole("button", { name: "Leave", exact: true });
@@ -440,8 +428,10 @@ try {
     }),
   ]);
   assert(
-    invitation?.status === "ACCEPTED" && !invitation.tokenHash,
-    "Invitation ledger did not become accepted and tokenless.",
+    invitation?.status === "ACCEPTED" &&
+      !invitation.tokenHash &&
+      Boolean(invitation.acceptedTokenHash),
+    "Invitation ledger did not consume acceptance authority while preserving safe re-entry.",
   );
   assert(
     participant?.role === "CLIENT" &&
@@ -469,15 +459,33 @@ try {
     "Invite someone to this Session",
     { exact: true },
   );
-  const connectedPresenceResponse = hostManagerPage.waitForResponse(
-    (response) =>
-      response.url().includes(`/api/sessions/${ROOM_ID}/presence`) &&
-      response.request().method() === "GET",
-  );
   await invitationManager.click();
-  const connectedPresencePacket = await (
-    await connectedPresenceResponse
-  ).json();
+  await hostManagerPage
+    .getByText("Access and device history", { exact: true })
+    .click();
+  const providerReadbackPanel = hostManagerPage
+    .locator("section")
+    .filter({ hasText: "Live provider readback" })
+    .last();
+  await providerReadbackPanel.waitFor({ timeout: 20_000 });
+  let providerReadbackText = "";
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    providerReadbackText = await providerReadbackPanel.innerText();
+    const normalizedReadback = providerReadbackText.toLowerCase();
+    if (normalizedReadback.includes("connected devices") && normalizedReadback.includes("canonical people")) break;
+    await hostManagerPage.waitForTimeout(250);
+  }
+  const normalizedProviderReadback = providerReadbackText.toLowerCase();
+  assert(
+    normalizedProviderReadback.includes("connected devices") &&
+      normalizedProviderReadback.includes("canonical people"),
+    `Advanced provider readback did not materialize after it was opened: ${providerReadbackText.slice(0, 500)}`,
+  );
+  const connectedPresencePacket = await hostManagerPage.request
+    .get(`${baseURL}/api/sessions/${ROOM_ID}/presence`, {
+      headers: { "cache-control": "no-store" },
+    })
+    .then((response) => response.json());
   const connectedPresenceSummary = {
     status: connectedPresencePacket?.presence?.status || null,
     connectedDeviceCount:
@@ -523,7 +531,7 @@ try {
     .getByText("Live provider readback", { exact: true })
     .waitFor({ timeout: 20_000 });
   await hostManagerPage
-    .getByText(/Refreshes every 10 seconds only while this manager is open/i)
+    .getByText(/Refreshes every 10 seconds only while this access and device view is open/i)
     .waitFor({ timeout: 20_000 });
   const guestInvitation = hostManagerPage
     .locator("article")
@@ -542,16 +550,23 @@ try {
           `/api/sessions/${ROOM_ID}/participants/${participant.id}/access`,
         ) && response.request().method() === "POST",
   );
-  const removedPresenceResponse = hostManagerPage.waitForResponse(
-    (response) =>
-      response.url().includes(`/api/sessions/${ROOM_ID}/presence`) &&
-      response.request().method() === "GET",
-  );
   await guestInvitation
     .getByRole("button", { name: "Confirm removal", exact: true })
     .click();
   const removalPacket = await (await removalResponse).json();
-  const removedPresencePacket = await (await removedPresenceResponse).json();
+  let removedPresencePacket = null;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    removedPresencePacket = await hostManagerPage.request
+      .get(`${baseURL}/api/sessions/${ROOM_ID}/presence`, {
+        headers: { "cache-control": "no-store" },
+      })
+      .then((response) => response.json());
+    if (
+      removedPresencePacket?.presence?.connectedDeviceCount === 1 &&
+      removedPresencePacket?.presence?.connectedParticipantCount === 1
+    ) break;
+    await hostManagerPage.waitForTimeout(250);
+  }
   assert(
     removalPacket?.ok === true,
     `Participant removal failed: ${removalPacket?.error || "unknown response"}`,
@@ -635,6 +650,20 @@ try {
     removedSessionResponse?.status() === 404,
     "Removed guest could still render the canonical Session workspace.",
   );
+  const removedReentryPage = await guestContext.newPage();
+  await removedReentryPage.goto(operatedInviteURL.toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await removedReentryPage
+    .getByText(/Your access to this Session is no longer active/i)
+    .waitFor({ timeout: 20_000 });
+  assert(
+    (await removedReentryPage
+      .getByRole("button", { name: "Continue to Session", exact: true })
+      .count()) === 0,
+    "Removed participant was offered accepted-link re-entry.",
+  );
+  await removedReentryPage.close();
 
   const [removedParticipant, removalReceipts, providerGrantReceipts] =
     await Promise.all([
@@ -730,6 +759,18 @@ try {
     Boolean(restoreReceipt),
     "Append-only restoration receipt is missing.",
   );
+  const restoredReentryPage = await guestContext.newPage();
+  await restoredReentryPage.goto(operatedInviteURL.toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await restoredReentryPage
+    .getByRole("button", { name: "Continue to Session", exact: true })
+    .click();
+  await restoredReentryPage.waitForURL(
+    new RegExp(`/sessions/${ROOM_ID}\\?mode=live&joined=1$`),
+    { timeout: 20_000 },
+  );
+  await restoredReentryPage.close();
 
   const collaborationResponse = await hostManagerPage.request.get(
     `${baseURL}/api/sessions/${encodeURIComponent(ROOM_ID)}/invitations`,
@@ -790,9 +831,15 @@ try {
       `Collaboration readback exposed forbidden field ${forbiddenField}.`,
     );
   }
-  await hostManagerPage
-    .getByText("Access activity", { exact: true })
-    .waitFor({ timeout: 20_000 });
+  const accessActivity = hostManagerPage.getByText("Access activity", {
+    exact: true,
+  });
+  if (!(await accessActivity.isVisible())) {
+    await hostManagerPage
+      .getByText("Access and device history", { exact: true })
+      .click();
+  }
+  await accessActivity.waitFor({ timeout: 20_000 });
   await hostManagerPage
     .getByText("Provider access reconciled", { exact: true })
     .waitFor({ timeout: 20_000 });
@@ -809,8 +856,10 @@ try {
         inviteScope: "SESSION_ONLY",
         emailBoundAcceptance: "passed",
         wrongAccountDenial: "passed",
-        oneTimeTokenRemoved: true,
-        consumedLinkReplayDenial: "passed",
+        pendingAcceptanceAuthorityConsumed: true,
+        acceptedLinkSafeReentry: "passed",
+        removedLinkReentryDenied: "passed",
+        restoredLinkReentry: "passed",
         participantRole: participant.role,
         browserToBrowserLiveKit: "passed",
         authoritativeConnectedPresenceReadback: "two-devices",

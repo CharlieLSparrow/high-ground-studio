@@ -2370,6 +2370,7 @@ model CallRoomInvitation {
   role               CallParticipantRole      @default(GUEST)
   status             CallRoomInvitationStatus @default(PENDING)
   tokenHash          String?                  @unique
+  acceptedTokenHash  String?                  @unique
   expiresAt          DateTime
   acceptedAt         DateTime?
   revokedAt          DateTime?

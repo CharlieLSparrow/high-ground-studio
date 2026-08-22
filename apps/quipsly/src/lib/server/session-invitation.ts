@@ -80,8 +80,9 @@ export async function inspectSessionInvitation(tokenValue: unknown) {
   const token = cleanSessionInvitationToken(tokenValue);
   if (!token) return null;
   const prisma = getPrismaClient();
-  const invite = await prisma.callRoomInvitation.findUnique({
-    where: { tokenHash: hashSessionInvitationToken(token) },
+  const tokenHash = hashSessionInvitationToken(token);
+  const invite = await prisma.callRoomInvitation.findFirst({
+    where: { OR: [{ tokenHash }, { acceptedTokenHash: tokenHash }] },
     select: {
       id: true,
       email: true,
@@ -89,6 +90,14 @@ export async function inspectSessionInvitation(tokenValue: unknown) {
       role: true,
       status: true,
       expiresAt: true,
+      acceptedByUserId: true,
+      participant: {
+        select: {
+          id: true,
+          userId: true,
+          accessStatus: true,
+        },
+      },
       room: {
         select: {
           id: true,
@@ -116,6 +125,16 @@ export async function inspectSessionInvitation(tokenValue: unknown) {
     status: expired && invite.status === "PENDING" ? "EXPIRED" : String(invite.status),
     expiresAt: invite.expiresAt.toISOString(),
     available,
+    reentryAvailable: invite.status === "ACCEPTED"
+      && invite.participant?.accessStatus === "ACTIVE",
+    acceptedByUserId: invite.acceptedByUserId,
+    participant: invite.participant
+      ? {
+          id: invite.participant.id,
+          userId: invite.participant.userId,
+          accessStatus: String(invite.participant.accessStatus),
+        }
+      : null,
     room: {
       id: invite.room.id,
       title: invite.room.title || "Quipsly Session",
@@ -139,8 +158,8 @@ export async function acceptSessionInvitation(input: {
 
   const prisma = getPrismaClient();
   const tokenHash = hashSessionInvitationToken(token);
-  const invite = await prisma.callRoomInvitation.findUnique({
-    where: { tokenHash },
+  const invite = await prisma.callRoomInvitation.findFirst({
+    where: { OR: [{ tokenHash }, { acceptedTokenHash: tokenHash }] },
     include: { room: { select: { id: true, title: true, purpose: true, status: true } } },
   });
   if (!invite) throw new SessionInvitationError("INVITATION_NOT_FOUND", "This Session invitation is no longer available.", 404);
@@ -150,6 +169,33 @@ export async function acceptSessionInvitation(input: {
       `This invitation belongs to ${maskInvitationEmail(invite.email)}. Switch accounts before accepting it.`,
       403,
     );
+  }
+  if (invite.status === "ACCEPTED" && invite.acceptedTokenHash === tokenHash) {
+    if (invite.acceptedByUserId !== input.actor.id || !invite.participantId) {
+      throw new SessionInvitationError(
+        "INVITATION_EMAIL_MISMATCH",
+        "Sign in with the account that accepted this invitation.",
+        403,
+      );
+    }
+    const participant = await prisma.callParticipant.findUnique({
+      where: { id: invite.participantId },
+    });
+    if (!participant || participant.userId !== input.actor.id || participant.accessStatus !== "ACTIVE") {
+      throw new SessionInvitationError(
+        "PARTICIPANT_ACCESS_REMOVED",
+        "Your access to this Session is no longer active. Ask the host to restore it.",
+        403,
+      );
+    }
+    return {
+      roomId: invite.room.id,
+      roomTitle: invite.room.title || "Quipsly Session",
+      purpose: String(invite.room.purpose),
+      participantId: participant.id,
+      participantRole: String(participant.role),
+      participantCreated: false,
+    };
   }
   if (invite.status !== "PENDING" || invite.revokedAt) {
     throw new SessionInvitationError("INVITATION_NOT_PENDING", "This Session invitation was already accepted or revoked.", 409);
@@ -176,6 +222,7 @@ export async function acceptSessionInvitation(input: {
       },
       data: {
         status: "ACCEPTED",
+        acceptedTokenHash: tokenHash,
         tokenHash: null,
         acceptedAt: new Date(),
         acceptedByUserId: input.actor.id,

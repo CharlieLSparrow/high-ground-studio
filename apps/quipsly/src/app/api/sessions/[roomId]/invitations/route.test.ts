@@ -246,7 +246,8 @@ describe("Session invitation API", () => {
       boundaries: {
         sessionScoped: true,
         grantsNestAccess: false,
-        oneTimeToken: true,
+        pendingAcceptanceSingleClaim: true,
+        acceptedReentryRequiresCanonicalAccess: true,
         emailSent: false,
         recordingStarted: false,
       },

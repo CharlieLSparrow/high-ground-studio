@@ -280,7 +280,7 @@ Implemented in the browser:
 - real LiveKit room client rather than the retired console-log stub;
 - browser/iPhone device-scoped coexistence tokens;
 - a durable Session thread distinct from the Episode thread;
-- expiring, one-time, email-bound Session invitation links with a preflight
+- expiring, single-claim, email-bound Session invitation links with safe accepted-participant re-entry and a preflight
   lobby, wrong-account refusal, pending-link revocation, and no implicit Nest
   membership or delivery claim;
 - a browser-to-Capture app handoff that sends only the canonical Session ID,

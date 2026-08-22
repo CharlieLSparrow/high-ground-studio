@@ -240,6 +240,7 @@ export function SessionInvitations({
   const [emailDeliveryAvailable, setEmailDeliveryAvailable] = useState(false);
   const [confirmingRemovalId, setConfirmingRemovalId] = useState("");
   const [managerOpen, setManagerOpen] = useState(false);
+  const [accessDetailsOpen, setAccessDetailsOpen] = useState(false);
   const [presence, setPresence] = useState<ProviderPresence | null>(null);
   const [presenceState, setPresenceState] = useState<
     "idle" | "refreshing" | "ready" | "error"
@@ -316,7 +317,7 @@ export function SessionInvitations({
   }, [load]);
 
   useEffect(() => {
-    if (authorized !== true || !managerOpen) return;
+    if (authorized !== true || !managerOpen || !accessDetailsOpen) return;
     void loadPresence();
     const timer = window.setInterval(() => void loadPresence(), 10_000);
     return () => {
@@ -324,7 +325,7 @@ export function SessionInvitations({
       presenceRequestRef.current?.abort();
       presenceRequestRef.current = null;
     };
-  }, [authorized, loadPresence, managerOpen]);
+  }, [accessDetailsOpen, authorized, loadPresence, managerOpen]);
 
   async function createInvitation(
     delivery: "EMAIL" | "LINK",
@@ -377,7 +378,7 @@ export function SessionInvitations({
     await load();
     if (delivery === "EMAIL" && packet.delivery?.status === "SENT") {
       setMessage(
-        `Invitation email sent to ${recipientEmail}. Quipsly recorded the delivery request; acceptance remains separate.`,
+        `Invitation sent to ${recipientEmail}.`,
       );
     } else if (delivery === "EMAIL") {
       setMessage(
@@ -386,7 +387,7 @@ export function SessionInvitations({
       );
     } else {
       setMessage(
-        "Session link created. Quipsly has not emailed or messaged anyone; copy or share it when you are ready.",
+        "Invitation ready to share.",
       );
     }
   }
@@ -556,59 +557,50 @@ export function SessionInvitations({
             }}
             className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4"
           >
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">
-              {emailDeliveryAvailable
-                ? "Expiring, email-bound invitation"
-                : "Private invitation"}
-            </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="text-xs font-black text-[#5b472f]">
-                Email
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="guest@example.com"
-                  className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
-                />
-              </label>
-              <label className="text-xs font-black text-[#5b472f]">
-                Name, optional
-                <input
-                  value={displayName}
-                  onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder="How they should appear"
-                  className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
-                />
-              </label>
-              <label className="text-xs font-black text-[#5b472f]">
-                Role
-                <select
-                  value={role}
-                  onChange={(event) => setRole(event.target.value)}
-                  className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold"
-                >
-                  {roles.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-black text-[#5b472f]">
-                Link lifetime
-                <select
-                  value={expiresInHours}
-                  onChange={(event) => setExpiresInHours(event.target.value)}
-                  className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold"
-                >
-                  <option value="24">24 hours</option>
-                  <option value="168">7 days</option>
-                  <option value="720">30 days</option>
-                </select>
-              </label>
-            </div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Invite by email</p>
+            <label className="mt-3 block text-xs font-black text-[#5b472f]">
+              Email
+              <input
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="name@example.com"
+                className="mt-1 min-h-12 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-base font-semibold outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+              />
+            </label>
+            <details className="mt-3 rounded-xl border border-violet-200 bg-white/70 px-3 py-2">
+              <summary className="min-h-9 cursor-pointer py-2 text-xs font-black text-violet-950">More options</summary>
+              <div className="grid gap-3 border-t border-violet-100 pt-3 sm:grid-cols-2">
+                <label className="text-xs font-black text-[#5b472f]">
+                  Name, optional
+                  <input
+                    value={displayName}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                    placeholder="How they should appear"
+                    className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                  />
+                </label>
+                <label className="text-xs font-black text-[#5b472f]">
+                  Role
+                  <select value={role} onChange={(event) => setRole(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold">
+                    {roles.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-black text-[#5b472f] sm:col-span-2">
+                  Invitation expires
+                  <select value={expiresInHours} onChange={(event) => setExpiresInHours(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold">
+                    <option value="24">Tomorrow</option>
+                    <option value="168">In 7 days</option>
+                    <option value="720">In 30 days</option>
+                  </select>
+                </label>
+              </div>
+            </details>
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="submit"
@@ -622,9 +614,7 @@ export function SessionInvitations({
                 ) : (
                   <Link2 size={15} />
                 )}
-                {emailDeliveryAvailable
-                  ? "Send email invitation"
-                  : "Create invitation"}
+                {emailDeliveryAvailable ? "Send invitation" : "Create link"}
               </button>
               {emailDeliveryAvailable ? (
                 <button
@@ -634,17 +624,11 @@ export function SessionInvitations({
                   className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-5 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
                 >
                   <Link2 size={15} />
-                  Create private link
+                  Get shareable link
                 </button>
               ) : null}
             </div>
-            <p className="mt-3 text-[11px] font-bold leading-5 text-violet-950">
-              {emailDeliveryAvailable
-                ? "Quipsly can email this invitation, or you can share the private link yourself. "
-                : "Quipsly will create a private link for you to share using Messages, email, or another app. "}
-              The recipient must sign in with this exact verified email. The
-              link grants this Session—not the Nest—and never starts recording.
-            </p>
+            <p className="mt-3 text-[11px] font-bold leading-5 text-violet-950">They can join in a browser or Quipsly Capture. This invitation opens only this Session.</p>
           </form>
 
           <section
@@ -656,9 +640,6 @@ export function SessionInvitations({
             </p>
             {inviteUrl ? (
               <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                <p className="break-all text-xs font-bold leading-5 text-emerald-950">
-                  {inviteUrl}
-                </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -666,7 +647,7 @@ export function SessionInvitations({
                     className="inline-flex min-h-10 items-center gap-2 rounded-full bg-emerald-800 px-4 text-xs font-black text-white"
                   >
                     {copiedMessage ? <Check size={14} /> : <Copy size={14} />}
-                    {copiedMessage ? "Message copied" : "Copy invitation message"}
+                    {copiedMessage ? "Copied" : "Copy invitation"}
                   </button>
                   {supportsShare ? (
                     <button
@@ -684,9 +665,13 @@ export function SessionInvitations({
                     className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 text-xs font-black text-emerald-950"
                   >
                     {copied ? <Check size={14} /> : <Link2 size={14} />}
-                    {copied ? "Link copied" : "Copy link only"}
+                    {copied ? "Link copied" : "Copy link"}
                   </button>
                 </div>
+                <details className="mt-3 text-emerald-950">
+                  <summary className="cursor-pointer text-[10px] font-black">View private link</summary>
+                  <p className="mt-2 break-all text-xs font-bold leading-5">{inviteUrl}</p>
+                </details>
               </div>
             ) : null}
             {message ? (
@@ -852,8 +837,16 @@ export function SessionInvitations({
             </p>
           </section>
         </div>
+        <details
+          className="mt-5 rounded-2xl border border-[#d8c7a7] bg-[#f8f3e8]"
+          onToggle={(event) => setAccessDetailsOpen(event.currentTarget.open)}
+        >
+          <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-black text-[#3d3122]">
+            <History size={17} className="text-violet-700" aria-hidden="true" />
+            Access and device history
+          </summary>
         <section
-          className="mt-5 rounded-2xl border border-[#d8c7a7] bg-[#f8f3e8] p-4"
+          className="border-t border-[#d8c7a7] p-4"
           aria-labelledby="session-access-activity-title"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1059,8 +1052,8 @@ export function SessionInvitations({
                     <p className="mt-3 flex items-start gap-2 text-[9px] font-bold leading-4 opacity-80">
                       <Users size={12} className="mt-0.5 shrink-0" />
                       Observed {new Date(presence.observedAt).toLocaleString()}.
-                      Refreshes every 10 seconds only while this manager is
-                      open. This is current provider metadata, not retained
+                      Refreshes every 10 seconds only while this access and
+                      device view is open. This is current provider metadata, not retained
                       recording or speaking proof.
                     </p>
                   </>
@@ -1117,6 +1110,7 @@ export function SessionInvitations({
             </aside>
           </div>
         </section>
+        </details>
       </div>
     </details>
   );
