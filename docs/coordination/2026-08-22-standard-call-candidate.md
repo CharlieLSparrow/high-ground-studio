@@ -1,7 +1,7 @@
 # Quipsly standard call candidate
 
 Date: 2026-08-22
-Status: source-qualified; not uploaded or deployed
+Status: Build 34 source-qualified; not uploaded or deployed
 
 > Later working-tree note: browser hot-plug reconciliation and automatic
 > resumable-upload recovery were implemented and locally tested after the
@@ -21,12 +21,13 @@ Status: source-qualified; not uploaded or deployed
 > presence, removal denial, restoration, and restored re-entry. This remains
 > later working-tree evidence, not part of the candidate identity below.
 
-> The next deliberate train is now Build 34. The committed source adds a shared
+> Build 34 is now source-qualified. The committed source adds a shared
 > host Record/Stop directive across browser and iPhone endpoints, explicit
 > late-join confirmation, remembered one-time Session choices, and automatic
 > all-party readiness refresh. A fresh local product flight passed the complete
-> signup-to-revoke path; the exact Build 34 archive qualification and deployed
-> preview remain separate gates.
+> signup-to-revoke path, and the exact Build 34 archive and IPA passed the full
+> deterministic release gate. Upload, deployed Nest proof, and physical-device
+> acceptance remain independent gates.
 
 ## Product decision
 
@@ -54,22 +55,21 @@ Research and the resulting design rules are recorded in
 ## Candidate identity
 
 - Source revision:
-  `739696687c2315e2407c2e99006f2a482043c1f8`
+  `120a9090ab3e1711a5e8f7e2643b874f82fde1ea`
 - Branch: `codex/quipsly-coaching-20260819`
-- Capture archive version: `1.0 (33)`
-- Candidate run: `20260822T094920Z-65661`
+- Capture archive version: `1.0 (34)`
+- Candidate run: `20260822T194114Z-7721`
 - Candidate receipt:
-  `/tmp/quipsly-capture-release/739696687c23/20260822T094920Z-65661/QuipslyCapture-1.0.33-release-receipt.json`
+  `/tmp/quipsly-capture-release/120a9090ab3e/20260822T194114Z-7721/QuipslyCapture-1.0.34-release-receipt.json`
 - IPA SHA-256:
-  `98ecba2c3b653eb59ea3cfb49de65cc8cdf7e50a5adaadc97181d0a7f82d11ba`
+  `ab47395930752b54619fb05588f7ebc5e051df8738d33144901960b47ff35d5e`
 - Upload attempted: no
 - TestFlight assignment attempted: no
 
-Build 33 is already the public TestFlight beta from source
-`b84e75f8608455247c7083b933c15be645d67e8d`. This differently sourced IPA
-must never be uploaded as another Build 33. The next deliberate Capture release
-must increment the committed build number to 34 or later and rerun candidate
-qualification from that exact release commit.
+Build 33 remains the public TestFlight beta. Build 34 is a separately sealed
+candidate and must be uploaded only through the receipt-bound
+`upload-qualified` lane so provider distribution cannot drift from this tested
+source and IPA hash.
 
 ## Green evidence
 
@@ -77,7 +77,7 @@ qualification from that exact release commit.
 
 - Complete offline preflight passed from a detached committed worktree.
 - LiveKit dependencies resolved and the iOS simulator app built successfully.
-- 68 deterministic operated UI tests passed across four reset simulator
+- 69 deterministic operated UI tests passed across four reset simulator
   shards, including:
   - the standard call green room;
   - consent-needed Session entry without crashing;
@@ -93,10 +93,12 @@ qualification from that exact release commit.
   `deterministicUITestPerformed: true`, and every external distribution field
   as false/not attempted.
 
-One largest-text rehearsal accessibility audit reported text clipping on its
-first attempt and passed the lane's single recorded retry. The result is green
-under the declared retry policy, but the incident remains flaky evidence to
-watch rather than a claim of a perfectly clean first pass.
+All four shards passed without a product-test failure. A prior candidate exposed
+an iOS Simulator/SpringBoard notification-alert automation deadlock. Build 34
+now keeps the shipping Apple notification path unchanged while the deterministic
+release UI test proves contextual save, protected persistence, relaunch
+recovery, and account partition through a simulator-only notification boundary;
+the scheduler harness separately proves one contextual authorization request.
 
 ### Nest
 
@@ -116,8 +118,9 @@ green simulator or build evidence.
 1. Refresh Google Cloud authentication. The Nest preflight could not mint an
    access token or inspect Cloud Run, logging exclusions, or media access. It
    was interrupted when `gcloud` requested an interactive password.
-2. Increment the committed iOS build number and rerun the source-isolated
-   Capture candidate lane.
+2. Upload the sealed Build 34 candidate through its qualified receipt, wait for
+   App Store processing, assign the intended TestFlight group, and verify the
+   resulting build identity before changing the canonical public target.
 3. Deploy the same committed Nest source to a zero-traffic preview, complete
    authenticated preview smoke, and promote only its immutable revision.
 4. Install the new TestFlight build on a physical iPhone and prove the standard

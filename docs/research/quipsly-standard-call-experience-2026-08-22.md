@@ -78,6 +78,26 @@ failure shapes recur often enough to influence the architecture:
   slow uploads, and unrecoverable audio/video sync](https://www.reddit.com/r/RiversideFM/comments/1ulnezw/talking_to_riversides_community_director_if_you/). The competitive bar is not feature count: independent local masters,
   explicit synchronization evidence, resumable per-source upload, and recovery
   that does not discard already-safe participants are the product foundation.
+- [Descript's own Rooms troubleshooting guide](https://help.descript.com/record/rooms-ts)
+  documents stalled primary uploads, recovery links, partial editing sources,
+  lower-quality fallback recordings, and a 20 GB free-space recommendation.
+  Quipsly should check storage before recording, preserve an independently
+  useful call-quality fallback, resume each primary automatically, and never
+  hide the difference between fallback and master quality.
+- [A Descript recorder request asks hosts to be warned when a guest's local
+  capture stops](https://feedback.descript.com/feature-requests/p/notification-if-guests-local-recording-stops). Quipsly should turn endpoint acknowledgements into calm host-visible
+  health: every expected participant is recording, one participant needs
+  attention, or every retained source is safe. This is monitoring, not proof of
+  media; verified bytes remain the authority.
+- [Rooms users disagree about automatic editor creation](https://www.reddit.com/r/Descript/comments/1vs4y8m/please_for_the_love_of_your_customers_make_rooms/): some value instant project continuity, while others need direct individual
+  masters for external DAWs. Quipsly should do both without a forked workflow:
+  the Session receives a ready collaborative projection automatically, and
+  every authorized participant master remains directly downloadable.
+- The loudest recent Riverside criticism is that AI and editing additions do
+  not compensate for unreliable source files. Quipsly therefore treats call,
+  local capture, recovery, source health, and direct export as the release
+  spine. Automation is allowed to delight only after those states are green and
+  inspectable.
 - A positive pattern is equally clear: users praise an immediately synced,
   transcribed project and timeline comments, even when they retain separate
   local masters for final quality. Quipsly should make the fast collaborative
