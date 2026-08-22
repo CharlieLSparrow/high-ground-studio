@@ -1383,7 +1383,10 @@ export function LiveSessionRoom({
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-800"><Radio size={14} aria-hidden="true" /> Call · {experience.label}</p>
           <h2 id={`live-room-${callRoomId}`} className="mt-2 font-serif text-3xl font-black text-[#3d3122]">{sessionTitle}</h2>
         </div>
-        <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${connected ? "border-emerald-300 bg-emerald-50 text-emerald-900" : status === "error" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-violet-200 bg-violet-50 text-violet-900"}`}>{statusLabel}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          {connected ? <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-900">{participants.length} in call</span> : null}
+          <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${connected ? "border-emerald-300 bg-emerald-50 text-emerald-900" : status === "error" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-violet-200 bg-violet-50 text-violet-900"}`}>{statusLabel}</span>
+        </div>
       </div>
 
       <div className={`mt-5 grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>

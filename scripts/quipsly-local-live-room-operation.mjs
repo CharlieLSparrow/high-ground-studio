@@ -426,14 +426,14 @@ try {
     await journey.page
       .waitForFunction(
         () =>
-          document.body.innerText.toLowerCase().includes("in this room · 2"),
+          document.body.innerText.toLowerCase().includes("2 in call"),
         null,
         { timeout: 20_000 },
       )
       .catch(async (error) => {
         const rosterLines = (await journey.page.locator("body").innerText())
           .split("\n")
-          .filter((line) => line.toLowerCase().includes("in this room"));
+          .filter((line) => line.toLowerCase().includes("in call"));
         const statusLines = (
           await journey.page.locator('[role="status"]').allInnerTexts()
         )

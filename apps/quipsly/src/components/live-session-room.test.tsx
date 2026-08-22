@@ -298,6 +298,7 @@ describe("LiveSessionRoom", () => {
     await screen.findByRole("option", { name: "Shure MV7i" });
     fireEvent.click(screen.getByRole("button", { name: "Join call" }));
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    expect(screen.getByText("1 in call")).toBeInTheDocument();
     mockLiveKitRoom.switchActiveDevice.mockClear();
     mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mockClear();
 
