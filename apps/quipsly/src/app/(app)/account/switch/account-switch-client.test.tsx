@@ -65,13 +65,16 @@ describe("AccountSwitchClient provider continuity", () => {
     );
   });
 
-  it("keeps staff test lanes and operator shortcuts out of an ordinary coach account", async () => {
+  it("keeps admin tools out of an ordinary coach account", async () => {
     render(
       <AccountSwitchClient callbackUrl="/coaching" currentUser={currentUser} />,
     );
 
     await screen.findByText("Quipsly Person");
-    expect(screen.queryByLabelText("Staff test lanes")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your Quipsly account" })).toBeInTheDocument();
+    expect(screen.queryByText(/profile vault/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/identity ledger/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/smoke user/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Admin users" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Diagnostics" })).not.toBeInTheDocument();
   });
@@ -128,7 +131,7 @@ describe("AccountSwitchClient provider continuity", () => {
       });
     });
     expect(
-      await screen.findByText(/Password and Google now open the same Quipsly person and Nest/),
+      await screen.findByText(/Google is now connected to person@example.com/),
     ).toBeInTheDocument();
     expect(refresh).toHaveBeenCalled();
     expect(unlink).not.toHaveBeenCalled();
@@ -159,7 +162,7 @@ describe("AccountSwitchClient provider continuity", () => {
       expect(unlink).toHaveBeenCalledWith(wrongLink, "google.com");
     });
     expect(
-      await screen.findByText(/Quipsly removed that link/),
+      await screen.findByText(/Nothing was changed/),
     ).toBeInTheDocument();
     expect(global.fetch).not.toHaveBeenCalled();
   });

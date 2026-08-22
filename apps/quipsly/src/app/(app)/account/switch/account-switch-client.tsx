@@ -15,12 +15,10 @@ import {
 import {
   CheckCircle2,
   FlaskConical,
-  KeyRound,
   Link2,
   LogOut,
   RefreshCcw,
   ShieldCheck,
-  UserCheck,
 } from "lucide-react";
 
 type AccountSwitchClientProps = {
@@ -44,24 +42,6 @@ export function AccountSwitchClient({
   const [firebaseStateReady, setFirebaseStateReady] = useState(false);
   const [identityMessage, setIdentityMessage] = useState("");
   const router = useRouter();
-  const safeLanes = [
-    {
-      label: "Charlie / admin",
-      description: "Manage users, verify Nests, repair starter state, and inspect auth health.",
-      tone: "border-amber-200 bg-amber-50 text-amber-950",
-    },
-    {
-      label: "Invited collaborator",
-      description: "Prove an email grant lands on /projects with the assigned Nest visible.",
-      tone: "border-sky-200 bg-sky-50 text-sky-950",
-    },
-    {
-      label: "Generated smoke user",
-      description: "Codex-safe temporary accounts created by scripts and auto-cleaned after proof.",
-      tone: "border-emerald-200 bg-emerald-50 text-emerald-950",
-    },
-  ];
-
   useEffect(() => onAuthStateChanged(auth, (user) => {
     setFirebaseUser(user);
     setFirebaseStateReady(true);
@@ -78,13 +58,13 @@ export function AccountSwitchClient({
     const email = user?.email?.trim().toLowerCase();
     if (!user || !email) {
       setIdentityMessage(
-        "Reauthenticate in this browser first. Quipsly will not attach a provider to a cookie-only or ambiguous session.",
+        "Sign in again before adding Google to this account.",
       );
       return;
     }
 
     setStatus("linking-google");
-    setIdentityMessage(`Opening Google for ${email}...`);
+    setIdentityMessage("Opening Google...");
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({
       prompt: "select_account",
@@ -102,7 +82,7 @@ export function AccountSwitchClient({
         await unlink(result.user, "google.com");
         setFirebaseUser(auth.currentUser);
         setIdentityMessage(
-          `Google returned ${linkedEmail || "a different email"}. Quipsly removed that link; choose ${email} so one person's credentials stay together.`,
+          `Google opened ${linkedEmail || "a different email"}. Nothing was changed. Choose ${email} to connect this account.`,
         );
         return;
       }
@@ -122,7 +102,7 @@ export function AccountSwitchClient({
 
       setFirebaseUser(result.user);
       setIdentityMessage(
-        `Google is connected to ${email}. Password and Google now open the same Quipsly person and Nest.`,
+        `Google is now connected to ${email}.`,
       );
       router.refresh();
     } catch (error: any) {
@@ -134,7 +114,7 @@ export function AccountSwitchClient({
         || code === "auth/account-exists-with-different-credential"
       ) {
         setIdentityMessage(
-          "That Google credential already belongs to another Firebase login. Quipsly left both credentials unchanged for an explicit identity review.",
+          "That Google account is already connected to another Quipsly account. Nothing was changed.",
         );
       } else if (code === "auth/provider-already-linked") {
         setFirebaseUser(auth.currentUser);
@@ -165,18 +145,16 @@ export function AccountSwitchClient({
   }
 
   return (
-    <section className="mx-auto grid min-h-[74vh] max-w-5xl place-items-center px-4 py-10 text-[#3d3122]">
+    <section className="mx-auto grid min-h-[74vh] max-w-3xl place-items-center px-4 py-10 text-[#3d3122]">
       <div className="w-full rounded-[32px] border border-[#ead8ba] bg-white/95 p-7 shadow-2xl shadow-amber-950/10 md:p-10">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-[#a96735]">
-          Quipsly profile vault
+          Account
         </p>
         <h1 className="mt-4 font-serif text-4xl font-black leading-tight md:text-5xl">
-          Choose which real account is opening this Nest.
+          Your Quipsly account
         </h1>
         <p className="mt-4 text-base leading-7 text-[#6f5a43]">
-          Nests belong to the signed-in Quipsly user. This vault does not store passwords and does not impersonate anyone.
-          It clears the current Firebase session, sends you through the normal login path, then returns you to the requested
-          workspace or Mac handoff.
+          Check the email below, then continue or choose another account.
         </p>
 
         <div className="mt-7 rounded-3xl border border-[#ead8ba] bg-[#fffaf3] p-5">
@@ -212,17 +190,16 @@ export function AccountSwitchClient({
                 {currentUser?.email || "No current session"}
               </p>
               <p className="mt-2 text-sm leading-6 text-[#8b765f]">
-                If this is the wrong person, switch Google accounts before
-                opening Nests. If this is correct, continue.
+                This account controls which private workspaces you can open.
               </p>
             </div>
           </div>
         </div>
 
-        <section
-          aria-labelledby="sign-in-methods-heading"
-          className="mt-4 rounded-3xl border border-cyan-200 bg-cyan-50 p-5 text-cyan-950"
-        >
+        <details className="mt-4 rounded-3xl border border-cyan-200 bg-cyan-50 p-5 text-cyan-950">
+          <summary className="cursor-pointer list-none text-sm font-black">
+            Sign-in options
+          </summary>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
               <div className="flex items-center gap-2">
@@ -236,22 +213,19 @@ export function AccountSwitchClient({
               </div>
               {!firebaseStateReady ? (
                 <p className="mt-2 text-sm leading-6">
-                  Reading this browser&apos;s Firebase credential...
+                  Checking your sign-in options...
                 </p>
               ) : googleConnected ? (
                 <p className="mt-2 text-sm leading-6">
-                  Google is connected{passwordConnected ? " alongside password sign-in" : ""}.
-                  Both methods keep the same Firebase UID and Quipsly identity ledger.
+                  Google is connected{passwordConnected ? ", and you can also use your password" : ""}.
                 </p>
               ) : firebaseUser ? (
                 <p className="mt-2 text-sm leading-6">
-                  This browser is using {passwordConnected ? "a password credential" : "a non-Google credential"}.
-                  Connect the same email to Google without creating another Quipsly person.
+                  {passwordConnected ? "You currently sign in with a password." : "Google is not connected yet."}
                 </p>
               ) : (
                 <p className="mt-2 text-sm leading-6">
-                  The server session is open, but this browser has no current Firebase credential.
-                  Reauthenticate before connecting another provider.
+                  Sign in again to change how you sign in.
                 </p>
               )}
               {identityMessage ? (
@@ -273,40 +247,25 @@ export function AccountSwitchClient({
               </button>
             ) : null}
           </div>
-        </section>
-
-        {currentUser?.isStaff ? <div className="mt-7 grid gap-3 lg:grid-cols-3" aria-label="Staff test lanes">
-          {safeLanes.map((lane) => (
-            <div
-              key={lane.label}
-              className={`rounded-2xl border px-4 py-3 ${lane.tone}`}
-            >
-              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em]">
-                <UserCheck className="h-4 w-4" />
-                {lane.label}
-              </div>
-              <p className="mt-2 text-sm leading-6 opacity-80">{lane.description}</p>
-            </div>
-          ))}
-        </div> : null}
+        </details>
 
         <div className="mt-7 grid gap-3 sm:grid-cols-2">
+          <Link
+            href={callbackUrl}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#3d2a1e] px-5 py-3 text-sm font-black text-white shadow-lg shadow-amber-950/15 transition hover:bg-[#24180f]"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            Continue
+          </Link>
           <button
             type="button"
             onClick={switchGoogleAccount}
             disabled={status !== "idle"}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#3d2a1e] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-lg shadow-amber-950/15 transition hover:bg-[#24180f] disabled:cursor-wait disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-[#ead8ba] bg-white px-5 py-3 text-sm font-black text-[#7b512d] transition hover:bg-[#fff8ec] disabled:cursor-wait disabled:opacity-60"
           >
             <RefreshCcw className="h-4 w-4" />
-            {status === "switching" ? "Opening sign-in..." : "Switch account"}
+            {status === "switching" ? "Opening sign-in..." : "Use another account"}
           </button>
-          <Link
-            href={callbackUrl}
-            className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-emerald-900 transition hover:bg-emerald-100"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            Continue as current user
-          </Link>
         </div>
 
         <button
@@ -319,16 +278,11 @@ export function AccountSwitchClient({
           {status === "signing-out" ? "Signing out..." : "Sign out only"}
         </button>
 
-        <div className="mt-6 grid gap-3 lg:grid-cols-2">
-          <p className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm leading-6 text-cyan-950">
-            This is not impersonation. It changes the real signed-in account, so permissions, Home Nest uploads,
-            private fiction access, shared research Nests, and beta entitlements all stay honest.
-          </p>
-          {currentUser?.isStaff ? <div className="rounded-2xl border border-[#ead8ba] bg-[#fffaf3] px-4 py-3 text-sm leading-6 text-[#6f5a43]">
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-[#8c6b4a]">
-              <KeyRound className="h-4 w-4" />
-              Operator shortcuts
-            </div>
+        {currentUser?.isStaff ? (
+          <details className="mt-6 rounded-2xl border border-[#ead8ba] bg-[#fffaf3] px-4 py-3 text-sm text-[#6f5a43]">
+            <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.14em] text-[#8c6b4a]">
+              Admin tools
+            </summary>
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
                 href="/admin/users"
@@ -345,8 +299,8 @@ export function AccountSwitchClient({
                 Diagnostics
               </Link>
             </div>
-          </div> : null}
-        </div>
+          </details>
+        ) : null}
       </div>
     </section>
   );

@@ -50,7 +50,7 @@ export async function finishQuipslyFirebaseSignIn({
     throw new Error(
       verificationSent
         ? "Verify this new email address before signing in. We sent a fresh verification link."
-        : "Verify this new email address before signing in. Firebase could not send a fresh link just now, so try again in a moment.",
+        : "Verify this new email address before signing in. We could not send a fresh link just now, so try again in a moment.",
     );
   }
 

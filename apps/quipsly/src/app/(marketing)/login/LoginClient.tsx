@@ -26,7 +26,7 @@ function friendlyFirebaseAuthError(error: any) {
   const message = String(error?.message || "");
 
   if (code === "auth/email-already-in-use") {
-    return "That email already has a Firebase login. Switch to Sign in, or use password recovery if you do not remember the password.";
+    return "That email already has an account. Sign in instead, or reset your password.";
   }
 
   if (code === "auth/user-not-found" || code === "auth/invalid-credential" || code === "auth/wrong-password") {
@@ -34,7 +34,7 @@ function friendlyFirebaseAuthError(error: any) {
   }
 
   if (code === "auth/weak-password") {
-    return "Firebase rejected that password as too weak. Use at least 8 characters; a short phrase is better than a tiny secret.";
+    return "Use at least 8 characters for your password. A short phrase works well.";
   }
 
   if (code === "auth/invalid-email") {
@@ -50,7 +50,7 @@ function friendlyFirebaseAuthError(error: any) {
   }
 
   if (code === "auth/unauthorized-domain" || message.includes("redirect_uri_mismatch")) {
-    return "Google sign-in is not configured correctly for this domain yet. Use email/password for now, then fix the Firebase OAuth redirect in Google Cloud.";
+    return "Google sign-in is not available here right now. Use email and password instead.";
   }
 
   if (code === "auth/popup-closed-by-user") {
@@ -61,11 +61,11 @@ function friendlyFirebaseAuthError(error: any) {
     code === "auth/account-exists-with-different-credential"
     || code === "auth/credential-already-in-use"
   ) {
-    return "That email already has another Firebase sign-in method. Sign in with that method, then use Account switch → Connect Google so Quipsly preserves one person and one Nest.";
+    return "That email already uses another sign-in method. Sign in with it first, then add Google from Account settings.";
   }
 
   if (code === "auth/operation-not-allowed") {
-    return "Google sign-in is not enabled for this Quipsly Firebase project yet. Email/password remains available.";
+    return "Google sign-in is unavailable right now. Email and password are still available.";
   }
 
   return message || "Firebase could not finish that auth step.";
@@ -85,30 +85,30 @@ export function LoginClient({
     ? {
         eyebrow: "Private Quipsly Session",
         signInTitle: "Open your Session",
-        description: "Use the invited account to return to the exact lobby, consent choices, call, recording, transcript, and follow-up you opened.",
+        description: "Sign in to join your private Session.",
       }
     : safeCallbackUrl.startsWith("/coaching")
       ? {
           eyebrow: "Quipsly Coaching",
           signInTitle: "Continue to coaching",
-          description: "One account keeps your coaching relationships, schedule, Sessions, recordings, transcripts, notes, goals, and tasks together.",
+          description: "Your schedule, Sessions, recordings, notes, goals, and tasks will be waiting for you.",
         }
       : {
           eyebrow: "Quipsly",
           signInTitle: "Welcome back",
-          description: "One account opens your Quipsly Home Nest, projects, notes, and Capture sessions.",
+          description: "Open your projects, notes, and Sessions.",
         };
   const safeInviteToken = cleanQuipslyInviteToken(inviteToken);
   const inviteMessage = safeInviteToken
-    ? "Sign in with the invited email. Quipsly connects the invite only after Firebase proves the address."
+    ? "Use the email address that received this invite."
     : "Continue with Google, or use your Quipsly email and password.";
   const initialMessage =
     initialError === "google-link-required"
-      ? "That Google address already has a different Firebase sign-in method. Sign in with that method first, then connect Google from Account switch so your existing Nest stays intact."
+      ? "That email already uses another sign-in method. Sign in with it first, then add Google from Account settings."
       : initialError === "google-one-tap-failed"
         ? "Google could not finish the quick sign-in. Use the Google button below to choose an account explicitly, or continue with email."
         : initialError === "email-verified"
-          ? "Your email is verified. Sign in once to open your Quipsly Home Nest."
+          ? "Your email is verified. You can sign in now."
           : initialError === "password-reset"
             ? "Your password is updated. Sign in with the new password."
         : inviteMessage;
@@ -148,9 +148,7 @@ export function LoginClient({
         const user = result?.user ?? auth.currentUser;
         if (!user || cancelled) return;
         setMessage(
-          result?.user
-            ? "Google verified you. Opening your Nest..."
-            : "Restoring your secure Quipsly session...",
+          result?.user ? "Signed in. Opening Quipsly..." : "Finishing sign-in...",
         );
         return finishQuipslyFirebaseSignIn({
           user,
@@ -214,8 +212,8 @@ export function LoginClient({
     setIsPasswordSigningIn(true);
     setMessage(
       passwordMode === "create"
-        ? "Creating your Firebase login, then opening your Quipsly Home Nest..."
-        : "Checking your Quipsly login through Firebase...",
+        ? "Creating your account..."
+        : "Signing in...",
     );
 
     try {
@@ -237,8 +235,8 @@ export function LoginClient({
         await signOut(auth);
         setPasswordMode("signin");
         setMessage(verificationSent
-          ? "Account created safely. Check your inbox, verify the address, then return here and sign in. Quipsly will not create a Home Nest or accept an invite until the mailbox is proved."
-          : "Account created, but Firebase could not send the verification message just now. Sign in again to request a fresh link; Quipsly remains locked until the mailbox is proved.");
+          ? "Check your inbox and click the verification link. Then come back and sign in."
+          : "Your account was created, but the verification email could not be sent. Try signing in again in a moment to request a new link.");
         setIsPasswordSigningIn(false);
         return;
       }
@@ -259,12 +257,12 @@ export function LoginClient({
     const trimmedEmail = String(emailInputRef.current?.value ?? "").trim().toLowerCase();
 
     if (!trimmedEmail) {
-      setMessage("Enter your email address first, then Quipsly can ask Firebase to send a password reset email.");
+      setMessage("Enter your email address first.");
       return;
     }
 
     setIsRecoveringPassword(true);
-    setMessage("Asking Firebase to send a password reset email...");
+    setMessage("Sending a password reset email...");
 
     try {
       await sendPasswordResetEmail(
@@ -277,7 +275,7 @@ export function LoginClient({
           action: "reset",
         }),
       );
-      setMessage("If that email has a Firebase login, a reset email is on the way. Quipsly does not reveal whether an account exists.");
+      setMessage("If an account exists for that email, a reset link is on the way.");
     } catch (error: any) {
       setMessage(`Password recovery could not start: ${friendlyFirebaseAuthError(error)}`);
     } finally {
@@ -311,7 +309,7 @@ export function LoginClient({
 
         {safeInviteToken ? (
           <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950">
-            Sign in with the email that received this invite. The link grants nothing until Firebase verifies that address.
+            Use the email address that received this invite.
           </div>
         ) : null}
 
@@ -342,7 +340,7 @@ export function LoginClient({
             onClick={() => {
               setPasswordMode("signin");
               setMessage(safeInviteToken
-                ? "Sign in with the invited email. Quipsly attaches the invite only after Firebase proves the account."
+                ? "Use the email address that received this invite."
                 : "Continue with Google, or use your Quipsly email and password.");
             }}
             className={`rounded-lg px-3 py-2.5 transition ${passwordMode === "signin" ? "bg-white text-[#315d4e] shadow-sm" : "text-[#72563d] hover:bg-white/60"}`}
@@ -354,7 +352,7 @@ export function LoginClient({
             onClick={() => {
               setPasswordMode("create");
               setMessage(
-                "Create an email/password account. You will verify this new mailbox once before Quipsly opens its Home Nest.",
+                "Create an account with your email and a password. You will verify the email once.",
               );
             }}
             className={`rounded-lg px-3 py-2.5 transition ${passwordMode === "create" ? "bg-white text-[#315d4e] shadow-sm" : "text-[#72563d] hover:bg-white/60"}`}
@@ -415,7 +413,7 @@ export function LoginClient({
           </button>
         ) : (
           <p className="mt-3 text-center text-xs leading-5 text-[#806b54]">
-            Google accounts are ready immediately. New email/password accounts require one mailbox verification.
+            Google is ready immediately. With email and password, you verify your email only once.
           </p>
         )}
 

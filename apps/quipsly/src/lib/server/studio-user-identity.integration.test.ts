@@ -169,6 +169,70 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
     });
   });
 
+  it("keeps two deliberately separated email accounts bound to their own Firebase subjects", async () => {
+    const retainedEmail = `firebase-retained-${nonce}@example.test`;
+    const separateEmail = `firebase-separated-${nonce}@example.test`;
+    const retainedUid = `firebase-retained-${nonce}`;
+    const separateUid = `firebase-separated-${nonce}`;
+    const retained = await prisma.user.create({
+      data: {
+        primaryEmail: retainedEmail,
+        firebaseUid: retainedUid,
+        emailVerified: new Date(),
+        authIdentities: {
+          create: {
+            authority: "firebase:quipsly-reef",
+            subject: retainedUid,
+            provider: "google.com",
+            emailAtLink: retainedEmail,
+            emailVerifiedAt: new Date(),
+          },
+        },
+      },
+    });
+    const separate = await prisma.user.create({
+      data: {
+        primaryEmail: separateEmail,
+        firebaseUid: separateUid,
+        emailVerified: new Date(),
+        authIdentities: {
+          create: {
+            authority: "firebase:quipsly-reef",
+            subject: separateUid,
+            provider: "google.com",
+            emailAtLink: separateEmail,
+            emailVerifiedAt: new Date(),
+          },
+        },
+      },
+    });
+    userIds.push(retained.id, separate.id);
+
+    const retainedIdentity = await ensureStudioUserFromFirebaseIdentity({
+      firebaseUid: retainedUid,
+      email: retainedEmail,
+      emailVerified: true,
+      provider: "google.com",
+    });
+    const separateIdentity = await ensureStudioUserFromFirebaseIdentity({
+      firebaseUid: separateUid,
+      email: separateEmail,
+      emailVerified: true,
+      provider: "google.com",
+    });
+
+    expect(retainedIdentity.id).toBe(retained.id);
+    expect(separateIdentity.id).toBe(separate.id);
+    expect(retainedIdentity.id).not.toBe(separateIdentity.id);
+    await expect(
+      prisma.userEmail.count({
+        where: {
+          email: { in: [retainedEmail, separateEmail] },
+        },
+      }),
+    ).resolves.toBe(0);
+  });
+
   it("rejects a UID already bound to a different verified-email user", async () => {
     const claimedUid = `firebase-collision-${nonce}`;
     const uidOwner = await prisma.user.create({

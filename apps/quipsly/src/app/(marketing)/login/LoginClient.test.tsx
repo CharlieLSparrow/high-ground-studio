@@ -62,7 +62,7 @@ describe("Quipsly direct login", () => {
     });
   });
 
-  it("explains how an existing password user can safely connect Google", async () => {
+  it("explains how an existing password user can connect Google", async () => {
     (signInWithPopup as jest.Mock).mockRejectedValue({
       code: "auth/account-exists-with-different-credential",
     });
@@ -74,7 +74,7 @@ describe("Quipsly direct login", () => {
 
     expect(GoogleAuthProvider).toHaveBeenCalled();
     expect(
-      await screen.findByText(/Account switch → Connect Google/),
+      await screen.findByText(/add Google from Account settings/),
     ).toBeInTheDocument();
     expect(screen.getByTestId("quipsly-login-status")).toHaveAttribute(
       "aria-live",
@@ -88,10 +88,11 @@ describe("Quipsly direct login", () => {
     expect(
       screen.getByRole("button", { name: "Continue with Google" }),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/Firebase/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
 
     expect(
-      screen.getByText(/New email\/password accounts require one mailbox verification/),
+      screen.getByText(/verify your email only once/),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Create account" })).toHaveLength(2);
   });
@@ -135,13 +136,13 @@ describe("Quipsly direct login", () => {
     render(<LoginClient callbackUrl="/coaching" />);
 
     expect(screen.getByRole("heading", { name: "Continue to coaching" })).toBeInTheDocument();
-    expect(screen.getByText(/relationships, schedule, Sessions, recordings, transcripts, notes, goals, and tasks/)).toBeInTheDocument();
+    expect(screen.getByText(/schedule, Sessions, recordings, notes, goals, and tasks/)).toBeInTheDocument();
   });
 
   it("keeps a client oriented to the private Session they opened", () => {
     render(<LoginClient callbackUrl="/sessions/join?token=qsinv_safe-token" />);
 
     expect(screen.getByRole("heading", { name: "Open your Session" })).toBeInTheDocument();
-    expect(screen.getByText(/return to the exact lobby/)).toBeInTheDocument();
+    expect(screen.getByText(/join your private Session/)).toBeInTheDocument();
   });
 });
