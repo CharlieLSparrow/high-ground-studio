@@ -291,7 +291,7 @@ try {
     const correctionDesk = page.locator("#transcript-correction-review");
     await correctionDesk.waitFor({ timeout: 20_000 });
     const routingDisclosure = correctionDesk.getByText(
-      "Why Quipsly chose this transcript route",
+      "Transcription details",
       { exact: true },
     );
     await routingDisclosure.click();
@@ -366,7 +366,7 @@ try {
     );
 
     await correctionDesk
-      .getByRole("button", { name: "Prepare transcript file", exact: true })
+      .getByRole("button", { name: "Share transcript", exact: true })
       .click();
     const downloadLink = correctionDesk.getByRole("link", {
       name: "Download prepared transcript",

@@ -99,7 +99,9 @@ async function createVerifyAndSignIn(page, identity, callbackPath) {
     .getByRole("button", { name: "Create account", exact: true })
     .click();
   const status = page.getByTestId("quipsly-login-status");
-  await status.getByText(/Account created/i).waitFor({ timeout: 20_000 });
+  await status
+    .getByText(/Check your inbox|account was created/i)
+    .waitFor({ timeout: 20_000 });
 
   const firebaseUser = await auth.getUserByEmail(identity.email);
   assert.equal(
@@ -348,14 +350,12 @@ try {
     .getByText(sessionTitle, { exact: false })
     .first()
     .waitFor({ timeout: 30_000 });
-  const captureChoice = clientPage.getByRole("button", {
-    name: /iPhone Capture/i,
+  const captureChoice = clientPage.getByRole("link", {
+    name: /Use Quipsly Capture on iPhone|Open Quipsly Capture/i,
   });
   await captureChoice.waitFor({ timeout: 30_000 });
-  await captureChoice.click();
   const captureInstallLink = clientPage.getByRole("link", {
-    name: "Get iPhone beta",
-    exact: true,
+    name: /Get the beta/i,
   });
   await captureInstallLink.waitFor({ timeout: 30_000 });
   assert.equal(
@@ -364,17 +364,12 @@ try {
     "Fresh client Session did not expose the verified Capture beta install path.",
   );
   assert.equal(
-    await clientPage
-      .getByRole("link", { name: "Open Capture", exact: true })
-      .getAttribute("href"),
+    await captureChoice.getAttribute("href"),
     `quipsly://session/${encodeURIComponent(evidence.roomId)}?mode=live`,
     "Fresh client Session did not hand the exact room to Capture.",
   );
-  await clientPage
-    .getByRole("button", { name: "Change device", exact: true })
-    .click();
   const continueInBrowser = clientPage.getByRole("button", {
-    name: /This browser/i,
+    name: /Join call|Join in browser|Open call lobby/i,
   });
   await continueInBrowser.waitFor({ timeout: 30_000 });
   const browserChoiceResponse = clientPage.waitForResponse(

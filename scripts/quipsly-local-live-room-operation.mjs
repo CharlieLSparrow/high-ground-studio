@@ -368,23 +368,25 @@ try {
       .locator('[data-session-entry-ready="true"]')
       .waitFor({ state: "visible", timeout: 20_000 });
     const browserChoice = page.getByRole("button", {
-      name: /This browser/i,
+      name: /Join call|Join in browser|Open call lobby|This browser/i,
     });
     await browserChoice.waitFor({ timeout: 20_000 });
     await browserChoice.click();
-    const join = page.getByRole("button", {
+    const liveCallDock = page.locator('aside[aria-label$=" live call dock"]');
+    await liveCallDock.waitFor({ state: "visible", timeout: 20_000 });
+    const join = liveCallDock.getByRole("button", {
       name: "Join call",
       exact: true,
     });
     await join.waitFor({ state: "visible", timeout: 20_000 });
-    await page
+    await liveCallDock
       .getByRole("region", { name: "Ready to join", exact: true })
       .waitFor({ state: "visible", timeout: 20_000 });
-    await page
+    await liveCallDock
       .getByText("Audio and video settings", { exact: true })
       .waitFor({ state: "visible", timeout: 20_000 });
     assert(
-      (await page
+      (await liveCallDock
         .getByText("Optional sound check", { exact: true })
         .count()) === 1,
       `${identity.role} lobby lost its optional sound-check escape hatch.`,
@@ -396,7 +398,7 @@ try {
       `${identity.role} could see a recording action before joining.`,
     );
     if (!(await join.isEnabled())) {
-      const deviceSetup = page
+      const deviceSetup = liveCallDock
         .getByText("Camera, microphone, and speakers", { exact: true })
         .locator("..");
       if (
@@ -404,7 +406,7 @@ try {
       ) {
         await deviceSetup.locator("summary").click();
       }
-      const allowMicrophone = page.getByRole("button", {
+      const allowMicrophone = liveCallDock.getByRole("button", {
         name: /^Allow microphone(?: and camera)?$/,
       });
       await allowMicrophone
@@ -430,7 +432,7 @@ try {
     ) {
       await page.waitForTimeout(250);
     }
-    const microphoneOptions = await page
+    const microphoneOptions = await liveCallDock
       .getByRole("combobox", { name: "Microphone" })
       .locator("option")
       .allInnerTexts();
@@ -600,7 +602,8 @@ try {
     await recoveryPage
       .locator('[data-session-entry-ready="true"]')
       .waitFor({ state: "visible", timeout: 20_000 });
-    const recoveryJoin = recoveryPage.getByRole("button", {
+    const recoveryDock = recoveryPage.locator('aside[aria-label$=" live call dock"]');
+    const recoveryJoin = recoveryDock.getByRole("button", {
       name: "Join call",
       exact: true,
     });
@@ -608,8 +611,12 @@ try {
       .waitFor({ state: "visible", timeout: 3_000 })
       .catch(async () => {
         await recoveryPage
-          .getByRole("button", { name: /This browser/i })
+          .getByRole("button", {
+            name: /Join call|Join in browser|Open call lobby|This browser/i,
+          })
+          .first()
           .click();
+        await recoveryDock.waitFor({ state: "visible", timeout: 20_000 });
         await recoveryJoin.waitFor({ state: "visible", timeout: 20_000 });
       });
     await recoveryJoin.click();
@@ -639,7 +646,8 @@ try {
     await coachJourney.page
       .locator('[data-session-entry-ready="true"]')
       .waitFor({ state: "visible", timeout: 20_000 });
-    const recoveryJoin = coachJourney.page.getByRole("button", {
+    const recoveryDock = coachJourney.page.locator('aside[aria-label$=" live call dock"]');
+    const recoveryJoin = recoveryDock.getByRole("button", {
       name: "Join call",
       exact: true,
     });
@@ -647,8 +655,12 @@ try {
       .waitFor({ state: "visible", timeout: 3_000 })
       .catch(async () => {
         await coachJourney.page
-          .getByRole("button", { name: /This browser/i })
+          .getByRole("button", {
+            name: /Join call|Join in browser|Open call lobby|This browser/i,
+          })
+          .first()
           .click();
+        await recoveryDock.waitFor({ state: "visible", timeout: 20_000 });
         await recoveryJoin.waitFor({ state: "visible", timeout: 20_000 });
       });
     await recoveryJoin.click();
@@ -660,7 +672,7 @@ try {
     journeys.map((journey) =>
       journey.page
         .getByText(
-          /^(?:Exact bytes verified\. The local source remains protected and the editor evidence is ready\.|Recovered bytes verified\. The interrupted ending is marked for repair before final editing\.)$/,
+          /^(?:Recording saved and verified in Quipsly\.|Recording saved\. Quipsly is preparing it for reliable playback\.|Exact bytes verified\. The local source remains protected and the editor evidence is ready\.|Recovered bytes verified\. The interrupted ending is marked for repair before final editing\.)$/,
         )
         .waitFor({ timeout: 90_000 }),
     ),
