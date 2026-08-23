@@ -524,6 +524,9 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   places dBFS measurements, thresholds, detector IDs, and hashes under
   technical details. A clean scan says only that no configured level warning
   was found; it does not claim that listening or mastering is unnecessary.
+  During capture, the familiar `Microphone level` surface leads with Voice,
+  Peak, and plain healthy/clipping states while retaining exact dBFS values for
+  accessibility and expert diagnosis.
 - Let information architecture explain itself through familiar destinations,
   not architecture prose. Session navigation now uses `At a glance`, `Before
 the call`, `Saved privately`, `Listen and edit`, `Next steps`, and `Ready to

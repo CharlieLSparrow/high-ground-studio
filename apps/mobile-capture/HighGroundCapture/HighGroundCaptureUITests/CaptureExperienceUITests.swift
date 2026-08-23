@@ -169,7 +169,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.state == .runningForeground)
     }
 
-    func testRecorderNamesItsAudioEvidenceInsteadOfShowingAnOpaquePercentage() {
+    func testRecorderUsesAFamiliarMicrophoneLevelInsteadOfAnOpaquePercentage() {
         app.tabBars.buttons["Record"].tap()
         openLocalRecorderIfNeeded()
 
@@ -181,7 +181,7 @@ final class CaptureExperienceUITests: XCTestCase {
             evidence.waitForExistence(timeout: 5),
             "The primary recorder should expose inspectable audio evidence beside its record action."
         )
-        XCTAssertEqual(evidence.label, "Recorder input evidence")
+        XCTAssertEqual(evidence.label, "Microphone level")
         XCTAssertEqual(evidence.value as? String, "Inactive")
         XCTAssertFalse(
             evidence.label.localizedCaseInsensitiveContains("percent"),

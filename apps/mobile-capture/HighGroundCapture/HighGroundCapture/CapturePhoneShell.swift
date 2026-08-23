@@ -11910,7 +11910,7 @@ struct InputLevelMeter: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Recorder input evidence")
+                Text("Microphone level")
                     .font(.caption2.weight(.bold))
                     .textCase(.uppercase)
                 Spacer()
@@ -11920,25 +11920,25 @@ struct InputLevelMeter: View {
             }
 
             meterLane(
-                label: "Average power",
+                label: "Voice",
                 decibels: safeAverageDB,
                 level: averageLevel,
                 tint: .green
             )
             meterLane(
-                label: "Peak power",
+                label: "Peak",
                 decibels: safePeakDB,
                 level: peakLevel,
                 tint: safePeakDB >= -1 ? .red : safePeakDB >= -3 ? .orange : .purple
             )
 
-            Text("Recorder average and peak power in dBFS—not LUFS or true peak. Preserved-source analysis follows after capture.")
+            Text("Aim for Healthy speech range and avoid Clipping risk. Quipsly checks the complete saved recording after the call.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Recorder input evidence")
+        .accessibilityLabel("Microphone level")
         .accessibilityValue(
             isActive
                 ? "\(signalState), average power \(formatted(safeAverageDB)), peak power \(formatted(safePeakDB)). Not LUFS or true peak."
