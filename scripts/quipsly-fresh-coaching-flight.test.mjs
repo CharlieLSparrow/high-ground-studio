@@ -10,7 +10,7 @@ const subject = fileURLToPath(
 test("fresh coaching flight retains a private receipt without claiming human acceptance", () => {
   const source = readFileSync(subject, "utf8");
 
-  assert.match(source, /schema: "quipsly-fresh-coaching-flight-receipt-v2"/);
+  assert.match(source, /schema: "quipsly-fresh-coaching-flight-receipt-v3"/);
   assert.match(source, /"fresh-coaching-flight-receipt\.json"/);
   assert.match(source, /testLane: "fresh-product-automation"/);
   assert.match(source, /sourceContextLane: start\.testLane/);
@@ -24,6 +24,13 @@ test("fresh coaching flight retains a private receipt without claiming human acc
   assert.match(source, /oneTimeInvitationAcceptance:/);
   assert.match(source, /localInvitationDeliveryBoundaryUsed:/);
   assert.match(source, /combinedReceiptIsNotPureUIAutomation: true/);
+  assert.match(source, /quipsly-fresh-session-audio-polish-operation\.mjs/);
+  assert.match(source, /automaticPostCallAudioReadinessOperated:/);
+  assert.match(source, /automaticPostCallAudioResult:/);
+  assert.match(source, /automaticAudioResultWasNotPublished:/);
+  assert.match(source, /audioPolish\?\.actionOperated,/);
+  assert.match(source, /audioPolish\?\.initialState,/);
+  assert.match(source, /originalSourceAndCaptureManifestUnchanged/);
   assert.match(source, /humanAcceptanceSatisfied: false/);
   assert.match(source, /minimallyInstructedHumanAcceptanceProven: false/);
   assert.match(source, /sourceSha/);

@@ -187,6 +187,15 @@ const share = await run(
   "QUIPSLY_LOCAL_RECORDING_SHARE_OPERATION",
   continuationEnv,
 );
+let audioPolish = null;
+if (controlledSpeechFlight) {
+  audioPolish = await run(
+    "Automatic post-call audio readiness in the ordinary Session",
+    "scripts/quipsly-fresh-session-audio-polish-operation.mjs",
+    "QUIPSLY_FRESH_SESSION_AUDIO_POLISH",
+    continuationEnv,
+  );
+}
 
 for (const [label, packet] of Object.entries({
   start,
@@ -233,6 +242,44 @@ if (controlledSpeechFlight) {
     true,
     "The controlled speech terms were not recovered from both participant sources.",
   );
+  assert.equal(
+    audioPolish?.roomId,
+    start.roomId,
+    "Automatic audio readiness operated another Session.",
+  );
+  assert.equal(
+    audioPolish?.actionOperated,
+    false,
+    "The coach had to request recurring post-call audio preparation manually.",
+  );
+  assert.notEqual(
+    audioPolish?.initialState,
+    "action-required",
+    "The ordinary Session did not expose the automatically queued audio result.",
+  );
+  assert.equal(
+    audioPolish?.originalSourceAndCaptureManifestUnchanged,
+    true,
+    "Automatic audio preparation changed an original participant source.",
+  );
+  assert(
+    ["improved-listening-copy", "already-balanced"].includes(
+      audioPolish?.outcome,
+    ),
+    "Automatic audio preparation did not reach a calm terminal state.",
+  );
+  if (audioPolish.outcome === "improved-listening-copy") {
+    assert.equal(
+      audioPolish.originalAndImprovedPlaybackRendered,
+      true,
+      "The improved result did not keep original and listening-copy playback together.",
+    );
+    assert(
+      audioPolish.originalReadyState >= 1 &&
+        audioPolish.improvedReadyState >= 1,
+      "The automatic listening comparison did not expose decodable media metadata.",
+    );
+  }
 }
 
 const receiptPath = path.join(
@@ -240,7 +287,7 @@ const receiptPath = path.join(
   "fresh-coaching-flight-receipt.json",
 );
 const result = {
-  schema: "quipsly-fresh-coaching-flight-receipt-v2",
+  schema: "quipsly-fresh-coaching-flight-receipt-v3",
   recordedAt: new Date().toISOString(),
   ok: true,
   localOnly: true,
@@ -281,6 +328,26 @@ const result = {
     share.clientMediaStatusAfterRevoke === 404,
   controlledAudibleSpeechPipelineOperated:
     controlledSpeechFlight && transcript.controlledSpeechTermsObserved,
+  automaticPostCallAudioReadinessOperated:
+    controlledSpeechFlight &&
+    audioPolish?.actionOperated === false &&
+    audioPolish?.initialState !== "action-required" &&
+    audioPolish?.originalSourceAndCaptureManifestUnchanged === true &&
+    ["improved-listening-copy", "already-balanced"].includes(
+      audioPolish?.outcome,
+    ),
+  automaticPostCallAudioResult: audioPolish
+    ? {
+        initialState: audioPolish.initialState,
+        outcome: audioPolish.outcome,
+        originalAndImprovedPlaybackRendered:
+          audioPolish.originalAndImprovedPlaybackRendered,
+        originalReadyState: audioPolish.originalReadyState,
+        improvedReadyState: audioPolish.improvedReadyState,
+        originalSourceAndCaptureManifestUnchanged:
+          audioPolish.originalSourceAndCaptureManifestUnchanged,
+      }
+    : null,
   interactionSurfaceEvidence: {
     renderedBrowser: {
       accountCreation: true,
@@ -302,6 +369,8 @@ const result = {
       lightEditPreviewReleaseAndRevoke:
         share.boundaries?.releaseWasExplicit === true &&
         share.boundaries?.revokeWasExplicit === true,
+      automaticPostCallAudioReadiness:
+        controlledSpeechFlight && audioPolish?.actionOperated === false,
     },
     browserInitiatedServiceMechanics: {
       transcriptWorkerAndProtectedPlayback: true,
@@ -321,6 +390,10 @@ const result = {
     naturalHumanSpeechProven: false,
     physicalDeviceProven: false,
     humanListeningProven: false,
+    automaticAudioResultWasNotPublished: audioPolish
+      ? audioPolish.automaticPublicationAbsentMessageRendered === true ||
+        audioPolish.outcome === "already-balanced"
+      : null,
     minimallyInstructedHumanAcceptanceProven: false,
     productionScaleProven: false,
     combinedReceiptIsNotPureUIAutomation: true,

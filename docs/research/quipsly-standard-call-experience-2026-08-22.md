@@ -30,6 +30,11 @@ notes, goals, tasks, and collaborative follow-through.
 - [Apple's AVFoundation guidance](https://developer.apple.com/documentation/avfoundation/requesting-authorization-to-capture-and-save-media) confirms that iOS remembers each camera and microphone response, so an app
   should ask at the actual Join/Record boundary and must not build its own
   recurring permission ritual around the system choice.
+- [Apple's privacy HIG](https://developer.apple.com/design/human-interface-guidelines/privacy) says the feature context should normally explain the request. If a custom
+  pre-alert is genuinely necessary, it should contain one neutral `Continue`
+  action that opens the system alert—not a second imitation permission choice.
+  Quipsly therefore removes explanatory gates instead of styling them more
+  attractively.
 - [MDN's `getUserMedia` guidance](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia) requires an explicit browser permission at least once and permits browsers to
   offer persistent site access. Quipsly can remember device intent, but it must
   respect whether the browser grants one-time or ongoing access and cannot
@@ -118,6 +123,10 @@ failure shapes recur often enough to influence the architecture:
   unusable post-call media, audio/video drift, and editors that obscure the
   underlying tracks. The product lesson is to make entry boring and source
   health unusually transparent—not to add more setup choices.
+- [Current Riverside customer reviews](https://www.trustpilot.com/review/riverside.com) reinforce the same split: ease, transcription, and an integrated
+  workflow earn praise; lost tails, silently stopped recording, and repetitive
+  troubleshooting destroy trust. Reliability status therefore belongs in the
+  everyday product surface, while diagnostic detail belongs behind it.
 - Cross-product guest feedback keeps returning to the same minimum contract:
   one link, no technical homework before or after the call, an obvious Join
   action, and separate local tracks. Even useful setup tests become disliked
