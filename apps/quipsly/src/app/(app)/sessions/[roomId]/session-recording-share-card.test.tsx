@@ -58,7 +58,7 @@ describe("SessionRecordingShareCard", () => {
     expect(passageCheckbox).toBeChecked();
     await userEvent.click(passageCheckbox);
     expect(passageCheckbox).not.toBeChecked();
-    expect(screen.getByText(/1 passage removed with short click-safe joins/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 passage removed · 0:04 cut · preview about 0:26/i)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Create private preview" }));
     await waitFor(() => expect(requests.some((request) => request.method === "POST")).toBe(true));

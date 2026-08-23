@@ -612,6 +612,11 @@ share`. The continuity panel says that the call, chat, recordings,
   exclusions when the coach edits it again. `Cancel changes` discards only the
   unsaved UI choices; the current private or released derivative and every
   participant master remain unchanged.
+- Before rendering, translate text selections into an ordinary editorial
+  consequence: passages removed, time cut, and expected preview length. The
+  estimate uses the same exact-source word boundaries and merged exclusions as
+  the server-side edit plan; `about` remains explicit because the verified
+  renderer still owns codec duration and click-safe crossfades.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB
