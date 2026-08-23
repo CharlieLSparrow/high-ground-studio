@@ -1059,3 +1059,25 @@ This follows the same standard-versus-creative boundary as the call experience.
 Transcript reading remains calm and conventional; Quipsly's deeper audio system
 is visible at the decision point without duplicating controls, allowing two
 players to compete, or treating provider confidence as source quality.
+
+## 2026-08-23 source-measurement navigation boundary
+
+The next audio/transcript join follows the same product rule. Source analysis
+does useful work automatically, but the ordinary transcript stays a familiar
+reading surface. A compact `Audio listen points` section exposes measured
+moments with one conventional Listen action and one passage-navigation action.
+It does not ask a coach to configure thresholds, approve a diagnostic taxonomy,
+or understand the signal pipeline.
+
+The creative differentiation is underneath that simple interaction: exact
+asset identity, compatible source clocks, interval-overlap mapping, retained
+between-passage evidence, visible held evidence, immutable originals, and no
+automatic edit. This avoids two common trust failures in transcript editors:
+approximate timing that sends someone to the wrong words, and analytical labels
+that silently become destructive media decisions.
+
+Candidate language is intentionally non-diagnostic. A possible dropout is shown
+as a signal-gap candidate, clipping as a peak candidate, and silence as a
+quiet-region candidate until a person auditions the exact source. The system
+may help the person find evidence; it does not pretend a measurement is a
+listening decision.

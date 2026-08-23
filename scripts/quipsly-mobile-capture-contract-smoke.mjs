@@ -1185,6 +1185,8 @@ function checkTranscriptCorrectionContractSources() {
   const serviceText = sourceText("apps/quipsly/src/lib/server/transcript-corrections.ts");
   const coachingPacketText = sourceText("apps/quipsly/src/lib/server/coaching-packets.ts");
   const nativeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptCorrectionReview.swift");
+  const nativeAudioAttentionText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureTranscriptAudioAttention.swift");
+  const nativeAudioAttentionHarnessText = sourceText("apps/mobile-capture/HighGroundCapture/Testing/CaptureTranscriptAudioAttentionHarness.swift");
   const nativeRecordingShareText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureRecordingShare.swift");
   const transcriptReviewOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptReviewDecisionOutbox.swift");
   const transcriptSpeakerAttributionOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptSpeakerAttributionOutbox.swift");
@@ -1326,6 +1328,33 @@ function checkTranscriptCorrectionContractSources() {
       && coachingPacketText.includes("speakerAttributions: unknown = []"),
     "transcriptSpeakerAttributionSeparateReviewBoundary",
     "A playback-reviewed provider-cluster identity is atomic, participant-bound, packet-invalidating, and visibly separate from word-level transcript review on Nest and iPhone.",
+  );
+  expect(
+    nativeAudioAttentionText.includes("CaptureTranscriptAudioAttentionResolver")
+      && nativeAudioAttentionText.includes("heldAssetMismatch")
+      && nativeAudioAttentionText.includes("heldClockMismatch")
+      && nativeAudioAttentionText.includes("normalizedID(expectedRecordingAssetID) == normalizedID(actualRecordingAssetID)")
+      && nativeAudioAttentionText.includes("clocksMatch(recordingDurationSeconds, signalDurationSeconds)")
+      && nativeAudioAttentionText.includes("clocksMatch($0, signalDurationSeconds)")
+      && nativeAudioAttentionText.includes("$0.endSeconds > observation.startSeconds")
+      && nativeAudioAttentionText.includes("$0.startSeconds < observation.endSeconds")
+      && nativeAudioAttentionText.includes("no edit, correction, defect, repair, or")
+      && nativeAudioAttentionText.includes("never an automatic media or transcript decision")
+      && nativeText.includes("Audio listen points")
+      && nativeText.includes("not confirmed defects and never become transcript corrections or recording cuts automatically")
+      && nativeText.includes("Plays the exact local source around this measured point. It makes no correction or edit.")
+      && nativeText.includes("Moves to the overlapping transcript passage without playing, correcting, or cutting it.")
+      && nativeText.includes("Signal-gap candidate")
+      && nativeAudioAttentionHarnessText.includes("exactAssetMapsToOnePassage")
+      && nativeAudioAttentionHarnessText.includes("spanningPointMapsToTwoPassages")
+      && nativeAudioAttentionHarnessText.includes("betweenPassagesRemainsVisible")
+      && nativeAudioAttentionHarnessText.includes("wrongAssetFailsClosed")
+      && nativeAudioAttentionHarnessText.includes("clockMismatchFailsClosed")
+      && nativeAudioAttentionHarnessText.includes("malformedPointIsHeld")
+      && nativeAudioAttentionHarnessText.includes("outOfRangePassageIsNotMapped")
+      && nativeAudioAttentionHarnessText.includes("optionalPlaybackDurationUsesBoundedSourceClock"),
+    "nativeTranscriptAudioAttentionExactSourceBoundary",
+    "Measured source observations become transcript listen-and-review navigation only after exact asset and compatible source-clock checks; mismatches and malformed evidence hold closed and no automatic correction or media edit exists.",
   );
   expect(
     nativeText.includes("CaptureTranscriptReviewView")

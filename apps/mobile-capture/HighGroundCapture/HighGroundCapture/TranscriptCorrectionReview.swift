@@ -2376,6 +2376,22 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
         )
     }
 
+    func play(
+        listenPoint: CaptureTranscriptAudioListenPoint,
+        recording: LocalRecording?,
+        library: LocalRecordingLibrary,
+        expectedRecordingAssetID: String?
+    ) {
+        play(
+            anchorID: listenPoint.id,
+            startSeconds: listenPoint.startSeconds,
+            endSeconds: listenPoint.endSeconds,
+            recording: recording,
+            library: library,
+            expectedRecordingAssetID: expectedRecordingAssetID
+        )
+    }
+
     private func play(
         anchorID: String,
         startSeconds: TimeInterval,
@@ -2642,6 +2658,7 @@ struct CaptureTranscriptReviewView: View {
     @State private var packetCandidateFilter = CapturePacketCandidateReviewFilter.open
     @State private var recentPacketDecisionID: String?
     @State private var previousPacketCandidateStates: [String: CapturePacketCandidateReviewState] = [:]
+    @State private var showsAllAudioListenPoints = false
     private static let transcriptPresentationModeKey = "quipsly.capture.transcript.presentation-mode"
     @State private var transcriptPresentationMode = CaptureTranscriptPresentationMode(
         rawValue: UserDefaults.standard.string(forKey: transcriptPresentationModeKey) ?? ""
@@ -2742,6 +2759,8 @@ struct CaptureTranscriptReviewView: View {
                     } else if let desk = client.desk {
                         sourceTruth(desk)
                             .id("source-truth")
+                        audioAttentionSection(desk, scrollProxy: scrollProxy)
+                            .id("audio-listen-points")
                         transcriptSegments(desk, scrollProxy: scrollProxy)
                         if let evidence = desk.evidence?.transcript {
                             transcriptEvidenceSummary(evidence)
@@ -3391,6 +3410,210 @@ struct CaptureTranscriptReviewView: View {
         }
         .reviewCard()
         .accessibilityIdentifier(exactMatch ? "CaptureTranscriptExactSourceMatch" : "CaptureTranscriptReviewOnlyBoundary")
+    }
+
+    @ViewBuilder
+    private func audioAttentionSection(
+        _ desk: CaptureTranscriptCorrectionDesk,
+        scrollProxy: ScrollViewProxy
+    ) -> some View {
+        if let plan = audioAttentionPlan(desk),
+           plan.status != .noObservations {
+            VStack(alignment: .leading, spacing: 11) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label("Audio listen points", systemImage: "ear.badge.exclamationmark")
+                        .font(.headline)
+                        .foregroundStyle(plan.isClockQualified ? Color.indigo : Color.orange)
+                    Spacer(minLength: 8)
+                    Text("\(plan.listenPoints.count)")
+                        .font(.caption.monospacedDigit().weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+
+                if plan.isClockQualified {
+                    Text("Measured source moments that may deserve a listen. They are not confirmed defects and never become transcript corrections or recording cuts automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    ForEach(visibleAudioListenPoints(plan)) { point in
+                        audioListenPointCard(point, desk: desk, scrollProxy: scrollProxy)
+                    }
+
+                    if plan.listenPoints.count > 3 {
+                        Button(showsAllAudioListenPoints ? "Show first 3" : "Show all \(plan.listenPoints.count)") {
+                            showsAllAudioListenPoints.toggle()
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CaptureTranscriptAudioAttentionShowAll")
+                    }
+                }
+
+                if let reason = plan.reason {
+                    Label(reason, systemImage: plan.isClockQualified ? "info.circle" : "exclamationmark.shield.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(plan.isClockQualified ? Color.secondary : Color.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("CaptureTranscriptAudioAttentionHold")
+                }
+
+                if plan.heldObservationCount > 0 {
+                    Text("\(plan.heldObservationCount) listen point\(plan.heldObservationCount == 1 ? " was" : "s were") held from transcript navigation.")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .reviewCard()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("CaptureTranscriptAudioAttention")
+        }
+    }
+
+    private func audioListenPointCard(
+        _ point: CaptureTranscriptAudioListenPoint,
+        desk: CaptureTranscriptCorrectionDesk,
+        scrollProxy: ScrollViewProxy
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Listen at \(point.startSeconds.captureTranscriptTimestamp)")
+                    .font(.subheadline.weight(.bold))
+                Spacer(minLength: 8)
+                Text(audioListenPointLabel(point))
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            Text(point.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                point.overlappingSegmentIDs.isEmpty
+                    ? "Between transcript passages"
+                    : "Touches \(point.overlappingSegmentIDs.count) transcript passage\(point.overlappingSegmentIDs.count == 1 ? "" : "s")"
+            )
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    audioListenButton(point, desk: desk)
+                    if let segmentID = point.overlappingSegmentIDs.first {
+                        audioTranscriptReviewButton(
+                            segmentID,
+                            label: point.overlappingSegmentIDs.count > 1 ? "Review first passage" : "Review passage",
+                            scrollProxy: scrollProxy
+                        )
+                    }
+                }
+                VStack(spacing: 8) {
+                    audioListenButton(point, desk: desk)
+                        .frame(maxWidth: .infinity)
+                    if let segmentID = point.overlappingSegmentIDs.first {
+                        audioTranscriptReviewButton(
+                            segmentID,
+                            label: point.overlappingSegmentIDs.count > 1 ? "Review first passage" : "Review passage",
+                            scrollProxy: scrollProxy
+                        )
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.indigo.opacity(0.06), in: RoundedRectangle(cornerRadius: 11))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptAudioListenPoint_\(point.id)")
+    }
+
+    private func audioListenButton(
+        _ point: CaptureTranscriptAudioListenPoint,
+        desk: CaptureTranscriptCorrectionDesk
+    ) -> some View {
+        Button {
+            playback.play(
+                listenPoint: point,
+                recording: recording,
+                library: library,
+                expectedRecordingAssetID: desk.playback?.recordingAssetId
+            )
+        } label: {
+            Label("Listen", systemImage: "play.fill")
+                .frame(minHeight: 44)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.indigo)
+        .disabled(!hasExactLocalSource(expectedRecordingAssetID: desk.playback?.recordingAssetId) || client.isMutating)
+        .accessibilityHint("Plays the exact local source around this measured point. It makes no correction or edit.")
+    }
+
+    private func audioTranscriptReviewButton(
+        _ segmentID: String,
+        label: String,
+        scrollProxy: ScrollViewProxy
+    ) -> some View {
+        Button(label) {
+            transcriptPresentationMode = .timeline
+            scrollTargetSegmentID = nil
+            Task { @MainActor in
+                await Task.yield()
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+                    scrollTargetSegmentID = segmentID
+                    scrollProxy.scrollTo(segmentID, anchor: .center)
+                }
+                accessibilityFocusedSegmentID = segmentID
+            }
+        }
+        .buttonStyle(.bordered)
+        .frame(minHeight: 44)
+        .accessibilityHint("Moves to the overlapping transcript passage without playing, correcting, or cutting it.")
+    }
+
+    private func audioListenPointLabel(
+        _ point: CaptureTranscriptAudioListenPoint
+    ) -> String {
+        switch point.kind.lowercased() {
+        case "possible-dropout", "dropout":
+            "Signal-gap candidate"
+        case "clipped", "clipping", "possible-clipping":
+            "Peak candidate"
+        case "silence", "quiet", "possible-silence":
+            "Quiet-region candidate"
+        default:
+            "Measured listen point"
+        }
+    }
+
+    private func visibleAudioListenPoints(
+        _ plan: CaptureTranscriptAudioAttentionPlan
+    ) -> [CaptureTranscriptAudioListenPoint] {
+        showsAllAudioListenPoints ? plan.listenPoints : Array(plan.listenPoints.prefix(3))
+    }
+
+    private func audioAttentionPlan(
+        _ desk: CaptureTranscriptCorrectionDesk
+    ) -> CaptureTranscriptAudioAttentionPlan? {
+        guard let recording,
+              let signal = recording.sourceProfile?.audioSignal else { return nil }
+        return CaptureTranscriptAudioAttentionResolver.resolve(
+            expectedRecordingAssetID: desk.playback?.recordingAssetId,
+            actualRecordingAssetID: recording.recordingAssetId,
+            recordingDurationSeconds: recording.durationSeconds,
+            transcriptPlaybackDurationSeconds: desk.playback?.durationSeconds,
+            signalDurationSeconds: signal.durationSeconds,
+            observations: signal.observations.map {
+                .init(
+                    kind: $0.kind,
+                    severity: $0.severity,
+                    startSeconds: $0.startSeconds,
+                    endSeconds: $0.endSeconds,
+                    detail: $0.detail
+                )
+            },
+            segments: desk.segments.map {
+                .init(id: $0.id, startSeconds: $0.startSeconds, endSeconds: $0.endSeconds)
+            }
+        )
     }
 
     private func packetCandidateState(

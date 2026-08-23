@@ -1439,3 +1439,41 @@ card appears only for the transcript's recording asset, background/foreground
 the analysis, audition original and improved copies in the quality destination,
 and confirm route/interruption behavior with real headphones. Automated source
 and simulator checks do not claim that human listening evidence.
+
+## iPhone source-measurement to transcript navigation — 2026-08-23
+
+Capture now maps bounded decoded-signal observations onto transcript passages
+only when the retained recording asset identity matches exactly, the local
+recording and decoded-signal clocks agree within a small duration-relative
+tolerance, any supplied transcript playback duration also agrees, and mapped
+passages stay inside that bounded source clock. A qualified observation can be
+played from the exact local source and can focus its overlapping transcript
+passage. An observation between
+passages remains visible without inventing an anchor; a point spanning a passage
+boundary preserves both overlaps; malformed or out-of-range evidence is held.
+
+The surface calls these moments listen points and candidates. They are not
+confirmed defects and cannot automatically correct transcript text, exclude a
+passage, cut media, select an improved copy, or publish an output. Asset and
+clock mismatches fail closed with a visible reason.
+
+Independent evidence is 9/9 focused resolver cases, the source-only mobile
+contract with no failures, a clean dual-architecture iOS Simulator app build,
+and 1,094/1,094 App Store static checks. Build 34 remains sealed and unchanged.
+
+Physical listening evidence remains on the ledger. On a real retained coaching
+recording with headphones:
+
+- confirm each shown point plays the expected source moment and no other asset;
+- verify a known quiet region, peak candidate, and signal-gap candidate against
+  the visible waveform and audible source;
+- follow a one-passage and boundary-spanning point into the expected transcript
+  location, then return without losing review position;
+- verify merely listening or navigating creates no correction, cut, derivative,
+  share, or publication receipt;
+- background, foreground, interrupt, and route-change playback; and
+- present a deliberately mismatched clock/asset fixture and confirm navigation
+  remains held rather than approximately aligned.
+
+These are deferred human/device validations, not a reason to stop independent
+product work and not claims made by the automated checks.
