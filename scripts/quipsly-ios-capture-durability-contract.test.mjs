@@ -23,6 +23,7 @@ const [
   offlineView,
   playback,
   providerAudio,
+  providerRoom,
   uploadManager,
 ] = await Promise.all([
   readFile(path.join(captureRoot, "AudioCaptureController.swift"), "utf8"),
@@ -35,6 +36,7 @@ const [
   readFile(path.join(captureRoot, "ContentView.swift"), "utf8"),
   readFile(path.join(captureRoot, "LocalRecordingPlaybackController.swift"), "utf8"),
   readFile(path.join(captureRoot, "ProviderAudioMasterRecorder.swift"), "utf8"),
+  readFile(path.join(captureRoot, "ProviderRoomController.swift"), "utf8"),
   readFile(path.join(captureRoot, "UploadManager.swift"), "utf8"),
 ]);
 
@@ -188,6 +190,48 @@ check(
   "camera does not silently downgrade an active source",
   videoController.includes("Quality will not silently change during a source.")
     && videoController.includes("without changing quality"),
+);
+check(
+  "call video and retained movie share one camera session",
+  (videoService.match(/AVCaptureSession\(\)/g) ?? []).length === 1
+    && videoService.includes("captureSession.addOutput(movieOutput)")
+    && videoService.includes("captureSession.addOutput(videoDataOutput)"),
+);
+check(
+  "live camera frames discard backlog instead of pressuring the retained source",
+  videoService.includes("videoDataOutput.alwaysDiscardsLateVideoFrames = true")
+    && videoService.includes("VideoCaptureFrameConsumer")
+    && videoService.includes("consumer?.consumeVideoSampleBuffer(sampleBuffer)"),
+);
+check(
+  "LiveKit publishes app-owned frames without opening a second camera",
+  providerRoom.includes("LocalVideoTrack.createBufferTrack")
+    && providerRoom.includes("source.setLiveVideoFrameConsumer(bridge)")
+    && !providerRoom.includes("setCamera(enabled: true)"),
+);
+const cameraUnpublish = providerRoom.slice(
+  providerRoom.indexOf("func unpublishSharedCamera()"),
+  providerRoom.indexOf("func publishEpisodeWatchHint", providerRoom.indexOf("func unpublishSharedCamera()")),
+);
+check(
+  "call-camera teardown detaches frames before provider unpublish",
+  cameraUnpublish.indexOf("setLiveVideoFrameConsumer(nil)") >= 0
+    && cameraUnpublish.indexOf("setLiveVideoFrameConsumer(nil)")
+      < cameraUnpublish.indexOf("room.localParticipant.unpublish"),
+);
+check(
+  "call transport profile cannot rewrite retained master quality",
+  providerRoom.includes("width: presentationIsPortrait ? 720 : 1_280")
+    && providerRoom.includes("fps: min(24")
+    && providerRoom.includes("profile: VideoCaptureResolvedProfile")
+    && !providerRoom.includes("qualityIntent ="),
+);
+check(
+  "native call uses conventional near-far video and camera controls",
+  phoneShell.includes('accessibilityIdentifier("ProviderCallVideoStage")')
+    && phoneShell.includes('accessibilityIdentifier("ProviderLocalVideoPreview")')
+    && phoneShell.includes('accessibilityIdentifier: "ProviderToggleCameraButton"')
+    && phoneShell.includes('accessibilityIdentifier("ProviderSwitchCameraButton")'),
 );
 check(
   "video START receipt and source ledger are durable before bytes",

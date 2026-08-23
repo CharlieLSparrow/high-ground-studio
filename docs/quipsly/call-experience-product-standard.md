@@ -91,9 +91,17 @@ Recurring complaints reveal the failure modes Quipsly must design out:
   remote call media. The iPhone can therefore remain a synchronized retained
   camera/source device while the audible conversation stays on the computer.
 - A primary iPhone endpoint subscribes to and shows participant video inside
-  the familiar call card. That viewing path does not claim the iPhone camera.
-  Until Quipsly owns a single coordinated camera graph, publishing live iPhone
-  video must not compete with or downgrade the retained local camera master.
+  the familiar call card. The other person owns the main stage; the local
+  camera becomes a conventional picture-in-picture preview.
+- One Quipsly-owned `AVCaptureSession` feeds local preview, a late-frame-
+  discarding video-data output for LiveKit, and the fragmented retained movie
+  output. The Camera control publishes a custom LiveKit buffer track; it never
+  invokes a second SDK camera capturer. Call video is bounded to 720p/24 for
+  network and thermal health while the independently selected local source may
+  remain 4K/24. Turning camera video on or off never starts or stops recording.
+- Front/back switching reconfigures that same physical camera owner. During a
+  retained take it creates the existing explicit source boundary rather than
+  inventing a seamless file or losing the live-room track.
 - Conventional in-call controls remain in predictable locations and use
   conventional labels: Mute, Camera, Leave, Participants, Chat, and Record.
 - Reconnect automatically when safe. Interrupt only when the user must act.
@@ -204,3 +212,10 @@ a tester does not stop independent product work.
 - Google Meet's permission-prompt redesign, which removed competing prompts and
   delayed the browser request until a clear user action:
   <https://web.dev/case-studies/google-meet-permissions-best-practices>
+- Apple's capture-session guidance and iOS 16+ simultaneous movie/data output
+  support:
+  <https://developer.apple.com/documentation/avfoundation/setting-up-a-capture-session>
+  and
+  <https://developer.apple.com/documentation/avfoundation/avcapturesession/canaddoutput%28_%3A%29>
+- LiveKit's Swift SDK and custom buffer-capture API:
+  <https://github.com/livekit/client-sdk-swift>

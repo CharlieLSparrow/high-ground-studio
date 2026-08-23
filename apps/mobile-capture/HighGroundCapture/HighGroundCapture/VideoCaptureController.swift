@@ -95,6 +95,14 @@ final class VideoCaptureController: ObservableObject {
         service.captureSession
     }
 
+    /// Installs or removes the live-conversation consumer without changing the
+    /// authoritative AVFoundation camera owner or the retained movie output.
+    func setLiveVideoFrameConsumer(
+        _ consumer: (any VideoCaptureFrameConsumer)?
+    ) {
+        service.setFrameConsumer(consumer)
+    }
+
     private enum StopReason {
         case user
         case pause

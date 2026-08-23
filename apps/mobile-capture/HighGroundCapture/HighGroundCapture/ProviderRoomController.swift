@@ -6,6 +6,19 @@ import SwiftUI
 
 #if canImport(LiveKit)
 @preconcurrency import LiveKit
+
+private final class ProviderRoomVideoFrameBridge: VideoCaptureFrameConsumer,
+    @unchecked Sendable {
+    let capturer: BufferCapturer
+
+    init(capturer: BufferCapturer) {
+        self.capturer = capturer
+    }
+
+    nonisolated func consumeVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+        capturer.capture(sampleBuffer)
+    }
+}
 #endif
 
 private enum ProviderRoomRuntime {
@@ -43,6 +56,9 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var remoteParticipantCount = 0
     @Published private(set) var hasRemoteVideo = false
     @Published private(set) var remoteVideoParticipantLabel: String?
+    @Published private(set) var isLocalVideoPublished = false
+    @Published private(set) var isChangingLocalVideo = false
+    @Published private(set) var localVideoStatus = "Camera off"
     @Published var activeRoomName: String?
     @Published var activeCallUUIDString: String?
     @Published var lastError: String?
@@ -78,13 +94,17 @@ final class ProviderRoomController: NSObject, ObservableObject {
     #if canImport(LiveKit)
     private let room = Room()
     @Published fileprivate var remoteVideoTrack: VideoTrack?
+    private var localVideoTrack: LocalVideoTrack?
+    private var localVideoPublication: LocalTrackPublication?
+    private var localVideoFrameBridge: ProviderRoomVideoFrameBridge?
+    private weak var localVideoSource: VideoCaptureController?
     private var callAudioMeter: ProviderRoomCallAudioMeter?
     private var callAudioWatchdogTask: Task<Void, Never>?
     #endif
 
     override init() {
         let configuration = CXProviderConfiguration()
-        configuration.supportsVideo = false
+        configuration.supportsVideo = true
         configuration.maximumCallGroups = 1
         configuration.maximumCallsPerCallGroup = 1
         configuration.supportedHandleTypes = [.generic]
@@ -335,6 +355,114 @@ final class ProviderRoomController: NSObject, ObservableObject {
         #endif
     }
 
+    /// Publishes the same camera frames that feed Quipsly's local preview and
+    /// retained movie. This deliberately does not call LiveKit's `setCamera`:
+    /// that convenience API would open a second AVCaptureSession and compete
+    /// with the production master for the physical camera.
+    func publishSharedCamera(
+        from source: VideoCaptureController,
+        profile: VideoCaptureResolvedProfile
+    ) async {
+        #if canImport(LiveKit)
+        guard isConnected,
+              let ownerSnapshot = activeOwnerSnapshot,
+              AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+            fail("Join the call before turning on your camera.", technical: "Shared camera publication was requested without an authenticated provider room.")
+            return
+        }
+        guard !isChangingLocalVideo else { return }
+        if isLocalVideoPublished { return }
+
+        isChangingLocalVideo = true
+        lastError = nil
+        lastTechnicalError = nil
+        localVideoStatus = "Starting camera…"
+        defer { isChangingLocalVideo = false }
+
+        let presentationIsPortrait = profile.presentationOrientation == "portrait"
+        let liveDimensions = Dimensions(
+            width: presentationIsPortrait ? 720 : 1_280,
+            height: presentationIsPortrait ? 1_280 : 720
+        )
+        let options = BufferCaptureOptions(
+            dimensions: liveDimensions,
+            fps: min(24, max(15, Int(profile.framesPerSecond.rounded())))
+        )
+        let track = LocalVideoTrack.createBufferTrack(
+            name: "quipsly-camera",
+            source: .camera,
+            options: options,
+            reportStatistics: true
+        )
+        guard let capturer = track.capturer as? BufferCapturer else {
+            fail("Your camera couldn't start. Try again.", technical: "LiveKit did not expose the custom BufferCapturer for the Quipsly camera track.")
+            localVideoStatus = "Camera needs attention"
+            return
+        }
+        let bridge = ProviderRoomVideoFrameBridge(capturer: capturer)
+        localVideoTrack = track
+        localVideoFrameBridge = bridge
+        localVideoSource = source
+        source.setLiveVideoFrameConsumer(bridge)
+
+        do {
+            let publication = try await room.localParticipant.publish(
+                videoTrack: track,
+                options: VideoPublishOptions(
+                    name: "quipsly-camera",
+                    simulcast: true,
+                    degradationPreference: .maintainFramerate
+                )
+            )
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot),
+                  room.connectionState == .connected || room.connectionState == .reconnecting else {
+                source.setLiveVideoFrameConsumer(nil)
+                try? await room.localParticipant.unpublish(publication: publication)
+                clearLocalVideoBridge()
+                return
+            }
+            localVideoPublication = publication
+            isLocalVideoPublished = true
+            localVideoStatus = "Camera on · local master stays separate"
+            statusText = "Camera is live. Recording still starts separately."
+        } catch {
+            source.setLiveVideoFrameConsumer(nil)
+            clearLocalVideoBridge()
+            localVideoStatus = "Camera needs attention"
+            fail("Your camera couldn't start. Try again.", technical: error.localizedDescription)
+        }
+        #else
+        fail("Camera calls aren't available in this build.", technical: "LiveKit is not linked into this app build.")
+        #endif
+    }
+
+    func unpublishSharedCamera() async {
+        #if canImport(LiveKit)
+        guard !isChangingLocalVideo else { return }
+        isChangingLocalVideo = true
+        localVideoStatus = "Turning camera off…"
+        localVideoSource?.setLiveVideoFrameConsumer(nil)
+        let publication = localVideoPublication
+        clearLocalVideoBridge()
+        if let publication, room.connectionState != .disconnected {
+            do {
+                try await room.localParticipant.unpublish(publication: publication)
+            } catch {
+                lastTechnicalError = "Camera unpublish failed after the local frame bridge was safely detached: \(error.localizedDescription)"
+            }
+        }
+        isChangingLocalVideo = false
+        localVideoStatus = "Camera off"
+        if isConnected {
+            statusText = "Camera off. You are still in the call."
+        }
+        #else
+        isLocalVideoPublished = false
+        isChangingLocalVideo = false
+        localVideoStatus = "Camera off"
+        #endif
+    }
+
     func publishEpisodeWatchHint(_ hint: MobileEpisodeWatchLiveHint) async {
         #if canImport(LiveKit)
         guard isConnected,
@@ -382,6 +510,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     func disconnect() async {
         #if canImport(LiveKit)
+        await unpublishSharedCamera()
         guard isConnected || isConnecting else {
             stopCallAudioMeter()
             statusText = "Provider room already disconnected."
@@ -395,6 +524,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
         stopCallAudioMeter()
         await room.disconnect()
+        clearLocalVideoBridge()
         await endNativeCallPresentation(reason: .remoteEnded)
         audioSessionCoordinator.providerDidDisconnect()
         isConnecting = false
@@ -452,6 +582,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             activeOwnerSnapshot = nil
             clearEpisodeWatchBridge()
             clearRemoteVideoTrack()
+            clearLocalVideoBridge()
         }
         lastError = message
         lastTechnicalError = technical
@@ -527,6 +658,25 @@ final class ProviderRoomController: NSObject, ObservableObject {
         latestChatPersistedHint = nil
         activeChatThreadKeys = []
     }
+
+    #if canImport(LiveKit)
+    private func clearLocalVideoBridge() {
+        localVideoSource?.setLiveVideoFrameConsumer(nil)
+        localVideoSource = nil
+        localVideoPublication = nil
+        localVideoTrack = nil
+        localVideoFrameBridge = nil
+        isLocalVideoPublished = false
+        isChangingLocalVideo = false
+        localVideoStatus = "Camera off"
+    }
+    #else
+    private func clearLocalVideoBridge() {
+        isLocalVideoPublished = false
+        isChangingLocalVideo = false
+        localVideoStatus = "Camera off"
+    }
+    #endif
 
     #if canImport(LiveKit)
     private func refreshRemoteVideoTrack() {
@@ -657,7 +807,9 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private func abortForAccountChange() async {
         stopCallAudioMeter()
         #if canImport(LiveKit)
+        localVideoSource?.setLiveVideoFrameConsumer(nil)
         await room.disconnect()
+        clearLocalVideoBridge()
         #endif
         await endNativeCallPresentation(reason: .failed)
         try? audioSessionCoordinator.callKitDidDeactivate()
@@ -684,7 +836,9 @@ final class ProviderRoomController: NSObject, ObservableObject {
         let technicalMessage = "Provider audio could not activate safely, so Quipsly left the room instead of showing a silent connection: \(error.localizedDescription)"
         stopCallAudioMeter()
         #if canImport(LiveKit)
+        localVideoSource?.setLiveVideoFrameConsumer(nil)
         await room.disconnect()
+        clearLocalVideoBridge()
         #endif
         await endNativeCallPresentation(reason: .failed)
         try? audioSessionCoordinator.callKitDidDeactivate()
@@ -722,9 +876,11 @@ extension ProviderRoomController: CXProviderDelegate {
     nonisolated func providerDidReset(_ provider: CXProvider) {
         Task { @MainActor in
             #if canImport(LiveKit)
+            self.localVideoSource?.setLiveVideoFrameConsumer(nil)
             if self.isConnected || self.isConnecting {
                 await self.room.disconnect()
             }
+            self.clearLocalVideoBridge()
             #endif
             self.stopCallAudioMeter()
             self.clearNativeCallPresentation()
@@ -757,9 +913,11 @@ extension ProviderRoomController: CXProviderDelegate {
             action.fulfill()
             let localSourceProtected = await self.protectLocalSourceBeforeNativeCallEnd?() ?? true
             #if canImport(LiveKit)
+            self.localVideoSource?.setLiveVideoFrameConsumer(nil)
             if self.isConnected || self.isConnecting {
                 await self.room.disconnect()
             }
+            self.clearLocalVideoBridge()
             #endif
             self.stopCallAudioMeter()
             self.clearNativeCallPresentation()
@@ -851,6 +1009,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.statusText = "Reconnecting…"
             case .disconnected:
                 self.stopCallAudioMeter()
+                self.clearLocalVideoBridge()
                 self.isConnecting = false
                 self.isConnected = false
                 self.isReconnecting = false

@@ -2358,6 +2358,82 @@ final class CaptureExperienceModel: ObservableObject {
         await providerRoom.setMuted(!providerRoom.isMuted)
     }
 
+    /// A conventional call-camera toggle backed by Quipsly's existing camera
+    /// owner. Preparing the source starts preview/live frames only; retained
+    /// recording remains a separate, explicit action with its own consent and
+    /// durable receipts.
+    func toggleRoomCamera(
+        using videoCapture: VideoCaptureController,
+        position: VideoCaptureCameraPosition,
+        qualityIntent: VideoCaptureQualityIntent = .production4K24
+    ) async {
+        guard providerRoom.isConnected, !isChangingRoom else { return }
+        if providerRoom.isLocalVideoPublished {
+            await providerRoom.unpublishSharedCamera()
+            errorMessage = providerRoom.lastError
+            return
+        }
+        guard !providerRoom.isChangingLocalVideo else { return }
+
+        let needsVideoOnlyProfile = videoCapture.resolvedProfile == nil
+            || videoCapture.resolvedProfile?.includesAudio == true
+            || [.idle, .saved, .failed].contains(videoCapture.state)
+        if needsVideoOnlyProfile {
+            await prepareVideoCapture(
+                using: videoCapture,
+                mode: .podcastCamera,
+                position: position,
+                qualityIntent: qualityIntent
+            )
+        }
+        guard let profile = videoCapture.resolvedProfile,
+              profile.includesAudio == false,
+              [.ready, .arming, .recording, .finalizing, .paused]
+                .contains(videoCapture.state) else {
+            errorMessage = videoCapture.lastErrorMessage
+                ?? "The camera couldn't start while another local source is changing. Try again when it is ready."
+            return
+        }
+
+        await providerRoom.publishSharedCamera(
+            from: videoCapture,
+            profile: profile
+        )
+        errorMessage = providerRoom.lastError
+    }
+
+    func switchRoomCamera(
+        using videoCapture: VideoCaptureController,
+        qualityIntent: VideoCaptureQualityIntent = .production4K24
+    ) async {
+        guard providerRoom.isConnected,
+              providerRoom.isLocalVideoPublished,
+              !providerRoom.isChangingLocalVideo,
+              !isChangingRoom,
+              !isChangingCapture else { return }
+        switch videoCapture.state {
+        case .recording:
+            await switchVideoCamera(using: videoCapture)
+        case .ready:
+            isChangingCapture = true
+            errorMessage = nil
+            await videoCapture.prepare(
+                position: videoCapture.cameraPosition.opposite,
+                includesAudio: false,
+                qualityIntent: qualityIntent
+            )
+            isChangingCapture = false
+            if videoCapture.state == .ready {
+                message = "Camera switched. Your live video and future local master still share one source."
+            } else {
+                errorMessage = videoCapture.lastErrorMessage
+                    ?? "The other camera couldn't start."
+            }
+        case .idle, .preparing, .arming, .finalizing, .paused, .saved, .failed:
+            errorMessage = "Wait for the current camera change or recording boundary to finish, then switch cameras."
+        }
+    }
+
     func retryUploads() {
         uploadManager.retryRecoverableUploads()
     }

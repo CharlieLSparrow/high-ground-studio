@@ -1726,3 +1726,53 @@ is eligible for a deliberate release only after the matching Nest production
 compatibility lane passes; physical-device, natural-speech, human-listening,
 real-mailbox, and multi-account production evidence remain on the continuous
 validation ledger and do not stop independent product work.
+
+## Shared iPhone call camera and retained master — 2026-08-23
+
+The iPhone now owns one coordinated camera graph instead of forcing a choice
+between familiar call video and a high-quality local source. The persistent
+call dock exposes conventional Mute, Camera, and Leave controls. Camera begins
+off, asks for the ordinary iOS permission only from the person's action, shows
+the remote participant as the main stage, and shows the local camera as
+picture-in-picture. Front/back switching remains available from that stage.
+
+The same `AVCaptureSession` feeds the preview, a custom LiveKit buffer track,
+and `AVCaptureMovieFileOutput`. Live transport is bounded to 720p/24 while the
+separately selected retained master can remain 4K/24. The implementation never
+calls LiveKit's camera convenience API and therefore never opens a competing
+camera session. Join and Camera still do not record; retained recording remains
+behind current Session consent and the durable source ledger. Teardown detaches
+the frame consumer before unpublishing or dropping the track.
+
+Independent evidence:
+
+- arm64 plus x86_64 iOS Simulator build: pass;
+- iOS capture durability contract: 93/93 pass, including one-session ownership,
+  non-blocking frame delivery, provider publication, teardown ordering, profile
+  separation, and the conventional native video stage;
+- App Store/capture static suite: 1,128/1,128 pass, including shared-session,
+  custom-buffer-track, teardown, standard control, near/far stage, and camera-
+  switching invariants; and
+- no TestFlight upload or modification of the sealed Build 35 candidate.
+
+Physical-device evidence remains on the continuous validation ledger:
+
+- join one iPhone and one browser endpoint, turn the iPhone camera on and off,
+  and prove the far-end browser sees the expected video without call-audio
+  interruption;
+- start a 4K/24 retained camera master while live video is published, capture
+  sustained motion and speech, and prove the local file retains its declared
+  profile while the call remains usable;
+- switch front/back before and during recording and verify the visible call,
+  explicit local source boundary, capture-group continuity, upload, and
+  synchronized editor materialization;
+- repeat in second-device mode while the browser owns microphone/headphone
+  audio and prove the iPhone creates no echo or remote-audio playback;
+- interrupt network, background/foreground, end through CallKit, change
+  accounts, and rejoin; verify no stale camera indicator or publication remains;
+  and
+- sustain the combined workload long enough to assess thermal pressure, frame
+  cadence, battery behavior, audio quality, and human-perceived call quality.
+
+These hardware and human observations are required before a released claim of
+mobile video parity. They do not stop the next independent product lane.

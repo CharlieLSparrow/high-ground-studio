@@ -1,6 +1,14 @@
 @preconcurrency import AVFoundation
 import CoreMedia
+import CoreVideo
 import Foundation
+
+/// A synchronous handoff for frames produced by Quipsly's one authoritative
+/// camera session. Live conversation video, local preview, and the retained
+/// movie must never open competing camera capture graphs.
+protocol VideoCaptureFrameConsumer: AnyObject, Sendable {
+    nonisolated func consumeVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer)
+}
 
 enum VideoCaptureCameraPosition: String, Codable, CaseIterable, Sendable {
     case front
@@ -179,6 +187,35 @@ private final class VideoCaptureMovieDelegate: NSObject, AVCaptureFileOutputReco
     }
 }
 
+private final class VideoCaptureSampleBufferDelegate: NSObject,
+    AVCaptureVideoDataOutputSampleBufferDelegate,
+    @unchecked Sendable {
+    private let lock = NSLock()
+    nonisolated(unsafe) private weak var consumer:
+        (any VideoCaptureFrameConsumer)?
+
+    nonisolated override init() {
+        super.init()
+    }
+
+    nonisolated func setConsumer(_ consumer: (any VideoCaptureFrameConsumer)?) {
+        lock.lock()
+        self.consumer = consumer
+        lock.unlock()
+    }
+
+    nonisolated func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        lock.lock()
+        let consumer = consumer
+        lock.unlock()
+        consumer?.consumeVideoSampleBuffer(sampleBuffer)
+    }
+}
+
 actor VideoCaptureService {
     // The preview layer may read the session on MainActor. Every mutation and
     // start/stop call remains isolated to this actor.
@@ -187,6 +224,12 @@ actor VideoCaptureService {
 
     private let eventContinuation: AsyncStream<VideoCaptureServiceEvent>.Continuation
     private let movieOutput = AVCaptureMovieFileOutput()
+    private let videoDataOutput = AVCaptureVideoDataOutput()
+    private let videoDataDelegate = VideoCaptureSampleBufferDelegate()
+    private let videoDataQueue = DispatchQueue(
+        label: "com.quipsly.capture.live-video-frames",
+        qos: .userInteractive
+    )
     private var cameraInput: AVCaptureDeviceInput?
     private var microphoneInput: AVCaptureDeviceInput?
     private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
@@ -199,6 +242,21 @@ actor VideoCaptureService {
         var continuation: AsyncStream<VideoCaptureServiceEvent>.Continuation?
         events = AsyncStream { continuation = $0 }
         eventContinuation = continuation!
+        videoDataOutput.alwaysDiscardsLateVideoFrames = true
+        videoDataOutput.videoSettings = [
+            kCVPixelBufferPixelFormatTypeKey as String:
+                kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+        ]
+        videoDataOutput.setSampleBufferDelegate(
+            videoDataDelegate,
+            queue: videoDataQueue
+        )
+    }
+
+    nonisolated func setFrameConsumer(
+        _ consumer: (any VideoCaptureFrameConsumer)?
+    ) {
+        videoDataDelegate.setConsumer(consumer)
     }
 
     func prepare(
@@ -251,6 +309,7 @@ actor VideoCaptureService {
         let previousMicrophoneInput = microphoneInput
         var configurationSucceeded = false
         var movieOutputWasAdded = false
+        var videoDataOutputWasAdded = false
         var configurationIsOpen = true
         resolvedProfile = nil
         configuredPosition = nil
@@ -269,6 +328,9 @@ actor VideoCaptureService {
                     }
                     if movieOutputWasAdded {
                         captureSession.removeOutput(movieOutput)
+                    }
+                    if videoDataOutputWasAdded {
+                        captureSession.removeOutput(videoDataOutput)
                     }
                     if let previousCameraInput,
                        captureSession.canAddInput(previousCameraInput) {
@@ -316,6 +378,14 @@ actor VideoCaptureService {
             movieOutputWasAdded = true
         }
 
+        if !captureSession.outputs.contains(where: { $0 === videoDataOutput }) {
+            guard captureSession.canAddOutput(videoDataOutput) else {
+                throw VideoCaptureServiceError.movieOutputUnavailable
+            }
+            captureSession.addOutput(videoDataOutput)
+            videoDataOutputWasAdded = true
+        }
+
         do {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
@@ -346,6 +416,13 @@ actor VideoCaptureService {
         let captureRotationDegrees = try applyCaptureRotation(
             coordinator: newRotationCoordinator,
             connection: videoConnection
+        )
+        guard let liveVideoConnection = videoDataOutput.connection(with: .video) else {
+            throw VideoCaptureServiceError.movieOutputUnavailable
+        }
+        _ = try applyCaptureRotation(
+            coordinator: newRotationCoordinator,
+            connection: liveVideoConnection
         )
 
         let codec = movieOutput.availableVideoCodecTypes.contains(.hevc)
@@ -419,6 +496,12 @@ actor VideoCaptureService {
             coordinator: rotationCoordinator,
             connection: videoConnection
         )
+        if let liveVideoConnection = videoDataOutput.connection(with: .video) {
+            _ = try applyCaptureRotation(
+                coordinator: rotationCoordinator,
+                connection: liveVideoConnection
+            )
+        }
         let armedProfile = VideoCaptureResolvedProfile(
             qualityIntent: profile.qualityIntent,
             qualityIntentFulfilled: profile.qualityIntentFulfilled,

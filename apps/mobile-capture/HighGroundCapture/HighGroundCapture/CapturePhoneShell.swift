@@ -7064,6 +7064,8 @@ private struct CaptureRecorderView: View {
                     model: model,
                     localRecordingActive: captureIsActive,
                     isSafelyLeaving: isSafelyLeavingRoom,
+                    cameraPosition: cameraPosition,
+                    videoQualityIntent: videoQualityIntent,
                     onLeave: {
                         Task { await leaveRoomSafely(for: session) }
                     }
@@ -7124,6 +7126,7 @@ private struct CaptureRecorderView: View {
             guard oldMode != newMode else { return }
             CaptureCallPreferences.recordingMode = newMode
             if newMode == .audio {
+                guard !model.providerRoom.isLocalVideoPublished else { return }
                 Task { await videoCapture.shutdownPreview() }
             } else if videoCapture.state == .ready,
                       videoCapture.resolvedProfile?.includesAudio != newMode.movieIncludesAudio {
@@ -7207,7 +7210,8 @@ private struct CaptureRecorderView: View {
         .onDisappear {
             soundCheck.discard()
             guard !videoCapture.state.isActive,
-                  videoCapture.state != .paused else { return }
+                  videoCapture.state != .paused,
+                  !model.providerRoom.isLocalVideoPublished else { return }
             Task { await videoCapture.shutdownPreview() }
         }
     }
@@ -12075,6 +12079,7 @@ struct InputLevelMeter: View {
 
 private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
+    @EnvironmentObject private var videoCapture: VideoCaptureController
     let session: MobileCaptureSession
     let inputRoute: String
     let localRecordingWorkspaceOpen: Bool
@@ -12114,11 +12119,24 @@ private struct ProviderRoomControls: View {
                 .accessibilityIdentifier("CaptureCallInputRoute")
 
             if model.providerRoom.isConnected {
-                if model.providerRoom.hasRemoteVideo {
-                    ProviderRemoteVideoSurface(controller: model.providerRoom)
-                        .frame(maxWidth: .infinity)
-                        .aspectRatio(16 / 9, contentMode: .fit)
-                        .accessibilityHint("Live conversation video. The retained local recording remains separate.")
+                if model.providerRoom.hasRemoteVideo
+                    || model.providerRoom.isLocalVideoPublished {
+                    ProviderRoomVideoStage(
+                        providerRoom: model.providerRoom,
+                        videoCapture: videoCapture,
+                        canSwitchCamera:
+                            !model.isChangingCapture
+                            && !model.providerRoom.isChangingLocalVideo
+                            && !model.providerRoom.isReconnecting,
+                        onSwitchCamera: {
+                            Task {
+                                await model.switchRoomCamera(
+                                    using: videoCapture,
+                                    qualityIntent: CaptureCallPreferences.videoQualityIntent
+                                )
+                            }
+                        }
+                    )
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -12292,16 +12310,98 @@ private struct ProviderRoomControls: View {
     }
 }
 
+/// Familiar near/far call composition: the other person owns the stage and
+/// this iPhone appears as a movable mental model in the corner. With nobody
+/// else publishing video, the local preview uses the full stage for framing.
+private struct ProviderRoomVideoStage: View {
+    @ObservedObject var providerRoom: ProviderRoomController
+    @ObservedObject var videoCapture: VideoCaptureController
+    let canSwitchCamera: Bool
+    let onSwitchCamera: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            if providerRoom.hasRemoteVideo {
+                ProviderRemoteVideoSurface(controller: providerRoom)
+                    .accessibilityHint(
+                        "Live conversation video. The retained local recording remains separate."
+                    )
+            } else {
+                localPreview
+            }
+
+            if providerRoom.hasRemoteVideo,
+               providerRoom.isLocalVideoPublished {
+                localPreview
+                    .frame(width: 108)
+                    .aspectRatio(9 / 16, contentMode: .fit)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(.white.opacity(0.72), lineWidth: 1)
+                    }
+                    .padding(10)
+                    .shadow(color: .black.opacity(0.24), radius: 8, y: 3)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .background(.black.opacity(0.88))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(alignment: .topTrailing) {
+            Button(action: onSwitchCamera) {
+                Image(systemName: "arrow.triangle.2.circlepath.camera.fill")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.black.opacity(0.58), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSwitchCamera)
+            .padding(8)
+            .accessibilityLabel("Switch camera")
+            .accessibilityHint(
+                "Switches the live camera. During recording, Quipsly preserves an explicit source boundary."
+            )
+            .accessibilityIdentifier("ProviderSwitchCameraButton")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ProviderCallVideoStage")
+    }
+
+    private var localPreview: some View {
+        CaptureVideoPreview(
+            session: videoCapture.captureSession,
+            cameraDeviceUniqueID: videoCapture.resolvedProfile?
+                .cameraDeviceUniqueID
+        )
+        .overlay(alignment: .topLeading) {
+            Text("You")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(.black.opacity(0.58), in: Capsule())
+                .padding(8)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityLabel("Your live camera preview")
+        .accessibilityIdentifier("ProviderLocalVideoPreview")
+    }
+}
+
 /// Persistent, conventional call controls remain reachable while the Session's
 /// recording, notes, and transcript workspace scrolls independently above.
 private struct ProviderRoomDock: View {
     @ObservedObject var model: CaptureExperienceModel
+    @EnvironmentObject private var videoCapture: VideoCaptureController
     let localRecordingActive: Bool
     let isSafelyLeaving: Bool
+    let cameraPosition: VideoCaptureCameraPosition
+    let videoQualityIntent: VideoCaptureQualityIntent
     let onLeave: () -> Void
 
     var body: some View {
-        HStack(spacing: 28) {
+        HStack(spacing: 16) {
             Spacer(minLength: 0)
             if model.providerRoom.usesCallAudio {
                 dockButton(
@@ -12322,6 +12422,31 @@ private struct ProviderRoomDock: View {
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 96, minHeight: 48)
                     .accessibilityIdentifier("ProviderCompanionAudioStatus")
+            }
+
+            dockButton(
+                title: model.providerRoom.isChangingLocalVideo
+                    ? "Camera…"
+                    : model.providerRoom.isLocalVideoPublished
+                        ? "Stop video"
+                        : "Camera",
+                systemImage: model.providerRoom.isLocalVideoPublished
+                    ? "video.fill"
+                    : "video.slash.fill",
+                tint: model.providerRoom.isLocalVideoPublished ? .primary : .secondary,
+                disabled:
+                    model.providerRoom.isChangingLocalVideo
+                    || model.isChangingRoom
+                    || model.providerRoom.isReconnecting,
+                accessibilityIdentifier: "ProviderToggleCameraButton"
+            ) {
+                Task {
+                    await model.toggleRoomCamera(
+                        using: videoCapture,
+                        position: cameraPosition,
+                        qualityIntent: videoQualityIntent
+                    )
+                }
             }
 
             dockButton(

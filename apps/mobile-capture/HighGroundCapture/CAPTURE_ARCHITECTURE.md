@@ -1,7 +1,7 @@
 # Quipsly Capture iPhone Architecture
 
 Status: implementation baseline
-Last reviewed: 2026-08-03
+Last reviewed: 2026-08-23
 Minimum OS: iOS 17
 Primary product: local-first, consent-aware audio and production-source capture for coaching, podcasts, research interviews, and creator video
 
@@ -170,6 +170,34 @@ see, for example, that an MV7i was selected even when the delivered AAC remains
 the canonical encoded format. Nest carries the same evidence into transcript
 review; `docs/architecture/audio-and-transcript-observability.md` defines the
 cross-surface accuracy contract.
+
+#### One camera graph for call video and the retained master
+
+`VideoCaptureService` is the only owner of the physical iPhone camera. Its one
+`AVCaptureSession` contains both `AVCaptureMovieFileOutput` and
+`AVCaptureVideoDataOutput`, which iOS 17 can operate simultaneously. The movie
+output remains the fragmented, immutable local production source. The data
+output discards late frames and synchronously hands current sample buffers to a
+weak consumer; with no live consumer installed, frames are simply discarded.
+
+When the person taps the ordinary in-call Camera control,
+`ProviderRoomController` creates a LiveKit `LocalVideoTrack` backed by
+`BufferCapturer`, attaches that capturer as the service's frame consumer, and
+publishes it as the camera source. It never calls LiveKit's convenience camera
+API because that API would create a second camera owner. Conversation video is
+bounded to 720p at no more than 24 fps and can use simulcast; this transport
+choice never changes the prepared local-master profile, which may remain 4K at
+24 fps. Recording still requires a separate explicit action, current consent,
+source ledger, and receipts.
+
+The remote participant is the main video stage and the local camera is
+picture-in-picture. If nobody else publishes video, the local preview becomes
+the main framing stage. Camera switching reconfigures the same AVFoundation
+input; during a retained take, the existing explicit movie boundary is
+preserved. Mute and Camera are independent. Camera-off, Leave, remote
+disconnect, CallKit reset, account change, and failure detach the frame consumer
+before dropping the SDK track so no stale capturer can retain or receive future
+camera frames.
 
 Before a real take, the expanded iPhone rehearsal card now offers an explicit
 ten-second sound check on the selected input route. It uses the same 48 kHz,

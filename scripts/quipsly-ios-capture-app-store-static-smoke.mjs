@@ -333,7 +333,8 @@ requireIncludes(appInfoText, "audio stays on-device during recognition", "on-dev
 requireIncludes(appInfoText, "NSCameraUsageDescription", "camera usage string required by linked session SDK");
 requireIncludes(appInfoText, "only after you explicitly choose video", "camera usage explicit video choice");
 requireIncludes(appInfoText, "Audio recording does not use the camera", "camera usage audio boundary");
-requireIncludes(providerRoomText, "configuration.supportsVideo = false", "audio-only CallKit presentation");
+requireIncludes(providerRoomText, "configuration.supportsVideo = true", "CallKit supports the user-controlled native video path");
+requireIncludes(providerRoomText, "action.isVideo = false", "calls still begin with camera off by default");
 requireIncludes(appInfoText, "UIBackgroundModes", "background audio mode");
 requireIncludes(appInfoText, "ITSAppUsesNonExemptEncryption", "export compliance declaration");
 requireRegex(
@@ -1615,6 +1616,17 @@ requireIncludes(providerRoomText, "SwiftUIVideoView(track, layoutMode: .fill)", 
 requireIncludes(providerRoomText, 'accessibilityIdentifier("CaptureRemoteCallVideo")', "native remote video has a stable automation identity");
 requireIncludes(capturePhoneShellText, "model.providerRoom.hasRemoteVideo", "shipping call surface reveals remote video only when a real track exists");
 assert(!providerRoomText.includes("setCamera(enabled: true)"), "Live call must not silently seize the iPhone camera from retained local capture.", { forbidden: "setCamera(enabled: true)" });
+requireIncludes(videoCaptureServiceText, "AVCaptureVideoDataOutput()", "one AVFoundation camera graph emits live conversation frames");
+requireIncludes(videoCaptureServiceText, "captureSession.addOutput(videoDataOutput)", "live frame output joins the retained movie capture session");
+requireIncludes(videoCaptureServiceText, "captureSession.addOutput(movieOutput)", "retained movie output remains on the shared camera session");
+requireIncludes(providerRoomText, "LocalVideoTrack.createBufferTrack", "native call publishes the app-owned camera frames through a custom LiveKit track");
+requireIncludes(providerRoomText, "source.setLiveVideoFrameConsumer(bridge)", "LiveKit consumes frames from the authoritative retained-capture camera owner");
+requireIncludes(providerRoomText, "clearLocalVideoBridge()", "native call teardown detaches the shared camera bridge");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleCameraButton"', "persistent call dock exposes a conventional camera toggle");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderLocalVideoPreview")', "native call shows the local camera preview when published");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderCallVideoStage")', "native call composes remote video as the main stage instead of a vertical settings stack");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderSwitchCameraButton")', "native call exposes standard front/back camera switching");
+requireIncludes(captureExperienceModelText, "func switchRoomCamera(", "live camera switching reuses the authoritative capture controller");
 requireIncludes(captureExperienceModelText, "endpointRole: useCallAudio ? \"primary\" : \"companion\"", "native room token records primary versus companion endpoint intent");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderJoinRoomButton")', "shipping provider join action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
