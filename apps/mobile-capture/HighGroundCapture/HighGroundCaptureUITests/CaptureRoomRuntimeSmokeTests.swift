@@ -344,20 +344,29 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     }
 
     private func signInIfNeeded(_ app: XCUIApplication, credentials: RuntimeSmokeCredentials) {
+        // Runtime flights provide a credential file and LoginView begins that
+        // transaction as soon as it appears. Prefer the stable signed-in shell
+        // over interacting with a login form that may be disappearing while
+        // XCTest resolves it; manual entry remains the failure fallback.
+        if app.descendants(matching: .any)["CaptureSignedInShellAccount"]
+            .firstMatch
+            .waitForExistence(timeout: 20)
+        {
+            return
+        }
+
         let emailField = app.textFields["QuipslyCaptureEmailField"]
         if emailField.waitForExistence(timeout: 8) {
             // A restored Firebase session can replace the briefly rendered
             // login form while XCTest is resolving it. Only type into a form
             // that remains present after that startup transition settles.
             RunLoop.current.run(until: Date().addingTimeInterval(1))
-            if app.tabBars.firstMatch.exists { return }
+            if app.tabBars.firstMatch.waitForExistence(timeout: 3) { return }
             guard emailField.exists else { return }
-            if (emailField.value as? String) != credentials.email {
-                emailField.tap()
-                emailField.typeKey("a", modifierFlags: .command)
-                emailField.typeKey(.delete, modifierFlags: [])
-                emailField.typeText(credentials.email)
-            }
+            emailField.tap()
+            emailField.typeKey("a", modifierFlags: .command)
+            emailField.typeKey(.delete, modifierFlags: [])
+            emailField.typeText(credentials.email)
 
             let passwordField = app.secureTextFields["QuipslyCapturePasswordField"]
             if !passwordField.waitForExistence(timeout: 4) {
