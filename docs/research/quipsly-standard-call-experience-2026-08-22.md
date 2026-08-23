@@ -518,6 +518,17 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   remain implementation evidence or disclosed detail. Call audio is described
   plainly as conversation audio, while the saved iPhone file is the
   high-quality copy.
+- Finished the scheduler hierarchy on both web and iPhone. Client email and
+  start time are the only primary inputs; saved duration and timezone appear as
+  one quiet summary, while client name, Session name, duration override, hold
+  behavior, timezone override, and payment remain optional. The iPhone opens
+  its keyboard on email, removes the recurring access-policy disclaimer, uses
+  one `Schedule & invite` action, automatically attempts configured email
+  delivery, and keeps system Share as the resilient fallback.
+- Made reopening a Session honor the canonical saved consent state in both UI
+  and server guidance. Reopen never invents a new consent ceremony; recording
+  remains a separate explicit action and a changed Session, participant, media
+  scope, policy, or prior decision can still require a new choice.
 - Lead post-capture audio review with the waveform and honest listening work,
   not meters. The iPhone now summarizes the number of exact moments worth
   checking, keeps every moment playable against the untouched original, and

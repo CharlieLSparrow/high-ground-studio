@@ -3505,7 +3505,7 @@ export default function CoachingPage() {
                       spellCheck={false}
                     />
                   </label>
-                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
+                  <div>
                     <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
                       Start
                       <input
@@ -3521,28 +3521,10 @@ export default function CoachingPage() {
                         required
                       />
                     </label>
-                    <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                      Minutes
-                      <input
-                        type="number"
-                        min="15"
-                        step="15"
-                        value={createForm.durationMinutes}
-                        onChange={(event) =>
-                          setCreateForm((current) => ({
-                            ...current,
-                            durationMinutes: event.target.value,
-                          }))
-                        }
-                        className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
-                        required
-                      />
-                    </label>
                   </div>
-                  <p className="rounded-xl bg-[#f8f3e6] px-3 py-2 text-xs font-bold text-[#7b5c3b]">
-                    The time above uses{" "}
-                    {createForm.timezone || "your detected timezone"}. Both
-                    people will see the timezone with the appointment.
+                  <p className="px-1 text-xs font-semibold text-[#7b5c3b]">
+                    {createForm.durationMinutes} minutes ·{" "}
+                    {createForm.timezone || "your detected timezone"}
                   </p>
                   <details className="rounded-xl border border-[#d6c5a5] bg-white p-3">
                     <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
@@ -3579,6 +3561,24 @@ export default function CoachingPage() {
                           className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                           required
                         />
+                      </label>
+                      <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                        Duration
+                        <select
+                          value={createForm.durationMinutes}
+                          onChange={(event) =>
+                            setCreateForm((current) => ({
+                              ...current,
+                              durationMinutes: event.target.value,
+                            }))
+                          }
+                          className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                        >
+                          <option value="30">30 minutes</option>
+                          <option value="45">45 minutes</option>
+                          <option value="60">60 minutes</option>
+                          <option value="90">90 minutes</option>
+                        </select>
                       </label>
                       <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
                         Scheduling behavior

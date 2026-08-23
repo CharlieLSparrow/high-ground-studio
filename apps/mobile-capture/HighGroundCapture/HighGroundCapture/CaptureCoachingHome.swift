@@ -788,7 +788,7 @@ struct CaptureCoachingHomeView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("New client or session")
                         .font(.headline)
-                    Text("One step creates the client identity, private relationship, appointment, consent requests, and joinable room.")
+                    Text("Choose who and when. Quipsly prepares the private Session and invitation.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -816,7 +816,7 @@ struct CaptureCoachingHomeView: View {
             Label("Appointment ready", systemImage: "checkmark.circle.fill")
                 .font(.headline)
                 .foregroundStyle(.green)
-            Text("Send the private entry to the client. Their invited, verified email—not possession of the link—controls access.")
+            Text("The invitation is ready. You can send it again or share the private entry link below.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let booking = booking(for: handoff.callRoomId) {
@@ -1464,11 +1464,7 @@ private struct NewMobileCoachingAppointmentSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Client") {
-                    TextField("Name (optional)", text: $draft.clientName)
-                        .textContentType(.name)
-                        .focused($focusedField, equals: .name)
-                        .accessibilityIdentifier("CaptureCoachingClientName")
+                Section("Invite") {
                     TextField("Email", text: $draft.clientEmail)
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
@@ -1476,37 +1472,41 @@ private struct NewMobileCoachingAppointmentSheet: View {
                         .autocorrectionDisabled()
                         .focused($focusedField, equals: .email)
                         .accessibilityIdentifier("CaptureCoachingClientEmail")
-                    Text("The client must sign in with this exact verified email. The shared link is navigation, never a bearer credential.")
+                    Text("Quipsly will send a private invitation to this address.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                Section("Appointment") {
-                    TextField("Session title", text: $draft.title)
-                        .focused($focusedField, equals: .title)
-                        .accessibilityIdentifier("CaptureCoachingSessionTitle")
+                Section("When") {
                     DatePicker(
                         "Starts",
                         selection: $draft.scheduledStart,
                         in: Date()...,
                         displayedComponents: [.date, .hourAndMinute]
                     )
-                    Picker("Duration", selection: $draft.durationMinutes) {
-                        Text("30 minutes").tag(30)
-                        Text("45 minutes").tag(45)
-                        Text("60 minutes").tag(60)
-                        Text("90 minutes").tag(90)
-                    }
-                    LabeledContent("Time zone", value: TimeZone.current.identifier)
+                    Text("\(draft.durationMinutes) minutes · \(TimeZone.current.identifier)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section {
-                    Label(
-                        "Create schedules only. It does not start the call, camera, microphone, recording, transcription, calendar sync, or payment.",
-                        systemImage: "checkmark.shield"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    DisclosureGroup("Optional details") {
+                        TextField("Client name", text: $draft.clientName)
+                            .textContentType(.name)
+                            .focused($focusedField, equals: .name)
+                            .accessibilityIdentifier("CaptureCoachingClientName")
+                        TextField("Session name", text: $draft.title)
+                            .focused($focusedField, equals: .title)
+                            .accessibilityIdentifier("CaptureCoachingSessionTitle")
+                        Picker("Duration", selection: $draft.durationMinutes) {
+                            Text("30 minutes").tag(30)
+                            Text("45 minutes").tag(45)
+                            Text("60 minutes").tag(60)
+                            Text("90 minutes").tag(90)
+                        }
+                        LabeledContent("Time zone", value: TimeZone.current.identifier)
+                    }
+                    .accessibilityIdentifier("CaptureCoachingOptionalDetails")
                 }
 
                 if let error = client.errorMessage {
@@ -1520,9 +1520,16 @@ private struct NewMobileCoachingAppointmentSheet: View {
                     Button("Cancel") { isPresented = false }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(client.isMutating ? "Creating…" : "Create") {
+                    Button(client.isMutating ? "Scheduling…" : "Schedule & invite") {
                         Task {
                             guard let result = await client.createAppointment(draft) else { return }
+                            if client.invitationEmailAvailable, let roomID = result.callRoomId {
+                                _ = await client.sendInvitationEmail(
+                                    roomID: roomID,
+                                    recipientEmail: draft.normalizedEmail,
+                                    recipientName: draft.clientName
+                                )
+                            }
                             await onCreated(result)
                             isPresented = false
                         }
@@ -1531,7 +1538,7 @@ private struct NewMobileCoachingAppointmentSheet: View {
                     .accessibilityIdentifier("CaptureCoachingCreateAppointment")
                 }
             }
-            .onAppear { focusedField = .name }
+            .onAppear { focusedField = .email }
         }
         .accessibilityIdentifier("CaptureCoachingAppointmentSheet")
     }

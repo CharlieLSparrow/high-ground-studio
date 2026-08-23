@@ -1154,15 +1154,19 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.descendants(matching: .any)["CaptureCoachingAppointmentSheet"].waitForExistence(timeout: 8)
         )
 
-        let name = app.textFields["CaptureCoachingClientName"].firstMatch
-        XCTAssertTrue(name.waitForExistence(timeout: 6))
-        name.tap()
-        name.typeText(clientName)
-
         let email = app.textFields["CaptureCoachingClientEmail"].firstMatch
         XCTAssertTrue(email.waitForExistence(timeout: 6))
         email.tap()
         email.typeText(clientEmail)
+
+        let optionalDetails = app.descendants(matching: .any)["CaptureCoachingOptionalDetails"].firstMatch
+        XCTAssertTrue(optionalDetails.waitForExistence(timeout: 6))
+        optionalDetails.tap()
+
+        let name = app.textFields["CaptureCoachingClientName"].firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 6))
+        name.tap()
+        name.typeText(clientName)
 
         let title = app.textFields["CaptureCoachingSessionTitle"].firstMatch
         replaceText(in: title, with: sessionTitle, app: app)

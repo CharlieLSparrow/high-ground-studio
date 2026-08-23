@@ -41,11 +41,11 @@ describe("coaching release surfaces", () => {
       "timezone: setupForm.timezone || current.timezone",
     );
     expect(source).toContain("value={createForm.timezone}");
-    expect(compact).toContain("The time above uses");
     expect(compact).toContain(
-      "Both people will see the timezone with the appointment.",
+      '{createForm.durationMinutes} minutes ·{" "} {createForm.timezone || "your detected timezone"}',
     );
     expect(compact).toContain("More options");
+    expect(compact).toContain("Duration <select");
     expect(compact).toContain("Schedule and prepare the invitation");
     expect(compact).toContain("Schedule and send invite");
     expect(compact).not.toContain("Set up your coach profile first");
