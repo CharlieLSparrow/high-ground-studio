@@ -14,8 +14,10 @@ test("fresh Session audio polish operation protects source truth and acceptance 
   assert.match(subject, /Fresh Session audio polish requires the loopback Firebase Auth emulator/);
   assert.match(subject, /freshCoachAuthRestoredToEphemeralEmulator: true/);
   assert.match(subject, /Your recordings are safe and ready/);
-  assert.match(subject, /name: \/\^\(Improve audio\|Try audio polish again\)\$\//);
-  assert.match(subject, /original recording stays untouched/i);
+  assert.match(subject, /name: \/\^\(Check audio now\|Try again\)\$\//);
+  assert.match(subject, /original stays untouched/i);
+  assert.match(subject, /name: "Compare original and improved"/);
+  assert.match(subject, /Audio quality did not expose a truthful starting or completed state/);
   assert.match(subject, /originalSourceAndCaptureManifestUnchanged: true/);
   assert.match(subject, /automaticProcessingResumed: initialState === "automatic-processing"/);
   assert.match(subject, /completedStateRecognizedAtEntry: initialState === "completed"/);

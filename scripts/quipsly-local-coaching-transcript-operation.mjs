@@ -476,6 +476,57 @@ try {
     );
   }
 
+  const mentorReportButton = page.getByRole("button", {
+    name: "Mentor report",
+    exact: true,
+  });
+  await mentorReportButton.waitFor({ state: "visible", timeout: 20_000 });
+  const [mentorReportDownload, mentorReportResponse] = await Promise.all([
+    page.waitForEvent("download"),
+    page.waitForResponse(
+      (candidate) =>
+        candidate.request().method() === "GET" &&
+        new URL(candidate.url()).pathname ===
+          `/api/sessions/${ROOM_ID}/transcript-report`,
+    ),
+    mentorReportButton.click(),
+  ]);
+  assert(
+    mentorReportResponse.ok(),
+    `Mentor transcript request failed with ${mentorReportResponse.status()}.`,
+  );
+  assert(
+    mentorReportResponse.headers()["x-quipsly-transcript-schema"] ===
+      "quipsly-coaching-transcript-report-v2" &&
+      mentorReportResponse.headers()["x-quipsly-transcript-source-count"] ===
+        "2",
+    "Mentor transcript did not prove a two-source coaching report.",
+  );
+  const mentorStream = await mentorReportDownload.createReadStream();
+  const mentorChunks = [];
+  for await (const chunk of mentorStream) mentorChunks.push(Buffer.from(chunk));
+  const mentorFile = Buffer.concat(mentorChunks);
+  assert(
+    mentorFile.length > 5_000 && mentorFile.subarray(0, 2).toString("utf8") === "PK",
+    "Mentor transcript download was not a non-empty OOXML document.",
+  );
+  await page
+    .getByText(
+      "Mentor transcript downloaded. It keeps coach/client columns, timestamps, and source identity.",
+      { exact: true },
+    )
+    .waitFor({ state: "visible", timeout: 20_000 });
+  const mentorReport = {
+    downloadedThroughRenderedUi: true,
+    schema: mentorReportResponse.headers()["x-quipsly-transcript-schema"],
+    sourceCount: Number(
+      mentorReportResponse.headers()["x-quipsly-transcript-source-count"],
+    ),
+    fileName: mentorReportDownload.suggestedFilename(),
+    byteSize: mentorFile.length,
+    sha256: createHash("sha256").update(mentorFile).digest("hex"),
+  };
+
   console.log(
     JSON.stringify(
       {
@@ -493,6 +544,7 @@ try {
         ).size,
         renderedTranscriptRuns: results,
         controlledSpeechTermsObserved,
+        mentorReport,
         realSpeechQualityProven: false,
         naturalHumanSpeechProven: false,
         humanPlaybackReviewProven: false,

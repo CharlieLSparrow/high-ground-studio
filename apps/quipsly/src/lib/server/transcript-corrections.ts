@@ -219,6 +219,10 @@ function recordingForPlaybackPreparation(asset: any, gateAllowed: boolean) {
   if (!asset?.id) return null;
   return {
     id: asset.id as string,
+    participantId: text(asset.participantId) || null,
+    recordedStartedAt: asset.recordedStartedAt instanceof Date
+      ? asset.recordedStartedAt.toISOString()
+      : asset.recordedStartedAt ?? null,
     status: text(asset.status) || "UNKNOWN",
     kind: text(asset.kind) || "UNKNOWN",
     fileName: text(asset.fileName) || "Session recording",
@@ -487,6 +491,7 @@ async function loadAccessibleRoom(
             select: {
               id: true,
               roomId: true,
+              participantId: true,
               kind: true,
               status: true,
               fileName: true,

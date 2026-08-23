@@ -18,7 +18,7 @@ import {
   WidthType,
 } from "docx";
 
-export const COACHING_TRANSCRIPT_REPORT_SCHEMA = "quipsly-coaching-transcript-report-v1";
+export const COACHING_TRANSCRIPT_REPORT_SCHEMA = "quipsly-coaching-transcript-report-v2";
 
 export const COACHING_COMPETENCIES = [
   "Demonstrates Ethical Practice",
@@ -58,6 +58,16 @@ type ReportSegment = {
   speakerAttribution?: { participantId?: string | null } | null;
   acceptedCorrection?: { id?: string } | null;
   acceptedVerification?: { id?: string } | null;
+  transcriptJobId?: string;
+  recordingAssetId?: string;
+};
+
+export type CoachingTranscriptReportSource = {
+  transcriptJobId: string;
+  recordingAssetId: string;
+  sourceSha256?: string | null;
+  participantId?: string | null;
+  programOffsetSeconds?: number;
 };
 
 type ReportSpeakerGroup = {
@@ -70,9 +80,7 @@ export type CoachingTranscriptReportInput = {
   title: string;
   scheduledStart?: string | Date | null;
   generatedAt: string | Date;
-  transcriptJobId: string;
-  recordingAssetId: string;
-  sourceSha256?: string | null;
+  sources: CoachingTranscriptReportSource[];
   participants: ReportParticipant[];
   speakerGroups?: ReportSpeakerGroup[];
   segments: ReportSegment[];
@@ -87,6 +95,8 @@ export type CoachingTranscriptReportTurn = {
   endSeconds: number;
   text: string;
   reviewState: "corrected" | "confirmed" | "unreviewed";
+  transcriptJobId: string;
+  recordingAssetId: string;
 };
 
 export type CoachingTranscriptReport = {
@@ -95,9 +105,13 @@ export type CoachingTranscriptReport = {
   title: string;
   sessionDate: string;
   generatedAt: string;
-  transcriptJobId: string;
-  recordingAssetId: string;
-  sourceSha256: string | null;
+  sources: Array<{
+    transcriptJobId: string;
+    recordingAssetId: string;
+    sourceSha256: string | null;
+    participantId: string | null;
+    programOffsetSeconds: number;
+  }>;
   coach: ReportParticipant;
   client: ReportParticipant;
   turns: CoachingTranscriptReportTurn[];
@@ -147,7 +161,19 @@ function chooseParticipants(participants: ReportParticipant[]) {
 }
 
 export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInput): CoachingTranscriptReport {
-  if (!clean(input.transcriptJobId) || !clean(input.recordingAssetId)) {
+  const sources = input.sources.map((source) => ({
+    transcriptJobId: clean(source.transcriptJobId, 240),
+    recordingAssetId: clean(source.recordingAssetId, 240),
+    sourceSha256: clean(source.sourceSha256, 64).toLowerCase() || null,
+    participantId: clean(source.participantId, 240) || null,
+    programOffsetSeconds: Number.isFinite(source.programOffsetSeconds) ? Math.max(0, Number(source.programOffsetSeconds)) : 0,
+  }));
+  if (
+    !sources.length
+    || sources.some((source) => !source.transcriptJobId || !source.recordingAssetId || !/^[a-f0-9]{64}$/.test(source.sourceSha256 ?? ""))
+    || new Set(sources.map((source) => source.transcriptJobId)).size !== sources.length
+    || new Set(sources.map((source) => source.recordingAssetId)).size !== sources.length
+  ) {
     throw new CoachingTranscriptReportError(
       "A source-bound transcript and recording are required before creating the mentor transcript.",
       409,
@@ -155,6 +181,8 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
     );
   }
   const { coach, client } = chooseParticipants(input.participants);
+  const sourcesByJobId = new Map(sources.map((source) => [source.transcriptJobId, source]));
+  const sourcesByRecordingId = new Map(sources.map((source) => [source.recordingAssetId, source]));
   const participantsById = new Map(input.participants.map((participant) => [participant.id, participant]));
   const participantsByLabel = new Map<string, ReportParticipant | null>();
   for (const participant of input.participants) {
@@ -170,7 +198,15 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
 
   const unresolved: string[] = [];
   const turns = input.segments.map((segment) => {
+    const source = sourcesByJobId.get(clean(segment.transcriptJobId, 240))
+      ?? sourcesByRecordingId.get(clean(segment.recordingAssetId, 240))
+      ?? (sources.length === 1 ? sources[0] : null);
+    if (!source) {
+      unresolved.push(`${transcriptTimestamp(segment.startSeconds)} source not bound`);
+      return null;
+    }
     const attributedId = clean(segment.speakerAttribution?.participantId)
+      || clean(source.participantId)
       || groupParticipantByLabel.get(normalized(segment.providerSpeakerLabel))
       || groupParticipantByLabel.get(normalized(segment.speakerLabel))
       || "";
@@ -199,8 +235,11 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
         : segment.acceptedVerification
           ? "confirmed" as const
           : "unreviewed" as const,
+      transcriptJobId: source.transcriptJobId,
+      recordingAssetId: source.recordingAssetId,
     };
-  }).filter((turn): turn is CoachingTranscriptReportTurn => Boolean(turn?.text));
+  }).filter((turn): turn is CoachingTranscriptReportTurn => Boolean(turn?.text))
+    .sort((left, right) => left.startSeconds - right.startSeconds || left.segmentId.localeCompare(right.segmentId));
 
   if (unresolved.length) {
     throw new CoachingTranscriptReportError(
@@ -231,9 +270,7 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
     title: clean(input.title, 240) || "Coaching Session",
     sessionDate,
     generatedAt,
-    transcriptJobId: clean(input.transcriptJobId, 240),
-    recordingAssetId: clean(input.recordingAssetId, 240),
-    sourceSha256: clean(input.sourceSha256, 64).toLowerCase() || null,
+    sources,
     coach,
     client,
     turns,
@@ -322,7 +359,7 @@ export async function renderCoachingTranscriptReport(report: CoachingTranscriptR
     creator: "Quipsly",
     title: `${report.title} coaching transcript`,
     subject: "Source-bound coaching transcript for mentor review",
-    description: `${report.schema}; room ${report.roomId}; transcript ${report.transcriptJobId}; recording ${report.recordingAssetId}`,
+    description: `${report.schema}; room ${report.roomId}; ${report.sources.length} exact recording source(s)`,
     styles: {
       default: { document: { run: { font: "Aptos", color: INK, size: 21 } } },
     },
@@ -391,8 +428,13 @@ export async function renderCoachingTranscriptReport(report: CoachingTranscriptR
           new TextRun({ text: "ACC or AACC: approaching ACC  •  PCC or APCC: approaching PCC  •  MCC or AMCC: approaching MCC", color: MUTED, size: 18 }),
         ] }),
         new Paragraph({ spacing: { before: 180 }, children: [
-          new TextRun({ text: `Evidence: transcript ${report.transcriptJobId}  •  recording ${report.recordingAssetId}`, color: MUTED, size: 15 }),
-          ...(report.sourceSha256 ? [new TextRun({ break: 1, text: `Source SHA-256: ${report.sourceSha256}`, color: MUTED, size: 15 })] : []),
+          new TextRun({ text: `Evidence: ${report.sources.length} independently source-bound participant recording${report.sources.length === 1 ? "" : "s"}`, color: MUTED, size: 15 }),
+          ...report.sources.flatMap((source, index) => [new TextRun({
+            break: 1,
+            text: `Source ${index + 1}: transcript ${source.transcriptJobId}  •  recording ${source.recordingAssetId}${source.sourceSha256 ? `  •  SHA-256 ${source.sourceSha256}` : ""}`,
+            color: MUTED,
+            size: 15,
+          })]),
           new TextRun({ break: 1, text: `Generated ${report.generatedAt}`, color: MUTED, size: 15 }),
         ] }),
       ],

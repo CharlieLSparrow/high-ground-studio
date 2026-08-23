@@ -13,9 +13,11 @@ function input() {
     title: "Practice Coaching Session",
     scheduledStart: "2026-08-23T16:00:00.000Z",
     generatedAt: "2026-08-23T18:00:00.000Z",
-    transcriptJobId: "transcript-1",
-    recordingAssetId: "recording-1",
-    sourceSha256: "a".repeat(64),
+    sources: [{
+      transcriptJobId: "transcript-1",
+      recordingAssetId: "recording-1",
+      sourceSha256: "a".repeat(64),
+    }],
     participants: [
       { id: "participant-coach", displayLabel: "Scott Sparrow", role: "COACH" },
       { id: "participant-client", displayLabel: "Practice Client", role: "CLIENT" },
@@ -95,6 +97,28 @@ describe("coaching transcript mentor report", () => {
 
     expect(document.byteLength).toBeGreaterThan(5_000);
     expect(document.subarray(0, 2).toString("utf8")).toBe("PK");
-    expect(report.sourceSha256).toBe("a".repeat(64));
+    expect(report.sources).toEqual([expect.objectContaining({ sourceSha256: "a".repeat(64) })]);
+  });
+
+  it("merges independently source-bound participant transcripts on the shared Session clock", () => {
+    const report = buildCoachingTranscriptReport({
+      ...input(),
+      sources: [
+        { transcriptJobId: "coach-job", recordingAssetId: "coach-source", sourceSha256: "a".repeat(64), participantId: "participant-coach", programOffsetSeconds: 0 },
+        { transcriptJobId: "client-job", recordingAssetId: "client-source", sourceSha256: "b".repeat(64), participantId: "participant-client", programOffsetSeconds: 1.25 },
+      ],
+      speakerGroups: [],
+      segments: [
+        { ...input().segments[0], transcriptJobId: "coach-job", recordingAssetId: "coach-source", speakerAttribution: null },
+        { ...input().segments[1], transcriptJobId: "client-job", recordingAssetId: "client-source", speakerAttribution: null },
+      ],
+    });
+
+    expect(report.schema).toBe("quipsly-coaching-transcript-report-v2");
+    expect(report.sources).toHaveLength(2);
+    expect(report.turns.map((turn) => [turn.speaker, turn.transcriptJobId])).toEqual([
+      ["coach", "coach-job"],
+      ["client", "client-job"],
+    ]);
   });
 });

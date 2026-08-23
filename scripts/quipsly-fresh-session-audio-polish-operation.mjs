@@ -26,6 +26,17 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+async function waitForVisibleState(states, timeoutMs, failureMessage) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const state of states) {
+      if (await state.locator.isVisible().catch(() => false)) return state.name;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(failureMessage);
+}
+
 function checkpoint(message) {
   process.stderr.write(`[fresh Session audio polish] ${message}\n`);
 }
@@ -311,13 +322,15 @@ async function operateRenderedSession({ baseURL, context, password }) {
     const improve = card.getByRole("button", { name: /^(Check audio now|Try again)$/ });
     const improving = card.getByRole("button", { name: "Improving audio…" });
     const readyComparison = card.getByText(/Ready to compare\. Quipsly has not replaced or published either version\./i);
+    const auditionReady = card.getByText(/Your improved copy is ready\. Hear the same moment in both versions/i);
     const alreadyBalanced = card.getByText(/already meets Quipsly's spoken-word loudness target/i);
-    await Promise.race([
-      improve.waitFor({ timeout: 60_000 }),
-      improving.waitFor({ timeout: 60_000 }),
-      readyComparison.waitFor({ timeout: 60_000 }),
-      alreadyBalanced.waitFor({ timeout: 60_000 }),
-    ]);
+    await waitForVisibleState([
+      { name: "action-required", locator: improve },
+      { name: "automatic-processing", locator: improving },
+      { name: "comparison", locator: readyComparison },
+      { name: "audition", locator: auditionReady },
+      { name: "balanced", locator: alreadyBalanced },
+    ], 60_000, "Audio quality did not expose a truthful starting or completed state.");
     const canImprove = await improve.isVisible().catch(() => false);
     let initialState = "completed";
     if (canImprove) {
@@ -333,31 +346,49 @@ async function operateRenderedSession({ baseURL, context, password }) {
     }
 
     const retry = card.getByRole("button", { name: "Try again" });
-    const terminal = await Promise.race([
-      readyComparison.waitFor({ timeout: 120_000 }).then(() => "comparison"),
-      alreadyBalanced.waitFor({ timeout: 120_000 }).then(() => "balanced"),
-      retry.waitFor({ timeout: 120_000 }).then(() => "failed"),
-    ]);
+    const terminal = await waitForVisibleState([
+      { name: "comparison", locator: readyComparison },
+      { name: "audition", locator: auditionReady },
+      { name: "balanced", locator: alreadyBalanced },
+      { name: "failed", locator: retry },
+    ], 120_000, "Audio polish never reached a visible completed or retry state.");
     if (terminal === "failed") {
       const reason = await card.getByText(/audio-mastery-|could not|did not finish/i).last().textContent().catch(() => null);
       throw new Error(`Audio polish reached a visible retry state instead of hiding the failure. ${reason || "No failure reason was rendered."}`);
     }
-    const comparisonReady = await readyComparison.count() > 0 && await readyComparison.isVisible().catch(() => false);
+    const auditionAvailable = await auditionReady.isVisible().catch(() => false);
+    const comparisonReady = auditionAvailable
+      || (await readyComparison.count() > 0 && await readyComparison.isVisible().catch(() => false));
     const balanced = await alreadyBalanced.count() > 0 && await alreadyBalanced.isVisible().catch(() => false);
     assert(comparisonReady || balanced, "Audio polish never reached a calm terminal state.");
 
     let originalReadyState = null;
     let improvedReadyState = null;
     if (comparisonReady) {
-      const media = card.locator("audio, video");
+      let media = card.locator("audio, video");
+      let auditionDialog = null;
+      if (auditionAvailable) {
+        await card.getByRole("button", { name: "Compare original and improved", exact: true }).click();
+        auditionDialog = page.getByRole("dialog", { name: "Original and improved" });
+        await auditionDialog.waitFor({ state: "visible", timeout: 15_000 });
+        media = auditionDialog.locator("audio");
+      }
       assert(await media.count() === 2, "Completed Session audio polish did not expose original and improved playback together.");
-      await page.waitForFunction(
-        () => Array.from(document.querySelectorAll('[aria-label="Audio improvement"] audio, [aria-label="Audio improvement"] video')).slice(0, 2).every((element) => element.readyState >= 1),
-        undefined,
-        { timeout: 30_000 },
-      );
+      await media.nth(0).waitFor({ state: "attached", timeout: 30_000 });
+      await media.nth(1).waitFor({ state: "attached", timeout: 30_000 });
+      const mediaReadyDeadline = Date.now() + 30_000;
+      while (Date.now() < mediaReadyDeadline) {
+        const states = await Promise.all([
+          media.nth(0).evaluate((element) => element.readyState),
+          media.nth(1).evaluate((element) => element.readyState),
+        ]);
+        if (states.every((state) => state >= 1)) break;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
       originalReadyState = await media.nth(0).evaluate((element) => element.readyState);
       improvedReadyState = await media.nth(1).evaluate((element) => element.readyState);
+      assert(originalReadyState >= 1 && improvedReadyState >= 1, "Original and improved audio metadata did not load in the comparison.");
+      if (auditionDialog) await auditionDialog.getByRole("button", { name: "Close", exact: true }).click();
     }
 
     checkpoint("operating transcript-first review and inline recording edits");
