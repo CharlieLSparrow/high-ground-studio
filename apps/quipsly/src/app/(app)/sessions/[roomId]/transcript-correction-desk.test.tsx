@@ -307,17 +307,16 @@ describe("TranscriptCorrectionDesk", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
-    const voiceLabels = await screen.findByRole("button", { name: /voice labels/i });
-    expect(screen.queryByText("Identify a voice once")).not.toBeInTheDocument();
-    fireEvent.click(voiceLabels);
-    await screen.findByText("Identify a voice once");
+    const voiceLabels = await screen.findByRole("button", { name: /name the voices/i });
+    await waitFor(() => expect(voiceLabels).toHaveAttribute("aria-expanded", "true"));
+    await screen.findByText("Who is speaking?");
     expect(document.getElementById("speaker-attribution-review")).toBeInTheDocument();
-    expect(screen.getByText(/does not mark those words playback-reviewed/i)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/^participant$/i), { target: { value: "participant-1" } });
+    expect(screen.getByText(/use that name for the matching voice throughout this Session/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^person$/i), { target: { value: "participant-1" } });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: /play speaker sample from 00:03/i })); });
-    expect(await screen.findByText(/voice sample played/i)).toBeInTheDocument();
+    expect(await screen.findByText(/sample played/i)).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /recognize this voice/i })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /apply voice identity/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save name/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
@@ -329,7 +328,7 @@ describe("TranscriptCorrectionDesk", () => {
       samples: [{ segmentId: "segment-1", playbackPositionSeconds: 3.66 }],
       confirmedAgainstPlayback: true,
     });
-    expect(await screen.findByText(/speaker is now identified as scott sparrow.*word review remains unchanged/i)).toBeInTheDocument();
+    expect(await screen.findByText(/scott sparrow is now used for this voice throughout the session/i)).toBeInTheDocument();
   });
 
   it("unlocks an AI correction proposal from observed playback without another checkbox", async () => {

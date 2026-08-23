@@ -901,7 +901,7 @@ function SpeakerAttributionPanel({
       const body = await response.json() as { ok?: boolean; error?: string; attribution?: SpeakerAttribution };
       if (!response.ok || !body.ok || !body.attribution) throw new Error(body.error || "The speaker assignment was not saved.");
       setRequestIds((current) => ({ ...current, [label]: requestId(`speaker-${label}`) }));
-      await onSaved(`${label} is now identified as ${body.attribution.attributedLabel}. Word review remains unchanged.`);
+      await onSaved(`${body.attribution.attributedLabel} is now used for this voice throughout the Session.`);
     } catch (error) {
       setErrors((current) => ({
         ...current,
@@ -912,10 +912,9 @@ function SpeakerAttributionPanel({
 
   if (!groups.length) return null;
   return (
-    <section id="speaker-attribution-review" tabIndex={-1} aria-labelledby="speaker-attribution-heading" className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5 shadow-sm">
-      <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-800">Session-wide diarization</p>
-      <h3 id="speaker-attribution-heading" className="mt-2 font-serif text-2xl font-black text-[#3d3122]">Identify a voice once</h3>
-      <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-indigo-950">Play a representative turn, choose the real Session participant, and Quipsly will label every turn in that provider cluster. This identifies the voice only—it does not mark those words playback-reviewed.</p>
+    <section id="speaker-attribution-review" tabIndex={-1} aria-labelledby="speaker-attribution-heading" className="rounded-xl border border-indigo-200 bg-white p-4">
+      <h3 id="speaker-attribution-heading" className="font-serif text-xl font-black text-[#3d3122]">Who is speaking?</h3>
+      <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-indigo-950">Listen to one sample, then choose the person. Quipsly will use that name for the matching voice throughout this Session.</p>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         {groups.map((group) => {
           const label = group.providerSpeakerLabel;
@@ -929,15 +928,15 @@ function SpeakerAttributionPanel({
             <article key={label} className="rounded-xl border border-indigo-200 bg-white p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-wide text-indigo-800">Provider {label} · {group.turnCount} turn{group.turnCount === 1 ? "" : "s"}</p>
-                  <p className="mt-1 text-sm font-black text-indigo-950">{group.attribution ? `Identified as ${group.attribution.attributedLabel}` : "Needs a human identity"}</p>
+                  <p className="text-xs font-black uppercase tracking-wide text-indigo-800">{label} · {group.turnCount} passage{group.turnCount === 1 ? "" : "s"}</p>
+                  <p className="mt-1 text-sm font-black text-indigo-950">{group.attribution ? `Named ${group.attribution.attributedLabel}` : "Needs a name"}</p>
                 </div>
-                {group.attribution && <span className="rounded-full bg-emerald-100 px-3 py-1 text-[0.68rem] font-black uppercase tracking-wide text-emerald-900">voice reviewed</span>}
+                {group.attribution && <span className="rounded-full bg-emerald-100 px-3 py-1 text-[0.68rem] font-black uppercase tracking-wide text-emerald-900">Named</span>}
               </div>
-              {group.staleAttribution && <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-950">The provider cluster changed after its prior assignment. Listen again before reapplying an identity.</p>}
-              <label className="mt-4 block text-xs font-black uppercase tracking-wide text-indigo-950">Participant
+              {group.staleAttribution && <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-950">This voice changed after it was named. Listen again before saving the name.</p>}
+              <label className="mt-4 block text-xs font-black uppercase tracking-wide text-indigo-950">Person
                 <select value={selectedParticipant} onChange={(event) => setSelectedParticipants((current) => ({ ...current, [label]: event.target.value }))} className="mt-1 block min-h-11 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]">
-                  <option value="">Choose a Session participant</option>
+                  <option value="">Choose a person</option>
                   {participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.displayLabel} · {humanize(participant.role)}{participant.isCurrentActor ? " · you" : ""}</option>)}
                 </select>
               </label>
@@ -948,9 +947,9 @@ function SpeakerAttributionPanel({
                   </button>
                 ))}
               </div>
-              {playedSample ? <p className={`mt-3 rounded-lg border p-3 text-sm font-bold leading-relaxed ${samplePlaybackReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-indigo-200 bg-indigo-50/60 text-indigo-950"}`}>{samplePlaybackReviewed ? "Voice sample played. Choose the person and apply the label." : "Starting voice sample…"}</p> : null}
+              {playedSample ? <p className={`mt-3 rounded-lg border p-3 text-sm font-bold leading-relaxed ${samplePlaybackReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-indigo-200 bg-indigo-50/60 text-indigo-950"}`}>{samplePlaybackReviewed ? "Sample played. Choose the person and save the name." : "Starting sample…"}</p> : null}
               {errors[label] && <p role="alert" className="mt-3 flex items-start gap-2 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{errors[label]}</p>}
-              <button type="button" onClick={() => void save(group)} disabled={busy || !playbackReady || !selectedParticipant || !playedSample || !samplePlaybackReviewed} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />{group.attribution ? "Update voice identity" : "Apply voice identity"}</button>
+              <button type="button" onClick={() => void save(group)} disabled={busy || !playbackReady || !selectedParticipant || !playedSample || !samplePlaybackReviewed} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />{group.attribution ? "Change name" : "Save name"}</button>
             </article>
           );
         })}
@@ -1633,6 +1632,7 @@ export function TranscriptCorrectionDesk({
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
   const automaticPlaybackPreparationRef = useRef<string | null>(null);
+  const speakerNamingPromptedRef = useRef(false);
   const playbackReady = Boolean(desk?.playback) && playbackState === "ready";
   const detectorDurationSeconds = desk?.playback?.durationSeconds ?? desk?.evaluation?.sourceDurationSeconds ?? desk?.evidence?.audio.signal?.durationSeconds ?? 0;
 
@@ -1695,6 +1695,14 @@ export function TranscriptCorrectionDesk({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [desk, showQualityDetails]);
+
+  useEffect(() => {
+    if (speakerNamingPromptedRef.current || !desk?.gate.allowed) return;
+    const groups = desk.speakerGroups ?? [];
+    if (!groups.some((group) => !group.attribution || group.staleAttribution)) return;
+    speakerNamingPromptedRef.current = true;
+    setShowSpeakerIdentity(true);
+  }, [desk]);
 
   useEffect(() => {
     const recordingId = desk?.recording?.id;
@@ -1878,6 +1886,7 @@ export function TranscriptCorrectionDesk({
 
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
   const identifiedSpeakerCount = (desk.speakerGroups ?? []).filter((group) => group.attribution && !group.staleAttribution).length;
+  const unidentifiedSpeakerCount = (desk.speakerGroups?.length ?? 0) - identifiedSpeakerCount;
   const timingIntegrity = desk.evidence?.transcript.timingIntegrity ?? null;
   const protectedPlaybackSurface = !desk.gate.allowed ? (
     <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-900">{desk.gate.error || "Transcript evidence remains held by consent and release policy."}</p>
@@ -1972,6 +1981,41 @@ export function TranscriptCorrectionDesk({
       </div>
 
       {showRecordingEditor && recordingEditor ? <div id="inline-recording-editor" className="scroll-mt-24">{recordingEditor}</div> : null}
+
+      {desk.gate.allowed && (desk.speakerGroups ?? []).length > 0 ? (
+        <section className={`rounded-2xl border p-4 shadow-sm ${unidentifiedSpeakerCount > 0 ? "border-indigo-300 bg-indigo-50" : "border-emerald-200 bg-emerald-50/45"}`} aria-labelledby="voice-labels-heading">
+          <button
+            type="button"
+            aria-expanded={showSpeakerIdentity}
+            aria-controls="voice-labels-details"
+            onClick={() => setShowSpeakerIdentity((current) => !current)}
+            className="flex min-h-11 w-full items-center justify-between gap-4 rounded-xl text-left"
+          >
+            <span>
+              <span id="voice-labels-heading" className="block text-sm font-black text-indigo-950">{unidentifiedSpeakerCount > 0 ? "Name the voices" : "Voices named"}</span>
+              <span className="mt-1 block text-xs font-semibold leading-5 text-indigo-950/75">
+                {unidentifiedSpeakerCount > 0
+                  ? `${unidentifiedSpeakerCount} voice${unidentifiedSpeakerCount === 1 ? " needs" : "s need"} a name. Listen to a short sample and choose the person once for this Session.`
+                  : `All ${identifiedSpeakerCount} voice${identifiedSpeakerCount === 1 ? " is" : "s are"} named. You can change a name here without changing the recording.`}
+              </span>
+            </span>
+            <span className="shrink-0 rounded-full border border-indigo-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-indigo-900">{showSpeakerIdentity ? "Hide" : unidentifiedSpeakerCount > 0 ? "Name voices" : "Review"}</span>
+          </button>
+          {showSpeakerIdentity ? <div id="voice-labels-details" className="mt-4">
+            <SpeakerAttributionPanel
+              roomId={roomId}
+              groups={desk.speakerGroups ?? []}
+              participants={desk.participants ?? []}
+              playbackReady={playbackReady}
+              reviewedSecondBins={listenedSecondBins}
+              currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
+              busy={busy}
+              onPlayAt={playFromTime}
+              onSaved={saved}
+            />
+          </div> : null}
+        </section>
+      ) : null}
 
       {desk.gate.allowed && desk.segments.length ? (
         <section aria-labelledby="linear-transcript-heading" className="rounded-2xl border border-[#e5d5b7] bg-white p-4 shadow-sm sm:p-5">
@@ -2080,37 +2124,6 @@ export function TranscriptCorrectionDesk({
           /> : null}
         </div> : null}
       </section>
-
-      {desk.gate.allowed && (desk.speakerGroups ?? []).length > 0 ? (
-        <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 shadow-sm" aria-labelledby="voice-labels-heading">
-          <button
-            type="button"
-            aria-expanded={showSpeakerIdentity}
-            aria-controls="voice-labels-details"
-            onClick={() => setShowSpeakerIdentity((current) => !current)}
-            className="flex min-h-11 w-full items-center justify-between gap-4 rounded-xl text-left"
-          >
-            <span>
-              <span id="voice-labels-heading" className="block text-sm font-black text-indigo-950">Voice labels</span>
-              <span className="mt-1 block text-xs font-semibold leading-5 text-indigo-950/75">{identifiedSpeakerCount}/{desk.speakerGroups.length} voices identified. Listen once to apply a person&apos;s name across their provider-labelled turns.</span>
-            </span>
-            <span className="shrink-0 rounded-full border border-indigo-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-indigo-900">{showSpeakerIdentity ? "Hide" : identifiedSpeakerCount === desk.speakerGroups.length ? "Review" : "Identify voices"}</span>
-          </button>
-          {showSpeakerIdentity ? <div id="voice-labels-details" className="mt-4">
-            <SpeakerAttributionPanel
-              roomId={roomId}
-              groups={desk.speakerGroups ?? []}
-              participants={desk.participants ?? []}
-              playbackReady={playbackReady}
-              reviewedSecondBins={listenedSecondBins}
-              currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
-              busy={busy}
-              onPlayAt={playFromTime}
-              onSaved={saved}
-            />
-          </div> : null}
-        </section>
-      ) : null}
 
     </section>
   );

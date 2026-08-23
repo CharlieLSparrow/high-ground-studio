@@ -746,6 +746,14 @@ share`. The continuity panel says that the call, chat, recordings,
   independently verifies the output against the delivery target. Sources:
   https://podcasters.apple.com/support/893-audio-requirements and
   https://tech.ebu.ch/publications/r128.
+- Treat speaker naming as ordinary transcript setup, not an expert evidence
+  task. If the transcript contains unnamed voices, show the small listen,
+  choose-person, save-name flow before the transcript instead of burying it
+  after waveform and accuracy tools. Open it once while names are unresolved;
+  collapse it after every voice is named. Keep provider cluster identifiers,
+  diarization policy, immutable evidence, and revision receipts available in
+  transcription details rather than teaching those concepts during the normal
+  job.
 
 ## Acceptance consequences
 

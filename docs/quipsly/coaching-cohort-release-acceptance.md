@@ -1060,3 +1060,23 @@ browser and iPhone. It no longer uses `Stopped safely` as a shortcut for a
 local stop receipt, which could be misread as completed cloud verification.
 The updated call, recording projection, and browser recovery suites pass 31/31;
 the full web typecheck and universal iOS Simulator build pass.
+
+## Transcript voice-naming checkpoint — 2026-08-22
+
+The transcript workspace now promotes unresolved speaker names into a short,
+ordinary setup step before passage editing. It opens automatically once when a
+Session still has unnamed or stale voices, asks the reviewer to listen to one
+sample and choose a person, then reuses the saved name throughout the Session.
+After every voice is named, the surface collapses into a quiet completed state
+and does not ask the reviewer to repeat the work on each visit.
+
+The primary language is now `Name the voices`, `Who is speaking?`, `Person`,
+`Save name`, and `Change name`. Provider clusters, diarization, source authority,
+and immutable receipt details remain preserved under transcription details but
+are no longer concepts a coach must understand to name a speaker. The exact
+playback-backed attribution request and source snapshot check are unchanged.
+
+The focused transcript correction suite passes 22/22 and the full web
+typecheck passes. This is component and contract evidence; natural multi-speaker
+audio, human name recognition, mobile viewport comprehension, and minimally
+instructed correction remain deferred acceptance evidence.
