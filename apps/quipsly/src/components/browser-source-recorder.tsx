@@ -280,9 +280,7 @@ export function BrowserSourceRecorder({
   }) => void;
 }) {
   const [status, setStatus] = useState<BrowserRetainedSourceStatus>("checking");
-  const [message, setMessage] = useState(
-    "Checking durable browser storage and consent…",
-  );
+  const [message, setMessage] = useState("Getting recording ready…");
   const [sourceType, setSourceType] = useState<BrowserSourceKind>(
     sessionKind === "episode" ? "video" : "audio",
   );
@@ -533,18 +531,20 @@ export function BrowserSourceRecorder({
     ])
       .then(([vault, consentPacket, rows]) => {
         if (cancelled) return;
+        const savedAudioConsent =
+          consentPacket?.session?.recordingConsentCanRecordAudio === true;
+        const savedVideoConsent =
+          consentPacket?.session?.recordingConsentCanRecordVideo === true;
+        const savedChoiceCoversDefault =
+          sessionKind === "episode" ? savedVideoConsent : savedAudioConsent;
         setVaultAvailable(vault.available);
         setVaultPersistent(vault.persistent);
         setQuotaBytes(vault.quotaBytes);
         setUsageBytes(vault.usageBytes);
         setPolicy(consentPacket?.currentPolicy ?? null);
         setConsentId(consentPacket?.session?.recordingConsentId ?? null);
-        setMyAudioConsent(
-          consentPacket?.session?.recordingConsentCanRecordAudio === true,
-        );
-        setMyVideoConsent(
-          consentPacket?.session?.recordingConsentCanRecordVideo === true,
-        );
+        setMyAudioConsent(savedAudioConsent);
+        setMyVideoConsent(savedVideoConsent);
         setTranscriptionChoice(
           consentPacket?.session?.recordingConsentId
             ? consentPacket?.session?.recordingConsentCanTranscribe === true
@@ -568,8 +568,10 @@ export function BrowserSourceRecorder({
           );
           setMessage(
             vault.available
-              ? "Durable local source vault is ready. Review consent and retain the selected source when everyone is ready."
-              : "This browser cannot provide Quipsly's durable local vault. Use Quipsly Capture or a supported desktop browser.",
+              ? savedChoiceCoversDefault
+                ? "Ready to record when everyone is ready."
+                : "Allow recording once, then record when everyone is ready."
+              : "Recording is not supported in this browser. Use Quipsly Capture or a current desktop browser.",
           );
         }
       })
@@ -579,13 +581,13 @@ export function BrowserSourceRecorder({
         setMessage(
           error instanceof Error
             ? error.message
-            : "Browser source preflight failed.",
+            : "Recording couldn't get ready.",
         );
       });
     return () => {
       cancelled = true;
     };
-  }, [callRoomId, setTranscriptionChoice]);
+  }, [callRoomId, sessionKind, setTranscriptionChoice]);
 
   const consentReady =
     sourceType === "video" ? allPartyVideoReady : allPartyAudioReady;
@@ -1638,7 +1640,7 @@ export function BrowserSourceRecorder({
       return null;
     }
     setStatus("starting");
-    setMessage("Opening the selected source and durable local file…");
+    setMessage("Opening your microphone and recording…");
     setOperationalIssue(null);
     const captureId = crypto.randomUUID();
     const uploadSessionId = crypto.randomUUID();
@@ -1982,9 +1984,7 @@ export function BrowserSourceRecorder({
         250,
       );
       setStatus("recording");
-      setMessage(
-        "LOCAL SOURCE RECORDING · durable chunks are being written on this device. The call feed remains separate.",
-      );
+      setMessage("Recording on this device. Your call continues normally.");
       return captureId;
     } catch (error) {
       if (recorderRef.current?.state === "recording") {
@@ -2266,7 +2266,7 @@ export function BrowserSourceRecorder({
           <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
             {sessionKind === "coaching"
               ? "Joining never starts recording. Once everyone agrees, Record starts the high-quality copy on this device."
-              : "This is independent from the live call. Chunks go to a private on-device file, survive refreshes, receive START/STOP and consent receipts, then use the same verified upload path as iPhone Capture. Every source in this Session shares one take identity while preserving its own clock and immutable bytes."}
+              : "Joining never starts recording. Record saves a high-quality copy on this device for the shared timeline."}
           </p>
           <details className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]">
             <summary className="cursor-pointer">
