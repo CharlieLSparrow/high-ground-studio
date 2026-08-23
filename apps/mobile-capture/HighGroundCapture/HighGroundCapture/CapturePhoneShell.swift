@@ -559,19 +559,22 @@ private struct CaptureFinishQueueCard: View {
                                         Text(action.titleLabel)
                                             .font(.subheadline.weight(.bold))
                                             .foregroundStyle(.primary)
-                                        Text(action.label)
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.purple)
-                                        Text(action.detail)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(3)
                                         if let exit = action.sourceExitReadiness {
-                                            Text(exit.evidenceLine)
-                                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                                .foregroundStyle(exit.safeToLeaveAllEndpoints ? .green : .orange)
-                                                .lineLimit(2)
-                                                .accessibilityIdentifier("CaptureFinishActionEvidence_\(action.callRoomId)")
+                                            Text(exit.experience.title)
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(exit.experience.isSafe ? .green : .orange)
+                                            Text(exit.experience.detail)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(3)
+                                        } else {
+                                            Text(action.label)
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.purple)
+                                            Text(action.detail)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(3)
                                         }
                                     }
                                     Spacer(minLength: 4)
@@ -661,173 +664,66 @@ private struct CaptureSourceRecoveryCard: View {
     let onOpenLibrary: () -> Void
     let onSourcePlanChanged: () async -> Void
     @State private var reasonDrafts: [String: String] = [:]
+    @State private var showsRecordingDetails = false
 
     private var tint: Color {
-        readiness.safeToLeaveAllEndpoints ? .green : .orange
+        readiness.experience.isSafe ? .green : .orange
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: readiness.safeToLeaveAllEndpoints ? "checkmark.shield.fill" : "externaldrive.badge.exclamationmark")
+                Image(systemName: readiness.experience.systemImage)
                     .font(.title3)
                     .foregroundStyle(tint)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(readiness.safeToLeaveAllEndpoints ? "Every recording endpoint is clear" : readiness.label)
+                    Text(readiness.experience.title)
                         .font(.headline)
                         .accessibilityIdentifier("CaptureSourceRecoveryCard")
-                    Text(readiness.detail)
+                    Text(readiness.experience.detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
-            Text(readiness.evidenceLine)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(tint)
-                .accessibilityIdentifier("CaptureSourceRecoveryEvidence")
+            DisclosureGroup(isExpanded: $showsRecordingDetails) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(readiness.evidenceLine)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(tint)
+                        .accessibilityIdentifier("CaptureSourceRecoveryEvidence")
 
-            if let missing = readiness.missingPlannedSources, !missing.isEmpty {
-                recoverySection("Missing planned masters", systemImage: "list.clipboard.fill") {
-                    Text("If a planned device never produced a recoverable master, explain what happened. Quipsly keeps the original recovery evidence and records the plan change before continuing with verified sources.")
+                    Text(readiness.detail)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    ForEach(missing) { source in
-                        VStack(alignment: .leading, spacing: 8) {
-                            recoveryRow(
-                                id: "CaptureMissingPlannedSource_\(source.id)",
-                                icon: "exclamationmark.triangle.fill",
-                                title: source.label,
-                                detail: [source.participantLabel, source.expectedDeviceLabel, source.fulfillment.replacingOccurrences(of: "-", with: " ")]
-                                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).nonempty }
-                                    .joined(separator: " · "),
-                                tone: .orange
-                            )
 
-                            TextField(
-                                "Why will this master not arrive?",
-                                text: reasonBinding(for: source.id),
-                                axis: .vertical
-                            )
-                            .lineLimit(2 ... 4)
-                            .textFieldStyle(.roundedBorder)
-                            .disabled(previewOnly || client.sourcePlanMutationID != nil)
-                            .accessibilityLabel("Reason this planned master will not arrive")
-                            .accessibilityIdentifier("CaptureMissingPlannedSourceReason_\(source.id)")
+                    recordingEvidenceDetails
 
-                            Button {
-                                Task {
-                                    let saved = await client.waiveMissingPlannedSource(
-                                        roomID: session.callRoomId,
-                                        source: source,
-                                        reason: reasonDrafts[source.id] ?? ""
-                                    )
-                                    if saved {
-                                        reasonDrafts[source.id] = nil
-                                        await onSourcePlanChanged()
-                                    }
-                                }
-                            } label: {
-                                if client.sourcePlanMutationID == source.id {
-                                    HStack(spacing: 8) {
-                                        ProgressView()
-                                        Text("Saving decision…")
-                                    }
-                                } else {
-                                    Label("Continue without this master", systemImage: "arrow.right.circle.fill")
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.orange)
-                            .disabled(
-                                previewOnly
-                                    || client.sourcePlanMutationID != nil
-                                    || (reasonDrafts[source.id] ?? "")
-                                        .trimmingCharacters(in: .whitespacesAndNewlines).count < 12
-                            )
-                            .accessibilityHint("Saves an append-only reason, keeps recovery evidence, and removes this missing master from the active recording plan.")
-                            .accessibilityIdentifier("CaptureWaiveMissingPlannedSource_\(source.id)")
-                        }
-                        .padding(10)
-                        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                }
-            }
-
-            if let errorMessage = client.errorMessage,
-               client.status.localizedCaseInsensitiveContains("recording plan") {
-                Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("CaptureSourcePlanMutationError")
-            } else if client.status.localizedCaseInsensitiveContains("recording plan") {
-                Label(client.status, systemImage: "checkmark.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("CaptureSourcePlanMutationStatus")
-            }
-
-            if let holds = readiness.sourceHolds, !holds.isEmpty {
-                recoverySection("Server-copy holds", systemImage: "icloud.slash.fill") {
-                    ForEach(holds) { source in
-                        recoveryRow(
-                            id: "CaptureSourceHold_\(source.id)",
-                            icon: "waveform.badge.exclamationmark",
-                            title: source.label,
-                            detail: "\(source.deviceLabel) · \(sourceRetentionLabel(source.serverRetentionState))",
-                            tone: .orange
-                        )
-                    }
-                }
-            }
-
-            if let resolvedEvidence = readiness.resolvedCaptureEvidence, !resolvedEvidence.isEmpty {
-                recoverySection("Resolved capture evidence", systemImage: "checkmark.shield.fill") {
-                    Text("These interrupted capture receipts remain in the audit trail, but a reasoned recording-plan revision means they no longer block the verified masters.")
+                    Text("A verified cloud copy does not prove that every browser, Mac, or iPhone has finished its protected local queue.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    ForEach(resolvedEvidence) { source in
-                        recoveryRow(
-                            id: "CaptureResolvedEvidence_\(source.id)",
-                            icon: "doc.badge.checkmark",
-                            title: source.label,
-                            detail: source.disposition.map {
-                                "Plan revision \($0.revision) · \($0.status) · \($0.reason)"
-                            } ?? "Resolved without discarding the capture receipt",
-                            tone: .green
-                        )
-                    }
                 }
+                .padding(.top, 10)
+            } label: {
+                Text(readiness.experience.needsAttention ? "Review recording issue" : "Recording details")
+                    .font(.caption.weight(.semibold))
             }
-
-            if let queues = readiness.endpointQueues, !queues.isEmpty {
-                recoverySection("Recording devices", systemImage: "iphone.and.arrow.forward") {
-                    ForEach(queues) { queue in
-                        recoveryRow(
-                            id: "CaptureEndpointQueue_\(queue.clientInstanceId)",
-                            icon: queue.clientKind == "ios" ? "iphone" : "laptopcomputer",
-                            title: queue.deviceLabel,
-                            detail: queue.evidenceLine,
-                            tone: queue.isDrained ? .green : .orange
-                        )
-                    }
-                }
-            }
+            .accessibilityIdentifier("CaptureSourceRecoveryDetails")
 
             HStack(spacing: 10) {
-                Button {
-                    Task { await client.load() }
-                } label: {
-                    Label(client.isLoading ? "Checking…" : "Check again", systemImage: "arrow.clockwise")
+                if !readiness.safeToLeaveAllEndpoints {
+                    Button {
+                        Task { await client.load() }
+                    } label: {
+                        Label(client.isLoading ? "Checking…" : "Check again", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(previewOnly || client.isLoading)
+                    .accessibilityIdentifier("CaptureSourceRecoveryRefresh")
                 }
-                .buttonStyle(.bordered)
-                .disabled(previewOnly || client.isLoading)
-                .accessibilityIdentifier("CaptureSourceRecoveryRefresh")
 
                 Button(action: onOpenLibrary) {
                     Label("Open Library", systemImage: "externaldrive.fill")
@@ -835,21 +731,158 @@ private struct CaptureSourceRecoveryCard: View {
                 .buttonStyle(.bordered)
                 .accessibilityIdentifier("CaptureSourceRecoveryOpenLibrary")
             }
-
-            if let url = nestSessionURL {
-                Link(destination: url) {
-                    Label("Open the full source plan in Nest", systemImage: "arrow.up.right.square")
-                        .font(.caption.weight(.semibold))
-                }
-                .accessibilityIdentifier("CaptureSourceRecoveryOpenNest")
-            }
-
-            Text("A verified server copy does not prove that every browser, Mac, or iPhone has drained its protected local queue.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .captureCard()
+        .onAppear {
+            showsRecordingDetails = readiness.experience.needsAttention
+        }
+        .onChange(of: readiness.state) { _, _ in
+            if readiness.experience.needsAttention {
+                showsRecordingDetails = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recordingEvidenceDetails: some View {
+        if let missing = readiness.missingPlannedSources, !missing.isEmpty {
+            recoverySection("Missing planned masters", systemImage: "list.clipboard.fill") {
+                Text("If a planned device never produced a recoverable master, explain what happened. Quipsly keeps the original recovery evidence and records the plan change before continuing with verified sources.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(missing) { source in
+                    VStack(alignment: .leading, spacing: 8) {
+                        recoveryRow(
+                            id: "CaptureMissingPlannedSource_\(source.id)",
+                            icon: "exclamationmark.triangle.fill",
+                            title: source.label,
+                            detail: [source.participantLabel, source.expectedDeviceLabel, source.fulfillment.replacingOccurrences(of: "-", with: " ")]
+                                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).nonempty }
+                                .joined(separator: " · "),
+                            tone: .orange
+                        )
+
+                        TextField(
+                            "Why will this master not arrive?",
+                            text: reasonBinding(for: source.id),
+                            axis: .vertical
+                        )
+                        .lineLimit(2 ... 4)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(previewOnly || client.sourcePlanMutationID != nil)
+                        .accessibilityLabel("Reason this planned master will not arrive")
+                        .accessibilityIdentifier("CaptureMissingPlannedSourceReason_\(source.id)")
+
+                        Button {
+                            Task {
+                                let saved = await client.waiveMissingPlannedSource(
+                                    roomID: session.callRoomId,
+                                    source: source,
+                                    reason: reasonDrafts[source.id] ?? ""
+                                )
+                                if saved {
+                                    reasonDrafts[source.id] = nil
+                                    await onSourcePlanChanged()
+                                }
+                            }
+                        } label: {
+                            if client.sourcePlanMutationID == source.id {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                    Text("Saving decision…")
+                                }
+                            } else {
+                                Label("Continue without this master", systemImage: "arrow.right.circle.fill")
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                        .disabled(
+                            previewOnly
+                                || client.sourcePlanMutationID != nil
+                                || (reasonDrafts[source.id] ?? "")
+                                    .trimmingCharacters(in: .whitespacesAndNewlines).count < 12
+                        )
+                        .accessibilityHint("Saves an append-only reason, keeps recovery evidence, and removes this missing master from the active recording plan.")
+                        .accessibilityIdentifier("CaptureWaiveMissingPlannedSource_\(source.id)")
+                    }
+                    .padding(10)
+                    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+        }
+
+        if let errorMessage = client.errorMessage,
+           client.status.localizedCaseInsensitiveContains("recording plan") {
+            Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureSourcePlanMutationError")
+        } else if client.status.localizedCaseInsensitiveContains("recording plan") {
+            Label(client.status, systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureSourcePlanMutationStatus")
+        }
+
+        if let holds = readiness.sourceHolds, !holds.isEmpty {
+            recoverySection("Server-copy holds", systemImage: "icloud.slash.fill") {
+                ForEach(holds) { source in
+                    recoveryRow(
+                        id: "CaptureSourceHold_\(source.id)",
+                        icon: "waveform.badge.exclamationmark",
+                        title: source.label,
+                        detail: "\(source.deviceLabel) · \(sourceRetentionLabel(source.serverRetentionState))",
+                        tone: .orange
+                    )
+                }
+            }
+        }
+
+        if let resolvedEvidence = readiness.resolvedCaptureEvidence, !resolvedEvidence.isEmpty {
+            recoverySection("Resolved capture evidence", systemImage: "checkmark.shield.fill") {
+                Text("These interrupted capture receipts remain in the audit trail, but a reasoned recording-plan revision means they no longer block the verified masters.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(resolvedEvidence) { source in
+                    recoveryRow(
+                        id: "CaptureResolvedEvidence_\(source.id)",
+                        icon: "doc.badge.checkmark",
+                        title: source.label,
+                        detail: source.disposition.map {
+                            "Plan revision \($0.revision) · \($0.status) · \($0.reason)"
+                        } ?? "Resolved without discarding the capture receipt",
+                        tone: .green
+                    )
+                }
+            }
+        }
+
+        if let queues = readiness.endpointQueues, !queues.isEmpty {
+            recoverySection("Recording devices", systemImage: "iphone.and.arrow.forward") {
+                ForEach(queues) { queue in
+                    recoveryRow(
+                        id: "CaptureEndpointQueue_\(queue.clientInstanceId)",
+                        icon: queue.clientKind == "ios" ? "iphone" : "laptopcomputer",
+                        title: queue.deviceLabel,
+                        detail: queue.evidenceLine,
+                        tone: queue.isDrained ? .green : .orange
+                    )
+                }
+            }
+        }
+
+        if let url = nestSessionURL {
+            Link(destination: url) {
+                Label("Open source details in Nest", systemImage: "arrow.up.right.square")
+                    .font(.caption.weight(.semibold))
+            }
+            .accessibilityIdentifier("CaptureSourceRecoveryOpenNest")
+        }
     }
 
     @ViewBuilder

@@ -1229,8 +1229,8 @@ final class CaptureExperienceUITests: XCTestCase {
         ]
         reveal(action)
         XCTAssertTrue(action.exists)
-        XCTAssertTrue(action.label.contains("Server copy complete · check each recording device"))
-        XCTAssertTrue(action.label.contains("2/2 server-safe masters · 1/2 endpoint queues drained"))
+        XCTAssertTrue(action.label.contains("Cloud copies are safe"))
+        XCTAssertTrue(action.label.contains("still shows an upload or recovery"))
 
         action.tap()
 
@@ -1243,8 +1243,18 @@ final class CaptureExperienceUITests: XCTestCase {
         let recovery = app.descendants(matching: .any)["CaptureSourceRecoveryCard"].firstMatch
         reveal(recovery)
         XCTAssertTrue(recovery.exists)
-        XCTAssertTrue(app.staticTexts["CaptureSourceRecoveryEvidence"].label.contains("2/2 server-safe masters"))
-        let iphoneQueue = app.descendants(matching: .any)["CaptureEndpointQueue_preview-iphone-installation"]
+        XCTAssertTrue(recovery.label.contains("Cloud copies are safe"))
+        let details = app.descendants(matching: .any)["CaptureSourceRecoveryDetails"].firstMatch
+        reveal(details)
+        XCTAssertTrue(details.isHittable)
+        details.tap()
+        let evidence = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "2/2 server-safe masters")
+        ).firstMatch
+        XCTAssertTrue(evidence.waitForExistence(timeout: 5))
+        let iphoneQueue = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Homer's iPhone")
+        ).firstMatch
         reveal(iphoneQueue)
         XCTAssertTrue(iphoneQueue.label.contains("Homer's iPhone"))
         XCTAssertTrue(iphoneQueue.label.contains("1 pending"))

@@ -1552,3 +1552,40 @@ Physical-device evidence remains on the continuous validation ledger:
 
 These checks require real hardware and human listening. They remain deferred
 evidence and do not stall the next independent product lane.
+
+## Plain post-call recording safety — 2026-08-23
+
+Capture no longer puts endpoint-queue and server-master terminology in the
+ordinary finishing path. The Session and Today finishing queue now lead with
+one truthful state:
+
+- "Recording is safe": every expected recording has a verified cloud copy and
+  all reconciled device queues are drained;
+- "Cloud copies are safe": exact cloud bytes are verified, while a device may
+  still be draining protected local recovery work;
+- "Keep Quipsly open": at least one required server copy is still finishing;
+  or
+- "A recording needs attention": an expected participant or planned master is
+  missing.
+
+Exact counts, source-plan revisions, device queue receipts, recovery holds, and
+Nest source details remain available under Recording details. Missing-source
+states expand that section automatically. Normal progress does not demand a
+decision or a repeated acknowledgement.
+
+Independent evidence:
+
+- focused source-exit experience harness: pass;
+- Capture source-only contract: 107/107 pass;
+- App Store static suite: 1,094/1,094 pass;
+- arm64 plus x86_64 iOS Simulator build: pass; and
+- targeted testTodayFinishQueueOpensExactSessionWithoutPerformingAction
+  Simulator journey: pass after verifying the collapsed summary and expanding
+  exact source/device evidence.
+
+Still required on physical devices: stop a real multi-participant capture,
+background and foreground each endpoint during upload, interrupt networking,
+force-quit and reopen one endpoint, and verify the simple status never advances
+beyond its durable server and queue evidence. This is deferred validation, not
+a blocker for the next independent product lane. Build 34 remains sealed and
+unchanged.

@@ -2961,6 +2961,17 @@ struct MobileCaptureSourceExitReadiness: Codable, Hashable {
     var evidenceLine: String {
         "\(serverSafeRequiredSourceCount)/\(requiredSourceCount) server-safe masters · \(drainedEndpointCount)/\(endpointQueueCount) endpoint queues drained"
     }
+
+    var experience: CaptureSourceExitExperience {
+        CaptureSourceExitExperience.resolve(
+            state: state,
+            safeToLeaveAllEndpoints: safeToLeaveAllEndpoints,
+            safeForServerObservedSources: safeForServerObservedSources,
+            requiredSourceCount: requiredSourceCount,
+            serverSafeRequiredSourceCount: serverSafeRequiredSourceCount,
+            pendingCaptureCount: pendingCaptureCount
+        )
+    }
 }
 
 struct MobileCaptureReviewDigestFinishAction: Codable, Identifiable, Hashable {

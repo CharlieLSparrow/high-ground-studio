@@ -1169,3 +1169,28 @@ Independent evidence is the focused state harness, 107/107 mobile source
 contracts, a successful dual-architecture iOS Simulator build, and 1,094/1,094
 App Store static checks. Human speech, real route changes, and listening quality
 remain physical validation rather than automated claims.
+
+## 2026-08-23 conventional post-call safety
+
+The same rule applies after Leave or Stop: the user needs one answer, not a
+storage topology lesson. Capture now projects exact retained-source,
+byte-verification, and endpoint-queue evidence into four ordinary outcomes:
+"Recording is safe", "Cloud copies are safe", "Keep Quipsly open", or
+"A recording needs attention".
+
+Normal upload and device-drain states are not framed as failures. A verified
+cloud copy can be acknowledged without falsely claiming that every recording
+device has drained its protected local queue. Genuine missing-source states
+open their recovery details automatically; otherwise planned-master,
+installation, revision, byte, and queue evidence stays under Recording details.
+The evidence and append-only recovery actions remain intact for the person who
+needs them.
+
+This directly addresses the recurring source-loss and stuck-upload anxiety in
+recording-product reviews without adding acknowledgements or making every coach
+operate a support console. Independent evidence is the focused five-state
+presentation harness, 107/107 Capture source contracts, 1,094/1,094 App Store
+static checks, a dual-architecture Simulator build, and a passing targeted
+Simulator UI journey from Today finishing queue into the exact Session and its
+expanded evidence. Real device background upload, termination, recovery, and
+cross-endpoint drain remain physical validation.

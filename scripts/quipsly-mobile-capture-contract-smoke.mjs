@@ -936,6 +936,7 @@ function checkReviewDigestContractSources() {
   const componentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const contentViewText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ContentView.swift");
   const capturePhoneShellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
+  const sourceExitExperienceText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureSourceExitExperience.swift");
   const captureExperienceModelText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureExperienceModel.swift");
   const sessionReadinessTopologyText = sourceText("apps/quipsly/src/lib/server/session-readiness-topology.ts");
   const sessionReadinessTopologyCompatibilityText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-readiness-topology.ts");
@@ -1046,7 +1047,8 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("CaptureFinishQueueBoundary")
       && capturePhoneShellText.includes("digest.recoveryOpen")
       && capturePhoneShellText.includes("digest.safeToLeave")
-      && capturePhoneShellText.includes("exit.evidenceLine")
+      && capturePhoneShellText.includes("exit.experience.title")
+      && capturePhoneShellText.includes("exit.experience.detail")
       && capturePhoneShellText.includes("CaptureFinishAction_\\(action.callRoomId)_\\(action.kind)")
       && capturePhoneShellText.includes("model.sessions.first(where: { $0.callRoomId == roomID })")
       && capturePhoneShellText.includes("visibleTab = .record"),
@@ -1065,10 +1067,15 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("Missing planned masters")
       && capturePhoneShellText.includes("Server-copy holds")
       && capturePhoneShellText.includes("Recording devices")
-      && capturePhoneShellText.includes("Open the full source plan in Nest")
-      && capturePhoneShellText.includes("CaptureSourceRecoveryOpenLibrary"),
+      && capturePhoneShellText.includes("Open source details in Nest")
+      && capturePhoneShellText.includes("CaptureSourceRecoveryOpenLibrary")
+      && capturePhoneShellText.includes("CaptureSourceRecoveryDetails")
+      && sourceExitExperienceText.includes('title: "Recording is safe"')
+      && sourceExitExperienceText.includes('"Keep Quipsly open"')
+      && sourceExitExperienceText.includes('title: "A recording needs attention"')
+      && sourceExitExperienceText.includes('title: "Cloud copies are safe"'),
     "nativeSourceRecoveryResolutionVisible",
-    "Opening an iPhone finishing action resolves to exact planned-master, server-copy, and per-installation queue evidence with explicit Library, refresh, and Nest paths.",
+    "Opening an iPhone finishing action gives one conventional safe-to-leave answer while keeping exact planned-master, server-copy, and installation evidence available on demand.",
   );
   expect(
     capturePhoneShellText.includes("CaptureSessionTruthPanel")
