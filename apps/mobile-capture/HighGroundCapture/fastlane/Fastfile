@@ -198,6 +198,71 @@ def update_release_receipt(paths)
   receipt_path
 end
 
+def seal_candidate_receipt(receipt_path, evidence_path)
+  UI.user_error!("Set receipt_path to an unqualified Capture release receipt.") if receipt_path.to_s.empty?
+  UI.user_error!("Set evidence_path to the exact full UI evidence manifest.") if evidence_path.to_s.empty?
+  expanded_receipt_path = File.expand_path(receipt_path)
+  UI.user_error!("Release receipt is not a regular file: #{expanded_receipt_path}") unless File.file?(expanded_receipt_path)
+  UI.user_error!("Release receipt must not be group- or world-readable.") unless
+    (File.stat(expanded_receipt_path).mode & 0o077).zero?
+
+  receipt = JSON.parse(File.read(expanded_receipt_path))
+  UI.user_error!("Unsupported release receipt schema.") unless receipt["schema"] == "quipsly-capture-release-receipt-v1"
+  UI.user_error!("Candidate receipt is already qualified.") unless receipt["candidateQualified"] == false
+  UI.user_error!("Candidate receipt already claims deterministic UI proof.") unless receipt["deterministicUITestPerformed"] == false
+  UI.user_error!("Candidate source was not isolated.") unless receipt["sourceIsolation"] == "detached-worktree"
+  UI.user_error!("A receipt with any upload attempt cannot be sealed.") unless
+    receipt["uploadAttempted"] == false && receipt["uploadOutcome"] == "not-attempted"
+
+  source_revision = receipt["sourceRevision"].to_s
+  UI.user_error!("Candidate source revision is invalid.") unless source_revision.match?(/\A[0-9a-f]{40}\z/)
+  UI.user_error!("Candidate source commit is unavailable in this repository.") unless
+    system("git", "-C", REPO_ROOT, "cat-file", "-e", "#{source_revision}^{commit}", out: File::NULL, err: File::NULL)
+  UI.user_error!("Sealing tooling must descend from the candidate source commit.") unless
+    system("git", "-C", REPO_ROOT, "merge-base", "--is-ancestor", source_revision, "HEAD", out: File::NULL, err: File::NULL)
+
+  output_directory = File.dirname(expanded_receipt_path)
+  version = receipt["version"].to_s
+  build = receipt["build"].to_s
+  UI.user_error!("Candidate version is invalid.") unless version.match?(/\A[0-9]+(?:\.[0-9]+){1,2}\z/)
+  UI.user_error!("Candidate build is invalid.") unless build.match?(/\A[0-9]+\z/)
+  stem = "QuipslyCapture-#{version}.#{build}"
+  paths = {
+    version: version,
+    build: build,
+    output_directory: output_directory,
+    archive_path: File.expand_path(receipt["archivePath"].to_s),
+    ipa_path: File.expand_path(receipt["ipaPath"].to_s),
+  }
+  UI.user_error!("Release receipt is not colocated with its archive and IPA.") unless
+    File.dirname(paths[:archive_path]) == output_directory && File.dirname(paths[:ipa_path]) == output_directory
+  UI.user_error!("Release receipt name does not match its version and build.") unless
+    File.basename(expanded_receipt_path) == "#{stem}-release-receipt.json"
+  UI.user_error!("Candidate archive name does not match its receipt.") unless File.basename(paths[:archive_path]) == "#{stem}.xcarchive"
+  UI.user_error!("Candidate IPA name does not match its receipt.") unless File.basename(paths[:ipa_path]) == "#{stem}.ipa"
+  UI.user_error!("Candidate archive is unavailable.") unless File.directory?(paths[:archive_path])
+  UI.user_error!("Candidate IPA is unavailable.") unless File.file?(paths[:ipa_path])
+  UI.user_error!("Candidate IPA byte count changed.") unless File.size(paths[:ipa_path]) == receipt["ipaBytes"]
+  UI.user_error!("Candidate IPA digest changed.") unless Digest::SHA256.file(paths[:ipa_path]).hexdigest == receipt["ipaSHA256"]
+
+  verified_evidence_path = verify_ui_test_evidence_path(
+    evidence_path,
+    expected_source_revision: source_revision,
+  )
+  sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])
+
+  receipt["candidateQualified"] = true
+  receipt["candidateQualifiedAt"] = Time.now.utc.iso8601
+  receipt["deterministicUITestPerformed"] = true
+  receipt["uiTestEvidencePath"] = verified_evidence_path
+  write_release_receipt(expanded_receipt_path, receipt)
+  UI.success("Existing exact-source UI and signed-artifact proof sealed one candidate without rerunning either lane.")
+  UI.success("Qualified release receipt: #{expanded_receipt_path}")
+  expanded_receipt_path
+rescue JSON::ParserError => error
+  UI.user_error!("Release receipt is invalid JSON: #{error.message}")
+end
+
 def qualified_release_paths(receipt_path)
   UI.user_error!("Set receipt_path to a qualified Capture release receipt.") if receipt_path.to_s.empty?
   expanded_receipt_path = File.expand_path(receipt_path)
@@ -577,6 +642,18 @@ platform :ios do
     candidate(options)
     paths = release_paths(options)
     upload_capture_candidate(paths, options)
+  end
+
+  desc "Seal separately completed exact-source UI and signed-artifact proof as one candidate"
+  lane :seal_candidate do |options|
+    unless ENV["QUIPSLY_CAPTURE_RELEASE_ISOLATED"] == "1"
+      UI.user_error!(
+        "Candidate sealing must use scripts/release/quipsly-capture-release-from-commit.sh from an exact committed tooling revision.",
+      )
+    end
+    receipt_path = options[:receipt_path] || ENV["QUIPSLY_CAPTURE_RELEASE_RECEIPT"]
+    evidence_path = options[:evidence_path] || ENV["QUIPSLY_CAPTURE_UI_TEST_EVIDENCE"]
+    seal_candidate_receipt(receipt_path, evidence_path)
   end
 
   desc "Reverify and upload a sealed qualified candidate without rebuilding it"

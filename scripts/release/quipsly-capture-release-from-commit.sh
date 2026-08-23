@@ -5,17 +5,20 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/release/quipsly-capture-release-from-commit.sh <candidate|release|beta|upload_qualified> [--revision <commit-ish>] [fastlane options...]
+  scripts/release/quipsly-capture-release-from-commit.sh <candidate|release|beta|seal_candidate|upload_qualified> [--revision <commit-ish>] [fastlane options...]
+  scripts/release/quipsly-capture-release-from-commit.sh seal_candidate --revision <tooling-commit-ish> --receipt <release-receipt.json> --evidence <ui-evidence.json>
   scripts/release/quipsly-capture-release-from-commit.sh upload_qualified --revision <commit-ish> --receipt <release-receipt.json> --api-key-path <api-key.json>
 
 Builds or uploads Quipsly Capture from a disposable detached worktree at one
 resolved commit. Any uncommitted files in the caller's worktree are excluded.
 
-`candidate` is the canonical no-upload qualification lane: deterministic UI
-tests followed by signed archive/export verification. `release` is the lower
+`candidate` is the canonical one-command no-upload qualification lane:
+deterministic UI tests followed by signed archive/export verification. `release` is the lower
 level archive-only diagnostic lane. `beta` qualifies, uploads, and waits for
 App Store Connect processing. `upload_qualified` re-verifies and uploads an
 existing sealed candidate receipt without repeating qualification or rebuild.
+`seal_candidate` combines independently completed exact-source UI and signed
+artifact proof after re-verifying both, without repeating either expensive lane.
 The named upload flags are translated to Fastlane options so paths containing
 spaces remain one argument. APP_STORE_CONNECT_API_KEY_PATH may replace
 --api-key-path.
@@ -29,14 +32,14 @@ fail() {
 
 lane="${1:-}"
 case "$lane" in
-  candidate | release | beta | upload_qualified) ;;
+  candidate | release | beta | seal_candidate | upload_qualified) ;;
   -h | --help)
     usage
     exit 0
     ;;
   *)
     usage >&2
-    fail "First argument must be candidate, release, beta, or upload_qualified."
+    fail "First argument must be candidate, release, beta, seal_candidate, or upload_qualified."
     ;;
 esac
 shift
@@ -64,6 +67,17 @@ while [[ $# -gt 0 ]]; do
       receipt_path="${1#--receipt=}"
       [[ -n "$receipt_path" ]] || fail "--receipt requires a release-receipt.json path."
       fastlane_args+=("receipt_path:${receipt_path}")
+      shift
+      ;;
+    --evidence)
+      [[ $# -ge 2 && -n "$2" ]] || fail "--evidence requires a UI evidence manifest path."
+      fastlane_args+=("evidence_path:$2")
+      shift 2
+      ;;
+    --evidence=*)
+      evidence_path="${1#--evidence=}"
+      [[ -n "$evidence_path" ]] || fail "--evidence requires a UI evidence manifest path."
+      fastlane_args+=("evidence_path:${evidence_path}")
       shift
       ;;
     --api-key-path)
@@ -121,7 +135,7 @@ require_free_space() {
     fail "${label} requires at least ${minimum_free_gib} GiB free at ${path}; only $((available_kib / 1024 / 1024)) GiB is available. Remove disposable Xcode/release evidence or set the output directory to a larger volume."
 }
 
-if [[ "$lane" != "upload_qualified" ]]; then
+if [[ "$lane" != "upload_qualified" && "$lane" != "seal_candidate" ]]; then
   require_free_space "$release_root" "Capture release qualification"
 fi
 
