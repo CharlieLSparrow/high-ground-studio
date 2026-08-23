@@ -786,6 +786,12 @@ share`. The continuity panel says that the call, chat, recordings,
   counts, one `Add task or goal` action, and a direct route to Work. Ownership,
   transcript provenance, optimistic revisions, tags, due dates, and canonical
   identity remain enforced without becoming vocabulary a coach must learn.
+- Do not ask people to attest to facts Quipsly can observe. Sharing a reviewed
+  follow-up is one explicit action labeled with the recipient's name; it does
+  not need a second checkbox restating that action. Opening a released
+  follow-up creates an idempotent in-app read receipt automatically. Stopping
+  sharing remains one reversible action, while source records, revisions, and
+  delivery history stay preserved behind the ordinary interface.
 
 ## Acceptance consequences
 

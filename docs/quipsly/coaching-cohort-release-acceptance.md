@@ -1143,3 +1143,18 @@ The combined Session Notes and Session review suites pass 53/53 and the full
 web typecheck passes. Actual coach/client comprehension, keyboard-only entry,
 cross-account visibility, and return-use task completion remain deferred
 acceptance evidence.
+
+## Client follow-up checkpoint — 2026-08-23
+
+The coach follow-up flow now uses one named-recipient action: `Share with
+<client>`. Quipsly still checks that the selected client-safe records match the
+saved private draft, but no longer asks for a redundant attestation checkbox.
+Stopping in-app sharing is equally direct and remains reversible without
+deleting source notes, tasks, goals, revisions, or delivery history.
+
+When the intended client actually renders a released follow-up, Quipsly records
+the existing idempotent in-app open receipt automatically. The client is not
+asked to press a button confirming that they opened the page they are already
+viewing. The focused follow-up suite passes 7/7 and the full web typecheck
+passes. Cross-account production readback, notification delivery, and
+minimally-instructed mobile comprehension remain deferred acceptance evidence.

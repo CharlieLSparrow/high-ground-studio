@@ -211,12 +211,10 @@ describe("SessionClientFollowUpCard", () => {
     expect(
       await screen.findByRole("heading", { name: "Client follow-up" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Unreviewed transcript candidates, private notes/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/only notes marked client-safe and work owned by this client/i)).toBeInTheDocument();
     expect(screen.getAllByRole("checkbox")).toHaveLength(3);
     expect(
-      screen.getByText(/3 canonical records selected/i),
+      screen.getByText(/3 items selected/i),
     ).toBeInTheDocument();
     expect(screen.getAllByText(/Includes exact source 01:03–01:08/i)).toHaveLength(3);
 
@@ -239,7 +237,7 @@ describe("SessionClientFollowUpCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows only a released snapshot to the client and explicitly receipts its open", async () => {
+  it("shows only a released snapshot to the client and quietly receipts its open", async () => {
     const clientState = {
       ok: true,
       role: "CLIENT",
@@ -276,8 +274,6 @@ describe("SessionClientFollowUpCard", () => {
       )
       .mockResolvedValueOnce(response(openedState));
     global.fetch = fetchMock as typeof fetch;
-    const user = userEvent.setup();
-
     render(<SessionClientFollowUpCard roomId="room-1" />);
 
     expect(
@@ -308,23 +304,17 @@ describe("SessionClientFollowUpCard", () => {
       screen.queryByRole("button", { name: /create private draft/i }),
     ).not.toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: "Confirm follow-up opened" }),
-    );
-
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
       action: "ACKNOWLEDGE_OPEN",
       outputId: "follow-up-1",
     });
     expect(
-      await screen.findByText(
-        /recipient-confirmed in-app open receipt for this exact content hash/i,
-      ),
+      await screen.findByText("Opened in Quipsly"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Confirm follow-up opened" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: /confirm follow-up opened/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("reopens the current private draft and saves an explicit immutable revision", async () => {
@@ -439,12 +429,11 @@ describe("SessionClientFollowUpCard", () => {
     expect(await screen.findByText("Release held — review current sources")).toBeInTheDocument();
     expect(screen.getByText(/Task · Run one protected rehearsal/).closest("li")).toHaveTextContent(/changed after this draft was saved/i);
     expect(screen.getByText(/Review the current selections.*save private draft changes/i)).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /I reviewed this exact snapshot/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Release to client in Quipsly" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Share with Client Test" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save private draft changes" })).toBeEnabled();
   });
 
-  it("clears confirmation and holds release while the editor differs from the immutable private revision", async () => {
+  it("holds sharing while the editor differs from the saved private draft", async () => {
     const user = userEvent.setup();
     const draftOutput = {
       ...releasedOutput,
@@ -462,12 +451,8 @@ describe("SessionClientFollowUpCard", () => {
 
     render(<SessionClientFollowUpCard roomId="room-1" />);
 
-    expect(await screen.findByText("Current sources verified")).toBeInTheDocument();
-    const confirmation = screen.getByRole("checkbox", {
-      name: /I reviewed this exact snapshot/i,
-    });
-    await user.click(confirmation);
-    expect(confirmation).toBeChecked();
+    expect(await screen.findByText("Ready to share")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share with Client Test" })).toBeEnabled();
 
     const title = screen.getByRole("textbox", { name: "Title" });
     await user.clear(title);
@@ -475,9 +460,42 @@ describe("SessionClientFollowUpCard", () => {
 
     expect(await screen.findByText("Save edits before release")).toBeInTheDocument();
     expect(screen.getByText(/release controls still point to private revision 2/i)).toBeInTheDocument();
-    await waitFor(() => expect(confirmation).not.toBeChecked());
-    expect(confirmation).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Release to client in Quipsly" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Share with Client Test" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save private draft changes" })).toBeEnabled();
+  });
+
+  it("shares a current private draft with one named-recipient action", async () => {
+    const draftOutput = {
+      ...releasedOutput,
+      status: "DRAFT",
+      releasedAt: null,
+    };
+    const initialState = {
+      ok: true,
+      role: "COACH",
+      room,
+      eligible,
+      output: draftOutput,
+      readiness: { ...readyReadiness, checkedRevision: draftOutput.revision },
+    };
+    const releasedState = { ...initialState, output: releasedOutput };
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response(initialState))
+      .mockResolvedValueOnce(response({ ok: true, output: releasedOutput }))
+      .mockResolvedValueOnce(response(releasedState));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionClientFollowUpCard roomId="room-1" />);
+
+    await user.click(await screen.findByRole("button", { name: "Share with Client Test" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
+      action: "RELEASE",
+      outputId: "follow-up-1",
+      expectedRevision: draftOutput.revision,
+    });
+    expect(await screen.findByText(/released inside this client’s private Quipsly Session/i)).toBeInTheDocument();
   });
 });

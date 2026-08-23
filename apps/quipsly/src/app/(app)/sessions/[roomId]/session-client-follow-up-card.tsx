@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   ClipboardCheck,
@@ -448,8 +448,7 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
   const [noteIds, setNoteIds] = useState<Set<string>>(new Set());
   const [taskIds, setTaskIds] = useState<Set<string>>(new Set());
   const [goalIds, setGoalIds] = useState<Set<string>>(new Set());
-  const [releaseConfirmed, setReleaseConfirmed] = useState(false);
-  const [revokeConfirmed, setRevokeConfirmed] = useState(false);
+  const openReceiptAttemptRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -546,15 +545,6 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
     && snapshot.readiness.checkedRevision === snapshot.output.revision;
   const releaseReady = sourcesReady && !hasUnsavedDraftChanges;
 
-  useEffect(() => {
-    setReleaseConfirmed(false);
-  }, [
-    hasUnsavedDraftChanges,
-    snapshot?.output?.id,
-    snapshot?.output?.revision,
-    snapshot?.output?.status,
-    snapshot?.readiness?.status,
-  ]);
   const opened = useMemo(
     () =>
       snapshot?.output?.deliveryEvents.some(
@@ -631,10 +621,8 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
             ? "Released inside this client’s private Quipsly Session. No email, message, calendar event, or publication action occurred."
             : action === "REVOKE"
               ? "In-app visibility revoked. The source notes, goals, tasks, revisions, and delivery history remain intact."
-              : "Client open confirmed in Quipsly. This is an in-app readback, not email delivery evidence.",
+              : "Opened in Quipsly.",
       );
-      setReleaseConfirmed(false);
-      setRevokeConfirmed(false);
       await load();
     } catch (error) {
       setNotice(
@@ -646,6 +634,15 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
       setBusy(null);
     }
   }
+
+  useEffect(() => {
+    const output = snapshot?.output;
+    if (snapshot?.role !== "CLIENT" || !output || opened) return;
+    const receiptKey = `${output.id}:${output.revision}:${output.contentSha256}`;
+    if (openReceiptAttemptRef.current === receiptKey) return;
+    openReceiptAttemptRef.current = receiptKey;
+    void mutate("ACKNOWLEDGE_OPEN");
+  }, [opened, snapshot?.output, snapshot?.role]);
 
   async function exportFollowUp() {
     const output = snapshot?.output;
@@ -762,7 +759,7 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
           </span>
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
-              Reviewed coaching output
+              Coaching follow-up
             </p>
             <h2
               id="client-follow-up-heading"
@@ -772,8 +769,8 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
             </h2>
             <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#5c7163]">
               {snapshot.role === "COACH"
-                ? `Only deliberately client-safe notes and ${snapshot.room.client.label}’s canonical goals and tasks are eligible. Draft first, inspect the exact snapshot, then release it inside Quipsly.`
-                : `Only a follow-up explicitly released to ${snapshot.room.client.label} appears here. Coach-private notes and unreviewed transcript candidates never enter this view.`}
+                ? `Choose the notes, goals, and tasks to share with ${snapshot.room.client.label}. You can review a private draft before sharing.`
+                : `Follow-ups shared with ${snapshot.room.client.label} appear here. Private coach notes stay private.`}
             </p>
           </div>
         </div>
@@ -804,27 +801,12 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
               <Share2 size={15} aria-hidden="true" />
               {busy === "EXPORT" ? "Preparing file…" : "Share follow-up file"}
             </button>
-            <div className="rounded-xl border border-emerald-200 bg-white p-4">
-              <p className="text-xs font-bold leading-5 text-emerald-950">
-                {opened
-                  ? "Quipsly has a recipient-confirmed in-app open receipt for this exact content hash."
-                  : "Confirming records only that you opened this exact follow-up inside Quipsly. It does not complete its goals or tasks."}
-              </p>
-              <button
-                type="button"
-                disabled={opened || busy !== null}
-                onClick={() => void mutate("ACKNOWLEDGE_OPEN")}
-                className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-900 px-4 py-2 text-xs font-black text-white disabled:opacity-45"
-                aria-label="Confirm follow-up opened"
-              >
+            {opened ? (
+              <p className="inline-flex items-center gap-2 text-xs font-bold text-emerald-800">
                 <Eye size={15} aria-hidden="true" />
-                {opened
-                  ? "Open confirmed"
-                  : busy === "ACKNOWLEDGE_OPEN"
-                    ? "Confirming…"
-                    : "Confirm I opened this"}
-              </button>
-            </div>
+                Opened in Quipsly
+              </p>
+            ) : null}
           </div>
         ) : (
           <div className="mt-5 rounded-2xl border border-dashed border-emerald-300 bg-white/65 p-6">
@@ -1014,9 +996,8 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
               </fieldset>
             </div>
             <p className="mt-5 text-xs font-bold leading-5 text-emerald-950">
-              {selectedCount} canonical record{selectedCount === 1 ? "" : "s"}{" "}
-              selected. Unreviewed transcript candidates, private notes,
-              project-team notes, and Session-shared notes are not eligible.
+              {selectedCount} item{selectedCount === 1 ? "" : "s"} selected.
+              Only notes marked client-safe and work owned by this client can be shared.
             </p>
             {snapshot.output?.status === "DRAFT" ? (
               <p className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold leading-5 text-sky-950">
@@ -1086,8 +1067,8 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 {sourcesReady && !hasUnsavedDraftChanges ? (
                   <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950" data-testid="client-follow-up-release-ready">
-                    <p className="text-xs font-black">Current sources verified</p>
-                    <p className="mt-1 text-xs font-semibold leading-5">All {snapshot.readiness?.selectedCount ?? 0} selected canonical records still match private revision {snapshot.output.revision}. Release remains a separate confirmation.</p>
+                    <p className="text-xs font-black">Ready to share</p>
+                    <p className="mt-1 text-xs font-semibold leading-5">All {snapshot.readiness?.selectedCount ?? 0} selected items still match this private draft.</p>
                   </div>
                 ) : sourcesReady ? (
                   <div className="rounded-xl border border-amber-300 bg-amber-100 p-3 text-amber-950" role="alert" data-testid="client-follow-up-unsaved-changes">
@@ -1105,30 +1086,16 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
                     <p className="mt-2 text-xs font-bold leading-5">Review the current selections on the left, then save private draft changes. Nothing has been released.</p>
                   </div>
                 )}
-                <label className="flex cursor-pointer items-start gap-3 text-xs font-bold leading-5 text-amber-950">
-                  <input
-                    type="checkbox"
-                    checked={releaseConfirmed}
-                    disabled={!releaseReady}
-                    onChange={(event) =>
-                      setReleaseConfirmed(event.target.checked)
-                    }
-                    className="mt-1"
-                  />
-                  I reviewed this exact snapshot and recipient. Release it
-                  inside the client’s private Quipsly Session. Do not send email
-                  or any external message.
-                </label>
                 <button
                   type="button"
-                  disabled={!releaseReady || !releaseConfirmed || busy !== null}
+                  disabled={!releaseReady || busy !== null}
                   onClick={() => void mutate("RELEASE")}
                   className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-45"
                 >
                   <Send size={15} aria-hidden="true" />
                   {busy === "RELEASE"
                     ? "Releasing in Quipsly…"
-                    : "Release to client in Quipsly"}
+                    : `Share with ${snapshot.room.client.label}`}
                 </button>
               </div>
             ) : null}
@@ -1139,26 +1106,14 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
                     ? "Recipient-confirmed open receipt exists for this content hash."
                     : "Released in app; no recipient-confirmed open receipt yet."}
                 </p>
-                <label className="mt-3 flex cursor-pointer items-start gap-3 text-xs font-bold leading-5 text-rose-950">
-                  <input
-                    type="checkbox"
-                    checked={revokeConfirmed}
-                    onChange={(event) =>
-                      setRevokeConfirmed(event.target.checked)
-                    }
-                    className="mt-1"
-                  />
-                  Revoke future in-app visibility while preserving source
-                  records, revision history, and delivery receipts.
-                </label>
                 <button
                   type="button"
-                  disabled={!revokeConfirmed || busy !== null}
+                  disabled={busy !== null}
                   onClick={() => void mutate("REVOKE")}
                   className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900 disabled:opacity-45"
                 >
                   <RotateCcw size={15} aria-hidden="true" />
-                  {busy === "REVOKE" ? "Revoking…" : "Revoke in-app visibility"}
+                  {busy === "REVOKE" ? "Stopping sharing…" : "Stop sharing"}
                 </button>
               </div>
             ) : null}
