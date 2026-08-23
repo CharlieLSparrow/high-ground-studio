@@ -631,6 +631,12 @@ share`. The continuity panel says that the call, chat, recordings,
   now performs that step once and shows a plain `Try again` only after failure.
   Assigning work, messaging a participant, scheduling, and releasing or sharing
   material remain explicit because those actions affect other people.
+- Apply the same boundary to audio quality. A verified source can be measured
+  and, when useful, given a separate balanced listening derivative without
+  asking the user to initiate routine processing. Quipsly now starts that
+  idempotent check automatically, exposes progress as ordinary audio health,
+  preserves the original, and stops after one failed attempt with a plain
+  retry. Replacement, promotion, publishing, and delivery remain explicit.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB

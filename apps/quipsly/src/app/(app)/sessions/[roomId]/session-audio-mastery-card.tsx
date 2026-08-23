@@ -1,7 +1,7 @@
 "use client";
 
 import { LoaderCircle, SlidersHorizontal, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 
@@ -34,6 +34,9 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [retryAvailable, setRetryAvailable] = useState(false);
+  const automaticAttempted = useRef(false);
+  const operationInFlight = useRef(false);
 
   const statusUrl = useCallback(() => {
     const query = new URLSearchParams({
@@ -70,6 +73,7 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
       .then((next) => {
         setStatus(next);
         setNotice(null);
+        setRetryAvailable(false);
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
@@ -91,10 +95,12 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
     return () => window.clearTimeout(timer);
   }, [busy, operate, status]);
 
-  const improve = async () => {
-    if (busy) return;
+  const improve = useCallback(async (options?: { automatic?: boolean }) => {
+    if (operationInFlight.current) return;
+    operationInFlight.current = true;
     setBusy(true);
-    setNotice("Quipsly is measuring the whole recording and preparing a balanced listening copy.");
+    setRetryAvailable(false);
+    setNotice("Quipsly is checking the whole recording and preparing a balanced listening copy if it needs one.");
     try {
       const next = await operate("queue");
       if (next.status === "completed") {
@@ -103,16 +109,39 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
           : "This recording already meets the spoken-word target.");
       }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Quipsly could not improve this audio.");
+      setRetryAvailable(true);
+      setNotice(options?.automatic
+        ? "Quipsly could not finish the audio check. Your original is safe; try again below."
+        : error instanceof Error
+          ? error.message
+          : "Quipsly could not improve this audio.");
     } finally {
+      operationInFlight.current = false;
       setBusy(false);
     }
-  };
+  }, [operate]);
+
+  useEffect(() => {
+    if (checking || status?.status !== "not-queued" || busy || automaticAttempted.current) return;
+    automaticAttempted.current = true;
+    void improve({ automatic: true });
+  }, [busy, checking, improve, status?.status]);
 
   const working = status && ["queued", "processing", "output-ready"].includes(status.status);
-  const failed = status?.status === "failed" || status?.status === "blocked";
+  const failed = status?.status === "failed" || status?.status === "blocked" || retryAvailable;
   const improvedUrl = status?.status === "completed" ? status.derivative?.playbackUrl : null;
   const alreadyBalanced = status?.status === "completed" && !improvedUrl;
+  const qualityLabel = checking
+    ? "Checking audio"
+    : busy || working
+      ? "Preparing audio"
+      : improvedUrl
+        ? "Improved copy ready"
+        : alreadyBalanced
+          ? "Audio is balanced"
+          : failed
+            ? "Audio check needs attention"
+            : "Audio check starting";
 
   return (
     <section className="mt-3 rounded-xl border border-fuchsia-200 bg-gradient-to-br from-fuchsia-50 to-white p-4" aria-label="Audio improvement">
@@ -121,9 +150,14 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
           <Sparkles className="h-4 w-4" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-black text-[#3d3122]">Audio polish</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-black text-[#3d3122]">Audio quality</p>
+            <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-wide ${failed ? "border-rose-200 bg-rose-50 text-rose-900" : improvedUrl || alreadyBalanced ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900"}`}>
+              {qualityLabel}
+            </span>
+          </div>
           <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">
-            Balance spoken-word loudness and prepare a clearer listening copy. Your original recording stays untouched.
+            Quipsly checks spoken-word loudness automatically and prepares a balanced listening copy when useful. Your original stays untouched.
           </p>
         </div>
       </div>
@@ -157,14 +191,14 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
       ) : (
         <button
           type="button"
-          onClick={improve}
+          onClick={() => void improve()}
           disabled={busy || Boolean(working)}
           className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-fuchsia-800 px-4 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60"
         >
           {busy || working ? (
             <><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> Improving audio…</>
           ) : (
-            <><SlidersHorizontal className="mr-2 h-4 w-4" aria-hidden="true" /> {failed ? "Try audio polish again" : "Improve audio"}</>
+            <><SlidersHorizontal className="mr-2 h-4 w-4" aria-hidden="true" /> {failed ? "Try again" : "Check audio now"}</>
           )}
         </button>
       )}

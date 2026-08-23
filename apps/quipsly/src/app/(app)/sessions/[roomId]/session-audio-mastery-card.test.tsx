@@ -24,7 +24,7 @@ describe("Session audio mastery", () => {
     Object.defineProperty(global, "fetch", { configurable: true, writable: true, value: fetchMock });
   });
 
-  it("offers one plain action and keeps the original beside the improved copy", async () => {
+  it("automatically prepares a listening copy and keeps the original beside it", async () => {
     fetchMock
       .mockResolvedValueOnce(response({ ok: true, status: "not-queued" }))
       .mockResolvedValueOnce(response({
@@ -36,15 +36,10 @@ describe("Session audio mastery", () => {
           profile: { integratedLufs: -16, maximumTruePeakDbtp: -1 },
         },
       }));
-    const user = userEvent.setup();
-
     render(<SessionAudioMasteryCard coordinates={coordinates} />);
 
-    const improve = await screen.findByRole("button", { name: "Improve audio" });
-    expect(screen.getByText(/Your original recording stays untouched/i)).toBeInTheDocument();
-    await user.click(improve);
-
     expect(await screen.findByText("Improved listening copy")).toBeInTheDocument();
+    expect(screen.getByText("Improved copy ready")).toBeInTheDocument();
     expect(screen.getByText("Original")).toBeInTheDocument();
     expect(screen.getByText(/has not replaced or published either version/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/media-vault/audio-mastery", expect.objectContaining({
@@ -64,8 +59,33 @@ describe("Session audio mastery", () => {
 
     render(<SessionAudioMasteryCard coordinates={coordinates} />);
 
-    expect(await screen.findByRole("button", { name: "Try audio polish again" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(screen.getByText("Why it did not finish")).toBeInTheDocument();
     expect(screen.queryByText("The processing worker is not configured.")).not.toBeVisible();
+  });
+
+  it("does not loop after an automatic audio check fails and lets the user retry", async () => {
+    fetchMock
+      .mockResolvedValueOnce(response({ ok: true, status: "not-queued" }))
+      .mockResolvedValueOnce(response({ ok: false, error: "temporary processor error" }, false))
+      .mockResolvedValueOnce(response({
+        ok: true,
+        status: "completed",
+        derivative: { playbackUrl: null },
+        proposal: {
+          action: "no-change",
+          profile: { integratedLufs: -16, maximumTruePeakDbtp: -1 },
+        },
+      }));
+    const user = userEvent.setup();
+
+    render(<SessionAudioMasteryCard coordinates={coordinates} />);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Your original is safe; try again below");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText("Audio is balanced")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
