@@ -277,6 +277,16 @@ if (controlledSpeechFlight) {
     true,
     "Production evidence was expanded before the coach requested it.",
   );
+  assert.equal(
+    audioPolish?.transcriptAppearedBeforePacketAdministration,
+    true,
+    "The ordinary transcript was buried below packet administration.",
+  );
+  assert.equal(
+    audioPolish?.recordingEditorOpenedInline,
+    true,
+    "Basic recording edits left the transcript workflow instead of opening inline.",
+  );
   assert(
     ["improved-listening-copy", "already-balanced"].includes(
       audioPolish?.outcome,
@@ -374,6 +384,10 @@ const result = {
           audioPolish.calmRecordingSummaryRendered,
         expertRecordingDetailsCollapsedByDefault:
           audioPolish.expertRecordingDetailsCollapsedByDefault,
+        transcriptAppearedBeforePacketAdministration:
+          audioPolish.transcriptAppearedBeforePacketAdministration,
+        recordingEditorOpenedInline:
+          audioPolish.recordingEditorOpenedInline,
       }
     : null,
   interactionSurfaceEvidence: {
@@ -411,6 +425,10 @@ const result = {
         controlledSpeechFlight &&
         audioPolish?.calmRecordingSummaryRendered === true &&
         audioPolish?.expertRecordingDetailsCollapsedByDefault === true,
+      transcriptFirstEditingContinuity:
+        controlledSpeechFlight &&
+        audioPolish?.transcriptAppearedBeforePacketAdministration === true &&
+        audioPolish?.recordingEditorOpenedInline === true,
     },
     browserInitiatedServiceMechanics: {
       transcriptWorkerAndProtectedPlayback: true,

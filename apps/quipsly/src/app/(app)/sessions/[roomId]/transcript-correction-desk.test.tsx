@@ -603,15 +603,16 @@ describe("TranscriptCorrectionDesk", () => {
     });
   });
 
-  it("links coaching transcript review directly to the in-Session recording editor", async () => {
+  it("opens coaching recording edits in the transcript surface", async () => {
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
 
-    render(<TranscriptCorrectionDesk roomId="room-1" canEditRecording />);
+    render(<TranscriptCorrectionDesk roomId="room-1" canEditRecording recordingEditor={<div>Inline recording editor</div>} />);
 
-    expect(await screen.findByRole("link", { name: "Trim recording" })).toHaveAttribute(
-      "href",
-      "/sessions/room-1?mode=outputs#recording-share",
-    );
+    const edit = await screen.findByRole("button", { name: "Edit recording" });
+    expect(screen.queryByText("Inline recording editor")).not.toBeInTheDocument();
+    fireEvent.click(edit);
+    expect(screen.getByText("Inline recording editor")).toBeInTheDocument();
+    expect(edit).toHaveAttribute("aria-expanded", "true");
   });
 
   it("saves a deliberate client-safe Session note with the exact transcript identity", async () => {

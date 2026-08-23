@@ -6408,6 +6408,14 @@ export function SessionReviewClient({
               held={held}
               followUpReady={clientFollowUpReady}
             />
+            <TranscriptCorrectionDesk
+              roomId={roomId}
+              sessionTitle={sessionTitle}
+              recordingAssetId={focusedRecordingAssetId}
+              canUseProjectTeamNotes={canUseProjectTeamNotes}
+              canEditRecording={purpose === "COACHING"}
+              recordingEditor={purpose === "COACHING" ? <SessionRecordingShareCard roomId={roomId} /> : null}
+            />
             <section
               className="grid gap-4 lg:grid-cols-3"
               aria-label="Session evidence status"
@@ -6799,13 +6807,6 @@ export function SessionReviewClient({
               </section>
             ) : null}
 
-            <TranscriptCorrectionDesk
-              roomId={roomId}
-              sessionTitle={sessionTitle}
-              recordingAssetId={focusedRecordingAssetId}
-              canUseProjectTeamNotes={canUseProjectTeamNotes}
-              canEditRecording={purpose === "COACHING"}
-            />
           </>
         )
       ) : null}

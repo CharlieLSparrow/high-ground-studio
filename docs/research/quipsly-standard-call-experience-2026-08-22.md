@@ -576,6 +576,12 @@ share`. The continuity panel says that the call, chat, recordings,
   follows the lesson in Descript's stalled Rooms workflow: recovery links and
   fallback media are valuable safety nets, but a participant should not have to
   return merely because two expected local masters finalized together.
+- Make the transcript the first post-call working surface. Packet generation,
+  consent evidence, evaluation labs, and downstream automation remain useful,
+  but must not appear before the recording and editable words a person came to
+  review. Basic trim, transcript exclusions, private preview, and recipient
+  release now open inline from Transcript instead of forcing a mode or app
+  switch; original participant masters remain immutable.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB

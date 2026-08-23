@@ -360,6 +360,39 @@ async function operateRenderedSession({ baseURL, context, password }) {
       improvedReadyState = await media.nth(1).evaluate((element) => element.readyState);
     }
 
+    checkpoint("operating transcript-first review and inline recording edits");
+    await page.goto(
+      `${baseURL}/sessions/${encodeURIComponent(context.roomId)}?mode=transcript`,
+      { waitUntil: "domcontentloaded" },
+    );
+    const transcriptDesk = page.locator("#transcript-correction-review");
+    const packetReview = page.locator("#review-material");
+    await transcriptDesk
+      .getByRole("heading", { name: "Review and edit the transcript" })
+      .waitFor({ timeout: 30_000 });
+    await packetReview.waitFor({ timeout: 30_000 });
+    const transcriptBox = await transcriptDesk.boundingBox();
+    const packetBox = await packetReview.boundingBox();
+    assert(
+      transcriptBox && packetBox && transcriptBox.y < packetBox.y,
+      "Packet administration appeared before the ordinary transcript review surface.",
+    );
+    const editRecording = transcriptDesk.getByRole("button", {
+      name: "Edit recording",
+      exact: true,
+    });
+    await editRecording.waitFor({ timeout: 30_000 });
+    await editRecording.click();
+    const inlineEditor = transcriptDesk.locator("#inline-recording-editor");
+    await inlineEditor
+      .getByRole("heading", { name: "Trim, listen, then share" })
+      .waitFor({ timeout: 30_000 });
+    assert(
+      new URL(page.url()).searchParams.get("mode") === "transcript",
+      "Opening the basic recording editor navigated away from the transcript workflow.",
+    );
+    await assertNoHorizontalOverflow(transcriptDesk, "Transcript-first Session review");
+
     assert(browserErrors.length === 0, `Session audio polish raised browser exceptions: ${browserErrors.join(" | ")}`);
     await clearRenderedSession(page, baseURL, "fresh-coach");
     return {
@@ -380,6 +413,8 @@ async function operateRenderedSession({ baseURL, context, password }) {
       browserExceptions: browserErrors.length,
       calmRecordingSummaryRendered: true,
       expertRecordingDetailsCollapsedByDefault: true,
+      transcriptAppearedBeforePacketAdministration: true,
+      recordingEditorOpenedInline: true,
     };
   } finally {
     await browserContext.close();
