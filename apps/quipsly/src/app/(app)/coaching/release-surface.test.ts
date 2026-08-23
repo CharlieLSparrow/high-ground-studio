@@ -54,6 +54,9 @@ describe("coaching release surfaces", () => {
     expect(compact).toContain("Resend email");
     expect(compact).toContain("Copy invite link");
     expect(compact).not.toContain("Open live room");
+    expect(compact).not.toContain("Send invitation email");
+    expect(compact).not.toContain("Copy client entry");
+    expect(compact).not.toContain("Share client entry");
     expect(compact).not.toContain("Set up your coach profile first");
     expect(compact).not.toContain("Appointment type");
     expect(compact).not.toContain("Purpose <select");

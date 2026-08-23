@@ -5,6 +5,7 @@ import {
   AlertCircle,
   Calendar as CalendarIcon,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Copy,
   ExternalLink,
@@ -254,6 +255,15 @@ type CoachingRunway = {
     coach: Person;
     callRoomId: string | null;
     callRoomStatus: string | null;
+    clientInvitationDelivery?: {
+      id: string;
+      channel: string;
+      status: string;
+      requestedAt: string;
+      completedAt: string | null;
+      errorCode: string | null;
+      errorMessage: string | null;
+    } | null;
     clientEntryPath: string | null;
     engagementPath: string | null;
     liveSessionPath: string | null;
@@ -2716,7 +2726,16 @@ export default function CoachingPage() {
                             </div>
                           )}
                           {canManageCoaching && (
-                            <div className="mt-2 rounded-xl border border-[#e8dcc4] bg-white/80 p-2">
+                            <details className="mt-2 rounded-xl border border-[#e8dcc4] bg-white/80 p-2">
+                              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-lg px-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                                <span>
+                                  {booking.clientInvitationDelivery?.status === "SENT"
+                                    ? "Invitation sent"
+                                    : "Invitation options"}
+                                </span>
+                                <ChevronDown size={15} aria-hidden="true" />
+                              </summary>
+                              <div className="mt-2 border-t border-[#e8dcc4] pt-2">
                               <button
                                 type="button"
                                 onClick={() =>
@@ -2742,7 +2761,9 @@ export default function CoachingPage() {
                                 ) : (
                                   <Mail size={14} />
                                 )}
-                                Send invitation email
+                                {booking.clientInvitationDelivery?.status === "SENT"
+                                  ? "Resend invite"
+                                  : "Send invite"}
                               </button>
                               <button
                                 type="button"
@@ -2754,7 +2775,7 @@ export default function CoachingPage() {
                                 }
                                 className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-[#fffaf1] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-white"
                               >
-                                <Copy size={14} /> Copy client entry
+                                <Copy size={14} /> Copy invite link
                               </button>
                               <button
                                 type="button"
@@ -2768,14 +2789,14 @@ export default function CoachingPage() {
                                 }
                                 className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-violet-800 transition hover:bg-violet-100"
                               >
-                                <Share2 size={14} /> Share client entry
+                                <Share2 size={14} /> Share invite
                               </button>
                               <p className="mt-2 text-[11px] font-bold leading-relaxed text-[#7b5c3b]">
-                                Send this when the client is ready. Quipsly
-                                checks the verified invited email before opening
-                                their live room and private coaching work.
+                                Only your client’s signed-in account can open
+                                this private Session.
                               </p>
-                            </div>
+                              </div>
+                            </details>
                           )}
                           {runway?.user?.isStaff === true &&
                             booking.stripeCustomerEvidence && (

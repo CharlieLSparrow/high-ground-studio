@@ -836,25 +836,32 @@ struct CaptureCoachingHomeView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                invitationActions(for: booking)
+                if let roomID = handoff.callRoomId {
+                    Button {
+                        Task { await refreshAndOpen(roomID: roomID, navigate: true) }
+                    } label: {
+                        Label("Open Session", systemImage: "arrow.right.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                DisclosureGroup(
+                    handoff.callRoomId.flatMap { client.invitationDeliveries[$0] }?.wasSent == true
+                        ? "Invitation sent"
+                        : "Invitation options"
+                ) {
+                    invitationActions(for: booking)
+                        .padding(.top, 8)
+                }
             } else {
-                HStack {
+                DisclosureGroup("Invitation options") {
                     coachingShareLink(
                         title: "Join my Quipsly coaching session",
                         roomID: handoff.callRoomId,
                         entryPath: handoff.clientEntryPath,
                         recipientEmail: booking(for: handoff.callRoomId)?.client?.email
                     )
-                }
-            }
-            HStack {
-                if let roomID = handoff.callRoomId {
-                    Button {
-                        Task { await refreshAndOpen(roomID: roomID, navigate: true) }
-                    } label: {
-                        Label("Open room", systemImage: "waveform.and.mic")
-                    }
-                    .buttonStyle(.bordered)
+                    .padding(.top, 8)
                 }
             }
         }
@@ -911,13 +918,23 @@ struct CaptureCoachingHomeView: View {
                                 Button {
                                     Task { await refreshAndOpen(roomID: roomID, navigate: true) }
                                 } label: {
-                                    Label("Open", systemImage: "arrow.right.circle")
+                                    Label("Open Session", systemImage: "arrow.right.circle.fill")
+                                        .frame(maxWidth: .infinity)
                                 }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(.borderedProminent)
                                 .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
                             }
                         }
-                        if client.isCoach { invitationActions(for: booking) }
+                        if client.isCoach {
+                            DisclosureGroup(
+                                booking.callRoomId.flatMap { client.invitationDeliveries[$0] }?.wasSent == true
+                                    ? "Invitation sent"
+                                    : "Invitation options"
+                            ) {
+                                invitationActions(for: booking)
+                                    .padding(.top, 8)
+                            }
+                        }
                     }
                     .captureCard()
                     .accessibilityElement(children: .contain)

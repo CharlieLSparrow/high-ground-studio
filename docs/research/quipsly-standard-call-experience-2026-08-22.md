@@ -535,6 +535,10 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   same verified account. The first acceptance remains explicit, but reopening
   the link no longer repeats an acceptance screen and immediately replaces the
   token-bearing URL with the canonical Session lobby URL.
+- Applied the same hierarchy to existing appointments, not only the new-
+  appointment confirmation. `Open Session` is the primary action on web and
+  iPhone; resend, copy, and Share stay under a disclosure whose calm summary
+  becomes `Invitation sent` when delivery evidence exists.
 - Made reopening a Session honor the canonical saved consent state in both UI
   and server guidance. Reopen never invents a new consent ceremony; recording
   remains a separate explicit action and a changed Session, participant, media
