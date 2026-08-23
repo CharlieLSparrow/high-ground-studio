@@ -1018,3 +1018,18 @@ recorded yet`. It identifies the missing participant and tells the current
 actor to reopen Quipsly on the recording device, or tells another participant
 who to contact. Technical queue, plan, and receipt evidence remains under
 `Recording and upload details`.
+
+The iPhone now renders the recording-directive projection for every authorized
+participant, not only the person who can control the room-wide Record button.
+The API remains the privacy authority: controllers receive all endpoint states,
+while a client receives only their own opaque participant and endpoint state.
+This fixes the prior UI loss of the client's own recording confirmation without
+broadening what the server returns. The source library also no longer labels a
+held or retryable upload `Safe on this iPhone`; it leads with `Upload needs
+attention`, keeps the protected-original assurance visible, and offers one `Try
+upload again` action with technical cause behind `What happened?`.
+
+The recording-directive API suite passes 8/8, and the updated Capture target
+builds successfully as a universal arm64/x86_64 iOS Simulator app with signing
+disabled. This does not claim a physical-device background upload, interruption,
+or minimally instructed recovery pass.

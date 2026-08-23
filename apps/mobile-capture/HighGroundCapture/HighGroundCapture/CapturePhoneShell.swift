@@ -6452,15 +6452,9 @@ private struct CaptureRecorderView: View {
                             message: coordinationMessage,
                             isRecording: captureIsActive,
                             joinConfirmationRequired: recordingCoordinator.joinConfirmationRequired,
-                            participantStatuses: session.canControlRecording == true
-                                ? (recordingCoordinator.currentDirective?.participantStatuses ?? [])
-                                : [],
-                            recordingHealth: session.canControlRecording == true
-                                ? recordingCoordinator.currentDirective?.recordingHealth
-                                : nil,
-                            endpointReceipts: session.canControlRecording == true
-                                ? (recordingCoordinator.currentDirective?.endpointReceipts ?? [])
-                                : []
+                            participantStatuses: recordingCoordinator.currentDirective?.participantStatuses ?? [],
+                            recordingHealth: recordingCoordinator.currentDirective?.recordingHealth,
+                            endpointReceipts: recordingCoordinator.currentDirective?.endpointReceipts ?? []
                         )
                     }
 
@@ -10926,7 +10920,7 @@ private struct CaptureRecordingCoordinationStatus: View {
                 }
 
                 if recordingHealth.attentionParticipantCount > 0 {
-                    Text("Recovery: have the affected person reopen this Session. Quipsly will retry their local recorder automatically.")
+                    Text("Open Quipsly on the affected recording device. It will retry the protected recording automatically.")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                 }
@@ -10951,7 +10945,7 @@ private struct CaptureRecordingCoordinationStatus: View {
                     .font(.caption.weight(.semibold))
                 }
 
-                Text("Recorder status is not upload completion. Quipsly retains each local source until exact-byte verification succeeds.")
+                Text("Wait for Upload complete before closing a recording device. Source receipts and verification details remain available for support.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -12446,25 +12440,54 @@ private struct UploadActivityCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label(model.uploadManager.isUploading ? "Uploading safely" : "Safe on this iPhone", systemImage: "icloud.and.arrow.up")
+                Label(uploadTitle, systemImage: uploadSymbol)
                     .font(.headline)
+                    .foregroundStyle(uploadTint)
                 Spacer()
                 if model.uploadManager.isUploading {
                     Text("\(Int(model.uploadManager.uploadProgress * 100))%")
                         .font(.subheadline.monospacedDigit())
                 }
             }
-            ProgressView(value: model.uploadManager.uploadProgress)
-            Text(model.uploadManager.statusText ?? "Local originals are preserved.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if model.uploadManager.isUploading {
+                ProgressView(value: model.uploadManager.uploadProgress)
+                Text(model.uploadManager.statusText ?? "Uploading the protected original…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("\(model.uploadManager.recoverableUploadCount) recording\(model.uploadManager.recoverableUploadCount == 1 ? "" : "s") still need\(model.uploadManager.recoverableUploadCount == 1 ? "s" : "") to upload. The original\(model.uploadManager.recoverableUploadCount == 1 ? " is" : "s are") protected on this iPhone.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let statusText = model.uploadManager.statusText?.nonempty {
+                    DisclosureGroup("What happened?") {
+                        Text(statusText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+            }
             if model.uploadManager.recoverableUploadCount > 0 && !model.uploadManager.isUploading {
-                Button("Try again now") { model.retryUploads() }
+                Button("Try upload again") { model.retryUploads() }
                     .buttonStyle(.borderedProminent)
                     .accessibilityHint("Retries every eligible protected upload. Originals stay on this iPhone until Quipsly verifies them.")
             }
         }
         .captureCard()
+        .accessibilityIdentifier("CaptureUploadActivity")
+    }
+
+    private var uploadTitle: String {
+        model.uploadManager.isUploading ? "Uploading recording" : "Upload needs attention"
+    }
+
+    private var uploadSymbol: String {
+        model.uploadManager.isUploading ? "icloud.and.arrow.up" : "icloud.slash"
+    }
+
+    private var uploadTint: Color {
+        model.uploadManager.isUploading ? CapturePalette.accent : .orange
     }
 }
 

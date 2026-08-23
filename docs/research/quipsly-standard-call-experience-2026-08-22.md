@@ -572,6 +572,12 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   recording device when a master is missing, or ask the named participant to
   do so. Ended missing-master state now agrees at both the Session and person
   level instead of showing a recovery banner beside `Not recorded yet`.
+- Let every iPhone participant see the recording status the private Session API
+  already authorizes. The API continues to show hosts every participant and a
+  client only their own opaque endpoint; the app no longer discards that client
+  self-status merely because the client cannot control the room-wide Record
+  button. Held uploads now say `Upload needs attention`, preserve one obvious
+  retry, and place the failure explanation behind `What happened?`.
   During capture, the familiar `Microphone level` surface leads with Voice,
   Peak, and plain healthy/clipping states while retaining exact dBFS values for
   accessibility and expert diagnosis.
