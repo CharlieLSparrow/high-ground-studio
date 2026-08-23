@@ -314,7 +314,7 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
     <section className={`mt-5 rounded-2xl border p-5 ${exitReady ? "border-sky-300 bg-sky-50" : "border-amber-300 bg-amber-50"}`} aria-labelledby="session-exit-readiness-heading" data-testid="session-exit-readiness">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
-          <p className={`text-[10px] font-black uppercase tracking-[0.18em] ${exitReady ? "text-sky-800" : "text-amber-800"}`}>Post-session source recovery</p>
+          <p className={`text-[10px] font-black uppercase tracking-[0.18em] ${exitReady ? "text-sky-800" : "text-amber-800"}`}>Recording upload</p>
           <h3 id="session-exit-readiness-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{recordingStatus.label}</h3>
           <p className={`mt-2 text-xs font-bold leading-5 ${exitReady ? "text-sky-950" : "text-amber-950"}`}>{recordingStatus.detail}</p>
         </div>
@@ -328,7 +328,7 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
     </section>
 
     <details className="mt-5 rounded-2xl border border-sky-200 bg-white/70 p-4" open={!exitReady || undefined} data-testid="recording-status-details">
-      <summary className="cursor-pointer text-sm font-black text-sky-950">{exitReady ? "Recording details" : "Recording details and recovery"}</summary>
+      <summary className="cursor-pointer text-sm font-black text-sky-950">{exitReady ? "Recording details" : "Recording and upload details"}</summary>
       <div className="mt-5">
     <section className="mt-5 rounded-2xl border border-violet-200 bg-violet-50/55 p-5" aria-labelledby="session-recording-plan-heading">
       <div className="flex flex-wrap items-start justify-between gap-3">

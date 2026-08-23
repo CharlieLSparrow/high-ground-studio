@@ -38,9 +38,28 @@ describe("session recording status", () => {
     input.people[1]!.endpointQueues[0] = { ...input.people[1]!.endpointQueues[0]!, queueState: "NOT_EMPTY", pendingSourceCount: 1, recordingAssetIds: [] };
     input.exitReadiness = { ...input.exitReadiness, state: "SERVER_COPY_INCOMPLETE", safeToLeaveAllEndpoints: false, allEndpointQueuesConfirmedEmpty: false, drainedEndpointCount: 1 };
     const result = buildSessionRecordingStatus({ roomId: "room-1", roomStatus: "RECORDING", topology: input });
-    expect(result.state).toBe("KEEP_OPEN");
+    expect(result).toMatchObject({
+      state: "KEEP_OPEN",
+      label: "Recording is finishing",
+    });
     expect(result.people[0]).toMatchObject({ label: "Coach", state: "SAFE" });
-    expect(result.people[1]).toMatchObject({ label: "Client", state: "KEEP_OPEN", pendingSourceCount: 1 });
+    expect(result.people[1]).toMatchObject({
+      label: "Client",
+      state: "KEEP_OPEN",
+      pendingSourceCount: 1,
+      detail: "Ask Client to keep Quipsly open on their recording device.",
+    });
+  });
+
+  it("gives the current actor a direct device action while their upload remains", () => {
+    const input = topology();
+    input.people[0]!.endpointQueues[0] = { ...input.people[0]!.endpointQueues[0]!, queueState: "NOT_EMPTY", pendingSourceCount: 1, recordingAssetIds: [] };
+    input.exitReadiness = { ...input.exitReadiness, state: "SERVER_COPY_INCOMPLETE", safeToLeaveAllEndpoints: false, allEndpointQueuesConfirmedEmpty: false, drainedEndpointCount: 1 };
+    const result = buildSessionRecordingStatus({ roomId: "room-1", roomStatus: "RECORDING", topology: input });
+    expect(result.people[0]).toMatchObject({
+      state: "KEEP_OPEN",
+      detail: "Keep Quipsly open on this device while your recording finishes uploading.",
+    });
   });
 
   it("does not mislabel an ended missing master as ordinary upload progress", () => {
@@ -49,8 +68,16 @@ describe("session recording status", () => {
     input.people[1] = { ...input.people[1]!, sources: [], endpointQueues: [] };
     input.exitReadiness = { ...input.exitReadiness, state: "PLANNED_SOURCE_INCOMPLETE", safeToLeaveAllEndpoints: false, safeForPlannedSources: false, fulfilledRequiredPlannedSourceCount: 1 };
     const result = buildSessionRecordingStatus({ roomId: "room-1", roomStatus: "ENDED", topology: input });
-    expect(result.state).toBe("RECOVERY_REQUIRED");
-    expect(result.people[1]).toMatchObject({ state: "NOT_STARTED", requiredSourceCount: 1 });
+    expect(result).toMatchObject({
+      state: "RECOVERY_REQUIRED",
+      label: "A recording needs attention",
+    });
+    expect(result.people[1]).toMatchObject({
+      state: "RECOVERY_REQUIRED",
+      labelText: "Recording missing",
+      requiredSourceCount: 1,
+      detail: "Ask Client to open Quipsly on the device they recorded with.",
+    });
   });
 
   it("fails closed when an aggregate safe result contradicts a participant device", () => {

@@ -1005,8 +1005,16 @@ before saying every endpoint is safe to leave.
 
 The focused component operation begins with an inactive Session and proves the
 safety surface is absent, then returns a participant queue with a pending local
-source and proves `Keep recording devices open` plus the affected participant
+source and proves `Recording is finishing` plus the affected participant
 appears. Existing safe, disagreement, failed, observer, and ended-missing-master
 tests remain green. This is rendered-component and contract evidence, not a
 physical-device upload, backgrounding, force-quit, natural-media, or human
 comprehension claim.
+
+The same projection now keeps the affected participant and the needed action
+aligned. An ended Session with a missing required master no longer combines a
+global `needs recovery` result with a participant row that says only `Not
+recorded yet`. It identifies the missing participant and tells the current
+actor to reopen Quipsly on the recording device, or tells another participant
+who to contact. Technical queue, plan, and receipt evidence remains under
+`Recording and upload details`.

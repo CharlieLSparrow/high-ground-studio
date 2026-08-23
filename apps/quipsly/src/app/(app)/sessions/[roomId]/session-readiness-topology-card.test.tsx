@@ -191,7 +191,7 @@ describe("Session readiness topology card", () => {
     expect(screen.getByText("Ready now")).toBeInTheDocument();
     expect(screen.getByText(/sample bytes stayed on that browser tab/i)).toBeInTheDocument();
     expect(screen.getByText("Governed action receipt · 12345678")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Server copies are safe" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Cloud copies are safe" })).toBeInTheDocument();
     expect(screen.getByText("Confirm device")).toBeInTheDocument();
     expect(screen.getByText("0/1 recording people safe")).toBeInTheDocument();
     expect(screen.getByText(/Safe to leave every endpoint: no/i)).toBeInTheDocument();
@@ -317,7 +317,7 @@ describe("Session readiness topology card", () => {
       screen.queryByRole("heading", { name: "Are everyone’s recordings safe?" }),
     ).not.toBeInTheDocument();
     expect(
-      await screen.findByRole("heading", { name: "Keep recording devices open" }),
+      await screen.findByRole("heading", { name: "Recording is finishing" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Keep device open")).toBeInTheDocument();
   });

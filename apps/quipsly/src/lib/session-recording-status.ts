@@ -37,7 +37,11 @@ export type SessionRecordingStatus = {
   technicalDetail: string;
 };
 
-function personStatus(person: SessionReadinessPerson, topology: SessionReadinessTopology): SessionRecordingPersonStatus {
+function personStatus(
+  person: SessionReadinessPerson,
+  topology: SessionReadinessTopology,
+  ended: boolean,
+): SessionRecordingPersonStatus {
   const required = topology.expectedSources.filter((source) => (
     source.participantId === person.id
     && source.status === "active"
@@ -56,12 +60,16 @@ function personStatus(person: SessionReadinessPerson, topology: SessionReadiness
 
   if (failedSourceCount > 0 || failedSource) {
     state = "RECOVERY_REQUIRED";
-    labelText = "Needs recovery";
-    detail = "A recording is held or its upload failed. Keep the device available and open recovery.";
+    labelText = "Needs attention";
+    detail = person.isCurrentActor
+      ? "Open Quipsly on this device and retry the upload. Your original recording stays protected."
+      : `Ask ${person.label} to open Quipsly on their recording device and retry the upload.`;
   } else if (pendingSourceCount > 0 || unresolvedCapture) {
     state = "KEEP_OPEN";
     labelText = "Keep device open";
-    detail = "This recording is still uploading or reconciling.";
+    detail = person.isCurrentActor
+      ? "Keep Quipsly open on this device while your recording finishes uploading."
+      : `Ask ${person.label} to keep Quipsly open on their recording device.`;
   } else if (requiredReady && allReportedQueuesDrained) {
     state = "SAFE";
     labelText = "Safe";
@@ -69,11 +77,21 @@ function personStatus(person: SessionReadinessPerson, topology: SessionReadiness
   } else if (requiredReady || verifiedSourceCount > 0) {
     state = "CHECK_DEVICE";
     labelText = "Confirm device";
-    detail = "The server copy is safe; confirm the recording device also says its upload is complete.";
+    detail = person.isCurrentActor
+      ? "Your cloud copy is safe. Wait until this device also says its upload is complete."
+      : `${person.label}’s cloud copy is safe. Ask them to confirm their recording device says Upload complete.`;
   } else if (person.sources.length > 0 || person.endpointQueues.length > 0 || required.some((source) => source.fulfillment !== "missing")) {
     state = "KEEP_OPEN";
     labelText = "Keep device open";
-    detail = "Quipsly is still matching this person’s required recording to verified bytes.";
+    detail = person.isCurrentActor
+      ? "Keep Quipsly open while your recording is matched to its verified cloud copy."
+      : `Ask ${person.label} to keep Quipsly open while their recording finishes.`;
+  } else if (required.length > 0 && ended) {
+    state = "RECOVERY_REQUIRED";
+    labelText = "Recording missing";
+    detail = person.isCurrentActor
+      ? "Open Quipsly on the device you recorded with so it can find and upload the protected original."
+      : `Ask ${person.label} to open Quipsly on the device they recorded with.`;
   } else if (required.length > 0) {
     state = "NOT_STARTED";
     labelText = "Not recorded yet";
@@ -116,7 +134,7 @@ export function buildSessionRecordingStatus(input: {
           : topology.exitReadiness.state === "PLANNED_SOURCE_INCOMPLETE" && ended
             ? "RECOVERY_REQUIRED"
             : "KEEP_OPEN";
-  const people = topology.people.map((person) => personStatus(person, topology));
+  const people = topology.people.map((person) => personStatus(person, topology, ended));
   const recordingPeople = people.filter((person) => person.state !== "NOT_REQUIRED");
   const peopleSafeCount = recordingPeople.filter((person) => person.state === "SAFE").length;
   // Treat the durable aggregate as necessary but not sufficient. If an old or
@@ -128,9 +146,9 @@ export function buildSessionRecordingStatus(input: {
     : topologyState;
   const copy = {
     SAFE: ["Every recording is safe", "All required recordings are verified and every reporting device has finished uploading."],
-    KEEP_OPEN: ["Keep recording devices open", "One or more recordings are still arriving. Leave Quipsly open on those devices."],
-    CHECK_DEVICE: ["Server copies are safe", "Confirm each recording device also says its upload is complete before closing it."],
-    RECOVERY_REQUIRED: ["A recording needs recovery", "A required recording did not finish normally. Keep the source device available and open recovery details."],
+    KEEP_OPEN: ["Recording is finishing", "Keep Quipsly open on the affected devices while their recordings finish uploading."],
+    CHECK_DEVICE: ["Cloud copies are safe", "Before closing an affected device, wait until Quipsly says its upload is complete."],
+    RECOVERY_REQUIRED: ["A recording needs attention", "Open Quipsly on the affected recording device and retry its upload."],
     PLAN_REQUIRED: ["Choose the recordings to protect", "Confirm which audio and video sources are required before relying on a Safe result."],
     NOT_STARTED: ["Recording has not started", "No retained recording is visible yet."],
     NOT_REQUIRED: ["No recording is required", "This Session does not require a retained recording."],

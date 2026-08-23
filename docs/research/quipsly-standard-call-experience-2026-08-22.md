@@ -567,6 +567,11 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   The pre-call lobby stays calm, but upload, reconciliation, safe-to-leave, and
   recovery states no longer require opening technical recording details. The
   projection still fails closed when server bytes and a device queue disagree.
+- Replaced participant-facing recovery-system language with direct actions:
+  keep Quipsly open while an upload finishes, reopen it on the affected
+  recording device when a master is missing, or ask the named participant to
+  do so. Ended missing-master state now agrees at both the Session and person
+  level instead of showing a recovery banner beside `Not recorded yet`.
   During capture, the familiar `Microphone level` surface leads with Voice,
   Peak, and plain healthy/clipping states while retaining exact dBFS values for
   accessibility and expert diagnosis.
