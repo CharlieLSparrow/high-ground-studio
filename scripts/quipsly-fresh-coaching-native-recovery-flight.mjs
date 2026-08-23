@@ -155,25 +155,17 @@ async function grantClientRecordingConsent(context) {
       password,
       callbackPath: context.clientEntryPath,
     });
-    const retainedRecorder = page.getByRole("region", {
-      name: "Record this coaching Session",
+    const consentControl = page.getByTestId("session-consent-control");
+    await consentControl.waitFor({ state: "visible", timeout: 30_000 });
+    const consentButton = consentControl.getByRole("button", {
+      name: /Agree and continue|Save changes/,
+    });
+    await consentButton.waitFor({ state: "visible", timeout: 30_000 });
+    const recordingOptions = consentControl.getByText("Recording options", {
       exact: true,
     });
-    const consentButton = retainedRecorder.getByRole("button", {
-      name: /Agree and continue|Update choices/,
-    });
-    const browserChoice = page.getByRole("button", { name: /This browser/i });
-    const deviceChoiceShown = await Promise.race([
-      browserChoice
-        .waitFor({ state: "visible", timeout: 30_000 })
-        .then(() => true),
-      consentButton
-        .waitFor({ state: "visible", timeout: 30_000 })
-        .then(() => false),
-    ]);
-    if (deviceChoiceShown) await browserChoice.click();
-    await consentButton.waitFor({ state: "visible", timeout: 30_000 });
-    const transcriptionChoice = retainedRecorder.getByRole("checkbox", {
+    await recordingOptions.click();
+    const transcriptionChoice = consentControl.getByRole("checkbox", {
       name: "Create a transcript and suggested notes/tasks",
       exact: true,
     });
@@ -202,7 +194,7 @@ async function grantClientRecordingConsent(context) {
         try {
           return (
             request.postDataJSON()?.presentationEvidence?.surface ===
-            "quipsly-capture-consent-v2"
+            "quipsly-session-workspace-consent-v1"
           );
         } catch {
           return false;
@@ -210,7 +202,7 @@ async function grantClientRecordingConsent(context) {
       },
       { timeout: 30_000 },
     );
-    const clickBoundary = await retainedRecorder.evaluate((region) => ({
+    const clickBoundary = await consentControl.evaluate((region) => ({
       text: region.textContent,
       checkboxes: Array.from(
         region.querySelectorAll('input[type="checkbox"]'),
