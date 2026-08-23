@@ -122,6 +122,14 @@ Recurring complaints reveal the failure modes Quipsly must design out:
   join with video off if the camera cannot start. Keep Leave available, explain
   the one failed device beside the call, and let the person recover it from
   settings without rejoining.
+- Apply the same separation to the high-quality local recorder. A permission,
+  busy-device, unsupported-format, or recording-ledger failure gets one ordinary
+  recovery instruction beside Record and explicitly says that the call remains
+  connected. Preserve the exact browser exception under **Recording health**
+  for support; never make a participant parse driver terminology to continue.
+- If the recorder has already begun writing when its Session start receipt
+  fails, stop and finalize that local source safely. Do not present it as a
+  confirmed recording and do not disconnect the conversation.
 - A client invited to a private coaching Session should not need broad Quipsly
   setup before the call. Authentication and profile completion must be no more
   than the minimum required to establish the private recipient boundary.

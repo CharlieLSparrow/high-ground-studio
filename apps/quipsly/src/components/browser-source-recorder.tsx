@@ -66,6 +66,7 @@ import type {
   BrowserRetainedSourceStatus,
 } from "@/lib/session-guardian";
 import { browserRetainedStorageIssue } from "@/lib/session-guardian";
+import { browserRetainedStartFailure } from "@/lib/browser-retained-start-failure";
 import {
   browserSourceInterruptedRecoveryCandidate,
   browserSourceExitSafety,
@@ -1997,8 +1998,10 @@ export function BrowserSourceRecorder({
       setMessage("Recording on this device. Your call continues normally.");
       return captureId;
     } catch (error) {
-      if (recorderRef.current?.state === "recording") {
-        recorderRef.current.stop();
+      const activeRecorder = recorderRef.current;
+      const recorderWasActive = activeRecorder?.state === "recording";
+      if (recorderWasActive) {
+        activeRecorder.stop();
       } else {
         clearGuardianMonitoring();
         await stopRetainedSourceMeter(new Date().toISOString());
@@ -2006,11 +2009,19 @@ export function BrowserSourceRecorder({
         await durableWriterRef.current?.close().catch(() => undefined);
         durableWriterRef.current = null;
       }
-      setStatus("error");
+      const failure = browserRetainedStartFailure(error, sourceType);
+      setOperationalIssue({
+        kind: "start-failed",
+        detail: recorderWasActive
+          ? "Quipsly could not confirm this recording with the Session, so it is stopping safely. Your call is still connected."
+          : failure.message,
+        technicalDetail: failure.technicalDetail,
+      });
+      setStatus(recorderWasActive ? "stopping" : "error");
       setMessage(
-        error instanceof Error
-          ? error.message
-          : "The browser source could not start.",
+        recorderWasActive
+          ? "Recording confirmation failed. Quipsly is protecting what was captured and stopping safely; your call is still connected."
+          : failure.message,
       );
       return null;
     }
@@ -2659,6 +2670,11 @@ export function BrowserSourceRecorder({
               : "browser-managed retention"}{" "}
             · {formatBytes(usageBytes)} / {formatBytes(quotaBytes)}
           </p>
+          {operationalIssue?.technicalDetail ? (
+            <p className="mt-2 break-words font-mono font-medium" data-testid="recording-technical-detail">
+              Technical detail: {operationalIssue.technicalDetail}
+            </p>
+          ) : null}
         </details>
         <p
           role="status"

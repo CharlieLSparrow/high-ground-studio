@@ -1859,3 +1859,27 @@ in-use camera rejection that preserves provider connection, exposes Leave and
 Start camera, and never calls room disconnect. The complete Quipsly TypeScript
 7 typecheck also passes. Physical MV7i, Canon, built-in camera, and cross-device
 recovery remain on the continuous hardware ledger.
+
+## Retained recorder recovery without call loss — 2026-08-23
+
+The high-quality browser recorder no longer exposes raw browser or device
+exceptions as its primary participant instruction. Permission denial asks the
+person to allow the selected source for the site; an occupied or disconnected
+device asks them to close the competing app or choose another source; an
+unsupported source request points to Recording settings. Every path explicitly
+confirms that the independent conversation remains connected.
+
+The exact exception name, browser message, and failed constraint remain under
+the collapsed **Recording health** disclosure for support. A non-device start
+failure uses the same calm boundary without inventing a cause. If the encoder
+was already writing before the Session rejected its start receipt, Quipsly
+stops and finalizes the local source safely and does not claim a confirmed
+recording.
+
+Independent evidence: four focused start-failure classifications and eleven
+Session guardian projections pass, the browser room and retained-consent
+regression set passes 44/44, and the complete Quipsly TypeScript 7 typecheck
+passes after route generation. Physical proof of simultaneous Canon R8/MV7i
+conversation and retained recording remains on the continuous hardware ledger;
+this product slice does not convert automated error simulation into a hardware
+compatibility claim.

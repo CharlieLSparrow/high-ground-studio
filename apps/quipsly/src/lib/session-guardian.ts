@@ -11,8 +11,9 @@ export type BrowserRetainedSourceStatus =
   | "error";
 
 export type BrowserRetainedSourceIssue = {
-  kind: "source-muted" | "source-ended" | "source-no-signal" | "encoder-stalled" | "storage-low" | "storage-critical";
+  kind: "source-muted" | "source-ended" | "source-no-signal" | "encoder-stalled" | "storage-low" | "storage-critical" | "start-failed";
   detail: string;
+  technicalDetail?: string;
 };
 
 export const RETAINED_SOURCE_STORAGE_WATCH_BYTES = 2 * 1024 ** 3;
@@ -131,18 +132,22 @@ export function projectSessionGuardian(input: SessionGuardianInput): SessionGuar
     };
   }
 
-  if (retained?.issue && ["source-ended", "source-no-signal", "encoder-stalled", "storage-critical"].includes(retained.issue.kind)) {
+  if (retained?.issue && ["source-ended", "source-no-signal", "encoder-stalled", "storage-critical", "start-failed"].includes(retained.issue.kind)) {
     return {
       level: "intervene",
       eyebrow: "Retained-source intervention",
       title: retained.issue.kind === "storage-critical"
         ? "Local storage reached the safety reserve"
+        : retained.issue.kind === "start-failed"
+          ? "The retained recording needs a source"
         : retained.issue.kind === "source-no-signal"
           ? "The retained master has no observed program signal"
           : "The retained source was interrupted",
       detail: retained.issue.detail,
       action: retained.issue.kind === "source-no-signal"
         ? "Check mute, interface routing, gain, and the selected input now. Preserve this diagnostic file, then start a new take only after the retained meter follows speech."
+        : retained.issue.kind === "start-failed"
+          ? "Follow the recording recovery shown beside Record. The independent live call can continue while the source is corrected."
         : "Let Quipsly finish its safe stop. Keep the protected local take, correct the device or storage problem, then start a new take.",
       evidence: rows,
     };

@@ -65,6 +65,24 @@ describe("projectSessionGuardian", () => {
     expect(result.detail).toMatch(/10 seconds/i);
   });
 
+  it("keeps a recording start failure separate from the live call", () => {
+    const result = projectSessionGuardian(input({
+      retained: {
+        ...retained,
+        status: "error",
+        issue: {
+          kind: "start-failed",
+          detail: "The selected microphone is busy. Your call is still connected.",
+          technicalDetail: "NotReadableError: Could not start audio source",
+        },
+      },
+    }));
+    expect(result.level).toBe("intervene");
+    expect(result.title).toMatch(/recording needs a source/i);
+    expect(result.detail).toMatch(/call is still connected/i);
+    expect(result.action).toMatch(/independent live call can continue/i);
+  });
+
   it("does not call a silent retained master healthy merely because chunks are advancing", () => {
     const result = projectSessionGuardian(input({
       retained: {

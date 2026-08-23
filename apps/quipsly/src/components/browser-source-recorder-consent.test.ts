@@ -58,5 +58,10 @@ describe("browser retained-source consent", () => {
     expect(source).toContain(
       "Wait for Upload complete before closing a recording device.",
     );
+    expect(source).toContain("browserRetainedStartFailure(error, sourceType)");
+    expect(source).toContain('kind: "start-failed"');
+    expect(source).toContain('data-testid="recording-technical-detail"');
+    expect(source).toContain("Your call is still connected.");
+    expect(source).not.toContain("The browser source could not start.");
   });
 });
