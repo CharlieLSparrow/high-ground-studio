@@ -279,11 +279,14 @@ async function operateRenderedSession({ baseURL, context, password }) {
       alreadyBalanced.waitFor({ timeout: 30_000 }),
     ]);
     const canImprove = await improve.isVisible().catch(() => false);
+    let initialState = "completed";
     if (canImprove) {
+      initialState = "action-required";
       checkpoint("requesting one-step audio polish");
       await improve.click();
       await improve.waitFor({ state: "hidden", timeout: 15_000 });
     } else if (await improving.isVisible().catch(() => false)) {
+      initialState = "automatic-processing";
       checkpoint("resuming an in-progress audio polish result");
     } else {
       checkpoint("rechecking an already-completed audio polish result");
@@ -322,8 +325,10 @@ async function operateRenderedSession({ baseURL, context, password }) {
     return {
       cardCount,
       ordinaryOneStepActionRendered: true,
+      initialState,
       actionOperated: canImprove,
-      rerunRecognizedCompletedState: !canImprove,
+      automaticProcessingResumed: initialState === "automatic-processing",
+      completedStateRecognizedAtEntry: initialState === "completed",
       outcome: comparisonReady ? "improved-listening-copy" : "already-balanced",
       originalAndImprovedPlaybackRendered: comparisonReady,
       originalReadyState,

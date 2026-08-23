@@ -17,6 +17,8 @@ test("fresh Session audio polish operation protects source truth and acceptance 
   assert.match(subject, /name: \/\^\(Improve audio\|Try audio polish again\)\$\//);
   assert.match(subject, /original recording stays untouched/i);
   assert.match(subject, /originalSourceAndCaptureManifestUnchanged: true/);
+  assert.match(subject, /automaticProcessingResumed: initialState === "automatic-processing"/);
+  assert.match(subject, /completedStateRecognizedAtEntry: initialState === "completed"/);
   assert.match(subject, /humanAcceptanceSatisfied: false/);
   assert.match(subject, /physicalDeviceProven: false/);
   assert.match(subject, /humanListeningProven: false/);
