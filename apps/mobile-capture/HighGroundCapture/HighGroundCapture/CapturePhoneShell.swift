@@ -9465,6 +9465,10 @@ struct CaptureQuickEntrySheet: View {
                 Section {
                     if kind == .source {
                         LabeledContent("Save to", value: "Personal Inbox")
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("Save to")
+                            .accessibilityValue("Personal Inbox")
+                            .accessibilityIdentifier("CaptureQuickEntryDestination")
                     } else {
                         Picker("Save to", selection: $destination) {
                             if session != nil {

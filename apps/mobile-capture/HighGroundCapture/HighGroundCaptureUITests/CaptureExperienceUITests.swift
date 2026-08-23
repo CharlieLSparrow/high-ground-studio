@@ -917,21 +917,17 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["High Ground Odyssey"].waitForExistence(timeout: 3))
         app.buttons["High Ground Odyssey"].tap()
 
-        XCTAssertTrue(app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Destination, High Ground Odyssey")
-        ).firstMatch.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Project capture, No Session invented")
-        ).firstMatch.exists)
+        XCTAssertEqual(destination.value as? String, "High Ground Odyssey")
+        XCTAssertTrue(app.staticTexts[
+            "Saved privately by default. If you are offline, Quipsly syncs it when you reconnect."
+        ].waitForExistence(timeout: 3))
 
         let episodeTag = app.buttons["CaptureQuickEntryTag_preview-episode-4"].firstMatch
         reveal(episodeTag)
         XCTAssertTrue(episodeTag.isHittable)
         episodeTag.tap()
         XCTAssertEqual(episodeTag.value as? String, "Selected")
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "New names stay protected on this iPhone")
-        ).firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureQuickEntryNoteKind"].exists)
     }
 
     func testRecordSourceCaptureTargetsPrivateInboxBeforeAnyResearchNest() {
@@ -942,9 +938,15 @@ final class CaptureExperienceUITests: XCTestCase {
         sourceButton.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_SOURCE"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Personal Inbox")).firstMatch.exists)
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Not chosen yet")).firstMatch.exists)
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "stays private and unfiled")).firstMatch.exists)
+        let destination = app.descendants(matching: .any)["CaptureQuickEntryDestination"].firstMatch
+        XCTAssertTrue(destination.exists)
+        XCTAssertEqual(destination.value as? String, "Personal Inbox")
+        XCTAssertTrue(app.staticTexts[
+            "Saved privately to Inbox until you file it."
+        ].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureQuickEntryTag_")
+        ).firstMatch.exists)
         let body = app.textFields["CaptureQuickEntryBody"]
         body.tap()
         body.typeText("https://example.com/high-ground-reference")
@@ -1939,7 +1941,7 @@ final class CaptureExperienceUITests: XCTestCase {
             .hitRegion,
             .sufficientElementDescription,
         ])
-        let packetQueueProgress = app.descendants(matching: .any)["CapturePacketCandidateReviewProgress"]
+        let packetQueueProgress = app.descendants(matching: .any)["CapturePacketCandidateReviewCounts"]
         reveal(packetQueueProgress)
         XCTAssertTrue(packetQueueProgress.exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketCandidateReviewFilter"].exists)

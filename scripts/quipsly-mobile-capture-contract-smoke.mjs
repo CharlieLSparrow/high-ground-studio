@@ -1900,9 +1900,10 @@ function checkTranscriptCorrectionContractSources() {
       && sessionReviewText.includes('href={`/work?goal=${encodeURIComponent(candidate.committedGoalId)}`}')
       && nativeText.includes("/api/mobile/capture/transcripts/packet/goals")
       && nativeText.includes("CapturePacketCandidateReviewQueue")
-      && nativeText.includes("CapturePacketCandidateReviewProgress")
+      && nativeText.includes("CapturePacketCandidateReviewCounts")
       && nativeText.includes("CapturePacketCandidateReviewFilter")
-      && nativeText.includes('accessibilityLabel("Suggestions reviewed")')
+      && nativeText.includes('accessibilityLabel("Suggestion review status")')
+      && nativeText.includes(".accessibilityHidden(true)")
       && nativeText.includes("ready ·")
       && nativeText.includes("CapturePacketCandidateReviewFinish")
       && nativeText.includes("CapturePacketCandidateReviewDone")
@@ -1935,7 +1936,7 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("add this source to an existing task")
       && nativeText.includes("keep it for later, or dismiss it."),
     "packetGoalCandidateExplicitReviewBoundary",
-    "Packet goal-language stays candidate-only until an actor explicitly accepts one exact-source canonical Goal; edit, reject, and defer remain receipt-backed non-work decisions with no implied task, schedule, calendar, message, delivery, or publication.",
+    "Packet goal-language stays candidate-only until an actor deliberately creates one exact-source canonical Goal; Edit, Dismiss, and Later remain receipt-backed non-work decisions with no implied task, schedule, calendar, message, delivery, or publication.",
   );
   expect(
     packetRouteText.includes("buildPacketNoteCandidates")

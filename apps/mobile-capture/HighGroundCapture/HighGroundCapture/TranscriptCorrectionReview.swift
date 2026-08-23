@@ -3522,14 +3522,17 @@ struct CaptureTranscriptReviewView: View {
 
             ProgressView(value: Double(handledCount), total: Double(max(packetCandidateQueue.count, 1)))
                 .tint(.green)
-                .accessibilityLabel("Suggestions reviewed")
-                .accessibilityValue("\(handledCount) of \(packetCandidateQueue.count)")
-                .accessibilityIdentifier("CapturePacketCandidateReviewProgress")
+                .accessibilityHidden(true)
 
             Text("\(readyCount) ready · \(listenCount) with source · \(deferredCount) later · \(decidedCount) done")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("Suggestion review status")
+                .accessibilityValue(
+                    "\(handledCount) of \(packetCandidateQueue.count) reviewed; "
+                    + "\(readyCount) ready, \(listenCount) with source, \(deferredCount) later, \(decidedCount) done"
+                )
                 .accessibilityIdentifier("CapturePacketCandidateReviewCounts")
 
             if let next = packetOpenCandidates.first {
