@@ -185,9 +185,11 @@ check(
 );
 check(
   "Library exposes source evidence for every durable recording row",
-  phoneShell.includes('Label("Review source evidence", systemImage: "checkmark.shield")')
+  phoneShell.includes('Label("Check recording quality", systemImage: "waveform.badge.magnifyingglass")')
     && phoneShell.includes("CaptureSourceEvidenceView(recordingID: recording.id)")
-    && phoneShell.includes("CaptureSourceEvidenceLink_\\(recording.id)"),
+    && phoneShell.includes("CaptureSourceEvidenceLink_\\(recording.id)")
+    && phoneShell.includes("Recording and upload proof stays available under details.")
+    && !phoneShell.includes('Label("Review source evidence", systemImage: "checkmark.shield")'),
 );
 check(
   "evidence screen makes local, room, device, and cloud proof readable",
