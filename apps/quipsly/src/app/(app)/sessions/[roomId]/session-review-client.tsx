@@ -4975,18 +4975,18 @@ function SessionCollaborationScopes({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-800">
-            How this workspace fits together
+            Keep working together
           </p>
           <h2
             id="session-collaboration-scopes-heading"
             className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
           >
-            One call system, deliberately different workspaces
+            Everything from this Session stays connected
           </h2>
           <p className="mt-1 max-w-4xl text-xs font-semibold leading-5 text-sky-950">
-            Browser and iPhone join the same room. Quipsly changes the
-            surrounding tools, privacy defaults, and continuity—not the
-            underlying media transport.
+            The call, chat, recordings, transcript, notes, and next steps stay
+            together. Ongoing work continues in the related coaching,
+            episode, research, or project space.
           </p>
         </div>
         <span className="rounded-full border border-sky-300 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-sky-950">
@@ -4996,28 +4996,27 @@ function SessionCollaborationScopes({
       <div className="mt-4 grid gap-3 lg:grid-cols-3">
         <article className="rounded-xl border border-sky-200 bg-white p-4">
           <p className="text-[10px] font-black uppercase tracking-wide text-violet-800">
-            {experience.sessionScopeLabel}
+            This Session
           </p>
           <h3 className="mt-1 font-black text-[#3d3122]">
-            Call, take, and immediate thread
+            Call, chat, recording, and transcript
           </h3>
           <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
-            Participants, consent, live media, retained sources, Session chat,
-            transcript review, and this meeting’s notes stay on one auditable
-            Session.
+            Join the call, chat, review recordings, edit the transcript, and
+            keep notes from this meeting in one place.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
               href={sessionWorkspaceHref(roomId, "live")}
               className="rounded-full bg-violet-800 px-3 py-2 text-[10px] font-black uppercase text-white"
             >
-              Open live room
+              Open call
             </Link>
             <Link
               href={sessionWorkspaceHref(roomId, "recordings")}
               className="rounded-full border border-violet-200 px-3 py-2 text-[10px] font-black uppercase text-violet-950"
             >
-              Source receipts
+              Open recordings
             </Link>
           </div>
         </article>
@@ -5117,7 +5116,7 @@ function SessionCollaborationScopes({
         </article>
         <article className="rounded-xl border border-sky-200 bg-white p-4">
           <p className="text-[10px] font-black uppercase tracking-wide text-amber-800">
-            Canonical continuation
+            Next steps
           </p>
           <h3 className="mt-1 font-black text-[#3d3122]">
             {episode
@@ -5129,9 +5128,8 @@ function SessionCollaborationScopes({
                   : "Decisions, tasks, and handoffs"}
           </h3>
           <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
-            Chat and transcripts preserve conversation and can propose next
-            steps. Only reviewed notes, goals, tasks, calendar commitments,
-            editor handoffs, and delivery receipts become canonical work.
+            Turn useful moments into notes, goals, and tasks. Nothing is sent
+            to a client or published until someone chooses to share it.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link

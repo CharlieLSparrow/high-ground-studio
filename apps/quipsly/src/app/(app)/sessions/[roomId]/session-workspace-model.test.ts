@@ -33,7 +33,7 @@ describe("Session workspace modes", () => {
       .toBe("/sessions/room%20%2F%20private?mode=recordings");
     expect(sessionWorkspaceDefinition("outputs")).toMatchObject({
       label: "Outputs",
-      eyebrow: "Durable handoff",
+      eyebrow: "Share and continue",
     });
   });
 });

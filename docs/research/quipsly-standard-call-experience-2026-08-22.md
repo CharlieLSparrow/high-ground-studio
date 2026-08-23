@@ -487,6 +487,12 @@ failure shapes recur often enough to influence the architecture:
   remain implementation evidence or disclosed detail. Call audio is described
   plainly as conversation audio, while the saved iPhone file is the
   high-quality copy.
+- Let information architecture explain itself through familiar destinations,
+  not architecture prose. Session navigation now uses `At a glance`, `Before
+  the call`, `Saved privately`, `Listen and edit`, `Next steps`, and `Ready to
+  share`. The continuity panel says that the call, chat, recordings,
+  transcript, notes, and next steps stay connected, then links directly to the
+  related coaching, episode, research, or project space.
 
 ## Acceptance consequences
 
