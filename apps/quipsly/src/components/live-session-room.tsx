@@ -1303,33 +1303,58 @@ export function LiveSessionRoom({
         });
 
       await room.connect(packet.serverUrl, packet.participantToken);
+      const joinRecoveryMessages: string[] = [];
+      const joinTechnicalMessages: string[] = [];
       let microphonePublication;
       if (useCallAudioHere) {
-        await room.switchActiveDevice("audioinput", selectedMicrophoneId);
-        microphonePublication = await room.localParticipant.setMicrophoneEnabled(!joinMuted, {
-          deviceId: selectedMicrophoneId,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        });
-        if (!joinMuted) {
-          await startAudioMeter(microphonePublication?.track?.mediaStreamTrack);
+        try {
+          await room.switchActiveDevice("audioinput", selectedMicrophoneId);
+          microphonePublication = await room.localParticipant.setMicrophoneEnabled(!joinMuted, {
+            deviceId: selectedMicrophoneId,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          });
+          if (!joinMuted) {
+            await startAudioMeter(microphonePublication?.track?.mediaStreamTrack);
+          }
+          setMicrophoneRecoveryHeld(false);
+          setMicrophoneMuted(joinMuted);
+          microphoneMutedRef.current = joinMuted;
+        } catch (error) {
+          await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
+          stopAudioMeter();
+          setMicrophoneMuted(true);
+          microphoneMutedRef.current = true;
+          setMicrophoneRecoveryHeld(true);
+          joinRecoveryMessages.push("You joined muted because the microphone couldn't start. Choose another microphone in settings and try Unmute.");
+          joinTechnicalMessages.push(error instanceof Error ? `Microphone: ${error.message}` : "Microphone: device start failed.");
         }
       } else {
         await room.localParticipant.setMicrophoneEnabled(false);
+        setMicrophoneMuted(true);
+        microphoneMutedRef.current = true;
       }
-      setMicrophoneMuted(!useCallAudioHere || joinMuted);
-      microphoneMutedRef.current = !useCallAudioHere || joinMuted;
       if (cameraWanted && selectedCameraId) {
-        await room.switchActiveDevice("videoinput", selectedCameraId);
-        const publication = await room.localParticipant.setCameraEnabled(true, {
-          deviceId: selectedCameraId,
-          resolution: { width: 1920, height: 1080, frameRate: 30 },
-        });
-        const mediaTrack = publication?.track?.mediaStreamTrack;
-        if (localVideoRef.current && mediaTrack) {
-          localVideoRef.current.srcObject = new MediaStream([mediaTrack]);
-          await localVideoRef.current.play().catch(() => undefined);
+        try {
+          await room.switchActiveDevice("videoinput", selectedCameraId);
+          const publication = await room.localParticipant.setCameraEnabled(true, {
+            deviceId: selectedCameraId,
+            resolution: { width: 1920, height: 1080, frameRate: 30 },
+          });
+          const mediaTrack = publication?.track?.mediaStreamTrack;
+          if (localVideoRef.current && mediaTrack) {
+            localVideoRef.current.srcObject = new MediaStream([mediaTrack]);
+            await localVideoRef.current.play().catch(() => undefined);
+          }
+          setCameraMuted(false);
+          cameraMutedRef.current = false;
+        } catch (error) {
+          await room.localParticipant.setCameraEnabled(false).catch(() => undefined);
+          setCameraMuted(true);
+          cameraMutedRef.current = true;
+          joinRecoveryMessages.push("You joined with the camera off because it couldn't start. The conversation is still connected.");
+          joinTechnicalMessages.push(error instanceof Error ? `Camera: ${error.message}` : "Camera: device start failed.");
         }
       }
       suppressPreferenceWriteRef.current = false;
@@ -1340,12 +1365,14 @@ export function LiveSessionRoom({
       });
       updateRoster(room);
       setStatus("connected");
-      setTechnicalMessage(null);
-      setMessage(!useCallAudioHere
-        ? "You’re connected as a second device. Call audio stays on your other device."
-        : packet.recordingConsentGranted
-          ? "You’re connected. Recording is off."
-          : "You’re connected. Recording is off until everyone chooses to allow it.");
+      setTechnicalMessage(joinTechnicalMessages.length ? joinTechnicalMessages.join(" ") : null);
+      setMessage(joinRecoveryMessages.length
+        ? joinRecoveryMessages.join(" ")
+        : !useCallAudioHere
+          ? "You’re connected as a second device. Call audio stays on your other device."
+          : packet.recordingConsentGranted
+            ? "You’re connected. Recording is off."
+            : "You’re connected. Recording is off until everyone chooses to allow it.");
     } catch (error) {
       roomRef.current?.disconnect(true);
       roomRef.current = null;
@@ -1432,14 +1459,22 @@ export function LiveSessionRoom({
       return;
     }
     const nextMuted = !microphoneMuted;
-    const publication = await room.localParticipant.setMicrophoneEnabled(!nextMuted);
-    if (nextMuted) {
-      stopAudioMeter();
-    } else {
-      await startAudioMeter(publication?.track?.mediaStreamTrack);
+    try {
+      const publication = await room.localParticipant.setMicrophoneEnabled(!nextMuted);
+      if (nextMuted) {
+        stopAudioMeter();
+      } else {
+        await startAudioMeter(publication?.track?.mediaStreamTrack);
+      }
+      setMicrophoneMuted(nextMuted);
+      microphoneMutedRef.current = nextMuted;
+      setTechnicalMessage(null);
+    } catch (error) {
+      setMessage(nextMuted
+        ? "The microphone couldn't mute. Try again or leave the call."
+        : "The microphone couldn't start. Choose another microphone in settings and try again.");
+      setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a microphone error.");
     }
-    setMicrophoneMuted(nextMuted);
-    microphoneMutedRef.current = nextMuted;
   }, [microphoneMuted, microphoneRecoveryHeld, startAudioMeter, stopAudioMeter]);
 
   const toggleCamera = useCallback(async () => {
@@ -1450,10 +1485,18 @@ export function LiveSessionRoom({
       setMessage("Choose a usable camera before starting video.");
       return;
     }
-    await room.localParticipant.setCameraEnabled(nextEnabled, nextEnabled && cameraId ? { deviceId: cameraId } : undefined);
-    setCameraWanted(true);
-    setCameraMuted(!nextEnabled);
-    cameraMutedRef.current = !nextEnabled;
+    try {
+      await room.localParticipant.setCameraEnabled(nextEnabled, nextEnabled && cameraId ? { deviceId: cameraId } : undefined);
+      setCameraWanted(true);
+      setCameraMuted(!nextEnabled);
+      cameraMutedRef.current = !nextEnabled;
+      setTechnicalMessage(null);
+    } catch (error) {
+      setMessage(nextEnabled
+        ? "The camera couldn't start. You are still connected; choose another camera in settings and try again."
+        : "The camera couldn't stop. Try again or leave the call.");
+      setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a camera error.");
+    }
   }, [cameraId, cameraMuted, cameraWanted]);
 
   const chooseMicrophone = useCallback(async (nextId: string) => {

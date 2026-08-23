@@ -1838,3 +1838,24 @@ pass 6/6, the shared domain TypeScript 7 gate passes, and the complete Quipsly
 typecheck passes after route generation. Minimally instructed two-person proof
 that each participant understands the state remains on the human validation
 ledger and does not stop continued development.
+
+## Browser join degradation instead of call failure — 2026-08-23
+
+Once the provider room is connected, microphone and camera startup are now
+independent recovery boundaries. If the microphone fails, the participant stays
+in the room muted and can choose another input before using Unmute. If the
+camera fails or is already owned by another application, the participant stays
+in the room with video off and can retry Start camera. The exact browser error
+remains under technical details; the primary message says what happened and
+confirms that the conversation is still connected.
+
+This removes a brittle all-or-nothing join path without weakening retained
+recording: a failed call device is not silently relabelled as a studio source,
+and the separately consented recorder still fails closed if its selected master
+cannot start.
+
+Independent evidence: the focused browser room suite passes 28/28, including an
+in-use camera rejection that preserves provider connection, exposes Leave and
+Start camera, and never calls room disconnect. The complete Quipsly TypeScript
+7 typecheck also passes. Physical MV7i, Canon, built-in camera, and cross-device
+recovery remain on the continuous hardware ledger.

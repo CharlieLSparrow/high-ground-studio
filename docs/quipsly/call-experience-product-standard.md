@@ -117,6 +117,11 @@ Recurring complaints reveal the failure modes Quipsly must design out:
 - Conventional in-call controls remain in predictable locations and use
   conventional labels: Mute, Camera, Leave, Participants, Chat, and Record.
 - Reconnect automatically when safe. Interrupt only when the user must act.
+- A camera or microphone failure after the room connection succeeds must not
+  tear down the whole conversation. Join muted if the microphone cannot start;
+  join with video off if the camera cannot start. Keep Leave available, explain
+  the one failed device beside the call, and let the person recover it from
+  settings without rejoining.
 - A client invited to a private coaching Session should not need broad Quipsly
   setup before the call. Authentication and profile completion must be no more
   than the minimum required to establish the private recipient boundary.

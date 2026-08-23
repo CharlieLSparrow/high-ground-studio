@@ -605,6 +605,50 @@ describe("LiveSessionRoom", () => {
     expect(stage).toHaveAttribute("aria-label", "Your camera preview");
   });
 
+  it("keeps the call connected when a requested camera cannot start", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+          { kind: "videoinput", deviceId: "busy-camera", label: "Busy camera" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/mobile/capture/rooms/join")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: "room-scoped-test-token",
+            recordingConsentGranted: true,
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
+    }) as typeof fetch;
+    mockLiveKitRoom.localParticipant.setCameraEnabled.mockRejectedValueOnce(
+      new DOMException("Camera is already in use", "NotReadableError"),
+    );
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-camera-fallback" captureGroupId="55555555-5555-4555-8555-555555555544" sessionTitle="Camera fallback" kind="coaching" />);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Camera off" }));
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    expect(screen.getByText(/joined with the camera off/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled();
+    expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
+  });
+
   it("reveals recording only after the participant enters the call", async () => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
