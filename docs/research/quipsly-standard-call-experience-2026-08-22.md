@@ -812,6 +812,13 @@ share`. The continuity panel says that the call, chat, recordings,
   IDs, retry identity, provider-calendar exclusions, and canonical storage
   terminology belong in support evidence and failure recovery, not beneath
   every successful form.
+- Treat editing the same way as creating. The iPhone Session Notes workspace
+  should show note type, `Who can see this`, tags, `Save changes`, and `Earlier
+  versions stay available`. Offline retry and concurrent-edit handling should
+  appear only when needed, using `Saving changes` or `A newer version was saved
+  elsewhere` rather than protected-outbox, canonical-revision, or rebase
+  vocabulary. Conflict resolution remains explicit without teaching database
+  concurrency to a coach.
 
 ## Acceptance consequences
 

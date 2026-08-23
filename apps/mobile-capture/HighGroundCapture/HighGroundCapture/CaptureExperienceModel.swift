@@ -856,8 +856,8 @@ final class CaptureExperienceModel: ObservableObject {
             if !automatic {
                 let held = sessionNoteEditOutbox.entries.first { $0.disposition == .held }
                 sessionNoteEditMessage = held == nil
-                    ? "No protected Session-note edits need retry."
-                    : "A protected Session-note edit needs deliberate review beside Nest's current revision."
+                    ? "No note changes are waiting."
+                    : "A note changed elsewhere. Review your changes before saving."
                 sessionNoteEditMessageRoomID = held?.roomID
             }
             return
@@ -884,7 +884,7 @@ final class CaptureExperienceModel: ObservableObject {
     ) async {
         guard sessionNoteEditOutbox.entries.contains(where: { $0.id == edit.id }) else { return }
         guard AuthManager.shared.networkActionsAllowed else {
-            sessionNoteEditMessage = "Nest is offline. The complete Session-note edit remains protected on this iPhone."
+            sessionNoteEditMessage = "You're offline. Your changes are saved on this iPhone and will sync when you reconnect."
             sessionNoteEditMessageRoomID = edit.roomID
             return
         }

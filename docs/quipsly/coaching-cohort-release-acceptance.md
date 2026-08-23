@@ -1222,3 +1222,23 @@ preview, changed-source hold, and unsaved-editor hold in
 `/tmp/quipsly-follow-up-simple-rerun-20260823T063900Z.xcresult`. A signed-in
 client automatic-receipt readback and minimally instructed coach/client use
 remain deferred physical/runtime evidence.
+
+## Standard iPhone Session Notes checkpoint — 2026-08-23
+
+The normal Notes workspace now shows note type, who can see each note, its
+author, tags, source links, and an ordinary Edit action. Revision counts,
+canonical-editor language, delivery-receipt explanations, and protected-outbox
+terminology no longer dominate the successful path.
+
+The editor uses `Note type`, `Who can see this`, `Tags`, `Save changes`, and
+`Earlier versions stay available`. A pending write says `Saving changes`; a
+real concurrent edit says a newer version was saved elsewhere and asks the
+person to compare before saving. The underlying account-partitioned outbox,
+optimistic revision check, atomic tags, idempotent retry, retained prior
+revision, and explicit discard behavior are unchanged.
+
+The universal arm64/x86_64 simulator build passes, both focused Session-note
+contracts pass, and the full deterministic note-edit journey passes in
+`/tmp/quipsly-session-notes-simple-final-20260823T064909Z.xcresult`. Signed-in
+offline retry, true two-device edit conflict, VoiceOver comprehension, and
+minimally instructed human use remain deferred release evidence.

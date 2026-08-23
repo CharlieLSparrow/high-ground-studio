@@ -7866,7 +7866,7 @@ final class CaptureSessionClient: ObservableObject {
                 idempotentReplay: payload.idempotentReplay == true,
                 message: payload.idempotentReplay == true
                     ? "Nest already applied this exact protected note edit; no revision was duplicated."
-                    : "The canonical Session note, audience, and tags are updated with a new revision. Nothing was sent or published."
+                    : "Note updated. Earlier versions remain available."
             )
         } catch {
             return .retryable(

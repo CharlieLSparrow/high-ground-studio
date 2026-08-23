@@ -8561,7 +8561,7 @@ private struct CaptureSessionNotesCard: View {
         .buttonStyle(.plain)
         .captureCard()
         .accessibilityIdentifier("CaptureSessionNotesToggle")
-        .accessibilityHint("Opens protected pending notes and canonical notes whose audience permits this account.")
+        .accessibilityHint("Opens notes you can see for this Session.")
     }
 }
 
@@ -8650,7 +8650,7 @@ private struct CaptureSessionNotesSheetContent: View {
                 }
 
                 if totalCount == 0 {
-                    Text("No deliberate notes yet. Quick Note above can save privately, to this Session, for client review, or to the production team.")
+                    Text("No notes yet. Use Quick Note to add one.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -8659,7 +8659,7 @@ private struct CaptureSessionNotesSheetContent: View {
                 ForEach(pendingNotes.prefix(4)) { entry in
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 6) {
-                            Label("Protected on iPhone", systemImage: "iphone.gen3.radiowaves.left.and.right")
+                            Label(entry.disposition == .held ? "Needs review" : "Saving", systemImage: "iphone.gen3.radiowaves.left.and.right")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(.orange)
                             Spacer(minLength: 0)
@@ -8672,7 +8672,7 @@ private struct CaptureSessionNotesSheetContent: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(4)
-                        Text("\(entry.noteKind?.title ?? "Session note") · \(entry.noteVisibility?.boundary ?? MobileSessionNoteVisibility.authorPrivate.boundary)")
+                        Text("\(entry.noteKind?.title ?? "Session note") · \(entry.noteVisibility?.title ?? "Only me")")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -8695,9 +8695,6 @@ private struct CaptureSessionNotesSheetContent: View {
                             Text(note.audienceLabel)
                                 .font(.caption2.weight(.bold))
                             Spacer(minLength: 0)
-                            Text("\(note.revisionCount) rev")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
                         }
                         Text(note.title?.nonempty ?? note.purposeLabel)
                             .font(.subheadline.weight(.bold))
@@ -8713,7 +8710,7 @@ private struct CaptureSessionNotesSheetContent: View {
                                 .foregroundStyle(.purple)
                                 .lineLimit(2)
                         }
-                        Text("\(note.origin) · \(note.isMine ? "Yours" : note.authorLabel). \(note.audienceBoundary)")
+                        Text("\(note.isMine ? "Yours" : "By \(note.authorLabel)") · \(note.audienceBoundary)")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -8789,8 +8786,8 @@ private struct CaptureSessionNotesSheetContent: View {
                         if let protectedEdit {
                             Label(
                                 protectedEdit.disposition == .held
-                                    ? "Protected edit held for review"
-                                    : "Protected edit waiting for Nest",
+                                    ? "Changes need review"
+                                    : "Saving changes",
                                 systemImage: protectedEdit.disposition == .held
                                     ? "exclamationmark.triangle.fill"
                                     : "iphone.gen3.radiowaves.left.and.right"
@@ -8815,7 +8812,7 @@ private struct CaptureSessionNotesSheetContent: View {
                                 )
                             } label: {
                                 Label(
-                                    protectedEdit == nil ? "Edit note" : "Review protected draft",
+                                    protectedEdit == nil ? "Edit note" : "Review changes",
                                     systemImage: protectedEdit == nil ? "pencil" : "doc.text.magnifyingglass"
                                 )
                             }
@@ -8830,7 +8827,7 @@ private struct CaptureSessionNotesSheetContent: View {
                     .accessibilityIdentifier("CaptureSessionNoteCanonical_\(note.id)")
                 }
 
-                Text("Audience is a visibility decision, not a delivery receipt. Nest remains the canonical editor and revision history.")
+                Text("Only the people shown on each note can see it.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -8850,7 +8847,7 @@ private struct CaptureSessionNotesSheetContent: View {
             .accessibilityIdentifier("CaptureSessionNotesToggle")
         }
         .captureCard()
-        .accessibilityHint("Shows protected pending notes and canonical notes whose audience permits this account.")
+        .accessibilityHint("Shows notes you can see for this Session.")
     }
 
     private func matchingRecording(_ source: MobileCaptureTodayTranscriptSourceAnchor) -> LocalRecording? {
@@ -8939,13 +8936,13 @@ private struct CaptureSessionNoteEditSheet: View {
     var bodyView: some View {
         Form {
                 if let protectedEdit {
-                    Section("Protected iPhone draft") {
+                    Section("Unsaved changes") {
                         LabeledContent(
                             "State",
                             value: protectedEdit.disposition == .held ? "Held for review" : "Waiting for Nest"
                         )
                         if protectedEdit.disposition == .held {
-                            Text("Nest kept its newer canonical revision. Compare it below before deliberately rebasing this draft.")
+                            Text("A newer version was saved elsewhere. Compare it below before choosing Save.")
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                             if let error = protectedEdit.lastErrorMessage {
@@ -8954,7 +8951,7 @@ private struct CaptureSessionNoteEditSheet: View {
                                     .foregroundStyle(.secondary)
                             }
                         } else {
-                            Text("This exact request may already be committed. Quipsly will retry the same identity before allowing another edit.")
+                            Text("Quipsly is saving these changes. You can close this screen and they will keep retrying.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -8962,9 +8959,9 @@ private struct CaptureSessionNoteEditSheet: View {
                 }
 
                 if protectedEdit?.disposition == .held {
-                    Section("Current Nest revision") {
-                        LabeledContent("Purpose", value: note.purposeLabel)
-                        LabeledContent("Audience", value: note.audienceLabel)
+                    Section("Current saved note") {
+                        LabeledContent("Note type", value: note.purposeLabel)
+                        LabeledContent("Who can see this", value: note.audienceLabel)
                         Text(note.title?.nonempty ?? "Untitled note")
                             .font(.subheadline.weight(.bold))
                         Text(note.body)
@@ -8987,25 +8984,24 @@ private struct CaptureSessionNoteEditSheet: View {
                         .lineLimit(5...14)
                         .focused($focusedField, equals: .body)
                         .accessibilityIdentifier("CaptureSessionNoteEditBody")
-                    Picker("Purpose", selection: $noteKind) {
+                    Picker("Note type", selection: $noteKind) {
                         ForEach(availableKinds) { kind in
                             Text(kind.title).tag(kind)
                         }
                     }
                     .pickerStyle(.navigationLink)
                     .accessibilityIdentifier("CaptureSessionNoteEditKind")
-                    Picker("Audience", selection: $noteVisibility) {
+                    Picker("Who can see this", selection: $noteVisibility) {
                         ForEach(availableVisibilities) { visibility in
                             Text(visibility.title).tag(visibility)
                         }
                     }
                     .pickerStyle(.navigationLink)
                     .accessibilityIdentifier("CaptureSessionNoteEditVisibility")
-                    LabeledContent("Audience boundary", value: noteVisibility.title)
                 } header: {
                     Text("Edit")
                 } footer: {
-                    Text("\(noteVisibility.boundary) Editing never sends a message, changes work, schedules an event, or publishes anything.")
+                    Text(noteVisibility.boundary)
                         .accessibilityIdentifier("CaptureSessionNoteEditPolicyBoundary")
                 }
 
@@ -9045,9 +9041,9 @@ private struct CaptureSessionNoteEditSheet: View {
                             .accessibilityValue(selectedTagIDs.contains(tag.id) ? "Selected" : "Not selected")
                         }
                     } header: {
-                        Text("Nest tags")
+                        Text("Tags")
                     } footer: {
-                        Text("These are the same canonical tags used by Nest, Search, Library, Tasks, Goals, writing, and iPhone Capture.")
+                        Text("Use the same tags to find this note across Quipsly.")
                     }
                 } else if !note.tags.isEmpty {
                     Section {
@@ -9055,9 +9051,9 @@ private struct CaptureSessionNoteEditSheet: View {
                             $0.isActive == false ? "#\($0.label) (retired)" : "#\($0.label)"
                         }.joined(separator: "  "))
                     } header: {
-                        Text("Nest tags")
+                        Text("Tags")
                     } footer: {
-                        Text("The current tags remain attached. Owner or editor access is required to change shared Nest vocabulary assignments.")
+                        Text("These tags stay attached. Ask the project owner or an editor to change them.")
                     }
                 }
 
@@ -9076,8 +9072,8 @@ private struct CaptureSessionNoteEditSheet: View {
                         if saved { dismiss() }
                     } label: {
                         Label(
-                            protectedEdit?.disposition == .held ? "Save reviewed draft over current revision" : "Protect edit and sync",
-                            systemImage: "checkmark.shield"
+                            "Save changes",
+                            systemImage: "checkmark.circle"
                         )
                     }
                     .disabled(!canSave)
@@ -9090,15 +9086,15 @@ private struct CaptureSessionNoteEditSheet: View {
                                 dismiss()
                             }
                         } label: {
-                            Label("Discard protected draft", systemImage: "trash")
+                            Label("Discard changes", systemImage: "trash")
                         }
                         .accessibilityIdentifier("CaptureSessionNoteEditDiscard")
                     }
                 } footer: {
-                    Text("Nest remains canonical. A successful edit appends one revision and preserves the prior content, audience, and tag set.")
+                    Text("Earlier versions stay available after you save.")
                 }
             }
-            .navigationTitle(protectedEdit == nil ? "Edit Session Note" : "Review Note Draft")
+            .navigationTitle(protectedEdit == nil ? "Edit note" : "Review changes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

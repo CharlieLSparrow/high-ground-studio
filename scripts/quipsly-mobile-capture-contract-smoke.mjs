@@ -1609,7 +1609,9 @@ function checkTranscriptCorrectionContractSources() {
       && sessionNoteAccessText.includes("Private notes remain")
       && sessionsRouteText.includes("mobileSessionNoteVisibilityWhere")
       && mobileCaptureSessionsText.includes("const sessionNotes = room.notes")
-      && mobileCaptureSessionsText.includes("canUseProjectTeamNotes: input.isStaff === true")
+      && mobileCaptureSessionsText.includes("canUseProjectTeamNotes:")
+      && mobileCaptureSessionsText.includes("input.isStaff === true")
+      && mobileCaptureSessionsText.includes("productionNoteProjectIds.has(sessionProject.projectId)")
       && mobileCaptureSessionsText.includes("revisionCount: note._count?.revisions")
       && quickEntryOutboxText.includes("enum MobileSessionNoteKind")
       && quickEntryOutboxText.includes("enum MobileSessionNoteVisibility")
@@ -1625,7 +1627,7 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("CaptureSessionNotesCard")
       && shellText.includes("CaptureSessionNotesToggle")
       && shellText.includes("CaptureSessionNoteCanonical_")
-      && shellText.includes("Audience is a visibility decision, not a delivery receipt"),
+      && shellText.includes("Only the people shown on each note can see it"),
     "visibilityAwareIPhoneSessionNotes",
     "iPhone Session notes preserve purpose and audience through the protected offline ledger, authorize production policy on Nest, append a revision, and project only visibility-permitted canonical notes back to the phone without claiming delivery.",
   );
@@ -1649,7 +1651,7 @@ function checkTranscriptCorrectionContractSources() {
       && sessionNoteEditOutboxText.includes("var clientRequestID: String { id.uuidString.lowercased() }")
       && captureExperienceText.includes("retrySessionNoteEdits(automatic: true)")
       && captureExperienceText.includes("sessionNoteEditOutbox.enqueue")
-      && captureExperienceText.includes("A protected Session-note edit needs deliberate review beside Nest's current revision.")
+      && captureExperienceText.includes("A note changed elsewhere. Review your changes before saving.")
       && captureExperienceText.includes("sessionNoteEditMessageRoomID = edit.roomID")
       && bridgeText.includes("syncSessionNoteEdit")
       && bridgeText.includes("var isActive: Bool? = nil")
@@ -1659,8 +1661,8 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("CaptureSessionNoteEditSheet")
       && shellText.includes("CaptureSessionNoteEditKeyboardDone")
       && shellText.includes("CaptureSessionNoteEditPolicyBoundary")
-      && shellText.includes("Save reviewed draft over current revision")
-      && shellText.includes("Nest remains canonical. A successful edit appends one revision"),
+      && shellText.includes('Label("Discard changes"')
+      && shellText.includes("Earlier versions stay available after you save"),
     "protectedIPhoneSessionNoteEditing",
     "iPhone Session-note edits journal complete actor-partitioned intent before sync, use optimistic and idempotent server transactions, atomically replace canonical tags, hold conflicts for explicit review, and append exactly one revision without delivery or publication.",
   );

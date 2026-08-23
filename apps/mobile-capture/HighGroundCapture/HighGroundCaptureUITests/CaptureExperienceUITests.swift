@@ -810,9 +810,8 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(edit.isHittable)
         edit.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureSessionNoteEditSheet"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "Editing never sends a message")
-        ).firstMatch.exists)
+        let visibilityBoundary = app.descendants(matching: .any)["CaptureSessionNoteEditPolicyBoundary"].firstMatch
+        XCTAssertTrue(visibilityBoundary.waitForExistence(timeout: 5))
 
         let title = app.textFields["CaptureSessionNoteEditTitle"].firstMatch
         title.tap()

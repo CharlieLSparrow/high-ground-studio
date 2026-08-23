@@ -2041,7 +2041,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         saveEdit.tap()
         XCTAssertTrue(
             app.staticTexts[
-                "The canonical Session note, audience, and tags are updated with a new revision. Nothing was sent or published."
+                "Note updated. Earlier versions remain available."
             ].waitForExistence(timeout: 30),
             "The protected edit must remain queued until Nest acknowledges the exact revision, audience, and tag set."
         )
@@ -2067,7 +2067,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         let deliveryBoundary = relaunched.descendants(matching: .any)["CaptureSessionNotesDeliveryBoundary"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(deliveryBoundary, in: relaunched, timeout: 10, swipeAttempts: 6))
-        XCTAssertTrue(deliveryBoundary.label.contains("not a delivery receipt"))
+        XCTAssertTrue(deliveryBoundary.label.contains("Only the people shown on each note can see it"))
         attachRecordingIdentity("\(proofID):\(noteID)", name: "Session-note create/edit/relaunch proof identity")
     }
 
