@@ -963,3 +963,26 @@ rechecking the source commit and IPA digest, and rerunning packaged artifact
 inspection. This avoids an expensive duplicate 72-journey run without weakening
 the upload gate. Build 34 has not been uploaded; physical-device, real-participant,
 natural-speech, real-mailbox, and human-listening evidence remains separate.
+
+## 2026-08-23 automatic participant-safety denominator
+
+The post-call safety projection no longer requires a coach to declare a
+retained-source plan for an ordinary Session. Active, non-observer call
+participants are the automatic denominator once capture evidence exists: each must have a
+participant-owned, exact-byte-verified released master before the room-wide
+status can become safe. The latest durable queue receipt from every recording
+endpoint must still be drained and must cover the exact retained source set.
+
+This removes recurring production administration without weakening the failure
+boundary. A two-person Session with only one verified master now reports the
+missing participant recording even when every observed file is healthy. An
+explicit source plan remains available for extra phones, cameras, backups, and
+other professional masters, and those declared requirements continue to fail
+closed until fulfilled or explicitly waived with a reason.
+
+The ordinary surface now says `Recording status`; advanced planning is labeled
+`Extra recording sources` and remains under recording details. Focused topology,
+status, and UI tests pass 29/29, the wider Session recording/source regression
+set passes 112/112 with one environment-gated integration test skipped, and the
+full Quipsly TypeScript typecheck passes. This is deterministic source proof,
+not physical-device, TestFlight, or real-participant proof.

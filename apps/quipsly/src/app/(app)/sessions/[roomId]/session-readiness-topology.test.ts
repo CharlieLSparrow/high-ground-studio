@@ -225,7 +225,7 @@ describe("Session readiness topology", () => {
     });
   });
 
-  it("never treats observed retained bytes as proof of an undeclared recording plan", () => {
+  it("makes a standard participant source safe without advance production paperwork", () => {
     const topology = buildSessionReadinessTopology({
       generatedAt,
       participants: [participant],
@@ -268,13 +268,75 @@ describe("Session readiness topology", () => {
     });
 
     expect(topology.exitReadiness).toMatchObject({
-      state: "RECORDING_PLAN_REQUIRED",
+      state: "SAFE_TO_LEAVE",
       safeForServerObservedSources: true,
       allEndpointQueuesConfirmedEmpty: true,
       safeForPlannedSources: false,
-      safeToLeaveAllEndpoints: false,
+      safeToLeaveAllEndpoints: true,
     });
     expect(topology.boundaries.observedSourceDoesNotProvePlannedSourceComplete).toBe(true);
+  });
+
+  it("does not let one participant disappear from a standard multi-person recording", () => {
+    const client = {
+      ...participant,
+      id: "participant-client",
+      userId: "user-client",
+      label: "Jordan Client",
+      role: "CLIENT",
+      consent: {
+        recordingReady: false,
+        canRecordVideo: false,
+        transcriptionReady: false,
+      },
+    };
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant, client],
+      grants: [],
+      captures: [],
+      recordings: [{
+        id: "asset-audio",
+        ...exactStorage,
+        participantId: participant.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+        localManifestJson: { captureId: "capture-1", exactBytesVerified: true, storageGeneration: "1785990000000", reportedSourceProfile: { clientKind: "web" } },
+      }],
+      finalizations: [{
+        ...exactFinalizationEvidence,
+        uploadSessionId: "upload-1",
+        captureId: "capture-1",
+        recordingAssetId: "asset-audio",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
+      endpointQueues: [{
+        id: "queue-1",
+        participantId: participant.id,
+        clientInstanceId: "web-installation",
+        clientKind: "web",
+        queueRevision: "1",
+        queueState: "DRAINED",
+        localSourceCount: 1,
+        pendingSourceCount: 0,
+        failedSourceCount: 0,
+        observedCaptureIds: ["capture-1"],
+        recordingAssetIds: ["asset-audio"],
+        latestLocalMutationAt: "2026-08-05T17:59:31.000Z",
+        reconciledAt: "2026-08-05T17:59:32.000Z",
+        createdAt: "2026-08-05T17:59:32.000Z",
+      }],
+    });
+
+    expect(topology.exitReadiness).toMatchObject({
+      state: "PARTICIPANT_SOURCE_INCOMPLETE",
+      safeForServerObservedSources: true,
+      safeToLeaveAllEndpoints: false,
+    });
+    expect(topology.exitReadiness.detail).toContain("1 of 2 expected participant recordings");
   });
 
   it("keeps a missing planned iPhone video master visible when browser audio succeeded", () => {
@@ -760,7 +822,7 @@ describe("Session readiness topology", () => {
 
     expect(topology.people[0].sources[0].sourceKind).toBe("provider");
     expect(topology.exitReadiness).toMatchObject({
-      state: "RECORDING_PLAN_REQUIRED",
+      state: "NO_CAPTURE_EVIDENCE",
       requiredSourceCount: 0,
       safeToLeaveAllEndpoints: false,
     });

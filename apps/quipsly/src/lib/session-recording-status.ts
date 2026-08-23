@@ -47,12 +47,22 @@ function personStatus(
     && source.status === "active"
     && source.retentionRole === "required-master"
   ));
+  const standardCaptureObserved = topology.people.some((candidate) => (
+    candidate.sources.some((source) => (
+      source.sourceKind !== "provider"
+      && source.serverRetention.state !== "CAPTURE_PLAN_RESOLVED"
+    ))
+  ));
+  const recordingExpected = required.length > 0
+    || (standardCaptureObserved && person.role !== "OBSERVER");
   const pendingSourceCount = person.endpointQueues.reduce((total, queue) => total + queue.pendingSourceCount, 0);
   const failedSourceCount = person.endpointQueues.reduce((total, queue) => total + queue.failedSourceCount, 0);
   const verifiedSourceCount = person.sources.filter((source) => source.serverRetention.state === "SERVER_COPY_VERIFIED_RELEASED").length;
   const unresolvedCapture = person.sources.some((source) => source.serverRetention.state === "CAPTURE_AWAITING_MEDIA");
   const failedSource = person.sources.some((source) => source.status === "FAILED" || source.status === "HELD");
-  const requiredReady = required.length > 0 && required.every((source) => source.fulfillment === "fulfilled");
+  const requiredReady = required.length > 0
+    ? required.every((source) => source.fulfillment === "fulfilled")
+    : recordingExpected && verifiedSourceCount > 0;
   const allReportedQueuesDrained = person.endpointQueues.length > 0 && person.endpointQueues.every((queue) => queue.queueState === "DRAINED");
   let state: SessionRecordingPersonStatus["state"];
   let labelText: string;
@@ -86,13 +96,13 @@ function personStatus(
     detail = person.isCurrentActor
       ? "Keep Quipsly open while your recording is matched to its verified cloud copy."
       : `Ask ${person.label} to keep Quipsly open while their recording finishes.`;
-  } else if (required.length > 0 && ended) {
+  } else if (recordingExpected && ended) {
     state = "RECOVERY_REQUIRED";
     labelText = "Recording missing";
     detail = person.isCurrentActor
       ? "Open Quipsly on the device you recorded with so it can find and upload the protected original."
       : `Ask ${person.label} to open Quipsly on the device they recorded with.`;
-  } else if (required.length > 0) {
+  } else if (recordingExpected) {
     state = "NOT_STARTED";
     labelText = "Not recorded yet";
     detail = "No retained recording is visible for this person yet.";
@@ -110,7 +120,7 @@ function personStatus(
     labelText,
     detail,
     verifiedSourceCount,
-    requiredSourceCount: required.length,
+    requiredSourceCount: required.length || (recordingExpected ? 1 : 0),
     pendingSourceCount,
     failedSourceCount,
   };
@@ -129,6 +139,8 @@ export function buildSessionRecordingStatus(input: {
       ? "CHECK_DEVICE"
       : topology.exitReadiness.state === "RECORDING_PLAN_REQUIRED"
         ? "PLAN_REQUIRED"
+        : topology.exitReadiness.state === "PARTICIPANT_SOURCE_INCOMPLETE"
+          ? ended ? "RECOVERY_REQUIRED" : "KEEP_OPEN"
         : topology.exitReadiness.state === "NO_CAPTURE_EVIDENCE"
           ? "NOT_STARTED"
           : topology.exitReadiness.state === "PLANNED_SOURCE_INCOMPLETE" && ended

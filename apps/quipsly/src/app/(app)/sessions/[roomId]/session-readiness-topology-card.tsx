@@ -301,8 +301,8 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
   return <section className="rounded-3xl border border-sky-200 bg-sky-50/45 p-5 shadow-sm sm:p-7" aria-labelledby="session-readiness-topology-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="max-w-3xl">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-800">Recording safety</p>
-        <h2 id="session-readiness-topology-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Are everyone’s recordings safe?</h2>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-800">Recording</p>
+        <h2 id="session-readiness-topology-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Recording status</h2>
         <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Stay on this Session until Quipsly says every required recording is safe. Technical details stay out of the way unless something needs attention.</p>
       </div>
       <button type="button" onClick={() => void refreshAll()} disabled={refreshing || !liveReadbackEnabled} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50">
@@ -333,11 +333,11 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
     <section className="mt-5 rounded-2xl border border-violet-200 bg-violet-50/55 p-5" aria-labelledby="session-recording-plan-heading">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Recording confidence denominator</p>
-          <h3 id="session-recording-plan-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Planned retained sources</h3>
-          <p className="mt-2 text-xs font-bold leading-5 text-violet-950">Quipsly distinguishes “every file we saw is safe” from “every master we intended to capture exists.” A missing phone or camera cannot disappear merely because it never uploaded.</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Optional setup</p>
+          <h3 id="session-recording-plan-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Extra recording sources</h3>
+          <p className="mt-2 text-xs font-bold leading-5 text-violet-950">A standard call needs no source setup. Add an item only when you also expect another phone, camera, backup, or other production master.</p>
         </div>
-        {canManageSourcePlan ? <button type="button" onClick={() => setShowPlanForm((current) => !current)} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black uppercase tracking-wide text-white"><Plus size={15} aria-hidden="true" />{showPlanForm ? "Close" : "Add planned source"}</button> : null}
+        {canManageSourcePlan ? <button type="button" onClick={() => setShowPlanForm((current) => !current)} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black uppercase tracking-wide text-white"><Plus size={15} aria-hidden="true" />{showPlanForm ? "Close" : "Plan another source"}</button> : null}
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-3">

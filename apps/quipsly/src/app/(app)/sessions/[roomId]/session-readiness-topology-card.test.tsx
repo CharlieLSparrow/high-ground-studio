@@ -314,7 +314,7 @@ describe("Session readiness topology card", () => {
     );
 
     expect(
-      screen.queryByRole("heading", { name: "Are everyone’s recordings safe?" }),
+      screen.queryByRole("heading", { name: "Recording status" }),
     ).not.toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { name: "Recording is finishing" }),
@@ -371,7 +371,7 @@ describe("Session readiness topology card", () => {
     render(<SessionReadinessTopologyCard roomId="room-safe" topology={safeTopology} />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
-    expect(screen.getByRole("heading", { name: "Are everyone’s recordings safe?" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recording status" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Every recording is safe" })).toBeInTheDocument();
     expect(screen.getByText("1/1 recording people safe")).toBeInTheDocument();
     expect(screen.getByText("Safe")).toBeInTheDocument();

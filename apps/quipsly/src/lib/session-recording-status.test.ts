@@ -33,6 +33,48 @@ describe("session recording status", () => {
     expect(result.people.map((person) => person.state)).toEqual(["SAFE", "SAFE"]);
   });
 
+  it("does not make a standard call declare an extra source plan", () => {
+    const input = topology();
+    input.expectedSources = [];
+    input.summary.requiredPlannedSourceCount = 0;
+    input.summary.fulfilledRequiredPlannedSourceCount = 0;
+    input.exitReadiness = {
+      ...input.exitReadiness,
+      requiredPlannedSourceCount: 0,
+      fulfilledRequiredPlannedSourceCount: 0,
+      safeForPlannedSources: false,
+    };
+
+    const result = buildSessionRecordingStatus({ roomId: "room-1", roomStatus: "ENDED", topology: input });
+    expect(result).toMatchObject({ state: "SAFE", safeToLeave: true, peopleSafeCount: 2 });
+    expect(result.people.map((person) => person.requiredSourceCount)).toEqual([1, 1]);
+  });
+
+  it("does not invent a missing recording when an ended Session never recorded", () => {
+    const input = topology();
+    input.expectedSources = [];
+    for (const person of input.people) {
+      person.sources = [];
+      person.endpointQueues = [];
+    }
+    input.exitReadiness = {
+      ...input.exitReadiness,
+      state: "NO_CAPTURE_EVIDENCE",
+      requiredSourceCount: 0,
+      serverSafeRequiredSourceCount: 0,
+      safeForServerObservedSources: false,
+      allEndpointQueuesConfirmedEmpty: false,
+      safeToLeaveAllEndpoints: false,
+      requiredPlannedSourceCount: 0,
+      fulfilledRequiredPlannedSourceCount: 0,
+      safeForPlannedSources: false,
+    };
+
+    const result = buildSessionRecordingStatus({ roomId: "room-1", roomStatus: "ENDED", topology: input });
+    expect(result).toMatchObject({ state: "NOT_STARTED", safeToLeave: false, peopleRequiringRecordingCount: 0 });
+    expect(result.people.map((person) => person.state)).toEqual(["NOT_REQUIRED", "NOT_REQUIRED"]);
+  });
+
   it("tells the exact participant to keep their device open while upload remains", () => {
     const input = topology();
     input.people[1]!.endpointQueues[0] = { ...input.people[1]!.endpointQueues[0]!, queueState: "NOT_EMPTY", pendingSourceCount: 1, recordingAssetIds: [] };

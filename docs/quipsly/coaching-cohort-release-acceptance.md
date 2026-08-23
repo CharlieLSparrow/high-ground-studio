@@ -1333,3 +1333,18 @@ The receipt remains explicit: upload was not attempted, tester assignment was
 not performed, and physical TestFlight installation was not read back. Those
 steps belong to the next deliberate TestFlight train rather than being inferred
 from simulator, signing, or App Store Connect evidence.
+
+## Standard-call safety without setup paperwork — 2026-08-23
+
+Normal coaching Sessions now derive their required participant masters from
+the active, non-observer coach/client roster once capture evidence exists. They do not require a separate
+retained-source plan before `Every recording is safe` can appear. The safe state
+still requires one verified released participant master per expected person and
+drained endpoint queues covering the exact sources. One missing participant
+remains blocking even when all observed bytes are valid.
+
+Explicit plans remain additive for extra phones, cameras, backups, and complex
+productions. They do not appear as a prerequisite in the happy path. The change
+passes 29/29 focused projection/status/UI tests, 112/112 broader Session source
+regressions with one environment-gated integration test skipped, and Quipsly
+TypeScript typecheck. No deployment or Build 34 mutation occurred.

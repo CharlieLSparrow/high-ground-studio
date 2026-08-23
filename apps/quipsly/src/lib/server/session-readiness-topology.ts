@@ -280,6 +280,7 @@ export type SessionReadinessTopology = {
     state:
       | "NO_CAPTURE_EVIDENCE"
       | "RECORDING_PLAN_REQUIRED"
+      | "PARTICIPANT_SOURCE_INCOMPLETE"
       | "PLANNED_SOURCE_INCOMPLETE"
       | "SERVER_COPY_INCOMPLETE"
       | "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED"
@@ -879,6 +880,22 @@ export function buildSessionReadinessTopology(input: {
   ));
   const safeForPlannedSources = requiredPlannedSources.length > 0
     && fulfilledRequiredPlannedSources.length === requiredPlannedSources.length;
+  // A normal Session should not require the host to declare a production
+  // source plan. Every active non-observer participant is the automatic
+  // denominator once capture evidence exists; explicit plans only add
+  // requirements for advanced setups. A later consent-state change must not
+  // erase a person from the historical source-completeness denominator.
+  const defaultRecordingParticipants = people.filter((person) => (
+    person.role !== "OBSERVER"
+  ));
+  const defaultVerifiedParticipants = defaultRecordingParticipants.filter((person) => (
+    person.sources.some((source) => (
+      source.sourceKind !== "provider"
+      && source.serverRetention.state === "SERVER_COPY_VERIFIED_RELEASED"
+    ))
+  ));
+  const safeForDefaultParticipantSources = defaultRecordingParticipants.length > 0
+    && defaultVerifiedParticipants.length === defaultRecordingParticipants.length;
   const requiredEndpointQueueKeys = new Set<string>(latestQueueByEndpoint.keys());
   for (const grant of latestGrantByEndpoint.values()) {
     if ((iso(grant.expiresAt) ?? "") <= generatedAt.toISOString()) continue;
@@ -906,7 +923,12 @@ export function buildSessionReadinessTopology(input: {
   const allEndpointQueuesConfirmedEmpty = requiredEndpointQueueKeys.size > 0
     && drainedEndpointQueues.length === requiredEndpointQueueKeys.size
     && endpointSourcesCovered;
-  const safeToLeaveAllEndpoints = safeForPlannedSources && safeForServerObservedSources && allEndpointQueuesConfirmedEmpty;
+  const sourceDenominatorComplete = requiredPlannedSources.length > 0
+    ? safeForPlannedSources
+    : safeForDefaultParticipantSources;
+  const safeToLeaveAllEndpoints = sourceDenominatorComplete
+    && safeForServerObservedSources
+    && allEndpointQueuesConfirmedEmpty;
   const plannedSourceFields = {
     requiredPlannedSourceCount: requiredPlannedSources.length,
     fulfilledRequiredPlannedSourceCount: fulfilledRequiredPlannedSources.length,
@@ -943,10 +965,12 @@ export function buildSessionReadinessTopology(input: {
           ...plannedSourceFields,
         }
     : requiredPlannedSources.length === 0
+      && requiredSources.length > 0
+      && !safeForDefaultParticipantSources
       ? {
-          state: "RECORDING_PLAN_REQUIRED" as const,
-          label: "Confirm the retained-source plan",
-          detail: "Quipsly can report observed files and queues, but no active required master is declared. Add the intended audio/video masters before relying on a global Safe to leave decision.",
+          state: "PARTICIPANT_SOURCE_INCOMPLETE" as const,
+          label: "A participant recording is missing",
+          detail: `${defaultVerifiedParticipants.length} of ${defaultRecordingParticipants.length} expected participant recording${defaultRecordingParticipants.length === 1 ? " is" : "s are"} verified. No advance source plan is required for a standard Session.`,
           requiredSourceCount: requiredSources.length,
           serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
           pendingCaptureCount: pendingCaptureSources.length,
@@ -954,6 +978,21 @@ export function buildSessionReadinessTopology(input: {
           drainedEndpointCount: drainedEndpointQueues.length,
           safeForServerObservedSources,
           allEndpointQueuesConfirmedEmpty,
+          safeToLeaveAllEndpoints: false,
+          ...plannedSourceFields,
+        }
+    : requiredSources.length === 0
+      ? {
+          state: "NO_CAPTURE_EVIDENCE" as const,
+          label: "No retained capture evidence",
+          detail: "No retained master or stopped local capture is visible to Nest. Quipsly cannot tell any recording endpoint that it is safe to leave.",
+          requiredSourceCount: 0,
+          serverSafeRequiredSourceCount: 0,
+          pendingCaptureCount: 0,
+          endpointQueueCount: requiredEndpointQueueKeys.size,
+          drainedEndpointCount: drainedEndpointQueues.length,
+          safeForServerObservedSources: false,
+          allEndpointQueuesConfirmedEmpty: false,
           safeToLeaveAllEndpoints: false,
           ...plannedSourceFields,
         }
@@ -988,19 +1027,19 @@ export function buildSessionReadinessTopology(input: {
         ...plannedSourceFields,
       }
     : {
-          state: "NO_CAPTURE_EVIDENCE" as const,
-          label: "No retained capture evidence",
-          detail: "No retained master or stopped local capture is visible to Nest. Quipsly cannot tell any recording endpoint that it is safe to leave.",
-          requiredSourceCount: 0,
-          serverSafeRequiredSourceCount: 0,
-          pendingCaptureCount: 0,
-          endpointQueueCount: requiredEndpointQueueKeys.size,
-          drainedEndpointCount: drainedEndpointQueues.length,
-          safeForServerObservedSources: false,
-          allEndpointQueuesConfirmedEmpty: false,
-          safeToLeaveAllEndpoints: false,
-          ...plannedSourceFields,
-        };
+        state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED" as const,
+        label: "Server copy complete · check each recording device",
+        detail: "Every server-observed required master has exact verified bytes, but at least one recording device has not confirmed an empty recovery queue.",
+        requiredSourceCount: requiredSources.length,
+        serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
+        pendingCaptureCount: pendingCaptureSources.length,
+        endpointQueueCount: requiredEndpointQueueKeys.size,
+        drainedEndpointCount: drainedEndpointQueues.length,
+        safeForServerObservedSources,
+        allEndpointQueuesConfirmedEmpty,
+        safeToLeaveAllEndpoints: false,
+        ...plannedSourceFields,
+      };
   const attentionCount = people.reduce((total, person) => total + person.attentionCount, 0)
     + unassignedSources.filter((source) => source.serverRetention.state !== "CAPTURE_PLAN_RESOLVED").length
     + expectedSources.filter((expectation) => expectation.blocking).length;
