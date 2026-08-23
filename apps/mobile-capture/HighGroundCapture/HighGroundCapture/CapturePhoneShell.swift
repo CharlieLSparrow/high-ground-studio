@@ -13,7 +13,8 @@ struct CapturePhoneShell: View {
     @State private var showsNewSession = false
     @State private var completedInitialLoad = false
     @State private var isRoutingSessionLink = false
-    @State private var recorderFocusRequest = 0
+    @State private var recorderViewGeneration = 0
+    @State private var localOnlyRecordingSessionID: String?
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -32,8 +33,9 @@ struct CapturePhoneShell: View {
                 CaptureRecorderView(
                     model: model,
                     visibleTab: $visibleTab,
-                    recorderFocusRequest: $recorderFocusRequest
+                    localOnlyRecordingSessionID: $localOnlyRecordingSessionID
                 )
+                .id(recorderViewGeneration)
             }
             .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
             .tag(CaptureRootTab.record)
@@ -71,7 +73,7 @@ struct CapturePhoneShell: View {
                     isPulsing:
                         audioCapture.captureState == .recording
                         && videoCapture.state == .recording,
-                    action: { focusActiveRecorder() }
+                    action: { visibleTab = .record }
                 )
             } else if audioCaptureIsActive {
                 GlobalCaptureBanner(
@@ -83,7 +85,7 @@ struct CapturePhoneShell: View {
                     duration: audioCapture.currentDuration,
                     tint: audioCapture.captureState == .paused ? .orange : .red,
                     isPulsing: audioCapture.captureState == .recording,
-                    action: { focusActiveRecorder() }
+                    action: { visibleTab = .record }
                 )
             } else if videoCaptureIsActive {
                 GlobalCaptureBanner(
@@ -95,7 +97,7 @@ struct CapturePhoneShell: View {
                     duration: videoCapture.durationSeconds,
                     tint: videoCapture.state == .paused ? .orange : .red,
                     isPulsing: videoCapture.state == .recording,
-                    action: { focusActiveRecorder() }
+                    action: { visibleTab = .record }
                 )
             }
         }
@@ -168,11 +170,12 @@ struct CapturePhoneShell: View {
         .onChange(of: videoCapture.state) { _, state in
             model.reconcileVideoCaptureState(state, using: videoCapture)
         }
-    }
-
-    private func focusActiveRecorder() {
-        visibleTab = .record
-        recorderFocusRequest += 1
+        .onChange(of: visibleTab) { previousTab, tab in
+            guard tab == .record, previousTab != .record else { return }
+            // A deliberate return to Record starts from a predictable surface
+            // while the selected local-only room choice remains parent-owned.
+            recorderViewGeneration += 1
+        }
     }
 
     @MainActor
@@ -6390,7 +6393,7 @@ private enum CaptureCallPreferences {
 private struct CaptureRecorderView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
-    @Binding var recorderFocusRequest: Int
+    @Binding var localOnlyRecordingSessionID: String?
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var library = LocalRecordingLibrary.shared
@@ -6398,7 +6401,6 @@ private struct CaptureRecorderView: View {
     @State private var showsSessionContext = false
     @State private var showsSessionReadiness = false
     @State private var showsConsentConfirmation = false
-    @State private var localOnlyRecordingSessionID: String?
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var sessionNotesSession: MobileCaptureSession?
     @State private var recordingMode: CaptureRecordingMode = CaptureCallPreferences.recordingMode
@@ -6414,8 +6416,7 @@ private struct CaptureRecorderView: View {
     @StateObject private var sessionChat = MobileEpisodeChatClient(scope: .session)
 
     var body: some View {
-        ScrollViewReader { scrollProxy in
-          ScrollView {
+        ScrollView {
             // This surface can project a full Episode workspace. Lazy layout
             // is a correctness boundary on physical devices: eagerly laying
             // out every transcript, notes, follow-through, chat, Watch, and
@@ -6614,7 +6615,6 @@ private struct CaptureRecorderView: View {
                             onPauseResume: { Task { await model.togglePause(using: audioCapture) } },
                             onMark: { model.markMoment(using: audioCapture) }
                         )
-                        .id("CapturePrimaryRecorder")
                         if audioCapture.microphonePreflightState == .denied {
                             CapturePermissionRecoveryButton(
                                 title: "Allow microphone in Settings",
@@ -6686,7 +6686,6 @@ private struct CaptureRecorderView: View {
                                 }
                             }
                         )
-                        .id("CapturePrimaryRecorder")
 
                         if recordingMode.isCoordinatedPodcastCapture {
                             CoordinatedPodcastAudioStatus(
@@ -7100,25 +7099,6 @@ private struct CaptureRecorderView: View {
         .background(CaptureCanvas())
         .navigationTitle("Record")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            guard visibleTab == .record else { return }
-            focusPrimaryRecorderIfOpen(scrollProxy)
-        }
-        .onChange(of: visibleTab) { _, tab in
-            guard tab == .record else { return }
-            focusPrimaryRecorderIfOpen(scrollProxy)
-        }
-        .onChange(of: recorderFocusRequest) { _, _ in
-            focusPrimaryRecorderIfOpen(scrollProxy)
-        }
-        .onChange(of: audioCapture.activeSessionID) { _, sessionID in
-            guard sessionID == model.selectedSession?.id else { return }
-            focusPrimaryRecorderIfOpen(scrollProxy)
-        }
-        .onChange(of: videoCapture.activeSessionID) { _, sessionID in
-            guard sessionID == model.selectedSession?.id else { return }
-            focusPrimaryRecorderIfOpen(scrollProxy)
-        }
         .sheet(isPresented: $showsSessionPicker) {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
                 .presentationDetents([.medium, .large])
@@ -7260,7 +7240,6 @@ private struct CaptureRecorderView: View {
                   !model.providerRoom.isLocalVideoPublished else { return }
             Task { await videoCapture.shutdownPreview() }
         }
-        }
     }
 
     private var recordingCoordinator: CaptureRecordingCoordinator {
@@ -7279,28 +7258,6 @@ private struct CaptureRecorderView: View {
 
     private var captureIsActive: Bool {
         audioCaptureIsActive || videoCaptureIsActive
-    }
-
-    private var selectedRecordingWorkspaceIsOpen: Bool {
-        guard let session = model.selectedSession else { return false }
-        return model.providerRoom.isConnected
-            || localOnlyRecordingSessionID == session.id
-            || audioCapture.activeSessionID == session.id
-            || videoCapture.activeSessionID == session.id
-            || model.activeCaptureSession?.id == session.id
-            || model.activeVideoCaptureSession?.id == session.id
-            || session.providerCanJoin == false
-    }
-
-    private func focusPrimaryRecorderIfOpen(_ scrollProxy: ScrollViewProxy) {
-        guard selectedRecordingWorkspaceIsOpen else { return }
-        // TabView can remount this view after `visibleTab` already became
-        // `.record`, so use both the appearance and explicit-request paths.
-        DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
-            }
-        }
     }
 
     private var recordingCoordinationTaskID: String {
