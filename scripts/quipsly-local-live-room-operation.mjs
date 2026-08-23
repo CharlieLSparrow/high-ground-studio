@@ -692,13 +692,28 @@ try {
       .waitFor({ timeout: 20_000 });
   }
   await Promise.all(
-    journeys.map((journey) =>
-      journey.page
-        .getByText(
-          /^(?:Recording saved and verified in Quipsly\.|Recording saved\. Quipsly is preparing it for reliable playback\.|Exact bytes verified\. The local source remains protected and the editor evidence is ready\.|Recovered bytes verified\. The interrupted ending is marked for repair before final editing\.)$/,
-        )
-        .waitFor({ timeout: 90_000 }),
-    ),
+    journeys.map(async (journey) => {
+      try {
+        await journey.page
+          .getByText(
+            /^(?:Recording saved and verified in Quipsly\.|Recording saved\. Quipsly is preparing it for reliable playback\.|Exact bytes verified\. The local source remains protected and the editor evidence is ready\.|Recovered bytes verified\. The interrupted ending is marked for repair before final editing\.)$/,
+          )
+          .waitFor({ timeout: 90_000 });
+      } catch (error) {
+        const recorder = journey.page.locator(
+          `[aria-labelledby="browser-source-${ROOM_ID}"]`,
+        );
+        const statusMessages = await recorder
+          .getByRole("status")
+          .allTextContents()
+          .catch(() => []);
+        throw new Error(
+          `${journey.identity.role} source did not reach protected server status. ` +
+            `Recorder messages: ${JSON.stringify(statusMessages)}. ` +
+            `${error instanceof Error ? error.message : ""}`,
+        );
+      }
+    }),
   );
   if (crashCoachRecorder) {
     await coachJourney.page

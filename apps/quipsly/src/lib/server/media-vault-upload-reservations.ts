@@ -9,7 +9,8 @@ import {
 } from "./media-vault-upload-reservation-policy.js";
 
 export const MEDIA_VAULT_PRESIGNED_RESERVATION_TTL_MS = 30 * 60 * 1_000;
-export const MOBILE_CAPTURE_RESUMABLE_RESERVATION_TTL_MS = 6 * 24 * 60 * 60 * 1_000;
+export const MOBILE_CAPTURE_RESUMABLE_RESERVATION_TTL_MS =
+  6 * 24 * 60 * 60 * 1_000;
 
 export type MediaVaultUploadReservationLane =
   | typeof MEDIA_VAULT_UPLOAD_RESERVATION_LANES.mobileCaptureResumable
@@ -35,7 +36,14 @@ export class MediaVaultUploadReservationError extends Error {
   code: string;
   retryAfterSeconds: number | null;
 
-  constructor(message: string, options: { status: number; code: string; retryAfterSeconds?: number | null }) {
+  constructor(
+    message: string,
+    options: {
+      status: number;
+      code: string;
+      retryAfterSeconds?: number | null;
+    },
+  ) {
     super(message);
     this.name = "MediaVaultUploadReservationError";
     this.status = options.status;
@@ -45,24 +53,35 @@ export class MediaVaultUploadReservationError extends Error {
 }
 
 export function isSafeMediaVaultUploadRequestId(value: unknown) {
-  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.trim(),
+    )
+  );
 }
 
-function publicReservation(reservation: any, quota: any = null, idempotent = false) {
+function publicReservation(
+  reservation: any,
+  quota: any = null,
+  idempotent = false,
+) {
   return {
     id: reservation.id,
     requestId: reservation.requestId,
     lane: reservation.lane,
     status: reservation.status,
     expectedSizeBytes: Number(reservation.expectedSizeBytes),
-    expiresAt: reservation.expiresAt instanceof Date
-      ? reservation.expiresAt.toISOString()
-      : new Date(reservation.expiresAt).toISOString(),
-    completedAt: reservation.completedAt instanceof Date
-      ? reservation.completedAt.toISOString()
-      : reservation.completedAt
-        ? new Date(reservation.completedAt).toISOString()
-        : null,
+    expiresAt:
+      reservation.expiresAt instanceof Date
+        ? reservation.expiresAt.toISOString()
+        : new Date(reservation.expiresAt).toISOString(),
+    completedAt:
+      reservation.completedAt instanceof Date
+        ? reservation.completedAt.toISOString()
+        : reservation.completedAt
+          ? new Date(reservation.completedAt).toISOString()
+          : null,
     renewalCount: Number(reservation.renewalCount ?? 0),
     idempotent,
     quota,
@@ -75,20 +94,47 @@ function errorCode(value: unknown) {
     : "";
 }
 
-async function serializable<T>(prisma: any, operation: (transaction: any) => Promise<T>) {
+const RETRYABLE_TRANSACTION_CODES = new Set(["P2028", "P2034"]);
+
+export function mediaVaultTransactionRetryDelayMs(
+  error: unknown,
+  attempt: number,
+) {
+  if (!RETRYABLE_TRANSACTION_CODES.has(errorCode(error)) || attempt >= 3)
+    return null;
+  return 75 * 2 ** Math.max(0, attempt);
+}
+
+async function serializable<T>(
+  prisma: any,
+  operation: (transaction: any) => Promise<T>,
+) {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
-      return await prisma.$transaction(operation, { isolationLevel: "Serializable" });
+      return await prisma.$transaction(operation, {
+        isolationLevel: "Serializable",
+        // Participant uploads for one Session deliberately contend on the
+        // same Nest quota lock. Give the preceding reservation time to commit
+        // instead of turning normal two-party finalization into a 503.
+        maxWait: 15_000,
+        timeout: 30_000,
+      });
     } catch (error) {
       lastError = error;
-      if (errorCode(error) !== "P2034" || attempt === 2) throw error;
+      const retryDelayMs = mediaVaultTransactionRetryDelayMs(error, attempt);
+      if (retryDelayMs == null) throw error;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
   }
   throw lastError;
 }
 
-async function acquireQuotaLocks(transaction: any, actorUserId: string, projectId: string) {
+async function acquireQuotaLocks(
+  transaction: any,
+  actorUserId: string,
+  projectId: string,
+) {
   const lockKeys = [
     `quipsly-upload-actor:${actorUserId}`,
     `quipsly-upload-nest:${projectId}`,
@@ -98,13 +144,14 @@ async function acquireQuotaLocks(transaction: any, actorUserId: string, projectI
   }
 }
 
-async function cleanupExpiredReservations(transaction: any, input: MediaVaultUploadReservationInput, now: Date) {
+async function cleanupExpiredReservations(
+  transaction: any,
+  input: MediaVaultUploadReservationInput,
+  now: Date,
+) {
   const limits = mediaVaultUploadQuotaLimits();
   const scope = {
-    OR: [
-      { actorUserId: input.actorUserId },
-      { projectId: input.projectId },
-    ],
+    OR: [{ actorUserId: input.actorUserId }, { projectId: input.projectId }],
   };
   await transaction.mediaVaultUploadReservation.updateMany({
     where: {
@@ -121,19 +168,26 @@ async function cleanupExpiredReservations(transaction: any, input: MediaVaultUpl
     where: {
       ...scope,
       status: MEDIA_VAULT_UPLOAD_RESERVATION_STATUSES.expired,
-      expiresAt: { lte: new Date(now.getTime() - limits.abandonAfterHours * 60 * 60 * 1_000) },
+      expiresAt: {
+        lte: new Date(
+          now.getTime() - limits.abandonAfterHours * 60 * 60 * 1_000,
+        ),
+      },
     },
     data: {
       status: MEDIA_VAULT_UPLOAD_RESERVATION_STATUSES.abandoned,
       abandonedAt: now,
-      abandonedReason: "Upload capability expired without a verified completion receipt.",
+      abandonedReason:
+        "Upload capability expired without a verified completion receipt.",
     },
   });
 }
 
 function quotaNumber(value: unknown) {
   const parsed = Number(value ?? 0);
-  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : Number.MAX_SAFE_INTEGER;
+  return Number.isSafeInteger(parsed) && parsed >= 0
+    ? parsed
+    : Number.MAX_SAFE_INTEGER;
 }
 
 async function currentQuotaUsage(
@@ -143,23 +197,48 @@ async function currentQuotaUsage(
   excludeReservationId?: string,
 ) {
   const limits = mediaVaultUploadQuotaLimits();
-  const rollingSince = new Date(now.getTime() - limits.rollingWindowHours * 60 * 60 * 1_000);
-  const issuanceSince = new Date(now.getTime() - limits.issuanceWindowMinutes * 60 * 1_000);
-  const exclude = excludeReservationId ? { id: { not: excludeReservationId } } : {};
+  const rollingSince = new Date(
+    now.getTime() - limits.rollingWindowHours * 60 * 60 * 1_000,
+  );
+  const issuanceSince = new Date(
+    now.getTime() - limits.issuanceWindowMinutes * 60 * 1_000,
+  );
+  const exclude = excludeReservationId
+    ? { id: { not: excludeReservationId } }
+    : {};
   const actorRolling = await transaction.mediaVaultUploadReservation.aggregate({
-    where: { actorUserId: input.actorUserId, issuedAt: { gte: rollingSince }, ...exclude },
+    where: {
+      actorUserId: input.actorUserId,
+      issuedAt: { gte: rollingSince },
+      ...exclude,
+    },
     _sum: { expectedSizeBytes: true },
   });
   const nestRolling = await transaction.mediaVaultUploadReservation.aggregate({
-    where: { projectId: input.projectId, issuedAt: { gte: rollingSince }, ...exclude },
+    where: {
+      projectId: input.projectId,
+      issuedAt: { gte: rollingSince },
+      ...exclude,
+    },
     _sum: { expectedSizeBytes: true },
   });
-  const actorIssuanceCount = await transaction.mediaVaultUploadReservation.count({
-    where: { actorUserId: input.actorUserId, issuedAt: { gte: issuanceSince }, ...exclude },
-  });
-  const nestIssuanceCount = await transaction.mediaVaultUploadReservation.count({
-    where: { projectId: input.projectId, issuedAt: { gte: issuanceSince }, ...exclude },
-  });
+  const actorIssuanceCount =
+    await transaction.mediaVaultUploadReservation.count({
+      where: {
+        actorUserId: input.actorUserId,
+        issuedAt: { gte: issuanceSince },
+        ...exclude,
+      },
+    });
+  const nestIssuanceCount = await transaction.mediaVaultUploadReservation.count(
+    {
+      where: {
+        projectId: input.projectId,
+        issuedAt: { gte: issuanceSince },
+        ...exclude,
+      },
+    },
+  );
   const actorActiveCount = await transaction.mediaVaultUploadReservation.count({
     where: {
       actorUserId: input.actorUserId,
@@ -191,34 +270,60 @@ async function currentQuotaUsage(
   };
 }
 
-function assertReservationInput(input: MediaVaultUploadReservationInput, now: Date) {
-  if (!Object.values(MEDIA_VAULT_UPLOAD_RESERVATION_LANES).includes(input.lane)) {
-    throw new MediaVaultUploadReservationError("Upload reservation lane is invalid.", {
-      status: 400,
-      code: "UPLOAD_RESERVATION_LANE_INVALID",
-    });
+function assertReservationInput(
+  input: MediaVaultUploadReservationInput,
+  now: Date,
+) {
+  if (
+    !Object.values(MEDIA_VAULT_UPLOAD_RESERVATION_LANES).includes(input.lane)
+  ) {
+    throw new MediaVaultUploadReservationError(
+      "Upload reservation lane is invalid.",
+      {
+        status: 400,
+        code: "UPLOAD_RESERVATION_LANE_INVALID",
+      },
+    );
   }
   if (!isSafeMediaVaultUploadRequestId(input.requestId)) {
-    throw new MediaVaultUploadReservationError("Upload request ID must be a UUID.", {
-      status: 400,
-      code: "UPLOAD_RESERVATION_ID_INVALID",
-    });
+    throw new MediaVaultUploadReservationError(
+      "Upload request ID must be a UUID.",
+      {
+        status: 400,
+        code: "UPLOAD_RESERVATION_ID_INVALID",
+      },
+    );
   }
-  if (!Number.isSafeInteger(input.expectedSizeBytes) || input.expectedSizeBytes <= 0) {
-    throw new MediaVaultUploadReservationError("Upload reservation size must be a positive exact integer.", {
-      status: 400,
-      code: "UPLOAD_RESERVATION_SIZE_INVALID",
-    });
+  if (
+    !Number.isSafeInteger(input.expectedSizeBytes) ||
+    input.expectedSizeBytes <= 0
+  ) {
+    throw new MediaVaultUploadReservationError(
+      "Upload reservation size must be a positive exact integer.",
+      {
+        status: 400,
+        code: "UPLOAD_RESERVATION_SIZE_INVALID",
+      },
+    );
   }
-  if (!(input.expiresAt instanceof Date) || !Number.isFinite(input.expiresAt.getTime()) || input.expiresAt <= now) {
-    throw new MediaVaultUploadReservationError("Upload reservation expiry must be in the future.", {
-      status: 400,
-      code: "UPLOAD_RESERVATION_EXPIRY_INVALID",
-    });
+  if (
+    !(input.expiresAt instanceof Date) ||
+    !Number.isFinite(input.expiresAt.getTime()) ||
+    input.expiresAt <= now
+  ) {
+    throw new MediaVaultUploadReservationError(
+      "Upload reservation expiry must be in the future.",
+      {
+        status: 400,
+        code: "UPLOAD_RESERVATION_EXPIRY_INVALID",
+      },
+    );
   }
 }
 
-export async function reserveMediaVaultUploadCapacity(input: MediaVaultUploadReservationInput & { prisma: any }) {
+export async function reserveMediaVaultUploadCapacity(
+  input: MediaVaultUploadReservationInput & { prisma: any },
+) {
   const now = new Date();
   assertReservationInput(input, now);
   const normalized = {
@@ -227,7 +332,11 @@ export async function reserveMediaVaultUploadCapacity(input: MediaVaultUploadRes
     actorEmail: input.actorEmail.trim().toLowerCase(),
   };
   return serializable(input.prisma, async (transaction) => {
-    await acquireQuotaLocks(transaction, normalized.actorUserId, normalized.projectId);
+    await acquireQuotaLocks(
+      transaction,
+      normalized.actorUserId,
+      normalized.projectId,
+    );
     await cleanupExpiredReservations(transaction, normalized, now);
 
     const existing = await transaction.mediaVaultUploadReservation.findFirst({
@@ -238,24 +347,41 @@ export async function reserveMediaVaultUploadCapacity(input: MediaVaultUploadRes
       },
     });
     if (existing) {
-      const mismatch = mediaVaultUploadReservationBindingMismatch(existing, normalized);
+      const mismatch = mediaVaultUploadReservationBindingMismatch(
+        existing,
+        normalized,
+      );
       if (mismatch) {
-        throw new MediaVaultUploadReservationError(`Upload request ID is already bound to different ${mismatch} evidence.`, {
-          status: 409,
-          code: "UPLOAD_RESERVATION_BINDING_MISMATCH",
-        });
+        throw new MediaVaultUploadReservationError(
+          `Upload request ID is already bound to different ${mismatch} evidence.`,
+          {
+            status: 409,
+            code: "UPLOAD_RESERVATION_BINDING_MISMATCH",
+          },
+        );
       }
       if (
-        existing.status !== MEDIA_VAULT_UPLOAD_RESERVATION_STATUSES.active
-        && existing.status !== MEDIA_VAULT_UPLOAD_RESERVATION_STATUSES.completed
+        existing.status !== MEDIA_VAULT_UPLOAD_RESERVATION_STATUSES.active &&
+        existing.status !== MEDIA_VAULT_UPLOAD_RESERVATION_STATUSES.completed
       ) {
-        if (existing.lane !== MEDIA_VAULT_UPLOAD_RESERVATION_LANES.mobileCaptureResumable) {
-          throw new MediaVaultUploadReservationError("This exact upload request expired or was abandoned. Start a fresh request with a new UUID.", {
-            status: 410,
-            code: "UPLOAD_RESERVATION_TERMINAL",
-          });
+        if (
+          existing.lane !==
+          MEDIA_VAULT_UPLOAD_RESERVATION_LANES.mobileCaptureResumable
+        ) {
+          throw new MediaVaultUploadReservationError(
+            "This exact upload request expired or was abandoned. Start a fresh request with a new UUID.",
+            {
+              status: 410,
+              code: "UPLOAD_RESERVATION_TERMINAL",
+            },
+          );
         }
-        const renewalUsage = await currentQuotaUsage(transaction, normalized, now, existing.id);
+        const renewalUsage = await currentQuotaUsage(
+          transaction,
+          normalized,
+          now,
+          existing.id,
+        );
         const renewalDecision: any = evaluateMediaVaultUploadQuota({
           requestedSizeBytes: normalized.expectedSizeBytes,
           actor: renewalUsage.actor,
@@ -292,14 +418,21 @@ export async function reserveMediaVaultUploadCapacity(input: MediaVaultUploadRes
       return publicReservation(existing, null, true);
     }
 
-    const objectReservation = await transaction.mediaVaultUploadReservation.findFirst({
-      where: { bucketName: normalized.bucketName, objectPath: normalized.objectPath },
-    });
-    if (objectReservation) {
-      throw new MediaVaultUploadReservationError("The requested vault object is already reserved by another upload.", {
-        status: 409,
-        code: "UPLOAD_OBJECT_ALREADY_RESERVED",
+    const objectReservation =
+      await transaction.mediaVaultUploadReservation.findFirst({
+        where: {
+          bucketName: normalized.bucketName,
+          objectPath: normalized.objectPath,
+        },
       });
+    if (objectReservation) {
+      throw new MediaVaultUploadReservationError(
+        "The requested vault object is already reserved by another upload.",
+        {
+          status: 409,
+          code: "UPLOAD_OBJECT_ALREADY_RESERVED",
+        },
+      );
     }
 
     const usage = await currentQuotaUsage(transaction, normalized, now);
@@ -354,46 +487,68 @@ export async function completeMediaVaultUploadReservation(input: {
   completionSource: string;
   completionEvidenceJson?: Record<string, unknown>;
 }) {
-  if (!Number.isSafeInteger(input.completedSizeBytes) || input.completedSizeBytes <= 0 || !/^\d+$/.test(input.generation)) {
-    throw new MediaVaultUploadReservationError("Verified object completion evidence is invalid.", {
-      status: 409,
-      code: "UPLOAD_RESERVATION_COMPLETION_INVALID",
-    });
+  if (
+    !Number.isSafeInteger(input.completedSizeBytes) ||
+    input.completedSizeBytes <= 0 ||
+    !/^\d+$/.test(input.generation)
+  ) {
+    throw new MediaVaultUploadReservationError(
+      "Verified object completion evidence is invalid.",
+      {
+        status: 409,
+        code: "UPLOAD_RESERVATION_COMPLETION_INVALID",
+      },
+    );
   }
   return serializable(input.prisma, async (transaction) => {
     let reservation = await transaction.mediaVaultUploadReservation.findFirst({
       where: { bucketName: input.bucketName, objectPath: input.objectPath },
     });
     if (!reservation) {
-      throw new MediaVaultUploadReservationError("No durable upload reservation matches this completed object.", {
-        status: 409,
-        code: "UPLOAD_RESERVATION_REQUIRED",
-      });
+      throw new MediaVaultUploadReservationError(
+        "No durable upload reservation matches this completed object.",
+        {
+          status: 409,
+          code: "UPLOAD_RESERVATION_REQUIRED",
+        },
+      );
     }
-    await acquireQuotaLocks(transaction, reservation.actorUserId, reservation.projectId);
+    await acquireQuotaLocks(
+      transaction,
+      reservation.actorUserId,
+      reservation.projectId,
+    );
     reservation = await transaction.mediaVaultUploadReservation.findFirst({
       where: { bucketName: input.bucketName, objectPath: input.objectPath },
     });
     if (
-      !reservation
-      || reservation.actorUserId !== input.actorUserId
-      || reservation.lane !== input.lane
-      || Number(reservation.expectedSizeBytes) !== input.completedSizeBytes
+      !reservation ||
+      reservation.actorUserId !== input.actorUserId ||
+      reservation.lane !== input.lane ||
+      Number(reservation.expectedSizeBytes) !== input.completedSizeBytes
     ) {
-      throw new MediaVaultUploadReservationError("Completed object does not match its actor-, lane-, and size-bound reservation.", {
-        status: 409,
-        code: "UPLOAD_RESERVATION_COMPLETION_MISMATCH",
-      });
-    }
-    if (reservation.status === MEDIA_VAULT_UPLOAD_RESERVATION_STATUSES.completed) {
-      if (
-        Number(reservation.completedSizeBytes) !== input.completedSizeBytes
-        || reservation.completionGeneration !== input.generation
-      ) {
-        throw new MediaVaultUploadReservationError("Completed reservation already has different immutable object evidence.", {
+      throw new MediaVaultUploadReservationError(
+        "Completed object does not match its actor-, lane-, and size-bound reservation.",
+        {
           status: 409,
           code: "UPLOAD_RESERVATION_COMPLETION_MISMATCH",
-        });
+        },
+      );
+    }
+    if (
+      reservation.status === MEDIA_VAULT_UPLOAD_RESERVATION_STATUSES.completed
+    ) {
+      if (
+        Number(reservation.completedSizeBytes) !== input.completedSizeBytes ||
+        reservation.completionGeneration !== input.generation
+      ) {
+        throw new MediaVaultUploadReservationError(
+          "Completed reservation already has different immutable object evidence.",
+          {
+            status: 409,
+            code: "UPLOAD_RESERVATION_COMPLETION_MISMATCH",
+          },
+        );
       }
       return publicReservation(reservation, null, true);
     }

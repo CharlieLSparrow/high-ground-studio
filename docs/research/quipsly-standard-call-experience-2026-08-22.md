@@ -567,6 +567,15 @@ share`. The continuity panel says that the call, chat, recordings,
   readiness stay visible at a glance. The former five-stage finishing cockpit,
   source-plan checkpoints, and evidence identities remain available under a
   collapsed `Recording details` disclosure for support and professional review.
+- Treat simultaneous participant finalization as the normal case. Nest-level
+  quota serialization may briefly delay one upload reservation, but Quipsly now
+  waits and retries transaction-start contention on the server and retries the
+  same idempotent reservation in the browser. The local master stays protected;
+  a transient database or network delay must not become a manual post-call job.
+- Keep the manual retry available as recovery, not routine procedure. This
+  follows the lesson in Descript's stalled Rooms workflow: recovery links and
+  fallback media are valuable safety nets, but a participant should not have to
+  return merely because two expected local masters finalized together.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB

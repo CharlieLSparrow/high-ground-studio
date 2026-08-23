@@ -1,12 +1,52 @@
 import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
 
 const AUTO_RESUMABLE_STATES = new Set(["stopped", "uploading", "verifying"]);
-const TRANSIENT_FAILURE = /failed to fetch|network|offline|connection|transport|timed out|timeout|http 408|http 429|http 5\d\d|failed \((?:408|429|5\d\d)\)|verification needs a retry/i;
+const TRANSIENT_FAILURE =
+  /failed to fetch|network|offline|connection|transport|timed out|timeout|http 408|http 429|http 5\d\d|failed \((?:408|429|5\d\d)\)|verification needs a retry/i;
 
-const INTERRUPTED_STATES = new Set(["preparing", "recording", "held", "failed"]);
+const INTERRUPTED_STATES = new Set([
+  "preparing",
+  "recording",
+  "held",
+  "failed",
+]);
 type InterruptedBrowserSourceLedger = BrowserSourceCaptureLedger & {
   state: "preparing" | "recording" | "held" | "failed";
 };
+
+export function browserSourceUploadRetryDelayMs(input: {
+  status: number | null;
+  retryAfter: string | null;
+  attempt: number;
+  nowMs?: number;
+}) {
+  if (input.attempt >= 2) return null;
+  const retryable =
+    input.status == null ||
+    input.status === 408 ||
+    input.status === 425 ||
+    input.status === 429 ||
+    input.status >= 500;
+  if (!retryable) return null;
+
+  const retryAfter = input.retryAfter?.trim() ?? "";
+  const retryAfterSeconds = Number(retryAfter);
+  if (
+    retryAfter &&
+    Number.isFinite(retryAfterSeconds) &&
+    retryAfterSeconds >= 0
+  ) {
+    return Math.max(250, Math.min(5_000, retryAfterSeconds * 1_000));
+  }
+  const retryAt = retryAfter ? Date.parse(retryAfter) : Number.NaN;
+  if (Number.isFinite(retryAt)) {
+    return Math.max(
+      250,
+      Math.min(5_000, retryAt - (input.nowMs ?? Date.now())),
+    );
+  }
+  return Math.min(5_000, 500 * 2 ** input.attempt);
+}
 
 export function browserSourceInterruptedRecoveryCandidate(
   ledger: BrowserSourceCaptureLedger,
@@ -32,7 +72,10 @@ export function browserSourceInterruptedRecoveryCandidate(
 
 function inferredMonotonicStop(ledger: BrowserSourceCaptureLedger) {
   const lastTimecode = ledger.chunks.reduce<number | null>((latest, chunk) => {
-    if (chunk.recorderTimecodeMs == null || !Number.isFinite(chunk.recorderTimecodeMs))
+    if (
+      chunk.recorderTimecodeMs == null ||
+      !Number.isFinite(chunk.recorderTimecodeMs)
+    )
       return latest;
     return latest == null
       ? chunk.recorderTimecodeMs
@@ -57,10 +100,17 @@ export function finalizeInterruptedBrowserSourceLedger(input: {
 }): BrowserSourceCaptureLedger {
   const { ledger } = input;
   if (!browserSourceInterruptedRecoveryCandidate(ledger)) {
-    throw new Error("This browser source is not a complete durable interruption candidate.");
+    throw new Error(
+      "This browser source is not a complete durable interruption candidate.",
+    );
   }
-  if (input.sizeBytes !== ledger.sizeBytes || !/^[a-f0-9]{64}$/i.test(input.sha256)) {
-    throw new Error("Recovered browser source bytes do not match the durable chunk ledger.");
+  if (
+    input.sizeBytes !== ledger.sizeBytes ||
+    !/^[a-f0-9]{64}$/i.test(input.sha256)
+  ) {
+    throw new Error(
+      "Recovered browser source bytes do not match the durable chunk ledger.",
+    );
   }
   const lastDurableChunkAt = ledger.chunks.at(-1)!.receivedAt;
   const monotonicStoppedNanoseconds = inferredMonotonicStop(ledger);
@@ -73,7 +123,8 @@ export function finalizeInterruptedBrowserSourceLedger(input: {
       ...ledger.sourceProfile,
       monotonicStoppedNanoseconds,
       interruptionRecovery: {
-        contractKind: "quipsly-browser-source-interruption-recovery-v1" as const,
+        contractKind:
+          "quipsly-browser-source-interruption-recovery-v1" as const,
         originalState: ledger.state,
         recoveredAt: input.recoveredAt,
         lastDurableChunkAt,
@@ -90,26 +141,31 @@ export function browserSourceUploadCanResumeAutomatically(
   ledger: BrowserSourceCaptureLedger,
 ) {
   const hasCompletedLocalSource = Boolean(
-    ledger.sha256
-      && ledger.stoppedAt
-      && ledger.recordingConsentId
-      && ledger.participantId
-      && ledger.sizeBytes > 0,
+    ledger.sha256 &&
+    ledger.stoppedAt &&
+    ledger.recordingConsentId &&
+    ledger.participantId &&
+    ledger.sizeBytes > 0,
   );
   if (!hasCompletedLocalSource) return false;
   if (AUTO_RESUMABLE_STATES.has(ledger.state)) return true;
-  return ledger.state === "held" && TRANSIENT_FAILURE.test(ledger.failureReason || "");
+  return (
+    ledger.state === "held" &&
+    TRANSIENT_FAILURE.test(ledger.failureReason || "")
+  );
 }
 
 export function nextBrowserSourceUploadRecovery(
   ledgers: readonly BrowserSourceCaptureLedger[],
   attemptedCaptureIds: ReadonlySet<string>,
 ) {
-  return ledgers.find(
-    (ledger) =>
-      !attemptedCaptureIds.has(ledger.captureId)
-      && browserSourceUploadCanResumeAutomatically(ledger),
-  ) ?? null;
+  return (
+    ledgers.find(
+      (ledger) =>
+        !attemptedCaptureIds.has(ledger.captureId) &&
+        browserSourceUploadCanResumeAutomatically(ledger),
+    ) ?? null
+  );
 }
 
 export async function resumeBrowserSourceUploads(input: {
@@ -134,37 +190,47 @@ export async function resumeBrowserSourceUploads(input: {
 
 export function browserSourceSafetyLabel(ledger: BrowserSourceCaptureLedger) {
   if (ledger.state === "verified") return "Verified in Quipsly";
-  if (ledger.state === "uploading" || ledger.state === "verifying") return "Uploading safely";
-  if (ledger.state === "stopped" || ledger.state === "held") return "Safe on this device";
-  if (ledger.state === "preparing" || ledger.state === "recording") return "Interrupted · needs recovery";
+  if (ledger.state === "uploading" || ledger.state === "verifying")
+    return "Uploading safely";
+  if (ledger.state === "stopped" || ledger.state === "held")
+    return "Safe on this device";
+  if (ledger.state === "preparing" || ledger.state === "recording")
+    return "Interrupted · needs recovery";
   return "Needs attention";
 }
 
 export function browserSourceManualUploadRetryAvailable(
   ledger: BrowserSourceCaptureLedger,
 ) {
-  const complete = Boolean(ledger.sha256 && ledger.stoppedAt && ledger.sizeBytes > 0);
+  const complete = Boolean(
+    ledger.sha256 && ledger.stoppedAt && ledger.sizeBytes > 0,
+  );
   if (!complete) return false;
   if (ledger.state === "stopped") return true;
-  return ["held", "failed"].includes(ledger.state)
-    && TRANSIENT_FAILURE.test(ledger.failureReason || "");
+  return (
+    ["held", "failed"].includes(ledger.state) &&
+    TRANSIENT_FAILURE.test(ledger.failureReason || "")
+  );
 }
 
 export function browserSourceRecoverySummary(
   ledgers: readonly BrowserSourceCaptureLedger[],
 ) {
-  const verifiedCount = ledgers.filter((ledger) => ledger.state === "verified").length;
+  const verifiedCount = ledgers.filter(
+    (ledger) => ledger.state === "verified",
+  ).length;
   const uploadingCount = ledgers.filter((ledger) =>
     browserSourceUploadCanResumeAutomatically(ledger),
   ).length;
-  const safeCount = ledgers.filter((ledger) =>
-    ledger.state === "held" && !(ledger.failureReason || "").trim(),
+  const safeCount = ledgers.filter(
+    (ledger) => ledger.state === "held" && !(ledger.failureReason || "").trim(),
   ).length;
-  const attentionCount = ledgers.filter((ledger) =>
-    ["preparing", "recording", "failed"].includes(ledger.state)
-      || (ledger.state === "held"
-        && Boolean((ledger.failureReason || "").trim())
-        && !TRANSIENT_FAILURE.test(ledger.failureReason || "")),
+  const attentionCount = ledgers.filter(
+    (ledger) =>
+      ["preparing", "recording", "failed"].includes(ledger.state) ||
+      (ledger.state === "held" &&
+        Boolean((ledger.failureReason || "").trim()) &&
+        !TRANSIENT_FAILURE.test(ledger.failureReason || "")),
   ).length;
   const sourceWord = ledgers.length === 1 ? "recording" : "recordings";
 

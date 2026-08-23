@@ -71,6 +71,7 @@ import {
   browserSourceManualUploadRetryAvailable,
   browserSourceRecoverySummary,
   browserSourceSafetyLabel,
+  browserSourceUploadRetryDelayMs,
   finalizeInterruptedBrowserSourceLedger,
   resumeBrowserSourceUploads,
 } from "@/lib/browser-source-upload-recovery";
@@ -89,6 +90,16 @@ type ConsentPolicy = {
   sha256: string;
   surface: string;
   presentationVersion: number;
+};
+
+type BrowserSourceUploadReservationResponse = {
+  ok?: boolean;
+  error?: string;
+  code?: string;
+  stage?: string;
+  storageBackend?: string;
+  finalizeUrl?: string;
+  upload?: { url: string };
 };
 
 const IN_TAKE_CLOCK_SAMPLE_INTERVAL_MS = 5 * 60 * 1_000;
@@ -935,37 +946,70 @@ export function BrowserSourceRecorder({
           "No media bytes were captured. Check the selected device, reopen the Session if needed, and record a new take; this empty local entry was not uploaded.",
         );
       }
-      const manifestResponse = await fetch(
-        "/api/mobile/capture/uploads/resumable",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            uploadSessionId: current.uploadSessionId,
-            captureId: current.captureId,
-            captureGroupId: current.captureGroupId,
-            projectId: null,
-            projectSlug: null,
-            fileName: current.fileName,
-            contentType: current.contentType,
-            sourceType: current.sourceType,
-            expectedSizeBytes: current.sizeBytes,
-            sha256: current.sha256,
-            episodeSlug: current.episodeSlug,
-            trackId: current.sourceType === "video" ? "V1" : "A1",
-            callRoomId: current.callRoomId,
-            participantId: current.participantId,
-            recordingConsentId: current.recordingConsentId,
-            recordingAssetId: null,
-            capturePurpose: `web-${sessionKind}-local-source`,
-            sourceProfile: current.sourceProfile,
-            startedAt: current.startedAt,
-            stoppedAt: current.stoppedAt,
-            recordingSegments: browserSourceRecordingSegments(current),
-          }),
-        },
-      );
-      const reservation = await manifestResponse.json().catch(() => ({}));
+      const reservationRequest = {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          uploadSessionId: current.uploadSessionId,
+          captureId: current.captureId,
+          captureGroupId: current.captureGroupId,
+          projectId: null,
+          projectSlug: null,
+          fileName: current.fileName,
+          contentType: current.contentType,
+          sourceType: current.sourceType,
+          expectedSizeBytes: current.sizeBytes,
+          sha256: current.sha256,
+          episodeSlug: current.episodeSlug,
+          trackId: current.sourceType === "video" ? "V1" : "A1",
+          callRoomId: current.callRoomId,
+          participantId: current.participantId,
+          recordingConsentId: current.recordingConsentId,
+          recordingAssetId: null,
+          capturePurpose: `web-${sessionKind}-local-source`,
+          sourceProfile: current.sourceProfile,
+          startedAt: current.startedAt,
+          stoppedAt: current.stoppedAt,
+          recordingSegments: browserSourceRecordingSegments(current),
+        }),
+      } satisfies RequestInit;
+      let manifestResponse: Response | null = null;
+      let reservation: BrowserSourceUploadReservationResponse = {};
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        let requestFailure: unknown = null;
+        try {
+          manifestResponse = await fetch(
+            "/api/mobile/capture/uploads/resumable",
+            reservationRequest,
+          );
+          reservation = (await manifestResponse
+            .json()
+            .catch(() => ({}))) as BrowserSourceUploadReservationResponse;
+        } catch (error) {
+          requestFailure = error;
+          manifestResponse = null;
+          reservation = {};
+        }
+        const retryDelayMs = browserSourceUploadRetryDelayMs({
+          status: manifestResponse?.status ?? null,
+          retryAfter: manifestResponse?.headers.get("retry-after") ?? null,
+          attempt,
+        });
+        if ((requestFailure || !manifestResponse?.ok) && retryDelayMs != null) {
+          setMessage(
+            "The recording is safe. Quipsly is retrying its upload automatically…",
+          );
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+          continue;
+        }
+        if (requestFailure) throw requestFailure;
+        break;
+      }
+      if (!manifestResponse) {
+        throw new Error(
+          "Upload reservation could not reach Quipsly after automatic retries.",
+        );
+      }
       if (!manifestResponse.ok || !reservation?.ok) {
         const diagnostic = [reservation?.code, reservation?.stage]
           .filter(
@@ -974,7 +1018,7 @@ export function BrowserSourceRecorder({
           )
           .join(" · ");
         throw new Error(
-          `${reservation?.error || "Upload reservation failed."}${diagnostic ? ` (${diagnostic})` : ""}`,
+          `${reservation?.error || "Upload reservation failed."} HTTP ${manifestResponse.status}.${diagnostic ? ` (${diagnostic})` : ""}`,
         );
       }
       if (reservation.upload) {
