@@ -1810,7 +1810,7 @@ for (const filename of [
   "02-record.png",
   "03-work.png",
   "04-library.png",
-  "05-account.png",
+  "05-transcript.png",
 ]) {
   requireIncludes(
     deterministicUITestsText,

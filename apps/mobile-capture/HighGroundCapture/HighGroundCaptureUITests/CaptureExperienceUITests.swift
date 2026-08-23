@@ -3215,21 +3215,14 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         let consentNeededSession = app.staticTexts["High Ground pre-show"]
         XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
         consentNeededSession.tap()
-        let confirmConsent = app.buttons["CaptureConfirmConsentButton"]
-        XCTAssertTrue(confirmConsent.waitForExistence(timeout: 5))
-        confirmConsent.tap()
+        let joinCall = app.buttons["ProviderJoinRoomButton"]
         XCTAssertTrue(
-            app.otherElements["CaptureConsentConfirmationSheet"].waitForExistence(timeout: 5)
+            joinCall.waitForExistence(timeout: 5),
+            "The App Store Record draft must show the familiar green-room join action."
         )
-        let recordingOptions = app.buttons["Recording options"]
-        XCTAssertTrue(recordingOptions.waitForExistence(timeout: 3))
-        recordingOptions.tap()
-        turnOnConsentChoice("CaptureConsentRecordAudioToggle")
-        turnOnConsentChoice("CaptureConsentRecordVideoToggle")
-        turnOnConsentChoice("CaptureConsentTranscriptionToggle")
-        let saveConsent = app.buttons["Allow recording"]
-        XCTAssertTrue(saveConsent.waitForExistence(timeout: 5))
-        XCTAssertTrue(saveConsent.isEnabled)
+        XCTAssertTrue(app.buttons["CaptureRecordWithoutJoiningButton"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureOuterRoomNextStep"].exists)
+        XCTAssertFalse(app.buttons["CaptureConfirmConsentButton"].exists)
         Thread.sleep(forTimeInterval: 0.8)
         keepScreenshot("02-record.png")
 
@@ -3252,39 +3245,34 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Synthetic local source · 18.4 MB"].exists)
         keepScreenshot("04-library.png")
 
-        launch(tab: "account", waitingFor: app.navigationBars["Account"])
+        launch(tab: "library", waitingFor: app.navigationBars["Library"])
         XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureAccountControlCard"]
+            app.descendants(matching: .any)["CaptureLibraryPreviewSourceCard"]
                 .waitForExistence(timeout: 5)
         )
-        let privacyPolicy = app.staticTexts["Privacy policy"]
-        let deletionRequest = app.buttons["Request account deletion"]
-        XCTAssertTrue(privacyPolicy.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Account deletion information"].exists)
-        XCTAssertTrue(deletionRequest.exists)
-        for _ in 0..<8
-        where !privacyPolicy.isHittable || !deletionRequest.isHittable {
-            app.swipeUp()
-            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
-        }
+        let transcriptReview = app.buttons["CaptureTranscriptReviewPreviewLink"]
         XCTAssertTrue(
-            privacyPolicy.isHittable,
-            "The privacy policy must be visible in the screenshot that promises reachable privacy controls."
+            transcriptReview.waitForExistence(timeout: 5),
+            "The App Store follow-through story must start from the exact source-linked transcript."
         )
+        transcriptReview.tap()
         XCTAssertTrue(
-            deletionRequest.isHittable,
-            "The account-deletion request must be visible in the screenshot that promises reachable privacy controls."
+            app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5),
+            "The source-linked transcript review must open inside Capture."
         )
-        XCTAssertTrue(app.staticTexts["Alex Morgan"].exists)
-        XCTAssertTrue(app.staticTexts["alex@example.com"].exists)
-        XCTAssertFalse(app.staticTexts["preview@quipsly.local"].exists)
-        XCTAssertTrue(app.staticTexts["Local originals, 1"].exists)
-        XCTAssertTrue(app.staticTexts["Source media, 18.4 MB"].exists)
-        XCTAssertTrue(app.switches["Upload using cellular"].exists)
-        XCTAssertTrue(app.switches["Upload on metered networks"].exists)
-        XCTAssertTrue(app.switches["Upload in Low Data Mode"].exists)
+        XCTAssertTrue(app.staticTexts["Coaching session"].exists)
+        let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"]
+        XCTAssertTrue(jumpMenu.waitForExistence(timeout: 5))
+        jumpMenu.tap()
+        let sessionFollowUp = app.buttons["CaptureTranscriptJumpToReviewQueue"]
+        XCTAssertTrue(sessionFollowUp.waitForExistence(timeout: 5))
+        sessionFollowUp.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePacketCandidateReviewQueue"]
+                .waitForExistence(timeout: 5)
+        )
         Thread.sleep(forTimeInterval: 2.0)
-        keepScreenshot("05-account.png")
+        keepScreenshot("05-transcript.png")
     }
 
     private func launch(tab: String, waitingFor destination: XCUIElement) {

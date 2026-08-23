@@ -6675,7 +6675,7 @@ private struct CaptureRecorderView: View {
                         }
                     } else {
                         Label(
-                            "Join the call above. Recording controls appear after you connect.",
+                            "Join the call, or choose Record without joining. Recording setup appears next.",
                             systemImage: "arrow.up.circle.fill"
                         )
                         .font(.subheadline.weight(.semibold))

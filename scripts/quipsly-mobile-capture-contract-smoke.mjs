@@ -1392,7 +1392,7 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("CapturePacketNoteCarriedDraft_")
       && nativeText.includes("CapturePacketNoteSourceText_")
       && nativeText.includes("source span and provider evidence still match exactly")
-      && nativeText.includes("Updates exactly one existing note and retains its prior revision plus this transcript source")
+      && nativeText.includes("Adds this source to the selected note. Its previous version stays recoverable.")
       && captureUITestText.includes("testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave")
       && captureUITestText.includes("CapturePacketNoteDecisionBoundary")
       && runtimeUITestText.includes("expectedPacketNoteLaneID"),
@@ -1915,7 +1915,7 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes('body["targetAt"]')
       && nativeText.includes("CapturePacketGoalBeginMergeButton")
       && nativeText.includes("CapturePacketGoalMergeTargetPicker")
-      && nativeText.includes("Add evidence to existing goal appends one source receipt")
+      && nativeText.includes("Adds this source to the selected goal without changing its status")
       && nativeText.includes("No goal or task was created")
       && nativeText.includes("/api/mobile/capture/transcripts/packet/actions")
       && nativeText.includes("CapturePacketCandidateReviewQueue")
@@ -1931,8 +1931,9 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes('body["tagIds"]')
       && nativeText.includes("CapturePacketTaskMergeModeButton")
       && nativeText.includes("CapturePacketTaskMergeTargetPicker")
-      && nativeText.includes("Add to existing task appends one reviewed source receipt without changing task state")
-      && nativeText.includes("Edit, defer, and reject create no task, assignment, date, reminder, calendar event, message, delivery, or publication."),
+      && nativeText.includes("Nothing changes until you choose. Create a task")
+      && nativeText.includes("add this source to an existing task")
+      && nativeText.includes("keep it for later, or dismiss it."),
     "packetGoalCandidateExplicitReviewBoundary",
     "Packet goal-language stays candidate-only until an actor explicitly accepts one exact-source canonical Goal; edit, reject, and defer remain receipt-backed non-work decisions with no implied task, schedule, calendar, message, delivery, or publication.",
   );

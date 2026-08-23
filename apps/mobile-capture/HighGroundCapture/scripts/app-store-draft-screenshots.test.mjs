@@ -109,7 +109,7 @@ test("fails when an attachment is missing or has the wrong dimensions", () => {
         deviceName: "iPhone 17 Pro Max",
         deviceId: "fixture-device",
       }),
-      /Expected exactly one xcresult attachment named 05-account\.png; found 0/,
+      /Expected exactly one xcresult attachment named 05-transcript\.png; found 0/,
     );
   } finally {
     fs.rmSync(missing.root, { recursive: true, force: true });

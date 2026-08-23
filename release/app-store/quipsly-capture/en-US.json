@@ -134,8 +134,8 @@
         "filename": "02-record.png",
         "width": 1320,
         "height": 2868,
-        "headline": "Consent before capture",
-        "story": "Independent audio and transcription choices before recording can start.",
+        "headline": "Join without the setup maze",
+        "story": "A familiar green room with clear device controls, Join call, and Record without joining.",
         "status": "pending"
       },
       {
@@ -158,11 +158,11 @@
       },
       {
         "order": 5,
-        "filename": "05-account.png",
+        "filename": "05-transcript.png",
         "width": 1320,
         "height": 2868,
-        "headline": "Privacy you can reach",
-        "story": "Account with direct privacy and account-deletion controls.",
+        "headline": "Turn conversation into progress",
+        "story": "Source-linked transcript review with corrections and prepared follow-through inside Capture.",
         "status": "pending"
       }
     ]

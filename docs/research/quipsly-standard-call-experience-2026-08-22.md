@@ -895,3 +895,29 @@ The physical route check must include unplugging and reconnecting a USB
 microphone, camera, and headphone output both before joining and during a live
 call. Verify the audible/visible route, the displayed route, mute/camera state,
 remembered preference after reload, and retained-source identity separately.
+
+## 2026-08-23 release-surface checkpoint
+
+The App Store draft journey now demonstrates the product sequence instead of
+administrative plumbing:
+
+1. Today shows one clear next action.
+2. Record opens on the familiar green room with `Join call` and `Record without
+   joining`; the next-step copy names both valid paths.
+3. Work connects projects, notes, tasks, goals, and tags.
+4. Library keeps the local original and server verification visibly distinct.
+5. Transcript review jumps to the top of `Session follow-up`, where source-linked
+   note, goal, and task suggestions can be reviewed.
+
+The visual pass also removed implementation vocabulary from the ordinary
+follow-up decision cards. `Merge`, `defer`, `reject`, `canonical OPEN
+ActionItem`, `actor-owned ACTIVE Goal`, mutation exclusions, and receipt detail
+remain valid internal and diagnostic concepts; the coach now sees `Create`,
+`Add to existing`, `Edit`, `Later`, and `Dismiss`, plus the short reassurance
+that nothing changes until they choose. The source contracts still assert the
+same exact-source, idempotency, revision, and no-automatic-sharing boundaries.
+
+The simulator generated all five 1320 by 2868 draft images through the real UI
+test journey. This is layout evidence only. The receipt remains deliberately
+ineligible for submission until the same journey is recaptured from the signed
+candidate and approved as release creative.

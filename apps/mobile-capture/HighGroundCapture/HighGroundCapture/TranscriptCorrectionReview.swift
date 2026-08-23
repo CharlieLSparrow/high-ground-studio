@@ -2910,7 +2910,7 @@ struct CaptureTranscriptReviewView: View {
                         if previewOnly || packetCandidateCount > 0 {
                             Button {
                                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    scrollTargetSegmentID = "packet-candidate-review"
+                                    scrollTargetSegmentID = nil
                                     scrollProxy.scrollTo("packet-candidate-review", anchor: .top)
                                 }
                             } label: {
@@ -4053,10 +4053,10 @@ private struct CapturePacketNoteCandidateCard: View {
                         .accessibilityIdentifier("CapturePacketCancelNoteButton_\(candidate.accessibilityKey)")
                 }
                 Text(isEditingDraft
-                    ? "Preserves one reviewed draft and audit receipt. It creates no canonical note, task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication."
+                    ? "Saves this wording for review without creating or sharing a note."
                     : reviewMode == .merge
-                        ? "Updates exactly one existing note and retains its prior revision plus this transcript source. It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication."
-                        : "Creates one revisioned canonical note. It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication.")
+                        ? "Adds this source to the selected note. Its previous version stays recoverable."
+                        : "Saves one source-linked note. Nothing is sent or shared automatically.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -4083,17 +4083,17 @@ private struct CapturePacketNoteCandidateCard: View {
                     )
 
                     HStack {
-                        Button("Merge into note") { reviewMode = .merge }
+                        Button("Add to existing note") { reviewMode = .merge }
                             .buttonStyle(.bordered)
                             .frame(minHeight: 44)
                         .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected || mergeTargets.isEmpty)
                             .accessibilityIdentifier("CapturePacketNoteMergeButton_\(candidate.accessibilityKey)")
-                        Button("Edit candidate") { beginReview(.edit) }
+                        Button("Edit") { beginReview(.edit) }
                             .buttonStyle(.bordered)
                             .frame(minHeight: 44)
                             .disabled(client.isMutating || decisionsLocked || laneRejected)
                             .accessibilityIdentifier("CapturePacketNoteEditButton_\(candidate.accessibilityKey)")
-                        Button("Defer") {
+                        Button("Later") {
                             Task {
                                 _ = await client.reviewPacketNote(
                                     candidate: candidate,
@@ -4106,15 +4106,15 @@ private struct CapturePacketNoteCandidateCard: View {
                         .frame(minHeight: 44)
                         .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected)
                         .accessibilityIdentifier("CapturePacketNoteDeferButton_\(candidate.accessibilityKey)")
-                        Button("Reject", role: .destructive) { isConfirmingReject = true }
+                        Button("Dismiss", role: .destructive) { isConfirmingReject = true }
                             .buttonStyle(.bordered)
                             .frame(minHeight: 44)
                             .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected)
                             .accessibilityIdentifier("CapturePacketNoteRejectButton_\(candidate.accessibilityKey)")
                     }
                     Text(mergeTargets.isEmpty
-                        ? "Create a Session note first if you want to combine this with an existing note."
-                        : "Combine this with one existing Session note, adjust the suggestion, save it for later, or dismiss it.")
+                        ? "Save this as a note, edit it, keep it for later, or dismiss it."
+                        : "Save this as a note, add it to an existing note, edit it, keep it for later, or dismiss it.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -4445,7 +4445,7 @@ private struct CapturePacketTaskCandidateCard: View {
                 }
             } else {
                 HStack {
-                    Button("Review & create task") { isCreating = true }
+                    Button("Create task") { isCreating = true }
                     .buttonStyle(.borderedProminent)
                     .disabled(previewOnly || decisionsLocked || client.isMutating)
                     .accessibilityIdentifier("CapturePacketTaskAcceptButton")
@@ -4462,13 +4462,13 @@ private struct CapturePacketTaskCandidateCard: View {
                 .disabled(decisionsDisabled || mergeTargets.isEmpty)
                 .accessibilityIdentifier("CapturePacketTaskMergeModeButton")
                 HStack {
-                    Button("Defer") {
+                    Button("Later") {
                         Task { _ = await client.reviewPacketAction(candidate: candidate, decision: "DEFER", title: nil, detail: nil, previewOnly: previewOnly) }
                     }
                     .buttonStyle(.bordered)
                     .disabled(decisionsDisabled)
                     .accessibilityIdentifier("CapturePacketTaskDeferButton")
-                    Button("Reject", role: .destructive) {
+                    Button("Dismiss", role: .destructive) {
                         Task { _ = await client.reviewPacketAction(candidate: candidate, decision: "REJECT", title: nil, detail: nil, previewOnly: previewOnly) }
                     }
                     .buttonStyle(.bordered)
@@ -4477,7 +4477,9 @@ private struct CapturePacketTaskCandidateCard: View {
                 }
             }
             if !accepted && !isCreating && !isMerging {
-                Text("Review & create task writes one canonical OPEN ActionItem after owner, due date, and tags are inspected. Add to existing task appends one reviewed source receipt without changing task state. Edit, defer, and reject create no task, assignment, date, reminder, calendar event, message, delivery, or publication.\(mergeTargets.isEmpty ? " Create an actor-owned task in this Nest to enable evidence merge." : "")")
+                Text(mergeTargets.isEmpty
+                    ? "Nothing changes until you choose. Create a task, edit the suggestion, keep it for later, or dismiss it."
+                    : "Nothing changes until you choose. Create a task, add this source to an existing task, edit it, keep it for later, or dismiss it.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -4774,7 +4776,7 @@ private struct CapturePacketGoalCandidateCard: View {
                         .buttonStyle(.bordered)
                         .accessibilityIdentifier("CapturePacketGoalCancelMergeButton")
                     }
-                    Text("The goal keeps its identity, title, definition, status, target date, tags, linked tasks, progress percentage, and project. No focus block, reminder, calendar event, message, delivery, Studio edit, or publication is created.")
+                    Text("Adds this source to the selected goal without changing its status, date, tags, tasks, or progress.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -4810,7 +4812,7 @@ private struct CapturePacketGoalCandidateCard: View {
                 }
             } else {
                 HStack {
-                    Button("Review & create goal") { isCreating = true }
+                    Button("Create goal") { isCreating = true }
                     .buttonStyle(.borderedProminent)
                     .tint(.purple)
                     .disabled(previewOnly || decisionsLocked || client.isMutating)
@@ -4832,13 +4834,13 @@ private struct CapturePacketGoalCandidateCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack {
-                    Button("Defer") {
+                    Button("Later") {
                         Task { _ = await client.reviewPacketGoal(candidate: candidate, decision: "DEFER", title: nil, description: nil, previewOnly: previewOnly) }
                     }
                     .buttonStyle(.bordered)
                     .disabled(decisionsDisabled)
                     .accessibilityIdentifier("CapturePacketGoalDeferButton")
-                    Button("Reject", role: .destructive) {
+                    Button("Dismiss", role: .destructive) {
                         Task { _ = await client.reviewPacketGoal(candidate: candidate, decision: "REJECT", title: nil, description: nil, previewOnly: previewOnly) }
                     }
                     .buttonStyle(.bordered)
@@ -4847,7 +4849,7 @@ private struct CapturePacketGoalCandidateCard: View {
                 }
             }
             if !accepted && !isCreating && !isMerging {
-                Text("Review & create goal writes one actor-owned ACTIVE Goal. Add evidence to existing goal appends one source receipt to a deliberately selected goal without changing its state. Edit, defer, and reject create no goal, task, date, focus block, reminder, calendar event, message, delivery, or publication.")
+                Text("Nothing changes until you choose. Create a goal, add this source to an existing goal, edit the suggestion, keep it for later, or dismiss it.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
