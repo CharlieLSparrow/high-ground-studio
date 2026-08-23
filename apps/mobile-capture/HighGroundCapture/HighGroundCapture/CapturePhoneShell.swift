@@ -12114,6 +12114,13 @@ private struct ProviderRoomControls: View {
                 .accessibilityIdentifier("CaptureCallInputRoute")
 
             if model.providerRoom.isConnected {
+                if model.providerRoom.hasRemoteVideo {
+                    ProviderRemoteVideoSurface(controller: model.providerRoom)
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .accessibilityHint("Live conversation video. The retained local recording remains separate.")
+                }
+
                 VStack(alignment: .leading, spacing: 4) {
                     Label(
                         participantPresenceLabel,

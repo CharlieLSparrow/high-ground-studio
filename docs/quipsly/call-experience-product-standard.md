@@ -69,6 +69,9 @@ Recurring complaints reveal the failure modes Quipsly must design out:
 - Joining does not start recording.
 - Join with the remembered working setup. Device settings and sound checks are
   optional and nearby, not mandatory gates.
+- Keep the ordinary green room to the familiar microphone, camera, and **Join
+  call** controls. Second-device routing, device pickers, output routing, and
+  diagnostics live in collapsed settings and retain their last safe choice.
 - Ask for camera/microphone access only through the platform's standard prompt.
   Never reproduce browser or iOS permission bureaucracy in product copy.
 - Remember the selected microphone, camera, output, camera-on state, and
@@ -87,6 +90,10 @@ Recurring complaints reveal the failure modes Quipsly must design out:
   activating CallKit, requesting microphone permission, or subscribing to
   remote call media. The iPhone can therefore remain a synchronized retained
   camera/source device while the audible conversation stays on the computer.
+- A primary iPhone endpoint subscribes to and shows participant video inside
+  the familiar call card. That viewing path does not claim the iPhone camera.
+  Until Quipsly owns a single coordinated camera graph, publishing live iPhone
+  video must not compete with or downgrade the retained local camera master.
 - Conventional in-call controls remain in predictable locations and use
   conventional labels: Mute, Camera, Leave, Participants, Chat, and Record.
 - Reconnect automatically when safe. Interrupt only when the user must act.

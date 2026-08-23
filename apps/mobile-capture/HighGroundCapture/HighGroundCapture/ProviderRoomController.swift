@@ -41,6 +41,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var isNativeCallPresentationActive = false
     @Published var nativeCallPresentationLabel = "CallKit ready"
     @Published var remoteParticipantCount = 0
+    @Published private(set) var hasRemoteVideo = false
+    @Published private(set) var remoteVideoParticipantLabel: String?
     @Published var activeRoomName: String?
     @Published var activeCallUUIDString: String?
     @Published var lastError: String?
@@ -75,6 +77,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     #if canImport(LiveKit)
     private let room = Room()
+    @Published fileprivate var remoteVideoTrack: VideoTrack?
     private var callAudioMeter: ProviderRoomCallAudioMeter?
     private var callAudioWatchdogTask: Task<Void, Never>?
     #endif
@@ -265,6 +268,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             lastTechnicalError = nil
             activeRoomName = room.name ?? join.roomName ?? session.displayTitle
             remoteParticipantCount = room.remoteParticipants.count
+            refreshRemoteVideoTrack()
             connectionStateLabel = "\(room.connectionState)".capitalized
             if useCallAudio {
                 reportNativeCallConnected()
@@ -399,6 +403,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isMuted = true
         usesCallAudio = false
         remoteParticipantCount = 0
+        clearRemoteVideoTrack()
         activeRoomName = nil
         activeOwnerSnapshot = nil
         clearEpisodeWatchBridge()
@@ -425,6 +430,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isReconnecting = room.connectionState == .reconnecting
         connectionStateLabel = "\(room.connectionState)".capitalized
         remoteParticipantCount = room.remoteParticipants.count
+        refreshRemoteVideoTrack()
         activeRoomName = room.name ?? activeRoomName
         #else
         isConnected = false
@@ -445,6 +451,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             usesCallAudio = false
             activeOwnerSnapshot = nil
             clearEpisodeWatchBridge()
+            clearRemoteVideoTrack()
         }
         lastError = message
         lastTechnicalError = technical
@@ -520,6 +527,37 @@ final class ProviderRoomController: NSObject, ObservableObject {
         latestChatPersistedHint = nil
         activeChatThreadKeys = []
     }
+
+    #if canImport(LiveKit)
+    private func refreshRemoteVideoTrack() {
+        for participant in room.remoteParticipants.values {
+            if let track = participant.trackPublications.values
+                .compactMap({ $0.track as? VideoTrack })
+                .first {
+                remoteVideoTrack = track
+                let participantName = participant.name?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                remoteVideoParticipantLabel = participantName?.isEmpty == false
+                    ? participantName
+                    : "Participant"
+                hasRemoteVideo = true
+                return
+            }
+        }
+        clearRemoteVideoTrack()
+    }
+
+    private func clearRemoteVideoTrack() {
+        remoteVideoTrack = nil
+        remoteVideoParticipantLabel = nil
+        hasRemoteVideo = false
+    }
+    #else
+    private func clearRemoteVideoTrack() {
+        remoteVideoParticipantLabel = nil
+        hasRemoteVideo = false
+    }
+    #endif
 
     private func requestCallKitTransaction(_ transaction: CXTransaction) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -634,6 +672,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isMuted = true
         usesCallAudio = false
         remoteParticipantCount = 0
+        clearRemoteVideoTrack()
         activeRoomName = nil
         connectionStateLabel = "Disconnected"
         lastError = "Your Quipsly account changed, so the call ended safely. Join again with the current account."
@@ -658,6 +697,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isMuted = true
         usesCallAudio = false
         remoteParticipantCount = 0
+        clearRemoteVideoTrack()
         activeRoomName = nil
         activeOwnerSnapshot = nil
         clearEpisodeWatchBridge()
@@ -821,6 +861,7 @@ extension ProviderRoomController: RoomDelegate {
                 await self.endNativeCallPresentation(reason: .remoteEnded)
                 self.activeOwnerSnapshot = nil
                 self.clearEpisodeWatchBridge()
+                self.clearRemoteVideoTrack()
                 self.statusText = "Provider room disconnected. Local recording and preserved uploads remain separate."
             default:
                 self.isConnecting = true
@@ -832,12 +873,36 @@ extension ProviderRoomController: RoomDelegate {
     nonisolated func room(_ room: Room, participantDidConnect participant: RemoteParticipant) {
         Task { @MainActor in
             self.remoteParticipantCount = room.remoteParticipants.count
+            self.refreshRemoteVideoTrack()
         }
     }
 
     nonisolated func room(_ room: Room, participantDidDisconnect participant: RemoteParticipant) {
         Task { @MainActor in
             self.remoteParticipantCount = room.remoteParticipants.count
+            self.refreshRemoteVideoTrack()
+        }
+    }
+
+    nonisolated func room(
+        _ room: Room,
+        participant: RemoteParticipant,
+        didSubscribeTrack publication: RemoteTrackPublication
+    ) {
+        Task { @MainActor in
+            self.remoteParticipantCount = room.remoteParticipants.count
+            self.refreshRemoteVideoTrack()
+        }
+    }
+
+    nonisolated func room(
+        _ room: Room,
+        participant: RemoteParticipant,
+        didUnsubscribeTrack publication: RemoteTrackPublication
+    ) {
+        Task { @MainActor in
+            self.remoteParticipantCount = room.remoteParticipants.count
+            self.refreshRemoteVideoTrack()
         }
     }
 
@@ -868,3 +933,32 @@ extension ProviderRoomController: RoomDelegate {
     }
 }
 #endif
+
+struct ProviderRemoteVideoSurface: View {
+    @ObservedObject var controller: ProviderRoomController
+
+    var body: some View {
+        #if canImport(LiveKit)
+        if let track = controller.remoteVideoTrack {
+            ZStack(alignment: .bottomLeading) {
+                SwiftUIVideoView(track, layoutMode: .fill)
+                    .background(Color.black)
+
+                Text(controller.remoteVideoParticipantLabel ?? "Participant")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(.black.opacity(0.62), in: Capsule())
+                    .padding(10)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Video from \(controller.remoteVideoParticipantLabel ?? "participant")")
+            .accessibilityIdentifier("CaptureRemoteCallVideo")
+        }
+        #else
+        EmptyView()
+        #endif
+    }
+}

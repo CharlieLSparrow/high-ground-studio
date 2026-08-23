@@ -1609,6 +1609,12 @@ requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCallInpu
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureUseCallAudioToggle")', "shipping call entry exposes an addressable audio-device control");
 requireIncludes(providerRoomText, "ConnectOptions(autoSubscribe: useCallAudio)", "native companion mode does not subscribe to remote call media");
 requireIncludes(providerRoomText, "setMicrophone(enabled: useCallAudio)", "native companion mode does not publish a call microphone");
+requireIncludes(providerRoomText, "didSubscribeTrack publication: RemoteTrackPublication", "native call refreshes its remote-video surface when a participant publishes video");
+requireIncludes(providerRoomText, "didUnsubscribeTrack publication: RemoteTrackPublication", "native call removes stale remote video when a participant stops video");
+requireIncludes(providerRoomText, "SwiftUIVideoView(track, layoutMode: .fill)", "native call renders subscribed remote video using the provider SDK");
+requireIncludes(providerRoomText, 'accessibilityIdentifier("CaptureRemoteCallVideo")', "native remote video has a stable automation identity");
+requireIncludes(capturePhoneShellText, "model.providerRoom.hasRemoteVideo", "shipping call surface reveals remote video only when a real track exists");
+assert(!providerRoomText.includes("setCamera(enabled: true)"), "Live call must not silently seize the iPhone camera from retained local capture.", { forbidden: "setCamera(enabled: true)" });
 requireIncludes(captureExperienceModelText, "endpointRole: useCallAudio ? \"primary\" : \"companion\"", "native room token records primary versus companion endpoint intent");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderJoinRoomButton")', "shipping provider join action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");

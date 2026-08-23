@@ -1668,34 +1668,6 @@ export function LiveSessionRoom({
                   {previewTested ? "Preview checked" : "Preview optional"}
                 </span>
               </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="Call audio">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCallAudioMode("this-device");
-                    setMicrophoneMuted(joinMuted);
-                  }}
-                  className={`min-h-14 rounded-xl border px-4 py-3 text-left text-xs font-black ${callAudioMode === "this-device" ? "border-violet-700 bg-violet-800 text-white" : "border-violet-200 bg-white text-violet-950"}`}
-                  aria-pressed={callAudioMode === "this-device"}
-                >
-                  <span className="flex items-center gap-2"><Headphones size={16} /> Use audio here</span>
-                  <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "this-device" ? "text-violet-100" : "text-violet-700"}`}>Talk and listen on this device</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCallAudioMode("other-device");
-                    setMicrophoneMuted(true);
-                    stopAudioMeter();
-                    clearPreflightPreview();
-                  }}
-                  className={`min-h-14 rounded-xl border px-4 py-3 text-left text-xs font-black ${callAudioMode === "other-device" ? "border-violet-700 bg-violet-800 text-white" : "border-violet-200 bg-white text-violet-950"}`}
-                  aria-pressed={callAudioMode === "other-device"}
-                >
-                  <span className="flex items-center gap-2"><Smartphone size={16} /> Use another device</span>
-                  <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "other-device" ? "text-violet-100" : "text-violet-700"}`}>Camera and Session access here, no echo</span>
-                </button>
-              </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {callAudioMode === "this-device" ? <button
                   type="button"
@@ -1747,6 +1719,34 @@ export function LiveSessionRoom({
 
           <details data-testid="call-device-settings" className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Audio and video settings</summary>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="Where to use call audio">
+            <button
+              type="button"
+              onClick={() => {
+                setCallAudioMode("this-device");
+                setMicrophoneMuted(joinMuted);
+              }}
+              className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-black ${callAudioMode === "this-device" ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7a7] bg-[#fffaf0] text-[#5b472f]"}`}
+              aria-pressed={callAudioMode === "this-device"}
+            >
+              <span className="flex items-center gap-2"><Headphones size={16} /> Audio on this device</span>
+              <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "this-device" ? "text-violet-100" : "text-[#765f40]"}`}>Talk and listen here</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCallAudioMode("other-device");
+                setMicrophoneMuted(true);
+                stopAudioMeter();
+                clearPreflightPreview();
+              }}
+              className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-black ${callAudioMode === "other-device" ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7a7] bg-[#fffaf0] text-[#5b472f]"}`}
+              aria-pressed={callAudioMode === "other-device"}
+            >
+              <span className="flex items-center gap-2"><Smartphone size={16} /> Audio on another device</span>
+              <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "other-device" ? "text-violet-100" : "text-[#765f40]"}`}>Prevents echo when joining twice</span>
+            </button>
+          </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2" role="group" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
             {callAudioMode === "this-device" ? <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Microphone
               <select value={microphoneId} disabled={sourceLocked} onChange={(event) => void chooseMicrophone(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">

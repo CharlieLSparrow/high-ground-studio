@@ -331,7 +331,11 @@ describe("LiveSessionRoom", () => {
     await act(async () => {
       render(<LiveSessionRoom callRoomId="room-second-device" captureGroupId="55555555-5555-4555-8555-555555555541" sessionTitle="Second device" kind="coaching" />);
     });
-    fireEvent.click(screen.getByRole("button", { name: /Use another device/i }));
+    const settings = screen.getByTestId("call-device-settings");
+    expect(settings).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByText("Audio and video settings"));
+    expect(settings).toHaveAttribute("open");
+    fireEvent.click(screen.getByRole("button", { name: /Audio on another device/i }));
 
     expect(screen.getByText(/keeps this device’s call microphone and speakers off/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Join call" }));
