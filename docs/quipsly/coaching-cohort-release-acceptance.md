@@ -2030,3 +2030,29 @@ Its boundaries remain deliberate: controlled text-to-speech and synthetic
 browser devices are pipeline evidence, not natural-speech accuracy, physical
 device, human listening, external email delivery, or production-scale proof.
 The improved listening copy was not published automatically.
+
+## Compiled iPhone phone-first coaching flight — 2026-08-23
+
+The production-shaped iPhone workflow passed from exact pushed source
+`3b9ae14daf000ac3f26733901ad8d0afc87704be` with a clean tracked worktree at
+start. A fresh ordinary verified account opened the compiled Capture app,
+enabled Coaching from the phone, and scheduled a Session using only the
+client's email address. The app supplied a conventional future time and the
+neutral default title `Coaching session`; client name and custom title remain
+optional and use standard Next/Done keyboard progression when chosen.
+
+From that same phone workflow, the app created the client relationship,
+appointment, invitation handoff, and Session; opened the relationship; created
+a shared note, shared task, shared goal, and private coach note; returned to
+Coaching; and opened the exact new Session in the recorder. Independent API
+readback verified all canonical identifiers, shared work, edit authority, and
+the private note's `PRIVATE` visibility.
+
+Receipt:
+`artifacts/coaching-acceptance/phone-start-b61dcf2e/phone-start-receipt.json`.
+The compiled UI test passed 1/1 in 93.687 seconds with no unexpected runtime
+warnings. Its boundaries remain explicit: iPhone simulator rather than a
+physical device, local Firebase and mailbox adapters rather than production
+identity and external email, and no human comprehension or 50-coach load
+claim. The invitation's standard Share path was present because outbound email
+is intentionally unconfigured in this local flight.
