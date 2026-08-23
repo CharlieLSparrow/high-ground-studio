@@ -380,9 +380,11 @@ check(
 );
 check(
   "Library has one calm aggregate upload recovery action",
-  phoneShell.includes('Label(model.uploadManager.isUploading ? "Uploading safely" : "Safe on this iPhone"')
-    && phoneShell.includes('Button("Try again now") { model.retryUploads() }')
-    && !phoneShell.includes('Button("Retry preserved uploads")'),
+  phoneShell.includes('model.uploadManager.isUploading ? "Uploading recording" : "Upload needs attention"')
+    && phoneShell.includes('Button("Try upload again") { model.retryUploads() }')
+    && phoneShell.split('Button("Try upload again") { model.retryUploads() }').length === 2
+    && !phoneShell.includes('Button("Retry preserved uploads")')
+    && !phoneShell.includes('Button("Try again now")'),
 );
 
 console.log(`quipsly iOS capture durability contract: ${checks.length}/${checks.length} checks passed`);
