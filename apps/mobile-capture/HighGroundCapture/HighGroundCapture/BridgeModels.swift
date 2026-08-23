@@ -1110,10 +1110,10 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     }
 
     var packetBadgeLabel: String {
-        if coachingPacketSummaryNoteId != nil { return "Packet ready" }
+        if coachingPacketSummaryNoteId != nil { return "Follow-up ready" }
         let status = coachingPacketStatus?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() ?? ""
-        if status == "PACKET_READY_TO_BUILD" { return "Can build packet" }
-        return "No packet yet"
+        if status == "PACKET_READY_TO_BUILD" { return "Preparing follow-up" }
+        return "No follow-up yet"
     }
 
     var canRunTranscript: Bool {
@@ -2267,13 +2267,13 @@ struct MobileCaptureTranscriptRunResponse: Codable {
         if normalizedStatus == "COMPLETED" {
             let count = segmentCount ?? 0
             return count > 0
-                ? "Transcript is complete with \(count) segment\(count == 1 ? "" : "s"). Build a review packet next."
-                : "Transcript is complete. Build a review packet next."
+                ? "Transcript is complete with \(count) passage\(count == 1 ? "" : "s"). Quipsly is preparing the follow-up."
+                : "Transcript is complete. Quipsly is preparing the follow-up."
         }
         if ensuredFromRecording == true {
-            return "Transcript job is linked to the uploaded recording. Refresh session evidence, then build a packet after completion."
+            return "The transcript is linked to the uploaded recording. Quipsly will prepare the follow-up when it finishes."
         }
-        return "Refresh session evidence and review transcript status before building a packet."
+        return "Refresh the session to check transcript progress."
     }
 }
 

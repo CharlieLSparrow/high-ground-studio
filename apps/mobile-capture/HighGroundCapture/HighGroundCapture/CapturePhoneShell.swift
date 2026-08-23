@@ -8305,7 +8305,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
                         .foregroundStyle(.purple)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Review transcript and packet")
+                        Text("Review transcript and follow-up")
                             .font(.subheadline.weight(.bold))
                         Text(transcriptReviewSummary)
                             .font(.caption)
@@ -8328,7 +8328,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
             }
             .buttonStyle(.plain)
             .captureCard()
-            .accessibilityHint("Opens the canonical transcript and source-grounded review packet. It does not start playback or accept any candidate.")
+            .accessibilityHint("Opens the transcript and suggested follow-up. It does not start playback or keep any suggestion.")
             .accessibilityIdentifier("CaptureSessionTranscriptReviewLink_\(session.callRoomId)")
         }
     }
@@ -8344,7 +8344,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
     private var transcriptReviewSummary: String {
         let segmentCount = session.latestTranscriptSegmentCount ?? 0
         let transcript = segmentCount > 0
-            ? "Completed transcript · \(segmentCount) \(segmentCount == 1 ? "segment" : "segments")"
+            ? "Completed transcript · \(segmentCount) \(segmentCount == 1 ? "passage" : "passages")"
             : session.transcriptBadgeLabel
         return "\(transcript) · \(session.packetBadgeLabel)"
     }

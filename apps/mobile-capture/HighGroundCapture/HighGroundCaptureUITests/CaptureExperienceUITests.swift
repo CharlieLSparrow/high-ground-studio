@@ -1887,6 +1887,26 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testTranscriptReviewPresentsPlainFollowUpSuggestions() throws {
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+
+        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
+        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
+        reviewLink.tap()
+
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        let followUpReady = app.descendants(matching: .any)["CaptureTranscriptPacketLoadedBoundary"].firstMatch
+        reveal(followUpReady, searchAboveFirst: false)
+        XCTAssertTrue(
+            followUpReady.exists,
+            "A completed transcript should make its prepared follow-up easy to find."
+        )
+        XCTAssertTrue(followUpReady.label.contains("Follow-up suggestions ready"))
+        XCTAssertFalse(followUpReady.label.contains("Review packet loaded"))
+        XCTAssertTrue(followUpReady.label.contains("Nothing is shared with a client automatically"))
+    }
+
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))

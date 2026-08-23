@@ -762,6 +762,7 @@ private struct CapturePacketGoalReviewContext: Equatable {
 private struct CapturePacketGoalReviewEnvelope: Codable {
     struct Packet: Codable {
         struct TranscriptReview: Codable {
+            let snapshotSha256: String?
             let segmentCount: Int
             let humanReviewedSegmentCount: Int
             let providerOnlySegmentCount: Int
@@ -816,6 +817,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var packetReviewedSegmentCount = 0
     @Published private(set) var packetProviderOnlySegmentCount = 0
     @Published private(set) var packetSnapshotStale = false
+    @Published private(set) var followUpPreparationFailed = false
     @Published private(set) var pendingTranscriptDecisionCount = 0
     @Published private(set) var heldTranscriptDecisionCount = 0
     @Published private(set) var pendingSpeakerAttributionCount = 0
@@ -831,6 +833,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private var isFlushingReviewDecisions = false
     private var isFlushingSpeakerAttributions = false
     private var activeRoomID: String?
+    private var automaticPacketAttemptKeys: Set<String> = []
+    private var packetSnapshotSHA256: String?
 
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com"
@@ -957,6 +961,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             if let desk { persist(desk, roomID: roomID) }
             message = nil
             await loadPacketCandidates(roomID: roomID)
+            await prepareFollowUpIfNeeded(roomID: roomID)
             let synchronizedReview = await flushReviewDecisions()
             let synchronizedSpeaker = await flushSpeakerAttributions()
             if synchronizedReview || synchronizedSpeaker {
@@ -1664,6 +1669,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetReviewedSegmentCount = payload.packet?.transcriptReview?.humanReviewedSegmentCount ?? 0
             packetProviderOnlySegmentCount = payload.packet?.transcriptReview?.providerOnlySegmentCount ?? 0
             packetSnapshotStale = payload.packet?.transcriptReview?.packetStale ?? false
+            packetSnapshotSHA256 = payload.packet?.transcriptReview?.snapshotSha256
             if !packetNeedsRebuild,
                let summaryNoteId = payload.packet?.summary?.id,
                let packetBuildId = payload.packet?.build?.packetBuildId,
@@ -1674,6 +1680,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 packetGoalReviewContext = nil
             }
             packetReviewError = nil
+            if !packetNeedsRebuild, packetStatus != "PACKET_READY_TO_BUILD" {
+                followUpPreparationFailed = false
+            }
         } catch {
             packetGoalCandidates = []
             packetGoalMergeTargets = []
@@ -1697,13 +1706,31 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 : "Reconnect to Nest before rebuilding this transcript packet."
             return false
         }
+        return await prepareCurrentPacket(roomID: roomID, automatic: false)
+    }
+
+    private func prepareFollowUpIfNeeded(roomID: String) async {
+        let status = packetStatus?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() ?? ""
+        guard status == "PACKET_READY_TO_BUILD" || packetNeedsRebuild,
+              let transcriptJobID = desk?.transcriptJobId?.nonemptyTranscriptValue else {
+            return
+        }
+        let attemptKey = "\(transcriptJobID):\(packetSnapshotSHA256 ?? (packetNeedsRebuild ? "stale" : "missing"))"
+        guard automaticPacketAttemptKeys.insert(attemptKey).inserted else { return }
+        _ = await prepareCurrentPacket(roomID: roomID, automatic: true)
+    }
+
+    private func prepareCurrentPacket(roomID: String, automatic: Bool) async -> Bool {
         guard let transcriptJobID = desk?.transcriptJobId?.nonemptyTranscriptValue,
               let url = URL(string: "\(baseURL)/api/mobile/capture/transcripts/packet") else {
-            errorMessage = "A completed transcript job is required before rebuilding this packet."
+            errorMessage = "A completed transcript is required before Quipsly can prepare the follow-up."
+            followUpPreparationFailed = true
             return false
         }
         isMutating = true
         errorMessage = nil
+        followUpPreparationFailed = false
+        message = "Preparing your follow-up…"
         defer { isMutating = false }
         do {
             var request = URLRequest(url: url)
@@ -1711,22 +1738,24 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: [
                 "transcriptJobId": transcriptJobID,
-                "force": true,
+                "force": false,
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(MobileCapturePacketBuildResponse.self, from: data)
             guard response.statusCode < 400, payload.ok else {
                 throw captureTranscriptError(data: data, fallback: payload.error ?? "The current packet could not be built.")
             }
-            await load(roomID: roomID, previewOnly: false)
-            if errorMessage == nil {
-                message = payload.reusedExistingPacket == true
-                    ? "The current reviewed transcript already has this packet."
-                    : "Current packet built from the latest reviewed transcript. Candidates still require explicit decisions."
-            }
-            return errorMessage == nil
+            await loadPacketCandidates(roomID: roomID)
+            followUpPreparationFailed = false
+            message = payload.reusedExistingPacket == true
+                ? "Your current follow-up suggestions are ready to review."
+                : "Your follow-up suggestions are ready. Nothing was assigned, sent, or shared."
+            return true
         } catch {
-            errorMessage = error.localizedDescription
+            followUpPreparationFailed = true
+            errorMessage = automatic
+                ? "Quipsly could not prepare the follow-up yet. Your transcript is safe; try again below."
+                : error.localizedDescription
             return false
         }
     }
@@ -1737,6 +1766,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         packetReviewedSegmentCount = 0
         packetProviderOnlySegmentCount = 0
         packetSnapshotStale = false
+        packetSnapshotSHA256 = nil
     }
 
     func retryHeldDecision(_ id: UUID, roomID: String) async {
@@ -2723,19 +2753,19 @@ struct CaptureTranscriptReviewView: View {
                             transcriptImpactSummary(desk)
                                 .id("linked-work-impact")
                         }
-                        speakerIdentitySection(desk)
-                            .id("speaker-identities")
                         if let packetReviewError = client.packetReviewError {
                             reviewNotice(
-                                title: "Packet follow-through unavailable",
+                                title: "Follow-up unavailable",
                                 detail: packetReviewError,
                                 tint: .orange,
                                 icon: "target"
                             )
                             .accessibilityIdentifier("CaptureTranscriptPacketErrorBoundary")
+                        } else if client.followUpPreparationFailed && !client.packetNeedsRebuild {
+                            followUpRetryNotice
                         } else if packetCandidateCount > 0 {
                             reviewNotice(
-                                title: "Review packet loaded",
+                                title: "Follow-up suggestions ready",
                                 detail: packetCandidateSummary,
                                 tint: .green,
                                 icon: "checkmark.shield.fill"
@@ -2745,6 +2775,8 @@ struct CaptureTranscriptReviewView: View {
                         if client.packetSegmentCount > 0 {
                             packetTranscriptReviewBoundary
                         }
+                        speakerIdentitySection(desk)
+                            .id("speaker-identities")
                         if packetCandidateCount > 0 {
                             packetCandidateReviewQueue { segmentID in
                                 withAnimation(
@@ -3658,27 +3690,29 @@ struct CaptureTranscriptReviewView: View {
     private var packetTranscriptReviewBoundary: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(
-                "\(client.packetReviewedSegmentCount) of \(client.packetSegmentCount) transcript segments reviewed",
+                "\(client.packetReviewedSegmentCount) of \(client.packetSegmentCount) transcript passages checked",
                 systemImage: client.packetProviderOnlySegmentCount == 0 ? "checkmark.shield.fill" : "ear.badge.checkmark"
             )
             .font(.subheadline.weight(.bold))
             .foregroundStyle(client.packetProviderOnlySegmentCount == 0 ? Color.green : Color.orange)
             .accessibilityIdentifier("CaptureTranscriptReviewProgressCount")
             Text(client.packetProviderOnlySegmentCount == 0
-                ? "Every segment in this packet has a current playback-review receipt. Each candidate still needs its own deliberate create decision."
-                : "\(client.packetProviderOnlySegmentCount) segment\(client.packetProviderOnlySegmentCount == 1 ? " remains" : "s remain") provider-only. A candidate cannot become canonical work until every segment in its source span is heard and confirmed.")
+                ? "Every passage used by these suggestions has been checked against the recording. You still choose which suggestions to keep."
+                : "Listen to and confirm \(client.packetProviderOnlySegmentCount) more passage\(client.packetProviderOnlySegmentCount == 1 ? "" : "s") before keeping the related suggestions.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if client.packetNeedsRebuild {
-                Text("Transcript review changed after this packet was built. The saved packet remains inspectable, but decisions are locked until a new append-only packet snapshots the current review state.")
+                Text(client.followUpPreparationFailed
+                    ? "Quipsly could not refresh the suggestions. Your transcript is safe; try again."
+                    : "Your transcript changed, so Quipsly is refreshing the suggestions. The earlier version stays visible until the refreshed one is ready.")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
                     Task { _ = await client.buildCurrentPacket(roomID: roomID, previewOnly: previewOnly) }
                 } label: {
-                    Label("Build current packet", systemImage: "arrow.triangle.2.circlepath")
+                    Label(client.followUpPreparationFailed ? "Try again" : "Refreshing suggestions…", systemImage: "arrow.triangle.2.circlepath")
                         .frame(minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
@@ -3694,6 +3728,30 @@ struct CaptureTranscriptReviewView: View {
             : "CaptureTranscriptPacketReviewProgress")
     }
 
+    private var followUpRetryNotice: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Follow-up needs attention", systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.orange)
+            Text("Quipsly could not prepare the suggestions. Your transcript is safe.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                Task { _ = await client.buildCurrentPacket(roomID: roomID, previewOnly: previewOnly) }
+            } label: {
+                Label("Try again", systemImage: "arrow.triangle.2.circlepath")
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.orange)
+            .disabled(previewOnly || client.isMutating || client.isUsingProtectedCache)
+            .accessibilityIdentifier("CaptureTranscriptPrepareFollowUpRetry")
+        }
+        .reviewCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptFollowUpRetryBoundary")
+    }
+
     private func reviewNotice(title: String, detail: String, tint: Color, icon: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
@@ -3705,6 +3763,7 @@ struct CaptureTranscriptReviewView: View {
             }
         }
         .reviewCard()
+        .accessibilityElement(children: .combine)
     }
 }
 

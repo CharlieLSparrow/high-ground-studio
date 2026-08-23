@@ -502,6 +502,11 @@ details`; they prove the state without becoming homework. An audio warning
   The everyday transcript surface says `Review and edit`, `Share transcript`,
   and `Refresh`; provider routing and receipts live under `Transcription
 details`.
+- Give the phone-only workflow the same automatic follow-through as the web.
+  Opening a completed transcript now prepares the idempotent internal notes,
+  tasks, and goal suggestions once, presents them as `Follow-up suggestions`,
+  and offers one plain retry only after failure. It never assigns, sends,
+  shares, or publishes a suggestion without an explicit review action.
 - Keep the iPhone's live safety monitoring, but translate its happy path and
   recovery guidance into ordinary recording language. Coaches now see `Ready
 to record`, `Recording on this iPhone`, `Call disconnected`, or `This
