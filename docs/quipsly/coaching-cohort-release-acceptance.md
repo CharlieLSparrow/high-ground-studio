@@ -1970,3 +1970,36 @@ App Store static gate passes 1134/1134, and the Apple capability operation
 passes 4/4 regressions. Production endpoint and signed physical-iPhone opening
 remain release-candidate checks after the Nest route is deliberately deployed;
 the current public/TestFlight build was not replaced in this slice.
+
+## Clean-commit fresh coaching flight after call simplification — 2026-08-23
+
+The complete local product flight passed from pushed source
+`6e19a00df888af9dd5fa011dbb46ac1e4c54c6d1` with a clean tracked worktree at
+start. It created fresh ordinary coach and client accounts, scheduled the
+Session, used the exact rendered invitation and HTTPS app-or-browser handoff,
+returned the client to the same Session, and found no neighboring Nest,
+Session, coaching-relationship, podcast, or private-test leakage through normal
+navigation, direct URLs, or direct API probes.
+
+Both browser participants then joined the conventional lobby, kept advanced
+device and technical evidence collapsed, reused unchanged Session consent after
+re-entry, and produced two independently verified participant-owned sources
+with 7,921 ms of overlap. The same Session produced a two-source attributed
+transcript, protected playback, a rendered/downloaded mentor DOCX report,
+shared and private relationship work, cross-account task completion, a light
+edit, private coach preview, client release/playback, and verified revocation.
+
+Receipt:
+`artifacts/coaching-acceptance/28ba7419/fresh-coaching-flight-receipt.json`.
+The operation made no direct acceptance writes to the database. Its boundaries
+remain explicit: local mailbox delivery, synthetic browser media, no natural
+human-speech or human-listening claim, no physical-device proof, and no
+production-scale claim.
+
+The retained local `shomers@gmail.com` persona was also repaired through the
+idempotent starter and guarded coach-reset operations. It now has one active
+free membership, one private empty Home Nest, a COACH role and active Scott
+Sparrow profile, while its prior High Ground Odyssey grant and Episode 9
+participant access are revoked/removed. This repair was local only because
+Google Cloud reauthentication expired before the read-only production audit;
+no production identity mutation was attempted.
