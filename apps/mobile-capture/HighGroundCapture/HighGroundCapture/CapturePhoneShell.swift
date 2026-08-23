@@ -14,7 +14,7 @@ struct CapturePhoneShell: View {
     @State private var completedInitialLoad = false
     @State private var isRoutingSessionLink = false
     @State private var localOnlyRecordingSessionID: String?
-    @State private var recorderVisitGeneration = 0
+    @State private var recorderFocusRequest = 0
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -33,10 +33,10 @@ struct CapturePhoneShell: View {
                 CaptureRecorderView(
                     model: model,
                     visibleTab: $visibleTab,
-                    localOnlyRecordingSessionID: $localOnlyRecordingSessionID
+                    localOnlyRecordingSessionID: $localOnlyRecordingSessionID,
+                    focusRequest: recorderFocusRequest
                 )
             }
-            .id(recorderVisitGeneration)
             .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
             .tag(CaptureRootTab.record)
 
@@ -148,13 +148,12 @@ struct CapturePhoneShell: View {
             if tab == .record,
                !audioCaptureIsActive,
                !videoCaptureIsActive {
-                // Returning to an idle recorder is a new capture intent. Start
-                // at the familiar room and primary controls instead of
-                // preserving an arbitrary scroll position from prior notes,
-                // review, or follow-through work. Never rebuild an active
-                // recorder: the global banner must return to the continuing
-                // source without perturbing its view subtree.
-                recorderVisitGeneration += 1
+                // Returning to an idle recorder is a new capture intent. Ask
+                // the existing recorder view to reveal its primary controls
+                // without rebuilding its call, picker, or local source state.
+                // Never move an active recorder: the global banner must return
+                // to the continuing source exactly where the person left it.
+                recorderFocusRequest += 1
             }
 
             guard tab == .today, !model.usesPreviewData else { return }
@@ -6400,6 +6399,7 @@ private struct CaptureRecorderView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
     @Binding var localOnlyRecordingSessionID: String?
+    let focusRequest: Int
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var library = LocalRecordingLibrary.shared
@@ -6422,13 +6422,19 @@ private struct CaptureRecorderView: View {
     @StateObject private var sessionChat = MobileEpisodeChatClient(scope: .session)
 
     var body: some View {
-        ScrollView {
+        ScrollViewReader { scrollProxy in
+            ScrollView {
             // This surface can project a full Episode workspace. Lazy layout
             // is a correctness boundary on physical devices: eagerly laying
             // out every transcript, notes, follow-through, chat, Watch, and
             // capture card can overflow SwiftUI's AttributeGraph stack before
             // the person reaches the consent controls.
             LazyVStack(spacing: 16) {
+                Color.clear
+                    .frame(height: 0)
+                    .id("CaptureRecorderPrimaryControls")
+                    .accessibilityHidden(true)
+
                 SessionChooserButton(session: model.selectedSession) {
                     showsSessionPicker = true
                 }
@@ -7245,6 +7251,18 @@ private struct CaptureRecorderView: View {
                   videoCapture.state != .paused,
                   !model.providerRoom.isLocalVideoPublished else { return }
             Task { await videoCapture.shutdownPreview() }
+        }
+        .onChange(of: focusRequest) { _, _ in
+            guard !captureIsActive else { return }
+            Task { @MainActor in
+                // Let TabView finish selecting Record before changing only the
+                // ScrollView's position. This keeps the live recorder subtree
+                // mounted and gives touch and accessibility clients one stable
+                // transition to observe.
+                await Task.yield()
+                scrollProxy.scrollTo("CaptureRecorderPrimaryControls", anchor: .top)
+            }
+        }
         }
     }
 
