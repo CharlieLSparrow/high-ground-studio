@@ -1613,6 +1613,7 @@ export function TranscriptCorrectionDesk({
   canUseProjectTeamNotes = false,
   canEditRecording = false,
   recordingEditor = null,
+  audioMastery = null,
 }: {
   roomId: string;
   sessionTitle?: string;
@@ -1620,6 +1621,7 @@ export function TranscriptCorrectionDesk({
   canUseProjectTeamNotes?: boolean;
   canEditRecording?: boolean;
   recordingEditor?: ReactNode | ((focus: RecordingEditorFocus | null) => ReactNode);
+  audioMastery?: ReactNode;
 }) {
   const [desk, setDesk] = useState<Desk | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1999,6 +2001,8 @@ export function TranscriptCorrectionDesk({
       </div>
 
       {showRecordingEditor && recordingEditor ? <div id="inline-recording-editor" className="scroll-mt-24">{typeof recordingEditor === "function" ? recordingEditor(recordingEditorFocus) : recordingEditor}</div> : null}
+
+      {audioMastery ? <section aria-label="Session audio improvement" className="scroll-mt-24">{audioMastery}</section> : null}
 
       {desk.gate.allowed && (desk.speakerGroups ?? []).length > 0 ? (
         <section className={`rounded-2xl border p-4 shadow-sm ${unidentifiedSpeakerCount > 0 ? "border-indigo-300 bg-indigo-50" : "border-emerald-200 bg-emerald-50/45"}`} aria-labelledby="voice-labels-heading">

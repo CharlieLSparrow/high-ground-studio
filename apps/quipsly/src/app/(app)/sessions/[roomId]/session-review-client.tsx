@@ -6051,6 +6051,12 @@ export function SessionReviewClient({
   );
   const emptyReviewLanes = reviewLanes.filter((lane) => lane.itemCount <= 0);
   const purpose = preparation?.purpose || "COACHING";
+  const transcriptRecordingAssetId = packet?.transcriptJob?.asset?.id
+    || packet?.selectedRecordingAsset?.id
+    || focusedRecordingAssetId;
+  const transcriptAudioMastery = sourceEvidence.sources.find((source) => (
+    source.recordingAssetId === transcriptRecordingAssetId
+  ))?.audioMastery ?? null;
   const activeMode = sessionWorkspaceDefinitionForPurpose(mode, purpose);
   const liveProjectSlug =
     collaborationContext.project?.slug ||
@@ -6459,6 +6465,9 @@ export function SessionReviewClient({
                     roomId={roomId}
                     focusTranscriptKey={focus ? `${focus.transcriptJobId}:${focus.segmentId}` : null}
                   />
+                : null}
+              audioMastery={transcriptAudioMastery
+                ? <SessionAudioMasteryCard coordinates={transcriptAudioMastery} />
                 : null}
             />
             <section

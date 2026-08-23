@@ -1361,3 +1361,16 @@ cut list.
 Focused correction/editor tests pass 29/29, the wider transcript/share set
 passes 78/78, and Quipsly TypeScript typecheck passes. No render, share,
 deployment, or Build 34 mutation occurred.
+
+## Transcript-adjacent audio mastery — 2026-08-23
+
+Transcript review now includes the automatic audio-quality result for the same
+selected recording asset. The coach can see the whole-source check, compare the
+immutable original with an improved listening copy when one exists, and retain
+an explicit listening decision without leaving the transcript workflow. No
+match means no substitute result, and completion never replaces or releases
+media automatically.
+
+Joined Session/transcript/audio UI suites pass 75/75 and Quipsly TypeScript
+typecheck passes. No human audition, render release, deployment, or Build 34
+mutation occurred.

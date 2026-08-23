@@ -1008,3 +1008,22 @@ recording-share set passes 78/78, and the Quipsly TypeScript typecheck passes.
 This closes navigation continuity and exact-segment focus; it
 does not claim a human listening decision, completed render, mobile UI parity,
 or physical-device proof.
+
+## 2026-08-23 transcript-adjacent audio mastery
+
+The source-matched audio-mastery card now appears directly beside transcript
+review for the exact recording asset selected by the transcript packet. A coach
+no longer has to discover a separate Recordings workspace to see whether the
+spoken-word check is running, already balanced, needs attention, or produced an
+improved listening copy.
+
+The existing conservative boundaries remain unchanged: whole-source analysis
+starts automatically and idempotently; an improved derivative is auditioned
+against the immutable original; a listening choice keeps playback evidence; and
+neither version is replaced, published, or selected for a released edit merely
+because the analysis completed. If the transcript packet cannot be matched to
+audio-mastery coordinates, Quipsly renders no substitute card.
+
+The joined Session/transcript/audio UI suites pass 75/75 and Quipsly TypeScript
+typecheck passes. This is source and deterministic UI proof, not human listening,
+render acceptance, deployment, or physical-device proof.
