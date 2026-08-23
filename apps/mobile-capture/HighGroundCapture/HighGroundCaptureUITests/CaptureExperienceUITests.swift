@@ -2200,18 +2200,25 @@ final class CaptureExperienceUITests: XCTestCase {
         let nestPreviewBoundary = app.descendants(matching: .any)["CaptureNestEvidencePreviewBoundary"]
         XCTAssertTrue(nestPreviewBoundary.exists)
         XCTAssertTrue(nestPreviewBoundary.label.contains("no network request"))
-        XCTAssertTrue(app.staticTexts["Audio visibility"].exists)
+        XCTAssertTrue(app.staticTexts["Recording quality"].exists)
+        let audioSummary = app.descendants(matching: .any)["CaptureAudioQualitySummary"].firstMatch
+        XCTAssertTrue(audioSummary.exists)
+        XCTAssertTrue(audioSummary.label.contains("1 moment worth checking"))
         XCTAssertTrue(app.staticTexts["Video source truth"].exists)
         XCTAssertTrue(app.staticTexts["4K · 24 fps"].exists)
         XCTAssertTrue(app.staticTexts["3840×2160 · 24 fps · HEVC · P3-D65"].exists)
         XCTAssertTrue(app.staticTexts["Camera pressure at Start"].exists)
         XCTAssertTrue(app.staticTexts["Nominal"].exists)
-        XCTAssertTrue(app.staticTexts["RMS"].exists)
+        let technicalAudio = app.descendants(matching: .any)["CaptureAudioTechnicalDetails"].firstMatch
+        reveal(technicalAudio, searchAboveFirst: false)
+        XCTAssertTrue(technicalAudio.isHittable)
+        technicalAudio.tap()
+        XCTAssertTrue(app.staticTexts["RMS"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["−18.4 dBFS · not LUFS"].exists)
         XCTAssertTrue(
             app.staticTexts["00:08 · Possible dropout · listen before classifying"].exists
         )
-        XCTAssertTrue(app.staticTexts["Audible event map"].exists)
+        XCTAssertTrue(app.staticTexts["Sounds to review"].exists)
         XCTAssertTrue(app.staticTexts["00:12 · Cough · 86% score"].exists)
         let audibleEventBoundary = app.descendants(matching: .any)["CaptureAudibleEventPreviewBoundary"]
         XCTAssertTrue(audibleEventBoundary.exists)

@@ -13,6 +13,8 @@ struct CaptureSourceEvidenceView: View {
     @State private var comparisonError: String?
     @State private var comparisonTask: Task<Void, Never>?
     @State private var selectedAudioSeconds = 0.0
+    @State private var showsTechnicalAudioDetails = false
+    @State private var showsTechnicalSoundDetails = false
 
     var body: some View {
         ScrollView {
@@ -121,16 +123,27 @@ struct CaptureSourceEvidenceView: View {
     @ViewBuilder
     private func audioSignalCard(_ recording: LocalRecording) -> some View {
         if recording.sourceProfile?.includesAudio == true {
-            evidenceCard(title: "Audio visibility", systemImage: "waveform.path.ecg") {
+            evidenceCard(title: "Recording quality", systemImage: "waveform.path.ecg") {
                 if let signal = recording.sourceProfile?.audioSignal {
-                    HStack(alignment: .top, spacing: 14) {
-                        signalMetric("RMS", value: String(format: "%.1f dBFS", signal.rmsDbfs), detail: "Not LUFS")
-                        signalMetric("Peak", value: String(format: "%.1f dBFS", signal.samplePeakDbfs), detail: "\(signal.clippedFrameCount) clipped frames")
-                    }
-                    HStack(alignment: .top, spacing: 14) {
-                        signalMetric("Near silent", value: String(format: "%.1f%%", signal.nearSilentFrameFraction * 100), detail: "Decoded frames")
-                        signalMetric("Coverage", value: durationLabel(signal.durationSeconds), detail: "\(signal.analyzedFrameCount) frames")
-                    }
+                    let reviewMomentCount = signal.observations.count
+                        + captureTimelineEvents(recording).count
+                    Label(
+                        reviewMomentCount == 0
+                            ? "No level warnings found"
+                            : "\(reviewMomentCount) moment\(reviewMomentCount == 1 ? "" : "s") worth checking",
+                        systemImage: reviewMomentCount == 0
+                            ? "checkmark.circle.fill"
+                            : "waveform.badge.exclamationmark"
+                    )
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(reviewMomentCount == 0 ? Color.green : Color.orange)
+                    .accessibilityIdentifier("CaptureAudioQualitySummary")
+                    Text(reviewMomentCount == 0
+                        ? "Quipsly scanned the full decoded recording for clipping, unusual silence, and capture interruptions. Listening is still the final check."
+                        : "Tap any marked moment below to hear it in the original. Quipsly never removes or repairs audio without your review.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     GeometryReader { geometry in
                         let points = compactSignalPoints(signal.waveform, maximum: 120)
@@ -208,9 +221,27 @@ struct CaptureSourceEvidenceView: View {
                         .accessibilityIdentifier("CaptureAudioSignalPlaySelected")
                     }
 
-                    Text("Complete-frame RMS and sample-peak observations. A possible dropout is only a listening candidate, never a claim that audio was lost.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    DisclosureGroup(
+                        "Technical audio details",
+                        isExpanded: $showsTechnicalAudioDetails
+                    ) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .top, spacing: 14) {
+                                signalMetric("RMS", value: String(format: "%.1f dBFS", signal.rmsDbfs), detail: "Not LUFS")
+                                signalMetric("Peak", value: String(format: "%.1f dBFS", signal.samplePeakDbfs), detail: "\(signal.clippedFrameCount) clipped frames")
+                            }
+                            HStack(alignment: .top, spacing: 14) {
+                                signalMetric("Near silent", value: String(format: "%.1f%%", signal.nearSilentFrameFraction * 100), detail: "Decoded frames")
+                                signalMetric("Coverage", value: durationLabel(signal.durationSeconds), detail: "\(signal.analyzedFrameCount) frames")
+                            }
+                            Text("Complete-frame RMS and sample-peak observations. A possible dropout is only a listening candidate, never a claim that audio was lost.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 8)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .accessibilityIdentifier("CaptureAudioTechnicalDetails")
 
                     ForEach(Array(signal.observations.enumerated()), id: \.offset) { _, observation in
                         Button {
@@ -278,7 +309,7 @@ struct CaptureSourceEvidenceView: View {
     private func audibleEventAnalysisCard(_ recording: LocalRecording) -> some View {
         if recording.sourceProfile?.includesAudio == true,
            let analysis = recording.sourceProfile?.audibleEventAnalysis {
-            evidenceCard(title: "Audible event map", systemImage: "waveform.badge.magnifyingglass") {
+            evidenceCard(title: "Sounds to review", systemImage: "waveform.badge.magnifyingglass") {
                 if analysis.status == "completed" {
                     HStack(alignment: .top, spacing: 14) {
                         signalMetric(
@@ -292,21 +323,32 @@ struct CaptureSourceEvidenceView: View {
                             detail: "\(analysis.resultWindowCount) windows"
                         )
                     }
-                    EvidenceRow(
-                        label: "Detector",
-                        value: "Apple general sound classifier · \(String(format: "%.2f", analysis.effectiveWindowDurationSeconds)) s · \(Int((analysis.overlapFactor * 100).rounded()))% overlap"
-                    )
-                    EvidenceRow(
-                        label: "Receipt",
-                        value: analysis.analysisId
-                    )
-                    EvidenceRow(
-                        label: "Source binding",
-                        value: analysis.sourceSHA256 ?? "Unavailable"
-                    )
                     Text("These are unqualified navigation suggestions. A score is not proof that an event is audible, distracting, or safe to edit, and Apple’s general classifier does not identify Quipsly mouth-click or plosive repair candidates.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    DisclosureGroup(
+                        "Technical sound-detection details",
+                        isExpanded: $showsTechnicalSoundDetails
+                    ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            EvidenceRow(
+                                label: "Detector",
+                                value: "Apple general sound classifier · \(String(format: "%.2f", analysis.effectiveWindowDurationSeconds)) s · \(Int((analysis.overlapFactor * 100).rounded()))% overlap"
+                            )
+                            EvidenceRow(
+                                label: "Receipt",
+                                value: analysis.analysisId
+                            )
+                            EvidenceRow(
+                                label: "Source binding",
+                                value: analysis.sourceSHA256 ?? "Unavailable"
+                            )
+                        }
+                        .padding(.top, 8)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .accessibilityIdentifier("CaptureSoundDetectionTechnicalDetails")
 
                     ForEach(analysis.suggestions.prefix(30), id: \.eventId) { suggestion in
                         Button {
@@ -941,6 +983,9 @@ private extension View {
 }
 
 struct CaptureSourceEvidencePreviewView: View {
+    @State private var showsTechnicalAudioDetails = false
+    @State private var showsTechnicalSoundDetails = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -981,25 +1026,50 @@ struct CaptureSourceEvidencePreviewView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                previewCard(title: "Audio visibility", systemImage: "waveform.path.ecg") {
-                    EvidenceRow(label: "Decoded coverage", value: "100% of preview frames")
-                    EvidenceRow(label: "RMS", value: "−18.4 dBFS · not LUFS")
-                    EvidenceRow(label: "Sample peak", value: "−1.2 dBFS · 0 clipped frames")
-                    EvidenceRow(label: "Near silent", value: "4.2% of decoded frames")
+                previewCard(title: "Recording quality", systemImage: "waveform.path.ecg") {
+                    Label("1 moment worth checking", systemImage: "waveform.badge.exclamationmark")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("CaptureAudioQualitySummary")
+                    Text("Tap a marked moment to hear it in the original. Quipsly never removes or repairs audio without your review.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Label("00:08 · Possible dropout · listen before classifying", systemImage: "play.circle")
                         .font(.caption.weight(.semibold))
+                    DisclosureGroup(
+                        "Technical audio details",
+                        isExpanded: $showsTechnicalAudioDetails
+                    ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            EvidenceRow(label: "Decoded coverage", value: "100% of preview frames")
+                            EvidenceRow(label: "RMS", value: "−18.4 dBFS · not LUFS")
+                            EvidenceRow(label: "Sample peak", value: "−1.2 dBFS · 0 clipped frames")
+                            EvidenceRow(label: "Near silent", value: "4.2% of decoded frames")
+                        }
+                        .padding(.top, 8)
+                    }
+                    .accessibilityIdentifier("CaptureAudioTechnicalDetails")
                     Text("Preview values demonstrate the signal-review vocabulary only. No source was decoded and no audio-health claim was created.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                previewCard(title: "Audible event map", systemImage: "waveform.badge.magnifyingglass") {
-                    EvidenceRow(label: "Detector", value: "Apple general sound classifier · preview vocabulary")
-                    EvidenceRow(label: "Source binding", value: "Preview only · no source hash")
+                previewCard(title: "Sounds to review", systemImage: "waveform.badge.magnifyingglass") {
                     EvidenceRow(label: "Suggestion", value: "00:12 · Cough · 86% score")
                     Text("A real suggestion is an unqualified place to listen, not proof that a sound is distracting or safe to edit. Quipsly keeps detector results separate from source integrity and repair decisions.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    DisclosureGroup(
+                        "Technical sound-detection details",
+                        isExpanded: $showsTechnicalSoundDetails
+                    ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            EvidenceRow(label: "Detector", value: "Apple general sound classifier · preview vocabulary")
+                            EvidenceRow(label: "Source binding", value: "Preview only · no source hash")
+                        }
+                        .padding(.top, 8)
+                    }
+                    .accessibilityIdentifier("CaptureSoundDetectionTechnicalDetails")
                     Label(
                         "Preview only · no classifier request or receipt",
                         systemImage: "ear.badge.checkmark"

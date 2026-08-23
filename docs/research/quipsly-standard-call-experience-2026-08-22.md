@@ -518,6 +518,12 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   remain implementation evidence or disclosed detail. Call audio is described
   plainly as conversation audio, while the saved iPhone file is the
   high-quality copy.
+- Lead post-capture audio review with the waveform and honest listening work,
+  not meters. The iPhone now summarizes the number of exact moments worth
+  checking, keeps every moment playable against the untouched original, and
+  places dBFS measurements, thresholds, detector IDs, and hashes under
+  technical details. A clean scan says only that no configured level warning
+  was found; it does not claim that listening or mastering is unnecessary.
 - Let information architecture explain itself through familiar destinations,
   not architecture prose. Session navigation now uses `At a glance`, `Before
 the call`, `Saved privately`, `Listen and edit`, `Next steps`, and `Ready to
