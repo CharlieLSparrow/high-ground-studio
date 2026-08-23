@@ -1043,3 +1043,16 @@ they remain distinct operations. Navigation is convenient; provenance, timing,
 and mutation boundaries do not become implicit. Removing the always-expanded
 editor from the transcript also restores the familiar reading experience for
 long coaching conversations.
+
+## 2026-08-23 native transcript-adjacent recording quality
+
+The iPhone transcript now projects the existing whole-source audio-mastery state
+only after matching the transcript playback asset to the retained local record.
+It deliberately shows status rather than embedding another player: the single
+`Open recording quality` action leads to the mature waveform, evidence, original
+audition, improved-copy audition, and retry surface for that exact recording.
+
+This follows the same standard-versus-creative boundary as the call experience.
+Transcript reading remains calm and conventional; Quipsly's deeper audio system
+is visible at the decision point without duplicating controls, allowing two
+players to compete, or treating provider confidence as source quality.

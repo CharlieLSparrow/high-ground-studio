@@ -3361,11 +3361,10 @@ struct CaptureTranscriptReviewView: View {
     }
 
     private func sourceTruth(_ desk: CaptureTranscriptCorrectionDesk) -> some View {
-        let exactMatch = desk.playback?.recordingAssetId.nonemptyTranscriptValue.map { expectedAssetID in
-            recording.map {
-                $0.recordingAssetId == expectedAssetID && library.fileURL(for: $0) != nil
-            } ?? false
-        } ?? false
+        let exactRecording = desk.playback?.recordingAssetId.nonemptyTranscriptValue.flatMap { expectedAssetID in
+            recording.flatMap { $0.recordingAssetId == expectedAssetID ? $0 : nil }
+        }
+        let exactMatch = exactRecording.map { library.fileURL(for: $0) != nil } ?? false
         return VStack(alignment: .leading, spacing: 10) {
             Label(exactMatch ? "Recording ready to play" : "Transcript ready to review", systemImage: exactMatch ? "checkmark.circle.fill" : "text.bubble")
                 .font(.headline)
@@ -3385,6 +3384,10 @@ struct CaptureTranscriptReviewView: View {
                 }
             }
             .font(.caption.weight(.semibold))
+            if let exactRecording,
+               exactRecording.sourceProfile?.includesAudio == true {
+                CaptureTranscriptAudioQualityCard(recording: exactRecording)
+            }
         }
         .reviewCard()
         .accessibilityIdentifier(exactMatch ? "CaptureTranscriptExactSourceMatch" : "CaptureTranscriptReviewOnlyBoundary")
@@ -4873,6 +4876,142 @@ private struct CapturePacketGoalCandidateCard: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CapturePacketGoalCandidate_\(candidate.id)")
+    }
+}
+
+private struct CaptureTranscriptAudioQualityCard: View {
+    let recording: LocalRecording
+
+    @StateObject private var mastery = CaptureAudioMasteryClient()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: statusIcon)
+                    .foregroundStyle(statusTint)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(statusTitle)
+                        .font(.subheadline.weight(.bold))
+                    Text(statusDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                if mastery.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Checking recording quality")
+                }
+            }
+
+            NavigationLink {
+                CaptureSourceEvidenceView(recordingID: recording.id)
+            } label: {
+                Label("Open recording quality", systemImage: "waveform.badge.magnifyingglass")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint("Opens the exact recording's waveform, source audition, improved listening copy, and technical evidence.")
+            .accessibilityIdentifier("CaptureTranscriptAudioQualityOpen_\(recording.id)")
+
+            if let notice = mastery.notice,
+               mastery.snapshot?.status == "failed" || mastery.snapshot?.status == "blocked" {
+                Text(notice)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(11)
+        .background(statusTint.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptAudioQualityCard")
+        .task(id: taskID) {
+            guard AuthManager.shared.networkActionsAllowed else { return }
+            await mastery.open(recording: recording)
+        }
+        .onDisappear { mastery.stop() }
+    }
+
+    private var statusTitle: String {
+        guard hasCloudCoordinates else { return "Recording quality after upload" }
+        guard let snapshot = mastery.snapshot else {
+            return mastery.isLoading ? "Checking the full recording" : "Recording quality"
+        }
+        switch snapshot.status {
+        case "queued", "processing", "output-ready":
+            return "Checking the full recording"
+        case "completed" where snapshot.derivative?.playbackUrl != nil:
+            return "Improved listening copy ready"
+        case "completed":
+            return "Recording quality checked"
+        case "failed", "blocked":
+            return "Recording quality needs attention"
+        default:
+            return "Recording quality"
+        }
+    }
+
+    private var statusDetail: String {
+        guard hasCloudCoordinates else {
+            return "Quipsly will check the complete source after its secure upload. The original remains unchanged."
+        }
+        guard let snapshot = mastery.snapshot else {
+            return AuthManager.shared.networkActionsAllowed
+                ? "Quipsly is matching this transcript to the exact uploaded source."
+                : "Reconnect to check the exact uploaded source."
+        }
+        switch snapshot.status {
+        case "queued", "processing", "output-ready":
+            return "You can keep reviewing the transcript while Quipsly prepares a separate listening copy."
+        case "completed" where snapshot.derivative?.playbackUrl != nil:
+            return "Compare the verified improved copy with the immutable original in Recording quality."
+        case "completed":
+            return "The complete source was checked; Quipsly did not create a different copy just to manufacture a result."
+        case "failed", "blocked":
+            return "Open Recording quality to see the exact source status and retry without changing the original."
+        default:
+            return "Open the exact source for waveform, sound, and improvement evidence."
+        }
+    }
+
+    private var statusIcon: String {
+        switch mastery.snapshot?.status {
+        case "completed" where mastery.snapshot?.derivative?.playbackUrl != nil:
+            return "wand.and.sparkles"
+        case "completed":
+            return "checkmark.circle.fill"
+        case "failed", "blocked":
+            return "exclamationmark.triangle.fill"
+        default:
+            return "waveform.badge.magnifyingglass"
+        }
+    }
+
+    private var statusTint: Color {
+        switch mastery.snapshot?.status {
+        case "completed": .green
+        case "failed", "blocked": .orange
+        default: .indigo
+        }
+    }
+
+    private var hasCloudCoordinates: Bool {
+        recording.projectSlug?.nonemptyTranscriptValue != nil
+            && recording.uploadedMediaAssetId?.nonemptyTranscriptValue != nil
+            && recording.uploadedSourceId?.nonemptyTranscriptValue != nil
+    }
+
+    private var taskID: String {
+        [
+            recording.id.uuidString.lowercased(),
+            recording.ownerAccountID ?? "",
+            recording.projectSlug ?? "",
+            recording.uploadedMediaAssetId ?? "",
+            recording.uploadedSourceId ?? "",
+        ].joined(separator: "|")
     }
 }
 

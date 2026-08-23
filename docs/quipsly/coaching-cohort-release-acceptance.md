@@ -1411,3 +1411,26 @@ not something the automated checks claim to prove.
 Build 34 remains the sealed prior candidate and was not changed, uploaded,
 assigned, or deployed by this work. This slice belongs to a later deliberately
 qualified candidate.
+
+## iPhone transcript-adjacent recording quality — 2026-08-23
+
+The native transcript source card now resolves the exact local recording asset
+before exposing audio-quality state. When that source includes audio, Capture
+starts or resumes the existing idempotent whole-recording check and shows one
+compact status: waiting for upload, checking, improved copy ready, checked with
+no unnecessary derivative, or needs attention.
+
+The transcript does not add a second pair of audio players. `Open recording
+quality` navigates to the established exact-source surface for waveform and
+signal evidence, original audition, verified improved-copy audition, and retry.
+This prevents simultaneous or ambiguous playback while keeping the quality
+result visible where correction decisions are made. A remote transcript, wrong
+recording asset, missing audio profile, offline account, or incomplete upload
+does not receive a substitute result.
+
+The joined mobile source contract remains 105/105 and the dual-architecture iOS
+Simulator app build succeeds. Physical-iPhone validation remains: verify the
+card appears only for the transcript's recording asset, background/foreground
+the analysis, audition original and improved copies in the quality destination,
+and confirm route/interruption behavior with real headphones. Automated source
+and simulator checks do not claim that human listening evidence.

@@ -1373,9 +1373,18 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("Review only — exact local source unavailable")
       && shellText.includes("session.coachingPacketSummaryNoteId != nil")
       && shellText.includes("session.actionPacket?.capabilities?.canReviewPacket == true")
-      && shellText.includes("It does not start playback or keep any suggestion."),
+      && shellText.includes("It does not start playback or keep any suggestion.")
+      && nativeText.includes("CaptureTranscriptAudioQualityCard(recording: exactRecording)")
+      && nativeText.includes("CaptureAudioMasteryClient()")
+      && nativeText.includes('Label("Open recording quality"')
+      && nativeText.includes("CaptureSourceEvidenceView(recordingID: recording.id)")
+      && nativeText.includes("The original remains unchanged")
+      && nativeText.includes("immutable original")
+      && nativeText.includes("guard AuthManager.shared.networkActionsAllowed else { return }")
+      && nativeText.includes("recording.uploadedMediaAssetId")
+      && nativeText.includes("recording.uploadedSourceId"),
     "nativeTranscriptCorrectionExactSourceBoundary",
-    "iPhone Library and the selected canonical Session open transcript overlays and packet candidates against an exact retained recording-asset match, protect account-partitioned offline playback decisions with stable idempotency and exact acknowledgement, and keep preview, remote-only, packet, and AI states non-authoritative.",
+    "iPhone Library and the selected canonical Session open transcript overlays, packet candidates, and whole-source audio-quality status against an exact retained recording-asset match, protect account-partitioned offline playback decisions with stable idempotency and exact acknowledgement, and keep preview, remote-only, packet, and AI states non-authoritative.",
   );
   expect(
     noteMaterializationRouteText.includes('["EDIT", "DEFER", "REJECT"].includes(decision || "")')
