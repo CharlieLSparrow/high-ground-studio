@@ -412,14 +412,22 @@ try {
         .count()) === 0,
       `${identity.role} could see a recording action before joining.`,
     );
+    // A returning browser can already hold system permission and remembered
+    // device IDs while LiveKit finishes its asynchronous preflight. Give that
+    // standard happy path a brief chance to settle before looking for a
+    // permission-recovery action that correctly will not exist.
+    for (
+      let attempt = 0;
+      attempt < 20 && !(await join.isEnabled());
+      attempt += 1
+    ) {
+      await page.waitForTimeout(250);
+    }
     if (!(await join.isEnabled())) {
-      const deviceSetup = liveCallDock
-        .getByText("Camera, microphone, and speakers", { exact: true })
-        .locator("..");
       if (
-        !(await deviceSetup.evaluate((element) => element.hasAttribute("open")))
+        !(await deviceSettings.evaluate((element) => element.hasAttribute("open")))
       ) {
-        await deviceSetup.locator("summary").click();
+        await deviceSettings.locator(":scope > summary").click();
       }
       const allowMicrophone = liveCallDock.getByRole("button", {
         name: /^Allow microphone(?: and camera)?$/,

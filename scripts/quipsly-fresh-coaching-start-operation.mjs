@@ -370,8 +370,8 @@ try {
   );
   assert.equal(
     await captureChoice.getAttribute("href"),
-    `quipsly://session/${encodeURIComponent(evidence.roomId)}?mode=live`,
-    "Fresh client Session did not hand the exact room to Capture.",
+    `https://nest.quipsly.com/sessions/${encodeURIComponent(evidence.roomId)}?open=capture&mode=live`,
+    "Fresh client Session did not expose the exact app-or-browser Universal Link.",
   );
   const continueInBrowser = clientPage.getByRole("button", {
     name: /Join call|Join in browser|Open call lobby/i,
