@@ -511,6 +511,23 @@ failure shapes recur often enough to influence the architecture:
   original and improved listening copy side by side and say explicitly that
   neither has been replaced or published. Processor diagnostics stay behind a
   failure detail; the normal state remains a single familiar action.
+- Start that full-source measurement automatically after a released participant
+  audio master is attached to the Session. A coach should normally arrive to a
+  completed `already balanced` result or an in-progress check, not remember to
+  run recurring post-call administration. Automatic failure is retained once
+  and shown as an ordinary retry; Capture finalization replay never creates an
+  unbounded retry loop. Video-only sources are not presumed to contain a usable
+  participant audio master. The original remains immutable and any derivative
+  remains an unpublished preview.
+- Keep Apple delivery verification strict instead of making synthetic test
+  audio pass by weakening the product profile. Apple's current creator guidance
+  recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB
+  true peak, measured using ITU-R BS.1770-5. A browser MediaRecorder WebM may be
+  standards-valid and completely decodable while omitting container duration;
+  Quipsly now recovers duration from a complete FFmpeg decode, then still
+  independently verifies the output against the delivery target. Sources:
+  https://podcasters.apple.com/support/893-audio-requirements and
+  https://tech.ebu.ch/publications/r128.
 
 ## Acceptance consequences
 

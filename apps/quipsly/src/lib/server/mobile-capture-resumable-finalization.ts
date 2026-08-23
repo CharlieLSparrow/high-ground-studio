@@ -6,6 +6,7 @@ import {
 import {
   ensureCaptureProxyProcessingQueued,
 } from "@/lib/server/capture-proxy-processing";
+import { ensureCaptureAudioReadinessQueued } from "@/lib/server/capture-audio-readiness";
 import {
   ensureInterruptionRepairProcessingQueued,
 } from "@/lib/server/capture-interruption-repair-processing";
@@ -1207,6 +1208,19 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
         reason: error instanceof Error ? error.message : "unknown",
       });
     }
+  }
+  try {
+    await ensureCaptureAudioReadinessQueued({
+      prisma,
+      manifest,
+      finalization: evidence,
+    });
+  } catch (error) {
+    console.error("[Capture Audio] Unable to queue automatic audio readiness", {
+      uploadSessionId: manifest.uploadSessionId,
+      mediaAssetId: evidence.mediaAssetId,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
   }
   if (
     evidence.processingDisposition === "RELEASED"

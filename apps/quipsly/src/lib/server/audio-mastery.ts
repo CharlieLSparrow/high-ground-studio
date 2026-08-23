@@ -83,6 +83,7 @@ export async function queueAudioMastery(input: {
   sourceId: string;
   profileId: AudioMasteryProfileId;
   actorEmail: string;
+  retryFailed?: boolean;
 }) {
   const context = await loadContext(input);
   const evidence = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
@@ -94,18 +95,24 @@ export async function queueAudioMastery(input: {
   if (existing) {
     try {
       const current = parseAudioMasteryJob(existing.inputJson, existing.id);
-      if (current.source.sha256 === evidence.sha256 && current.profileId === input.profileId && existing.status !== "failed") {
-        const existingStatus = toPublicAudioMasteryStatus(existing);
-        if (existingStatus.status !== "failed" && !(existingStatus.status === "completed" && existingStatus.signalDiagnosis === null)) {
-          matchingExisting = current;
-        }
+      if (current.source.sha256 === evidence.sha256 && current.profileId === input.profileId) {
+        matchingExisting = current;
       }
     } catch {
       // A legacy or malformed row does not own the new source-bound request.
     }
   }
   if (existing && matchingExisting) {
-    if (matchingExisting.source.provider !== "gcs") return toPublicAudioMasteryStatus(existing);
+    const existingStatus = toPublicAudioMasteryStatus(existing);
+    const retainFailedAutomaticAttempt = existingStatus.status === "failed" && input.retryFailed === false;
+    const reusableEvidence = existingStatus.status !== "failed"
+      && !(existingStatus.status === "completed" && existingStatus.signalDiagnosis === null);
+    if (retainFailedAutomaticAttempt || reusableEvidence && matchingExisting.source.provider !== "gcs") {
+      return existingStatus;
+    }
+    if (!reusableEvidence) matchingExisting = null;
+  }
+  if (existing && matchingExisting) {
     const cloud = await ensureAudioMasteryCloudQueued({ prisma: input.prisma, processingJob: existing });
     const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: existing.id } });
     const status = toPublicAudioMasteryStatus(refreshed ?? existing);
