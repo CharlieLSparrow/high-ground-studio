@@ -1559,6 +1559,14 @@ export function LiveSessionRoom({
               </div>
             </details>
           ) : null}
+
+          <details data-testid="call-technical-device-details" className="mt-4 rounded-xl border border-[#e8dcc8] bg-[#fffaf0] p-3">
+            <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-[#765f40]">Technical device details</summary>
+            <div className="mt-3 space-y-3">
+              <StudioInputEvidenceMeter evidence={meterEvidence} />
+              {cameraWanted ? <StudioCameraEvidence cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""} evidence={cameraEvidence} /> : null}
+            </div>
+          </details>
           </details>
 
           {experience.captureProfile === "coaching" && connected ? retainedSourceControls : null}
@@ -1568,8 +1576,6 @@ export function LiveSessionRoom({
 
           <div ref={remoteMediaRef} className="grid gap-3 md:grid-cols-2" aria-label="Remote participant media" />
 
-          <StudioInputEvidenceMeter evidence={meterEvidence} />
-          {cameraWanted ? <StudioCameraEvidence cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""} evidence={cameraEvidence} /> : null}
         </div>
 
         <aside className="space-y-3">

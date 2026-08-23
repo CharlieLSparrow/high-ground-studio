@@ -311,6 +311,11 @@ const result = {
   participantsConnected: call.participantsConnected,
   independentParticipantSourcesVerified:
     call.independentParticipantSourcesVerified,
+  conventionalCallEntryOperated:
+    call.conventionalLobbyOperated === true &&
+    call.advancedDeviceSettingsCollapsedBeforeJoin === true &&
+    call.technicalDeviceDetailsCollapsedBeforeJoin === true &&
+    call.prejoinRecordingActionAbsent === true,
   sourceOverlapMilliseconds: call.browserSourceOverlapMilliseconds,
   transcriptSourceCount: transcript.sourceCount,
   protectedTranscriptPlaybackDecoded: transcript.renderedTranscriptRuns.every(
@@ -365,6 +370,10 @@ const result = {
       authorizedListsAndUnauthorizedDirectProbes:
         isolation.coachAndClientIsolationOperated === true,
       callLobbyConsentChatAndCapture: call.browserToBrowserLiveKit === "passed",
+      conventionalCallEntry:
+        call.conventionalLobbyOperated === true &&
+        call.advancedDeviceSettingsCollapsedBeforeJoin === true &&
+        call.technicalDeviceDetailsCollapsedBeforeJoin === true,
       relationshipWork: work.boundaries?.productFormsOnlyForWrites === true,
       lightEditPreviewReleaseAndRevoke:
         share.boundaries?.releaseWasExplicit === true &&

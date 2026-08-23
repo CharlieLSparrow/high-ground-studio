@@ -392,6 +392,12 @@ failure shapes recur often enough to influence the architecture:
   names no longer force advanced settings open or show normal-state diagnostic
   prose. Join remains the permission boundary; settings stay optional until a
   real failure needs one actionable recovery message.
+- Kept call-path RMS, peak, clipping, channel, and browser-processing evidence,
+  but moved it behind `Audio and video settings` and a second `Technical device
+  details` disclosure. The green room now shows the selected device names,
+  mute/camera state, preview, and Join—not a measurement console. The evidence
+  remains reachable for support and serious recording setup without becoming
+  routine homework.
 - Removed Session recording consent as a prerequisite for the iPhone's private
   local sound check. Like a conventional pre-call microphone test, it can run
   before joining; its protected sample stays on the device, never becomes a
@@ -528,6 +534,12 @@ failure shapes recur often enough to influence the architecture:
   unbounded retry loop. Video-only sources are not presumed to contain a usable
   participant audio master. The original remains immutable and any derivative
   remains an unpublished preview.
+- Added automatic audio readiness to the full fresh-user coaching flight. A
+  clean exact-commit run now fails if the coach must click `Improve audio`, if
+  the original source changes, if the Session cannot expose a calm completed or
+  in-progress result, or if an improved listening copy is published implicitly.
+  This turns the no-recurring-admin promise into a retained release assertion
+  rather than a UI aspiration.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB

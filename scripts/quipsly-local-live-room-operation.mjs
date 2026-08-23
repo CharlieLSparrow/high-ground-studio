@@ -382,9 +382,22 @@ try {
     await liveCallDock
       .getByRole("region", { name: "Ready to join", exact: true })
       .waitFor({ state: "visible", timeout: 20_000 });
-    await liveCallDock
-      .getByText("Audio and video settings", { exact: true })
-      .waitFor({ state: "visible", timeout: 20_000 });
+    const deviceSettings = liveCallDock.getByTestId("call-device-settings");
+    await deviceSettings.waitFor({ state: "visible", timeout: 20_000 });
+    assert(
+      !(await deviceSettings.evaluate((element) => element.hasAttribute("open"))),
+      `${identity.role} lobby opened device settings before the person asked for them.`,
+    );
+    const technicalDeviceDetails = liveCallDock.getByTestId(
+      "call-technical-device-details",
+    );
+    assert(
+      (await technicalDeviceDetails.count()) === 1 &&
+        !(await technicalDeviceDetails.evaluate((element) =>
+          element.hasAttribute("open"),
+        )),
+      `${identity.role} lobby exposed technical device evidence on the happy path.`,
+    );
     assert(
       (await liveCallDock
         .getByText("Optional sound check", { exact: true })
@@ -839,6 +852,10 @@ try {
         providerRecordingStarted: false,
         chatRoundTrip: "passed",
         browserToBrowserLiveKit: "passed",
+        conventionalLobbyOperated: true,
+        advancedDeviceSettingsCollapsedBeforeJoin: true,
+        technicalDeviceDetailsCollapsedBeforeJoin: true,
+        prejoinRecordingActionAbsent: true,
         independentBrowserSourcesVerified: 2,
         independentParticipantSourcesVerified: new Set(
           verifiedSources.map((source) => source.participantId),
