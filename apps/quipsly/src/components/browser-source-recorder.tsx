@@ -761,7 +761,7 @@ export function BrowserSourceRecorder({
       );
       setStatus("ready");
       setMessage(
-        "Session reopened. Reconfirm consent and record the next take when everyone is ready.",
+        "Session reopened. Existing recording choices stay saved; record the next take when everyone is ready.",
       );
     } catch (error) {
       setStatus("held");

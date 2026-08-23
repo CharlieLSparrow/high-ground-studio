@@ -529,7 +529,9 @@ export async function POST(request: Request) {
           ? "Room is marked recording. Keep the visible recording indicator on."
           : nextStatus === "ENDED"
             ? "Room ended. Upload and transcript review can continue."
-            : "Room state updated. Consent is still required before recording.";
+            : action === "OPEN"
+              ? "Room is open. Existing consent choices remain saved; recording still starts separately."
+              : "Room state updated. Recording still starts separately.";
       const roomMetadata = jsonObject(room.metadataJson);
       const updateData: Record<string, unknown> = {
         status: nextStatus,

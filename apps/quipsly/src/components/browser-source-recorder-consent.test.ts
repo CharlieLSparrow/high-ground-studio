@@ -36,5 +36,7 @@ describe("browser retained-source consent", () => {
     );
     expect(source).toContain("the Record button appears after you join");
     expect(source).not.toContain("Save my consent receipt");
+    expect(source).toContain("Existing recording choices stay saved");
+    expect(source).not.toContain("Reconfirm consent");
   });
 });
