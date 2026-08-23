@@ -1910,6 +1910,24 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(followUpReady.label.contains("Nothing is shared with a client automatically"))
     }
 
+    func testTranscriptPreviewVoiceIdentityStaysDisabled() throws {
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+
+        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
+        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
+        reviewLink.tap()
+
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        let identifySpeaker = app.buttons["CaptureTranscriptIdentifySpeaker_Speaker"].firstMatch
+        reveal(identifySpeaker, searchAboveFirst: false)
+        XCTAssertTrue(identifySpeaker.exists)
+        XCTAssertFalse(
+            identifySpeaker.isEnabled,
+            "Preview voice identity must be disabled for touch, assistive technology, and UI automation."
+        )
+    }
+
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))

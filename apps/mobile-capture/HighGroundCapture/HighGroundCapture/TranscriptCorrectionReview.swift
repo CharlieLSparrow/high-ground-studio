@@ -5011,6 +5011,8 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.indigo)
+                .accessibilityHint("Saves only a provider voice to participant mapping. Transcript words remain unreviewed.")
+                .accessibilityIdentifier("CaptureTranscriptIdentifySpeaker_\(group.providerSpeakerLabel)")
                 .disabled(
                     previewOnly
                         || client.isMutating
@@ -5018,8 +5020,6 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                         || confirmedSamplePositions.isEmpty
                         || !hasExactLocalSource
                 )
-                .accessibilityHint("Saves only a provider voice to participant mapping. Transcript words remain unreviewed.")
-                .accessibilityIdentifier("CaptureTranscriptIdentifySpeaker_\(group.providerSpeakerLabel)")
             }
 
             Text("Voice identity and word review are separate. This mapping changes display labels only; corrections and as-heard confirmations still require their own deliberate playback decision.")
