@@ -80,6 +80,21 @@ describe("coaching release surfaces", () => {
     );
   });
 
+  it("takes an accepted invitation back to the canonical Session without another acceptance step", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/app/(marketing)/sessions/join/page.tsx"),
+      "utf8",
+    );
+    const compact = source.replace(/\s+/g, " ");
+
+    expect(compact).toContain(
+      "if (acceptedReentry && invitation.reentryAvailable && emailMatches)",
+    );
+    expect(compact).toContain(
+      "redirect(`/sessions/${encodeURIComponent(invitation.room.id)}?mode=live`)",
+    );
+  });
+
   it("keeps operator evidence out of the ordinary coach journey and preserves durable session actions", () => {
     const source = readFileSync(join(coachingRoot, "page.tsx"), "utf8");
     const compact = source.replace(/\s+/g, " ");

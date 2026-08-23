@@ -531,6 +531,10 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   as equal primary buttons. The iPhone reports a successful delivery calmly and
   preserves the Share fallback when provider delivery is unavailable, without
   asking the coach to supervise an acceptance state.
+- Made an already accepted private invitation a direct re-entry path for the
+  same verified account. The first acceptance remains explicit, but reopening
+  the link no longer repeats an acceptance screen and immediately replaces the
+  token-bearing URL with the canonical Session lobby URL.
 - Made reopening a Session honor the canonical saved consent state in both UI
   and server guidance. Reopen never invents a new consent ceremony; recording
   remains a separate explicit action and a changed Session, participant, media

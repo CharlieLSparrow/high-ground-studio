@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CalendarClock, CheckCircle2, ChevronDown, LockKeyhole, MonitorSmartphone } from "lucide-react";
+import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import {
@@ -77,6 +78,9 @@ export default async function JoinSessionPage({
   const accountSwitch = `/account/switch?callbackUrl=${encodeURIComponent(callbackUrl)}`;
 
   const accessRemoved = acceptedReentry && !invitation.reentryAvailable;
+  if (acceptedReentry && invitation.reentryAvailable && emailMatches) {
+    redirect(`/sessions/${encodeURIComponent(invitation.room.id)}?mode=live`);
+  }
   return <main className="grid min-h-full place-items-center bg-[#f7f0e3] px-4 py-8 text-[#3d3122] md:py-12">
     <section className="w-full max-w-xl overflow-hidden rounded-[2rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-xl shadow-amber-950/10">
       <header className="bg-[#211a14] px-6 py-7 text-[#fff7e8] md:px-8">
