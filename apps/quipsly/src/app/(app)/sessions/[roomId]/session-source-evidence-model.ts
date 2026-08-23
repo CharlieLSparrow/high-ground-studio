@@ -99,6 +99,14 @@ export type SessionSourceEvidence = {
       kind: "audio" | "video";
       durationSeconds: number | null;
     } | null;
+    audioMastery?: {
+      projectId: string;
+      projectSlug: string;
+      assetId: string;
+      sourceId: string;
+      sourceUrl: string;
+      sourceKind: "audio" | "video";
+    } | null;
     captureRuntime: {
       appVersion: string | null;
       appBuild: string | null;
@@ -333,6 +341,36 @@ function protectedPlayback(recording: RecordingAssetEvidenceRow) {
   };
 }
 
+function audioMasteryCoordinates(
+  recording: RecordingAssetEvidenceRow,
+  project: { id: string; slug: string } | null | undefined,
+) {
+  if (!project) return null;
+  const manifest = object(recording.localManifestJson);
+  const promotion = object(manifest.promotion);
+  const projectId = text(promotion.projectId);
+  const projectSlug = text(promotion.nestSlug);
+  const assetId = text(promotion.mediaAssetId);
+  const sourceId = text(promotion.sourceId);
+  const sourceUrl = text(promotion.playbackUrl);
+  if (
+    projectId !== project.id
+    || projectSlug !== project.slug
+    || !assetId
+    || !sourceId
+    || !/^[A-Za-z0-9_-]{8,160}$/.test(sourceId)
+    || sourceUrl !== `/api/ingest/media/${sourceId}`
+  ) return null;
+  return {
+    projectId,
+    projectSlug,
+    assetId,
+    sourceId,
+    sourceUrl,
+    sourceKind: String(recording.kind).includes("VIDEO") ? "video" as const : "audio" as const,
+  };
+}
+
 function audioSignalAnalysis(
   recording: RecordingAssetEvidenceRow,
   jobs: AudioSignalProfileJobRow[],
@@ -452,6 +490,7 @@ function isNestExternalRecordingImport(manifest: UnknownRecord) {
 
 export function buildSessionSourceEvidence(input: {
   roomId: string;
+  project?: { id: string; slug: string } | null;
   recordingAssets: RecordingAssetEvidenceRow[];
   finalizationReceipts: FinalizationEvidenceRow[];
   stateReceipts: StateReceiptEvidenceRow[];
@@ -608,6 +647,7 @@ export function buildSessionSourceEvidence(input: {
           verifiedAt: iso(recording.verifiedAt),
         },
         protectedPlayback: protectedPlayback(recording),
+        audioMastery: audioMasteryCoordinates(recording, input.project),
         captureRuntime: sourceRuntime(manifest),
         analysis: audioSignalAnalysis(recording, input.audioSignalProfileJobs ?? []),
         processingDisposition,

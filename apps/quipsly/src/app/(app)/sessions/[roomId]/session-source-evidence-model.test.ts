@@ -304,6 +304,31 @@ function completedAudioSignalJob(sourceSha256 = sha256) {
 }
 
 describe("Session source evidence", () => {
+  it("exposes audio improvement coordinates only for the canonical Session project", () => {
+    const input = fixture();
+    input.project = { id: "project-coaching-1", slug: "coach-home" };
+    (input.recordingAssets[0].localManifestJson as any).promotion = {
+      status: "promoted-to-studio-media",
+      projectId: "project-coaching-1",
+      nestSlug: "coach-home",
+      mediaAssetId: "studio-media-asset-1",
+      sourceId: "studio-source-1",
+      playbackUrl: "/api/ingest/media/studio-source-1",
+    };
+
+    expect(buildSessionSourceEvidence(input).sources[0].audioMastery).toEqual({
+      projectId: "project-coaching-1",
+      projectSlug: "coach-home",
+      assetId: "studio-media-asset-1",
+      sourceId: "studio-source-1",
+      sourceUrl: "/api/ingest/media/studio-source-1",
+      sourceKind: "video",
+    });
+
+    input.project = { id: "project-other", slug: "other-home" };
+    expect(buildSessionSourceEvidence(input).sources[0].audioMastery).toBeNull();
+  });
+
   it("reports an exact source match while keeping transcript disposition separate", () => {
     const result = buildSessionSourceEvidence(fixture());
     expect(result.counts).toEqual({

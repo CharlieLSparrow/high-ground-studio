@@ -84,6 +84,7 @@ import type { SessionFinishingEvidence } from "./session-finishing-cockpit";
 import type { SessionPreparation } from "./session-preparation-model";
 import { SessionRecordingImportCard } from "./session-recording-import-card";
 import { SessionRecordingHealthCard } from "./session-recording-health-card";
+import { SessionAudioMasteryCard } from "./session-audio-mastery-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
 import {
@@ -1907,6 +1908,10 @@ function SessionSourceEvidenceCard({
             </a>
           ) : null}
         </div>
+
+        {verified && source.audioMastery ? (
+          <SessionAudioMasteryCard coordinates={source.audioMastery} />
+        ) : null}
 
         <details className="mt-3 rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3">
           <summary className="cursor-pointer text-xs font-black text-[#5b472f]">

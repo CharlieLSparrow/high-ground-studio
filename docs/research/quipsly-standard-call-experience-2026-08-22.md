@@ -505,6 +505,12 @@ failure shapes recur often enough to influence the architecture:
   media remains an optional additional projection. A coaching user must never
   have to open a transcript or invent an Episode before the Session can offer
   playback, audio improvement, or editing.
+- Put the first audio-mastery action on the recording inside its Session. The
+  everyday control is `Improve audio`, not a route into Studio or a request to
+  understand processing jobs. When the verified preview is ready, keep the
+  original and improved listening copy side by side and say explicitly that
+  neither has been replaced or published. Processor diagnostics stay behind a
+  failure detail; the normal state remains a single familiar action.
 
 ## Acceptance consequences
 

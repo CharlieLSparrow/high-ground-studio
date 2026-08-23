@@ -323,6 +323,9 @@ export default async function SessionReviewPage({
       : [];
     const sourceEvidence = buildSessionSourceEvidence({
       roomId: room.id,
+      project: room.project
+        ? { id: room.project.id, slug: room.project.slug }
+        : null,
       recordingAssets: room.recordingAssets,
       finalizationReceipts,
       stateReceipts: room.stateReceipts,
