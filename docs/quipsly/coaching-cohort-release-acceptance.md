@@ -1477,3 +1477,28 @@ recording with headphones:
 
 These are deferred human/device validations, not a reason to stop independent
 product work and not claims made by the automated checks.
+
+## Browser live-call microphone confidence — 2026-08-23
+
+The browser green room already remembered safe microphone, camera, headphone,
+camera-on, and join-muted choices and requested media only from the ordinary
+Join or optional Preview action. The call now keeps measuring the actual
+published LiveKit microphone track after joining instead of discarding the
+preflight meter at the room boundary.
+
+One plain-language status sits beside the familiar Mute, camera, and Leave
+controls: checking, healthy, low, loud, possible clipping, no signal, muted, or
+needs attention. Muting stops the meter; unmuting resumes it from the newly
+published track. A live device switch or automatic fallback rebinds the meter
+to the replacement track. Detailed frame RMS, sample peak, channel/rate, and
+browser-processing evidence remains collapsed under technical details. The
+ordinary call path gains confidence without a mandatory sound-check ceremony.
+
+Focused browser-room behavior passes 23/23; the joined room, private sound-check,
+and audio-meter suites pass 35/35; and Quipsly TypeScript typecheck passes.
+Physical browser validation remains: join with the MV7i, speak quietly,
+normally, loudly, and at intentional near-clipping level; verify the simple
+status and detailed meter describe the same live call track; mute/unmute; unplug
+and reconnect the interface; switch microphones; background/foreground; and
+confirm the separate retained source is still independently analyzed. No
+natural-speech, hardware-route, or human-listening proof is claimed yet.

@@ -1081,3 +1081,25 @@ as a signal-gap candidate, clipping as a peak candidate, and silence as a
 quiet-region candidate until a person auditions the exact source. The system
 may help the person find evidence; it does not pretend a measurement is a
 listening decision.
+
+## 2026-08-23 live microphone confidence without another ritual
+
+The standard call pattern should remain one Join action, familiar mute/camera/
+leave controls, remembered device preferences, and optional settings. Audio
+confidence should not disappear once the green room closes, however. The most
+useful reassurance belongs in the live controls: a stable plain-language state
+derived from the microphone track actually published to the room.
+
+Quipsly therefore carries the existing browser signal analysis across the join
+boundary. Ordinary participants see `Microphone sounds healthy`, `Microphone is
+low`, `Microphone is loud`, `Microphone may clip`, `No microphone signal`, or
+the expected muted/attention state. Engineers and advanced creators can expand
+technical details for frame RMS, sample peak, channel/rate, and processing
+flags. No one must run a sound check, acknowledge a meter, or recertify a saved
+device choice before joining.
+
+This is a useful version of transparency: the standard interaction stays
+standard, while Quipsly quietly guards against the complaint that matters most
+after a call—discovering too late that the wrong or unusable microphone was live.
+The live meter still does not certify LUFS, true peak, mouth noise, room sound,
+or the independently retained master.

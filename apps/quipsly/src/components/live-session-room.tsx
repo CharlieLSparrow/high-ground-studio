@@ -264,6 +264,60 @@ function StudioInputEvidenceMeter({ evidence }: { evidence: StudioAudioMeterEvid
   );
 }
 
+export function liveMicrophoneStatusPresentation({
+  evidence,
+  muted,
+  recoveryHeld,
+}: {
+  evidence: StudioAudioMeterEvidence | null;
+  muted: boolean;
+  recoveryHeld: boolean;
+}) {
+  const state = recoveryHeld
+    ? "attention"
+    : muted
+      ? "muted"
+      : evidence?.state ?? "checking";
+  return state === "attention"
+    ? { label: "Microphone needs attention", style: "border-rose-300 bg-rose-50 text-rose-950", dot: "bg-rose-600" }
+    : state === "muted"
+      ? { label: "Microphone muted", style: "border-slate-300 bg-slate-50 text-slate-800", dot: "bg-slate-500" }
+      : state === "no-signal"
+        ? { label: "No microphone signal", style: "border-rose-300 bg-rose-50 text-rose-950", dot: "bg-rose-600" }
+        : state === "low"
+          ? { label: "Microphone is low", style: "border-amber-300 bg-amber-50 text-amber-950", dot: "bg-amber-500" }
+          : state === "hot"
+            ? { label: "Microphone is loud", style: "border-amber-300 bg-amber-50 text-amber-950", dot: "bg-amber-500" }
+            : state === "clipping-risk"
+              ? { label: "Microphone may clip", style: "border-rose-300 bg-rose-50 text-rose-950", dot: "bg-rose-600" }
+              : state === "ready"
+                ? { label: "Microphone sounds healthy", style: "border-emerald-300 bg-emerald-50 text-emerald-950", dot: "bg-emerald-600" }
+                : { label: "Checking microphone", style: "border-violet-200 bg-violet-50 text-violet-950", dot: "bg-violet-500" };
+}
+
+function LiveMicrophoneStatus({
+  evidence,
+  muted,
+  recoveryHeld,
+}: {
+  evidence: StudioAudioMeterEvidence | null;
+  muted: boolean;
+  recoveryHeld: boolean;
+}) {
+  const presentation = liveMicrophoneStatusPresentation({ evidence, muted, recoveryHeld });
+
+  return (
+    <span
+      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-xs font-black ${presentation.style}`}
+      aria-label={`Live microphone status: ${presentation.label}`}
+      data-testid="live-microphone-status"
+    >
+      <span className={`h-2.5 w-2.5 rounded-full ${presentation.dot}`} aria-hidden="true" />
+      {presentation.label}
+    </span>
+  );
+}
+
 function StudioCameraEvidence({
   cameraLabel,
   evidence,
@@ -376,6 +430,7 @@ export function LiveSessionRoom({
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteMediaRef = useRef<HTMLDivElement | null>(null);
   const meterCleanupRef = useRef<(() => void) | null>(null);
+  const audioMeterGenerationRef = useRef(0);
   const providerRecordingRequestIdsRef = useRef<Record<"START_EGRESS" | "STOP_EGRESS", string | undefined>>({
     START_EGRESS: undefined,
     STOP_EGRESS: undefined,
@@ -486,17 +541,88 @@ export function LiveSessionRoom({
     remoteMediaRef.current?.replaceChildren();
   }, []);
 
-  const clearPreflightPreview = useCallback(() => {
+  const stopAudioMeter = useCallback(() => {
+    audioMeterGenerationRef.current += 1;
     meterCleanupRef.current?.();
     meterCleanupRef.current = null;
+    setMeterEvidence(null);
+  }, []);
+
+  const clearPreflightPreview = useCallback(() => {
+    stopAudioMeter();
     stopStream(preflightStreamRef.current);
     preflightStreamRef.current = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    setMeterEvidence(null);
     setCameraEvidence(null);
     setPreviewTested(false);
-  }, []);
+  }, [stopAudioMeter]);
   const currentPreflightStream = useCallback(() => preflightStreamRef.current, []);
+
+  const startAudioMeter = useCallback(async (audioTrack: MediaStreamTrack | null | undefined) => {
+    stopAudioMeter();
+    if (!audioTrack || audioTrack.readyState === "ended") return;
+    const generation = audioMeterGenerationRef.current;
+    let context: AudioContext | null = null;
+    try {
+      context = new AudioContext();
+      await context.resume().catch(() => undefined);
+      if (generation !== audioMeterGenerationRef.current) {
+        void context.close();
+        return;
+      }
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 2_048;
+      const source = context.createMediaStreamSource(new MediaStream([audioTrack]));
+      source.connect(analyser);
+      const samples = new Float32Array(analyser.fftSize);
+      const trackSettings = audioTrack.getSettings();
+      let peakHoldDbfs = -120;
+      let clippedSampleCountSinceStart = 0;
+      let lastPublishedAt = 0;
+      let frame = 0;
+      const tick = (timestamp: number) => {
+        if (generation !== audioMeterGenerationRef.current) return;
+        if (audioTrack.readyState === "ended") {
+          stopAudioMeter();
+          return;
+        }
+        analyser.getFloatTimeDomainData(samples);
+        const frameEvidence = analyseStudioAudioFrame(samples);
+        peakHoldDbfs = Math.max(peakHoldDbfs, frameEvidence.samplePeakDbfs);
+        clippedSampleCountSinceStart += frameEvidence.clippedSampleCount;
+        if (timestamp - lastPublishedAt >= 100) {
+          setMeterEvidence(studioAudioMeterEvidence(frameEvidence, {
+            previousPeakHoldDbfs: peakHoldDbfs,
+            previousClippedSampleCount:
+              clippedSampleCountSinceStart - frameEvidence.clippedSampleCount,
+            sampleRateHz: context?.sampleRate ?? null,
+            channelCount: trackSettings.channelCount ?? 1,
+            echoCancellation: typeof trackSettings.echoCancellation === "boolean"
+              ? trackSettings.echoCancellation
+              : null,
+            noiseSuppression: typeof trackSettings.noiseSuppression === "boolean"
+              ? trackSettings.noiseSuppression
+              : null,
+            autoGainControl: typeof trackSettings.autoGainControl === "boolean"
+              ? trackSettings.autoGainControl
+              : null,
+          }));
+          lastPublishedAt = timestamp;
+        }
+        frame = requestAnimationFrame(tick);
+      };
+      frame = requestAnimationFrame(tick);
+      meterCleanupRef.current = () => {
+        cancelAnimationFrame(frame);
+        source.disconnect();
+        void context?.close();
+        setMeterEvidence(null);
+      };
+    } catch {
+      void context?.close();
+      setMeterEvidence(null);
+    }
+  }, [stopAudioMeter]);
 
   const saveSoundCheckDecision = useCallback(async (
     decision: StudioSoundCheckDecision,
@@ -750,6 +876,7 @@ export function LiveSessionRoom({
         if (microphoneDisconnected) {
           if (sourceLockedRef.current) {
             await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
+            stopAudioMeter();
             setMicrophoneMuted(true);
             microphoneMutedRef.current = true;
             setMicrophoneRecoveryHeld(true);
@@ -758,12 +885,13 @@ export function LiveSessionRoom({
             try {
               await room.switchActiveDevice("audioinput", nextMicrophoneId);
               if (!microphoneMutedRef.current) {
-                await room.localParticipant.setMicrophoneEnabled(true, {
+                const publication = await room.localParticipant.setMicrophoneEnabled(true, {
                   deviceId: nextMicrophoneId,
                   echoCancellation: true,
                   noiseSuppression: true,
                   autoGainControl: true,
                 });
+                await startAudioMeter(publication?.track?.mediaStreamTrack);
               }
               setMicrophoneId(nextMicrophoneId);
               microphoneIdRef.current = nextMicrophoneId;
@@ -771,6 +899,7 @@ export function LiveSessionRoom({
               recoveryMessages.push(`Microphone disconnected. The call moved to ${nextMicrophones.find((device) => device.deviceId === nextMicrophoneId)?.label || "an available microphone"}.`);
             } catch {
               await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
+              stopAudioMeter();
               setMicrophoneId("");
               microphoneIdRef.current = "";
               setMicrophoneMuted(true);
@@ -780,6 +909,7 @@ export function LiveSessionRoom({
             }
           } else {
             await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
+            stopAudioMeter();
             setMicrophoneId("");
             microphoneIdRef.current = "";
             setMicrophoneMuted(true);
@@ -889,7 +1019,7 @@ export function LiveSessionRoom({
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a media-device error.");
       setMessage("Device access couldn't be completed. Check this site's microphone and camera permissions, then try again.");
     }
-  }, [clearPreflightPreview]);
+  }, [clearPreflightPreview, startAudioMeter, stopAudioMeter]);
 
   useEffect(() => {
     const wasLocked = previousSourceLockedRef.current;
@@ -934,50 +1064,8 @@ export function LiveSessionRoom({
             videoTrack.getSettings(),
           )
         : null);
-      const context = new AudioContext();
-      await context.resume().catch(() => undefined);
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 2_048;
-      context.createMediaStreamSource(new MediaStream(stream.getAudioTracks())).connect(analyser);
-      const samples = new Float32Array(analyser.fftSize);
       const audioTrack = stream.getAudioTracks()[0];
-      const trackSettings = audioTrack?.getSettings() ?? {};
-      let peakHoldDbfs = -120;
-      let clippedSampleCountSinceStart = 0;
-      let lastPublishedAt = 0;
-      let frame = 0;
-      const tick = (timestamp: number) => {
-        analyser.getFloatTimeDomainData(samples);
-        const frameEvidence = analyseStudioAudioFrame(samples);
-        peakHoldDbfs = Math.max(peakHoldDbfs, frameEvidence.samplePeakDbfs);
-        clippedSampleCountSinceStart += frameEvidence.clippedSampleCount;
-        if (timestamp - lastPublishedAt >= 100) {
-          setMeterEvidence(studioAudioMeterEvidence(frameEvidence, {
-            previousPeakHoldDbfs: peakHoldDbfs,
-            previousClippedSampleCount:
-              clippedSampleCountSinceStart - frameEvidence.clippedSampleCount,
-            sampleRateHz: context.sampleRate,
-            channelCount: trackSettings.channelCount ?? 1,
-            echoCancellation: typeof trackSettings.echoCancellation === "boolean"
-              ? trackSettings.echoCancellation
-              : null,
-            noiseSuppression: typeof trackSettings.noiseSuppression === "boolean"
-              ? trackSettings.noiseSuppression
-              : null,
-            autoGainControl: typeof trackSettings.autoGainControl === "boolean"
-              ? trackSettings.autoGainControl
-              : null,
-          }));
-          lastPublishedAt = timestamp;
-        }
-        frame = requestAnimationFrame(tick);
-      };
-      frame = requestAnimationFrame(tick);
-      meterCleanupRef.current = () => {
-        cancelAnimationFrame(frame);
-        void context.close();
-        setMeterEvidence(null);
-      };
+      await startAudioMeter(audioTrack);
       setStatus("ready");
       setPreviewTested(true);
       setTechnicalMessage(null);
@@ -993,7 +1081,7 @@ export function LiveSessionRoom({
       setMessage("The selected setup couldn't start. Check the device connection and browser permissions, then try again.");
       return null;
     }
-  }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId]);
+  }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId, startAudioMeter]);
 
   const completeLeave = useCallback((protectedSourceStopped = false) => {
     // Invalidate any device refresh started when the retained source unlocked.
@@ -1112,6 +1200,7 @@ export function LiveSessionRoom({
           setMessage("Reconnected.");
         })
         .on(RoomEvent.Disconnected, () => {
+          stopAudioMeter();
           setStatus("ended");
           setMessage("The call ended.");
           setParticipants([]);
@@ -1120,12 +1209,15 @@ export function LiveSessionRoom({
 
       await room.connect(packet.serverUrl, packet.participantToken);
       await room.switchActiveDevice("audioinput", selectedMicrophoneId);
-      await room.localParticipant.setMicrophoneEnabled(!joinMuted, {
+      const microphonePublication = await room.localParticipant.setMicrophoneEnabled(!joinMuted, {
         deviceId: selectedMicrophoneId,
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       });
+      if (!joinMuted) {
+        await startAudioMeter(microphonePublication?.track?.mediaStreamTrack);
+      }
       setMicrophoneMuted(joinMuted);
       microphoneMutedRef.current = joinMuted;
       if (cameraWanted && selectedCameraId) {
@@ -1159,7 +1251,7 @@ export function LiveSessionRoom({
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a call connection error.");
       setMessage("The call couldn't connect. Check your internet connection and try again.");
     }
-  }, [attachRemoteTrack, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, updateRoster]);
+  }, [attachRemoteTrack, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
@@ -1238,10 +1330,15 @@ export function LiveSessionRoom({
       return;
     }
     const nextMuted = !microphoneMuted;
-    await room.localParticipant.setMicrophoneEnabled(!nextMuted);
+    const publication = await room.localParticipant.setMicrophoneEnabled(!nextMuted);
+    if (nextMuted) {
+      stopAudioMeter();
+    } else {
+      await startAudioMeter(publication?.track?.mediaStreamTrack);
+    }
     setMicrophoneMuted(nextMuted);
     microphoneMutedRef.current = nextMuted;
-  }, [microphoneMuted, microphoneRecoveryHeld]);
+  }, [microphoneMuted, microphoneRecoveryHeld, startAudioMeter, stopAudioMeter]);
 
   const toggleCamera = useCallback(async () => {
     const room = roomRef.current;
@@ -1270,12 +1367,13 @@ export function LiveSessionRoom({
       if (connected && room) {
         await room.switchActiveDevice("audioinput", nextId);
         if (!microphoneMuted) {
-          await room.localParticipant.setMicrophoneEnabled(true, {
+          const publication = await room.localParticipant.setMicrophoneEnabled(true, {
             deviceId: nextId,
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
           });
+          await startAudioMeter(publication?.track?.mediaStreamTrack);
         }
       }
       setMicrophoneId(nextId);
@@ -1292,7 +1390,7 @@ export function LiveSessionRoom({
       microphoneIdRef.current = previousId;
       setMessage(error instanceof Error ? `Microphone switch failed: ${error.message}` : "Microphone switch failed.");
     }
-  }, [clearPreflightPreview, connected, microphoneId, microphoneMuted, microphones, sourceLocked]);
+  }, [clearPreflightPreview, connected, microphoneId, microphoneMuted, microphones, sourceLocked, startAudioMeter]);
 
   const chooseCamera = useCallback(async (nextId: string) => {
     if (!nextId || nextId === cameraId) return;
@@ -1509,6 +1607,7 @@ export function LiveSessionRoom({
           {connected ? (
             <div className="flex flex-wrap gap-2" aria-label="Call controls">
               <button type="button" onClick={() => void toggleMicrophone()} disabled={microphoneMuted && microphoneRecoveryHeld} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-45 ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
+              <LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} />
               <button type="button" onClick={() => void toggleCamera()} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:opacity-45 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
               <button type="button" onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white disabled:cursor-wait disabled:opacity-60"><PhoneOff size={16} /> {leaveAfterSourceStops ? "Saving recording…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
             </div>

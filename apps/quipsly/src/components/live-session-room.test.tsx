@@ -56,7 +56,7 @@ jest.mock("livekit-client", () => {
   };
 });
 
-import { LiveSessionRoom } from "./live-session-room";
+import { LiveSessionRoom, liveMicrophoneStatusPresentation } from "./live-session-room";
 
 type MockLiveKitRoom = {
   __reset: () => void;
@@ -119,6 +119,33 @@ describe("LiveSessionRoom", () => {
     });
     global.fetch = originalFetch;
     jest.restoreAllMocks();
+  });
+
+  it.each([
+    [null, false, false, "Checking microphone"],
+    ["ready", false, false, "Microphone sounds healthy"],
+    ["low", false, false, "Microphone is low"],
+    ["hot", false, false, "Microphone is loud"],
+    ["clipping-risk", false, false, "Microphone may clip"],
+    ["no-signal", false, false, "No microphone signal"],
+    ["ready", true, false, "Microphone muted"],
+    ["ready", false, true, "Microphone needs attention"],
+  ] as const)("projects %s, muted %s, recovery %s as %s", (state, muted, recoveryHeld, label) => {
+    const evidence = state === null ? null : {
+      state,
+      rmsDbfs: -24,
+      samplePeakDbfs: -8,
+      clippedSampleCount: 0,
+      sampleCount: 2_048,
+      peakHoldDbfs: -8,
+      clippedSampleCountSinceStart: 0,
+      sampleRateHz: 48_000,
+      channelCount: 1,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
+    expect(liveMicrophoneStatusPresentation({ evidence, muted, recoveryHeld }).label).toBe(label);
   });
 
   it("makes external device choice and the no-hidden-recording boundary explicit", async () => {
@@ -418,6 +445,11 @@ describe("LiveSessionRoom", () => {
     fireEvent.click(screen.getByRole("button", { name: "Join call" }));
 
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    expect(screen.getByTestId("live-microphone-status")).toHaveTextContent("Checking microphone");
+    fireEvent.click(screen.getByRole("button", { name: "Mute" }));
+    await waitFor(() => expect(screen.getByTestId("live-microphone-status")).toHaveTextContent("Microphone muted"));
+    fireEvent.click(screen.getByRole("button", { name: "Unmute" }));
+    await waitFor(() => expect(screen.getByTestId("live-microphone-status")).toHaveTextContent("Checking microphone"));
     expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent("55555555-5555-4555-8555-555555555545");
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
   });
