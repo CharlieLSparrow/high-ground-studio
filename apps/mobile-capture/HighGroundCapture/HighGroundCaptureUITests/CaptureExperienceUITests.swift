@@ -3169,7 +3169,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         turnOnConsentChoice("CaptureConsentRecordAudioToggle")
         turnOnConsentChoice("CaptureConsentRecordVideoToggle")
         turnOnConsentChoice("CaptureConsentTranscriptionToggle")
-        let saveConsent = app.buttons["Agree and continue"]
+        let saveConsent = app.buttons["Allow recording"]
         XCTAssertTrue(saveConsent.waitForExistence(timeout: 5))
         XCTAssertTrue(saveConsent.isEnabled)
         Thread.sleep(forTimeInterval: 0.8)

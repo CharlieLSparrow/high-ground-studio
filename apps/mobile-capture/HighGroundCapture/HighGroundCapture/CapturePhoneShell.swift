@@ -10555,7 +10555,7 @@ private struct ConsentStrip: View {
             }
             .accessibilityLabel("Recorder consent options")
         } else {
-            Button("Review and agree", action: onGrant)
+            Button("Allow recording", action: onGrant)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
                 .frame(minHeight: 44)
@@ -10689,7 +10689,7 @@ struct CaptureConsentConfirmationSheet: View {
                 }
 
                 Section {
-                    Text("Only continue after everyone who may be seen or heard agrees. Each signed-in participant confirms for themselves.")
+                    Text("Each signed-in person chooses for themselves. If anyone else is nearby, let them know before recording.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -10735,7 +10735,7 @@ struct CaptureConsentConfirmationSheet: View {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Text("Agree and continue")
+                        Text("Allow recording")
                             .fontWeight(.semibold)
                     }
                     Spacer()

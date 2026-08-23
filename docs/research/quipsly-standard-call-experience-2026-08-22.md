@@ -203,8 +203,10 @@ options`.
 - Removed empty upload and Studio handoff cards before the first take.
 - Kept recording consent separate and Session-scoped; joining still never starts
   recording.
-- Reduced first-time consent to the familiar default summary and one `Agree and
-continue` action on both browser and iPhone. Audio and transcription are the
+- Reduced first-time consent to the familiar default summary and one `Allow
+recording` action on both browser and iPhone. Each signed-in participant owns
+their choice; Quipsly verifies the all-party gate instead of asking one person
+to police everyone else. Audio and transcription are the
   coaching defaults; camera is a podcast default. Less-common changes remain in
   a `Recording options` disclosure, and saved consent stays compact for the rest
   of that Session.

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 describe("browser retained-source consent", () => {
-  it("uses one explicit agreement while keeping transcription independently adjustable", () => {
+  it("uses one participant-owned recording choice while keeping transcription independently adjustable", () => {
     const source = readFileSync(
       join(process.cwd(), "src/components/browser-source-recorder.tsx"),
       "utf8",
@@ -20,13 +20,15 @@ describe("browser retained-source consent", () => {
     expect(source).toMatch(
       /disabled=\{\s*!policy \|\|\s*status === "checking" \|\|\s*status === "recording"\s*\}/,
     );
-    expect(source).toMatch(/Agree and\s+continue/);
+    expect(source).toContain("Allow recording");
     expect(source).toContain('aria-label="Recording consent needed"');
     expect(source).not.toContain('open={status === "recording"}');
     expect(source).toContain("Recording settings ·");
-    expect(source).toMatch(
-      /When the coach or host presses Record, this device\s+starts its own copy\./,
+    expect(source).toContain(
+      "Quipsly waits for each signed-in person to choose.",
     );
+    expect(source).toContain("Record still");
+    expect(source).toContain("starts separately.");
     expect(source).toContain("Create a transcript and suggested notes/tasks");
     expect(source).toContain("conversationConnected = true");
     expect(source).toContain(

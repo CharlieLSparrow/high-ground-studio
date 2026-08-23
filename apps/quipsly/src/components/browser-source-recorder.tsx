@@ -2299,9 +2299,9 @@ export function BrowserSourceRecorder({
                 {transcriptionAllowed ? "Transcript on" : "Transcript off"}
               </p>
               <p className="mt-1 text-[10px] font-semibold leading-4">
-                Continue only after everyone who may be heard or seen has
-                agreed. When the coach or host presses Record, this device
-                starts its own copy.
+                Quipsly waits for each signed-in person to choose. If anyone
+                else is nearby, let them know before recording. Record still
+                starts separately.
               </p>
             </div>
             <button
@@ -2310,8 +2310,7 @@ export function BrowserSourceRecorder({
               disabled={!policy || status === "recording"}
               className="min-h-11 rounded-full bg-emerald-800 px-5 text-xs font-black text-white disabled:opacity-50"
             >
-              <ShieldCheck size={14} className="mr-1 inline" /> Agree and
-              continue
+              <ShieldCheck size={14} className="mr-1 inline" /> Allow recording
             </button>
           </div>
         </section>
@@ -2399,7 +2398,8 @@ export function BrowserSourceRecorder({
               Create a transcript and suggested notes/tasks
             </label>
             <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
-              Continue only after everyone who may be heard or seen agrees.
+              Each signed-in person chooses for themselves. Quipsly will not
+              start until everyone is ready.
             </p>
             {myConsentCoversSource ? (
               <button
