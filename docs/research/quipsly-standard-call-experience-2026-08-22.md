@@ -493,6 +493,11 @@ failure shapes recur often enough to influence the architecture:
   share`. The continuity panel says that the call, chat, recordings,
   transcript, notes, and next steps stay connected, then links directly to the
   related coaching, episode, research, or project space.
+- Refresh remembered iOS microphone permission and current free space passively
+  when the selected Session opens. This refresh never activates hardware or
+  opens a system prompt. An undetermined permission is an optional readiness
+  note, not a prerequisite wizard; iOS asks once when the person actually taps
+  Join, Record, or Sound Check.
 
 ## Acceptance consequences
 

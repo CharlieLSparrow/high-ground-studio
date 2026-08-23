@@ -256,6 +256,25 @@ final class AudioCaptureController: NSObject, ObservableObject {
         }
     }
 
+    /// Refreshes remembered system permission and storage state without
+    /// activating audio hardware or presenting a permission prompt. The first
+    /// actual Join, Record, or optional sound check remains the user-initiated
+    /// permission boundary.
+    func refreshReadinessSnapshot() {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
+            microphonePreflightState = .granted
+        case .denied:
+            microphonePreflightState = .denied
+        case .undetermined:
+            microphonePreflightState = .undetermined
+        @unknown default:
+            microphonePreflightState = .undetermined
+        }
+        availableCaptureCapacityBytes = availableCapacityBytes()
+        refreshInputRoute()
+    }
+
     func handleCommand(_ command: RecorderCommand) {
         switch command.action {
         case .start:

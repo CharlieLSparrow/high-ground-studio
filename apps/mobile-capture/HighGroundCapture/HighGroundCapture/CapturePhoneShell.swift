@@ -7129,6 +7129,7 @@ private struct CaptureRecorderView: View {
             cameraPosition = position
         }
         .task(id: model.selectedSession?.callRoomId) {
+            audioCapture.refreshReadinessSnapshot()
             #if DEBUG && targetEnvironment(simulator)
             if CaptureLaunchConfiguration.usesSessionPreflightOutboxUITest,
                let session = model.selectedSession,

@@ -338,8 +338,9 @@ struct CaptureRehearsalReadinessCard: View {
         return item(
             "microphone",
             "Microphone and storage",
-            "Run the check before joining the live room to verify the real route and reserve.",
-            .action
+            "Tap Join or Record when you are ready. iOS will ask for microphone access once if needed; sound check is optional.",
+            .action,
+            required: false
         )
     }
 
