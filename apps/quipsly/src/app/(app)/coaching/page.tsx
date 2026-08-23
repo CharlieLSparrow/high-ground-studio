@@ -3606,9 +3606,15 @@ export default function CoachingPage() {
                           required
                         />
                       </label>
-                      <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                        Duration
+                      <div>
+                        <label
+                          htmlFor="create-appointment-duration"
+                          className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]"
+                        >
+                          Duration
+                        </label>
                         <select
+                          id="create-appointment-duration"
                           value={createForm.durationMinutes}
                           onChange={(event) =>
                             setCreateForm((current) => ({
@@ -3623,7 +3629,7 @@ export default function CoachingPage() {
                           <option value="60">60 minutes</option>
                           <option value="90">90 minutes</option>
                         </select>
-                      </label>
+                      </div>
                       <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
                         Scheduling behavior
                         <select

@@ -45,7 +45,8 @@ describe("coaching release surfaces", () => {
       '{createForm.durationMinutes} minutes ·{" "} {createForm.timezone || "your detected timezone"}',
     );
     expect(compact).toContain("More options");
-    expect(compact).toContain("Duration <select");
+    expect(compact).toContain('htmlFor="create-appointment-duration"');
+    expect(compact).toContain('id="create-appointment-duration"');
     expect(compact).toContain("Schedule and prepare the invitation");
     expect(compact).toContain("Schedule and send invite");
     expect(compact).toContain("Session scheduled");

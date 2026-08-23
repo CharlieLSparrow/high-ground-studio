@@ -223,7 +223,9 @@ try {
   await appointment
     .getByLabel("Session name", { exact: true })
     .fill(sessionTitle);
-  await appointment.getByLabel("Minutes", { exact: true }).fill("45");
+  await appointment
+    .getByLabel("Duration", { exact: true })
+    .selectOption("45");
   const [invitationResponse] = await Promise.all([
     coachPage.waitForResponse(
       (candidate) => {
@@ -245,7 +247,7 @@ try {
   await handoff.waitFor({ timeout: 30_000 });
   await handoff
     .getByRole("heading", {
-      name: `Invite ${identities.client.displayName}`,
+      name: identities.client.displayName,
       exact: true,
     })
     .waitFor();
@@ -281,7 +283,10 @@ try {
   evidence.externalInvitationMessageSent = false;
 
   await handoff
-    .getByRole("button", { name: "Copy client entry", exact: true })
+    .getByText("Invitation options", { exact: true })
+    .click();
+  await handoff
+    .getByRole("button", { name: "Copy invite link", exact: true })
     .click();
   await handoff.getByText(/copied/i).waitFor({ timeout: 20_000 });
   const copiedClientEntry = await coachPage.evaluate(() =>

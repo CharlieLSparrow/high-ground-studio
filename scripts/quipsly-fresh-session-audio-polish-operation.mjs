@@ -302,13 +302,13 @@ async function operateRenderedSession({ baseURL, context, password }) {
 
     const polishCards = page.getByRole("region", { name: "Audio improvement" });
     const cardCount = await polishCards.count();
-    assert(cardCount > 0, "No verified Session recording exposed the ordinary Audio polish action.");
+    assert(cardCount > 0, "No verified Session recording exposed the ordinary audio-quality check.");
     const card = polishCards.first();
-    await card.getByText("Audio polish", { exact: true }).waitFor();
-    await card.getByText(/original recording stays untouched/i).waitFor();
-    await assertNoHorizontalOverflow(card, "Session audio polish");
+    await card.getByText("Audio quality", { exact: true }).waitFor();
+    await card.getByText(/original stays untouched/i).waitFor();
+    await assertNoHorizontalOverflow(card, "Session audio quality");
 
-    const improve = card.getByRole("button", { name: /^(Improve audio|Try audio polish again)$/ });
+    const improve = card.getByRole("button", { name: /^(Check audio now|Try again)$/ });
     const improving = card.getByRole("button", { name: "Improving audio…" });
     const readyComparison = card.getByText(/Ready to compare\. Quipsly has not replaced or published either version\./i);
     const alreadyBalanced = card.getByText(/already meets Quipsly's spoken-word loudness target/i);
@@ -332,7 +332,7 @@ async function operateRenderedSession({ baseURL, context, password }) {
       checkpoint("rechecking an already-completed audio polish result");
     }
 
-    const retry = card.getByRole("button", { name: "Try audio polish again" });
+    const retry = card.getByRole("button", { name: "Try again" });
     const terminal = await Promise.race([
       readyComparison.waitFor({ timeout: 120_000 }).then(() => "comparison"),
       alreadyBalanced.waitFor({ timeout: 120_000 }).then(() => "balanced"),
@@ -378,7 +378,7 @@ async function operateRenderedSession({ baseURL, context, password }) {
       "Packet administration appeared before the ordinary transcript review surface.",
     );
     const editRecording = transcriptDesk.getByRole("button", {
-      name: "Edit recording",
+      name: "Trim or cut recording",
       exact: true,
     });
     await editRecording.waitFor({ timeout: 30_000 });
@@ -429,7 +429,7 @@ async function operateRenderedSession({ baseURL, context, password }) {
       .locator('[id^="transcript-segment-"]')
       .first();
     await firstPassage
-      .getByRole("button", { name: "Correct", exact: true })
+      .getByRole("button", { name: "Correct transcript", exact: true })
       .click();
     await firstPassage
       .getByText(/Recording checked from \d{2}:\d{2}/)

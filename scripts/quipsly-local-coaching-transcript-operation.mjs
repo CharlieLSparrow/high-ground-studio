@@ -217,7 +217,10 @@ try {
     );
     await evidence.waitFor({ timeout: 20_000 });
     await evidence
-      .getByText(`Focused RecordingAsset · ${source.id}`, { exact: true })
+      .getByText("Recording details", { exact: true })
+      .click();
+    await evidence
+      .getByText(`RecordingAsset · ${source.id}`, { exact: true })
       .waitFor({ timeout: 20_000 });
 
     let transcript = await prisma.transcriptJob.findFirst({

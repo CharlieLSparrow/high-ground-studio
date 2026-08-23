@@ -276,7 +276,7 @@ const journeys = [];
 
 const saveRenderedConsent = async (journey) => {
   const consentAction = journey.page.getByRole("button", {
-    name: /Agree and continue|Update choices/,
+    name: /Allow recording|Update choices/,
   });
   if (!(await consentAction.isVisible())) {
     await journey.page
