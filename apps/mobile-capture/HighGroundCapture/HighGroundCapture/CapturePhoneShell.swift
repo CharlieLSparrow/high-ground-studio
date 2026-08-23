@@ -6442,6 +6442,8 @@ private struct CaptureRecorderView: View {
                         localRecordingWorkspaceOpen:
                             model.providerRoom.isConnected
                             || localOnlyRecordingSessionID == session.id
+                            || model.activeCaptureSession?.id == session.id
+                            || model.activeVideoCaptureSession?.id == session.id
                             || session.providerCanJoin == false,
                         onToggleLocalRecordingWorkspace: {
                             withAnimation(.easeInOut(duration: 0.2)) {
@@ -6456,6 +6458,8 @@ private struct CaptureRecorderView: View {
 
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
+                        || model.activeCaptureSession?.id == session.id
+                        || model.activeVideoCaptureSession?.id == session.id
                         || session.providerCanJoin == false {
                         // Keep the consent and recording controls in one eager,
                         // bounded unit after the person enters the call or chooses
