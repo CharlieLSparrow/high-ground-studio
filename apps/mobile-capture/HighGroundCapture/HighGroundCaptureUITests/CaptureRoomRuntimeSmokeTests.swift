@@ -1319,8 +1319,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "Open"
             )
         ).firstMatch
+        let coachingHome = app.scrollViews["CaptureCoachingHome"].firstMatch
+        for _ in 0..<12 where !open.exists {
+            coachingHome.swipeDown()
+        }
         XCTAssertTrue(
-            waitForRuntimeElement(open, in: app, timeout: 20, swipeAttempts: 10),
+            open.waitForExistence(timeout: 20),
             "The new canonical Session should open directly from the ordinary booking card."
         )
         open.tap()
