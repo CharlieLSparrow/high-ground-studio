@@ -2300,6 +2300,28 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["CaptureRecorderStateLabel"].label, "Consent ready · mic checks on tap")
     }
 
+    func testCallCheckUsesStandardLanguageAndHidesProviderDetails() {
+        app.tabBars.buttons["Record"].tap()
+        openLocalRecorderIfNeeded()
+
+        let check = app.buttons["CaptureSessionTruthDisclosure"]
+        reveal(check)
+        XCTAssertTrue(check.isHittable)
+        XCTAssertTrue(check.label.contains("Call & recording check"))
+        check.tap()
+
+        let boundary = app.staticTexts[
+            "Joining the call never starts a recording. Recording starts only after everyone has allowed it and someone taps Record."
+        ]
+        reveal(boundary)
+        XCTAssertTrue(boundary.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCallTechnicalDetails"].exists)
+        XCTAssertFalse(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "CallKit only presents")).firstMatch.exists,
+            "Implementation details should remain collapsed during the ordinary call workflow."
+        )
+    }
+
     func testConsentActionRemainsReachableAtLargestAccessibilityTextSize() throws {
         app.terminate()
         app.launchArguments = [

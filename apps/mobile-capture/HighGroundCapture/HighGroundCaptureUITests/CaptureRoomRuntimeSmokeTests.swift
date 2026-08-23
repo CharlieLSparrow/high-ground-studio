@@ -4226,9 +4226,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 swipeAttempts: 3
             )
         )
-        let recordingBoundaryCopy = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "Joining, CallKit, consent, local recording, and server recording remain separate states")
-        ).firstMatch
+        let recordingBoundaryCopy = app.staticTexts[
+            "Joining the call never starts a recording. Recording starts only after everyone has allowed it and someone taps Record."
+        ].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(
                 recordingBoundaryCopy,
@@ -4236,7 +4236,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 timeout: 8,
                 swipeAttempts: 6
             ),
-            "CallKit, room join, consent, local recording, and server recording should remain visibly separate."
+            "The ordinary call path should explain the call and recording boundary without provider jargon."
+        )
+        XCTAssertFalse(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "CallKit only presents")).firstMatch.exists,
+            "Provider implementation details should stay collapsed unless support needs them."
         )
         sessionTruth.tap()
 
@@ -4408,21 +4412,21 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(sessionTruth.value as? String, "Expanded")
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureSessionTruthPanel"].firstMatch.waitForExistence(timeout: 8),
-            "Session readiness should expose the actual truth panel, not satisfy assertions from a hidden tab subtree."
+            "The call and recording check should expose the actual status panel, not satisfy assertions from a hidden tab subtree."
         )
         XCTAssertTrue(
             app.staticTexts["Journey"].firstMatch.waitForExistence(timeout: 8)
         )
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureRetainedSourceTruth"].firstMatch.waitForExistence(timeout: 8),
-            "Session readiness should distinguish retained masters from prepared rooms and live tracks."
+            "The call and recording check should distinguish retained masters from prepared rooms and live tracks."
         )
         XCTAssertTrue(
             app.staticTexts["Retained source set"].firstMatch.waitForExistence(timeout: 8)
         )
-        let recordingBoundaryCopy = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "Joining, CallKit, consent, local recording, and server recording remain separate states")
-        ).firstMatch
+        let recordingBoundaryCopy = app.staticTexts[
+            "Joining the call never starts a recording. Recording starts only after everyone has allowed it and someone taps Record."
+        ].firstMatch
         XCTAssertTrue(recordingBoundaryCopy.waitForExistence(timeout: 8))
         let providerRecordingBoundary = app.staticTexts["CaptureProviderRecordingBoundary"].firstMatch
         for _ in 0..<8 where !providerRecordingBoundary.isHittable {
@@ -4435,7 +4439,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         XCTAssertTrue(
             providerRecordingBoundary.isHittable,
-            "Provider recording should remain a separate receipt-backed section after the readiness disclosure opens."
+            "Call and recording status should remain reachable after the check opens."
         )
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists)
     }

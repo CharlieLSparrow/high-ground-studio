@@ -199,6 +199,11 @@ options`.
 - Moved the native audio-call green room to the top of the Record surface.
 - Added an obvious `Join call` action, current microphone label, connected state,
   normal mute/unmute and Leave controls, and a remembered `Join muted` choice.
+- Renamed the iPhone readiness surface to `Call & recording check`; its ordinary
+  state now says only `Ready to join`, `Connected`, `Reconnecting`, or `Call
+  unavailable`. CallKit, LiveKit, provider-runtime, egress, and receipt language
+  remains available under a collapsed `Technical details` disclosure for
+  support rather than occupying the normal call path.
 - Persisted safe local source-mode, camera, and video-quality choices.
 - Removed empty upload and Studio handoff cards before the first take.
 - Kept recording consent separate and Session-scoped; joining still never starts

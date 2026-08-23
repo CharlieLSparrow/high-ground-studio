@@ -6471,7 +6471,7 @@ private struct CaptureRecorderView: View {
                             }
                         } label: {
                             HStack(spacing: 10) {
-                                Label("Session readiness", systemImage: "checklist.checked")
+                                Label("Call & recording check", systemImage: "checklist.checked")
                                     .font(.headline)
                                 Spacer()
                                 Text(session.journeyStageLabel)
@@ -6488,7 +6488,7 @@ private struct CaptureRecorderView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityValue(showsSessionReadiness ? "Expanded" : "Collapsed")
-                        .accessibilityHint("Shows source quality, lifecycle receipts, safe next actions, and the boundary between joining and recording.")
+                        .accessibilityHint("Shows whether the call and recording are ready, plus optional technical details for support.")
                         .accessibilityIdentifier("CaptureSessionTruthDisclosure")
 
                         if showsSessionReadiness {
@@ -8014,6 +8014,7 @@ private struct CaptureSessionTruthPanel: View {
     let session: MobileCaptureSession
     @ObservedObject var model: CaptureExperienceModel
     @State private var isPreparingProviderReceipt = false
+    @State private var showsTechnicalDetails = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -8074,68 +8075,91 @@ private struct CaptureSessionTruthPanel: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                Label("Live room and server recording", systemImage: "person.2.wave.2")
+                Label("Call and recording", systemImage: "person.2.wave.2")
                     .font(.subheadline.weight(.bold))
                     .accessibilityIdentifier("CaptureProviderRecordingBoundary")
-                Text(model.providerRoom.nativeCallPresentationLabel)
-                    .font(.caption.weight(.semibold))
-                Text("CallKit only presents the Quipsly-owned live room on iPhone. Joining, CallKit, consent, local recording, and server recording remain separate states in Nest.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
 
                 CaptureStatusPill(
-                    label: model.providerRoom.providerRuntimeLabel,
-                    systemImage: model.providerRoom.providerRuntimeAvailable ? "checkmark.circle.fill" : "xmark.circle",
-                    tint: model.providerRoom.providerRuntimeAvailable ? .green : .orange
+                    label: model.providerRoom.isReconnecting
+                        ? "Reconnecting"
+                        : model.providerRoom.isConnected
+                            ? "Connected"
+                            : session.providerCanJoin == true
+                                ? "Ready to join"
+                                : "Call unavailable",
+                    systemImage: model.providerRoom.isConnected
+                        ? "checkmark.circle.fill"
+                        : session.providerCanJoin == true
+                            ? "phone.fill"
+                            : "exclamationmark.triangle.fill",
+                    tint: model.providerRoom.isConnected || session.providerCanJoin == true ? .green : .orange
                 )
-                Text(model.providerRoom.providerRuntimeDetail)
+                Text("Joining the call never starts a recording. Recording starts only after everyone has allowed it and someone taps Record.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if let readiness = model.readinessClient.readiness {
-                    CaptureStatusPill(
-                        label: readiness.providerEgressLabel,
-                        systemImage: readiness.providerEgressReady ? "checkmark.circle.fill" : "lock.shield",
-                        tint: readiness.providerEgressReady ? .green : .orange
-                    )
-                    Text(readiness.providerEgressDetail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                DisclosureGroup("Technical details", isExpanded: $showsTechnicalDetails) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(model.providerRoom.nativeCallPresentationLabel)
+                            .font(.caption.weight(.semibold))
+                        CaptureStatusPill(
+                            label: model.providerRoom.providerRuntimeLabel,
+                            systemImage: model.providerRoom.providerRuntimeAvailable ? "checkmark.circle.fill" : "xmark.circle",
+                            tint: model.providerRoom.providerRuntimeAvailable ? .green : .orange
+                        )
+                        Text(model.providerRoom.providerRuntimeDetail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                CaptureStatusPill(
-                    label: session.hasProviderRecordingReceiptSlot
-                        ? "Receipt \(session.providerReceiptStatusLabel)"
-                        : "No server-recording receipt",
-                    systemImage: session.hasProviderRecordingReceiptSlot ? "doc.badge.checkmark" : "doc.badge.plus",
-                    tint: session.hasProviderRecordingReceiptSlot ? .green : .secondary
-                )
-                Text(session.providerReceiptActionLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                        if let readiness = model.readinessClient.readiness {
+                            CaptureStatusPill(
+                                label: readiness.providerEgressLabel,
+                                systemImage: readiness.providerEgressReady ? "checkmark.circle.fill" : "lock.shield",
+                                tint: readiness.providerEgressReady ? .green : .orange
+                            )
+                            Text(readiness.providerEgressDetail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
 
-                if session.actionPacket?.capabilities?.canPrepareProviderRecordingReceipt == true,
-                   !session.hasProviderRecordingReceiptSlot {
-                    Button {
-                        Task { await prepareProviderRecordingReceipt() }
-                    } label: {
-                        if isPreparingProviderReceipt {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Label("Prepare server-recording receipt", systemImage: "doc.badge.plus")
-                                .frame(maxWidth: .infinity)
+                        CaptureStatusPill(
+                            label: session.hasProviderRecordingReceiptSlot
+                                ? "Receipt \(session.providerReceiptStatusLabel)"
+                                : "No server-recording receipt",
+                            systemImage: session.hasProviderRecordingReceiptSlot ? "doc.badge.checkmark" : "doc.badge.plus",
+                            tint: session.hasProviderRecordingReceiptSlot ? .green : .secondary
+                        )
+                        Text(session.providerReceiptActionLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if session.actionPacket?.capabilities?.canPrepareProviderRecordingReceipt == true,
+                           !session.hasProviderRecordingReceiptSlot {
+                            Button {
+                                Task { await prepareProviderRecordingReceipt() }
+                            } label: {
+                                if isPreparingProviderReceipt {
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity)
+                                } else {
+                                    Label("Prepare server-recording receipt", systemImage: "doc.badge.plus")
+                                        .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(isPreparingProviderReceipt || model.providerControlsLockedForLocalCapture)
+                            .accessibilityHint("Creates only the Nest receipt slot. It does not join the room or start recording.")
+                            .accessibilityIdentifier("CapturePrepareProviderRecordingReceipt")
                         }
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(isPreparingProviderReceipt || model.providerControlsLockedForLocalCapture)
-                    .accessibilityHint("Creates only the Nest receipt slot. It does not join the room or start recording.")
-                    .accessibilityIdentifier("CapturePrepareProviderRecordingReceipt")
+                    .padding(.top, 8)
                 }
+                .font(.caption.weight(.semibold))
+                .accessibilityIdentifier("CaptureCallTechnicalDetails")
 
                 if let error = model.sessionClient.errorMessage?.nonempty {
                     CaptureInlineWarning(text: error)
