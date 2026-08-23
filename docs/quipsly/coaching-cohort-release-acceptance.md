@@ -1420,6 +1420,11 @@ starts or resumes the existing idempotent whole-recording check and shows one
 compact status: waiting for upload, checking, improved copy ready, checked with
 no unnecessary derivative, or needs attention.
 
+When the retained source already has a complete decoded signal scan, the same
+compact card shows measured RMS dBFS, sample-peak dBFS, and the number of bounded
+listen points. It labels RMS as distinct from LUFS and listen points as review
+candidates rather than confirmed defects.
+
 The transcript does not add a second pair of audio players. `Open recording
 quality` navigates to the established exact-source surface for waveform and
 signal evidence, original audition, verified improved-copy audition, and retry.

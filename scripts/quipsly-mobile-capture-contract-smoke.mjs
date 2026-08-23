@@ -1382,7 +1382,12 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("immutable original")
       && nativeText.includes("guard AuthManager.shared.networkActionsAllowed else { return }")
       && nativeText.includes("recording.uploadedMediaAssetId")
-      && nativeText.includes("recording.uploadedSourceId"),
+      && nativeText.includes("recording.uploadedSourceId")
+      && nativeText.includes("signal.rmsDbfs")
+      && nativeText.includes("signal.samplePeakDbfs")
+      && nativeText.includes("listen points")
+      && nativeText.includes("RMS is not LUFS")
+      && nativeText.includes("review candidates—not confirmed defects"),
     "nativeTranscriptCorrectionExactSourceBoundary",
     "iPhone Library and the selected canonical Session open transcript overlays, packet candidates, and whole-source audio-quality status against an exact retained recording-asset match, protect account-partitioned offline playback decisions with stable idempotency and exact acknowledgement, and keep preview, remote-only, packet, and AI states non-authoritative.",
   );

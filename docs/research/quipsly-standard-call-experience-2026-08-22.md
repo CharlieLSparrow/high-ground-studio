@@ -1051,6 +1051,9 @@ only after matching the transcript playback asset to the retained local record.
 It deliberately shows status rather than embedding another player: the single
 `Open recording quality` action leads to the mature waveform, evidence, original
 audition, improved-copy audition, and retry surface for that exact recording.
+The compact projection also carries measured RMS, sample peak, and bounded
+listen-point count when the decoded source scan exists, while explicitly
+separating RMS from LUFS and candidates from confirmed defects.
 
 This follows the same standard-versus-creative boundary as the call experience.
 Transcript reading remains calm and conventional; Quipsly's deeper audio system

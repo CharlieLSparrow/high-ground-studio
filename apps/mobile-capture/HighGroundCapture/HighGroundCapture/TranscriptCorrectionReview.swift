@@ -4906,6 +4906,28 @@ private struct CaptureTranscriptAudioQualityCard: View {
                 }
             }
 
+            if let signal = recording.sourceProfile?.audioSignal {
+                HStack(spacing: 8) {
+                    signalMetric(
+                        value: String(format: "%.1f", signal.rmsDbfs),
+                        label: "RMS dBFS"
+                    )
+                    signalMetric(
+                        value: String(format: "%.1f", signal.samplePeakDbfs),
+                        label: "peak dBFS"
+                    )
+                    signalMetric(
+                        value: "\(signal.observations.count)",
+                        label: "listen points"
+                    )
+                }
+                Text("Measured across the decoded source. RMS is not LUFS, and listen points are review candidates—not confirmed defects.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureTranscriptAudioSignalBoundary")
+            }
+
             NavigationLink {
                 CaptureSourceEvidenceView(recordingID: recording.id)
             } label: {
@@ -4933,6 +4955,19 @@ private struct CaptureTranscriptAudioQualityCard: View {
             await mastery.open(recording: recording)
         }
         .onDisappear { mastery.stop() }
+    }
+
+    private func signalMetric(value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value)
+                .font(.caption.monospacedDigit().weight(.bold))
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(7)
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var statusTitle: String {
