@@ -154,11 +154,11 @@ describe("TranscriptCorrectionDesk", () => {
     await screen.findByText("Welcome, everybody.");
     await markProtectedPlaybackReady();
     expect(document.getElementById("transcript-segment-segment-1")).toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Correct" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Correct transcript" })); });
     await screen.findByText(/recording checked from 00:03/i);
     expect(screen.queryByRole("checkbox", { name: /listened/i })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/correct speaker/i), { target: { value: "Charlie" } });
-    fireEvent.click(screen.getByRole("button", { name: /save correction/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save transcript correction/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     const request = fetchMock.mock.calls[1];
@@ -382,7 +382,7 @@ describe("TranscriptCorrectionDesk", () => {
     unavailable.recording.eligibleForProtectedPlaybackPreparation = false;
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => unavailable })) as unknown as typeof fetch;
     render(<TranscriptCorrectionDesk roomId="room-1" />);
-    const button = await screen.findByRole("button", { name: "Correct" });
+    const button = await screen.findByRole("button", { name: "Correct transcript" });
     expect(button).toBeDisabled();
     expect(screen.getByText(/recording still needs attention/i)).toBeInTheDocument();
   });
@@ -391,11 +391,11 @@ describe("TranscriptCorrectionDesk", () => {
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     const media = await markProtectedPlaybackReady();
-    expect(screen.getByRole("button", { name: "Correct" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Correct transcript" })).toBeEnabled();
 
     fireEvent.error(media);
 
-    expect(screen.getByRole("button", { name: "Correct" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Correct transcript" })).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(/historical review receipts remain visible/i);
   });
 
@@ -639,7 +639,7 @@ describe("TranscriptCorrectionDesk", () => {
 
     render(<TranscriptCorrectionDesk roomId="room-1" canEditRecording recordingEditor={<div>Inline recording editor</div>} />);
 
-    const edit = await screen.findByRole("button", { name: "Edit recording" });
+    const edit = await screen.findByRole("button", { name: "Trim or cut recording" });
     expect(screen.queryByText("Inline recording editor")).not.toBeInTheDocument();
     fireEvent.click(edit);
     expect(screen.getByText("Inline recording editor")).toBeInTheDocument();

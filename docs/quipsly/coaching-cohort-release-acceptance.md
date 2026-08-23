@@ -1080,3 +1080,23 @@ The focused transcript correction suite passes 22/22 and the full web
 typecheck passes. This is component and contract evidence; natural multi-speaker
 audio, human name recognition, mobile viewport comprehension, and minimally
 instructed correction remain deferred acceptance evidence.
+
+## Transcript correction versus recording edit checkpoint — 2026-08-22
+
+The transcript workspace now names its two reversible actions according to
+their actual consequence. `Correct transcript` updates only the reviewed text
+and speaker overlay; the surface explicitly says it never cuts the recording.
+`Trim or cut recording` opens the separate private-preview editor. The recording
+editor says checked passages remain, cleared passages are removed from the
+preview, and transcript wording does not change.
+
+Each eligible passage now exposes an accessible `Keep in recording` or `Restore
+to recording` name plus an `Included` or `Removed` status. Timing-unavailable or
+overlapping passages remain disabled and visibly `Kept safe`. Preparing the edit
+continues to preserve participant masters, exact word-timing fingerprints, and
+the explicit listen-before-share boundary.
+
+The focused transcript and recording-edit suites pass 27/27 and the complete
+web typecheck passes. This does not yet prove natural-speech word alignment,
+human selection comprehension, preview listening, renderer quality, or a
+physical mobile edit; those remain deferred acceptance evidence.

@@ -754,6 +754,18 @@ share`. The continuity panel says that the call, chat, recordings,
   diarization policy, immutable evidence, and revision receipts available in
   transcription details rather than teaching those concepts during the normal
   job.
+- Never overload transcript correction and media editing. Current Descript help
+  acknowledges that timing misalignment can produce skipped words, overlapping
+  phrases, corrections that disappear, or speaker labels that do not stick;
+  creator complaints also describe confusion when a wording correction changes
+  audio and automatic filler or gap edits cut too aggressively. Quipsly should
+  therefore label the two paths literally: `Correct transcript` changes the
+  reviewed text overlay, while `Trim or cut recording` creates a reversible
+  private media preview. A checked passage stays, a cleared passage is removed,
+  and unsafe or overlapping passages remain included. Sources:
+  https://help.descript.com/hc/en-us/articles/10249424286477-Automatic-transcription,
+  https://feedback.descript.com/feature-requests/p/allow-transcript-editing-option-diconnected-from-audio,
+  and https://www.reddit.com/r/Descript/comments/1tw4n2a/important_issues_with_filler_words_shorten_word/.
 
 ## Acceptance consequences
 
