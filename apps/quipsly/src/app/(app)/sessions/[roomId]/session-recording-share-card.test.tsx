@@ -155,4 +155,44 @@ describe("SessionRecordingShareCard", () => {
       expectedRevision: 1,
     }));
   });
+
+  it("reopens the current edit without losing transcript cuts and cancels safely", async () => {
+    const output = {
+      id: "session_output_0002",
+      status: "DRAFT",
+      title: "First coaching session recording",
+      revision: 4,
+      contentSha256: "d".repeat(64),
+      recipient: { id: "client_user_0001", label: "Client" },
+      render: { status: "VERIFIED", durationSeconds: 26, sizeBytes: 4_000, sha256: "e".repeat(64) },
+      mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_0002",
+      body: {
+        edit: {
+          startSeconds: 2,
+          endSeconds: 28,
+          transcriptExclusions: [transcriptSegment],
+        },
+      },
+    };
+    global.fetch = jest.fn(async (_input: RequestInfo | URL) => response({ ...snapshot, output })) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Edit private preview" }));
+
+    const passage = screen.getByText(transcriptSegment.text);
+    const passageCheckbox = passage.closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(screen.getByText(/editing starts from revision 4/i)).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Recording start" })).toHaveValue("2");
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("28");
+    expect(passageCheckbox).not.toBeChecked();
+
+    await userEvent.click(passageCheckbox);
+    expect(passageCheckbox).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel changes" }));
+    expect(screen.queryByText(/editing starts from revision 4/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit private preview" }));
+    const restored = screen.getByText(transcriptSegment.text).closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(restored).not.toBeChecked();
+  });
 });

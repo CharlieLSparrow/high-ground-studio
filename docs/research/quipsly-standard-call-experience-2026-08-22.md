@@ -607,6 +607,11 @@ share`. The continuity panel says that the call, chat, recordings,
   and retries one malformed or transient handoff automatically. Verification,
   credential, and access denials still fail immediately; the retry never turns
   a policy refusal into repeated background attempts.
+- Reopening an edit must mean "continue from what I heard," never "start over."
+  Quipsly now restores the verified revision's trim range, title, and transcript
+  exclusions when the coach edits it again. `Cancel changes` discards only the
+  unsaved UI choices; the current private or released derivative and every
+  participant master remain unchanged.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB

@@ -92,6 +92,12 @@ function defaultParticipantSources(sources: Source[]) {
   return [...selected.values()].map((source) => source.id);
 }
 
+function transcriptExclusionKeys(output: Output | null | undefined) {
+  return new Set((output?.body.edit?.transcriptExclusions || []).map(
+    (segment) => `${segment.transcriptJobId}:${segment.segmentId}`,
+  ));
+}
+
 export function SessionRecordingShareCard({ roomId }: { roomId: string }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -120,7 +126,7 @@ export function SessionRecordingShareCard({ roomId }: { roomId: string }) {
         setTitle(payload.output.title);
         setStartSeconds(Number(payload.output.body.edit?.startSeconds) || 0);
         setEndSeconds(Number(payload.output.body.edit?.endSeconds) || 0);
-        setExcludedTranscriptKeys(new Set((payload.output.body.edit?.transcriptExclusions || []).map((segment) => `${segment.transcriptJobId}:${segment.segmentId}`)));
+        setExcludedTranscriptKeys(transcriptExclusionKeys(payload.output));
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Quipsly could not load the recording workspace.");
@@ -210,6 +216,7 @@ export function SessionRecordingShareCard({ roomId }: { roomId: string }) {
 
       {coach && (!output || editing) ? (
         <div className="mt-5 space-y-5">
+          {output && editing ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-white p-3"><p className="text-xs font-bold leading-5 text-sky-900">Editing starts from revision {output.revision}. Your current {output.status === "RELEASED" ? "shared recording stays available" : "private preview stays unchanged"} until a new preview finishes.</p><button type="button" onClick={() => { setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setEditing(false); }} disabled={Boolean(busy)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-50">Cancel changes</button></div> : null}
           {!snapshot.readiness?.hasVerifiedParticipantSources ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950">No complete, verified participant masters are ready yet. Finish the Session recording upload first.</p> : null}
           <div className="rounded-2xl border border-sky-200 bg-white p-4 sm:p-5" aria-label="Trim recording">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -236,7 +243,7 @@ export function SessionRecordingShareCard({ roomId }: { roomId: string }) {
         {coach && output.status === "DRAFT" && output.render.status === "VERIFIED" ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-sm font-bold text-emerald-950">Listen once, then share this private copy with <strong>{output.recipient.label}</strong>.</p><button type="button" disabled={Boolean(busy)} onClick={() => void mutate("RELEASE")} className="mt-3 w-full rounded-xl bg-emerald-800 px-4 py-3 text-sm font-black text-white disabled:opacity-50"><Send className="mr-2 inline" size={16} />Share with {output.recipient.label}</button></div> : null}
         {coach && output.status === "RELEASED" ? <button type="button" disabled={Boolean(busy)} onClick={() => void mutate("REVOKE")} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-900"><Undo2 className="mr-1.5 inline" size={14} />Revoke client access</button> : null}
         {!coach && output.status === "RELEASED" ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-950"><ShieldCheck className="mr-2 inline" size={16} />Your coach released this reviewed copy to your private Session.</p> : null}
-        {coach && !editing ? <button type="button" disabled={Boolean(busy)} onClick={() => { setSelected(new Set(defaultParticipantSources(snapshot.available?.sources || []))); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(new Set()); setEditing(true); }} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Scissors className="mr-1.5 inline" size={14} />Make another private edit</button> : null}
+        {coach && !editing ? <button type="button" disabled={Boolean(busy)} onClick={() => { setSelected(new Set(defaultParticipantSources(snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setEditing(true); }} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Scissors className="mr-1.5 inline" size={14} />{output.status === "DRAFT" ? "Edit private preview" : "Create new private edit"}</button> : null}
       </div> : null}
 
       <p className="mt-4 text-[11px] font-semibold leading-5 text-sky-800"><LockKeyhole className="mr-1 inline" size={13} />Only you can see the preview. Sharing gives the named client access inside this Session; it does not create a public link or change the original recordings.</p>
