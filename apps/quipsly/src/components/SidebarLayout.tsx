@@ -22,7 +22,6 @@ import {
   UserCog,
   ChevronDown,
   LogOut,
-  RefreshCcw,
   UserRound,
   CalendarDays,
   Library,
@@ -255,13 +254,7 @@ function AccountSwitcher({
 
   const router = useRouter();
 
-  async function switchAccount() {
-    await fetch("/api/auth/session", { method: "DELETE" });
-    await firebaseSignOut(auth);
-    router.push(`/login?callbackUrl=${encodeURIComponent(currentPath || "/projects")}`);
-  }
-
-  async function signOutOnly() {
+  async function signOut() {
     await fetch("/api/auth/session", { method: "DELETE" });
     await firebaseSignOut(auth);
     router.push("/");
@@ -310,31 +303,18 @@ function AccountSwitcher({
           </div>
         </div>
 
-        <p className="mt-3 rounded-2xl bg-[#fff8ec] px-3 py-2 text-xs leading-5 text-[#7a654f]">
-          Switching users changes which Nests, Home Nest assets, and private
-          projects are visible. It does not merge identities.
-        </p>
-
         <div className="mt-3 grid gap-2">
-          <button
-            type="button"
-            onClick={switchAccount}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#3d2a1e] px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-[#24180f]"
-          >
-            <RefreshCcw className="h-4 w-4" />
-            Switch account
-          </button>
           <Link
             href={`/account/switch?callbackUrl=${encodeURIComponent(currentPath || "/projects")}`}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#ead8ba] bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-[#7b512d] transition hover:bg-[#fff8ec]"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#3d2a1e] px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-[#24180f]"
           >
             <UserRound className="h-4 w-4" />
-            Account switch page
+            Switch account
           </Link>
           <button
             type="button"
-            onClick={signOutOnly}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-rose-900 transition hover:bg-rose-100"
+            onClick={signOut}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#ead8ba] bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-[#7b512d] transition hover:bg-[#fff8ec]"
           >
             <LogOut className="h-4 w-4" />
             Sign out

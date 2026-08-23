@@ -74,7 +74,9 @@ describe("AccountSwitchClient provider continuity", () => {
     expect(screen.getByRole("heading", { name: "Your Quipsly account" })).toBeInTheDocument();
     expect(screen.queryByText(/profile vault/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/identity ledger/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/does not merge identities/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/smoke user/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Admin users" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Diagnostics" })).not.toBeInTheDocument();
   });

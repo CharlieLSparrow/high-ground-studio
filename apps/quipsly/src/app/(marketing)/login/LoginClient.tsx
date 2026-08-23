@@ -99,9 +99,6 @@ export function LoginClient({
           description: "Open your projects, notes, and Sessions.",
         };
   const safeInviteToken = cleanQuipslyInviteToken(inviteToken);
-  const inviteMessage = safeInviteToken
-    ? "Use the email address that received this invite."
-    : "Continue with Google, or use your Quipsly email and password.";
   const initialMessage =
     initialError === "google-link-required"
       ? "That email already uses another sign-in method. Sign in with it first, then add Google from Account settings."
@@ -111,7 +108,7 @@ export function LoginClient({
           ? "Your email is verified. You can sign in now."
           : initialError === "password-reset"
             ? "Your password is updated. Sign in with the new password."
-        : inviteMessage;
+            : "";
   const emailInputRef = useRef<HTMLInputElement>(null);
   const [passwordMode, setPasswordMode] = useState<"signin" | "create">("signin");
   const [message, setMessage] = useState(initialMessage);
@@ -339,9 +336,7 @@ export function LoginClient({
             type="button"
             onClick={() => {
               setPasswordMode("signin");
-              setMessage(safeInviteToken
-                ? "Use the email address that received this invite."
-                : "Continue with Google, or use your Quipsly email and password.");
+              setMessage("");
             }}
             className={`rounded-lg px-3 py-2.5 transition ${passwordMode === "signin" ? "bg-white text-[#315d4e] shadow-sm" : "text-[#72563d] hover:bg-white/60"}`}
           >
@@ -351,9 +346,7 @@ export function LoginClient({
             type="button"
             onClick={() => {
               setPasswordMode("create");
-              setMessage(
-                "Create an account with your email and a password. You will verify the email once.",
-              );
+              setMessage("");
             }}
             className={`rounded-lg px-3 py-2.5 transition ${passwordMode === "create" ? "bg-white text-[#315d4e] shadow-sm" : "text-[#72563d] hover:bg-white/60"}`}
           >
@@ -417,14 +410,16 @@ export function LoginClient({
           </p>
         )}
 
-        <p
-          role="status"
-          aria-live="polite"
-          data-testid="quipsly-login-status"
-          className="mt-4 rounded-xl border border-[#ead7b7] bg-white/70 px-4 py-3 text-sm leading-6 text-[#715840]"
-        >
-          {message}
-        </p>
+        {message ? (
+          <p
+            role="status"
+            aria-live="polite"
+            data-testid="quipsly-login-status"
+            className="mt-4 rounded-xl border border-[#ead7b7] bg-white/70 px-4 py-3 text-sm leading-6 text-[#715840]"
+          >
+            {message}
+          </p>
+        ) : null}
 
         <p className="mt-5 text-center text-xs leading-5 text-[#806b54]">
           By continuing, you agree to Quipsly&apos;s{" "}

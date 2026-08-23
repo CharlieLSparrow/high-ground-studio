@@ -136,11 +136,11 @@ export function AccountSwitchClient({
     router.push(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
   }
 
-  async function signOutOnly() {
+  async function signOut() {
     setStatus("signing-out");
     await fetch("/api/auth/session", { method: "DELETE" });
     await firebaseSignOut(auth);
-    router.push("/projects");
+    router.push("/");
     router.refresh();
   }
 
@@ -189,9 +189,7 @@ export function AccountSwitchClient({
               <p className="mt-1 break-all text-sm font-bold text-[#7a654f]">
                 {currentUser?.email || "No current session"}
               </p>
-              <p className="mt-2 text-sm leading-6 text-[#8b765f]">
-                This account controls which private workspaces you can open.
-              </p>
+              <p className="mt-2 text-sm leading-6 text-[#8b765f]">This is the account you are using now.</p>
             </div>
           </div>
         </div>
@@ -270,12 +268,12 @@ export function AccountSwitchClient({
 
         <button
           type="button"
-          onClick={signOutOnly}
+          onClick={signOut}
           disabled={status !== "idle"}
           className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#ead8ba] bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#7b512d] transition hover:bg-[#fff8ec] disabled:cursor-wait disabled:opacity-60"
         >
           <LogOut className="h-4 w-4" />
-          {status === "signing-out" ? "Signing out..." : "Sign out only"}
+          {status === "signing-out" ? "Signing out..." : "Sign out"}
         </button>
 
         {currentUser?.isStaff ? (

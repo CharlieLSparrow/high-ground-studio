@@ -136,6 +136,22 @@ failure shapes recur often enough to influence the architecture:
   files. Quipsly must bind transcription to the exact participant source and
   channel layout, expose that provenance, and never let the collaborative room
   mix silently replace better isolated masters.
+- A 2026 research refresh found the same split at larger scale in
+  [G2's Riverside review themes](https://www.g2.com/products/riverside/reviews?qs=pros-and-cons): ease of use and recording quality dominate the praise, while
+  recording, audio, editing, and guest problems dominate the complaints. This
+  supports a deliberately conventional call surface and a deliberately unusual
+  source-integrity surface.
+- Recent community reports describe [uploads stuck at zero and edits drifting
+  out of sync](https://www.reddit.com/r/RiversideFM/comments/1vm1x0t/i_cant_even_upload_anymore/), [an unavailable editor and difficulty reaching original
+  tracks](https://www.reddit.com/r/RiversideFM/comments/1u01q51/riverside_editor_not_loading/), and [guest tracks that became unusable after upload or reconnect
+  trouble](https://www.reddit.com/r/RiversideFM/comments/1pe5j2l/guest_tracks_are_not_synched_help_pls/). These anecdotes are not prevalence data, but they sharpen the failure
+  contract: every participant master needs an obvious independent recovery and
+  download path, and collaborative editing must never be the sole route to the
+  source.
+- [Google Meet's current green-room guidance](https://support.google.com/meet/answer/10409699?hl=en) puts preview, mic activity, speaker test, and device choice in one
+  place before `Join now`; [Zoom's current test-meeting guidance](https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0063307) makes testing available before or during a real meeting. Quipsly should
+  keep `Sound check` optional and adjacent to Join, remember working choices,
+  and never turn it into recurring certification paperwork.
 - Chrome's modern Page Lifecycle guidance treats `visibilitychange` to hidden as
   the last reliably observable mobile boundary and explicitly warns against
   pretending `unload` can save work. Quipsly therefore journals source chunks

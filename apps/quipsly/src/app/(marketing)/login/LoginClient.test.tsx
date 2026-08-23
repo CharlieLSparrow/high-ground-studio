@@ -88,6 +88,7 @@ describe("Quipsly direct login", () => {
     expect(
       screen.getByRole("button", { name: "Continue with Google" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByText(/Firebase/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
 
