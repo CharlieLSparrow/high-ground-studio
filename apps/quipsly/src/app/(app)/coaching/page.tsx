@@ -3694,85 +3694,76 @@ export default function CoachingPage() {
                       aria-labelledby="created-coaching-handoff-heading"
                     >
                       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
-                        Appointment ready
+                        Session scheduled
                       </p>
                       <h3
                         id="created-coaching-handoff-heading"
                         className="mt-1 text-lg font-black text-emerald-950"
                       >
-                        Invite{" "}
                         {createdHandoff.clientName ||
                           createdHandoff.clientEmail}
                       </h3>
                       <p className="mt-2 text-xs font-bold leading-5 text-emerald-950">
-                        The private Session is ready and Quipsly tried the
-                        invitation email automatically. The client signs in
-                        with {createdHandoff.clientEmail}; you can copy or share
-                        the same entry below whenever useful.
+                        The private Session is ready. Invitation delivery to{" "}
+                        {createdHandoff.clientEmail} is shown below.
                       </p>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void sendClientSessionInvitation({
-                              bookingId: createdHandoff.bookingId,
-                              callRoomId: createdHandoff.callRoomId,
-                              clientEmail: createdHandoff.clientEmail,
-                              clientName: createdHandoff.clientName,
-                            })
-                          }
-                          disabled={
-                            invitationBusyByBooking[createdHandoff.bookingId]
-                          }
-                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-                        >
-                          {invitationBusyByBooking[createdHandoff.bookingId] ? (
-                            <RefreshCw size={14} className="animate-spin" />
-                          ) : (
-                            <Mail size={14} />
-                          )}
-                          Send invitation email
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void copyClientSessionLink(
-                              createdHandoff.bookingId,
-                              createdHandoff.clientEntryPath,
-                            )
-                          }
-                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white"
-                        >
-                          <Copy size={14} /> Copy client entry
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void shareClientSessionLink({
-                              bookingId: createdHandoff.bookingId,
-                              title: createdHandoff.title,
-                              clientEmail: createdHandoff.clientEmail,
-                              clientEntryPath: createdHandoff.clientEntryPath,
-                            })
-                          }
-                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900"
-                        >
-                          <Share2 size={14} /> Share from this device
-                        </button>
+                      <div className="mt-3 grid gap-2">
                         <a
                           href={createdHandoff.liveSessionPath}
-                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white"
                         >
-                          <Video size={14} /> Open live room
+                          <Video size={14} /> Open Session
                         </a>
-                        {createdHandoff.engagementPath ? (
-                          <a
-                            href={createdHandoff.engagementPath}
-                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"
-                          >
-                            <Users size={14} /> Open coaching home
-                          </a>
-                        ) : null}
+                        <details className="rounded-xl border border-emerald-300 bg-white p-3">
+                          <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-emerald-950">
+                            Invitation options
+                          </summary>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void sendClientSessionInvitation({
+                                  bookingId: createdHandoff.bookingId,
+                                  callRoomId: createdHandoff.callRoomId,
+                                  clientEmail: createdHandoff.clientEmail,
+                                  clientName: createdHandoff.clientName,
+                                })
+                              }
+                              disabled={invitationBusyByBooking[createdHandoff.bookingId]}
+                              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
+                            >
+                              {invitationBusyByBooking[createdHandoff.bookingId] ? <RefreshCw size={14} className="animate-spin" /> : <Mail size={14} />}
+                              Resend email
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void copyClientSessionLink(createdHandoff.bookingId, createdHandoff.clientEntryPath)}
+                              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"
+                            >
+                              <Copy size={14} /> Copy invite link
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void shareClientSessionLink({
+                                bookingId: createdHandoff.bookingId,
+                                title: createdHandoff.title,
+                                clientEmail: createdHandoff.clientEmail,
+                                clientEntryPath: createdHandoff.clientEntryPath,
+                              })}
+                              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900"
+                            >
+                              <Share2 size={14} /> Share invite
+                            </button>
+                            {createdHandoff.engagementPath ? (
+                              <a href={createdHandoff.engagementPath} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950">
+                                <Users size={14} /> Open client space
+                              </a>
+                            ) : null}
+                          </div>
+                          <p className="mt-3 text-[11px] font-semibold leading-5 text-emerald-900">
+                            Access is limited to the invited account.
+                          </p>
+                        </details>
                       </div>
                       {linkCopyStatusByBooking[createdHandoff.bookingId] ? (
                         <p
@@ -3782,11 +3773,6 @@ export default function CoachingPage() {
                           {linkCopyStatusByBooking[createdHandoff.bookingId]}
                         </p>
                       ) : null}
-                      <p className="mt-3 text-[11px] font-semibold leading-5 text-emerald-900">
-                        Only the invited, verified email can enter this private
-                        Session. The client will not see your private coach
-                        notes or the rest of your Nest.
-                      </p>
                     </section>
                   ) : null}
                 </form>

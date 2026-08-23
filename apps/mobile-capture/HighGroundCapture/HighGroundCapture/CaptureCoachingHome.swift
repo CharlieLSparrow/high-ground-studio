@@ -816,9 +816,16 @@ struct CaptureCoachingHomeView: View {
             Label("Appointment ready", systemImage: "checkmark.circle.fill")
                 .font(.headline)
                 .foregroundStyle(.green)
-            Text("The invitation is ready. You can send it again or share the private entry link below.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if let roomID = handoff.callRoomId,
+               client.invitationDeliveries[roomID]?.wasSent == true {
+                Text("Invitation sent. Open the Session when you're ready.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("The Session is ready. Share the invitation below if email delivery needs attention.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if let booking = booking(for: handoff.callRoomId) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(booking.title)
@@ -944,21 +951,21 @@ struct CaptureCoachingHomeView: View {
                     } label: {
                         Label(
                             client.invitationDeliveries[roomID]?.wasSent == true
-                                ? "Resend invitation email"
-                                : "Send invitation email",
+                                ? "Resend invite"
+                                : "Send invite",
                             systemImage: "envelope.badge"
                         )
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(client.isMutating || model.usesPreviewData)
-                    .accessibilityHint("Emails a one-time, verified-email invitation and records delivery separately from acceptance.")
+                    .accessibilityHint("Sends this Session invitation to the client's email.")
                     .accessibilityIdentifier("CaptureCoachingSendInvite_\(booking.id)")
 
                     if let delivery = client.invitationDeliveries[roomID] {
                         Label(
                             delivery.wasSent
-                                ? "Email sent to \(recipientEmail). Acceptance is still pending."
+                                ? "Sent to \(recipientEmail)."
                                 : delivery.errorMessage ?? "Email was not sent. Retry or share the link.",
                             systemImage: delivery.wasSent ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
                         )

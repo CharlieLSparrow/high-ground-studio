@@ -525,6 +525,12 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   its keyboard on email, removes the recurring access-policy disclaimer, uses
   one `Schedule & invite` action, automatically attempts configured email
   delivery, and keeps system Share as the resilient fallback.
+- Simplified the post-schedule handoff around one normal next action: `Open
+  Session`. Email resend, invite-link copy, system Share, and the optional
+  client space remain available under `Invitation options` instead of competing
+  as equal primary buttons. The iPhone reports a successful delivery calmly and
+  preserves the Share fallback when provider delivery is unavailable, without
+  asking the coach to supervise an acceptance state.
 - Made reopening a Session honor the canonical saved consent state in both UI
   and server guidance. Reopen never invents a new consent ceremony; recording
   remains a separate explicit action and a changed Session, participant, media
