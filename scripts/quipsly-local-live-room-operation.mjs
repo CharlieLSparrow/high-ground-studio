@@ -898,6 +898,22 @@ try {
         .count()) === 0,
       `${journey.identity.role} was asked to repeat unchanged Session consent after re-entry.`,
     );
+    await journey.page
+      .getByRole("button", { name: "Leave", exact: true })
+      .click();
+    const recordingCloseStatus = journey.page.getByRole("region", {
+      name: "Recording close status",
+    });
+    await recordingCloseStatus.waitFor({ state: "visible", timeout: 20_000 });
+    await recordingCloseStatus
+      .getByText("Safe to close", { exact: true })
+      .waitFor({ state: "visible", timeout: 20_000 });
+    assert(
+      await journey.page
+        .locator(`[aria-labelledby="browser-source-${ROOM_ID}"]`)
+        .isVisible(),
+      `${journey.identity.role} recording recovery disappeared after leaving the call.`,
+    );
   }
 
   console.log(
@@ -921,6 +937,8 @@ try {
         technicalDeviceDetailsCollapsedBeforeJoin: true,
         prejoinRecordingActionAbsent: true,
         savedConsentRestoredAfterReentry: true,
+        postCallRecordingRecoveryStayedMounted: true,
+        verifiedRecordingSafeToCloseRendered: true,
         independentBrowserSourcesVerified: 2,
         independentParticipantSourcesVerified: new Set(
           verifiedSources.map((source) => source.participantId),

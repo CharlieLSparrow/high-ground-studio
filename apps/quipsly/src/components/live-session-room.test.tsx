@@ -76,6 +76,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     captureGroupId,
     projectSlug,
     conversationConnected,
+    conversationEnded,
     stopRequestVersion,
     onSourceLockChange,
     onPreparationStateChange,
@@ -83,6 +84,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     captureGroupId: string;
     projectSlug?: string | null;
     conversationConnected?: boolean;
+    conversationEnded?: boolean;
     stopRequestVersion?: number;
     onSourceLockChange?: (locked: boolean) => void;
     onPreparationStateChange?: (state: { participantReady: boolean; everyoneReady: boolean }) => void;
@@ -94,6 +96,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
       <span data-testid="browser-source-capture-group">{captureGroupId}</span>
       <span data-testid="browser-source-project">{projectSlug || "unbound"}</span>
       <span data-testid="browser-source-conversation">{conversationConnected ? "connected" : "lobby"}</span>
+      <span data-testid="browser-source-ended">{conversationEnded ? "ended" : "active"}</span>
       <button type="button" onClick={() => onSourceLockChange?.(true)}>Simulate retained source start</button>
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
       <button type="button" onClick={() => onPreparationStateChange?.({ participantReady: true, everyoneReady: false })}>Simulate recording choice ready</button>
@@ -668,8 +671,10 @@ describe("LiveSessionRoom", () => {
 
     expect(await screen.findByText("Call ended")).toBeInTheDocument();
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(
-      /local recording stopped safely.*upload recovery continues automatically/i,
+      /local recording is protected.*Safe to close/i,
     );
+    expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("lobby");
+    expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("ended");
     expect(mockLiveKitRoom.disconnect).toHaveBeenCalledWith(true);
   });
 

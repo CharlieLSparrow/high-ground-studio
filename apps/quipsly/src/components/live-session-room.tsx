@@ -1097,7 +1097,7 @@ export function LiveSessionRoom({
     setStatus("ended");
     setMessage(
       protectedSourceStopped
-        ? "You left the call. Your local recording stopped safely; upload recovery continues automatically."
+        ? "Call ended. Your local recording is protected. Keep Quipsly open until the recording panel says Safe to close."
         : "You left the call.",
     );
   }, [clearPreflightPreview, clearRemoteMedia]);
@@ -1530,6 +1530,7 @@ export function LiveSessionRoom({
       cameraId={cameraId}
       cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
       conversationConnected={connected}
+      conversationEnded={status === "ended"}
       onSourceLockChange={setSourceLocked}
       stopRequestVersion={sourceStopRequestVersion}
       onGuardianEvidenceChange={setRetainedGuardianEvidence}
@@ -1542,6 +1543,7 @@ export function LiveSessionRoom({
       <p className="mt-2 text-[10px] font-black leading-4">Refresh the Session. If recording is still unavailable, ask the host to reopen it.</p>
     </section>
   );
+  const showRetainedSourceControls = connected || status === "ended" || sourceLocked || leaveAfterSourceStops;
 
   return (
     <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
@@ -1681,7 +1683,7 @@ export function LiveSessionRoom({
           </details>
           </details>
 
-          {experience.captureProfile === "coaching" && connected ? retainedSourceControls : null}
+          {experience.captureProfile === "coaching" && showRetainedSourceControls ? retainedSourceControls : null}
           {showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status) ? (
             <p data-testid="call-status-message" role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
           ) : null}
@@ -1750,7 +1752,7 @@ export function LiveSessionRoom({
         </aside>
       </div>
       <div className="mt-5 space-y-4">
-        {experience.captureProfile === "episode" && connected ? retainedSourceControls : null}
+        {experience.captureProfile === "episode" && showRetainedSourceControls ? retainedSourceControls : null}
         <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
             Recording safety details

@@ -68,6 +68,7 @@ import type {
 import { browserRetainedStorageIssue } from "@/lib/session-guardian";
 import {
   browserSourceInterruptedRecoveryCandidate,
+  browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
   browserSourceRecoverySummary,
   browserSourceSafetyLabel,
@@ -253,6 +254,7 @@ export function BrowserSourceRecorder({
   cameraId,
   cameraLabel,
   conversationConnected = true,
+  conversationEnded = false,
   stopRequestVersion = 0,
   onSourceLockChange,
   onGuardianEvidenceChange,
@@ -269,6 +271,7 @@ export function BrowserSourceRecorder({
   cameraId: string;
   cameraLabel: string;
   conversationConnected?: boolean;
+  conversationEnded?: boolean;
   stopRequestVersion?: number;
   onSourceLockChange?: (locked: boolean) => void;
   onGuardianEvidenceChange?: (
@@ -327,6 +330,9 @@ export function BrowserSourceRecorder({
     : null;
   const sourceLocked =
     status === "starting" || status === "recording" || status === "stopping";
+  const protectedTransferActive =
+    status === "uploading" ||
+    recoveryRows.some((ledger) => ledger.state === "uploading");
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -370,7 +376,8 @@ export function BrowserSourceRecorder({
   }, []);
 
   useActiveMediaLifecycle({
-    hasUnsavedMedia: sourceLocked,
+    hasUnsavedMedia: sourceLocked || protectedTransferActive,
+    keepScreenAwake: sourceLocked || protectedTransferActive,
     flushPendingMedia,
   });
 
@@ -2241,6 +2248,7 @@ export function BrowserSourceRecorder({
   );
 
   const recoverySummary = browserSourceRecoverySummary(recoveryRows);
+  const exitSafety = browserSourceExitSafety(status, recoveryRows);
 
   return (
     <section
@@ -2251,22 +2259,28 @@ export function BrowserSourceRecorder({
         <div>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-800">
             <HardDrive size={14} />{" "}
-            {sessionKind === "coaching"
-              ? "High-quality local recording"
-              : "Retained local source"}
+            {conversationEnded
+              ? "Your recording"
+              : sessionKind === "coaching"
+                ? "High-quality local recording"
+                : "Retained local source"}
           </p>
           <h3
             id={`browser-source-${callRoomId}`}
             className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
           >
-            {sessionKind === "coaching"
-              ? "Record this coaching Session"
-              : "Record the selected studio source"}
+            {conversationEnded
+              ? exitSafety.label
+              : sessionKind === "coaching"
+                ? "Record this coaching Session"
+                : "Record the selected studio source"}
           </h3>
           <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
-            {sessionKind === "coaching"
-              ? "Joining never starts recording. Once everyone agrees, Record starts the high-quality copy on this device."
-              : "Joining never starts recording. Record saves a high-quality copy on this device for the shared timeline."}
+            {conversationEnded
+              ? exitSafety.detail
+              : sessionKind === "coaching"
+                ? "Joining never starts recording. Once everyone agrees, Record starts the high-quality copy on this device."
+                : "Joining never starts recording. Record saves a high-quality copy on this device for the shared timeline."}
           </p>
           <details className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]">
             <summary className="cursor-pointer">
@@ -2282,11 +2296,11 @@ export function BrowserSourceRecorder({
         <span
           className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${status === "recording" ? "bg-rose-700 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-emerald-100 text-emerald-950"}`}
         >
-          {retainedRecorderStatusLabel(status, elapsedSeconds)}
+          {conversationEnded ? exitSafety.label : retainedRecorderStatusLabel(status, elapsedSeconds)}
         </span>
       </div>
 
-      {!myConsentCoversSource ? (
+      {!conversationEnded && !myConsentCoversSource ? (
         <section
           className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950"
           aria-label="Recording consent needed"
@@ -2316,7 +2330,7 @@ export function BrowserSourceRecorder({
         </section>
       ) : null}
 
-      <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
+      {!conversationEnded ? <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
         <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
           Recording settings · {myConsentCoversSource ? "Saved" : "Review"}
         </summary>
@@ -2426,13 +2440,27 @@ export function BrowserSourceRecorder({
             </details>
           </div>
         </div>
-      </details>
+      </details> : null}
 
       {!conversationConnected ? (
-        <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold leading-5 text-violet-950">
-          Next, check your microphone and camera, then join the call. Joining
-          does not start recording; the Record button appears after you join.
-        </p>
+        conversationEnded ? (
+          <section
+            className={`mt-4 rounded-xl border p-4 ${exitSafety.state === "safe" || exitSafety.state === "idle" ? "border-emerald-300 bg-emerald-50 text-emerald-950" : exitSafety.state === "attention" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-violet-300 bg-violet-50 text-violet-950"}`}
+            aria-label="Recording close status"
+            aria-live="polite"
+          >
+            <p className="flex items-center gap-2 text-sm font-black">
+              {exitSafety.state === "safe" || exitSafety.state === "idle" ? <CheckCircle2 size={18} aria-hidden="true" /> : exitSafety.state === "attention" ? <AlertTriangle size={18} aria-hidden="true" /> : <LoaderCircle size={18} className="animate-spin" aria-hidden="true" />}
+              {exitSafety.label}
+            </p>
+            <p className="mt-2 text-xs font-semibold leading-5">{exitSafety.detail}</p>
+          </section>
+        ) : (
+          <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold leading-5 text-violet-950">
+            Next, check your microphone and camera, then join the call. Joining
+            does not start recording; the Record button appears after you join.
+          </p>
+        )
       ) : null}
 
       <div

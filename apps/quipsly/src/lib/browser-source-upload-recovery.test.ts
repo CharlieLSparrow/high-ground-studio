@@ -2,6 +2,7 @@ import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
 import {
   browserSourceInterruptedRecoveryCandidate,
   browserSourceSafetyLabel,
+  browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
   browserSourceRecoverySummary,
   browserSourceUploadCanResumeAutomatically,
@@ -277,6 +278,47 @@ describe("browser source upload recovery", () => {
       label: "Saved on this device",
       detail: expect.stringContaining("not yet verified in Quipsly"),
       safeCount: 1,
+    });
+  });
+
+  it("gives one conservative page-exit answer from the local recovery ledger", () => {
+    expect(browserSourceExitSafety("recording", [])).toMatchObject({
+      state: "recording",
+      canClosePage: false,
+    });
+    expect(
+      browserSourceExitSafety("uploading", [ledger("uploading")]),
+    ).toMatchObject({
+      state: "keep-open",
+      label: "Keep Quipsly open",
+      canClosePage: false,
+    });
+    expect(
+      browserSourceExitSafety("held", [
+        ledger("held", { failureReason: null }),
+      ]),
+    ).toMatchObject({
+      state: "keep-open",
+      canClosePage: false,
+    });
+    expect(
+      browserSourceExitSafety("error", [
+        ledger("failed", { failureReason: "Upload allowance exceeded" }),
+      ]),
+    ).toMatchObject({
+      state: "attention",
+      canClosePage: false,
+    });
+    expect(
+      browserSourceExitSafety("ready", [ledger("verified")]),
+    ).toMatchObject({
+      state: "safe",
+      label: "Safe to close",
+      canClosePage: true,
+    });
+    expect(browserSourceExitSafety("ready", [])).toMatchObject({
+      state: "idle",
+      canClosePage: true,
     });
   });
 });

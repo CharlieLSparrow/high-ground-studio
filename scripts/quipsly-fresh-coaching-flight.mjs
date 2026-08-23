@@ -378,6 +378,9 @@ const result = {
     call.prejoinRecordingActionAbsent === true,
   unchangedSessionConsentRemembered:
     call.savedConsentRestoredAfterReentry === true,
+  safePostCallRecordingExitOperated:
+    call.postCallRecordingRecoveryStayedMounted === true &&
+    call.verifiedRecordingSafeToCloseRendered === true,
   participantRecordingCompletenessVisible:
     call.allExpectedParticipantsRecordingVisible === true,
   sourceOverlapMilliseconds: call.browserSourceOverlapMilliseconds,
@@ -462,6 +465,9 @@ const result = {
         call.technicalDeviceDetailsCollapsedBeforeJoin === true,
       unchangedSessionConsentRemembered:
         call.savedConsentRestoredAfterReentry === true,
+      safePostCallRecordingExit:
+        call.postCallRecordingRecoveryStayedMounted === true &&
+        call.verifiedRecordingSafeToCloseRendered === true,
       participantRecordingCompleteness:
         call.allExpectedParticipantsRecordingVisible === true,
       relationshipWork: work.boundaries?.productFormsOnlyForWrites === true,

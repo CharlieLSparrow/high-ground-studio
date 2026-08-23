@@ -1,4 +1,5 @@
 import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
+import type { BrowserRetainedSourceStatus } from "@/lib/session-guardian";
 
 const AUTO_RESUMABLE_STATES = new Set(["stopped", "uploading", "verifying"]);
 const TRANSIENT_FAILURE =
@@ -275,5 +276,86 @@ export function browserSourceRecoverySummary(
     uploadingCount,
     safeCount,
     attentionCount,
+  };
+}
+
+export type BrowserSourceExitSafety = {
+  state: "idle" | "recording" | "keep-open" | "safe" | "attention";
+  label: string;
+  detail: string;
+  canClosePage: boolean;
+};
+
+export function browserSourceExitSafety(
+  status: BrowserRetainedSourceStatus,
+  ledgers: readonly BrowserSourceCaptureLedger[],
+): BrowserSourceExitSafety {
+  if (["starting", "recording", "stopping"].includes(status)) {
+    return {
+      state: "recording",
+      label:
+        status === "stopping" ? "Saving recording" : "Recording in progress",
+      detail:
+        "Do not close this page while Quipsly is finishing the local recording.",
+      canClosePage: false,
+    };
+  }
+  if (!ledgers.length) {
+    return status === "uploading" || status === "held" || status === "error"
+      ? {
+          state: "attention",
+          label: "Recording needs attention",
+          detail:
+            "Quipsly cannot confirm a recoverable local recording yet. Keep this page open and use the visible recovery message.",
+          canClosePage: false,
+        }
+      : {
+          state: "idle",
+          label: "Call ended",
+          detail: "No local recording is waiting to upload from this browser.",
+          canClosePage: true,
+        };
+  }
+  const summary = browserSourceRecoverySummary(ledgers);
+  if (status === "uploading" || summary.uploadingCount > 0) {
+    return {
+      state: "keep-open",
+      label: "Keep Quipsly open",
+      detail:
+        "Your recording is protected on this device and is still uploading. You may leave the call, but wait for Safe to close before closing this page.",
+      canClosePage: false,
+    };
+  }
+  if (summary.attentionCount > 0 || status === "error") {
+    return {
+      state: "attention",
+      label: "Recording needs attention",
+      detail: `${summary.detail} Keep this page open while you retry or download the protected local source.`,
+      canClosePage: false,
+    };
+  }
+  if (summary.safeCount > 0 || status === "held") {
+    return {
+      state: "keep-open",
+      label: "Keep Quipsly open",
+      detail:
+        "Your recording is saved on this device but is not verified in Quipsly yet. Retry the upload below; the local source remains available.",
+      canClosePage: false,
+    };
+  }
+  if (summary.verifiedCount === ledgers.length) {
+    return {
+      state: "safe",
+      label: "Safe to close",
+      detail: `${summary.verifiedCount} ${summary.verifiedCount === 1 ? "recording is" : "recordings are"} verified in Quipsly. You can close this page.`,
+      canClosePage: true,
+    };
+  }
+  return {
+    state: "attention",
+    label: "Recording status unavailable",
+    detail:
+      "Keep this page open until Quipsly can confirm the recording state.",
+    canClosePage: false,
   };
 }
