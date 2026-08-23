@@ -27,6 +27,8 @@ test("fresh coaching flight retains a private receipt without claiming human acc
   assert.match(source, /quipsly-fresh-session-audio-polish-operation\.mjs/);
   assert.match(source, /automaticPostCallAudioReadinessOperated:/);
   assert.match(source, /automaticPostCallAudioResult:/);
+  assert.match(source, /mentorTranscriptReportOperated:/);
+  assert.match(source, /quipsly-coaching-transcript-report-v2/);
   assert.match(source, /automaticAudioResultWasNotPublished:/);
   assert.match(source, /conventionalCallEntryOperated:/);
   assert.match(source, /advancedDeviceSettingsCollapsedBeforeJoin/);

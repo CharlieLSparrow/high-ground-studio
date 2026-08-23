@@ -231,6 +231,21 @@ assert.equal(
   true,
   "The host never received complete participant recording-health evidence.",
 );
+assert.equal(
+  transcript.mentorReport?.downloadedThroughRenderedUi,
+  true,
+  "The coach did not receive the mentor transcript through the rendered Session.",
+);
+assert.equal(
+  transcript.mentorReport?.schema,
+  "quipsly-coaching-transcript-report-v2",
+  "The mentor transcript did not use the multi-source report contract.",
+);
+assert.equal(
+  transcript.mentorReport?.sourceCount,
+  2,
+  "The mentor transcript did not bind both participant recordings.",
+);
 if (controlledSpeechFlight) {
   assert.equal(
     call.controlledAudibleSpeechUsed,
@@ -370,6 +385,12 @@ const result = {
   protectedTranscriptPlaybackDecoded: transcript.renderedTranscriptRuns.every(
     (item) => item.protectedPlaybackDecoded,
   ),
+  mentorTranscriptReportOperated:
+    transcript.mentorReport?.downloadedThroughRenderedUi === true &&
+    transcript.mentorReport?.schema ===
+      "quipsly-coaching-transcript-report-v2" &&
+    transcript.mentorReport?.sourceCount === 2,
+  mentorTranscriptReport: transcript.mentorReport,
   sharedAndPrivateWorkOperated:
     work.clientCreatedSharedNote &&
     work.clientCreatedPrivateNote &&
@@ -461,6 +482,9 @@ const result = {
         audioPolish?.recordingAndTranscriptRenderedSideBySide === true &&
         audioPolish?.correctionPlaybackStartedAutomatically === true &&
         audioPolish?.repeatedPlaybackAttestationAbsent === true,
+      mentorTranscriptReport:
+        transcript.mentorReport?.downloadedThroughRenderedUi === true &&
+        transcript.mentorReport?.sourceCount === 2,
     },
     browserInitiatedServiceMechanics: {
       transcriptWorkerAndProtectedPlayback: true,
