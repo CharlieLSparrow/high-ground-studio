@@ -540,6 +540,11 @@ failure shapes recur often enough to influence the architecture:
   in-progress result, or if an improved listening copy is published implicitly.
   This turns the no-recurring-admin promise into a retained release assertion
   rather than a UI aspiration.
+- Extended that flight through a full post-recording reload and ordinary rejoin
+  for both participants. The same current Session consent must return as
+  `Saved`, and the agreement prompt must stay absent. Quipsly asks again only
+  when the participant, Session, requested audio/video/transcription scope,
+  policy version, or recorded decision actually changes.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB

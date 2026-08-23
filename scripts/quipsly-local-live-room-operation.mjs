@@ -836,6 +836,45 @@ try {
     `Independent browser masters overlapped by only ${overlapMilliseconds} ms.`,
   );
 
+  for (const journey of journeys) {
+    await journey.page.reload({ waitUntil: "domcontentloaded" });
+    await journey.page
+      .locator('[data-session-entry-ready="true"]')
+      .waitFor({ state: "visible", timeout: 20_000 });
+    const reentryDock = journey.page.locator(
+      'aside[aria-label$=" live call dock"]',
+    );
+    const reentryJoin = reentryDock.getByRole("button", {
+      name: "Join call",
+      exact: true,
+    });
+    await reentryJoin
+      .waitFor({ state: "visible", timeout: 3_000 })
+      .catch(async () => {
+        await journey.page
+          .getByRole("button", {
+            name: /Join call|Join in browser|Open call lobby|This browser/i,
+          })
+          .first()
+          .click();
+        await reentryDock.waitFor({ state: "visible", timeout: 20_000 });
+        await reentryJoin.waitFor({ state: "visible", timeout: 20_000 });
+      });
+    await reentryJoin.click();
+    await journey.page
+      .getByRole("button", { name: "Leave", exact: true })
+      .waitFor({ timeout: 20_000 });
+    await journey.page
+      .getByText("Recording settings · Saved", { exact: true })
+      .waitFor({ state: "visible", timeout: 20_000 });
+    assert(
+      (await journey.page
+        .getByRole("region", { name: "Recording consent needed" })
+        .count()) === 0,
+      `${journey.identity.role} was asked to repeat unchanged Session consent after re-entry.`,
+    );
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -856,6 +895,7 @@ try {
         advancedDeviceSettingsCollapsedBeforeJoin: true,
         technicalDeviceDetailsCollapsedBeforeJoin: true,
         prejoinRecordingActionAbsent: true,
+        savedConsentRestoredAfterReentry: true,
         independentBrowserSourcesVerified: 2,
         independentParticipantSourcesVerified: new Set(
           verifiedSources.map((source) => source.participantId),

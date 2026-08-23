@@ -31,6 +31,8 @@ test("fresh coaching flight retains a private receipt without claiming human acc
   assert.match(source, /conventionalCallEntryOperated:/);
   assert.match(source, /advancedDeviceSettingsCollapsedBeforeJoin/);
   assert.match(source, /technicalDeviceDetailsCollapsedBeforeJoin/);
+  assert.match(source, /unchangedSessionConsentRemembered:/);
+  assert.match(source, /savedConsentRestoredAfterReentry/);
   assert.match(source, /audioPolish\?\.actionOperated,/);
   assert.match(source, /audioPolish\?\.initialState,/);
   assert.match(source, /originalSourceAndCaptureManifestUnchanged/);

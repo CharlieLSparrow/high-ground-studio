@@ -316,6 +316,8 @@ const result = {
     call.advancedDeviceSettingsCollapsedBeforeJoin === true &&
     call.technicalDeviceDetailsCollapsedBeforeJoin === true &&
     call.prejoinRecordingActionAbsent === true,
+  unchangedSessionConsentRemembered:
+    call.savedConsentRestoredAfterReentry === true,
   sourceOverlapMilliseconds: call.browserSourceOverlapMilliseconds,
   transcriptSourceCount: transcript.sourceCount,
   protectedTranscriptPlaybackDecoded: transcript.renderedTranscriptRuns.every(
@@ -374,6 +376,8 @@ const result = {
         call.conventionalLobbyOperated === true &&
         call.advancedDeviceSettingsCollapsedBeforeJoin === true &&
         call.technicalDeviceDetailsCollapsedBeforeJoin === true,
+      unchangedSessionConsentRemembered:
+        call.savedConsentRestoredAfterReentry === true,
       relationshipWork: work.boundaries?.productFormsOnlyForWrites === true,
       lightEditPreviewReleaseAndRevoke:
         share.boundaries?.releaseWasExplicit === true &&
