@@ -2211,6 +2211,7 @@ final class CaptureExperienceUITests: XCTestCase {
         evidenceLink.tap()
 
         XCTAssertTrue(app.scrollViews["CaptureSourceEvidenceView"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Recording quality"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureSourceEvidenceRoomBoundaryStatus"].exists)
         let previewBoundary = app.descendants(matching: .any)["CaptureSourceEvidencePreviewBoundary"]
         XCTAssertTrue(previewBoundary.exists)

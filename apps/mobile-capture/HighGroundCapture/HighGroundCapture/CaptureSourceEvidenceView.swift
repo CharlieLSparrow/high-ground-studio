@@ -15,20 +15,32 @@ struct CaptureSourceEvidenceView: View {
     @State private var selectedAudioSeconds = 0.0
     @State private var showsTechnicalAudioDetails = false
     @State private var showsTechnicalSoundDetails = false
+    @State private var showsRecordingDetails = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let recording = library.recording(id: recordingID) {
                     explanation
-                    identityCard(recording)
-                    captureCard(recording)
                     audioSignalCard(recording)
                     audibleEventAnalysisCard(recording)
-                    roomCard(recording)
-                    cloudCard(recording)
-                    nestComparisonCard(recording)
-                    evidenceAction(recording)
+                    DisclosureGroup(
+                        "Recording and upload details",
+                        isExpanded: $showsRecordingDetails
+                    ) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            identityCard(recording)
+                            captureCard(recording)
+                            roomCard(recording)
+                            cloudCard(recording)
+                            nestComparisonCard(recording)
+                            evidenceAction(recording)
+                        }
+                        .padding(.top, 12)
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("CaptureRecordingDetailsDisclosure")
+                    .evidenceSurface()
                 } else {
                     ContentUnavailableView(
                         "Source unavailable",
@@ -40,7 +52,7 @@ struct CaptureSourceEvidenceView: View {
             .padding(18)
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("Source evidence")
+        .navigationTitle("Recording quality")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CaptureSourceEvidenceView")
         .onDisappear {
@@ -52,9 +64,9 @@ struct CaptureSourceEvidenceView: View {
 
     private var explanation: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Proof attached to the original", systemImage: "checkmark.shield")
+            Label("Hear the moments that matter", systemImage: "waveform.badge.magnifyingglass")
                 .font(.title3.weight(.bold))
-            Text("Quipsly keeps capture-time device details, room boundaries, local integrity, and verified cloud evidence together without changing the recording.")
+            Text("Quipsly checks the complete recording and points you to moments worth hearing. Your original stays unchanged, and technical proof is available below when you need it.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -990,9 +1002,9 @@ struct CaptureSourceEvidencePreviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Label("Proof attached to the original", systemImage: "checkmark.shield")
+                    Label("Hear the moments that matter", systemImage: "waveform.badge.magnifyingglass")
                         .font(.title3.weight(.bold))
-                    Text("Preview data demonstrates the review surface only. It never claims that synthetic media was captured or verified.")
+                    Text("Preview data demonstrates how Quipsly points to moments worth hearing. It never claims that synthetic media was captured or verified.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -1122,7 +1134,7 @@ struct CaptureSourceEvidencePreviewView: View {
             .padding(18)
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("Source evidence")
+        .navigationTitle("Recording quality")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CaptureSourceEvidenceView")
     }

@@ -9820,7 +9820,7 @@ private struct CaptureLibraryView: View {
                     NavigationLink {
                         CaptureSourceEvidencePreviewView()
                     } label: {
-                        Label("Review source evidence", systemImage: "checkmark.shield")
+                        Label("Check recording quality", systemImage: "waveform.badge.magnifyingglass")
                             .font(.headline)
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }
@@ -12634,11 +12634,12 @@ private struct LocalRecordingRow: View {
             NavigationLink {
                 CaptureSourceEvidenceView(recordingID: recording.id)
             } label: {
-                Label("Review source evidence", systemImage: "checkmark.shield")
+                Label("Check recording quality", systemImage: "waveform.badge.magnifyingglass")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             }
             .buttonStyle(.bordered)
+            .accessibilityHint("Shows the waveform and moments worth hearing. Recording and upload proof stays available under details.")
             .accessibilityIdentifier("CaptureSourceEvidenceLink_\(recording.id)")
 
             HStack(spacing: 10) {
