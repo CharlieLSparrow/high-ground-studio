@@ -24,10 +24,11 @@ test("native coach follow-up operation is local, reversible, and actor-separated
   assert.match(operator, /credentialsPrinted: false/);
   assert.match(runner, /coach-follow-up-authoring\)/);
   assert.match(nativeTest, /testAssignedCoachCreatesRevisesAndReleasesClientFollowUpInCapture/);
-  assert.match(nativeTest, /testReleasedClientFollowUpAppearsAndAcknowledgesInCapture/);
+  assert.match(nativeTest, /testReleasedClientFollowUpAppearsAndAutomaticallyAcknowledgesInCapture/);
   assert.match(bridge, /func saveClientFollowUpDraft/);
   assert.match(bridge, /func releaseClientFollowUp/);
   assert.match(bridge, /clientFollowUpStableUUID/);
-  assert.match(components, /CaptureCoachFollowUpReleaseConfirmation/);
-  assert.match(components, /No email, message, calendar event, or publication occurred/);
+  assert.ok(components.includes('Share with \\(output.recipientLabel)'));
+  assert.match(components, /CaptureClientFollowUpOpenState_/);
+  assert.match(components, /It does not send an email or message/);
 });

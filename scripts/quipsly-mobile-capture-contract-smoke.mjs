@@ -2000,11 +2000,12 @@ function checkTranscriptCorrectionContractSources() {
       && mobileComponentsText.includes("CaptureCoachFollowUpReleaseHeld")
       && mobileComponentsText.includes("CaptureCoachFollowUpUnsavedChanges")
       && bridgeText.includes("func matches(_ output: MobileCaptureClientFollowUp)")
-      && mobileComponentsText.includes("!releaseReady || !releaseConfirmed")
+      && mobileComponentsText.includes("Share with \\(output.recipientLabel)")
+      && mobileComponentsText.includes("!releaseReady || isSaving")
       && captureUITestText.includes("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged")
       && captureUITestText.includes("testCoachFollowUpHoldsReleaseForUnsavedEditorChanges"),
     "clientFollowUpReleaseSourceReadiness",
-    "Nest rechecks the immutable follow-up manifest against current eligible canonical records inside the release transaction, while web and iPhone hold release and direct the coach to save a current private revision when a selected source changes.",
+    "Nest rechecks the immutable follow-up manifest against current eligible records inside the share transaction, while web and iPhone hold sharing and direct the coach to save a current draft when a selected source changes.",
   );
   expect(
     clientFollowUpAttentionText.includes("projectClientFollowUpAttention")
@@ -2020,7 +2021,7 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("onOpenClientFollowUp")
       && captureUITestText.includes("testTodayOpensTheExactNewClientFollowUpWithoutAcknowledgingIt"),
     "clientFollowUpTodayAttention",
-    "A newly released unopened coaching follow-up projects to the exact recipient's Today surface on Nest and iPhone, then opens the exact Session while acknowledgment remains explicit and separate.",
+    "A newly shared coaching follow-up projects to the exact recipient's Today surface on Nest and iPhone, opens the exact Session, and records its idempotent open receipt when rendered.",
   );
   expect(
     weeklyCommitmentText.includes("saveWeeklyCommitmentInTransaction")
@@ -2045,7 +2046,7 @@ function checkTranscriptCorrectionContractSources() {
       && sessionContinuityCardText.includes("New check-in since release")
       && bridgeText.includes("let progressedSinceRelease: Bool?")
       && shellText.includes("goal.progressedSinceRelease == true")
-      && shellText.includes("New check-in since release"),
+      && shellText.includes("New check-in"),
     "coachingGoalProgressSinceRelease",
     "A client goal check-in after the immutable release is counted and labelled as new progress across Nest and iPhone without pretending the goal definition or status changed.",
   );

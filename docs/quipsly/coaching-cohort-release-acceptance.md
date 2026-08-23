@@ -1201,3 +1201,24 @@ continuity contract test pass. The signed-in continuity journey was not rerun
 because the retained local Nest runtime was not active; its minimally instructed
 human and physical-device evidence therefore remains deferred rather than
 claimed.
+
+## Standard iPhone follow-up sharing checkpoint — 2026-08-23
+
+The native coach flow now matches the web flow: one `Share with <client>`
+action replaces the release-attestation toggle plus release button. Sharing is
+still disabled when editor values are unsaved, a selected source changed, the
+surface is a deterministic preview, the device is offline, or a request is
+already in flight. The server still rechecks the exact saved revision and
+current eligible sources inside the mutation.
+
+The intended client's iPhone records the existing idempotent open receipt when
+the follow-up is rendered. There is no longer a `Confirm I opened this` button.
+The card shows ordinary `New` or `Viewed` state, while the revision, SHA-256,
+and original-source links remain under `Details`.
+
+The universal simulator build passes, the native follow-up contract test
+passes, and three focused iPhone simulator journeys pass for exact-source
+preview, changed-source hold, and unsaved-editor hold in
+`/tmp/quipsly-follow-up-simple-rerun-20260823T063900Z.xcresult`. A signed-in
+client automatic-receipt readback and minimally instructed coach/client use
+remain deferred physical/runtime evidence.

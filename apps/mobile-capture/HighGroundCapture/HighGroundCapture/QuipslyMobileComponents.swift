@@ -480,7 +480,7 @@ private struct MobileClientFollowUpSnapshot: View {
     let followUp: MobileCaptureClientFollowUp
     let session: MobileCaptureSession
     let previewOnly: Bool
-    var showsOpenStatus = true
+    @State private var showsDetails = false
 
     private func nonempty(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -523,15 +523,15 @@ private struct MobileClientFollowUpSnapshot: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 StatusChip(
-                    label: followUp.status == "DRAFT" ? "private draft" : "released in Quipsly",
+                    label: followUp.status == "DRAFT" ? "Draft" : "Shared",
                     tint: followUp.status == "DRAFT" ? .orange : .green
                 )
-                StatusChip(label: "revision \(followUp.revision)", tint: .green)
-                if showsOpenStatus, followUp.status == "RELEASED" {
+                if followUp.status == "RELEASED" {
                     StatusChip(
-                        label: followUp.openedAt == nil ? "open not confirmed" : "open confirmed",
+                        label: followUp.openedAt == nil ? "New" : "Viewed",
                         tint: followUp.openedAt == nil ? .orange : .green
                     )
+                    .accessibilityIdentifier("CaptureClientFollowUpOpenState_\(followUp.id)")
                 }
             }
             .accessibilityIdentifier("CaptureClientFollowUpSnapshot_\(followUp.id)_r\(followUp.revision)")
@@ -604,7 +604,7 @@ private struct MobileClientFollowUpSnapshot: View {
 
             if !followUp.tasks.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Label("Commitments", systemImage: "checklist")
+                    Label("Tasks", systemImage: "checklist")
                         .font(.caption2.bold())
                         .foregroundStyle(.secondary)
                     ForEach(followUp.tasks) { task in
@@ -645,10 +645,22 @@ private struct MobileClientFollowUpSnapshot: View {
                 .background(Color.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
             }
 
-            Text("SHA-256 \(followUp.contentSha256)")
-                .font(.system(.caption2, design: .monospaced))
+            DisclosureGroup(isExpanded: $showsDetails) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Revision \(followUp.revision)")
+                    Text("SHA-256 \(followUp.contentSha256)")
+                        .font(.system(.caption2, design: .monospaced))
+                        .lineLimit(1)
+                    Text("The links above return to the original notes, tasks, goals, and transcript evidence.")
+                }
+                .font(.caption2)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .padding(.top, 6)
+            } label: {
+                Text("Details")
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("CaptureClientFollowUpDetails_\(followUp.id)")
+            }
         }
         .padding(10)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -660,7 +672,6 @@ struct MobileClientFollowUpCard: View {
     @ObservedObject var sessionClient: CaptureSessionClient
     let previewOnly: Bool
     @State private var isExpanded = true
-    @State private var isConfirmingOpen = false
 
     var body: some View {
         if let followUp = session.clientFollowUp {
@@ -672,31 +683,7 @@ struct MobileClientFollowUpCard: View {
                         previewOnly: previewOnly
                     )
 
-                    if followUp.canAcknowledge {
-                        Button {
-                            isConfirmingOpen = true
-                            Task {
-                                _ = await sessionClient.acknowledgeClientFollowUp(for: session)
-                                isConfirmingOpen = false
-                            }
-                        } label: {
-                            Label(
-                                followUp.openedAt != nil
-                                    ? "Open confirmed"
-                                    : isConfirmingOpen
-                                        ? "Confirming"
-                                        : "Confirm I opened this",
-                                systemImage: followUp.openedAt != nil ? "checkmark.seal.fill" : "eye"
-                            )
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.green)
-                        .disabled(followUp.openedAt != nil || isConfirmingOpen)
-                        .accessibilityIdentifier("CaptureClientFollowUpAcknowledge_\(followUp.id)")
-                        .accessibilityHint("Records an in-app open receipt for this exact follow-up. It does not complete any task or goal.")
-                    }
-
-                    Text("This released snapshot contains only deliberately client-safe notes and client-owned goals or tasks. It is not an email, public post, calendar action, or proof that any commitment is complete.")
+                    Text("Shared only with you and your coach.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -718,6 +705,13 @@ struct MobileClientFollowUpCard: View {
             }
             .padding(10)
             .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .task(id: "\(followUp.id)|\(followUp.openedAt ?? "new")") {
+                guard !previewOnly,
+                      followUp.canAcknowledge,
+                      followUp.openedAt == nil,
+                      AuthManager.shared.networkActionsAllowed else { return }
+                _ = await sessionClient.acknowledgeClientFollowUp(for: session)
+            }
         }
     }
 }
@@ -744,7 +738,6 @@ struct MobileCoachClientFollowUpCard: View {
     @State private var loadedWorkspaceVersion = ""
     @State private var isSaving = false
     @State private var isReleasing = false
-    @State private var releaseConfirmed = false
     @State private var notice: String?
     @FocusState private var focusedField: FocusedField?
 
@@ -800,7 +793,6 @@ struct MobileCoachClientFollowUpCard: View {
             set: { selected in
                 if selected { draft[keyPath: keyPath].insert(id) }
                 else { draft[keyPath: keyPath].remove(id) }
-                releaseConfirmed = false
             }
         )
     }
@@ -819,13 +811,13 @@ struct MobileCoachClientFollowUpCard: View {
                 isReviewing = true
             } label: {
                 VStack(alignment: .leading, spacing: 3) {
-                    Label("Client follow-up review", systemImage: "person.crop.circle.badge.checkmark")
+                    Label("Follow-up for \(workspace.room.client.label)", systemImage: "person.crop.circle.badge.checkmark")
                         .font(.caption.bold())
                         .foregroundStyle(.teal)
-                    Text(workspace.output?.status == "DRAFT" ? "Private revision \(workspace.output?.revision ?? 1)" : "Prepare for \(workspace.room.client.label)")
+                    Text(workspace.output?.status == "DRAFT" ? "Draft ready" : "Create a follow-up")
                         .font(.subheadline.bold())
                     HStack {
-                        Text("Assigned coach · canonical Nest state")
+                        Text("Notes, tasks, goals, and next steps")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -858,14 +850,13 @@ struct MobileCoachClientFollowUpCard: View {
 
                     if let output = workspace.output {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(output.status == "DRAFT" ? "Exact private server snapshot" : "Latest released server snapshot")
+                            Text(output.status == "DRAFT" ? "Saved draft" : "Shared follow-up")
                                 .font(.caption.bold())
                                 .foregroundStyle(.secondary)
                             MobileClientFollowUpSnapshot(
                                 followUp: output,
                                 session: session,
-                                previewOnly: previewOnly,
-                                showsOpenStatus: false
+                                previewOnly: previewOnly
                             )
                         }
                     }
@@ -914,7 +905,7 @@ struct MobileCoachClientFollowUpCard: View {
                             selected: { selectionBinding(\.goalIDs, id: $0) }
                         )
                         MobileCoachFollowUpSelectionSection(
-                            title: "Client-owned commitments",
+                            title: "Client tasks",
                             systemImage: "checklist",
                             rows: eligible.tasks.map {
                                 ($0.id, $0.title, selectionDetail($0.detail ?? $0.status.replacingOccurrences(of: "_", with: " ").capitalized, source: $0.sourceAnchor))
@@ -923,28 +914,27 @@ struct MobileCoachClientFollowUpCard: View {
                         )
                     }
 
-                    Text("\(draft.selectedCount) canonical record\(draft.selectedCount == 1 ? "" : "s") selected. Private notes, Session-shared notes, project-team notes, and unreviewed transcript candidates remain ineligible.")
+                    Text("\(draft.selectedCount) item\(draft.selectedCount == 1 ? "" : "s") selected. Only notes and work meant for this client can be shared.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Button {
                         isSaving = true
-                        releaseConfirmed = false
                         Task {
                             let saved = await sessionClient.saveClientFollowUpDraft(for: session, draft: draft)
                             notice = saved
-                                ? "Private draft saved to Nest. The client still cannot see it; inspect the exact revision before release."
+                                ? "Draft saved. Only you can see it until you share."
                                 : sessionClient.errorMessage
                             isSaving = false
                         }
                     } label: {
                         Label(
                             isSaving
-                                ? "Saving private revision"
+                                ? "Saving draft"
                                 : workspace.output?.status == "DRAFT"
-                                    ? "Save private draft changes"
-                                    : "Create private draft",
+                                    ? "Save draft"
+                                    : "Create draft",
                             systemImage: "doc.badge.gearshape"
                         )
                         .frame(maxWidth: .infinity)
@@ -953,16 +943,16 @@ struct MobileCoachClientFollowUpCard: View {
                     .tint(.teal)
                     .disabled(previewOnly || isSaving || isReleasing || !draft.isValid || !AuthManager.shared.networkActionsAllowed)
                     .accessibilityIdentifier("CaptureCoachFollowUpSave")
-                    .accessibilityHint("Saves a new immutable private revision in Nest. It does not release or send the follow-up.")
+                    .accessibilityHint("Saves this private draft without sharing it with the client.")
 
                     if let output = workspace.output, output.status == "DRAFT" {
                         VStack(alignment: .leading, spacing: 8) {
                             if sourcesReady && !hasUnsavedDraftChanges {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Label("Current sources verified", systemImage: "checkmark.shield.fill")
+                                    Label("Ready to share", systemImage: "checkmark.shield.fill")
                                         .font(.caption.bold())
                                         .foregroundStyle(.green)
-                                    Text("All \(workspace.readiness?.selectedCount ?? 0) selected canonical records still match private revision \(output.revision). Release remains a separate confirmation.")
+                                    Text("The selected notes, tasks, and goals have not changed since this draft was saved.")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -972,7 +962,7 @@ struct MobileCoachClientFollowUpCard: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Label("Save edits before release", systemImage: "square.and.arrow.down")
                                         .font(.caption.bold())
-                                    Text("The release controls still point to private revision \(output.revision), not the unsaved editor values. Save a new private revision or restore the editor to this exact snapshot before confirming.")
+                                    Text("Save your latest changes before sharing this follow-up.")
                                         .font(.caption2)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
@@ -980,7 +970,7 @@ struct MobileCoachClientFollowUpCard: View {
                                 .accessibilityIdentifier("CaptureCoachFollowUpUnsavedChanges")
                             } else {
                                 VStack(alignment: .leading, spacing: 5) {
-                                    Label("Release held — review current sources", systemImage: "exclamationmark.shield.fill")
+                                    Label("Review updates before sharing", systemImage: "exclamationmark.shield.fill")
                                         .font(.caption.bold())
                                         .foregroundStyle(.red)
                                         .accessibilityIdentifier("CaptureCoachFollowUpReleaseHeldTitle")
@@ -992,48 +982,39 @@ struct MobileCoachClientFollowUpCard: View {
                                                 .accessibilityIdentifier("CaptureCoachFollowUpReleaseHeldChange")
                                         }
                                     } else {
-                                        Text("Quipsly could not verify this draft against current canonical records.")
+                                        Text("Quipsly could not verify this draft against the current notes, tasks, and goals.")
                                             .font(.caption2.bold())
                                     }
-                                    Text("Review the current selections, then save private draft changes. Nothing has been released.")
+                                    Text("Review the current selections and save the draft before sharing.")
                                         .font(.caption2)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                                 .foregroundStyle(.red)
                             }
 
-                            Toggle(
-                                "I reviewed revision \(output.revision) for \(output.recipientLabel). Release this exact snapshot inside Quipsly only.",
-                                isOn: $releaseConfirmed
-                            )
-                            .font(.caption.bold())
-                            .disabled(!releaseReady)
-                            .accessibilityIdentifier("CaptureCoachFollowUpReleaseConfirmation")
-
                             Button {
                                 isReleasing = true
                                 Task {
                                     let released = await sessionClient.releaseClientFollowUp(for: session)
                                     notice = released
-                                        ? "Released inside the client's private Quipsly Session. No email, message, calendar event, or publication occurred."
+                                        ? "Shared with \(output.recipientLabel)."
                                         : sessionClient.errorMessage
-                                    releaseConfirmed = false
                                     isReleasing = false
                                 }
                             } label: {
-                                Label(isReleasing ? "Releasing in Quipsly" : "Release to client in Quipsly", systemImage: "paperplane")
+                                Label(isReleasing ? "Sharing" : "Share with \(output.recipientLabel)", systemImage: "paperplane")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
                             .tint(.green)
-                            .disabled(previewOnly || !releaseReady || !releaseConfirmed || isSaving || isReleasing || !AuthManager.shared.networkActionsAllowed)
+                            .disabled(previewOnly || !releaseReady || isSaving || isReleasing || !AuthManager.shared.networkActionsAllowed)
                             .accessibilityIdentifier("CaptureCoachFollowUpRelease")
                         }
                         .padding(10)
                         .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     }
 
-                    Text("This iPhone surface uses the canonical Nest draft and revision history. It never emails, texts, publishes, schedules, bills, changes consent, or rewrites a source note, goal, or task.")
+                    Text("Sharing puts this follow-up in \(workspace.room.client.label)'s Quipsly Session. It does not send an email or message.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1059,10 +1040,6 @@ struct MobileCoachClientFollowUpCard: View {
                     guard loadedWorkspaceVersion != workspaceVersion else { return }
                     draft = MobileCaptureClientFollowUpDraft.make(from: workspace)
                     loadedWorkspaceVersion = workspaceVersion
-                    releaseConfirmed = false
-                }
-                .onChange(of: draft) { _, _ in
-                    releaseConfirmed = false
                 }
             }
         }

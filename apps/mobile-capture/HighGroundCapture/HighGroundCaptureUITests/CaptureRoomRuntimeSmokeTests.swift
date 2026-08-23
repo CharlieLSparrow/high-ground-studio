@@ -4471,7 +4471,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             waitForRuntimeElement(card, in: app, timeout: 45, swipeAttempts: 20),
             "The assigned coach should receive the canonical private follow-up workspace on the exact Session."
         )
-        XCTAssertTrue(app.staticTexts["Assigned coach · canonical Nest state"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["Notes, tasks, goals, and next steps"].firstMatch.exists)
         card.tap()
         XCTAssertTrue(
             app.scrollViews["CaptureCoachFollowUpReviewView"].waitForExistence(timeout: 8),
@@ -4527,26 +4527,23 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts[revisedIntro].firstMatch.exists)
 
-        let confirmation = app.switches["CaptureCoachFollowUpReleaseConfirmation"].firstMatch
-        XCTAssertTrue(waitForRuntimeElement(confirmation, in: app, timeout: 15, swipeAttempts: 12))
-        turnOn(confirmation, in: app)
         let release = app.buttons["CaptureCoachFollowUpRelease"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(release, in: app, timeout: 8, swipeAttempts: 8))
         XCTAssertTrue(release.isEnabled)
         release.tap()
 
         let released = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "Latest released server snapshot")
+            NSPredicate(format: "label CONTAINS %@", "Shared follow-up")
         ).firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(released, in: app, timeout: 40, swipeAttempts: 16),
-            "The coach should read back the exact released server snapshot after the explicit confirmation."
+            "The coach should read back the shared follow-up after the named-recipient action."
         )
         XCTAssertFalse(app.buttons["CaptureCoachFollowUpRelease"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts[revisedIntro].firstMatch.exists)
         XCTAssertTrue(
             app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS %@", "No email, message, calendar event, or publication occurred")
+                NSPredicate(format: "label CONTAINS %@", "Shared with")
             ).firstMatch.exists
         )
         attachRecordingIdentity(
@@ -4555,7 +4552,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
-    func testReleasedClientFollowUpAppearsAndAcknowledgesInCapture() throws {
+    func testReleasedClientFollowUpAppearsAndAutomaticallyAcknowledgesInCapture() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
               let outputID = credentials.clientFollowUpID, !outputID.isEmpty,
@@ -4578,6 +4575,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.staticTexts[outputTitle].firstMatch.exists,
             "Capture should render the exact released follow-up title."
         )
+        let details = app.buttons["CaptureClientFollowUpDetails_\(outputID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(details, in: app, timeout: 12, swipeAttempts: 8))
+        details.tap()
         let hash = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", contentSHA256)
         ).firstMatch
@@ -4589,27 +4589,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["RETAINED SHARED MARKER: room visibility is not follow-up consent."].exists)
         XCTAssertFalse(app.staticTexts["RETAINED UNREVIEWED MARKER"].exists)
 
-        let acknowledgeID = "CaptureClientFollowUpAcknowledge_\(outputID)"
-        let acknowledge = app.buttons[acknowledgeID].firstMatch
-        XCTAssertTrue(
-            waitForRuntimeElement(acknowledge, in: app, timeout: 15, swipeAttempts: 6),
-            "The intended client should receive an explicit in-app open confirmation control."
-        )
-        XCTAssertTrue(
-            acknowledge.isEnabled,
-            "This retained native proof requires a released follow-up without a prior open receipt."
-        )
-        acknowledge.tap()
-
-        let confirmed = app.buttons[acknowledgeID].firstMatch
+        let openState = app.descendants(matching: .any)["CaptureClientFollowUpOpenState_\(outputID)"].firstMatch
         let receipt = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "label CONTAINS %@ AND enabled == false", "Open confirmed"),
-            object: confirmed
+            predicate: NSPredicate(format: "label CONTAINS %@", "Viewed"),
+            object: openState
         )
         XCTAssertEqual(
             XCTWaiter.wait(for: [receipt], timeout: 30),
             .completed,
-            "Nest readback should replace the iPhone action with a disabled exact-content open receipt."
+            "Rendering the intended client's follow-up should record and read back the idempotent open receipt automatically."
         )
         XCTAssertTrue(app.staticTexts["Run one protected rehearsal"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts["Use a sustainable boundary"].firstMatch.exists)

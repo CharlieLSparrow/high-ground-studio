@@ -198,7 +198,7 @@ case "$TEST_MODE" in
     fi
     ;;
   client-follow-up)
-    TEST_CASE="testReleasedClientFollowUpAppearsAndAcknowledgesInCapture"
+    TEST_CASE="testReleasedClientFollowUpAppearsAndAutomaticallyAcknowledgesInCapture"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_CLIENT_FOLLOW_UP_ID" || -z "$TEST_CLIENT_FOLLOW_UP_TITLE" || -z "$TEST_CLIENT_FOLLOW_UP_SHA256" ]]; then
       echo "Client-follow-up mode requires exact Session, released output, title, and content-hash identities." >&2
       exit 2

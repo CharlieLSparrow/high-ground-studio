@@ -1694,9 +1694,13 @@ final class CaptureExperienceUITests: XCTestCase {
         followUp.tap()
         let followUpScroll = app.scrollViews["CaptureCoachFollowUpReviewView"].firstMatch
         XCTAssertTrue(followUpScroll.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Saved draft"].waitForExistence(timeout: 5))
+        let details = app.buttons["CaptureClientFollowUpDetails_preview-client-follow-up"].firstMatch
+        XCTAssertTrue(details.waitForExistence(timeout: 5))
+        details.tap()
         XCTAssertTrue(
-            app.staticTexts["Private revision 1"].waitForExistence(timeout: 5),
-            "The coach must see the exact private revision before reviewing or releasing it."
+            app.staticTexts["Revision 1"].waitForExistence(timeout: 5),
+            "The exact revision should remain available under ordinary Details."
         )
 
         let source = app.descendants(matching: .any)["CaptureClientFollowUpSource_note_preview-follow-up-note"].firstMatch
@@ -1752,7 +1756,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let heldTitle = app.staticTexts["CaptureCoachFollowUpReleaseHeldTitle"]
         revealBelow(heldTitle, in: followUpScroll)
         XCTAssertTrue(heldTitle.waitForExistence(timeout: 5))
-        XCTAssertTrue(heldTitle.label.contains("Release held — review current sources"))
+        XCTAssertTrue(heldTitle.label.contains("Review updates before sharing"))
         let sourceChanges = app.staticTexts
             .matching(identifier: "CaptureCoachFollowUpReleaseHeldChange")
             .matching(
@@ -1770,11 +1774,6 @@ final class CaptureExperienceUITests: XCTestCase {
         sourceReadinessScreenshot.name = "Coach follow-up changed-source release hold"
         sourceReadinessScreenshot.lifetime = .keepAlways
         add(sourceReadinessScreenshot)
-
-        let confirmation = app.switches["CaptureCoachFollowUpReleaseConfirmation"].firstMatch
-        revealBelow(confirmation, in: followUpScroll)
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        XCTAssertFalse(confirmation.isEnabled)
 
         let release = app.buttons["CaptureCoachFollowUpRelease"].firstMatch
         revealBelow(release, in: followUpScroll)
@@ -1814,14 +1813,9 @@ final class CaptureExperienceUITests: XCTestCase {
             .matching(identifier: "CaptureCoachFollowUpUnsavedChanges")
             .matching(NSPredicate(
                 format: "label CONTAINS %@",
-                "release controls still point to private revision 1"
+                "Save your latest changes before sharing this follow-up"
             ))
         XCTAssertEqual(heldDetail.count, 1)
-
-        let confirmation = app.switches["CaptureCoachFollowUpReleaseConfirmation"].firstMatch
-        revealBelow(confirmation, in: followUpScroll)
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        XCTAssertFalse(confirmation.isEnabled)
 
         let release = app.buttons["CaptureCoachFollowUpRelease"].firstMatch
         revealBelow(release, in: followUpScroll)

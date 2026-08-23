@@ -797,6 +797,12 @@ share`. The continuity panel says that the call, chat, recordings,
   follow-up creates an idempotent in-app read receipt automatically. Stopping
   sharing remains one reversible action, while source records, revisions, and
   delivery history stay preserved behind the ordinary interface.
+- Use that same behavior on every client surface. Rendering the intended
+  client's in-app follow-up is enough to record an idempotent viewed receipt;
+  never ask the person to press `Confirm I opened this`. On iPhone, the coach's
+  single action is also `Share with <client>`. Exact revision, current-source
+  revalidation, and stale-draft holds remain system responsibilities, with the
+  revision and checksum available under `Details` for support and audit work.
 - Apply the same restraint to phone capture. The ordinary Note, Task, and Goal
   form should show the destination, the thing being written, and familiar
   optional organization controls. Notes start private. `Note type and sharing`
