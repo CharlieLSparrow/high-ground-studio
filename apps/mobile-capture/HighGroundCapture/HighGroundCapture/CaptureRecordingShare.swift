@@ -409,8 +409,14 @@ private enum CaptureRecordingShareClientError: LocalizedError {
     }
 }
 
+struct CaptureRecordingEditorFocus: Equatable, Hashable {
+    let transcriptJobID: String
+    let segmentID: String
+}
+
 struct CaptureRecordingShareEditor: View {
     let roomID: String
+    let focus: CaptureRecordingEditorFocus?
 
     @StateObject private var client = CaptureRecordingShareClient()
     @State private var selectedSourceIDs = Set<String>()
@@ -420,6 +426,11 @@ struct CaptureRecordingShareEditor: View {
     @State private var title = ""
     @State private var initializedSnapshot = false
     @State private var editing = false
+
+    init(roomID: String, focus: CaptureRecordingEditorFocus? = nil) {
+        self.roomID = roomID
+        self.focus = focus
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -505,6 +516,9 @@ struct CaptureRecordingShareEditor: View {
         snapshot: CaptureRecordingShareSnapshot,
         room: CaptureRecordingShareSnapshot.Room
     ) -> some View {
+        if let focus {
+            focusedPassageCard(snapshot: snapshot, focus: focus)
+        }
         if let output = snapshot.output {
             outputCard(output, coach: true)
         }
@@ -680,6 +694,79 @@ struct CaptureRecordingShareEditor: View {
     }
 
     @ViewBuilder
+    private func focusedPassageCard(
+        snapshot: CaptureRecordingShareSnapshot,
+        focus: CaptureRecordingEditorFocus
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Opened from transcript", systemImage: "text.line.first.and.arrowtriangle.forward")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.indigo)
+
+            if let segment = snapshot.available?.transcriptSegments.first(where: {
+                $0.transcriptJobId == focus.transcriptJobID && $0.segmentId == focus.segmentID
+            }) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(segment.speakerLabel)
+                        .font(.subheadline.weight(.bold))
+                    Spacer(minLength: 8)
+                    Text(captureRecordingShareTime(segment.startSeconds))
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(segment.text)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !selectedSourceIDs.contains(segment.sourceRecordingAssetId) {
+                    Label(
+                        "This passage belongs to a recording source that is not selected. Choose that source below; Quipsly did not change the source set.",
+                        systemImage: "waveform.badge.exclamationmark"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                } else if segment.endSeconds <= startSeconds || segment.startSeconds >= endSeconds {
+                    Label(
+                        "This passage is outside the current start and end trim. Adjust the range below; Quipsly did not widen it automatically.",
+                        systemImage: "timeline.selection"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                } else if segment.canRippleDelete {
+                    Toggle(
+                        "Include this passage",
+                        isOn: segmentBinding(segment.id)
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .tint(.indigo)
+                    .accessibilityIdentifier("CaptureRecordingShareFocusedSegmentToggle_\(segment.segmentId)")
+                    Text("Changing this switch only updates the private draft below. The original and transcript stay unchanged until you deliberately create a preview.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label(
+                        segment.cutSafetyReason ?? "This passage does not have qualified source timing, so it remains included.",
+                        systemImage: "shield.lefthalf.filled"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                }
+            } else {
+                Label(
+                    "This exact transcript passage is not present in the current editable source set. Refresh the Session instead of substituting another passage.",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            }
+        }
+        .padding(12)
+        .background(Color.indigo.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureRecordingShareFocusedPassage")
+    }
+
+    @ViewBuilder
     private func recipientView(snapshot: CaptureRecordingShareSnapshot) -> some View {
         if let output = snapshot.output, output.status == "RELEASED" {
             outputCard(output, coach: false)
@@ -837,6 +924,12 @@ struct CaptureRecordingShareEditor: View {
         endSeconds = snapshot.output?.body.edit?.endSeconds ?? available.programDurationSeconds
         title = snapshot.output?.title ?? "\(snapshot.room?.title ?? "Coaching Session") recording"
         excludedSegmentIDs = Set(snapshot.output?.body.edit?.transcriptExclusions?.map(\.id) ?? [])
+        if focus != nil {
+            // Entering from an exact transcript passage is an editing intent,
+            // but it is not an edit decision. Reveal the existing draft controls
+            // without changing the source set, range, exclusions, or output.
+            editing = true
+        }
         initializedSnapshot = true
     }
 

@@ -3019,6 +3019,8 @@ struct CaptureTranscriptReviewView: View {
                     ForEach(orderedSegments(in: desk)) { segment in
                         CaptureTranscriptSegmentCard(
                             roomID: roomID,
+                            sessionTitle: sessionTitle,
+                            transcriptJobID: desk.transcriptJobId,
                             segment: segment,
                             recording: recording,
                             expectedRecordingAssetID: desk.playback?.recordingAssetId,
@@ -3036,11 +3038,6 @@ struct CaptureTranscriptReviewView: View {
                 }
             }
             .id(transcriptPresentationMode)
-
-            if !previewOnly {
-                CaptureRecordingShareEditor(roomID: roomID)
-                    .id("recording-share-\(roomID)")
-            }
         }
     }
 
@@ -5132,6 +5129,8 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
 
 private struct CaptureTranscriptSegmentCard: View {
     let roomID: String
+    let sessionTitle: String
+    let transcriptJobID: String?
     let segment: CaptureTranscriptSegment
     let recording: LocalRecording?
     let expectedRecordingAssetID: String?
@@ -5336,6 +5335,25 @@ private struct CaptureTranscriptSegmentCard: View {
                 .buttonStyle(.bordered)
                 .disabled((!hasExactLocalSource && !previewOnly) || client.isMutating || pendingDecision != nil)
                 .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
+            }
+
+            if !previewOnly, let transcriptJobID {
+                NavigationLink {
+                    CaptureRecordingEditScreen(
+                        roomID: roomID,
+                        sessionTitle: sessionTitle,
+                        focus: CaptureRecordingEditorFocus(
+                            transcriptJobID: transcriptJobID,
+                            segmentID: segment.id
+                        )
+                    )
+                } label: {
+                    Label("Edit recording here", systemImage: "scissors")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityHint("Opens this exact transcript passage in the private recording editor. It does not remove words or change the original.")
+                .accessibilityIdentifier("CaptureTranscriptEditRecording_\(segment.id)")
             }
 
             transcriptNoteComposer

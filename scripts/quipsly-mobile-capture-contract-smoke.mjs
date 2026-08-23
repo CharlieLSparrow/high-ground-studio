@@ -1811,8 +1811,8 @@ function checkTranscriptCorrectionContractSources() {
   expect(
     shellText.includes("CaptureRecordingEditCard(session: session)")
       && shellText.includes('Label("Edit and share"')
-      && shellText.includes('CaptureRecordingShareEditor(roomID: roomID)')
-      && nativeText.includes('CaptureRecordingShareEditor(roomID: roomID)')
+      && shellText.includes('CaptureRecordingShareEditor(roomID: roomID, focus: focus)')
+      && nativeText.includes("CaptureRecordingEditScreen(")
       && nativeRecordingShareText.includes("authenticatedData(for: request)")
       && nativeRecordingShareText.includes("authenticatedDownload(")
       && nativeRecordingShareText.includes("expectedOwnerAccountID: owner.ownerAccountID")
@@ -1824,9 +1824,18 @@ function checkTranscriptCorrectionContractSources() {
       && nativeRecordingShareText.includes('action: "RELEASE"')
       && nativeRecordingShareText.includes('action: "REVOKE"')
       && nativeRecordingShareText.includes("Original recordings never change")
-      && nativeRecordingShareText.includes("providerTextSha256"),
+      && nativeRecordingShareText.includes("providerTextSha256")
+      && nativeText.includes('Label("Edit recording here"')
+      && nativeText.includes("transcriptJobID: transcriptJobID")
+      && nativeText.includes("segmentID: segment.id")
+      && nativeRecordingShareText.includes("CaptureRecordingEditorFocus")
+      && nativeRecordingShareText.includes("$0.transcriptJobId == focus.transcriptJobID && $0.segmentId == focus.segmentID")
+      && nativeRecordingShareText.includes("Quipsly did not change the source set")
+      && nativeRecordingShareText.includes("Quipsly did not widen it automatically")
+      && nativeRecordingShareText.includes("does not have qualified source timing")
+      && nativeRecordingShareText.includes("it is not an edit decision"),
     "nativePrivateRecordingEditAndShare",
-    "Capture exposes source-bound private trim, exact receipt-verified playback, explicit release and revocation, and direct in-app reachability without mutating masters.",
+    "Capture exposes source-bound private trim, exact receipt-verified playback, explicit release and revocation, direct in-app reachability, and an exact transcript-passage handoff that never mutates masters or silently widens source and time selections.",
   );
   expect(
     recordingPromotionText.includes("resolveCaptureGroupPromotionPlan")

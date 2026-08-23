@@ -1027,3 +1027,19 @@ audio-mastery coordinates, Quipsly renders no substitute card.
 The joined Session/transcript/audio UI suites pass 75/75 and Quipsly TypeScript
 typecheck passes. This is source and deterministic UI proof, not human listening,
 render acceptance, deployment, or physical-device proof.
+
+## 2026-08-23 native transcript-to-edit continuity
+
+The same transcript-to-edit continuity now exists on iPhone without embedding a
+second complete editor below the transcript. A passage-level `Edit recording
+here` action opens the private editor with an exact transcript-job and segment
+focus. The focused card permits a deliberate inclusion change only when the
+selected source, current trim, and cut-safety receipt all qualify it. Otherwise
+it explains the specific boundary and preserves the current edit unchanged.
+
+This is the mobile expression of the product rule established by the market
+research: transcript correction and media editing should feel adjacent, but
+they remain distinct operations. Navigation is convenient; provenance, timing,
+and mutation boundaries do not become implicit. Removing the always-expanded
+editor from the transcript also restores the familiar reading experience for
+long coaching conversations.

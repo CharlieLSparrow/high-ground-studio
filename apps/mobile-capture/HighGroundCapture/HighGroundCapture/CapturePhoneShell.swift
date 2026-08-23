@@ -12298,13 +12298,24 @@ private struct CaptureRecordingEditCard: View {
     }
 }
 
-private struct CaptureRecordingEditScreen: View {
+struct CaptureRecordingEditScreen: View {
     let roomID: String
     let sessionTitle: String
+    let focus: CaptureRecordingEditorFocus?
+
+    init(
+        roomID: String,
+        sessionTitle: String,
+        focus: CaptureRecordingEditorFocus? = nil
+    ) {
+        self.roomID = roomID
+        self.sessionTitle = sessionTitle
+        self.focus = focus
+    }
 
     var body: some View {
         ScrollView {
-            CaptureRecordingShareEditor(roomID: roomID)
+            CaptureRecordingShareEditor(roomID: roomID, focus: focus)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
         }

@@ -1374,3 +1374,40 @@ media automatically.
 Joined Session/transcript/audio UI suites pass 75/75 and Quipsly TypeScript
 typecheck passes. No human audition, render release, deployment, or Build 34
 mutation occurred.
+
+## iPhone transcript-to-edit continuity — 2026-08-23
+
+Quipsly Capture now carries the exact transcript-job and segment identity from
+each precision transcript card into the native private-recording editor. The
+focused passage appears at the top of the editor with its speaker, source time,
+and current inclusion state. Opening the destination reveals edit controls but
+does not select a source, widen the trim, exclude a passage, create a preview,
+or change transcript truth.
+
+The focused control remains fail-closed:
+
+- a passage on an unselected source explains which boundary must change;
+- a passage outside the current trim explains that the range was not widened;
+- a passage without qualified non-overlapping timing stays included and shows
+  the cut-safety reason; and
+- a stale or missing transcript identity is not replaced by a nearby passage.
+
+The former full recording editor at the bottom of a potentially long transcript
+was removed. Coaches now use the exact per-passage action for text-based edits
+or the existing Session-level `Edit and share` action for whole-recording work.
+This keeps transcript review readable and avoids a second giant form embedded
+inside it.
+
+Current independent evidence is 105/105 mobile source-contract checks, a clean
+iOS Simulator app build across both simulator architectures, and 1,094/1,094
+App Store static checks. The remaining ledger item is a physical-iPhone pass:
+open a real retained transcript passage, confirm the same words and timestamp
+appear in the editor, verify opening alone produces no draft/output mutation,
+exercise safe and unsafe passage states, back-navigate without losing transcript
+position, then create and audition one private preview. This is deferred human
+and device evidence, not a blocker for the next independent product lane and
+not something the automated checks claim to prove.
+
+Build 34 remains the sealed prior candidate and was not changed, uploaded,
+assigned, or deployed by this work. This slice belongs to a later deliberately
+qualified candidate.
