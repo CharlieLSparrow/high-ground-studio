@@ -114,10 +114,11 @@ function LiveTrackBadge({ label, track }: {
   </span>;
 }
 
-export function SessionReadinessTopologyCard({ roomId, topology, canManageSourcePlan = false }: {
+export function SessionReadinessTopologyCard({ roomId, topology, canManageSourcePlan = false, hideWhenInactive = false }: {
   roomId: string;
   topology: SessionReadinessTopology;
   canManageSourcePlan?: boolean;
+  hideWhenInactive?: boolean;
 }) {
   const router = useRouter();
   const [presence, setPresence] = useState<ProviderPresence | null>(null);
@@ -286,6 +287,16 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
       setPlanBusy(null);
     }
   }, [planBusy, reasonDrafts, roomId, router, selectedBindings]);
+
+  if (
+    hideWhenInactive &&
+    !recordingStatusError &&
+    ["NOT_STARTED", "NOT_REQUIRED", "PLAN_REQUIRED"].includes(
+      recordingStatus.state,
+    )
+  ) {
+    return null;
+  }
 
   return <section className="rounded-3xl border border-sky-200 bg-sky-50/45 p-5 shadow-sm sm:p-7" aria-labelledby="session-readiness-topology-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">

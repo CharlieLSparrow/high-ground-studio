@@ -6122,22 +6122,14 @@ export function SessionReviewClient({
             onContinueInBrowser={() => liveDock.open(liveDockConfig)}
           />
 
-          <details className="mt-4 rounded-2xl border border-[#ded1bb] bg-white/75 p-4">
-            <summary className="cursor-pointer text-sm font-black text-[#5b472f]">
-              Recording confidence and source details
-            </summary>
-            <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
-              Optional technical details for planned devices, retained masters,
-              upload safety, or a recording problem. This does not control the call.
-            </p>
-            <div className="mt-4">
-              <SessionReadinessTopologyCard
-                roomId={roomId}
-                topology={readinessTopology}
-                canManageSourcePlan={canManageSourcePlan}
-              />
-            </div>
-          </details>
+          <div className="mt-4">
+            <SessionReadinessTopologyCard
+              roomId={roomId}
+              topology={readinessTopology}
+              canManageSourcePlan={canManageSourcePlan}
+              hideWhenInactive
+            />
+          </div>
         </div>
       </main>
     );

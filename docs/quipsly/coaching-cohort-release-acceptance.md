@@ -992,3 +992,21 @@ visual review attempt, so this checkpoint does not claim a rendered visual
 inspection. Real mailbox delivery, physical iPhone use, minimally instructed
 human comprehension, accessibility operation, and cohort scale remain open
 evidence and do not block the next independent implementation lane.
+
+## Live participant-source safety checkpoint — 2026-08-22
+
+The live Session now keeps its pre-call surface quiet while no retained capture
+exists, then automatically exposes the canonical per-person recording-safety
+projection as soon as a recorder reports work. Hosts and participants can see
+whose source is safe, whose device must remain open, and whether recovery is
+required without opening a provider or receipt panel. The projection continues
+to require exact released server bytes and a drained reporting-device queue
+before saying every endpoint is safe to leave.
+
+The focused component operation begins with an inactive Session and proves the
+safety surface is absent, then returns a participant queue with a pending local
+source and proves `Keep recording devices open` plus the affected participant
+appears. Existing safe, disagreement, failed, observer, and ended-missing-master
+tests remain green. This is rendered-component and contract evidence, not a
+physical-device upload, backgrounding, force-quit, natural-media, or human
+comprehension claim.

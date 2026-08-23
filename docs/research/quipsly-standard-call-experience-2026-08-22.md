@@ -562,6 +562,11 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   places dBFS measurements, thresholds, detector IDs, and hashes under
   technical details. A clean scan says only that no configured level warning
   was found; it does not claim that listening or mastering is unnecessary.
+- Promoted Quipsly's existing conservative per-participant source-safety
+  projection into the live Session when recording activity actually exists.
+  The pre-call lobby stays calm, but upload, reconciliation, safe-to-leave, and
+  recovery states no longer require opening technical recording details. The
+  projection still fails closed when server bytes and a device queue disagree.
   During capture, the familiar `Microphone level` surface leads with Voice,
   Peak, and plain healthy/clipping states while retaining exact dBFS values for
   accessibility and expert diagnosis.

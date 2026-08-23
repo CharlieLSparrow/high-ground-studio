@@ -212,6 +212,116 @@ describe("Session readiness topology card", () => {
     expect(screen.getByTestId("recording-status-details")).toHaveAttribute("open");
   });
 
+  it("keeps the lobby calm before recording, then reveals participant upload safety", async () => {
+    const inactiveTopology: SessionReadinessTopology = {
+      ...topology,
+      people: topology.people.map((person) => ({
+        ...person,
+        endpointQueues: [],
+        sources: [],
+      })),
+      expectedSources: [],
+      summary: {
+        ...topology.summary,
+        retainedSourceCount: 0,
+        verifiedSourceCount: 0,
+        endpointQueueCount: 0,
+        drainedEndpointCount: 0,
+        plannedSourceCount: 0,
+        requiredPlannedSourceCount: 0,
+        fulfilledRequiredPlannedSourceCount: 0,
+      },
+      exitReadiness: {
+        ...topology.exitReadiness,
+        state: "NO_CAPTURE_EVIDENCE",
+        requiredSourceCount: 0,
+        serverSafeRequiredSourceCount: 0,
+        endpointQueueCount: 0,
+        drainedEndpointCount: 0,
+        allEndpointQueuesConfirmedEmpty: false,
+        requiredPlannedSourceCount: 0,
+        fulfilledRequiredPlannedSourceCount: 0,
+        safeForPlannedSources: false,
+        safeToLeaveAllEndpoints: false,
+      },
+    };
+    const activeTopology: SessionReadinessTopology = {
+      ...inactiveTopology,
+      people: inactiveTopology.people.map((person) => ({
+        ...person,
+        endpointQueues: [{
+          id: "queue-active",
+          clientInstanceId: "ios-installation-1",
+          clientKind: "ios",
+          deviceLabel: "Quipsly Capture · iPhone 16",
+          queueRevision: "1",
+          queueState: "NOT_EMPTY",
+          localSourceCount: 1,
+          pendingSourceCount: 1,
+          failedSourceCount: 0,
+          observedCaptureIds: ["capture-active"],
+          recordingAssetIds: [],
+          latestLocalMutationAt: "2026-08-05T18:00:00.000Z",
+          reconciledAt: "2026-08-05T18:00:00.000Z",
+        }],
+      })),
+      summary: {
+        ...inactiveTopology.summary,
+        pendingCaptureCount: 1,
+        endpointQueueCount: 1,
+      },
+      exitReadiness: {
+        ...inactiveTopology.exitReadiness,
+        state: "SERVER_COPY_INCOMPLETE",
+        pendingCaptureCount: 1,
+        endpointQueueCount: 1,
+      },
+    };
+    global.fetch = jest.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/recording-status")) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            status: buildSessionRecordingStatus({
+              roomId: "room-live",
+              roomStatus: "RECORDING",
+              topology: activeTopology,
+            }),
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          ok: true,
+          presence: {
+            status: "EMPTY",
+            observedAt: "2026-08-05T18:00:01.000Z",
+            devices: [],
+            nextAction: "No one is in the call.",
+          },
+        }),
+      };
+    }) as typeof fetch;
+
+    render(
+      <SessionReadinessTopologyCard
+        roomId="room-live"
+        topology={inactiveTopology}
+        hideWhenInactive
+      />,
+    );
+
+    expect(
+      screen.queryByRole("heading", { name: "Are everyone’s recordings safe?" }),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Keep recording devices open" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Keep device open")).toBeInTheDocument();
+  });
+
   it("keeps technical receipts collapsed when every recording is safe", async () => {
     const safeTopology: SessionReadinessTopology = {
       ...topology,
