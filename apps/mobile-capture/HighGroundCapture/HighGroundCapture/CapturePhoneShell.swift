@@ -13,6 +13,7 @@ struct CapturePhoneShell: View {
     @State private var showsNewSession = false
     @State private var completedInitialLoad = false
     @State private var isRoutingSessionLink = false
+    @State private var recorderFocusRequest = 0
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -28,7 +29,11 @@ struct CapturePhoneShell: View {
             .tag(CaptureRootTab.today)
 
             NavigationStack {
-                CaptureRecorderView(model: model, visibleTab: $visibleTab)
+                CaptureRecorderView(
+                    model: model,
+                    visibleTab: $visibleTab,
+                    recorderFocusRequest: $recorderFocusRequest
+                )
             }
             .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
             .tag(CaptureRootTab.record)
@@ -66,7 +71,7 @@ struct CapturePhoneShell: View {
                     isPulsing:
                         audioCapture.captureState == .recording
                         && videoCapture.state == .recording,
-                    action: { visibleTab = .record }
+                    action: { focusActiveRecorder() }
                 )
             } else if audioCaptureIsActive {
                 GlobalCaptureBanner(
@@ -78,7 +83,7 @@ struct CapturePhoneShell: View {
                     duration: audioCapture.currentDuration,
                     tint: audioCapture.captureState == .paused ? .orange : .red,
                     isPulsing: audioCapture.captureState == .recording,
-                    action: { visibleTab = .record }
+                    action: { focusActiveRecorder() }
                 )
             } else if videoCaptureIsActive {
                 GlobalCaptureBanner(
@@ -90,7 +95,7 @@ struct CapturePhoneShell: View {
                     duration: videoCapture.durationSeconds,
                     tint: videoCapture.state == .paused ? .orange : .red,
                     isPulsing: videoCapture.state == .recording,
-                    action: { visibleTab = .record }
+                    action: { focusActiveRecorder() }
                 )
             }
         }
@@ -163,6 +168,11 @@ struct CapturePhoneShell: View {
         .onChange(of: videoCapture.state) { _, state in
             model.reconcileVideoCaptureState(state, using: videoCapture)
         }
+    }
+
+    private func focusActiveRecorder() {
+        visibleTab = .record
+        recorderFocusRequest += 1
     }
 
     @MainActor
@@ -6380,6 +6390,7 @@ private enum CaptureCallPreferences {
 private struct CaptureRecorderView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
+    @Binding var recorderFocusRequest: Int
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var library = LocalRecordingLibrary.shared
@@ -7102,6 +7113,29 @@ private struct CaptureRecorderView: View {
             // TabView preserves the old scroll offset. A fresh tap on Record
             // should reopen the primary recorder, not a stale notes/thread
             // position from the previous visit.
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
+                }
+            }
+        }
+        .onChange(of: recorderFocusRequest) { _, _ in
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
+                }
+            }
+        }
+        .onChange(of: audioCapture.activeSessionID) { _, sessionID in
+            guard sessionID == model.selectedSession?.id else { return }
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
+                }
+            }
+        }
+        .onChange(of: videoCapture.activeSessionID) { _, sessionID in
+            guard sessionID == model.selectedSession?.id else { return }
             DispatchQueue.main.async {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
