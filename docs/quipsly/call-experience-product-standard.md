@@ -100,6 +100,9 @@ Recurring complaints reveal the failure modes Quipsly must design out:
 - A client invited to a private coaching Session should not need broad Quipsly
   setup before the call. Authentication and profile completion must be no more
   than the minimum required to establish the private recipient boundary.
+- Restore the Session's saved audio/video and transcription choices when the
+  recording surface reopens. Do not make a returning participant repeat a
+  choice Quipsly already holds unless the recording scope actually changes.
 - On iPhone, offer the platform-standard **Continue with Apple** and Google
   paths before the optional password path. Federated sign-in skips Quipsly
   password creation and mailbox-verification chores while still resolving one

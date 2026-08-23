@@ -552,6 +552,9 @@ export function BrowserSourceRecorder({
         setConsentId(consentPacket?.session?.recordingConsentId ?? null);
         setMyAudioConsent(savedAudioConsent);
         setMyVideoConsent(savedVideoConsent);
+        if (consentPacket?.session?.recordingConsentId) {
+          setSourceType(savedVideoConsent ? "video" : "audio");
+        }
         setTranscriptionChoice(
           consentPacket?.session?.recordingConsentId
             ? consentPacket?.session?.recordingConsentCanTranscribe === true
