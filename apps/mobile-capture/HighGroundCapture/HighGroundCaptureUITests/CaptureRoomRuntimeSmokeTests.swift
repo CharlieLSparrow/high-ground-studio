@@ -1164,11 +1164,18 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         optionalDetails.tap()
 
         let name = app.textFields["CaptureCoachingClientName"].firstMatch
-        XCTAssertTrue(name.waitForExistence(timeout: 6))
+        XCTAssertTrue(
+            waitForRuntimeElement(name, in: app, timeout: 8, swipeAttempts: 4),
+            "Expanded optional details should remain reachable in the standard scheduling form."
+        )
         name.tap()
         name.typeText(clientName)
 
         let title = app.textFields["CaptureCoachingSessionTitle"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(title, in: app, timeout: 8, swipeAttempts: 4),
+            "The optional Session name should remain reachable without leaving the scheduling form."
+        )
         replaceText(in: title, with: sessionTitle, app: app)
 
         let create = app.buttons["CaptureCoachingCreateAppointment"].firstMatch
