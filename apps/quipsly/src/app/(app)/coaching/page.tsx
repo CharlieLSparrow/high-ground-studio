@@ -2470,20 +2470,22 @@ export default function CoachingPage() {
                                 }
                               />
                             )}
-                            <StatusPill
-                              label={
-                                booking.callRoomStatus
-                                  ? `room ${normalize(booking.callRoomStatus)}`
-                                  : "room needed"
-                              }
-                              tone={
-                                booking.callRoomStatus === "CANCELED"
-                                  ? "bad"
-                                  : booking.callRoomId
-                                    ? "good"
-                                    : "warn"
-                              }
-                            />
+                            {isStaff ? (
+                              <StatusPill
+                                label={
+                                  booking.callRoomStatus
+                                    ? `room ${normalize(booking.callRoomStatus)}`
+                                    : "room needed"
+                                }
+                                tone={
+                                  booking.callRoomStatus === "CANCELED"
+                                    ? "bad"
+                                    : booking.callRoomId
+                                      ? "good"
+                                      : "warn"
+                                }
+                              />
+                            ) : null}
                             {isStaff && booking.calendarStatus && (
                               <StatusPill
                                 label={`calendar ${normalize(booking.calendarStatus)}`}
@@ -2598,12 +2600,31 @@ export default function CoachingPage() {
                               {booking.latestCheckoutSessionId}
                             </p>
                           )}
-                          <a
-                            href={`/api/coaching/bookings/${encodeURIComponent(booking.id)}/calendar`}
-                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-[#fffaf1]"
+                          <details
+                            className="mt-3 rounded-xl border border-[#e8dcc4] bg-[#fffaf1] p-2"
+                            open={
+                              !canManageCoaching &&
+                              booking.paymentPolicy === "PAID_ONE_TO_ONE" &&
+                              booking.paymentStatus !== "PAID"
+                            }
                           >
-                            <CalendarIcon size={14} /> Add to Apple or Outlook
-                          </a>
+                            <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-lg px-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                              <span>
+                                {!canManageCoaching &&
+                                booking.paymentPolicy === "PAID_ONE_TO_ONE" &&
+                                booking.paymentStatus !== "PAID"
+                                  ? "Payment needed"
+                                  : "Session options"}
+                              </span>
+                              <ChevronDown size={15} aria-hidden="true" />
+                            </summary>
+                            <div className="border-t border-[#e8dcc4] pt-2">
+                              <a
+                                href={`/api/coaching/bookings/${encodeURIComponent(booking.id)}/calendar`}
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-[#fffaf1]"
+                              >
+                                <CalendarIcon size={14} /> Add to Apple or Outlook
+                              </a>
                           {canManageCoaching &&
                             readiness?.calendarReadiness?.accessOk === true && (
                               <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
@@ -2828,6 +2849,8 @@ export default function CoachingPage() {
                               {portalStatusByBooking[booking.id]}
                             </p>
                           )}
+                            </div>
+                          </details>
                         </div>
                       </div>
                       {canManageCoaching && (

@@ -968,3 +968,27 @@ source or provider recording, and exposed no provider credential or identity.
 This is strong local product evidence, not physical-iPhone, production-mailbox,
 natural-speech, or minimally instructed human evidence; those ledger items
 remain open and do not block further independent development.
+
+## Routine call administration checkpoint — 2026-08-22
+
+The current coaching candidate now reserves its primary visual weight for the
+ordinary job. Scheduling asks for client email and start time, applies the
+coach's saved duration and timezone, and places uncommon fields under `More
+options`. Appointment creation automatically attempts configured invitation
+delivery without losing the canonical Session if the provider fails.
+
+Both the creation result and existing appointment cards lead with `Open
+Session`. Resend, copy-link, system Share, calendar projection, and payment
+management are recoverable under secondary disclosures. An unpaid client sees
+`Payment needed` expanded; a routine coach does not see internal room status,
+provider receipts, or lifecycle evidence. Reopening an accepted invitation as
+the same verified account removes the token from the URL and enters the
+canonical Session directly instead of requesting acceptance again.
+
+Focused coaching surface tests and the complete web typecheck pass. The prior
+universal iOS simulator build also passes the matching native invitation
+hierarchy. The in-app browser did not attach to a new local page during the
+visual review attempt, so this checkpoint does not claim a rendered visual
+inspection. Real mailbox delivery, physical iPhone use, minimally instructed
+human comprehension, accessibility operation, and cohort scale remain open
+evidence and do not block the next independent implementation lane.

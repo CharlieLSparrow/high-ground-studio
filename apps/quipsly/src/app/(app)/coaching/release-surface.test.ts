@@ -51,6 +51,9 @@ describe("coaching release surfaces", () => {
     expect(compact).toContain("Session scheduled");
     expect(compact).toContain("Open Session");
     expect(compact).toContain("Invitation options");
+    expect(compact).toContain("Session options");
+    expect(compact).toContain("Payment needed");
+    expect(compact).toContain("{isStaff ? ( <StatusPill label={ booking.callRoomStatus");
     expect(compact).toContain("Resend email");
     expect(compact).toContain("Copy invite link");
     expect(compact).not.toContain("Open live room");

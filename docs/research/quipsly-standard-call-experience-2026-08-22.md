@@ -539,6 +539,11 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   appointment confirmation. `Open Session` is the primary action on web and
   iPhone; resend, copy, and Share stay under a disclosure whose calm summary
   becomes `Invitation sent` when delivery evidence exists.
+- Reduced the remaining web appointment card to the decisions a person needs
+  at a glance. `Open Session` and the durable coaching space remain visible;
+  calendar projection, invitation maintenance, and payment management live
+  under `Session options`. An unpaid client sees `Payment needed` expanded,
+  while internal room lifecycle badges remain staff-only.
 - Made reopening a Session honor the canonical saved consent state in both UI
   and server guidance. Reopen never invents a new consent ceremony; recording
   remains a separate explicit action and a changed Session, participant, media
