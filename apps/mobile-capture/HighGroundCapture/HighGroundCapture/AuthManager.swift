@@ -50,6 +50,7 @@ final class AuthManager: ObservableObject {
     private var refreshTask: Task<Bool, Never>?
     private var refreshTaskID: UUID?
     private var interactiveAuthAttemptID: UUID?
+    private var appleSignInCoordinator: AppleSignInCoordinator?
     private var accountIdentityGeneration: UInt64 = 0
     private var lastPublishedOwnerAccountID: String?
 
@@ -225,6 +226,9 @@ final class AuthManager: ObservableObject {
         case googleCredentialUnavailable
         case googleEmailNotVerified
         case googleAccountNeedsLinking
+        case appleCredentialUnavailable
+        case appleEmailNotVerified
+        case appleAccountNeedsLinking
 
         var errorDescription: String? {
             switch self {
@@ -243,6 +247,12 @@ final class AuthManager: ObservableObject {
                 return "Google did not return a verified email for this account, so Quipsly did not create or open a workspace."
             case .googleAccountNeedsLinking:
                 return "That Google email already belongs to a different Firebase sign-in method. Quipsly did not create a duplicate. Use the account's existing sign-in once, then link Google from account settings or contact support."
+            case .appleCredentialUnavailable:
+                return "Apple completed sign-in without returning the secure identity token Quipsly needs. Try Continue with Apple again."
+            case .appleEmailNotVerified:
+                return "Apple did not return a verified account email, so Quipsly did not create or open a workspace."
+            case .appleAccountNeedsLinking:
+                return "That Apple email already belongs to a different Firebase sign-in method. Quipsly did not create a duplicate. Use the account's existing sign-in once, then link Apple from account settings or contact support."
             }
         }
     }
@@ -352,6 +362,68 @@ final class AuthManager: ObservableObject {
 
     var googleSignInAvailable: Bool {
         Self.googleClientConfiguration != nil
+    }
+
+    func signInWithApple() {
+        guard let attemptID = beginInteractiveAuthAttempt() else { return }
+        let coordinator = AppleSignInCoordinator()
+        appleSignInCoordinator = coordinator
+
+        Task {
+            defer {
+                if appleSignInCoordinator === coordinator {
+                    appleSignInCoordinator = nil
+                }
+            }
+            do {
+                let firebaseConfig = try await fetchFirebaseConfig()
+                guard interactiveAuthAttemptIsCurrent(attemptID) else { return }
+                let appleCredential = try await coordinator.authorize()
+                guard interactiveAuthAttemptIsCurrent(attemptID) else { return }
+
+                let signIn = try await signInWithFirebaseApple(
+                    appleIDToken: appleCredential.identityToken,
+                    rawNonce: appleCredential.rawNonce,
+                    config: firebaseConfig
+                )
+                guard interactiveAuthAttemptIsCurrent(attemptID) else { return }
+                guard signIn.needConfirmation != true,
+                      signIn.pendingToken?.isEmpty != false else {
+                    throw NativeAuthFlowError.appleAccountNeedsLinking
+                }
+                guard signIn.emailVerified == true else {
+                    throw NativeAuthFlowError.appleEmailNotVerified
+                }
+                guard let idToken = signIn.idToken,
+                      let refreshToken = signIn.refreshToken else {
+                    throw NativeAuthFlowError.appleCredentialUnavailable
+                }
+
+                let verifiedSession = try await verifyQuipslyNativeSession(accessToken: idToken)
+                guard interactiveAuthAttemptIsCurrent(attemptID) else { return }
+                let expiresInSeconds = Int64(signIn.expiresIn ?? "3600") ?? 3600
+                guard saveVerifiedNativeSession(
+                    accessToken: idToken,
+                    refreshToken: refreshToken,
+                    expiresInSeconds: expiresInSeconds,
+                    email: verifiedSession.email ?? signIn.email,
+                    displayName: verifiedSession.name ?? signIn.displayName ?? appleCredential.displayName,
+                    ownerAccountID: verifiedSession.ownerAccountID
+                ), markIdentityVerified() else {
+                    let storageMessage = credentialStorageError().localizedDescription
+                    signOut()
+                    errorMessage = storageMessage
+                    return
+                }
+
+                setOnlineState()
+                finishInteractiveAuthAttempt(attemptID)
+            } catch AppleSignInCoordinator.FlowError.cancelled {
+                finishInteractiveAuthAttempt(attemptID)
+            } catch {
+                failInteractiveAuthAttempt(attemptID, error: error)
+            }
+        }
     }
 
     func signInWithGoogle() {
@@ -1206,6 +1278,60 @@ final class AuthManager: ObservableObject {
                 statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
                 firebaseCode: payload.error?.message,
                 fallback: "Firebase could not finish Google sign-in."
+            )
+        }
+        return payload
+    }
+
+    private func signInWithFirebaseApple(
+        appleIDToken: String,
+        rawNonce: String,
+        config: FirebaseClientConfig
+    ) async throws -> FirebaseFederatedSignInResponse {
+        guard !appleIDToken.isEmpty, !rawNonce.isEmpty else {
+            throw NativeAuthFlowError.appleCredentialUnavailable
+        }
+        guard let url = URL(
+            string: "\(config.identityToolkitBaseURL)/v1/accounts:signInWithIdp?key=\(config.apiKey)"
+        ) else {
+            throw URLError(.badURL)
+        }
+
+        var formComponents = URLComponents()
+        formComponents.queryItems = [
+            URLQueryItem(name: "id_token", value: appleIDToken),
+            URLQueryItem(name: "providerId", value: "apple.com"),
+            URLQueryItem(name: "nonce", value: rawNonce),
+        ]
+        guard let postBody = formComponents.percentEncodedQuery else {
+            throw NativeAuthFlowError.appleCredentialUnavailable
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "postBody": postBody,
+            "requestUri": "http://localhost",
+            "returnIdpCredential": true,
+            "returnSecureToken": true,
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let payload = try JSONDecoder().decode(FirebaseFederatedSignInResponse.self, from: data)
+        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+            let code = normalizedFirebaseErrorCode(payload.error?.message)
+            if let code, [
+                "ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL",
+                "EMAIL_EXISTS",
+                "FEDERATED_USER_ID_ALREADY_LINKED",
+            ].contains(code) {
+                throw NativeAuthFlowError.appleAccountNeedsLinking
+            }
+            throw firebaseRequestError(
+                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
+                firebaseCode: payload.error?.message,
+                fallback: "Firebase could not finish Apple sign-in."
             )
         }
         return payload

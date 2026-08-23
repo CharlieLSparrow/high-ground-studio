@@ -3370,7 +3370,8 @@ final class CaptureLoginExperienceUITests: XCTestCase {
         )
     }
 
-    func testLoginLeadsWithNativeGoogleContinuityAndKeepsPasswordRecoveryReachableAtAccessibilityTextSize() {
+    func testLoginLeadsWithStandardFederatedContinuityAndKeepsPasswordRecoveryReachableAtAccessibilityTextSize() {
+        XCTAssertTrue(app.buttons["QuipslyCaptureAppleSignInButton"].exists)
         XCTAssertTrue(app.buttons["QuipslyCaptureGoogleSignInButton"].exists)
         XCTAssertFalse(
             app.descendants(matching: .any)["QuipslyCaptureGoogleIdentityContinuityHint"].exists,

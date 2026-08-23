@@ -12,6 +12,18 @@ A clean offline launch is deliberately Library-only: a recently verified account
 
 Automated build, security, accessibility, and contract evidence is recorded separately from release proof. Do not describe the build as App Store ready while public Nest is unavailable, the additive room-receipt and upload-reservation schema is not proved live, physical-iPhone capture/background transfer is unproved, reviewer credentials/session proof is unavailable, or the legal/account-deletion fulfillment workflow is incomplete.
 
+## 2026-08-23 standard sign-in status
+
+- Capture now implements the official system Sign in with Apple control alongside
+  Google, with replay-safe nonce validation, Firebase exchange, canonical Quipsly
+  owner verification, and Keychain persistence only after that complete chain passes.
+- Simulator compilation, rendered login accessibility coverage, and App Store static
+  checks pass for the implementation.
+- Live acceptance remains deliberately separate: enable the capability for
+  `com.highgroundodyssey.HighGroundCapture`, configure Firebase's Apple provider and
+  relay email, then prove a real Apple account resolves to the intended existing or
+  new Quipsly owner. Until that evidence exists, this is implemented but not live-proven.
+
 ## App-owned truth
 
 - Quipsly owns the session, participant, consent, recording, transcript, packet, note, action-item, and receipt state.
@@ -33,7 +45,7 @@ Automated build, security, accessibility, and contract evidence is recorded sepa
 
 - `HighGroundCapture/PrivacyInfo.xcprivacy` declares no tracking, app-functionality collection for name/email, user ID, device ID, audio, photos-or-videos, and other session/user-content data, plus required-reason API entries for app-specific `UserDefaults`, file metadata, and the `E174.1` capture storage-headroom check. The exact signed Build 28 app contains 14 app/SDK privacy manifests; the aggregate validator requires all 11 resulting App Store types and catches Google Sign-In's additional phone, coarse-location, other-data, other-usage, and analytics disclosures instead of trusting the root app manifest alone.
 - The project uses an explicit microphone purpose string: Quipsly records coaching calls, podcast sessions, interviews, and field notes after the user explicitly starts recording.
-- Native account entry supports Firebase email/password sign-in, account creation, verification email, and enumeration-safe password recovery through Firebase's public REST API, then verifies Quipsly app access through `/api/mac/session-check` with a Firebase bearer token. Current `accounts:lookup` state must show a verified mailbox before any token or cached offline identity is stored, and refresh rechecks that state. Account creation does not grant Capture beta recording/upload access; Nest remains the access authority. Google-origin accounts are guided toward the same email, recovery, web Google sign-in, or support rather than a duplicate identity. The old browser/native handoff endpoints are not the iOS product path.
+- Native account entry leads with system-provided Sign in with Apple and Google, then offers Firebase email/password sign-in, account creation, one-time verification email, and enumeration-safe password recovery through Firebase's public REST API. Every provider result still verifies Quipsly app access through `/api/mac/session-check` with a Firebase bearer token before Keychain persistence. Password accounts must have current verified-mailbox evidence; Apple uses a cryptographically random nonce and Firebase's `apple.com` provider; conflicting provider identities fail closed instead of silently creating or merging owners. Account creation does not grant Capture recording/upload access; Nest remains the access authority. The old browser/native handoff endpoints are not the iOS product path.
 - Recorder UI shows capture readiness, consent state, visible recording state, local fallback, upload/transcript readiness, privacy/deletion routes, and preserved-upload recovery.
 - `LocalRecordingLibrary`, the upload-job ledger, and the room-receipt outbox use protected owner partitions. Library listing, playback, sharing, retry, deletion, and receipt delivery fail closed unless the current verified Quipsly actor owns the artifact; legacy unowned rows remain preserved but quarantined.
 - The Library has one destructive operation: the current owner can explicitly delete one local original after reviewing cloud-verification state, optionally sharing a copy, and acknowledging irreversible deletion. Active recording/upload/verification work blocks the action. The app commits a protected tombstone with deletion time, original byte count, and cloud-verification state before removing bytes, never automatically prunes sources, and does not delete cloud media or account evidence through this action.

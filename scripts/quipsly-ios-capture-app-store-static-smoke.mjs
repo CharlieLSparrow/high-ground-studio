@@ -30,6 +30,8 @@ const files = {
   captureApp: path.join(sourceRoot, "HighGroundCaptureApp.swift"),
   appDelegate: path.join(sourceRoot, "AppDelegate.swift"),
   authManager: path.join(sourceRoot, "AuthManager.swift"),
+  appleSignInCoordinator: path.join(sourceRoot, "AppleSignInCoordinator.swift"),
+  captureEntitlements: path.join(sourceRoot, "HighGroundCapture.entitlements"),
   loginView: path.join(sourceRoot, "LoginView.swift"),
   swiftPackageResolution: path.join(
     iosRoot,
@@ -181,6 +183,8 @@ const contentViewText = read(files.contentView);
 const captureAppText = read(files.captureApp);
 const appDelegateText = read(files.appDelegate);
 const authText = read(files.authManager);
+const appleSignInCoordinatorText = read(files.appleSignInCoordinator);
+const captureEntitlementsText = read(files.captureEntitlements);
 const loginText = read(files.loginView);
 const swiftPackageResolutionText = read(files.swiftPackageResolution);
 const audioText = read(files.audioCapture);
@@ -699,6 +703,7 @@ for (const needle of [
   "QuipslyCaptureCreateAccountButton",
   "QuipslyCapturePasswordResetButton",
   "QuipslyCaptureGoogleSignInButton",
+  "QuipslyCaptureAppleSignInButton",
   "QuipslyCaptureGoogleIdentityContinuityHint",
   "QuipslyCaptureAccountSupportLink",
   "Recordings stay on this iPhone after upload; Quipsly never silently deletes a source.",
@@ -793,7 +798,16 @@ assert(
   { label: "unverified account creation leaves Firebase tokens memory-only" },
 );
 requireIncludes(loginText, "GoogleSignInButton(", "Google identities are directed to the canonical native provider");
-requireIncludes(loginText, "QuipslyCaptureGoogleSignInButton", "Google remains the standard first sign-in action");
+requireIncludes(loginText, "ASAuthorizationAppleIDButton(", "Apple identities use the system-provided sign-in control");
+requireIncludes(loginText, "QuipslyCaptureAppleSignInButton", "Apple is available as an equivalent privacy-preserving primary sign-in action");
+requireIncludes(loginText, "QuipslyCaptureGoogleSignInButton", "Google remains available as a standard sign-in action");
+requireIncludes(captureEntitlementsText, "com.apple.developer.applesignin", "Capture declares the Sign in with Apple capability");
+requireIncludes(captureEntitlementsText, "<string>Default</string>", "Capture is the primary Sign in with Apple app for its identifier");
+requireIncludes(appleSignInCoordinatorText, "SecRandomCopyBytes", "Apple sign-in uses a cryptographically random replay nonce");
+requireIncludes(appleSignInCoordinatorText, "request.nonce = Self.sha256(nonce)", "Apple receives only the SHA-256 nonce challenge");
+requireIncludes(authText, 'URLQueryItem(name: "providerId", value: "apple.com")', "Firebase exchanges the native Apple credential with the canonical provider");
+requireIncludes(authText, 'URLQueryItem(name: "nonce", value: rawNonce)', "Firebase receives the one-time unhashed nonce for replay validation");
+requireIncludes(authText, "verifyQuipslyNativeSession(accessToken: idToken)", "federated identity still passes the canonical Quipsly owner boundary");
 requireIncludes(loginText, "We will ask you to verify your email once.", "account creation states the one-time email verification step plainly");
 for (const forbidden of [
   "/api/mac/session-handoff",

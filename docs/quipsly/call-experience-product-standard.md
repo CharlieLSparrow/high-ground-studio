@@ -87,6 +87,10 @@ Recurring complaints reveal the failure modes Quipsly must design out:
 - A client invited to a private coaching Session should not need broad Quipsly
   setup before the call. Authentication and profile completion must be no more
   than the minimum required to establish the private recipient boundary.
+- On iPhone, offer the platform-standard **Continue with Apple** and Google
+  paths before the optional password path. Federated sign-in skips Quipsly
+  password creation and mailbox-verification chores while still resolving one
+  exact Firebase identity and one canonical Quipsly owner.
 
 ### Quality that is obvious, not magical
 
@@ -164,3 +168,8 @@ a tester does not stop independent product work.
   and <https://www.reddit.com/r/Descript/comments/1si8k8h/am_i_the_only_one_frustrated_with_descript_right/>
 - Recent production-user feedback on sync drift and upload visibility:
   <https://www.reddit.com/r/podcasting/comments/1snt1fj/riverside_just_keeps_getting_worse/>
+- Apple App Review login-service rule and native privacy-preserving account
+  option: <https://developer.apple.com/app-store/review/guidelines/#login-services>
+- Google Meet's permission-prompt redesign, which removed competing prompts and
+  delayed the browser request until a clear user action:
+  <https://web.dev/case-studies/google-meet-permissions-best-practices>

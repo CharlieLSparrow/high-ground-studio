@@ -1,6 +1,40 @@
+import AuthenticationServices
 import Foundation
 import SwiftUI
 import GoogleSignInSwift
+
+private struct QuipslyAppleSignInButton: UIViewRepresentable {
+    let colorScheme: ColorScheme
+    let action: () -> Void
+
+    final class Coordinator: NSObject {
+        let action: () -> Void
+
+        init(action: @escaping () -> Void) {
+            self.action = action
+        }
+
+        @objc func activate() {
+            action()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    func makeUIView(context: Context) -> ASAuthorizationAppleIDButton {
+        let button = ASAuthorizationAppleIDButton(
+            authorizationButtonType: .continue,
+            authorizationButtonStyle: colorScheme == .dark ? .white : .black
+        )
+        button.cornerRadius = 10
+        button.addTarget(context.coordinator, action: #selector(Coordinator.activate), for: .touchUpInside)
+        return button
+    }
+
+    func updateUIView(_ uiView: ASAuthorizationAppleIDButton, context: Context) {}
+}
 
 struct LoginView: View {
     @StateObject private var authManager = AuthManager.shared
@@ -60,7 +94,7 @@ struct LoginView: View {
                 }
 
                 VStack(spacing: 14) {
-                    googleSignInSection
+                    federatedSignInSection
 
                     authFeedback
 
@@ -304,8 +338,18 @@ struct LoginView: View {
         .accessibilityIdentifier("QuipslyCaptureLoginView")
     }
 
-    private var googleSignInSection: some View {
+    private var federatedSignInSection: some View {
         VStack(alignment: .leading, spacing: 10) {
+            QuipslyAppleSignInButton(colorScheme: colorScheme) {
+                focusedField = nil
+                authManager.signInWithApple()
+            }
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .disabled(authManager.isAuthenticating)
+            .opacity(authManager.isAuthenticating ? 0.55 : 1)
+            .accessibilityLabel("Continue with Apple")
+            .accessibilityIdentifier("QuipslyCaptureAppleSignInButton")
+
             GoogleSignInButton(
                 scheme: colorScheme == .dark ? .dark : .light,
                 style: .wide,
