@@ -1100,3 +1100,16 @@ The focused transcript and recording-edit suites pass 27/27 and the complete
 web typecheck passes. This does not yet prove natural-speech word alignment,
 human selection comprehension, preview listening, renderer quality, or a
 physical mobile edit; those remain deferred acceptance evidence.
+
+The server-side recording-edit contract now also detects overlapping cut
+intervals between adjacent passages from the same participant source. Both
+passages become `timing-overlap` and stay in the preview until alignment is
+repaired. This complements the existing cross-participant speech-overlap hold
+and prevents a visually plausible transcript selection from cutting nearby
+words. The exact source checksum, provider text hash, and timing fingerprint
+still have to match again when the preview is prepared.
+
+The focused server and recording-editor suites pass 14/14 and the full web
+typecheck passes. Synthetic interval tests establish fail-closed contract
+behavior; natural speech, imperfect provider alignment, and audible edit-seam
+quality remain open evidence.

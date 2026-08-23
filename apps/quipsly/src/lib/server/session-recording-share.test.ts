@@ -144,4 +144,22 @@ describe("Session recording share text edits", () => {
     expect(client?.cutSafety).toBe("overlapping-speech");
     expect(coach?.cutSafetyReason).toMatch(/another participant/i);
   });
+
+  it("keeps same-source passages when their word timing overlaps", () => {
+    const [first, second] = classifyRecordingShareTranscriptCutSafety([
+      transcriptSegment,
+      {
+        ...transcriptSegment,
+        segmentId: "transcript_segment_0002",
+        timingFingerprint: "f".repeat(64),
+        startSeconds: 13.7,
+        endSeconds: 16,
+        cutStartSeconds: 13.7,
+        cutEndSeconds: 15.8,
+      },
+    ]);
+    expect(first?.cutSafety).toBe("timing-overlap");
+    expect(second?.cutSafety).toBe("timing-overlap");
+    expect(first?.cutSafetyReason).toMatch(/shares timing with nearby words/i);
+  });
 });

@@ -766,6 +766,14 @@ share`. The continuity panel says that the call, chat, recordings,
   https://help.descript.com/hc/en-us/articles/10249424286477-Automatic-transcription,
   https://feedback.descript.com/feature-requests/p/allow-transcript-editing-option-diconnected-from-audio,
   and https://www.reddit.com/r/Descript/comments/1tw4n2a/important_issues_with_filler_words_shorten_word/.
+- Treat timing as authority, not decoration. A passage is eligible for a text
+  cut only when every provider word is monotonic, bound to the exact source
+  checksum, and fingerprinted. Quipsly already holds cross-talk because a
+  single ripple deletion could remove another participant. It must also hold
+  same-source passages whose cut intervals overlap neighboring words; this is a
+  structural alignment conflict even when the visible transcript reads well.
+  The user sees that the passage is kept until alignment is repaired, while the
+  original and all previously prepared outputs remain unchanged.
 
 ## Acceptance consequences
 

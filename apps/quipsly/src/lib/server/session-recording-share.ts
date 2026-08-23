@@ -243,7 +243,7 @@ export type RecordingShareTranscriptSegment = {
   cutEndSeconds: number;
   timingFingerprint: string;
   timingBasis: "provider-words" | "provider-segment";
-  cutSafety: "safe" | "timing-unavailable" | "overlapping-speech";
+  cutSafety: "safe" | "timing-unavailable" | "timing-overlap" | "overlapping-speech";
   cutSafetyReason: string;
 };
 
@@ -252,6 +252,18 @@ export function classifyRecordingShareTranscriptCutSafety(
 ): RecordingShareTranscriptSegment[] {
   return segments.map((segment) => {
     if (segment.cutSafety !== "safe") return { ...segment };
+    const overlapsAdjacentTiming = segments.some((other) => (
+      other.segmentId !== segment.segmentId
+      && other.sourceRecordingAssetId === segment.sourceRecordingAssetId
+      && Math.min(segment.cutEndSeconds, other.cutEndSeconds) - Math.max(segment.cutStartSeconds, other.cutStartSeconds) > 0.02
+    ));
+    if (overlapsAdjacentTiming) {
+      return {
+        ...segment,
+        cutSafety: "timing-overlap",
+        cutSafetyReason: "This passage shares timing with nearby words. Keep it in the recording until the alignment is repaired.",
+      };
+    }
     const overlapsOtherSpeech = segments.some((other) => (
       other.sourceRecordingAssetId !== segment.sourceRecordingAssetId
       && Math.min(segment.cutEndSeconds, other.endSeconds) - Math.max(segment.cutStartSeconds, other.startSeconds) > 0.05

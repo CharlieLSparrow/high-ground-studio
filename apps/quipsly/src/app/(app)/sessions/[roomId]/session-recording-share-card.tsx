@@ -27,7 +27,7 @@ type TranscriptSegment = {
   cutEndSeconds?: number;
   timingFingerprint?: string;
   timingBasis?: "provider-words" | "provider-segment";
-  cutSafety?: "safe" | "timing-unavailable" | "overlapping-speech";
+  cutSafety?: "safe" | "timing-unavailable" | "timing-overlap" | "overlapping-speech";
   cutSafetyReason?: string;
 };
 
