@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CheckCircle2, KeyRound, LockKeyhole, ShieldCheck } from "lucide-react";
+import { CheckCircle2, ChevronDown, LockKeyhole, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 const STORAGE_KEY = "quipsly.coaching.invitation.v1";
@@ -13,6 +13,7 @@ type Preview = {
   signedIn: boolean;
   isRightAccount: boolean;
   canAccept: boolean;
+  canOpen: boolean;
 };
 
 export function CoachingEngagementInvitation() {
@@ -43,10 +44,17 @@ export function CoachingEngagementInvitation() {
     }).then(async (response) => {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Invitation could not be reviewed.");
-      setPreview(body.result);
+      const nextPreview = body.result as Preview;
+      if (nextPreview.canOpen) {
+        window.sessionStorage.removeItem(STORAGE_KEY);
+        router.replace(`/coaching/engagements/${encodeURIComponent(nextPreview.engagement.id)}`);
+        router.refresh();
+        return;
+      }
+      setPreview(nextPreview);
     }).catch((failure) => setError(failure instanceof Error ? failure.message : "Invitation could not be reviewed."))
       .finally(() => setBusy(false));
-  }, []);
+  }, [router]);
 
   async function accept() {
     setBusy(true);
@@ -68,12 +76,80 @@ export function CoachingEngagementInvitation() {
     }
   }
 
-  return <main className="min-h-full bg-[#f5efe4] px-5 py-12"><section className="mx-auto max-w-2xl rounded-[2rem] border border-[#dfcfb4] bg-[#fffdf8] p-8 shadow-sm"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100 text-violet-800"><KeyRound /></div><p className="mt-6 text-[10px] font-black uppercase tracking-[0.22em] text-violet-800">Private Coaching Engagement</p><h1 className="mt-2 font-serif text-4xl font-black text-[#3d3122]">Review your invitation</h1>
-    {busy && !preview ? <p className="mt-6 font-semibold text-[#765f40]">Checking the invitation…</p> : null}
-    {error ? <p role="alert" className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 font-bold text-red-800">{error}</p> : null}
-    {preview ? <div className="mt-6"><div className="rounded-2xl border border-violet-200 bg-violet-50 p-5"><p className="text-sm font-semibold text-violet-900">You were invited to</p><p className="mt-1 font-serif text-2xl font-black text-violet-950">{preview.engagement.title}</p><p className="mt-3 text-sm font-bold text-violet-900">{preview.invitation.invitedEmail} · {preview.invitation.role.toLowerCase()}</p><p className="mt-1 text-xs text-violet-800">Link status: {preview.invitation.status.toLowerCase()} · expires {new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(preview.invitation.expiresAt))}</p></div>
-      <div className="mt-5 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-900"><ShieldCheck className="mt-1 shrink-0" size={19} /><p><strong>Scoped access:</strong> accepting opens this coaching relationship and its shared Sessions, goals, commitments, and thread. It does not open the coach’s surrounding Nest or private notes.</p></div>
-      {!preview.signedIn ? <div className="mt-6"><p className="flex items-center gap-2 text-sm font-bold text-[#765f40]"><LockKeyhole size={17} /> Sign in as {preview.invitation.invitedEmail} to continue.</p><Link href={`/login?callbackUrl=${encodeURIComponent("/coaching/engagements/join")}`} className="mt-4 inline-flex rounded-full bg-violet-800 px-5 py-3 font-black text-white">Sign in to accept</Link></div> : !preview.isRightAccount ? <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-bold text-amber-950">You are signed in with a different Quipsly account. Sign out, then sign in as {preview.invitation.invitedEmail}. The invitation remains in this browser tab.</div> : preview.canAccept ? <button disabled={busy} onClick={accept} className="mt-6 inline-flex items-center gap-2 rounded-full bg-violet-800 px-5 py-3 font-black text-white disabled:opacity-50"><CheckCircle2 size={18} /> Accept engagement access</button> : null}
-    </div> : null}
-  </section></main>;
+  const callbackUrl = "/coaching/engagements/join";
+  const switchAccountUrl = `/account/switch?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+
+  return (
+    <main className="grid min-h-full place-items-center bg-[#f5efe4] px-5 py-10">
+      <section className="w-full max-w-xl overflow-hidden rounded-[2rem] border border-[#dfcfb4] bg-[#fffdf8] shadow-xl shadow-amber-950/10">
+        <header className="bg-[#211a14] px-6 py-7 text-[#fff7e8] md:px-8">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-[#e7b15f]">Quipsly Coaching</p>
+          <h1 className="mt-2 font-serif text-3xl font-black md:text-4xl">
+            {preview ? `Join ${preview.engagement.title}` : "Open your coaching space"}
+          </h1>
+        </header>
+
+        <div className="p-6 md:p-8">
+          {busy && !preview ? (
+            <p className="font-semibold text-[#765f40]">Opening your invitation…</p>
+          ) : null}
+          {error ? (
+            <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 font-bold text-red-800">
+              {error}
+            </p>
+          ) : null}
+          {preview ? (
+            <>
+              <p className="text-sm font-semibold leading-6 text-[#765f40]">
+                Continue as <strong className="text-[#3d3122]">{preview.invitation.invitedEmail}</strong> to join the shared Sessions, notes, goals, and tasks for this coaching relationship.
+              </p>
+
+              {!preview.signedIn ? (
+                <Link
+                  href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+                  className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-violet-800 px-5 text-sm font-black text-white"
+                >
+                  <LockKeyhole size={17} aria-hidden="true" /> Continue
+                </Link>
+              ) : !preview.isRightAccount ? (
+                <>
+                  <p role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">
+                    This invitation belongs to {preview.invitation.invitedEmail}. Switch to that account to continue.
+                  </p>
+                  <Link
+                    href={switchAccountUrl}
+                    className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-sm font-black text-white"
+                  >
+                    Switch account
+                  </Link>
+                </>
+              ) : preview.canAccept ? (
+                <button
+                  disabled={busy}
+                  onClick={accept}
+                  className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-violet-800 px-5 text-sm font-black text-white disabled:opacity-50"
+                >
+                  <CheckCircle2 size={18} aria-hidden="true" /> Join coaching space
+                </button>
+              ) : (
+                <p role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">
+                  This invitation is no longer available. Ask the coach for a new link.
+                </p>
+              )}
+
+              <details className="mt-5 border-t border-[#eadfc9] pt-4 text-[#765f40]">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-sm font-black text-[#5b472f]">
+                  <span className="flex items-center gap-2"><ShieldCheck size={17} aria-hidden="true" /> What this opens</span>
+                  <ChevronDown size={17} aria-hidden="true" />
+                </summary>
+                <p className="pb-1 text-xs font-semibold leading-5">
+                  This link opens only this coaching relationship and its shared work. It does not open the coach’s surrounding Nest or private notes. The link expires {new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(preview.invitation.expiresAt))}.
+                </p>
+              </details>
+            </>
+          ) : null}
+        </div>
+      </section>
+    </main>
+  );
 }

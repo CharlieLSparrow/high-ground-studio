@@ -13,6 +13,7 @@ import {
   acceptCoachingEngagementInvitation,
   changeCoachingEngagementMemberAccess,
   inviteCoachingEngagementMember,
+  previewCoachingEngagementInvitation,
   revokeCoachingEngagementInvitation,
 } from "./coaching-engagement-membership";
 
@@ -183,6 +184,11 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       prisma,
     });
     expect(accepted.member).toMatchObject({ status: "ACTIVE", accessRevision: 1 });
+    await expect(previewCoachingEngagementInvitation({
+      token,
+      actor: { id: ids.invitee, primaryEmail: email("invitee") },
+      prisma,
+    })).resolves.toMatchObject({ canAccept: false, canOpen: true });
     const replay = await acceptCoachingEngagementInvitation({
       token,
       actor: { id: ids.invitee, primaryEmail: email("invitee") },

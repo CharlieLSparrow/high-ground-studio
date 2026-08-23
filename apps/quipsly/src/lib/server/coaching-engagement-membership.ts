@@ -636,6 +636,7 @@ export async function previewCoachingEngagementInvitation(input: {
     signedIn: Boolean(input.actor?.id),
     isRightAccount,
     canAccept: state.status === "PENDING" && isRightAccount,
+    canOpen: state.status === "ACCEPTED" && isRightAccount,
   };
 }
 

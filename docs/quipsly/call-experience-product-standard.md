@@ -100,6 +100,10 @@ Recurring complaints reveal the failure modes Quipsly must design out:
 - A client invited to a private coaching Session should not need broad Quipsly
   setup before the call. Authentication and profile completion must be no more
   than the minimum required to establish the private recipient boundary.
+- Invitation screens use the ordinary **Continue**, **Switch account**, and
+  **Join** vocabulary. Security scope and expiration remain available in
+  collapsed details. Reopening an already accepted link goes directly to the
+  authorized coaching space instead of leaving the person at a dead end.
 - Restore the Session's saved audio/video and transcription choices when the
   recording surface reopens. Do not make a returning participant repeat a
   choice Quipsly already holds unless the recording scope actually changes.
