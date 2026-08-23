@@ -114,9 +114,8 @@ export function SessionNotesWorkspace({
       createForm.current?.reset();
       const appearsHere = noteAppearsInView(payload.note, activeView);
       setNotice(
-        `${payload.idempotentReplay ? "The existing" : "One"} canonical ${sessionNoteKindLabel(payload.note.kind).toLowerCase()} is saved with ${sessionNoteVisibilityLabel(payload.note.visibility).toLowerCase()} visibility.`
+        `${payload.idempotentReplay ? "This note was already saved." : "Note saved."} ${audienceHelp(payload.note.visibility)}`
         + `${appearsHere ? "" : " Open All notes to see it."}`
-        + " No message, client delivery, calendar event, task, transcript decision, or publication action occurred.",
       );
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The Session note was not saved.");
@@ -157,7 +156,7 @@ export function SessionNotesWorkspace({
         throw new Error(payload.error || "The Session note was not saved.");
       }
       replaceNote({ ...note, ...payload.note });
-      setNotice("The same canonical note was updated and its previous text and audience remain in the append-only revision history. No external action occurred.");
+      setNotice("Note updated. Its earlier versions remain available in the history.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The Session note was not saved.");
     } finally {
@@ -192,7 +191,7 @@ export function SessionNotesWorkspace({
           .map(({ id, label, slug }) => ({ id, label, slug })),
         updatedAt: payload.updatedAt,
       });
-      setNotice("Canonical Nest tags are saved on the same note identity.");
+      setNotice("Tags saved.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The note tags were not saved.");
     } finally {
@@ -229,7 +228,7 @@ export function SessionNotesWorkspace({
         tags: [...note.tags.filter((tag) => tag.id !== payload.tag!.id), payload.tag],
         updatedAt: payload.updatedAt,
       });
-      setNotice(`#${payload.tag.label} is reusable in this Nest and attached to the same note.`);
+      setNotice(`#${payload.tag.label} created and added to this note.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The reusable tag was not created.");
     } finally {
@@ -244,10 +243,10 @@ export function SessionNotesWorkspace({
           <div className="flex items-start gap-3">
             <span className="rounded-xl bg-white p-2 text-orange-700"><NotebookPen aria-hidden="true" /></span>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-800">Canonical Session notes</p>
-              <h2 id="session-notes-heading" className="mt-1 font-serif text-3xl font-black text-[#3d3122]">{notes.length} deliberate note{notes.length === 1 ? "" : "s"}</h2>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-800">Session notes</p>
+              <h2 id="session-notes-heading" className="mt-1 font-serif text-3xl font-black text-[#3d3122]">{notes.length} note{notes.length === 1 ? "" : "s"}</h2>
               <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
-                Private, Session-shared, client-safe, production, and decision views are policies over the same note identities. Transcript candidates and committed work stay in their own modes.
+                Capture what matters, then choose whether each note stays private or is shared in this Session.
               </p>
             </div>
           </div>
@@ -275,10 +274,13 @@ export function SessionNotesWorkspace({
 
         {notice ? <p role="status" className="mt-4 rounded-xl border border-orange-200 bg-white px-4 py-3 text-xs font-bold leading-5 text-orange-950">{notice}</p> : null}
 
-        <details className="mt-5 rounded-2xl border border-orange-200 bg-white p-4">
-          <summary className="cursor-pointer text-sm font-black text-orange-950">Add a Session note</summary>
-          <form ref={createForm} action={(formData) => void createNote(formData)} className="mt-4 grid gap-3">
-            <div className="grid gap-3 md:grid-cols-2">
+        <form ref={createForm} action={(formData) => void createNote(formData)} className="mt-5 grid gap-3 rounded-2xl border border-orange-200 bg-white p-4">
+          <p className="text-sm font-black text-orange-950">Add a note</p>
+          <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Note<textarea name="body" required maxLength={20_000} rows={4} placeholder="Write a note…" className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+          <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Title <span className="normal-case tracking-normal text-orange-700">(optional)</span><input name="title" maxLength={500} placeholder="Add a title" className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+          <details className="rounded-xl border border-orange-100 bg-orange-50/45 p-3">
+            <summary className="cursor-pointer text-xs font-black text-orange-950">Note type and sharing</summary>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
                 Note type
                 <select name="kind" defaultValue="SESSION_NOTE" className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
@@ -292,12 +294,12 @@ export function SessionNotesWorkspace({
                 </select>
               </label>
             </div>
-            <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Title<input name="title" maxLength={500} placeholder="What is this note about?" className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
-            <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Note<textarea name="body" required maxLength={20_000} rows={5} placeholder="Write the useful context, observation, or decision…" className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
-            <p className="text-xs font-bold leading-5 text-orange-950">Changing visibility changes in-app access only. It never sends a message, creates a client packet, publishes, or changes transcript evidence.</p>
-            <button type="submit" disabled={busyId === "create"} className="min-h-11 justify-self-start rounded-full bg-orange-800 px-5 py-2 text-xs font-black text-white disabled:opacity-50">{busyId === "create" ? "Saving…" : "Save note"}</button>
-          </form>
-        </details>
+          </details>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs font-bold leading-5 text-orange-950">Private by default. Saving does not send a message.</p>
+            <button type="submit" disabled={busyId === "create"} className="min-h-11 rounded-full bg-orange-800 px-5 py-2 text-xs font-black text-white disabled:opacity-50">{busyId === "create" ? "Saving…" : "Save note"}</button>
+          </div>
+        </form>
       </section>
 
       {visibleNotes.length ? (

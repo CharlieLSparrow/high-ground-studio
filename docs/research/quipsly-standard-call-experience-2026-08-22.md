@@ -774,6 +774,13 @@ share`. The continuity panel says that the call, chat, recordings,
   structural alignment conflict even when the visible transcript reads well.
   The user sees that the passage is kept until alignment is repaired, while the
   original and all previously prepared outputs remain unchanged.
+- Apply progressive disclosure to follow-through too. The primary Notes job is
+  writing, not learning Quipsly's storage model. Show the note body first, keep
+  title optional, default safely to private, and place note type and audience
+  under one ordinary `Note type and sharing` disclosure. Confirm the result in
+  plain language using the actual audience; keep canonical identity, revision,
+  source anchors, taxonomy, and delivery boundaries available on the saved note
+  or in edit details.
 
 ## Acceptance consequences
 

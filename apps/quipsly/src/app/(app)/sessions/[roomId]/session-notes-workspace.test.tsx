@@ -60,7 +60,7 @@ describe("Session Notes workspace", () => {
       ]}
     />);
 
-    expect(screen.getByRole("heading", { name: "5 deliberate notes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "5 notes" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Private 1" })).toHaveAttribute("href", "/sessions/room-1?mode=notes&view=private");
     expect(screen.getByRole("link", { name: "Shared 2" })).toHaveAttribute("href", "/sessions/room-1?mode=notes&view=shared");
     expect(screen.getByRole("link", { name: "Client-safe 1" })).toHaveAttribute("href", "/sessions/room-1?mode=notes&view=client-safe");
@@ -149,10 +149,10 @@ describe("Session Notes workspace", () => {
       initialNotes={[]}
     />);
 
-    await user.click(screen.getByText("Add a Session note"));
+    await user.click(screen.getByText("Note type and sharing"));
     await user.selectOptions(screen.getByRole("combobox", { name: "Note type" }), "DECISION");
     await user.selectOptions(screen.getByRole("combobox", { name: "Who can read it" }), "SESSION_SHARED");
-    await user.type(screen.getByRole("textbox", { name: "Title" }), "Opening decision");
+    await user.type(screen.getByRole("textbox", { name: /^Title/ }), "Opening decision");
     await user.type(screen.getByRole("textbox", { name: "Note" }), "Lead with the listener question.");
     await user.click(screen.getByRole("button", { name: "Save note" }));
 
@@ -164,7 +164,7 @@ describe("Session Notes workspace", () => {
       kind: "DECISION",
       visibility: "SESSION_SHARED",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("No message, client delivery, calendar event, task, transcript decision, or publication action occurred");
+    expect(await screen.findByRole("status")).toHaveTextContent("Note saved. People who can access this Session can read it. Nothing is messaged or delivered.");
     expect(screen.getByRole("heading", { name: "Opening decision" })).toBeInTheDocument();
   });
 
@@ -206,7 +206,7 @@ describe("Session Notes workspace", () => {
       visibility: "CLIENT_SAFE",
       expectedUpdatedAt: initial.updatedAt,
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("append-only revision history");
+    expect(await screen.findByRole("status")).toHaveTextContent("Note updated. Its earlier versions remain available in the history.");
     const updated = screen.getByRole("heading", { name: "Shared reflection" }).closest("article")!;
     expect(updated).toBeInTheDocument();
     expect(screen.getByText(/2 retained revisions/)).toBeInTheDocument();

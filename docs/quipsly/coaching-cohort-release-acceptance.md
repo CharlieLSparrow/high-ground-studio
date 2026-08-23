@@ -1113,3 +1113,22 @@ The focused server and recording-editor suites pass 14/14 and the full web
 typecheck passes. Synthetic interval tests establish fail-closed contract
 behavior; natural speech, imperfect provider alignment, and audible edit-seam
 quality remain open evidence.
+
+## Standard Session note capture checkpoint — 2026-08-22
+
+The Notes mode now opens directly to a familiar note composer instead of hiding
+creation behind a disclosure and teaching canonical identity policy first. A
+person writes the note, optionally adds a title, and saves. Notes remain private
+by default; note type and audience are available together under `Note type and
+sharing` when a person needs them.
+
+The saved result now says `Note saved` followed by the exact plain-language
+audience rule. Editing says earlier versions remain available; tags say only
+what was saved. Canonical note identity, append-only revisions, source anchors,
+access enforcement, project taxonomy, and non-delivery behavior remain intact
+under the simplified surface.
+
+The focused Session Notes suite passes 5/5 and the full web typecheck passes.
+This is component and request-contract evidence; a minimally instructed coach,
+client visibility readback, mobile keyboard behavior, and screen-reader journey
+remain deferred acceptance evidence.
