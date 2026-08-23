@@ -589,6 +589,13 @@ share`. The continuity panel says that the call, chat, recordings,
   views never creates another copy, changes the URL, or breaks the link between
   words and source time. Audio forensics and voice-label administration remain
   collapsed below the primary editing work.
+- Do not turn transcript correction into compliance theater. Choosing
+  `Correct` now starts the exact passage, records the real playback timestamp,
+  and unlocks `Save correction` after playback actually begins. The former
+  repeated "I listened" checkbox is gone. A correction remains a reversible
+  overlay with source provenance; `Mark correct` appears only after that
+  passage has been played, so ordinary users see fewer controls without
+  weakening the evidence boundary.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB

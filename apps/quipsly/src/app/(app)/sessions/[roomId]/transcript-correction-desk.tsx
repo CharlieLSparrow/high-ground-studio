@@ -1111,6 +1111,8 @@ function CorrectionEditor({
   segment,
   canUseProjectTeamNotes,
   playbackReady,
+  playbackReviewed,
+  reviewedPlaybackPositionSeconds,
   currentPlaybackPosition,
   busy,
   onPlay,
@@ -1122,6 +1124,8 @@ function CorrectionEditor({
   segment: Segment;
   canUseProjectTeamNotes: boolean;
   playbackReady: boolean;
+  playbackReviewed: boolean;
+  reviewedPlaybackPositionSeconds: number | null;
   currentPlaybackPosition: () => number | null;
   busy: boolean;
   onPlay: () => Promise<void>;
@@ -1132,7 +1136,6 @@ function CorrectionEditor({
   const [correctedText, setCorrectedText] = useState(segment.text);
   const [correctedSpeaker, setCorrectedSpeaker] = useState(segment.speakerLabel || "");
   const [reason, setReason] = useState("");
-  const [listened, setListened] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creatingTask, setCreatingTask] = useState(false);
   const [taskTitle, setTaskTitle] = useState(segment.text.slice(0, 180));
@@ -1158,7 +1161,6 @@ function CorrectionEditor({
   useEffect(() => {
     setCorrectedText(segment.text);
     setCorrectedSpeaker(segment.speakerLabel || "");
-    setListened(false);
     setDraftTitle(`Draft — ${segment.text}`.slice(0, 180));
     setDraftOpeningNote("");
     setDraftHref(null);
@@ -1185,8 +1187,8 @@ function CorrectionEditor({
           correctedText,
           correctedSpeakerLabel: correctedSpeaker,
           reason,
-          confirmedAgainstPlayback: listened,
-          playbackPositionSeconds: position,
+          confirmedAgainstPlayback: playbackReviewed,
+          playbackPositionSeconds: reviewedPlaybackPositionSeconds ?? position,
         }),
       });
       const body = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean };
@@ -1216,7 +1218,7 @@ function CorrectionEditor({
           expectedSpeakerLabel: segment.providerSpeakerLabel,
           expectedAcceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
           confirmedAgainstPlayback: true,
-          playbackPositionSeconds: currentPlaybackPosition(),
+          playbackPositionSeconds: reviewedPlaybackPositionSeconds ?? currentPlaybackPosition(),
           reviewNote: "Confirmed as-is in the Nest transcript review desk.",
         }),
       });
@@ -1485,23 +1487,24 @@ function CorrectionEditor({
           <label className="block text-xs font-black uppercase tracking-wide text-amber-950">Why this changed <span className="normal-case tracking-normal text-amber-800">(optional)</span>
             <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} placeholder="Name, wording, crosstalk, diarization…" className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
           </label>
-          <label className="flex items-start gap-3 rounded-lg border border-amber-200 bg-white p-3 text-sm font-bold leading-relaxed text-amber-950">
-            <input type="checkbox" checked={listened} onChange={(event) => setListened(event.target.checked)} className="mt-1 size-4 accent-amber-800" />
-            <span>I listened to this exact timestamp and these words match the protected recording.</span>
-          </label>
+          <p className={`rounded-lg border p-3 text-sm font-bold leading-relaxed ${playbackReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-white text-amber-950"}`}>
+            {playbackReviewed
+              ? `Recording checked from ${timestampForSeconds(reviewedPlaybackPositionSeconds ?? segment.startSeconds)}. Your correction will stay linked to this moment.`
+              : "Quipsly is playing this passage. Listen once and Save will unlock automatically."}
+          </p>
           {error && <p role="alert" className="flex items-start gap-2 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void save()} disabled={busy || !listened || !playbackReady || (!correctedText.trim() && !correctedSpeaker.trim())} className="inline-flex items-center gap-2 rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Accept reviewed correction</button>
+            <button type="button" onClick={() => void save()} disabled={busy || !playbackReviewed || !playbackReady || (!correctedText.trim() && !correctedSpeaker.trim())} className="inline-flex items-center gap-2 rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Save correction</button>
             <button type="button" onClick={() => { setEditing(false); setError(null); }} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button>
           </div>
           <p className="text-xs font-bold leading-relaxed text-amber-800">Saving adds a reviewed overlay and audit revision. It does not overwrite provider output, move timestamps, create tasks, send notes, or publish anything.</p>
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          {!segment.acceptedCorrection && !segment.acceptedVerification && (
-            <button type="button" onClick={() => void confirmAsIs()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />Confirm correct as heard</button>
+          {!segment.acceptedCorrection && !segment.acceptedVerification && playbackReviewed && (
+            <button type="button" onClick={() => void confirmAsIs()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />Mark correct</button>
           )}
-          <button type="button" onClick={() => setEditing(true)} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:cursor-not-allowed disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />{segment.acceptedCorrection ? "Revise reviewed correction" : "Correct against playback"}</button>
+          <button type="button" onClick={() => { setEditing(true); if (!playbackReviewed) void onPlay(); }} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:cursor-not-allowed disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />{segment.acceptedCorrection ? "Revise correction" : "Correct"}</button>
           {segment.correctionHistory.length > 0 && <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#8a7354]"><History size={14} aria-hidden="true" />{segment.correctionHistory.length} correction record(s) preserved</span>}
         </div>
       )}
@@ -1738,6 +1741,13 @@ export function TranscriptCorrectionDesk({
     setPlaybackSeconds(next);
     try {
       await media.play();
+      setListenedSecondBins((current) => {
+        const second = Math.max(0, Math.floor(next));
+        if (current.has(second)) return current;
+        const updated = new Set(current);
+        updated.add(second);
+        return updated;
+      });
     } catch {
       setMessage("Playback needs your direct interaction. Press play in the recording controls, then try this timestamp again.");
     }
@@ -1983,6 +1993,8 @@ export function TranscriptCorrectionDesk({
                   segment={segment}
                   canUseProjectTeamNotes={canUseProjectTeamNotes}
                   playbackReady={playbackReady}
+                  playbackReviewed={listenedSecondBins.has(Math.max(0, Math.floor(segment.startSeconds)))}
+                  reviewedPlaybackPositionSeconds={listenedSecondBins.has(Math.max(0, Math.floor(segment.startSeconds))) ? segment.startSeconds : null}
                   currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
                   busy={busy}
                   onPlay={() => playFrom(segment)}

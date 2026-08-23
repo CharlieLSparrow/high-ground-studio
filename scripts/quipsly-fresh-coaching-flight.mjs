@@ -297,6 +297,16 @@ if (controlledSpeechFlight) {
     true,
     "The recording-plus-transcript workspace did not render side by side on a wide screen.",
   );
+  assert.equal(
+    audioPolish?.correctionPlaybackStartedAutomatically,
+    true,
+    "Correcting a transcript passage did not begin evidence playback automatically.",
+  );
+  assert.equal(
+    audioPolish?.repeatedPlaybackAttestationAbsent,
+    true,
+    "Transcript correction still required a repeated manual playback attestation.",
+  );
   assert(
     ["improved-listening-copy", "already-balanced"].includes(
       audioPolish?.outcome,
@@ -402,6 +412,10 @@ const result = {
           audioPolish.transcriptViewModesOperated,
         recordingAndTranscriptRenderedSideBySide:
           audioPolish.recordingAndTranscriptRenderedSideBySide,
+        correctionPlaybackStartedAutomatically:
+          audioPolish.correctionPlaybackStartedAutomatically,
+        repeatedPlaybackAttestationAbsent:
+          audioPolish.repeatedPlaybackAttestationAbsent,
       }
     : null,
   interactionSurfaceEvidence: {
@@ -444,7 +458,9 @@ const result = {
         audioPolish?.transcriptAppearedBeforePacketAdministration === true &&
         audioPolish?.recordingEditorOpenedInline === true &&
         audioPolish?.transcriptViewModesOperated === true &&
-        audioPolish?.recordingAndTranscriptRenderedSideBySide === true,
+        audioPolish?.recordingAndTranscriptRenderedSideBySide === true &&
+        audioPolish?.correctionPlaybackStartedAutomatically === true &&
+        audioPolish?.repeatedPlaybackAttestationAbsent === true,
     },
     browserInitiatedServiceMechanics: {
       transcriptWorkerAndProtectedPlayback: true,

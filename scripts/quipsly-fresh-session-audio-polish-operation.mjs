@@ -425,6 +425,23 @@ async function operateRenderedSession({ baseURL, context, password }) {
     await page.setViewportSize({ width: 390, height: 844 });
     await assertNoHorizontalOverflow(transcriptDesk, "Responsive recording-plus-transcript review");
 
+    const firstPassage = transcriptDesk
+      .locator('[id^="transcript-segment-"]')
+      .first();
+    await firstPassage
+      .getByRole("button", { name: "Correct", exact: true })
+      .click();
+    await firstPassage
+      .getByText(/Recording checked from \d{2}:\d{2}/)
+      .waitFor({ timeout: 15_000 });
+    assert(
+      await firstPassage.getByRole("checkbox", { name: /listened/i }).count() === 0,
+      "Transcript correction still required a repeated manual playback attestation.",
+    );
+    await firstPassage
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+
     assert(browserErrors.length === 0, `Session audio polish raised browser exceptions: ${browserErrors.join(" | ")}`);
     await clearRenderedSession(page, baseURL, "fresh-coach");
     return {
@@ -449,6 +466,8 @@ async function operateRenderedSession({ baseURL, context, password }) {
       recordingEditorOpenedInline: true,
       transcriptViewModesOperated: true,
       recordingAndTranscriptRenderedSideBySide: true,
+      correctionPlaybackStartedAutomatically: true,
+      repeatedPlaybackAttestationAbsent: true,
     };
   } finally {
     await browserContext.close();
