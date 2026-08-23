@@ -1334,6 +1334,14 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
     private func startDurationAndMeterTimer() {
         displayDurationTimer?.invalidate()
+        if CaptureLaunchConfiguration.usesRuntimeSmoke {
+            // The runtime flight still records through AVAudioRecorder and
+            // verifies the finalized duration, bytes, hash, upload, playback,
+            // and recovery. Avoid a perpetual published-view timer while
+            // XCTest is trying to synchronize discrete recording controls.
+            displayDurationTimer = nil
+            return
+        }
         displayDurationTimer = Timer.scheduledTimer(
             timeInterval: 0.1,
             target: self,

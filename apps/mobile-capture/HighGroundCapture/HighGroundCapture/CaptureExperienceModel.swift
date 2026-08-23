@@ -137,6 +137,20 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    /// The compiled simulator acceptance flight exercises the real recorder,
+    /// file, upload, playback, and recovery paths. It intentionally suppresses
+    /// only the 10 Hz presentation timer so XCTest can reach quiescence between
+    /// controls; source timestamps and finalized media duration remain real.
+    static var usesRuntimeSmoke: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains(
+            "--quipsly-capture-runtime-smoke"
+        )
+        #else
+        false
+        #endif
+    }
+
     /// A DEBUG-only presentation layer for deterministic App Store layout
     /// drafts. It uses the same mutation-free preview model, but removes
     /// engineering boundary labels and substitutes clearly fictional account
