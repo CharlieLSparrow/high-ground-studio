@@ -1170,6 +1170,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         name.tap()
         name.typeText(clientName)
+        name.typeKey(.return, modifierFlags: [])
 
         let title = app.textFields["CaptureCoachingSessionTitle"].firstMatch
         XCTAssertTrue(

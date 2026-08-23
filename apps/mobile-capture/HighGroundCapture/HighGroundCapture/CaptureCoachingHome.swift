@@ -1501,9 +1501,13 @@ private struct NewMobileCoachingAppointmentSheet: View {
                         TextField("Client name", text: $draft.clientName)
                             .textContentType(.name)
                             .focused($focusedField, equals: .name)
+                            .submitLabel(.next)
+                            .onSubmit { focusedField = .title }
                             .accessibilityIdentifier("CaptureCoachingClientName")
                         TextField("Session name", text: $draft.title)
                             .focused($focusedField, equals: .title)
+                            .submitLabel(.done)
+                            .onSubmit { focusedField = nil }
                             .accessibilityIdentifier("CaptureCoachingSessionTitle")
                         Picker("Duration", selection: $draft.durationMinutes) {
                             Text("30 minutes").tag(30)
