@@ -1242,3 +1242,40 @@ contracts pass, and the full deterministic note-edit journey passes in
 `/tmp/quipsly-session-notes-simple-final-20260823T064909Z.xcresult`. Signed-in
 offline retry, true two-device edit conflict, VoiceOver comprehension, and
 minimally instructed human use remain deferred release evidence.
+
+## Current-source critical release checkpoint — 2026-08-23
+
+Committed source `8d2a4db7` is 164 product and release commits ahead of the
+native source currently represented by public TestFlight Build 33. Those
+changes are intentionally being accumulated into a deliberate release train
+rather than uploaded one at a time.
+
+The source-candidate gate currently reports:
+
+- 71/71 Session source-evidence and review tests passing;
+- 15/15 native identity and account-partition tests passing;
+- 11/11 rehearsal-preflight contract tests passing;
+- 3/3 product-versus-fixture boundary tests passing;
+- 4/4 bounded cohort-capacity contract tests passing;
+- 16/16 Build 33 release-ledger and post-call verifier tests passing;
+- 12/12 focused web login and account-switch tests passing, plus the full
+  Quipsly TypeScript typecheck; and
+- 14/14 operated critical iPhone UI journeys passing serially with zero
+  failures in 264.423 seconds. The exact result bundle is
+  `/tmp/quipsly-capture-critical-serial-20260823.xcresult`.
+
+The planner discovered 72 deterministic shipping iPhone journeys and balanced
+the complete lane across four shards with estimated weights 48, 48, 48, and
+47. The first diagnostic run accidentally allowed Xcode to create simulator
+clones; several clones failed to launch the XCTest runner while two clones
+continued passing tests. Rerunning on one known simulator with parallel testing
+disabled passed the complete critical lane. GitHub Actions and Fastlane already
+require serial execution inside each shard, so the clone failure is retained as
+infrastructure evidence rather than misclassified as an app failure.
+
+This checkpoint makes the source eligible for the next qualification stage. It
+does not yet authorize a new TestFlight upload: the complete 72-journey lane,
+signed archive/export, exact App Store metadata readback, and a source-bound
+candidate manifest still remain. Physical-device, natural-speech, real-mailbox,
+human-listening, minimally instructed use, and 50-simultaneous-call claims also
+remain explicitly unproved.
