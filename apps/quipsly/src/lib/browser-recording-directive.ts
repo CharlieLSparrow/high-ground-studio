@@ -47,6 +47,34 @@ export type BrowserRecordingHealth = {
   allParticipantsStoppedSafely: boolean;
 };
 
+export function browserRecordingDirectiveShouldAutoStart(input: {
+  action: "START" | "STOP";
+  status: string;
+  retainedReady: boolean;
+  terminalState?: string;
+}) {
+  return (
+    input.action === "START" &&
+    input.status === "ready" &&
+    input.retainedReady &&
+    (!input.terminalState || input.terminalState === "JOIN_REQUIRED")
+  );
+}
+
+export function browserRecordingDirectiveCanRetry(input: {
+  action: "START" | "STOP";
+  status: string;
+  retainedReady: boolean;
+  terminalState?: string;
+}) {
+  return (
+    input.action === "START" &&
+    input.status === "error" &&
+    input.retainedReady &&
+    input.terminalState === "START_FAILED"
+  );
+}
+
 export function projectBrowserRecordingHealth(
   directive: BrowserRecordingDirective,
 ) {

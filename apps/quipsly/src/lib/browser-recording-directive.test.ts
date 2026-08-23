@@ -2,6 +2,8 @@
 
 import {
   acknowledgeBrowserRecordingDirective,
+  browserRecordingDirectiveCanRetry,
+  browserRecordingDirectiveShouldAutoStart,
   issueBrowserRecordingDirective,
   projectBrowserRecordingHealth,
   readBrowserRecordingDirective,
@@ -17,6 +19,44 @@ describe("browser recording directive client", () => {
   beforeEach(() => window.localStorage.clear());
   afterEach(() => {
     global.fetch = originalFetch;
+  });
+
+  it("automatically joins an active recording once existing Session consent is ready", () => {
+    expect(
+      browserRecordingDirectiveShouldAutoStart({
+        action: "START",
+        status: "ready",
+        retainedReady: true,
+        terminalState: "JOIN_REQUIRED",
+      }),
+    ).toBe(true);
+    expect(
+      browserRecordingDirectiveShouldAutoStart({
+        action: "START",
+        status: "ready",
+        retainedReady: false,
+        terminalState: "JOIN_REQUIRED",
+      }),
+    ).toBe(false);
+  });
+
+  it("offers manual retry only after a real local start failure", () => {
+    expect(
+      browserRecordingDirectiveCanRetry({
+        action: "START",
+        status: "error",
+        retainedReady: true,
+        terminalState: "START_FAILED",
+      }),
+    ).toBe(true);
+    expect(
+      browserRecordingDirectiveCanRetry({
+        action: "START",
+        status: "ready",
+        retainedReady: true,
+        terminalState: "JOIN_REQUIRED",
+      }),
+    ).toBe(false);
   });
 
   it("reduces complete participant evidence to one calm recording message", () => {

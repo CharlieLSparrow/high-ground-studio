@@ -154,6 +154,11 @@ Recurring complaints reveal the failure modes Quipsly must design out:
   language. The current person sees either **Choose Allow recording** or **Your
   choice is saved. Waiting for the other participant**—never an internal
   all-party-policy phrase hidden in diagnostics.
+- One host **Record** action coordinates every ready participant-owned source.
+  A participant who joins while recording is active starts automatically as
+  soon as their existing Session choice and source are ready; do not add a
+  second ceremonial **Join recording** step. If their local source actually
+  fails, show one **Try recording again** action while the call continues.
 - On iPhone, offer the platform-standard **Continue with Apple** and Google
   paths before the optional password path. Federated sign-in skips Quipsly
   password creation and mailbox-verification chores while still resolving one

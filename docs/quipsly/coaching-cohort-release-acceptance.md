@@ -1905,3 +1905,25 @@ use the remembered preference layer. Responsive visual proof remains pending
 because the local in-app and Chrome browser-control connections were
 unavailable during this slice; that did not stop source, interaction, or type
 verification.
+
+## One coordinated Record action with explicit recovery — 2026-08-23
+
+A ready participant no longer has to press **Join recording** merely because
+the host started before their browser observed the directive. If the current
+Session's recording choice and retained source are ready, the endpoint starts
+its participant-owned master automatically. If consent or source readiness is
+not ready yet, Quipsly waits and starts automatically when that state becomes
+valid; it does not convert an old Session preference into consent.
+
+Automatic start does not hide real failure. A browser endpoint that returned a
+local `START_FAILED` receipt now exposes **Try recording again** while the
+conversation remains connected. It never loops an actual device failure, and
+the host can still stop the coordinated directive while one endpoint is being
+recovered.
+
+Independent evidence: the directive model proves that a ready `JOIN_REQUIRED`
+endpoint auto-starts, a not-ready endpoint waits, and manual retry is offered
+only for a ready local `START_FAILED` state. The focused directive and rendered
+source-contract suites pass 11/11, and the complete Quipsly TypeScript 7 gate
+passes after route generation. Two-browser physical proof remains on the
+continuous validation ledger and does not stop the next product lane.

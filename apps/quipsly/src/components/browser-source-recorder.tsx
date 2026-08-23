@@ -84,6 +84,8 @@ import {
 } from "@/lib/browser-source-upload-recovery";
 import {
   acknowledgeBrowserRecordingDirective,
+  browserRecordingDirectiveCanRetry,
+  browserRecordingDirectiveShouldAutoStart,
   issueBrowserRecordingDirective,
   projectBrowserRecordingHealth,
   readBrowserRecordingDirective,
@@ -2106,7 +2108,7 @@ export function BrowserSourceRecorder({
     if (
       directiveBusy ||
       directive?.action !== "START" ||
-      status !== "ready" ||
+      !["ready", "error"].includes(status) ||
       !retainedReadiness.ok
     ) {
       return;
@@ -2117,7 +2119,10 @@ export function BrowserSourceRecorder({
         roomId: callRoomId,
         directiveId: directive.id,
         state: "OBSERVED",
-        detail: "The participant explicitly joined an active recording.",
+        detail:
+          status === "error"
+            ? "The participant explicitly retried a failed local recording."
+            : "The participant explicitly joined an active recording.",
       }).catch(() => undefined);
       const captureId = await start();
       const state = captureId
@@ -2129,7 +2134,9 @@ export function BrowserSourceRecorder({
         state,
         captureId,
         detail: captureId
-          ? "Durable local capture started after explicit late-join confirmation."
+          ? status === "error"
+            ? "Durable local capture started after explicit recovery."
+            : "Durable local capture started after explicit late-join confirmation."
           : "The local recorder could not start; no media success is claimed.",
       }).catch(() => undefined);
       directiveHandlingRef.current.set(directive.id, state);
@@ -2156,17 +2163,40 @@ export function BrowserSourceRecorder({
           directiveBaselineEstablishedRef.current = true;
           if (directive?.action === "START" && status !== "recording") {
             setRecordingDirective(directive);
-            directiveHandlingRef.current.set(directive.id, "JOIN_REQUIRED");
-            setMessage(
-              "Recording is already in progress. Join it when you are ready.",
-            );
+            if (
+              !browserRecordingDirectiveShouldAutoStart({
+                action: directive.action,
+                status,
+                retainedReady: retainedReadiness.ok,
+              })
+            ) {
+              directiveHandlingRef.current.set(directive.id, "JOIN_REQUIRED");
+              setMessage(
+                "Recording is already in progress. Quipsly will start your local recording after your Session choice is ready.",
+              );
+              return;
+            }
+          } else {
+            return;
           }
-          return;
         }
         if (!directive) return;
         setRecordingDirective(directive);
-        const terminal = directiveHandlingRef.current.get(directive.id);
-        if (terminal === "JOIN_REQUIRED") return;
+        let terminal = directiveHandlingRef.current.get(directive.id);
+        if (terminal === "JOIN_REQUIRED") {
+          if (
+            !browserRecordingDirectiveShouldAutoStart({
+              action: directive.action,
+              status,
+              retainedReady: retainedReadiness.ok,
+              terminalState: terminal,
+            })
+          ) {
+            return;
+          }
+          directiveHandlingRef.current.delete(directive.id);
+          terminal = undefined;
+        }
         if (
           directive.action === "START" &&
           ["STARTED", "START_FAILED", "STOPPED"].includes(terminal || "")
@@ -2547,17 +2577,25 @@ export function BrowserSourceRecorder({
                 {canControlRoom ? "Stop recording" : "Stop my recording"}
               </button>
               {canControlRoom &&
-              status === "ready" &&
-              directiveHandlingRef.current.get(recordingDirective?.id || "") ===
-                "JOIN_REQUIRED" ? (
+              recordingDirective &&
+              ((status === "ready" &&
+                retainedReadiness.ok &&
+                directiveHandlingRef.current.get(recordingDirective.id) ===
+                  "JOIN_REQUIRED") ||
+                browserRecordingDirectiveCanRetry({
+                  action: recordingDirective.action,
+                  status,
+                  retainedReady: retainedReadiness.ok,
+                  terminalState: directiveHandlingRef.current.get(recordingDirective.id),
+                })) ? (
                 <button
                   type="button"
                   onClick={() => void joinActiveRecording()}
                   disabled={directiveBusy || !retainedReadiness.ok}
                   className="inline-flex min-h-12 items-center gap-2 rounded-full border border-rose-300 bg-white px-5 text-xs font-black uppercase tracking-wide text-rose-950 disabled:opacity-40"
                 >
-                  <span className="h-3 w-3 rounded-full bg-rose-700" /> Start my
-                  recording
+                  <span className="h-3 w-3 rounded-full bg-rose-700" />{" "}
+                  {status === "error" ? "Try recording again" : "Start my recording"}
                 </button>
               ) : null}
             </>
@@ -2580,14 +2618,26 @@ export function BrowserSourceRecorder({
               )}{" "}
               {sessionKind === "coaching" ? "Record" : "Record source"}
             </button>
-          ) : recordingDirective?.shouldRecord && status === "ready" ? (
+          ) : recordingDirective?.shouldRecord &&
+            recordingDirective &&
+            ((status === "ready" &&
+              retainedReadiness.ok &&
+              directiveHandlingRef.current.get(recordingDirective.id) ===
+                "JOIN_REQUIRED") ||
+              browserRecordingDirectiveCanRetry({
+                action: recordingDirective.action,
+                status,
+                retainedReady: retainedReadiness.ok,
+                terminalState: directiveHandlingRef.current.get(recordingDirective.id),
+              })) ? (
             <button
               type="button"
               onClick={() => void joinActiveRecording()}
               disabled={directiveBusy || !retainedReadiness.ok}
               className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"
             >
-              <span className="h-3 w-3 rounded-full bg-white" /> Join recording
+              <span className="h-3 w-3 rounded-full bg-white" />{" "}
+              {status === "error" ? "Try recording again" : "Start my recording"}
             </button>
           ) : (
             <span className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-bold text-violet-950">

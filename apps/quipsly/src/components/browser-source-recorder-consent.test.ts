@@ -68,5 +68,11 @@ describe("browser retained-source consent", () => {
     expect(source).toContain('chooseSourceType("audio")');
     expect(source).toContain('chooseSourceType("video")');
     expect(source).toContain("chooseHeadphonesAttestation(event.target.checked)");
+    expect(source).toContain("browserRecordingDirectiveShouldAutoStart");
+    expect(source).toContain("browserRecordingDirectiveCanRetry");
+    expect(source).toContain("Try recording again");
+    expect(source).toContain(
+      "Quipsly will start your local recording after your Session choice is ready.",
+    );
   });
 });
