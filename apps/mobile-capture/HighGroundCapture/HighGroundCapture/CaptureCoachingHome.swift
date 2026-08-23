@@ -845,24 +845,14 @@ struct CaptureCoachingHomeView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
-                DisclosureGroup(
-                    handoff.callRoomId.flatMap { client.invitationDeliveries[$0] }?.wasSent == true
-                        ? "Invitation sent"
-                        : "Invitation options"
-                ) {
-                    invitationActions(for: booking)
-                        .padding(.top, 8)
-                }
+                invitationActions(for: booking)
             } else {
-                DisclosureGroup("Invitation options") {
-                    coachingShareLink(
-                        title: "Join my Quipsly coaching session",
-                        roomID: handoff.callRoomId,
-                        entryPath: handoff.clientEntryPath,
-                        recipientEmail: booking(for: handoff.callRoomId)?.client?.email
-                    )
-                    .padding(.top, 8)
-                }
+                coachingShareLink(
+                    title: "Join my Quipsly coaching session",
+                    roomID: handoff.callRoomId,
+                    entryPath: handoff.clientEntryPath,
+                    recipientEmail: booking(for: handoff.callRoomId)?.client?.email
+                )
             }
         }
         .captureCard()
@@ -926,14 +916,7 @@ struct CaptureCoachingHomeView: View {
                             }
                         }
                         if client.isCoach {
-                            DisclosureGroup(
-                                booking.callRoomId.flatMap { client.invitationDeliveries[$0] }?.wasSent == true
-                                    ? "Invitation sent"
-                                    : "Invitation options"
-                            ) {
-                                invitationActions(for: booking)
-                                    .padding(.top, 8)
-                            }
+                            invitationActions(for: booking)
                         }
                     }
                     .captureCard()
@@ -1085,7 +1068,7 @@ struct CaptureCoachingHomeView: View {
             ) {
                 Label("Share invite", systemImage: "square.and.arrow.up")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             .accessibilityLabel("Share coaching invitation")
             .accessibilityIdentifier("CaptureCoachingShareInvite")
         }

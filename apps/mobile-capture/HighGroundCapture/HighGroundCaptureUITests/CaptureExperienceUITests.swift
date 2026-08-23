@@ -114,12 +114,13 @@ final class CaptureExperienceUITests: XCTestCase {
         // Newer SwiftUI runtimes omit a custom identifier from the accessibility
         // snapshot for this disabled control, but retain the visible Button role
         // and label. Operate the same affordance a coach can actually perceive.
-        let sendInvitation = app.buttons["Send invitation email"]
+        let sendInvitation = app.buttons["Send invite"]
         reveal(sendInvitation)
         XCTAssertTrue(
             sendInvitation.exists,
-            "Durable email delivery should be the native coach's primary invitation action."
+            "The native coach should have one ordinary Send invite action for durable email delivery."
         )
+        XCTAssertEqual(sendInvitation.label, "Send invite")
         XCTAssertFalse(
             sendInvitation.isEnabled,
             "Deterministic preview must expose the action without claiming to send external email."
@@ -971,9 +972,6 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertEqual(productionTag.value as? String, "Not selected")
         productionTag.tap()
         XCTAssertEqual(productionTag.value as? String, "Selected")
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "same canonical tag")
-        ).firstMatch.exists)
 
         let newTagField = app.textFields["CaptureQuickEntryNewTagField"]
         reveal(newTagField)
@@ -985,9 +983,11 @@ final class CaptureExperienceUITests: XCTestCase {
         addTag.tap()
         XCTAssertTrue(app.buttons["Remove new tag Product development"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["New on sync"].exists)
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "protected in the phone outbox")
-        ).firstMatch.exists)
+        XCTAssertEqual(
+            productionTag.value as? String,
+            "Selected",
+            "Adding a reusable tag must not lose an already-selected canonical Nest tag."
+        )
     }
 
     func testTaskQuickCaptureAuthorsAnExplicitRecurrenceWithoutImplyingAReminder() {
@@ -1659,7 +1659,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CapturePacketNoteDeferButton_\(candidateKey)"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketNoteRejectButton_\(candidateKey)"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketNoteMergeButton_\(candidateKey)"].isEnabled)
-        XCTAssertTrue(app.staticTexts["CapturePacketNoteDecisionBoundary"].label.contains("Combine this with one existing Session note"))
+        let decisionBoundary = app.staticTexts["CapturePacketNoteDecisionBoundary"]
+        XCTAssertTrue(decisionBoundary.label.contains("Save this as a note"))
+        XCTAssertTrue(decisionBoundary.label.contains("keep it for later"))
+        XCTAssertTrue(decisionBoundary.label.contains("dismiss it"))
         packetNoteEdit.tap()
         XCTAssertTrue(app.textFields["CapturePacketNoteTitleField"].exists)
         XCTAssertTrue(app.textFields["CapturePacketNoteBodyField"].exists)
@@ -1669,7 +1672,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CapturePacketCreateNoteButton_\(candidateKey)"].isEnabled)
         let packetNoteBoundary = app.staticTexts["CapturePacketNoteBoundary"]
         reveal(packetNoteBoundary)
-        XCTAssertTrue(packetNoteBoundary.label.contains("no canonical note, task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication"))
+        XCTAssertTrue(packetNoteBoundary.label.contains("without creating or sharing a note"))
         let packetNoteScreenshot = XCTAttachment(screenshot: app.screenshot())
         packetNoteScreenshot.name = "Transcript note materialization review"
         packetNoteScreenshot.lifetime = .keepAlways
