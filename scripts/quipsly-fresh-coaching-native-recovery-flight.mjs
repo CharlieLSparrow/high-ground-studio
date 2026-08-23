@@ -155,6 +155,9 @@ async function grantClientRecordingConsent(context) {
       password,
       callbackPath: context.clientEntryPath,
     });
+    await page
+      .locator('[data-session-entry-ready="true"]')
+      .waitFor({ state: "visible", timeout: 30_000 });
     const leaveLobby = page.getByRole("link", {
       name: "Leave lobby",
       exact: true,
