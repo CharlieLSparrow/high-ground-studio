@@ -1070,10 +1070,13 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("Open source details in Nest")
       && capturePhoneShellText.includes("CaptureSourceRecoveryOpenLibrary")
       && capturePhoneShellText.includes("CaptureSourceRecoveryDetails")
-      && sourceExitExperienceText.includes('title: "Recording is safe"')
+      && sourceExitExperienceText.includes('title: "Safe to close"')
       && sourceExitExperienceText.includes('"Keep Quipsly open"')
       && sourceExitExperienceText.includes('title: "A recording needs attention"')
-      && sourceExitExperienceText.includes('title: "Cloud copies are safe"'),
+      && captureExperienceModelText.includes("func monitorSourceExitReadiness(roomID: String)")
+      && captureExperienceModelText.includes("await self.reviewDigestClient.load()")
+      && captureExperienceModelText.includes("retryDelay = min(retryDelay * 2, 60_000_000_000)")
+      && capturePhoneShellText.includes("model.monitorSourceExitReadiness(roomID: session.callRoomId)"),
     "nativeSourceRecoveryResolutionVisible",
     "Opening an iPhone finishing action gives one conventional safe-to-leave answer while keeping exact planned-master, server-copy, and installation evidence available on demand.",
   );

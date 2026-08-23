@@ -309,6 +309,8 @@ final class CaptureExperienceModel: ObservableObject {
     private var captureRequiresNewTake = false
     private var receiptFlushTask: Task<Void, Never>?
     private var receiptFlushTaskID: UUID?
+    private var sourceExitMonitorTask: Task<Void, Never>?
+    private var sourceExitMonitorTaskID: UUID?
     private var consentMonitorTask: Task<Void, Never>?
     private var videoConsentMonitorTask: Task<Void, Never>?
     private var isStoppingCoordinatedCapture = false
@@ -1274,6 +1276,48 @@ final class CaptureExperienceModel: ObservableObject {
             selectedSessionID = selectedID
         }
         errorMessage = sessionClient.errorMessage ?? reviewDigestClient.errorMessage
+    }
+
+    /// Reconciles ordinary post-call status without making the person operate
+    /// a refresh loop. The cadence backs off quickly so long video uploads do
+    /// not become a noisy or expensive polling path. Exact source and endpoint
+    /// evidence remains available in Recording details.
+    func monitorSourceExitReadiness(roomID: String) {
+        guard !usesPreviewData,
+              AuthManager.shared.networkActionsAllowed else { return }
+        sourceExitMonitorTask?.cancel()
+        let taskID = UUID()
+        sourceExitMonitorTaskID = taskID
+        sourceExitMonitorTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.sourceExitMonitorTaskID == taskID {
+                    self.sourceExitMonitorTask = nil
+                    self.sourceExitMonitorTaskID = nil
+                }
+            }
+            var retryDelay: UInt64 = 2_000_000_000
+            let expiresAt = Date().addingTimeInterval(60 * 60)
+            while !Task.isCancelled, Date() < expiresAt {
+                guard self.selectedSession?.callRoomId == roomID,
+                      !self.providerRoom.isConnected else { return }
+                await self.reviewDigestClient.load()
+                guard !Task.isCancelled else { return }
+                if let readiness = self.selectedSessionSourceExitReadiness {
+                    if readiness.safeToLeaveAllEndpoints {
+                        self.message = "Safe to close. Every expected recording is verified in Quipsly and each recording device has finished its queue."
+                        return
+                    }
+                    self.message = "\(readiness.experience.title). \(readiness.experience.detail)"
+                }
+                do {
+                    try await Task.sleep(nanoseconds: retryDelay)
+                } catch {
+                    return
+                }
+                retryDelay = min(retryDelay * 2, 60_000_000_000)
+            }
+        }
     }
 
     func prepareVideoCapture(
@@ -2295,6 +2339,9 @@ final class CaptureExperienceModel: ObservableObject {
         }
         if protected {
             message = "Call ended. Your recording is protected on this iPhone. Keep Quipsly open until this Session says Safe to close."
+            if let roomID = session?.callRoomId {
+                monitorSourceExitReadiness(roomID: roomID)
+            }
         } else {
             errorMessage = "The call ended while this iPhone was still closing its recording. Keep Quipsly open until Library shows the protected source."
         }
@@ -2510,6 +2557,10 @@ final class CaptureExperienceModel: ObservableObject {
         taskReminderScheduler.activateOwner(ownerAccountID)
         sessionNoteEditOutbox.activateOwner(ownerAccountID)
         reviewDigestClient.clear()
+
+        sourceExitMonitorTask?.cancel()
+        sourceExitMonitorTask = nil
+        sourceExitMonitorTaskID = nil
 
         receiptFlushTask?.cancel()
         receiptFlushTask = nil

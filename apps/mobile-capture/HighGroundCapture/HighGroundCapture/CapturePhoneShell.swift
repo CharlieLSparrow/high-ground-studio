@@ -7293,6 +7293,9 @@ private struct CaptureRecorderView: View {
         defer { isSafelyLeavingRoom = false }
 
         let protectedLocalSource = captureIsActive
+        let shouldMonitorRecordingExit = protectedLocalSource
+            || session.recordingCount > 0
+            || hasSelectedSessionRecording
         if protectedLocalSource {
             model.message = "Stopping and protecting this iPhone's recording before leaving…"
             let captureID = videoCapture.activeRecordingID ?? audioCapture.activeLocalRecordingID
@@ -7341,8 +7344,11 @@ private struct CaptureRecorderView: View {
         await model.leaveRoom()
         guard !model.providerRoom.isConnected else { return }
         model.message = protectedLocalSource
-            ? "You left the call. This iPhone's recording is safe; upload recovery continues automatically."
+            ? "Call ended. Your recording is protected on this iPhone. Keep Quipsly open until this Session says Safe to close."
             : "You left the call."
+        if shouldMonitorRecordingExit {
+            model.monitorSourceExitReadiness(roomID: session.callRoomId)
+        }
     }
 
     private func applyRecordingDirective(
