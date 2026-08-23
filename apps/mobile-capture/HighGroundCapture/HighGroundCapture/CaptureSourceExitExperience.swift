@@ -22,8 +22,8 @@ struct CaptureSourceExitExperience: Equatable, Sendable {
     ) -> CaptureSourceExitExperience {
         if safeToLeaveAllEndpoints {
             return CaptureSourceExitExperience(
-                title: "Recording is safe",
-                detail: "Every expected recording has a verified cloud copy. You can leave this session.",
+                title: "Safe to close",
+                detail: "Every expected recording is verified in Quipsly and each recording device has finished its queue.",
                 systemImage: "checkmark.icloud.fill",
                 isSafe: true,
                 needsAttention: false
@@ -33,8 +33,8 @@ struct CaptureSourceExitExperience: Equatable, Sendable {
         switch state.uppercased() {
         case "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED":
             return CaptureSourceExitExperience(
-                title: "Cloud copies are safe",
-                detail: "Keep Quipsly open on any device that still shows an upload or recovery. You can keep working here.",
+                title: "Keep Quipsly open",
+                detail: "The cloud copies are verified, but a recording device is still finishing its local queue. Keep Quipsly open on any device that still shows upload or recovery progress.",
                 systemImage: "icloud.and.arrow.up",
                 isSafe: false,
                 needsAttention: false

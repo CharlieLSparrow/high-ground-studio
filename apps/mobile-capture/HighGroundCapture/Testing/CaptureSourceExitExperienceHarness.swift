@@ -20,9 +20,9 @@ struct CaptureSourceExitExperienceHarness {
             serverSafeRequiredSourceCount: 2,
             pendingCaptureCount: 0
         )
-        require(safe.title == "Recording is safe", "safe evidence needs one ordinary answer")
+        require(safe.title == "Safe to close", "safe evidence needs the same ordinary answer on every Quipsly client")
         require(safe.isSafe, "safe evidence must be visually distinguishable")
-        require(safe.detail.contains("You can leave"), "safe evidence must answer whether the person can move on")
+        require(safe.detail.contains("finished its queue"), "safe evidence must include both cloud and device completion")
 
         let draining = CaptureSourceExitExperience.resolve(
             state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED",
@@ -32,9 +32,9 @@ struct CaptureSourceExitExperienceHarness {
             serverSafeRequiredSourceCount: 2,
             pendingCaptureCount: 0
         )
-        require(draining.title == "Cloud copies are safe", "verified cloud bytes must not sound lost")
+        require(draining.title == "Keep Quipsly open", "an undrained recording device needs one immediate action")
         require(!draining.needsAttention, "normal device drain must not be framed as an error")
-        require(draining.detail.contains("still shows an upload or recovery"), "draining guidance must identify the affected devices")
+        require(draining.detail.contains("still shows upload or recovery progress"), "draining guidance must identify the affected devices")
 
         let uploading = CaptureSourceExitExperience.resolve(
             state: "SERVER_COPY_INCOMPLETE",

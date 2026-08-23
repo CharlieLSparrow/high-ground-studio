@@ -2294,7 +2294,7 @@ final class CaptureExperienceModel: ObservableObject {
             }
         }
         if protected {
-            message = "Call ended. This iPhone's recording is safe; upload recovery continues automatically."
+            message = "Call ended. Your recording is protected on this iPhone. Keep Quipsly open until this Session says Safe to close."
         } else {
             errorMessage = "The call ended while this iPhone was still closing its recording. Keep Quipsly open until Library shows the protected source."
         }

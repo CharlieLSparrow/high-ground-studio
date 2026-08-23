@@ -1229,8 +1229,8 @@ final class CaptureExperienceUITests: XCTestCase {
         ]
         reveal(action)
         XCTAssertTrue(action.exists)
-        XCTAssertTrue(action.label.contains("Cloud copies are safe"))
-        XCTAssertTrue(action.label.contains("still shows an upload or recovery"))
+        XCTAssertTrue(action.label.contains("Keep Quipsly open"))
+        XCTAssertTrue(action.label.contains("still shows upload or recovery progress"))
 
         action.tap()
 
@@ -1243,7 +1243,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let recovery = app.descendants(matching: .any)["CaptureSourceRecoveryCard"].firstMatch
         reveal(recovery)
         XCTAssertTrue(recovery.exists)
-        XCTAssertTrue(recovery.label.contains("Cloud copies are safe"))
+        XCTAssertTrue(recovery.label.contains("Keep Quipsly open"))
         let details = app.descendants(matching: .any)["CaptureSourceRecoveryDetails"].firstMatch
         reveal(details)
         XCTAssertTrue(details.isHittable)
