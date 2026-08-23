@@ -2672,6 +2672,12 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureRehearsalCheck_session"]
                 .waitForExistence(timeout: 5)
         )
+        disclosure.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureRehearsalCheck_session"]
+                .waitForNonExistence(timeout: 5),
+            "Collapse the already-verified checklist before auditing the later current screen."
+        )
 
         let manuscript = app.descendants(matching: .any)[
             "CaptureEpisodeManuscriptCard"
