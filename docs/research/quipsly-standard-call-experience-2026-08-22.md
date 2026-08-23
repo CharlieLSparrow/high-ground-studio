@@ -498,6 +498,13 @@ failure shapes recur often enough to influence the architecture:
   opens a system prompt. An undetermined permission is an optional readiness
   note, not a prerequisite wizard; iOS asks once when the person actually taps
   Join, Record, or Sound Check.
+- Materialize every released Capture recording into its canonical project as
+  part of finalization, whether or not the Session belongs to a podcast Episode.
+  The protected playback identity, exact source attachment, registration job,
+  and reversible-media receipt are Session infrastructure. Episode imported
+  media remains an optional additional projection. A coaching user must never
+  have to open a transcript or invent an Episode before the Session can offer
+  playback, audio improvement, or editing.
 
 ## Acceptance consequences
 

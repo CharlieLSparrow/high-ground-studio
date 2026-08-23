@@ -244,7 +244,16 @@ async function createOrReuseStudioMedia(args: {
   return { source, mediaAsset, playbackUrl };
 }
 
-async function attachEpisodeMediaWithoutLostUpdate(args: {
+function captureMediaClassification(manifest: MobileCaptureResumableManifest) {
+  const isVideo = manifest.sourceType === "video"
+    || manifest.contentType.toLowerCase().startsWith("video/");
+  return {
+    isVideo,
+    importRole: isVideo ? "participant-camera" : "spine-audio-candidate",
+  };
+}
+
+async function attachCaptureMediaToProject(args: {
   transaction: any;
   manifest: MobileCaptureResumableManifest;
   object: MobileCaptureObjectEvidence;
@@ -263,6 +272,195 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
     playbackUrl,
     captureRecords,
     alignment,
+  } = args;
+  const { isVideo, importRole } = captureMediaClassification(manifest);
+  const recordingAsset = await transaction.recordingAsset.findUnique({
+    where: { id: captureRecords.recordingAssetId },
+    select: { localManifestJson: true },
+  });
+  if (!recordingAsset) {
+    throw new Error("The verified Capture recording disappeared before project attachment.");
+  }
+  const priorManifest = asObject(recordingAsset.localManifestJson);
+  const priorPromotion = asObject(priorManifest.promotion);
+  const promotedAt = typeof priorPromotion.promotedAt === "string"
+    ? priorPromotion.promotedAt
+    : new Date().toISOString();
+
+  const attachmentMetadata = {
+    uploadSessionId: manifest.uploadSessionId,
+    captureId: manifest.captureId,
+    captureGroupId: manifest.captureGroupId,
+    callRoomId: manifest.callRoomId,
+    recordingAssetId: captureRecords.recordingAssetId,
+    sourceId: source.id,
+    alignment,
+    exactBytesVerified: true,
+    copiedBlob: false,
+    mutatedOriginal: false,
+  };
+  await transaction.studioAssetAttachment.upsert({
+    where: {
+      projectId_assetId: {
+        projectId: manifest.projectId,
+        assetId: mediaAsset.id,
+      },
+    },
+    create: {
+      projectId: manifest.projectId,
+      assetId: mediaAsset.id,
+      role: importRole,
+      source: "mobile-capture-finalization",
+      createdByEmail: manifest.actorEmail,
+      metadataJson: attachmentMetadata,
+    },
+    update: {
+      role: importRole,
+      source: "mobile-capture-finalization",
+      metadataJson: attachmentMetadata,
+    },
+  });
+
+  const workflowInput = {
+    uploadSessionId: manifest.uploadSessionId,
+    captureId: manifest.captureId,
+    captureGroupId: manifest.captureGroupId,
+    callRoomId: manifest.callRoomId,
+    actorUserId: manifest.actorUserId,
+    actorEmail: manifest.actorEmail,
+    recordingAssetId: captureRecords.recordingAssetId,
+    sourceId: source.id,
+    projectSlug: manifest.projectSlug,
+    episodeSlug: manifest.episodeSlug,
+    mediaKind: isVideo ? "video" : "audio",
+    bucketName: manifest.bucketName,
+    objectName: manifest.objectName,
+    objectGeneration: object.generation,
+    sourceSha256: manifest.sha256,
+    sourceSizeBytes: object.sizeBytes,
+    sourceContentType: manifest.contentType,
+    alignment,
+    proxyPolicy: isVideo
+      ? "proxy-required-before-collaborative-playback"
+      : "audio-source-registered",
+  };
+  const registrationCompletedAt = isVideo ? null : new Date();
+  const registrationResult = registrationCompletedAt
+    ? {
+        schema: "quipsly-asset-registration-receipt-v1",
+        state: "completed",
+        assetId: mediaAsset.id,
+        projectId: manifest.projectId,
+        source: "mobile-capture-finalization",
+        completedSynchronously: true,
+        originalRemainsSourceTruth: true,
+      }
+    : null;
+  const existingWorkflow = await transaction.studioWorkflowJob.findFirst({
+    where: {
+      projectId: manifest.projectId,
+      assetId: mediaAsset.id,
+      type: isVideo ? "asset-proxy" : "asset-register",
+      source: "mobile-capture-finalization",
+    },
+    select: { id: true, inputJson: true },
+  });
+  if (!existingWorkflow) {
+    await transaction.studioWorkflowJob.create({
+      data: {
+        projectId: manifest.projectId,
+        assetId: mediaAsset.id,
+        type: isVideo ? "asset-proxy" : "asset-register",
+        status: isVideo ? "queued" : "completed",
+        source: "mobile-capture-finalization",
+        requestedByEmail: manifest.actorEmail,
+        inputJson: workflowInput,
+        ...(registrationCompletedAt
+          ? {
+              startedAt: registrationCompletedAt,
+              completedAt: registrationCompletedAt,
+              resultJson: registrationResult,
+            }
+          : {}),
+      },
+    });
+  } else {
+    await transaction.studioWorkflowJob.update({
+      where: { id: existingWorkflow.id },
+      data: {
+        requestedByEmail: manifest.actorEmail,
+        inputJson: {
+          ...asObject(existingWorkflow.inputJson),
+          ...workflowInput,
+        },
+        ...(!isVideo && registrationCompletedAt
+          ? {
+              status: "completed",
+              startedAt: registrationCompletedAt,
+              completedAt: registrationCompletedAt,
+              error: null,
+              resultJson: registrationResult,
+            }
+          : {}),
+      },
+    });
+  }
+
+  await transaction.recordingAsset.update({
+    where: { id: captureRecords.recordingAssetId },
+    data: {
+      localManifestJson: {
+        ...priorManifest,
+        promotion: {
+          ...priorPromotion,
+          status: "promoted-to-studio-media",
+          mediaAssetId: mediaAsset.id,
+          sourceId: source.id,
+          playbackUrl,
+          providerSourceId: source.providerSourceId,
+          projectId: manifest.projectId,
+          nestSlug: manifest.projectSlug,
+          episodeSlug: manifest.episodeSlug,
+          importRole,
+          mediaKind: isVideo ? "video" : "audio",
+          captureGroupId: manifest.captureGroupId,
+          alignment,
+          handoffReceipt: {
+            version: 1,
+            source: "StudioAssetAttachment",
+          },
+          promotedAt,
+          promotedByUserId: manifest.actorUserId,
+          source: "mobile-capture-finalization",
+        },
+      },
+    },
+  });
+
+  return { isVideo, importRole, promotedAt };
+}
+
+async function attachEpisodeMediaWithoutLostUpdate(args: {
+  transaction: any;
+  manifest: MobileCaptureResumableManifest;
+  object: MobileCaptureObjectEvidence;
+  source: any;
+  mediaAsset: any;
+  playbackUrl: string;
+  captureRecords: any;
+  alignment: ReturnType<typeof buildCaptureSourceAlignmentProposal>;
+  projectAttachment: Awaited<ReturnType<typeof attachCaptureMediaToProject>>;
+}) {
+  const {
+    transaction,
+    manifest,
+    object,
+    source,
+    mediaAsset,
+    playbackUrl,
+    captureRecords,
+    alignment,
+    projectAttachment,
   } = args;
   if (!manifest.episodeSlug) return;
 
@@ -331,16 +529,11 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
   const existingImported = existingImportedIndex >= 0
     ? asObject(importedMedia[existingImportedIndex])
     : {};
-  const isVideo =
-    manifest.sourceType === "video"
-    || manifest.contentType.toLowerCase().startsWith("video/");
-  const importRole = isVideo
-    ? "participant-camera"
-    : "spine-audio-candidate";
+  const { isVideo, importRole, promotedAt } = projectAttachment;
   const importedAt =
     typeof existingImported.importedAt === "string"
       ? existingImported.importedAt
-      : new Date().toISOString();
+      : promotedAt;
   const recordingSync = {
     recordingAssetId: captureRecords.recordingAssetId,
     callRoomId: manifest.callRoomId,
@@ -470,167 +663,6 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
     },
   });
 
-  await transaction.studioAssetAttachment.upsert({
-    where: {
-      projectId_assetId: {
-        projectId: manifest.projectId,
-        assetId: mediaAsset.id,
-      },
-    },
-    create: {
-      projectId: manifest.projectId,
-      assetId: mediaAsset.id,
-      role: importRole,
-      source: "mobile-capture-finalization",
-      createdByEmail: manifest.actorEmail,
-      metadataJson: {
-        uploadSessionId: manifest.uploadSessionId,
-        captureId: manifest.captureId,
-        captureGroupId: manifest.captureGroupId,
-        recordingAssetId: captureRecords.recordingAssetId,
-        sourceId: source.id,
-        alignment,
-        exactBytesVerified: true,
-        copiedBlob: false,
-        mutatedOriginal: false,
-      },
-    },
-    update: {
-      role: importRole,
-      source: "mobile-capture-finalization",
-      metadataJson: {
-        uploadSessionId: manifest.uploadSessionId,
-        captureId: manifest.captureId,
-        captureGroupId: manifest.captureGroupId,
-        recordingAssetId: captureRecords.recordingAssetId,
-        sourceId: source.id,
-        alignment,
-        exactBytesVerified: true,
-        copiedBlob: false,
-        mutatedOriginal: false,
-      },
-    },
-  });
-
-  const workflowInput = {
-    uploadSessionId: manifest.uploadSessionId,
-    captureId: manifest.captureId,
-    captureGroupId: manifest.captureGroupId,
-    callRoomId: manifest.callRoomId,
-    actorUserId: manifest.actorUserId,
-    actorEmail: manifest.actorEmail,
-    recordingAssetId: captureRecords.recordingAssetId,
-    sourceId: source.id,
-    projectSlug: manifest.projectSlug,
-    episodeSlug: manifest.episodeSlug,
-    mediaKind: isVideo ? "video" : "audio",
-    bucketName: manifest.bucketName,
-    objectName: manifest.objectName,
-    objectGeneration: object.generation,
-    sourceSha256: manifest.sha256,
-    sourceSizeBytes: object.sizeBytes,
-    sourceContentType: manifest.contentType,
-    alignment,
-    proxyPolicy: isVideo
-      ? "proxy-required-before-collaborative-playback"
-      : "audio-source-registered",
-  };
-  const registrationCompletedAt = isVideo ? null : new Date();
-  const registrationResult = registrationCompletedAt
-    ? {
-        schema: "quipsly-asset-registration-receipt-v1",
-        state: "completed",
-        assetId: mediaAsset.id,
-        projectId: manifest.projectId,
-        source: "mobile-capture-finalization",
-        completedSynchronously: true,
-        originalRemainsSourceTruth: true,
-      }
-    : null;
-  const existingWorkflow = await transaction.studioWorkflowJob.findFirst({
-    where: {
-      projectId: manifest.projectId,
-      assetId: mediaAsset.id,
-      type: isVideo ? "asset-proxy" : "asset-register",
-      source: "mobile-capture-finalization",
-    },
-    select: { id: true, inputJson: true },
-  });
-  if (!existingWorkflow) {
-    await transaction.studioWorkflowJob.create({
-      data: {
-        projectId: manifest.projectId,
-        assetId: mediaAsset.id,
-        type: isVideo ? "asset-proxy" : "asset-register",
-        status: isVideo ? "queued" : "completed",
-        source: "mobile-capture-finalization",
-        requestedByEmail: manifest.actorEmail,
-        inputJson: workflowInput,
-        ...(registrationCompletedAt
-          ? {
-              startedAt: registrationCompletedAt,
-              completedAt: registrationCompletedAt,
-              resultJson: registrationResult,
-            }
-          : {}),
-      },
-    });
-  } else {
-    await transaction.studioWorkflowJob.update({
-      where: { id: existingWorkflow.id },
-      data: {
-        requestedByEmail: manifest.actorEmail,
-        inputJson: {
-          ...asObject(existingWorkflow.inputJson),
-          ...workflowInput,
-        },
-        ...(!isVideo && registrationCompletedAt
-          ? {
-              status: "completed",
-              startedAt: registrationCompletedAt,
-              completedAt: registrationCompletedAt,
-              error: null,
-              resultJson: registrationResult,
-            }
-          : {}),
-      },
-    });
-  }
-
-  const recordingAsset = await transaction.recordingAsset.findUnique({
-    where: { id: captureRecords.recordingAssetId },
-    select: { localManifestJson: true },
-  });
-  await transaction.recordingAsset.update({
-    where: { id: captureRecords.recordingAssetId },
-    data: {
-      localManifestJson: {
-        ...asObject(recordingAsset?.localManifestJson),
-        promotion: {
-          status: "promoted-to-studio-media",
-          mediaAssetId: mediaAsset.id,
-          sourceId: source.id,
-          playbackUrl,
-          providerSourceId: source.providerSourceId,
-          projectId: manifest.projectId,
-          nestSlug: manifest.projectSlug,
-          episodeSlug: manifest.episodeSlug,
-          importRole,
-          mediaKind: isVideo ? "video" : "audio",
-          captureGroupId: manifest.captureGroupId,
-          alignment,
-          handoffReceipt: {
-            version: 1,
-            source: "StudioAssetAttachment",
-          },
-          promotedAt: importedAt,
-          promotedByUserId: manifest.actorUserId,
-          source: "mobile-capture-finalization",
-        },
-      },
-    },
-  });
-
   if (!existingAttachment) {
     await transaction.mobileCaptureEpisodeAttachment.create({
       data: {
@@ -641,6 +673,24 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
       },
     });
   }
+}
+
+export async function attachCaptureMediaWithoutLostUpdate(args: {
+  transaction: any;
+  manifest: MobileCaptureResumableManifest;
+  object: MobileCaptureObjectEvidence;
+  source: any;
+  mediaAsset: any;
+  playbackUrl: string;
+  captureRecords: any;
+  alignment: ReturnType<typeof buildCaptureSourceAlignmentProposal>;
+}) {
+  const projectAttachment = await attachCaptureMediaToProject(args);
+  await attachEpisodeMediaWithoutLostUpdate({
+    ...args,
+    projectAttachment,
+  });
+  return projectAttachment;
 }
 
 async function captureAlignmentForManifest(args: {
@@ -1009,7 +1059,7 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
       alignment,
     });
     if (studioMedia) {
-      await attachEpisodeMediaWithoutLostUpdate({
+      await attachCaptureMediaWithoutLostUpdate({
         transaction,
         manifest,
         object,
@@ -1306,7 +1356,7 @@ export async function promoteRepairedMobileCaptureDatabaseEvidence(input: {
       transcriptJobId: priorEvidence.transcriptJobId,
       transcriptJobStatus: priorEvidence.transcriptJobStatus,
     };
-    await attachEpisodeMediaWithoutLostUpdate({
+    await attachCaptureMediaWithoutLostUpdate({
       transaction,
       manifest: repairedManifest,
       object: repairedObject,
