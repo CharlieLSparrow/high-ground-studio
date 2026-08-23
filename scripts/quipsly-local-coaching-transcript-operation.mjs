@@ -350,7 +350,14 @@ try {
         });
       }
       await media.play();
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      const playbackDeadline = Date.now() + 5_000;
+      while (
+        media.currentTime <= 0 &&
+        !media.ended &&
+        Date.now() < playbackDeadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
       media.pause();
       return {
         durationSeconds: Number.isFinite(media.duration)
@@ -358,11 +365,14 @@ try {
           : null,
         currentTimeSeconds: media.currentTime,
         readyState: media.readyState,
+        networkState: media.networkState,
+        mediaErrorCode: media.error?.code ?? null,
+        mediaErrorMessage: media.error?.message ?? null,
       };
     });
     assert(
       playbackProbe.readyState >= 1 && playbackProbe.currentTimeSeconds > 0,
-      `Protected playback did not decode and advance for ${source.id}.`,
+      `Protected playback did not decode and advance for ${source.id}: ${JSON.stringify(playbackProbe)}.`,
     );
 
     await correctionDesk
