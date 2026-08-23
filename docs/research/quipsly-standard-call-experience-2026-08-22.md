@@ -507,6 +507,10 @@ details`.
   tasks, and goal suggestions once, presents them as `Follow-up suggestions`,
   and offers one plain retry only after failure. It never assigns, sends,
   shares, or publishes a suggestion without an explicit review action.
+- Keep the source-grounded review contracts, but do not expose their packet and
+  lane vocabulary to coaches. The iPhone now groups them as private follow-up
+  suggestions with familiar `Keep`, `Revise`, and `Dismiss` decisions while
+  preserving the same reversible server states and no-share boundary.
 - Keep the iPhone's live safety monitoring, but translate its happy path and
   recovery guidance into ordinary recording language. Coaches now see `Ready
 to record`, `Recording on this iPhone`, `Call disconnected`, or `This

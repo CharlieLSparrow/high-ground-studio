@@ -773,13 +773,15 @@ final class CaptureExperienceUITests: XCTestCase {
         let lanesToggle = app.descendants(matching: .any)["CapturePacketReviewLanesToggle"].firstMatch
         reveal(lanesToggle)
         XCTAssertTrue(lanesToggle.isHittable)
+        XCTAssertTrue(lanesToggle.label.contains("Follow-up suggestions"))
+        XCTAssertFalse(lanesToggle.label.contains("Packet review"))
         lanesToggle.tap()
 
         let clientLane = app.descendants(matching: .any)["CapturePacketReviewLane_client-follow-up"].firstMatch
         reveal(clientLane)
         XCTAssertTrue(clientLane.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "no note, task, goal, client delivery")
+            NSPredicate(format: "label CONTAINS %@", "nothing is shared with the client")
         ).firstMatch.exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketReviewEmptyLaneSummary"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["CapturePacketReviewLane_empty-quotes"].exists)
@@ -790,13 +792,14 @@ final class CaptureExperienceUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "Derived from transcript packet summary evidence only")
         ).firstMatch.exists)
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "creates no canonical note")
+            NSPredicate(format: "label CONTAINS %@", "does not create a note, task, or goal")
         ).firstMatch.exists)
         let approve = app.buttons["CapturePacketLaneApprove"].firstMatch
         reveal(approve)
         XCTAssertTrue(approve.exists)
+        XCTAssertEqual(approve.label, "Keep for follow-up")
         XCTAssertFalse(approve.isEnabled, "Preview must demonstrate lane review without mutating saved packet state.")
-        XCTAssertTrue(app.staticTexts["Preview shows the production review workflow without changing saved packet state."].exists)
+        XCTAssertTrue(app.staticTexts["Preview shows the real review workflow without keeping any suggestion."].exists)
     }
 
     func testCanonicalSessionNoteEditMakesRevisionAudienceAndNestTagsObviousWithoutFakingPreviewWrites() {

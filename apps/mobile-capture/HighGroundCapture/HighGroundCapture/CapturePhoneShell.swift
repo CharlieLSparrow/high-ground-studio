@@ -7818,15 +7818,15 @@ private struct CapturePacketReviewLanesCard: View {
         if session.coachingPacketSummaryNoteId != nil || !lanes.isEmpty {
             DisclosureGroup(isExpanded: $isExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Approve a lane only as useful internal review material. This does not create a canonical Session note or authorize delivery.")
+                    Text("Quipsly grouped private suggestions from the conversation. Open a group to keep, revise, or dismiss it; nothing is shared with the client from here.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if actionableLanes.isEmpty {
                         Text(lanes.isEmpty
-                            ? "No packet review lanes were returned. Capture will not infer approval or create replacement notes."
-                            : "No packet lanes contain candidate material. Empty categories have no decision controls.")
+                            ? "No follow-up suggestions are ready yet. Quipsly will not invent or keep anything on your behalf."
+                            : "There are no suggestions to review in these groups.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -7868,21 +7868,21 @@ private struct CapturePacketReviewLanesCard: View {
                     }
 
                     if !emptyLanes.isEmpty {
-                        Text("\(emptyLanes.count) \(emptyLanes.count == 1 ? "category has" : "categories have") no candidates: \(emptyLanes.map(\.titleLabel).joined(separator: " · ")).")
+                        Text("Nothing suggested for: \(emptyLanes.map(\.titleLabel).joined(separator: " · ")).")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("CapturePacketReviewEmptyLaneSummary")
                     }
 
-                    Text("Internal review only · no note, task, goal, client delivery, message, calendar event, or publication")
+                    Text("Private review only · keeping a group does not create work or send anything")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.top, 8)
             } label: {
-                Label("Packet review (\(actionableLanes.count) ready)", systemImage: "list.bullet.clipboard")
+                Label("Follow-up suggestions (\(actionableLanes.count))", systemImage: "list.bullet.clipboard")
                     .font(.subheadline.weight(.semibold))
                     .accessibilityIdentifier("CapturePacketReviewLanesToggle")
             }
@@ -7921,7 +7921,7 @@ private struct CapturePacketLaneReviewSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Packet lane review")
+                    Text("Follow-up suggestion group")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CapturePacketLaneReviewSheet")
@@ -7934,7 +7934,7 @@ private struct CapturePacketLaneReviewSheet: View {
                         Text(lane.sourceTruth?.nonempty ?? lane.boundaryLine)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text(lane.reviewRule?.nonempty ?? "Human review is required before canonical use or delivery.")
+                        Text(lane.reviewRule?.nonempty ?? "Review this before keeping or sharing anything.")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.purple)
                     }
@@ -7951,40 +7951,40 @@ private struct CapturePacketLaneReviewSheet: View {
                     }
 
                     if lane.status == "READY_FOR_HUMAN_REVIEW" {
-                        Button("Approve inside Quipsly") { save("APPROVED_FOR_INTERNAL_USE") }
+                        Button("Keep for follow-up") { save("APPROVED_FOR_INTERNAL_USE") }
                             .buttonStyle(.borderedProminent)
                             .tint(.green)
                             .disabled(!canSave)
                             .accessibilityIdentifier("CapturePacketLaneApprove")
-                        Button("Needs revision") { save("NEEDS_REVISION") }
+                        Button("Revise first") { save("NEEDS_REVISION") }
                             .buttonStyle(.bordered)
                             .disabled(!canSave)
                             .accessibilityIdentifier("CapturePacketLaneNeedsRevision")
-                        Button("Reject lane", role: .destructive) { save("REJECTED_BY_HUMAN") }
+                        Button("Dismiss suggestions", role: .destructive) { save("REJECTED_BY_HUMAN") }
                             .buttonStyle(.bordered)
                             .disabled(!canSave)
                             .accessibilityIdentifier("CapturePacketLaneReject")
                     } else {
-                        Button("Reopen for review") { save("READY_FOR_HUMAN_REVIEW") }
+                        Button("Review again") { save("READY_FOR_HUMAN_REVIEW") }
                             .buttonStyle(.bordered)
                             .disabled(!canSave)
                             .accessibilityIdentifier("CapturePacketLaneReopen")
                     }
 
                     if model.usesPreviewData {
-                        Text("Preview shows the production review workflow without changing saved packet state.")
+                        Text("Preview shows the real review workflow without keeping any suggestion.")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.orange)
                     }
 
-                    Text("This decision creates no canonical note, task, goal, client delivery, message, calendar event, or publication. Use Session Notes for deliberate canonical notes.")
+                    Text("This choice only updates this private suggestion group. It does not create a note, task, or goal, and it does not send or publish anything.")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding()
             }
-            .navigationTitle(lane.titleLabel)
+            .navigationTitle("Review suggestions")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
