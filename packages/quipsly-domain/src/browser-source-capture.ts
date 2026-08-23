@@ -254,11 +254,16 @@ export function browserSourceCanBegin(input: {
     return { ok: false as const, reason: "Choose a microphone." };
   if (input.sourceType === "video" && !input.cameraId)
     return { ok: false as const, reason: "Choose a camera." };
-  if (!input.recordingConsentId || !input.allPartyConsentReady) {
+  if (!input.recordingConsentId) {
     return {
       ok: false as const,
-      reason:
-        "Every signed-in participant must grant the selected recording consent.",
+      reason: "Choose Allow recording before this Session is recorded.",
+    };
+  }
+  if (!input.allPartyConsentReady) {
+    return {
+      ok: false as const,
+      reason: "Your choice is saved. Waiting for the other participant.",
     };
   }
   return {

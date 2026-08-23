@@ -1817,3 +1817,24 @@ settings, and prove upload, synchronization, and playback. Repeat with the
 built-in microphone/camera and a second participant. A failed hardware driver
 must produce one plain-language recovery action while keeping the conversation
 usable; it must not silently substitute the call track and claim studio quality.
+
+## Plain-language recording readiness — 2026-08-23
+
+The retained browser recorder now distinguishes the only two routine consent
+holds beside the Record control. If the current person has not chosen, it says
+`Choose Allow recording before this Session is recorded.` If their current
+Session choice is already saved, it says `Your choice is saved. Waiting for the
+other participant.` The disabled control no longer depends on a collapsed
+settings panel or an internal `all registered participants` explanation.
+
+The boundary remains deliberate: one choice is reused for every take and reopen
+inside the same Session, but a different private Session requires its own
+choice. Source and transcript settings remain editable under Recording settings
+and are restored from the canonical Session receipt. No mailbox action,
+additional permission page, or reconfirmation is introduced.
+
+Independent evidence: the focused retained-source consent and domain suites
+pass 6/6, the shared domain TypeScript 7 gate passes, and the complete Quipsly
+typecheck passes after route generation. Minimally instructed two-person proof
+that each participant understands the state remains on the human validation
+ledger and does not stop continued development.

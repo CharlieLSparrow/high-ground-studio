@@ -36,8 +36,24 @@ describe("browser source capture contract", () => {
         recordingConsentId: null,
         allPartyConsentReady: false,
         headphonesAttested: true,
-      }).ok,
-    ).toBe(false);
+      }),
+    ).toEqual({
+      ok: false,
+      reason: "Choose Allow recording before this Session is recorded.",
+    });
+
+    expect(
+      browserSourceCanBegin({
+        opfsAvailable: true,
+        microphoneId: "mic",
+        sourceType: "audio",
+        recordingConsentId: "consent",
+        allPartyConsentReady: false,
+      }),
+    ).toEqual({
+      ok: false,
+      reason: "Your choice is saved. Waiting for the other participant.",
+    });
 
     expect(
       browserSourceCanBegin({

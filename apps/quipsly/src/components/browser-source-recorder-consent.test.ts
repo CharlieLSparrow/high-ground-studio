@@ -42,6 +42,10 @@ describe("browser retained-source consent", () => {
     expect(source).toContain("Existing recording choices stay saved");
     expect(source).not.toContain("Reconfirm consent");
     expect(source).toContain("Ready to record when everyone is ready.");
+    expect(source).toContain('data-testid="recording-readiness-message"');
+    expect(source).not.toContain(
+      "Every signed-in participant must grant the selected recording consent.",
+    );
     expect(source).toContain("Recording on this device. Your call continues normally.");
     expect(source).not.toContain("Checking durable browser storage and consent");
     expect(source).not.toContain("LOCAL SOURCE RECORDING");

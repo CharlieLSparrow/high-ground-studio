@@ -127,6 +127,15 @@ Recurring complaints reveal the failure modes Quipsly must design out:
 - Restore the Session's saved audio/video and transcription choices when the
   recording surface reopens. Do not make a returning participant repeat a
   choice Quipsly already holds unless the recording scope actually changes.
+- Ask for the recording decision once per person and Session, after joining and
+  before the first retained take. Reopening the Session or starting another take
+  reuses that current decision. A different Session still gets its own clear
+  decision; Quipsly must not turn an old blanket preference into consent for a
+  new private conversation.
+- A blocked Record control must explain itself beside the control in ordinary
+  language. The current person sees either **Choose Allow recording** or **Your
+  choice is saved. Waiting for the other participant**—never an internal
+  all-party-policy phrase hidden in diagnostics.
 - On iPhone, offer the platform-standard **Continue with Apple** and Google
   paths before the optional password path. Federated sign-in skips Quipsly
   password creation and mailbox-verification chores while still resolving one
