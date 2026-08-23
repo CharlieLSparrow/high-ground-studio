@@ -2075,7 +2075,7 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("await client.load(projectID: request.projectID)")
       && shellText.includes("proxy.scrollTo(request.scrollID")
       && shellText.includes("CaptureSignedInAccount")
-      && shellText.includes("CaptureSignOutButton")
+      && shellText.includes("CaptureSwitchAccountButton")
       && runtimeRunnerText.includes("coaching-follow-through-work)")
       && runtimeUITestText.includes("testClientOpensExactFollowThroughGoalInWork")
       && runtimeUITestText.includes("ensureExactSignedInAccount")

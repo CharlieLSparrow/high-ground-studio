@@ -2730,14 +2730,21 @@ final class CaptureExperienceUITests: XCTestCase {
     func testAccountCriticalActionsScrollClearOfTheTabBar() {
         app.tabBars.buttons["Account"].tap()
 
-        let signOut = app.buttons["Sign out"]
-        XCTAssertTrue(signOut.waitForExistence(timeout: 5))
-        for _ in 0..<5 where !signOut.isHittable {
+        let switchAccount = app.buttons["CaptureSwitchAccountButton"]
+        XCTAssertTrue(switchAccount.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            String(describing: app.descendants(matching: .any)["CaptureSignedInAccount"].value ?? "")
+                .localizedCaseInsensitiveContains("preview@quipsly.local"),
+            "Account switching must be beside the exact currently selected email."
+        )
+        for _ in 0..<5 where !switchAccount.isHittable {
             app.swipeUp()
         }
 
-        XCTAssertTrue(signOut.isHittable, "Account actions must scroll completely above the persistent capture tab bar.")
-        XCTAssertTrue(app.buttons["Request account deletion"].isHittable)
+        XCTAssertTrue(switchAccount.isHittable, "Account actions must scroll completely above the persistent capture tab bar.")
+        let deletion = app.buttons["Request account deletion"]
+        reveal(deletion)
+        XCTAssertTrue(deletion.isHittable)
     }
 
     func testAccountOffersPrivacyBoundedSupportSnapshot() throws {
@@ -3357,7 +3364,10 @@ final class CaptureLoginExperienceUITests: XCTestCase {
 
     func testLoginLeadsWithNativeGoogleContinuityAndKeepsPasswordRecoveryReachableAtAccessibilityTextSize() {
         XCTAssertTrue(app.buttons["QuipslyCaptureGoogleSignInButton"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["QuipslyCaptureGoogleIdentityContinuityHint"].exists)
+        XCTAssertFalse(
+            app.descendants(matching: .any)["QuipslyCaptureGoogleIdentityContinuityHint"].exists,
+            "The normal Google-first path should not be followed by an identity-policy lecture."
+        )
         XCTAssertTrue(app.textFields["QuipslyCaptureEmailField"].exists)
         XCTAssertTrue(app.secureTextFields["QuipslyCapturePasswordField"].exists)
         XCTAssertTrue(app.buttons["QuipslyCaptureSignInButton"].exists)

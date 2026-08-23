@@ -420,7 +420,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let restoredIdentity = String(describing: shellAccount.value ?? "").lowercased()
         if !restoredIdentity.contains(expectedEmail) {
             var account = openAccount()
-            let signOut = app.buttons["CaptureSignOutButton"].firstMatch
+            let signOut = app.buttons["CaptureSwitchAccountButton"].firstMatch
             XCTAssertTrue(
                 signOut.waitForExistence(timeout: 8),
                 "A restored session for the wrong actor must expose deliberate account switching."

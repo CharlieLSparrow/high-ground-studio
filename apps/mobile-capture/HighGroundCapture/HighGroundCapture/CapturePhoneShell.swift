@@ -10157,21 +10157,6 @@ private struct CaptureAccountView: View {
                     )
                 }
 
-                Button(role: .destructive) {
-                    if model.isSessionContextLocked {
-                        showsSignOutWarning = true
-                    } else if model.usesPreviewData {
-                        model.message = "Sign out is disabled in preview mode."
-                    } else {
-                        auth.signOut()
-                    }
-                } label: {
-                    Text("Sign out")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("CaptureSignOutButton")
-
                 Text(versionLine)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -10195,11 +10180,11 @@ private struct CaptureAccountView: View {
             )
             .presentationDetents([.medium, .large])
         }
-        .alert("Capture session is still active", isPresented: $showsSignOutWarning) {
-            Button("Keep session active", role: .cancel) {}
+        .alert("Finish recording before switching", isPresented: $showsSignOutWarning) {
+            Button("Keep recording", role: .cancel) {}
             Button("Open recorder") { visibleTab = .record }
         } message: {
-            Text("Stop and save the local source and leave any live room before signing out.")
+            Text("Stop and save this recording before you switch accounts so the original stays attached to the right person.")
         }
         .task {
             guard !model.usesPreviewData else { return }
@@ -10208,32 +10193,54 @@ private struct CaptureAccountView: View {
     }
 
     private var accountHeader: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle().fill(CapturePalette.accent.opacity(0.14))
-                Image(systemName: "person.fill")
-                    .font(.title2)
-                    .foregroundStyle(CapturePalette.accent)
-            }
-            .frame(width: 54, height: 54)
-            .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle().fill(CapturePalette.accent.opacity(0.14))
+                    Image(systemName: "person.fill")
+                        .font(.title2)
+                        .foregroundStyle(CapturePalette.accent)
+                }
+                .frame(width: 54, height: 54)
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(auth.userName ?? previewAccountName)
-                    .font(.headline)
-                Text(auth.userEmail ?? previewAccountEmail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(auth.userName ?? previewAccountName)
+                        .font(.headline)
+                    Text(auth.userEmail ?? previewAccountEmail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
             }
-            Spacer()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Signed in account")
+            .accessibilityValue(
+                "\(auth.userName ?? previewAccountName), \(auth.userEmail ?? previewAccountEmail)"
+            )
+            .accessibilityIdentifier("CaptureSignedInAccount")
+
+            Divider()
+
+            Button(action: switchAccount) {
+                Label("Switch account", systemImage: "arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint("Returns to sign in so you can choose a different Quipsly account.")
+            .accessibilityIdentifier("CaptureSwitchAccountButton")
         }
         .captureCard()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Signed in account")
-        .accessibilityValue(
-            "\(auth.userName ?? previewAccountName), \(auth.userEmail ?? previewAccountEmail)"
-        )
-        .accessibilityIdentifier("CaptureSignedInAccount")
+    }
+
+    private func switchAccount() {
+        if model.isSessionContextLocked {
+            showsSignOutWarning = true
+        } else if model.usesPreviewData {
+            model.message = "Account switching is unavailable in preview mode."
+        } else {
+            auth.signOut()
+        }
     }
 
     private var accountControlCard: some View {

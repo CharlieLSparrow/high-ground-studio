@@ -51,7 +51,7 @@ struct LoginView: View {
                         Text("Quipsly Capture")
                             .font(.largeTitle.weight(.bold))
 
-                        Text("Use the same Quipsly account as Nest. Your recordings and work stay attached to one trusted identity.")
+                        Text("Sign in to your sessions, recordings, notes, and tasks.")
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -66,7 +66,7 @@ struct LoginView: View {
 
                     HStack(spacing: 12) {
                         Divider()
-                        Text("or use email")
+                        Text("or")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .fixedSize()
@@ -319,15 +319,13 @@ struct LoginView: View {
             .frame(maxWidth: .infinity, minHeight: 52)
             .accessibilityIdentifier("QuipslyCaptureGoogleSignInButton")
 
-            Text(
-                authManager.googleSignInAvailable
-                    ? "Google verifies the email you already use and opens that same Nest. Quipsly will not silently create a second workspace."
-                    : "Google sign-in is being configured for the next TestFlight build. Verified password accounts remain available below."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("QuipslyCaptureGoogleIdentityContinuityHint")
+            if !authManager.googleSignInAvailable {
+                Text("Google sign-in is temporarily unavailable. You can still sign in with email below.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("QuipslyCaptureGoogleIdentityContinuityHint")
+            }
         }
         .accessibilityElement(children: .contain)
     }
@@ -417,15 +415,15 @@ struct LoginView: View {
     private var passwordModeDescription: String {
         switch passwordMode {
         case .signIn:
-            return "Use this only for a Quipsly account created with a password. Google accounts should use Continue with Google above."
+            return "Use the email and password for your Quipsly account."
         case .createAccount:
-            return "Create and verify a free Quipsly identity. This does not grant Capture beta recording or upload access; Nest will show the account's access status after sign-in."
+            return "Create a free account. We will ask you to verify your email once."
         }
     }
 
     private var primaryActionTitle: String {
         if authManager.isAuthenticating { return "Working…" }
-        return passwordMode == .createAccount ? "Create free account" : "Sign in"
+        return passwordMode == .createAccount ? "Create account" : "Sign in"
     }
 
     private var versionLine: String {

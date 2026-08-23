@@ -304,7 +304,7 @@ test("consent grant sends exact separate recording, transcription, and nearby-pe
   assert.match(captureShell, /@State private var canTranscribe: Bool/);
   assert.match(captureShell, /@State private var presentationOwnerSnapshot: AuthManager\.StableOwnerSnapshot\?/);
   assert.match(captureShell, /matchesStableOwnerSnapshot\(presentationOwnerSnapshot\)/);
-  assert.match(captureShell, /Each signed-in participant confirms for themselves/);
+  assert.match(captureShell, /Each signed-in person chooses for themselves/);
 });
 
 test("daemon transfer is fail-closed on persistence and retries use bounded stable jitter", () => {

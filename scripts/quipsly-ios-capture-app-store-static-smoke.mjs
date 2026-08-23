@@ -789,8 +789,8 @@ assert(
   { label: "unverified account creation leaves Firebase tokens memory-only" },
 );
 requireIncludes(loginText, "Continue with Google", "Google identities are directed to the canonical native provider");
-requireIncludes(loginText, "will not silently create a second workspace", "Google identity continuity copy rejects duplicate Nest creation");
-requireIncludes(loginText, "does not grant Capture beta recording or upload access", "account creation copy preserves beta access boundary");
+requireIncludes(loginText, "QuipslyCaptureGoogleSignInButton", "Google remains the standard first sign-in action");
+requireIncludes(loginText, "We will ask you to verify your email once.", "account creation states the one-time email verification step plainly");
 for (const forbidden of [
   "/api/mac/session-handoff",
   "/api/mac/session-exchange",
