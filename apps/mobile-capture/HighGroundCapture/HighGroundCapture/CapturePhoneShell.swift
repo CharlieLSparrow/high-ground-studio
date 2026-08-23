@@ -7311,6 +7311,7 @@ private struct CaptureRecorderView: View {
     private func requestCoordinatedStop(for session: MobileCaptureSession) async {
         guard shouldCoordinateRecording(for: session) else {
             await stopLocalRecording()
+            revealSavedSourceIfStopped()
             return
         }
         if session.canControlRecording == true {
@@ -7319,9 +7320,23 @@ private struct CaptureRecorderView: View {
                 action: .stop
             ) else { return }
             await applyRecordingDirective(directive, for: session)
+            revealSavedSourceIfStopped()
             return
         }
         await stopLocalRecording()
+        revealSavedSourceIfStopped()
+    }
+
+    /// Stopping is complete only when the local recorder has reached a
+    /// terminal state. Put the immutable source in front of the person at that
+    /// point so the ordinary next step is verify/play/review, rather than
+    /// leaving them midway down a long recorder workspace with the primary
+    /// control lazily off-screen.
+    private func revealSavedSourceIfStopped() {
+        guard !captureIsActive else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            visibleTab = .library
+        }
     }
 
     /// Leaving a conversation is an endpoint action, not a room-wide recording
