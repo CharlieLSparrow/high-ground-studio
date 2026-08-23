@@ -32,6 +32,14 @@ const files = {
   authManager: path.join(sourceRoot, "AuthManager.swift"),
   appleSignInCoordinator: path.join(sourceRoot, "AppleSignInCoordinator.swift"),
   captureEntitlements: path.join(sourceRoot, "HighGroundCapture.entitlements"),
+  captureUniversalLinkRoute: path.join(
+    root,
+    "apps/quipsly/src/app/.well-known/apple-app-site-association/route.ts",
+  ),
+  captureUniversalLinkBuilder: path.join(
+    root,
+    "apps/quipsly/src/lib/capture-universal-link.ts",
+  ),
   loginView: path.join(sourceRoot, "LoginView.swift"),
   swiftPackageResolution: path.join(
     iosRoot,
@@ -185,6 +193,8 @@ const appDelegateText = read(files.appDelegate);
 const authText = read(files.authManager);
 const appleSignInCoordinatorText = read(files.appleSignInCoordinator);
 const captureEntitlementsText = read(files.captureEntitlements);
+const captureUniversalLinkRouteText = read(files.captureUniversalLinkRoute);
+const captureUniversalLinkBuilderText = read(files.captureUniversalLinkBuilder);
 const loginText = read(files.loginView);
 const swiftPackageResolutionText = read(files.swiftPackageResolution);
 const audioText = read(files.audioCapture);
@@ -804,6 +814,12 @@ requireIncludes(loginText, "QuipslyCaptureAppleSignInButton", "Apple is availabl
 requireIncludes(loginText, "QuipslyCaptureGoogleSignInButton", "Google remains available as a standard sign-in action");
 requireIncludes(captureEntitlementsText, "com.apple.developer.applesignin", "Capture declares the Sign in with Apple capability");
 requireIncludes(captureEntitlementsText, "<string>Default</string>", "Capture is the primary Sign in with Apple app for its identifier");
+requireIncludes(captureEntitlementsText, "com.apple.developer.associated-domains", "Capture declares Associated Domains for standard HTTPS handoff");
+requireIncludes(captureEntitlementsText, "applinks:nest.quipsly.com", "Capture associates only the canonical Nest host");
+requireIncludes(captureUniversalLinkRouteText, "585GUXMY5M.com.highgroundodyssey.HighGroundCapture", "Nest publishes the exact Capture application identifier");
+requireIncludes(captureUniversalLinkRouteText, '\"/\": \"/sessions/*\"', "Universal Links are bounded to Session paths");
+requireIncludes(captureUniversalLinkRouteText, '\"?\": { open: \"capture\" }', "Universal Links require an explicit Capture handoff query");
+requireIncludes(captureUniversalLinkBuilderText, "https://nest.quipsly.com", "Capture handoffs use the canonical HTTPS Nest origin");
 requireIncludes(appleSignInCoordinatorText, "SecRandomCopyBytes", "Apple sign-in uses a cryptographically random replay nonce");
 requireIncludes(appleSignInCoordinatorText, "request.nonce = Self.sha256(nonce)", "Apple receives only the SHA-256 nonce challenge");
 requireIncludes(authText, 'URLQueryItem(name: "providerId", value: "apple.com")', "Firebase exchanges the native Apple credential with the canonical provider");

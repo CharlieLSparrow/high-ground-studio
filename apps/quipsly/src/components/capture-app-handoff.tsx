@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import type { SessionEntryChoice } from "@/lib/session-entry-choice";
+import { captureUniversalLink } from "@/lib/capture-universal-link";
 
 const CAPTURE_TESTFLIGHT_URL = "https://testflight.apple.com/join/XwRRcYUm";
 const SESSION_ENTRY_PREFERENCE_KEY = "quipsly.session-entry-preference.v1";
@@ -36,7 +37,7 @@ export function CaptureAppHandoff({
   canViewChoiceMetrics?: boolean;
   onContinueInBrowser?: () => void;
 }) {
-  const captureURL = `quipsly://session/${encodeURIComponent(roomId)}?mode=live`;
+  const captureURL = captureUniversalLink(roomId);
   const [metrics, setMetrics] = useState<EntryChoiceMetrics | null>(null);
   const [step, setStep] = useState<"choose" | "preferred">("choose");
   const [preferredEntry, setPreferredEntry] = useState<"BROWSER" | "CAPTURE_APP" | null>(null);

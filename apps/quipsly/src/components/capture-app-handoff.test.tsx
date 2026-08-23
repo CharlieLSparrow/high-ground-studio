@@ -39,7 +39,7 @@ describe("CaptureAppHandoff", () => {
     expect(screen.getByText(/recommended on this device/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Use Quipsly Capture on iPhone/i })).toHaveAttribute(
       "href",
-      "quipsly://session/room-safe_42?mode=live",
+      "https://nest.quipsly.com/sessions/room-safe_42?open=capture&mode=live",
     );
     expect(
       screen.getByRole("link", { name: /Get the beta/i }),
@@ -63,7 +63,7 @@ describe("CaptureAppHandoff", () => {
     expect(screen.getByText("Recommended on this iPhone")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Quipsly Capture" })).toHaveAttribute(
       "href",
-      "quipsly://session/room-iphone?mode=live",
+      "https://nest.quipsly.com/sessions/room-iphone?open=capture&mode=live",
     );
     expect(screen.getByRole("button", { name: "Join in browser" })).toBeInTheDocument();
   });
@@ -109,7 +109,7 @@ describe("CaptureAppHandoff", () => {
     expect(await screen.findByText("Open Quipsly Capture")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Capture" })).toHaveAttribute(
       "href",
-      "quipsly://session/room-phone?mode=live",
+      "https://nest.quipsly.com/sessions/room-phone?open=capture&mode=live",
     );
     expect(onContinueInBrowser).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Use another device" })).toBeInTheDocument();

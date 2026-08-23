@@ -187,12 +187,13 @@ acceptance; the invitation token never reaches LiveKit.
 ### Browser-to-Capture handoff
 
 After acceptance, the canonical browser Session exposes an **Open in Quipsly
-Capture** action. The current handoff uses the existing
-`quipsly://session/:callRoomId?mode=live` custom URL scheme and carries only a
-bounded Session identifier and display mode. Capture treats the URL as an inert
-navigation request: it retains the request across sign-in, reloads that exact
-Session through the authenticated Nest API, and focuses it only when the
-signed-in account still has access.
+Capture** action. The primary handoff is the ordinary HTTPS Universal Link
+`https://nest.quipsly.com/sessions/:callRoomId?open=capture&mode=live`. Capture
+treats the URL as an inert navigation request: it retains the request across
+sign-in, reloads that exact Session through the authenticated Nest API, and
+focuses it only when the signed-in account still has access. If Capture is not
+installed, the exact same URL remains a usable Nest Session instead of failing
+at a custom-scheme dead end.
 
 The parser rejects unknown schemes, hosts, paths, non-ASCII or oversized room
 identifiers, encoded separators, and any query parameter whose name resembles
@@ -201,13 +202,14 @@ membership, records consent, mints a LiveKit credential, joins conversation
 media, or starts retained-source/provider recording. Those remain separate,
 visible user actions after the authoritative Session reload.
 
-Capture can also parse the future exact-host form
-`https://nest.quipsly.com/sessions/:callRoomId?open=capture&mode=live`, but HTTPS
-opening is not enabled yet. It requires both an Associated Domains entitlement
-in the signed app and a matching `apple-app-site-association` file on the
-production website. Until that deployment contract is configured and read
-back, Quipsly must describe this as a custom app link rather than a Universal
-Link.
+The signed app declares only `applinks:nest.quipsly.com`; Nest publishes a
+matching `apple-app-site-association` contract bounded to `/sessions/*` with an
+explicit `open=capture` query. Apple's registered App ID has the Associated
+Domains capability enabled and read back through the App Store Connect API.
+The legacy `quipsly://` parser remains only for compatibility with already-sent
+links. A release is not allowed to claim operated Universal Link proof until
+the association endpoint is deployed and the HTTPS link is opened on a signed
+physical-device build.
 
 - [Apple: defining a custom URL scheme](https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app)
 - [Apple: responding to incoming URLs](https://developer.apple.com/documentation/swiftui/view/onopenurl%28perform%3A%29)

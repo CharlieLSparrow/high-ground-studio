@@ -165,6 +165,10 @@ Recurring complaints reveal the failure modes Quipsly must design out:
   paths before the optional password path. Federated sign-in skips Quipsly
   password creation and mailbox-verification chores while still resolving one
   exact Firebase identity and one canonical Quipsly owner.
+- Use one ordinary HTTPS Session link for app and web entry. When Capture is
+  installed, iOS may open the exact Session in the app; otherwise the same link
+  remains usable in Nest. Never make a client diagnose a custom URL scheme,
+  redeem code, or dead-end app handoff.
 
 ### Quality that is obvious, not magical
 

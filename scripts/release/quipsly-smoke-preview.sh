@@ -135,6 +135,27 @@ check_status_endpoint() {
   passed_route_ids+=("${route_id}")
 }
 
+check_capture_app_association() {
+  local path="/.well-known/apple-app-site-association"
+  local out="${TMP_DIR}/apple-app-site-association.json"
+
+  echo "Checking ${TARGET_URL}${path}"
+  curl "${curl_args[@]}" "${TARGET_URL}${path}" -o "${out}"
+  node -e '
+    const fs = require("fs");
+    const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const detail = body?.applinks?.details?.find((entry) =>
+      entry?.appIDs?.includes("585GUXMY5M.com.highgroundodyssey.HighGroundCapture"));
+    const sessionLink = detail?.components?.find((entry) =>
+      entry?.["/"] === "/sessions/*" && entry?.["?"]?.open === "capture");
+    if (!detail || !sessionLink) {
+      console.error("Capture Universal Link association is missing or over-broad.");
+      process.exit(1);
+    }
+  ' "${out}"
+  passed_route_ids+=("capture.universal-link-association")
+}
+
 check_public_host() {
   local host="$1"
   local out="${TMP_DIR}/public-host-${host}.json"
@@ -154,6 +175,7 @@ check_public_host() {
 
 check_json_endpoint "/api/health" "health.compatibility"
 check_json_endpoint "/api/healthz" "health.release"
+check_capture_app_association
 release_health_file="${TMP_DIR}/_api_healthz.json"
 EXPECTED_EGRESS="${EXPECT_LIVEKIT_EGRESS_ENABLED}" node -e '
   const fs = require("fs");

@@ -1948,3 +1948,25 @@ Store static contract passes 1128/1128, the source-evidence contract passes
 30/30, and a universal unsigned iOS simulator build succeeds. Physical-device
 proof remains on the continuous validation ledger; Build 35 remains sealed and
 was not replaced by this local source change.
+
+## Standard HTTPS app handoff — 2026-08-23
+
+Session entry no longer depends on a brittle `quipsly://` action. Nest now
+builds one canonical HTTPS link that iOS can open in Quipsly Capture when it is
+installed and that remains the exact browser Session when it is not. The link
+carries only the opaque Session identifier plus inert `open=capture` and
+`mode=live` navigation hints; invitation and provider authority never cross the
+handoff.
+
+The native target declares `applinks:nest.quipsly.com`, Nest publishes a
+bounded Apple association document for only `/sessions/*` with the explicit
+Capture query, and the registered Apple App ID now has `ASSOCIATED_DOMAINS`
+enabled. The idempotent Apple operation first proved the capability missing,
+enabled only that capability, then read it back as present.
+
+Independent evidence: eight focused web/link tests pass, the Swift parser
+harness passes, the universal unsigned iOS simulator build succeeds, the
+App Store static gate passes 1134/1134, and the Apple capability operation
+passes 4/4 regressions. Production endpoint and signed physical-iPhone opening
+remain release-candidate checks after the Nest route is deliberately deployed;
+the current public/TestFlight build was not replaced in this slice.
