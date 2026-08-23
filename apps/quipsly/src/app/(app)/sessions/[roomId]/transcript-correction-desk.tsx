@@ -845,6 +845,7 @@ function SpeakerAttributionPanel({
   groups,
   participants,
   playbackReady,
+  reviewedSecondBins,
   currentPlaybackPosition,
   busy,
   onPlayAt,
@@ -854,6 +855,7 @@ function SpeakerAttributionPanel({
   groups: SpeakerGroup[];
   participants: SessionParticipant[];
   playbackReady: boolean;
+  reviewedSecondBins: ReadonlySet<number>;
   currentPlaybackPosition: () => number | null;
   busy: boolean;
   onPlayAt: (seconds: number) => Promise<void>;
@@ -861,13 +863,11 @@ function SpeakerAttributionPanel({
 }) {
   const [selectedParticipants, setSelectedParticipants] = useState<Record<string, string>>({});
   const [playedSamples, setPlayedSamples] = useState<Record<string, string>>({});
-  const [confirmedGroups, setConfirmedGroups] = useState<Record<string, boolean>>({});
   const [requestIds, setRequestIds] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   async function playSample(group: SpeakerGroup, segmentId: string, startSeconds: number) {
     setPlayedSamples((current) => ({ ...current, [group.providerSpeakerLabel]: segmentId }));
-    setConfirmedGroups((current) => ({ ...current, [group.providerSpeakerLabel]: false }));
     await onPlayAt(startSeconds);
   }
 
@@ -875,7 +875,11 @@ function SpeakerAttributionPanel({
     const label = group.providerSpeakerLabel;
     const participantId = selectedParticipants[label] || group.attribution?.participantId || "";
     const segmentId = playedSamples[label] || "";
-    const playbackPositionSeconds = currentPlaybackPosition();
+    const sample = group.samples.find((candidate) => candidate.segmentId === segmentId);
+    const playbackPositionSeconds = sample?.startSeconds ?? currentPlaybackPosition();
+    const samplePlaybackReviewed = sample
+      ? reviewedSecondBins.has(Math.max(0, Math.floor(sample.startSeconds)))
+      : false;
     setErrors((current) => ({ ...current, [label]: "" }));
     try {
       const clientRequestId = requestIds[label] || requestId(`speaker-${label}`);
@@ -891,13 +895,12 @@ function SpeakerAttributionPanel({
           clientRequestId,
           expectedProviderSnapshotSha256: group.providerSnapshotSha256,
           samples: [{ segmentId, playbackPositionSeconds }],
-          confirmedAgainstPlayback: confirmedGroups[label] === true,
+          confirmedAgainstPlayback: samplePlaybackReviewed,
         }),
       });
       const body = await response.json() as { ok?: boolean; error?: string; attribution?: SpeakerAttribution };
       if (!response.ok || !body.ok || !body.attribution) throw new Error(body.error || "The speaker assignment was not saved.");
       setRequestIds((current) => ({ ...current, [label]: requestId(`speaker-${label}`) }));
-      setConfirmedGroups((current) => ({ ...current, [label]: false }));
       await onSaved(`${label} is now identified as ${body.attribution.attributedLabel}. Word review remains unchanged.`);
     } catch (error) {
       setErrors((current) => ({
@@ -918,6 +921,10 @@ function SpeakerAttributionPanel({
           const label = group.providerSpeakerLabel;
           const selectedParticipant = selectedParticipants[label] || group.attribution?.participantId || "";
           const playedSample = playedSamples[label] || "";
+          const selectedSample = group.samples.find((sample) => sample.segmentId === playedSample);
+          const samplePlaybackReviewed = selectedSample
+            ? reviewedSecondBins.has(Math.max(0, Math.floor(selectedSample.startSeconds)))
+            : false;
           return (
             <article key={label} className="rounded-xl border border-indigo-200 bg-white p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -941,12 +948,9 @@ function SpeakerAttributionPanel({
                   </button>
                 ))}
               </div>
-              <label className="mt-3 flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-3 text-sm font-bold leading-relaxed text-indigo-950">
-                <input type="checkbox" checked={confirmedGroups[label] === true} onChange={(event) => setConfirmedGroups((current) => ({ ...current, [label]: event.target.checked }))} disabled={!playedSample} className="mt-1 size-4 accent-indigo-800" />
-                <span>I played the selected sample and recognize this voice as the chosen participant.</span>
-              </label>
+              {playedSample ? <p className={`mt-3 rounded-lg border p-3 text-sm font-bold leading-relaxed ${samplePlaybackReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-indigo-200 bg-indigo-50/60 text-indigo-950"}`}>{samplePlaybackReviewed ? "Voice sample played. Choose the person and apply the label." : "Starting voice sample…"}</p> : null}
               {errors[label] && <p role="alert" className="mt-3 flex items-start gap-2 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{errors[label]}</p>}
-              <button type="button" onClick={() => void save(group)} disabled={busy || !playbackReady || !selectedParticipant || !playedSample || confirmedGroups[label] !== true} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />{group.attribution ? "Update voice identity" : "Apply voice identity"}</button>
+              <button type="button" onClick={() => void save(group)} disabled={busy || !playbackReady || !selectedParticipant || !playedSample || !samplePlaybackReviewed} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />{group.attribution ? "Update voice identity" : "Apply voice identity"}</button>
             </article>
           );
         })}
@@ -960,6 +964,8 @@ function ProposalReview({
   segment,
   proposal,
   playbackReady,
+  playbackReviewed,
+  reviewedPlaybackPositionSeconds,
   currentPlaybackPosition,
   busy,
   onPlay,
@@ -969,12 +975,13 @@ function ProposalReview({
   segment: Segment;
   proposal: Correction;
   playbackReady: boolean;
+  playbackReviewed: boolean;
+  reviewedPlaybackPositionSeconds: number | null;
   currentPlaybackPosition: () => number | null;
   busy: boolean;
   onPlay: () => Promise<void>;
   onSaved: (message: string) => Promise<void>;
 }) {
-  const [listened, setListened] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function decide(decision: "accept" | "reject") {
@@ -989,8 +996,8 @@ function ProposalReview({
           correctionId: proposal.id,
           decision,
           expectedAcceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
-          confirmedAgainstPlayback: decision === "accept" && listened,
-          playbackPositionSeconds: currentPlaybackPosition(),
+          confirmedAgainstPlayback: decision === "accept" && playbackReviewed,
+          playbackPositionSeconds: reviewedPlaybackPositionSeconds ?? currentPlaybackPosition(),
         }),
       });
       const body = await response.json() as { ok?: boolean; error?: string };
@@ -1009,14 +1016,11 @@ function ProposalReview({
       {proposal.correctedSpeakerLabel && <p className="mt-2 text-sm font-bold text-violet-950">Proposed speaker: {proposal.correctedSpeakerLabel}</p>}
       <p className="mt-2 text-sm font-semibold leading-relaxed text-violet-950">{proposal.correctedText || segment.text}</p>
       {proposal.reason && <p className="mt-2 text-xs font-bold text-violet-800">Reason: {proposal.reason}</p>}
-      <label className="mt-3 flex items-start gap-3 rounded-lg border border-violet-200 bg-white p-3 text-sm font-bold leading-relaxed text-violet-950">
-        <input type="checkbox" checked={listened} onChange={(event) => setListened(event.target.checked)} className="mt-1 size-4 accent-violet-800" />
-        <span>I played this exact timestamp and verified the proposal against the recording.</span>
-      </label>
+      {playbackReviewed ? <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold leading-relaxed text-emerald-950">Recording checked from {timestampForSeconds(reviewedPlaybackPositionSeconds ?? segment.startSeconds)}. Accepting keeps this proposal linked to that moment.</p> : null}
       {error && <p role="alert" className="mt-3 flex items-start gap-2 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => void onPlay()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-violet-300 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Play size={14} fill="currentColor" aria-hidden="true" />Play timestamp</button>
-        <button type="button" onClick={() => void decide("accept")} disabled={!playbackReady || !listened || busy} className="inline-flex items-center gap-2 rounded-full bg-violet-800 px-3 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Accept after listening</button>
+        <button type="button" onClick={() => void decide("accept")} disabled={!playbackReady || !playbackReviewed || busy} className="inline-flex items-center gap-2 rounded-full bg-violet-800 px-3 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Accept correction</button>
         <button type="button" onClick={() => void decide("reject")} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50"><X size={14} aria-hidden="true" />Reject proposal</button>
       </div>
       <p className="mt-2 text-xs font-bold text-violet-800">Until accepted here, this proposal does not change the effective transcript.</p>
@@ -1469,6 +1473,8 @@ function CorrectionEditor({
           segment={segment}
           proposal={proposal}
           playbackReady={playbackReady}
+          playbackReviewed={playbackReviewed}
+          reviewedPlaybackPositionSeconds={reviewedPlaybackPositionSeconds}
           currentPlaybackPosition={currentPlaybackPosition}
           busy={busy}
           onPlay={onPlay}
@@ -2096,6 +2102,7 @@ export function TranscriptCorrectionDesk({
               groups={desk.speakerGroups ?? []}
               participants={desk.participants ?? []}
               playbackReady={playbackReady}
+              reviewedSecondBins={listenedSecondBins}
               currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
               busy={busy}
               onPlayAt={playFromTime}

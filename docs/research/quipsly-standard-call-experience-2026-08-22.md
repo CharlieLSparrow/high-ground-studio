@@ -596,6 +596,12 @@ share`. The continuity panel says that the call, chat, recordings,
   overlay with source provenance; `Mark correct` appears only after that
   passage has been played, so ordinary users see fewer controls without
   weakening the evidence boundary.
+- Apply that same observed-playback rule consistently. AI transcript proposals
+  and voice-label samples now unlock from the protected passage Quipsly
+  actually started, not from another user-ticked attestation. Rejecting an AI
+  proposal remains immediate and reversible; accepting words or applying a
+  voice identity still requires source playback and retains its exact source
+  timestamp.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB
