@@ -48,13 +48,13 @@ test("retained native coaching continuity stays local, credential-safe, and comp
   assert.match(nativeTest, /Evidence: I used the smaller boundary/);
   assert.match(shell, /CapturePriorContinuityOpenSource/);
   assert.match(shell, /CapturePriorContinuityTaskEvidence_/);
-  assert.match(shell, /Append-only evidence/);
+  assert.match(shell, /Review previous Session/);
   assert.match(shell, /CaptureFollowThroughOpenSource/);
   assert.match(shell, /CaptureFollowThroughOpenTask_/);
   assert.match(shell, /CaptureFollowThroughOpenGoal_/);
   assert.match(shell, /proxy\.scrollTo\(request\.scrollID/);
   assert.ok(shell.includes('Text("Evidence: \\(evidence)")'));
-  assert.match(shell, /New check-in since release/);
-  assert.match(shell, /no copied work/);
-  assert.match(shell, /current Session unchanged/);
+  assert.match(shell, /New check-in/);
+  assert.match(shell, /Only you and your coach can see this/);
+  assert.match(shell, /Opening it does not change your current Session/);
 });

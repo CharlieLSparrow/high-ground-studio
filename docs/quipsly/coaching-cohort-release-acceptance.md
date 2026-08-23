@@ -1182,3 +1182,22 @@ client-safe runtime smoke journey was updated to open the new disclosure before
 changing its audience. Physical keyboard behavior, actual notification
 permission prompting, offline process death, and minimally instructed human
 comprehension remain deferred ledger evidence.
+
+## Standard iPhone follow-through checkpoint — 2026-08-23
+
+The next-Session card now leads with the prior Session, shared recipient, tasks,
+goals, progress, and direct actions. `Open task`, `Open goal`, and `Updated since
+this was shared` replace release-snapshot and canonical-state vocabulary. The
+actor-private continuity card similarly says `Review previous Session` and
+`Private to you`.
+
+Revision numbers, hashes, original-record identity, no-copy behavior, and exact
+transcript evidence remain available under `Details`; the app has not weakened
+access checks, source links, or immutable history. Simulator build and focused
+journey results for this checkpoint are recorded after validation below.
+
+The universal arm64/x86_64 iOS Simulator build and the retained coaching-
+continuity contract test pass. The signed-in continuity journey was not rerun
+because the retained local Nest runtime was not active; its minimally instructed
+human and physical-device evidence therefore remains deferred rather than
+claimed.

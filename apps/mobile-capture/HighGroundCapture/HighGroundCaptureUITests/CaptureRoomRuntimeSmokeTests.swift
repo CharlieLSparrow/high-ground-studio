@@ -4651,12 +4651,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             ].firstMatch.exists,
             "Capture should preserve the client's evidence note with the progress receipt."
         )
-        XCTAssertTrue(app.staticTexts["New check-in since release"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["New check-in"].firstMatch.exists)
         XCTAssertTrue(
             app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS %@", "no copied work")
+                NSPredicate(format: "label CONTAINS %@", "Only you and your coach")
             ).firstMatch.exists,
-            "The native follow-through workspace should disclose its no-copy boundary."
+            "The native follow-through workspace should explain its audience in ordinary language."
         )
 
         let card = app.descendants(matching: .any)["CapturePriorSessionContinuity"].firstMatch
@@ -4666,7 +4666,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts["Retained coaching follow-up rehearsal"].firstMatch.exists)
 
-        let disclosure = app.buttons["Review carried-forward brief"].firstMatch
+        let disclosure = app.buttons["Review previous Session"].firstMatch
         XCTAssertTrue(disclosure.waitForExistence(timeout: 8))
         disclosure.tap()
         XCTAssertTrue(
@@ -4680,10 +4680,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             ),
             "The native projection should reveal the exact saved continuity body on deliberate review."
         )
-        let boundary = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "current Session unchanged")
-        ).firstMatch
-        XCTAssertTrue(boundary.exists, "Capture should disclose the no-copy and no-mutation boundary.")
+        XCTAssertTrue(app.staticTexts["Private to you."].firstMatch.exists)
 
         let taskEvidence = app.buttons[
             "CapturePriorContinuityTaskEvidence_retained-coaching-continuity-task-20260803"

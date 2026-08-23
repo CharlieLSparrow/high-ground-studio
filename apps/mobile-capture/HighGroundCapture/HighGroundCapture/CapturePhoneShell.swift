@@ -7481,7 +7481,7 @@ private struct MobilePriorSessionFollowThroughCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Follow-through for this Session", systemImage: "arrow.triangle.2.circlepath.circle.fill")
+            Label("From your last Session", systemImage: "arrow.triangle.2.circlepath.circle.fill")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.purple)
 
@@ -7489,7 +7489,7 @@ private struct MobilePriorSessionFollowThroughCard: View {
                 .font(.headline)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Released to \(followThrough.output.recipientLabel) · live canonical status")
+            Text("Shared with \(followThrough.output.recipientLabel)")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
 
@@ -7518,7 +7518,7 @@ private struct MobilePriorSessionFollowThroughCard: View {
 
             if !followThrough.tasks.isEmpty {
                 VStack(alignment: .leading, spacing: 7) {
-                    Label("Commitments", systemImage: "checklist")
+                    Label("Tasks", systemImage: "checklist")
                         .font(.caption2.bold())
                         .foregroundStyle(.secondary)
                     ForEach(followThrough.tasks) { task in
@@ -7534,12 +7534,12 @@ private struct MobilePriorSessionFollowThroughCard: View {
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                 if task.changedSinceRelease {
-                                    Text(unavailable ? "Changed since release" : "Current status differs from the released snapshot")
+                                    Text(unavailable ? "Updated since this was shared" : "Updated since this was shared")
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.blue)
                                 }
                                 if followThrough.canOpenWork && !unavailable {
-                                    Button("Open commitment in Work") {
+                                    Button("Open task") {
                                         onOpenTask(task)
                                     }
                                     .font(.caption2.weight(.bold))
@@ -7582,17 +7582,17 @@ private struct MobilePriorSessionFollowThroughCard: View {
                                     }
                                 }
                                 if goal.progressedSinceRelease == true {
-                                    Text("New check-in since release")
+                                    Text("New check-in")
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.blue)
                                 }
                                 if goal.changedSinceRelease {
-                                    Text(unavailable ? "Changed since release" : "Goal definition or status differs from the released snapshot")
+                                    Text(unavailable ? "Updated since this was shared" : "Updated since this was shared")
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.blue)
                                 }
                                 if followThrough.canOpenWork && !unavailable {
-                                    Button("Open goal in Work") {
+                                    Button("Open goal") {
                                         onOpenGoal(goal)
                                     }
                                     .font(.caption2.weight(.bold))
@@ -7625,22 +7625,22 @@ private struct MobilePriorSessionFollowThroughCard: View {
                     Text("SHA-256 \(followThrough.output.contentSha256)")
                         .font(.system(.caption2, design: .monospaced))
                         .lineLimit(1)
-                    Text("The release remains immutable. Statuses above are live reads of the same task and goal IDs.")
+                    Text("Updates shown above come from the original tasks and goals. Quipsly does not create duplicate work when a follow-up is shared.")
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .padding(.top, 6)
             } label: {
-                Text("Inspect release receipt")
+                Text("Details")
                     .font(.subheadline.weight(.semibold))
             }
 
-            Button("Open source Session", action: onOpenSource)
+            Button("Open previous Session", action: onOpenSource)
                 .buttonStyle(.bordered)
                 .disabled(!sourceSessionAvailable)
                 .accessibilityIdentifier("CaptureFollowThroughOpenSource")
 
-            Text("Shared only with the assigned coach and client · same Nest and purpose · no copied work · no completion, message, or calendar side effect")
+            Text("Only you and your coach can see this.")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -7656,6 +7656,7 @@ private struct MobilePriorSessionContinuityCard: View {
     let sourceSessionAvailable: Bool
     let onOpenSource: () -> Void
     @State private var isExpanded = false
+    @State private var showsDetails = false
 
     private var savedLabel: String {
         let fractional = ISO8601DateFormatter()
@@ -7681,7 +7682,7 @@ private struct MobilePriorSessionContinuityCard: View {
                 .font(.headline)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Saved \(savedLabel) · \(receiptLabel)")
+            Text("Saved \(savedLabel)")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -7693,7 +7694,7 @@ private struct MobilePriorSessionContinuityCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 8)
             } label: {
-                Text("Review carried-forward brief")
+                Text("Review previous Session")
                     .font(.subheadline.weight(.semibold))
             }
 
@@ -7728,9 +7729,6 @@ private struct MobilePriorSessionContinuityCard: View {
                             .tint(.blue)
                             .accessibilityIdentifier("CapturePriorContinuityTaskEvidence_\(item.taskId)")
                             .accessibilityHint("Opens the exact reviewed transcript and retained recording evidence without changing the task or starting playback.")
-                            Text("Append-only evidence · task identity and state remain canonical")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
                         }
                         .padding(10)
                         .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
@@ -7738,12 +7736,26 @@ private struct MobilePriorSessionContinuityCard: View {
                 }
             }
 
-            Button("Open source Session", action: onOpenSource)
+            Button("Open previous Session", action: onOpenSource)
                 .buttonStyle(.bordered)
                 .disabled(!sourceSessionAvailable)
                 .accessibilityIdentifier("CapturePriorContinuityOpenSource")
 
-            Text("Same Nest and purpose · private to this account · current Session unchanged · no AI or external side effects")
+            DisclosureGroup(isExpanded: $showsDetails) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Snapshot \(receiptLabel)")
+                        .font(.system(.caption2, design: .monospaced))
+                    Text("This private summary keeps links to the original tasks and transcript evidence. Opening it does not change your current Session.")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 6)
+            } label: {
+                Text("Details")
+                    .font(.subheadline.weight(.semibold))
+            }
+
+            Text("Private to you.")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -7762,8 +7774,8 @@ private struct CaptureSessionFollowUpStatus: View {
         Label(
             errorMessage
                 ?? (session.clientFollowUp == nil
-                    ? "Session current · no released client follow-up"
-                    : "Session current · released client follow-up ready"),
+                    ? "Follow-up not shared yet"
+                    : "Follow-up ready"),
             systemImage: errorMessage != nil
                 ? "exclamationmark.triangle"
                 : session.clientFollowUp == nil
