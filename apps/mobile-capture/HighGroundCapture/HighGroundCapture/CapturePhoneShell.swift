@@ -8113,6 +8113,15 @@ private struct CaptureSessionTruthPanel: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
+                        if let technicalError = model.providerRoom.lastTechnicalError {
+                            Text(technicalError)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("CaptureCallTechnicalError")
+                        }
+
                         if let readiness = model.readinessClient.readiness {
                             CaptureStatusPill(
                                 label: readiness.providerEgressLabel,

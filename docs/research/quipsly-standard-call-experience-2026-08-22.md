@@ -529,6 +529,10 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   and server guidance. Reopen never invents a new consent ceremony; recording
   remains a separate explicit action and a changed Session, participant, media
   scope, policy, or prior decision can still require a new choice.
+- Split iPhone call failures into a short user recovery and retained technical
+  evidence. The normal surface now says to refresh, check the microphone, retry,
+  or record without joining; LiveKit, CallKit, join-packet, and provider-audio
+  causes remain selectable under `Technical details` for support.
 - Lead post-capture audio review with the waveform and honest listening work,
   not meters. The iPhone now summarizes the number of exact moments worth
   checking, keeps every moment playable against the untouched original, and

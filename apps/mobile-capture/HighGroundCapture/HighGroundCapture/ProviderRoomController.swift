@@ -43,6 +43,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var activeRoomName: String?
     @Published var activeCallUUIDString: String?
     @Published var lastError: String?
+    @Published var lastTechnicalError: String?
     @Published var providerRuntimeAvailable = ProviderRoomRuntime.liveKitSDKAvailable
     @Published var providerRuntimeLabel = ProviderRoomRuntime.liveKitLabel
     @Published var providerRuntimeDetail = ProviderRoomRuntime.liveKitDetail
@@ -103,6 +104,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         switch AVAudioApplication.shared.recordPermission {
         case .granted:
             lastError = nil
+            lastTechnicalError = nil
             return true
         case .denied:
             fail("Allow microphone access in Settings to join the call.")
@@ -121,6 +123,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             if allowed {
                 connectionStateLabel = "Ready"
                 statusText = "Microphone ready."
+                lastTechnicalError = nil
                 return true
             }
             fail("Allow microphone access in Settings to join the call.")
@@ -139,22 +142,28 @@ final class ProviderRoomController: NSObject, ObservableObject {
     ) async {
         #if canImport(LiveKit)
         guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
-            fail(accountChangedMessage)
+            fail(
+                "Your Quipsly account changed. Join again with the current account.",
+                technical: accountChangedMessage
+            )
             return
         }
         guard let join else {
-            fail("Prepare the provider room before joining.")
+            fail("This call isn't ready yet. Refresh the Session and try again.", technical: "No prepared provider-room join response was available.")
             return
         }
 
         guard join.canJoin == true else {
-            fail(join.nextAction ?? "This session is not ready for provider-room joining. Local capture fallback remains available after consent.")
+            fail(
+                "This call isn't ready yet. Refresh the Session and try again, or record without joining.",
+                technical: join.nextAction ?? "The provider-room join response held access."
+            )
             return
         }
 
         guard let serverUrl = join.serverUrl, !serverUrl.isEmpty,
               let participantToken = join.participantToken, !participantToken.isEmpty else {
-            fail("Nest did not return a complete provider-room join packet.")
+            fail("This call couldn't start. Refresh the Session and try again.", technical: "Nest returned an incomplete provider-room join packet.")
             return
         }
         activeOwnerSnapshot = expectedOwnerSnapshot
@@ -167,13 +176,14 @@ final class ProviderRoomController: NSObject, ObservableObject {
         do {
             try audioSessionCoordinator.providerWillConnect()
         } catch {
-            fail("The live-room audio route could not be prepared: \(error.localizedDescription)")
+            fail("Your microphone couldn't be prepared. Check the selected input and try again.", technical: error.localizedDescription)
             return
         }
 
         isConnecting = true
         isReconnecting = false
         lastError = nil
+        lastTechnicalError = nil
         statusText = "Connecting to \(join.provider ?? session.providerLabel)..."
         connectionStateLabel = "Connecting"
         nativeCallPresentationLabel = "Preparing native call surface"
@@ -185,7 +195,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         }
         if !callKitStarted {
             audioSessionCoordinator.providerDidDisconnect()
-            fail("The native call audio session could not start, so Quipsly did not join a silent provider room. Local recording remains available.")
+            fail("Call audio couldn't start. Try again, or record without joining.", technical: lastTechnicalError ?? "The native call presentation could not start.")
             return
         }
 
@@ -200,7 +210,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             await endNativeCallPresentation(reason: .failed)
             try? audioSessionCoordinator.callKitDidDeactivate()
             audioSessionCoordinator.providerDidDisconnect()
-            fail("CallKit did not activate room audio, so Quipsly did not join a silent provider room. Try again or keep the local source only.")
+            fail("Call audio couldn't start. Try again, or record without joining.", technical: "CallKit did not activate the room audio session before timeout.")
             return
         }
 
@@ -224,6 +234,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             isMuted = initiallyMuted
             isConnected = true
             isReconnecting = false
+            lastTechnicalError = nil
             activeRoomName = room.name ?? join.roomName ?? session.displayTitle
             remoteParticipantCount = room.remoteParticipants.count
             connectionStateLabel = "\(room.connectionState)".capitalized
@@ -240,13 +251,13 @@ final class ProviderRoomController: NSObject, ObservableObject {
             isMuted = true
             remoteParticipantCount = 0
             activeRoomName = nil
-            fail(error.localizedDescription)
+            fail("The call couldn't connect. Check your internet connection and try again.", technical: error.localizedDescription)
         }
 
         isConnecting = false
         isReconnecting = false
         #else
-        fail("LiveKit SDK is not linked into this app build yet. Nest room keys may be ready, but real provider media is held. Local consented recording is still available.")
+        fail("Calls aren't available in this build. You can still record on this iPhone.", technical: "The LiveKit SDK is not linked into this app build.")
         #endif
     }
 
@@ -260,7 +271,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
                 await abortForAccountChange()
                 return
             }
-            fail("Join the provider room before changing mute state.")
+            fail("Join the call before changing your microphone.", technical: "Mute was requested without an active provider room.")
             return
         }
 
@@ -273,10 +284,10 @@ final class ProviderRoomController: NSObject, ObservableObject {
             isMuted = muted
             statusText = muted ? "Provider microphone muted." : "Provider microphone live. Quipsly recording is still separate."
         } catch {
-            fail(error.localizedDescription)
+            fail("Your microphone couldn't change. Try again.", technical: error.localizedDescription)
         }
         #else
-        fail("Mute controls require the LiveKit SDK build.")
+        fail("Microphone controls aren't available in this build.", technical: "Mute controls require the LiveKit SDK build.")
         #endif
     }
 
@@ -381,7 +392,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         #endif
     }
 
-    private func fail(_ message: String) {
+    private func fail(_ message: String, technical: String? = nil) {
         isConnecting = false
         if !isConnected {
             isReconnecting = false
@@ -389,6 +400,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             clearEpisodeWatchBridge()
         }
         lastError = message
+        lastTechnicalError = technical
         statusText = message
         connectionStateLabel = isConnected ? "Connected" : "Needs attention"
     }
@@ -416,7 +428,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             return true
         } catch {
             nativeCallPresentationLabel = "CallKit unavailable"
-            lastError = "Native call presentation failed: \(error.localizedDescription)"
+            lastTechnicalError = "Native call presentation failed: \(error.localizedDescription)"
             return false
         }
     }
@@ -512,12 +524,13 @@ final class ProviderRoomController: NSObject, ObservableObject {
         remoteParticipantCount = 0
         activeRoomName = nil
         connectionStateLabel = "Disconnected"
-        lastError = accountChangedMessage
-        statusText = accountChangedMessage
+        lastError = "Your Quipsly account changed, so the call ended safely. Join again with the current account."
+        lastTechnicalError = accountChangedMessage
+        statusText = lastError ?? "The call ended safely."
     }
 
     private func abortAfterCallAudioActivationFailure(_ error: Error) async {
-        let message = "Provider audio could not activate safely, so Quipsly left the room instead of showing a silent connection: \(error.localizedDescription)"
+        let technicalMessage = "Provider audio could not activate safely, so Quipsly left the room instead of showing a silent connection: \(error.localizedDescription)"
         #if canImport(LiveKit)
         await room.disconnect()
         #endif
@@ -535,8 +548,9 @@ final class ProviderRoomController: NSObject, ObservableObject {
         activeOwnerSnapshot = nil
         clearEpisodeWatchBridge()
         connectionStateLabel = "Needs attention"
-        lastError = message
-        statusText = message
+        lastError = "Call audio stopped working, so Quipsly left the call. Try joining again."
+        lastTechnicalError = technicalMessage
+        statusText = lastError ?? "The call ended safely."
     }
 
     deinit {
@@ -628,7 +642,7 @@ extension ProviderRoomController: CXProviderDelegate {
             do {
                 try self.audioSessionCoordinator.callKitDidDeactivate()
             } catch {
-                self.lastError = "Provider audio could not deactivate cleanly: \(error.localizedDescription)"
+                self.lastTechnicalError = "Provider audio could not deactivate cleanly: \(error.localizedDescription)"
             }
             self.isCallAudioSessionActive = false
             self.callAudioSessionLabel = "Call audio idle"
@@ -660,6 +674,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.isConnected = true
                 self.isReconnecting = false
                 self.lastError = nil
+                self.lastTechnicalError = nil
                 if recovered {
                     self.statusText = "Reconnected."
                 }
@@ -668,6 +683,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.isConnected = true
                 self.isReconnecting = true
                 self.lastError = nil
+                self.lastTechnicalError = nil
                 self.connectionStateLabel = "Reconnecting"
                 self.statusText = "Reconnecting…"
             case .disconnected:

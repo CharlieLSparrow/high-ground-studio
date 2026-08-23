@@ -4844,7 +4844,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         #if targetEnvironment(simulator)
         let simulatorActivationFailure = app.staticTexts[
-            "CallKit did not activate room audio, so Quipsly did not join a silent provider room. Try again or keep the local source only."
+            "Call audio couldn't start. Try again, or record without joining."
         ].firstMatch
         if simulatorActivationFailure.waitForExistence(timeout: 12) {
             XCTAssertTrue(
