@@ -6442,6 +6442,8 @@ private struct CaptureRecorderView: View {
                         localRecordingWorkspaceOpen:
                             model.providerRoom.isConnected
                             || localOnlyRecordingSessionID == session.id
+                            || audioCapture.activeSessionID == session.id
+                            || videoCapture.activeSessionID == session.id
                             || model.activeCaptureSession?.id == session.id
                             || model.activeVideoCaptureSession?.id == session.id
                             || session.providerCanJoin == false,
@@ -6458,6 +6460,8 @@ private struct CaptureRecorderView: View {
 
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
+                        || audioCapture.activeSessionID == session.id
+                        || videoCapture.activeSessionID == session.id
                         || model.activeCaptureSession?.id == session.id
                         || model.activeVideoCaptureSession?.id == session.id
                         || session.providerCanJoin == false {

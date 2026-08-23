@@ -176,6 +176,12 @@ final class VideoCaptureController: ObservableObject {
     private var pendingSwitchPosition: VideoCaptureCameraPosition?
     private var observers: [NSObjectProtocol] = []
 
+    /// Recorder-owned navigation truth survives SwiftUI/model reconstruction
+    /// while a protected movie group is active or paused.
+    var activeSessionID: String? {
+        activeCapture?.context.sessionID ?? pausedCapture?.context.sessionID
+    }
+
     private let storageSafetyReserveBytes: Int64 = 1_500_000_000
     private let synchronousCloudVerificationLimitBytes: Int64 =
         2 * 1_024 * 1_024 * 1_024

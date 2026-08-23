@@ -108,6 +108,12 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var activeCaptureIntent: CaptureIntent?
     private var captureOwnerAuthorityLost = false
 
+    /// Recorder-owned navigation truth survives SwiftUI/model reconstruction
+    /// while protected audio bytes are active.
+    var activeSessionID: String? {
+        activeCaptureIntent?.sessionID ?? pendingCaptureIntent?.sessionID
+    }
+
     private var activeProjectSlug: String?
     private var activeEpisodeSlug: String?
     private var activeCallRoomId: String?

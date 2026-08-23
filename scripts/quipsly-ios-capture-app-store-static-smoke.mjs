@@ -993,6 +993,8 @@ for (const needle of [
   "GlobalCaptureBanner",
   "model.activeCaptureSession?.id == session.id",
   "model.activeVideoCaptureSession?.id == session.id",
+  "audioCapture.activeSessionID == session.id",
+  "videoCapture.activeSessionID == session.id",
   "CaptureUseCallAudioToggle",
   "Finish or stop the current take first.",
   ".disabled(providerControlsLocked",
