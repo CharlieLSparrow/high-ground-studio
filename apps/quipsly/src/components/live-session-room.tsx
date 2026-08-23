@@ -328,6 +328,7 @@ export function LiveSessionRoom({
   );
   const [status, setStatus] = useState<LiveSessionRoomStatus>("preflight");
   const [message, setMessage] = useState("Preparing your microphone and camera…");
+  const [technicalMessage, setTechnicalMessage] = useState<string | null>(null);
   const [showCallNotice, setShowCallNotice] = useState(false);
   const [microphones, setMicrophones] = useState<DeviceOption[]>([]);
   const [cameras, setCameras] = useState<DeviceOption[]>([]);
@@ -882,9 +883,11 @@ export function LiveSessionRoom({
             ? "Microphone names are visible. Choose the exact source, then run the confidence check before joining."
             : "Microphone access is available. Use the confidence check to verify the selected source.");
       }
+      setTechnicalMessage(null);
     } catch (error) {
       if (!preserveLiveConnection) setStatus("error");
-      setMessage(error instanceof Error ? `Device check failed: ${error.message}` : "Device permission was not granted.");
+      setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a media-device error.");
+      setMessage("Device access couldn't be completed. Check this site's microphone and camera permissions, then try again.");
     }
   }, [clearPreflightPreview]);
 
@@ -977,6 +980,7 @@ export function LiveSessionRoom({
       };
       setStatus("ready");
       setPreviewTested(true);
+      setTechnicalMessage(null);
       suppressPreferenceWriteRef.current = false;
       setMessage(audioOnly
         ? "Microphone is open for the private sound check. Nothing is sent or retained."
@@ -985,7 +989,8 @@ export function LiveSessionRoom({
     } catch (error) {
       setStatus("error");
       setCameraEvidence(null);
-      setMessage(error instanceof Error ? `Selected device could not start: ${error.message}` : "Selected device could not start.");
+      setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a preview error.");
+      setMessage("The selected setup couldn't start. Check the device connection and browser permissions, then try again.");
       return null;
     }
   }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId]);
@@ -1143,14 +1148,16 @@ export function LiveSessionRoom({
       });
       updateRoster(room);
       setStatus("connected");
+      setTechnicalMessage(null);
       setMessage(packet.recordingConsentGranted
         ? "You’re connected. Recording is off."
-        : "You’re connected. Recording will stay off until everyone consents.");
+        : "You’re connected. Recording is off until everyone chooses to allow it.");
     } catch (error) {
       roomRef.current?.disconnect(true);
       roomRef.current = null;
       setStatus("error");
-      setMessage(error instanceof Error ? error.message : "The live room could not connect.");
+      setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a call connection error.");
+      setMessage("The call couldn't connect. Check your internet connection and try again.");
     }
   }, [attachRemoteTrack, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, updateRoster]);
 
@@ -1563,6 +1570,7 @@ export function LiveSessionRoom({
           <details data-testid="call-technical-device-details" className="mt-4 rounded-xl border border-[#e8dcc8] bg-[#fffaf0] p-3">
             <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-[#765f40]">Technical device details</summary>
             <div className="mt-3 space-y-3">
+              {technicalMessage ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 font-mono text-[10px] font-semibold leading-4 text-amber-950" data-testid="call-technical-error">{technicalMessage}</p> : null}
               <StudioInputEvidenceMeter evidence={meterEvidence} />
               {cameraWanted ? <StudioCameraEvidence cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""} evidence={cameraEvidence} /> : null}
             </div>

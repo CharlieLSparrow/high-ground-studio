@@ -60,6 +60,7 @@ import { LiveSessionRoom } from "./live-session-room";
 
 type MockLiveKitRoom = {
   __reset: () => void;
+  connect: jest.Mock;
   disconnect: jest.Mock;
   switchActiveDevice: jest.Mock;
   localParticipant: {
@@ -419,6 +420,51 @@ describe("LiveSessionRoom", () => {
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
     expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent("55555555-5555-4555-8555-555555555545");
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
+  });
+
+  it("keeps browser call recovery ordinary while retaining the technical cause", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/mobile/capture/rooms/join")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: "room-scoped-test-token",
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
+    }) as typeof fetch;
+    mockLiveKitRoom.connect.mockRejectedValueOnce(
+      new Error("LiveKit websocket token rejected"),
+    );
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-join-failure" captureGroupId="55555555-5555-4555-8555-555555555543" sessionTitle="Retry call" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+
+    await waitFor(() => expect(screen.getByTestId("call-status-message")).toHaveTextContent(
+      "The call couldn't connect. Check your internet connection and try again.",
+    ));
+    expect(screen.queryByText("LiveKit websocket token rejected")).not.toBeVisible();
+    fireEvent.click(screen.getByText("Technical device details"));
+    expect(screen.getByTestId("call-technical-error")).toHaveTextContent(
+      "LiveKit websocket token rejected",
+    );
   });
 
   it("keeps camera permission independent from an audio-only coaching join", async () => {

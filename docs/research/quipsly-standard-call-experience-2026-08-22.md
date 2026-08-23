@@ -533,6 +533,10 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   evidence. The normal surface now says to refresh, check the microphone, retry,
   or record without joining; LiveKit, CallKit, join-packet, and provider-audio
   causes remain selectable under `Technical details` for support.
+- Applied the same split to browser device, preview, and join failures. The
+  ordinary call surface gives one conventional permissions, connection, or
+  network recovery; the exact browser or LiveKit cause remains hidden but
+  selectable under `Technical device details`.
 - Lead post-capture audio review with the waveform and honest listening work,
   not meters. The iPhone now summarizes the number of exact moments worth
   checking, keeps every moment playable against the untouched original, and
