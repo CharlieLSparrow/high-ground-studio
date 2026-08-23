@@ -14,7 +14,6 @@ struct CapturePhoneShell: View {
     @State private var completedInitialLoad = false
     @State private var isRoutingSessionLink = false
     @State private var localOnlyRecordingSessionID: String?
-    @State private var recorderFocusRequest = 0
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -33,8 +32,7 @@ struct CapturePhoneShell: View {
                 CaptureRecorderView(
                     model: model,
                     visibleTab: $visibleTab,
-                    localOnlyRecordingSessionID: $localOnlyRecordingSessionID,
-                    focusRequest: recorderFocusRequest
+                    localOnlyRecordingSessionID: $localOnlyRecordingSessionID
                 )
             }
             .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
@@ -145,26 +143,6 @@ struct CapturePhoneShell: View {
             showRejectedLinkNotice()
         }
         .onChange(of: visibleTab) { _, tab in
-            if tab == .record,
-               !audioCaptureIsActive,
-               !videoCaptureIsActive {
-                // Returning to an idle recorder is a new capture intent. Ask
-                // the existing recorder view to reveal its primary controls
-                // without rebuilding its call, picker, or local source state.
-                // Never move an active recorder: the global banner must return
-                // to the continuing source exactly where the person left it.
-                Task { @MainActor in
-                    // TabView keeps every tab mounted. Wait until Record is the
-                    // visible subtree; a scroll request delivered while it is
-                    // still hidden is intentionally ignored by SwiftUI.
-                    try? await Task.sleep(for: .milliseconds(250))
-                    guard visibleTab == .record,
-                          !audioCaptureIsActive,
-                          !videoCaptureIsActive else { return }
-                    recorderFocusRequest += 1
-                }
-            }
-
             guard tab == .today, !model.usesPreviewData else { return }
             // Today is a projection over work that can be created from Record,
             // Work, or a Session review. Refresh on entry so a successful
@@ -6408,7 +6386,6 @@ private struct CaptureRecorderView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
     @Binding var localOnlyRecordingSessionID: String?
-    let focusRequest: Int
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var library = LocalRecordingLibrary.shared
@@ -6431,19 +6408,13 @@ private struct CaptureRecorderView: View {
     @StateObject private var sessionChat = MobileEpisodeChatClient(scope: .session)
 
     var body: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView {
+        ScrollView {
             // This surface can project a full Episode workspace. Lazy layout
             // is a correctness boundary on physical devices: eagerly laying
             // out every transcript, notes, follow-through, chat, Watch, and
             // capture card can overflow SwiftUI's AttributeGraph stack before
             // the person reaches the consent controls.
             LazyVStack(spacing: 16) {
-                Color.clear
-                    .frame(height: 0)
-                    .id("CaptureRecorderPrimaryControls")
-                    .accessibilityHidden(true)
-
                 SessionChooserButton(session: model.selectedSession) {
                     showsSessionPicker = true
                 }
@@ -7102,19 +7073,45 @@ private struct CaptureRecorderView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let session = model.selectedSession,
-               model.providerRoom.isConnected {
-                ProviderRoomDock(
-                    model: model,
-                    localRecordingActive: captureIsActive,
-                    isSafelyLeaving: isSafelyLeavingRoom,
-                    cameraPosition: cameraPosition,
-                    videoQualityIntent: videoQualityIntent,
-                    onLeave: {
-                        Task { await leaveRoomSafely(for: session) }
-                    }
-                )
-                .background(.bar)
+            if let session = model.selectedSession {
+                if model.providerRoom.isConnected {
+                    ProviderRoomDock(
+                        model: model,
+                        localRecordingActive: captureIsActive,
+                        isSafelyLeaving: isSafelyLeavingRoom,
+                        cameraPosition: cameraPosition,
+                        videoQualityIntent: videoQualityIntent,
+                        onLeave: {
+                            Task { await leaveRoomSafely(for: session) }
+                        }
+                    )
+                    .background(.bar)
+                } else if localRecordingWorkspaceIsOpen(for: session) {
+                    CapturePersistentRecorderDock(
+                        session: session,
+                        mode: recordingMode,
+                        audioState: audioCapture.captureState,
+                        videoState: videoCapture.state,
+                        duration: max(
+                            audioCapture.currentDuration,
+                            videoCapture.durationSeconds
+                        ),
+                        isBusy:
+                            model.isChangingCapture
+                            || model.isCoordinatingPodcastCapture
+                            || recordingCoordinator.isSending,
+                        onPrimaryAction: {
+                            Task {
+                                if captureIsActive {
+                                    await requestCoordinatedStop(for: session)
+                                } else {
+                                    await requestCoordinatedStart(for: session)
+                                }
+                            }
+                        }
+                    )
+                    .background(.bar)
+                }
             }
         }
         .background(CaptureCanvas())
@@ -7261,18 +7258,6 @@ private struct CaptureRecorderView: View {
                   !model.providerRoom.isLocalVideoPublished else { return }
             Task { await videoCapture.shutdownPreview() }
         }
-        .onChange(of: focusRequest) { _, _ in
-            guard !captureIsActive else { return }
-            Task { @MainActor in
-                // Let TabView finish selecting Record before changing only the
-                // ScrollView's position. This keeps the live recorder subtree
-                // mounted and gives touch and accessibility clients one stable
-                // transition to observe.
-                await Task.yield()
-                scrollProxy.scrollTo("CaptureRecorderPrimaryControls", anchor: .top)
-            }
-        }
-        }
     }
 
     private var recordingCoordinator: CaptureRecordingCoordinator {
@@ -7291,6 +7276,17 @@ private struct CaptureRecorderView: View {
 
     private var captureIsActive: Bool {
         audioCaptureIsActive || videoCaptureIsActive
+    }
+
+    private func localRecordingWorkspaceIsOpen(
+        for session: MobileCaptureSession
+    ) -> Bool {
+        localOnlyRecordingSessionID == session.id
+            || audioCapture.activeSessionID == session.id
+            || videoCapture.activeSessionID == session.id
+            || model.activeCaptureSession?.id == session.id
+            || model.activeVideoCaptureSession?.id == session.id
+            || session.providerCanJoin == false
     }
 
     private var recordingCoordinationTaskID: String {
@@ -12486,6 +12482,131 @@ private struct ProviderRoomVideoStage: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityLabel("Your live camera preview")
         .accessibilityIdentifier("ProviderLocalVideoPreview")
+    }
+}
+
+/// Recording is a primary call action, so it must not disappear when the
+/// Session workspace is scrolled through notes, follow-through, or chat. This
+/// compact dock owns no capture state; it projects the same controller-backed
+/// action as the full recorder card above.
+private struct CapturePersistentRecorderDock: View {
+    let session: MobileCaptureSession
+    let mode: CaptureRecordingMode
+    let audioState: AudioCaptureState
+    let videoState: VideoCaptureState
+    let duration: TimeInterval
+    let isBusy: Bool
+    let onPrimaryAction: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(statusTitle)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(1)
+                Text(statusDetail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: onPrimaryAction) {
+                Label(actionTitle, systemImage: actionSystemImage)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 50)
+                    .background(actionTint, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(actionDisabled)
+            .opacity(actionDisabled ? 0.55 : 1)
+            .accessibilityLabel(actionAccessibilityLabel)
+            .accessibilityIdentifier(actionIdentifier)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 9)
+        .padding(.bottom, 7)
+        .overlay(alignment: .top) { Divider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CapturePersistentRecorderDock")
+    }
+
+    private var captureIsActive: Bool {
+        switch audioState {
+        case .recording, .paused, .finalizing:
+            return true
+        default:
+            return videoState.isActive || videoState == .paused
+        }
+    }
+
+    private var actionDisabled: Bool {
+        if isBusy { return true }
+        if mode == .audio {
+            return !captureIsActive
+                && !(session.canRecordAudioNow ?? session.canRecordNow)
+        }
+        if [.preparing, .arming, .finalizing].contains(videoState) {
+            return true
+        }
+        if !captureIsActive {
+            guard session.recordingConsentVideoGranted == true,
+                  session.canRecordVideoNow == true else { return true }
+            if mode.requiresAudioConsent {
+                return !(session.canRecordAudioNow ?? session.canRecordNow)
+            }
+        }
+        return false
+    }
+
+    private var statusTitle: String {
+        if captureIsActive {
+            return mode == .audio ? "Recording audio" : "Recording \(mode.title.lowercased())"
+        }
+        return mode == .audio ? "Ready to record" : "Ready for \(mode.title.lowercased())"
+    }
+
+    private var statusDetail: String {
+        captureIsActive
+            ? "\(duration.captureDurationLabel) · saved locally when stopped"
+            : "Primary control stays within reach"
+    }
+
+    private var actionTitle: String {
+        if captureIsActive { return "Stop & save" }
+        if mode != .audio,
+           videoState != .ready { return "Prepare"
+        }
+        return "Record"
+    }
+
+    private var actionSystemImage: String {
+        if captureIsActive { return "stop.fill" }
+        return mode == .audio ? "record.circle" : "camera.fill"
+    }
+
+    private var actionTint: Color {
+        captureIsActive ? .red : CapturePalette.record
+    }
+
+    private var actionIdentifier: String {
+        if mode == .audio {
+            return captureIsActive ? "CaptureStopButton" : "CaptureStartButton"
+        }
+        if captureIsActive { return "CaptureVideoStopButton" }
+        return videoState == .ready
+            ? "CaptureVideoStartButton"
+            : "CaptureVideoPrepareButton"
+    }
+
+    private var actionAccessibilityLabel: String {
+        if captureIsActive {
+            return "Stop and save recording, \(duration.captureDurationLabel) elapsed"
+        }
+        if actionDisabled { return "Recording unavailable until consent is ready" }
+        return actionTitle
     }
 }
 
