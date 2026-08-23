@@ -993,16 +993,17 @@ function SessionConsentControl({
       (participant) => participant.isCurrentActor,
     ) ?? null;
   const consent = actor?.consent ?? null;
+  const requestedConsent = consent?.status === "REQUESTED";
   const closed =
     preparation.status === "CANCELED" || preparation.status === "ENDED";
   const [canRecordAudio, setCanRecordAudio] = useState(
-    consent?.canRecordAudio ?? true,
+    requestedConsent ? true : (consent?.canRecordAudio ?? true),
   );
   const [canRecordVideo, setCanRecordVideo] = useState(
     consent?.canRecordVideo ?? false,
   );
   const [canTranscribe, setCanTranscribe] = useState(
-    consent?.canTranscribe ?? true,
+    requestedConsent ? true : (consent?.canTranscribe ?? true),
   );
   const [isEditingConsent, setIsEditingConsent] = useState(
     consent?.recordingReady !== true,
@@ -1012,12 +1013,13 @@ function SessionConsentControl({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setCanRecordAudio(consent?.canRecordAudio ?? true);
+    setCanRecordAudio(requestedConsent ? true : (consent?.canRecordAudio ?? true));
     setCanRecordVideo(consent?.canRecordVideo ?? false);
-    setCanTranscribe(consent?.canTranscribe ?? true);
+    setCanTranscribe(requestedConsent ? true : (consent?.canTranscribe ?? true));
     setIsEditingConsent(consent?.recordingReady !== true);
   }, [
     actor?.id,
+    consent?.status,
     consent?.canRecordAudio,
     consent?.canRecordVideo,
     consent?.canTranscribe,
