@@ -12150,13 +12150,29 @@ private struct ProviderRoomControls: View {
                         .accessibilityIdentifier("CaptureProviderRoomReconnecting")
                 }
             } else {
-                Toggle(isOn: $joinMuted) {
-                    Label("Join muted", systemImage: joinMuted ? "mic.slash.fill" : "mic.fill")
+                Toggle(isOn: Binding(
+                    get: { !joinMuted },
+                    set: { joinMuted = !$0 }
+                )) {
+                    Label(
+                        "Use this iPhone for call audio",
+                        systemImage: joinMuted ? "mic.slash.fill" : "iphone.radiowaves.left.and.right"
+                    )
                         .font(.subheadline)
                 }
                 .toggleStyle(.switch)
                 .disabled(providerControlsLocked || model.isChangingRoom)
                 .accessibilityIdentifier("CaptureJoinMutedToggle")
+
+                Text(
+                    joinMuted
+                        ? "This iPhone will join muted. Keep the call microphone and headphones on your other device to prevent echo. Local camera recording stays separate."
+                        : "This iPhone will handle the conversation audio. If another device joins too, keep its microphone and speaker off."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureCallAudioDeviceGuidance")
 
                 Button {
                     Task {

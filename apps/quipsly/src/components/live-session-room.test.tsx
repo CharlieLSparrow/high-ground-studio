@@ -170,7 +170,7 @@ describe("LiveSessionRoom", () => {
     expect(await screen.findByRole("option", { name: "Shure MV7i" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Canon EOS R8" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Episode test" })).toBeInTheDocument();
-    expect(screen.getByText("Joining doesn’t start recording.")).toBeInTheDocument();
+    expect(screen.getByText(/This browser will handle call audio.*Joining doesn’t start recording/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Call-path microphone evidence" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Private studio sound check" })).toBeInTheDocument();
     expect(screen.getByTestId("call-technical-device-details")).not.toHaveAttribute("open");
@@ -240,6 +240,7 @@ describe("LiveSessionRoom", () => {
     });
 
     expect(await screen.findByRole("button", { name: "Muted" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/join muted.*other device to prevent echo/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Camera off" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("combobox", { name: "Microphone" })).toHaveValue("new-mic-id");
     expect(screen.getByRole("combobox", { name: "Camera" })).toHaveValue("new-camera-id");

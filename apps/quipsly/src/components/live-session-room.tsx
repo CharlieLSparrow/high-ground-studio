@@ -1594,7 +1594,12 @@ export function LiveSessionRoom({
                   {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} Join call
                 </button>
               </div>
-              <p className="mt-3 text-[11px] font-bold text-violet-900">Joining doesn’t start recording.</p>
+              <p className="mt-3 text-[11px] font-bold leading-5 text-violet-900">
+                {joinMuted
+                  ? "This browser will join muted. Keep the call microphone and headphones on your other device to prevent echo."
+                  : "This browser will handle call audio. Keep the microphone and speaker off on any second device."}
+                {" "}Joining doesn’t start recording.
+              </p>
             </section>
           ) : null}
 
