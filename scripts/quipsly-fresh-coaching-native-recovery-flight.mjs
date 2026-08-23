@@ -164,6 +164,9 @@ async function grantClientRecordingConsent(context) {
     });
     if (await leaveLobby.isVisible().catch(() => false)) {
       await leaveLobby.click();
+      await page
+        .getByRole("link", { name: "Prepare", exact: true })
+        .click();
     }
     const consentControl = page.getByTestId("session-consent-control");
     await consentControl.waitFor({ state: "visible", timeout: 30_000 });
