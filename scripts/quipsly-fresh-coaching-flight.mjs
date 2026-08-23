@@ -287,6 +287,16 @@ if (controlledSpeechFlight) {
     true,
     "Basic recording edits left the transcript workflow instead of opening inline.",
   );
+  assert.equal(
+    audioPolish?.transcriptViewModesOperated,
+    true,
+    "The transcript did not expose both familiar linear and recording-plus-transcript workspaces.",
+  );
+  assert.equal(
+    audioPolish?.recordingAndTranscriptRenderedSideBySide,
+    true,
+    "The recording-plus-transcript workspace did not render side by side on a wide screen.",
+  );
   assert(
     ["improved-listening-copy", "already-balanced"].includes(
       audioPolish?.outcome,
@@ -388,6 +398,10 @@ const result = {
           audioPolish.transcriptAppearedBeforePacketAdministration,
         recordingEditorOpenedInline:
           audioPolish.recordingEditorOpenedInline,
+        transcriptViewModesOperated:
+          audioPolish.transcriptViewModesOperated,
+        recordingAndTranscriptRenderedSideBySide:
+          audioPolish.recordingAndTranscriptRenderedSideBySide,
       }
     : null,
   interactionSurfaceEvidence: {
@@ -428,7 +442,9 @@ const result = {
       transcriptFirstEditingContinuity:
         controlledSpeechFlight &&
         audioPolish?.transcriptAppearedBeforePacketAdministration === true &&
-        audioPolish?.recordingEditorOpenedInline === true,
+        audioPolish?.recordingEditorOpenedInline === true &&
+        audioPolish?.transcriptViewModesOperated === true &&
+        audioPolish?.recordingAndTranscriptRenderedSideBySide === true,
     },
     browserInitiatedServiceMechanics: {
       transcriptWorkerAndProtectedPlayback: true,

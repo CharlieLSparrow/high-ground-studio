@@ -615,6 +615,25 @@ describe("TranscriptCorrectionDesk", () => {
     expect(edit).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("offers standard transcript and recording-plus-transcript workspaces without leaving the page", async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+
+    const transcriptOnly = await screen.findByRole("button", { name: "Transcript" });
+    const sideBySide = screen.getByRole("button", { name: "Recording + transcript" });
+    expect(transcriptOnly).toHaveAttribute("aria-pressed", "true");
+    expect(sideBySide).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByLabelText("Protected session recording")).toBeInTheDocument();
+    expect(screen.getByText("Welcome, everybody.")).toBeInTheDocument();
+
+    fireEvent.click(sideBySide);
+    expect(sideBySide).toHaveAttribute("aria-pressed", "true");
+    expect(transcriptOnly).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByLabelText("Protected session recording")).toBeInTheDocument();
+    expect(screen.getByText("Welcome, everybody.")).toBeInTheDocument();
+  });
+
   it("saves a deliberate client-safe Session note with the exact transcript identity", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })

@@ -582,6 +582,13 @@ share`. The continuity panel says that the call, chat, recordings,
   review. Basic trim, transcript exclusions, private preview, and recipient
   release now open inline from Transcript instead of forcing a mode or app
   switch; original participant masters remain immutable.
+- Give people two ordinary editing views instead of one expert-only layout:
+  `Transcript` keeps a familiar linear reading flow, while
+  `Recording + transcript` places protected playback beside the same timed,
+  correctable passages on a wide screen and stacks safely on a phone. Switching
+  views never creates another copy, changes the URL, or breaks the link between
+  words and source time. Audio forensics and voice-label administration remain
+  collapsed below the primary editing work.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB

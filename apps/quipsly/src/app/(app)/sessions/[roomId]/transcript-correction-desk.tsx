@@ -1620,6 +1620,7 @@ export function TranscriptCorrectionDesk({
   const [showQualityDetails, setShowQualityDetails] = useState(false);
   const [showSpeakerIdentity, setShowSpeakerIdentity] = useState(false);
   const [showRecordingEditor, setShowRecordingEditor] = useState(false);
+  const [transcriptView, setTranscriptView] = useState<"transcript" | "recording-transcript">("transcript");
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
   const automaticPlaybackPreparationRef = useRef<string | null>(null);
@@ -1737,7 +1738,6 @@ export function TranscriptCorrectionDesk({
     setPlaybackSeconds(next);
     try {
       await media.play();
-      setMessage(`Playing source evidence from ${timestampForSeconds(next)}.`);
     } catch {
       setMessage("Playback needs your direct interaction. Press play in the recording controls, then try this timestamp again.");
     }
@@ -1863,6 +1863,31 @@ export function TranscriptCorrectionDesk({
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
   const identifiedSpeakerCount = (desk.speakerGroups ?? []).filter((group) => group.attribution && !group.staleAttribution).length;
   const timingIntegrity = desk.evidence?.transcript.timingIntegrity ?? null;
+  const protectedPlaybackSurface = !desk.gate.allowed ? (
+    <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-900">{desk.gate.error || "Transcript evidence remains held by consent and release policy."}</p>
+  ) : desk.playback ? (
+    <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+      <p className="mb-3 text-xs font-black text-sky-900">Recording · {desk.playback.label}</p>
+      {desk.playback.kind === "video"
+        ? <video ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
+        : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
+      {playbackState === "loading" ? <p role="status" className="mt-3 rounded-lg border border-sky-200 bg-white p-3 text-xs font-bold text-sky-900">Loading recording…</p> : null}
+      {playbackState === "error" ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950">The original recording is unavailable. Historical review receipts remain visible, but new edits stay locked until it is restored.</p> : null}
+    </div>
+  ) : (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-relaxed text-amber-950">
+      <p>{preparingPlayback ? "Quipsly is getting the recording ready…" : "The transcript is ready, but the recording still needs attention before it can be checked or corrected."}</p>
+      {desk.recording?.eligibleForProtectedPlaybackPreparation ? (
+        <div className="mt-4">
+          <button type="button" onClick={() => void prepareProtectedPlayback(false)} disabled={preparingPlayback || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+            {preparingPlayback ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={15} aria-hidden="true" />}
+            {preparingPlayback ? "Getting recording ready…" : "Try again"}
+          </button>
+          <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">This does not change the original recording.</p>
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
     <section id="transcript-correction-review" tabIndex={-1} aria-labelledby="transcript-correction-heading" className="space-y-5">
@@ -1928,34 +1953,47 @@ export function TranscriptCorrectionDesk({
             </details>
           </div>
         )}
-        {!desk.gate.allowed ? (
-          <p className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-900">{desk.gate.error || "Transcript evidence remains held by consent and release policy."}</p>
-        ) : desk.playback ? (
-          <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
-            <p className="mb-3 text-xs font-black text-sky-900">Recording · {desk.playback.label}</p>
-            {desk.playback.kind === "video"
-              ? <video ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
-              : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
-            {playbackState === "loading" ? <p role="status" className="mt-3 rounded-lg border border-sky-200 bg-white p-3 text-xs font-bold text-sky-900">Loading and decoding protected source metadata before review controls unlock…</p> : null}
-            {playbackState === "error" ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950">Protected source bytes are unavailable. Historical review receipts remain visible, but no new playback, correction, note, task, goal, draft, or accuracy claim can be created from this missing source.</p> : null}
-          </div>
-        ) : (
-          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-relaxed text-amber-950">
-            <p>{preparingPlayback ? "Quipsly is making the verified recording playable…" : "The transcript is ready, but the recording still needs attention before it can be checked or corrected."}</p>
-            {desk.recording?.eligibleForProtectedPlaybackPreparation ? (
-              <div className="mt-4">
-                <button type="button" onClick={() => void prepareProtectedPlayback(false)} disabled={preparingPlayback || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
-                  {preparingPlayback ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={15} aria-hidden="true" />}
-                  {preparingPlayback ? "Getting recording ready…" : "Try again"}
-                </button>
-                <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">This does not change the original recording.</p>
-              </div>
-            ) : null}
-          </div>
-        )}
       </div>
 
       {showRecordingEditor && recordingEditor ? <div id="inline-recording-editor" className="scroll-mt-24">{recordingEditor}</div> : null}
+
+      {desk.gate.allowed && desk.segments.length ? (
+        <section aria-labelledby="linear-transcript-heading" className="rounded-2xl border border-[#e5d5b7] bg-white p-4 shadow-sm sm:p-5">
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Review and correct</p>
+              <h3 id="linear-transcript-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Transcript</h3>
+              <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">Play any passage, correct the words or speaker, or confirm it as heard. Notes, tasks, and goals stay attached to the exact source moment.</p>
+            </div>
+            <div role="group" aria-label="Transcript view" className="inline-flex rounded-full border border-[#d9c7a5] bg-[#fffaf1] p-1">
+              <button type="button" aria-pressed={transcriptView === "transcript"} onClick={() => setTranscriptView("transcript")} className={`min-h-10 rounded-full px-4 text-xs font-black ${transcriptView === "transcript" ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5b472f]"}`}>Transcript</button>
+              <button type="button" aria-pressed={transcriptView === "recording-transcript"} onClick={() => setTranscriptView("recording-transcript")} className={`min-h-10 rounded-full px-4 text-xs font-black ${transcriptView === "recording-transcript" ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5b472f]"}`}>Recording + transcript</button>
+            </div>
+          </div>
+          <div className={transcriptView === "recording-transcript" ? "grid min-w-0 gap-5 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.45fr)] xl:items-start" : "space-y-5"}>
+            <div className={transcriptView === "recording-transcript" ? "xl:sticky xl:top-24" : ""}>
+              {protectedPlaybackSurface}
+            </div>
+            <ol className="min-w-0 space-y-4">
+              {desk.segments.map((segment) => (
+                <CorrectionEditor
+                  key={segment.id}
+                  roomId={roomId}
+                  transcriptJobId={desk.transcriptJobId!}
+                  segment={segment}
+                  canUseProjectTeamNotes={canUseProjectTeamNotes}
+                  playbackReady={playbackReady}
+                  currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
+                  busy={busy}
+                  onPlay={() => playFrom(segment)}
+                  onPlayAt={playFromTime}
+                  onSaved={saved}
+                />
+              ))}
+            </ol>
+          </div>
+        </section>
+      ) : desk.gate.allowed ? <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No persisted transcript segments are available for this session.</div> : protectedPlaybackSurface}
 
       <section id="transcript-audio-review" tabIndex={-1} className="rounded-2xl border border-sky-200 bg-sky-50/45 p-4 shadow-sm" aria-labelledby="transcript-quality-heading">
         <button
@@ -2055,32 +2093,6 @@ export function TranscriptCorrectionDesk({
         </section>
       ) : null}
 
-      {desk.gate.allowed && (desk.segments.length ? (
-        <section aria-labelledby="linear-transcript-heading">
-          <div className="mb-4">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Review and correct</p>
-            <h3 id="linear-transcript-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Transcript</h3>
-            <p className="mt-1 text-sm font-semibold leading-6 text-[#765f40]">Play any passage, correct the words or speaker, or confirm it as heard. Notes, tasks, and goals stay attached to the exact source moment.</p>
-          </div>
-          <ol className="space-y-4">
-          {desk.segments.map((segment) => (
-            <CorrectionEditor
-              key={segment.id}
-              roomId={roomId}
-              transcriptJobId={desk.transcriptJobId!}
-              segment={segment}
-              canUseProjectTeamNotes={canUseProjectTeamNotes}
-              playbackReady={playbackReady}
-              currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
-              busy={busy}
-              onPlay={() => playFrom(segment)}
-              onPlayAt={playFromTime}
-              onSaved={saved}
-            />
-          ))}
-          </ol>
-        </section>
-      ) : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No persisted transcript segments are available for this session.</div>)}
     </section>
   );
 }

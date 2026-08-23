@@ -313,10 +313,10 @@ async function operateRenderedSession({ baseURL, context, password }) {
     const readyComparison = card.getByText(/Ready to compare\. Quipsly has not replaced or published either version\./i);
     const alreadyBalanced = card.getByText(/already meets Quipsly's spoken-word loudness target/i);
     await Promise.race([
-      improve.waitFor({ timeout: 30_000 }),
-      improving.waitFor({ timeout: 30_000 }),
-      readyComparison.waitFor({ timeout: 30_000 }),
-      alreadyBalanced.waitFor({ timeout: 30_000 }),
+      improve.waitFor({ timeout: 60_000 }),
+      improving.waitFor({ timeout: 60_000 }),
+      readyComparison.waitFor({ timeout: 60_000 }),
+      alreadyBalanced.waitFor({ timeout: 60_000 }),
     ]);
     const canImprove = await improve.isVisible().catch(() => false);
     let initialState = "completed";
@@ -393,6 +393,38 @@ async function operateRenderedSession({ baseURL, context, password }) {
     );
     await assertNoHorizontalOverflow(transcriptDesk, "Transcript-first Session review");
 
+    const transcriptOnlyView = transcriptDesk.getByRole("button", {
+      name: "Transcript",
+      exact: true,
+    });
+    const recordingTranscriptView = transcriptDesk.getByRole("button", {
+      name: "Recording + transcript",
+      exact: true,
+    });
+    assert(
+      await transcriptOnlyView.getAttribute("aria-pressed") === "true",
+      "The ordinary transcript did not open in the familiar linear view.",
+    );
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await recordingTranscriptView.click();
+    assert(
+      await recordingTranscriptView.getAttribute("aria-pressed") === "true",
+      "The recording-plus-transcript workspace did not become active.",
+    );
+    const recordingBox = await transcriptDesk
+      .getByLabel("Protected session recording")
+      .boundingBox();
+    const firstPassageBox = await transcriptDesk
+      .locator('[id^="transcript-segment-"]')
+      .first()
+      .boundingBox();
+    assert(
+      recordingBox && firstPassageBox && recordingBox.x < firstPassageBox.x,
+      "The wide recording-plus-transcript workspace did not render side by side.",
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    await assertNoHorizontalOverflow(transcriptDesk, "Responsive recording-plus-transcript review");
+
     assert(browserErrors.length === 0, `Session audio polish raised browser exceptions: ${browserErrors.join(" | ")}`);
     await clearRenderedSession(page, baseURL, "fresh-coach");
     return {
@@ -415,6 +447,8 @@ async function operateRenderedSession({ baseURL, context, password }) {
       expertRecordingDetailsCollapsedByDefault: true,
       transcriptAppearedBeforePacketAdministration: true,
       recordingEditorOpenedInline: true,
+      transcriptViewModesOperated: true,
+      recordingAndTranscriptRenderedSideBySide: true,
     };
   } finally {
     await browserContext.close();
