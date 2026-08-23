@@ -155,7 +155,7 @@ async function grantClientRecordingConsent(context) {
       password,
       callbackPath: context.clientEntryPath,
     });
-    const leaveLobby = page.getByRole("button", {
+    const leaveLobby = page.getByRole("link", {
       name: "Leave lobby",
       exact: true,
     });
