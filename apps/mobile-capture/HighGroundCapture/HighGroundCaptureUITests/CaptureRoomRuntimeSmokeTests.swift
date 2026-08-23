@@ -5026,7 +5026,28 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let recordingsBeforeCrashTake = recordingIdentifiers(in: app, prefix: "LocalRecordingRow_")
         tapRootTab("Record", in: app)
         let secondStart = app.buttons["CaptureStartButton"].firstMatch
-        XCTAssertTrue(waitForRuntimeElement(secondStart, in: app, timeout: 8, swipeAttempts: 6))
+        var secondStartVisible = waitForRuntimeElement(
+            secondStart,
+            in: app,
+            timeout: 8,
+            swipeAttempts: 6
+        )
+        if !secondStartVisible {
+            // A verified first take can insert recovery and review cards above
+            // the recorder while TabView preserves the prior offset. Search
+            // back toward the primary controls without weakening their
+            // existence or enabled-state requirements.
+            let recorder = app.scrollViews["CaptureRecorderView"].firstMatch
+            for _ in 0..<8 where !secondStartVisible {
+                guard recorder.exists else { break }
+                recorder.swipeDown()
+                secondStartVisible = secondStart.exists
+            }
+        }
+        XCTAssertTrue(
+            secondStartVisible,
+            "Returning from Library should keep the selected recording workspace and expose another take in ordinary vertical navigation."
+        )
         expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: secondStart)
         waitForExpectations(timeout: 8)
         secondStart.tap()

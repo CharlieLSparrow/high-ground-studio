@@ -13,7 +13,6 @@ struct CapturePhoneShell: View {
     @State private var showsNewSession = false
     @State private var completedInitialLoad = false
     @State private var isRoutingSessionLink = false
-    @State private var recorderViewGeneration = 0
     @State private var localOnlyRecordingSessionID: String?
     @Binding var visibleTab: CaptureRootTab
 
@@ -35,7 +34,6 @@ struct CapturePhoneShell: View {
                     visibleTab: $visibleTab,
                     localOnlyRecordingSessionID: $localOnlyRecordingSessionID
                 )
-                .id(recorderViewGeneration)
             }
             .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
             .tag(CaptureRootTab.record)
@@ -169,12 +167,6 @@ struct CapturePhoneShell: View {
         }
         .onChange(of: videoCapture.state) { _, state in
             model.reconcileVideoCaptureState(state, using: videoCapture)
-        }
-        .onChange(of: visibleTab) { previousTab, tab in
-            guard tab == .record, previousTab != .record else { return }
-            // A deliberate return to Record starts from a predictable surface
-            // while the selected local-only room choice remains parent-owned.
-            recorderViewGeneration += 1
         }
     }
 
