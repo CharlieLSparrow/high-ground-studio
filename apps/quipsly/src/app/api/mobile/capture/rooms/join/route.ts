@@ -47,6 +47,9 @@ export async function POST(request: Request) {
     .slice(0, 80);
   const clientKind = text(body.clientKind).toLowerCase() === "web" ? "web" : "ios";
   const requestedDeviceLabel = text(body.deviceLabel).slice(0, 160);
+  const endpointRole = text(body.endpointRole).toLowerCase() === "companion"
+    ? "companion"
+    : "primary";
 
   if (!callRoomId) {
     return NextResponse.json(
@@ -223,6 +226,7 @@ export async function POST(request: Request) {
       clientInstanceId: clientInstanceId || null,
       clientKind,
       deviceLabel: requestedDeviceLabel || null,
+      endpointRole,
       purpose: room.purpose,
       recordingConsentStatus,
     },
@@ -246,6 +250,7 @@ export async function POST(request: Request) {
         tokenPrepared: true,
         tokenReturned: false,
         recordingStarted: false,
+        endpointRole,
       },
     },
   });

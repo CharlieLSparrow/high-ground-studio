@@ -26,7 +26,7 @@ function joinRequest(callRoomId?: string) {
   });
 }
 
-function browserJoinRequest(callRoomId: string) {
+function browserJoinRequest(callRoomId: string, endpointRole: "primary" | "companion" = "primary") {
   return new Request("http://localhost/api/mobile/capture/rooms/join", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -35,6 +35,7 @@ function browserJoinRequest(callRoomId: string) {
       clientInstanceId: "web-device-1",
       clientKind: "web",
       deviceLabel: "Quipsly Web · macOS",
+      endpointRole,
     }),
   });
 }
@@ -189,9 +190,33 @@ describe("mobile capture room join", () => {
           clientInstanceId: "web-device-1",
           clientKind: "web",
           deviceLabel: "Quipsly Web · macOS",
+          endpointRole: "primary",
         }),
       }),
     );
+  });
+
+  it("marks a second-device endpoint without changing canonical participant access", async () => {
+    findFirst.mockResolvedValue(liveKitRoom());
+
+    const response = await POST(browserJoinRequest("room-1", "companion"));
+
+    expect(response.status).toBe(200);
+    expect(mockedToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: "participant-1:web-device-1",
+        metadata: expect.objectContaining({
+          participantId: "participant-1",
+          endpointRole: "companion",
+        }),
+      }),
+    );
+    expect(createProviderGrantReceipt).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        participantId: "participant-1",
+        metadataJson: expect.objectContaining({ endpointRole: "companion" }),
+      }),
+    });
   });
 
   it("fails closed on a paid coaching hold before creating or minting", async () => {

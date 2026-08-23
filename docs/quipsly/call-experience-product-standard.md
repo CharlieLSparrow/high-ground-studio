@@ -70,8 +70,13 @@ Recurring complaints reveal the failure modes Quipsly must design out:
 - Ask for camera/microphone access only through the platform's standard prompt.
   Never reproduce browser or iOS permission bureaucracy in product copy.
 - Remember the selected microphone, camera, output, camera-on state, and
-  join-muted state per device. If a hardware identifier rotates, match the
+  join-muted state per device. Also remember whether this is the person's audio
+  device or a second device. If a hardware identifier rotates, match the
   retained human-readable label before falling back safely.
+- Treat second-device use as a first-class mode, not troubleshooting copy. A
+  companion endpoint publishes no call microphone and plays no remote call
+  audio, so it cannot create echo. It may still show Session work, publish
+  camera video, and operate a separately consented retained source.
 - Conventional in-call controls remain in predictable locations and use
   conventional labels: Mute, Camera, Leave, Participants, Chat, and Record.
 - Reconnect automatically when safe. Interrupt only when the user must act.
@@ -139,6 +144,8 @@ a tester does not stop independent product work.
   <https://support.google.com/meet/answer/10620583>
 - Zoom optional pre-join audio test and automatic computer-audio behavior:
   <https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0062765>
+- Microsoft Teams second-device joining and automatic companion muting:
+  <https://support.microsoft.com/en-us/office/join-a-teams-meeting-on-a-second-device-c28e7407-183b-46ea-ab17-2212700e5f41>
 - Riverside guest join and mobile lobby flow:
   <https://support.riverside.com/hc/en-us/articles/5252042203037-Join-a-studio-as-a-guest>
 - Riverside participant upload visibility and recovery states:
@@ -153,4 +160,3 @@ a tester does not stop independent product work.
   and <https://www.reddit.com/r/Descript/comments/1si8k8h/am_i_the_only_one_frustrated_with_descript_right/>
 - Recent production-user feedback on sync drift and upload visibility:
   <https://www.reddit.com/r/podcasting/comments/1snt1fj/riverside_just_keeps_getting_worse/>
-

@@ -111,6 +111,7 @@ describe("LiveSessionRoom", () => {
   beforeEach(() => {
     window.localStorage.removeItem("quipsly-live-preferred-devices-v1");
     window.localStorage.removeItem("quipsly-live-preferred-devices-v2");
+    window.localStorage.removeItem("quipsly-live-preferred-devices-v3");
     jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     mockLiveKitRoom.__reset();
   });
@@ -173,7 +174,7 @@ describe("LiveSessionRoom", () => {
     expect(await screen.findByRole("option", { name: "Shure MV7i" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Canon EOS R8" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Episode test" })).toBeInTheDocument();
-    expect(screen.getByText(/This browser will handle call audio.*Joining doesn’t start recording/i)).toBeInTheDocument();
+    expect(screen.getByText(/This device will handle the conversation audio.*Joining doesn’t start recording/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Call-path microphone evidence" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Private studio sound check" })).toBeInTheDocument();
     expect(screen.getByTestId("call-technical-device-details")).not.toHaveAttribute("open");
@@ -217,6 +218,53 @@ describe("LiveSessionRoom", () => {
     await screen.findByText(/Microphone access is off/i);
   });
 
+  it("joins as a remembered second device without asking for call-audio permission", async () => {
+    const getUserMedia = jest.fn();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([]),
+        getUserMedia,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    let joinBody: Record<string, unknown> | null = null;
+    global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/api/mobile/capture/rooms/join")) {
+        joinBody = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: "room-scoped-test-token",
+            recordingConsentGranted: true,
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
+    }) as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-second-device" captureGroupId="55555555-5555-4555-8555-555555555541" sessionTitle="Second device" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Use another device/i }));
+
+    expect(screen.getByText(/keeps this device’s call microphone and speakers off/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+
+    expect(await screen.findByText(/Audio on other device/i)).toBeInTheDocument();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(mockLiveKitRoom.switchActiveDevice).not.toHaveBeenCalledWith("audioinput", expect.anything());
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
+    expect(joinBody).toMatchObject({ endpointRole: "companion", clientKind: "web" });
+    expect(JSON.parse(window.localStorage.getItem("quipsly-live-preferred-devices-v3") || "{}"))
+      .toMatchObject({ callAudioMode: "other-device" });
+  });
+
   it("remembers safe join choices and falls back by device label when browser ids rotate", async () => {
     window.localStorage.setItem("quipsly-live-preferred-devices-v2", JSON.stringify({
       microphoneId: "old-mic-id",
@@ -243,7 +291,7 @@ describe("LiveSessionRoom", () => {
     });
 
     expect(await screen.findByRole("button", { name: "Muted" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText(/join muted.*other device to prevent echo/i)).toBeInTheDocument();
+    expect(screen.getByText(/This device will join muted.*Joining doesn’t start recording/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Camera off" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("combobox", { name: "Microphone" })).toHaveValue("new-mic-id");
     expect(screen.getByRole("combobox", { name: "Camera" })).toHaveValue("new-camera-id");
@@ -287,7 +335,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("combobox", { name: "Microphone" })).toHaveValue("mac-mic");
     expect(screen.getByText(/Microphone disconnected.*MacBook Microphone/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Join call" })).toBeEnabled();
-    expect(JSON.parse(window.localStorage.getItem("quipsly-live-preferred-devices-v2") || "{}"))
+    expect(JSON.parse(window.localStorage.getItem("quipsly-live-preferred-devices-v3") || "{}"))
       .toMatchObject({ microphoneId: "mv7i", microphoneLabel: "Shure MV7i" });
   });
 
