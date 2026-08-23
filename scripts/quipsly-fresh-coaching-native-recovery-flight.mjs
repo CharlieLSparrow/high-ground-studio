@@ -155,6 +155,13 @@ async function grantClientRecordingConsent(context) {
       password,
       callbackPath: context.clientEntryPath,
     });
+    const leaveLobby = page.getByRole("button", {
+      name: "Leave lobby",
+      exact: true,
+    });
+    if (await leaveLobby.isVisible().catch(() => false)) {
+      await leaveLobby.click();
+    }
     const consentControl = page.getByTestId("session-consent-control");
     await consentControl.waitFor({ state: "visible", timeout: 30_000 });
     const consentButton = consentControl.getByRole("button", {
