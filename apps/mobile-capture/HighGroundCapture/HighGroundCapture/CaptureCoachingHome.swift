@@ -844,7 +844,7 @@ struct CaptureCoachingHomeView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("CaptureCoachingOpenHandoff_\(roomID)")
+                    .accessibilityIdentifier("CaptureCoachingOpen_Handoff_\(roomID)")
                 }
                 invitationActions(for: booking)
             } else {
