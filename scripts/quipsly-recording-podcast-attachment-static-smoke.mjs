@@ -129,18 +129,31 @@ for (const needle of [
 }
 
 for (const needle of [
+  "CaptureRecordingEditScreen(",
+  "CaptureRecordingShareEditor(",
+  "Edit recording",
+  "CaptureRecordingEditLink_",
   "StudioHandoffCard(",
-  "Continue in Studio",
+  "Advanced sync and edit",
   "model.isPromotingRecordingToStudio",
   "await model.promoteSelectedRecordingToStudio()",
-  "Attach to Studio",
-  "Studio media",
+  "Prepare advanced edit",
+  "Open advanced edit",
   "CaptureStudioHandoffCard_",
   "CaptureAttachToStudioButton_",
   "without deleting or changing any original",
-  "Attaching prepares immutable source material for Studio review. It never publishes, trims, or deletes your recording.",
+  "This prepares immutable source material for advanced waveform, sync, and timeline work. It never publishes, trims, or deletes your recording.",
 ]) {
-  assertIncludes("native phone shell", text.phoneShell, needle, "the reachable iPhone Session workflow should expose an explicit, source-safe Studio handoff");
+  assertIncludes("native phone shell", text.phoneShell, needle, "the reachable iPhone Session workflow should expose basic in-app editing plus an explicit, source-safe advanced handoff");
+}
+
+for (const retiredLabel of ["Continue in Studio", "Review in Studio"]) {
+  assertNotIncludes(
+    "native phone shell",
+    text.phoneShell,
+    retiredLabel,
+    "basic recording review and editing must not imply that a second app is required",
+  );
 }
 
 for (const needle of [
