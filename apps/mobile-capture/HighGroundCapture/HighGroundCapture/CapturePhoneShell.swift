@@ -6403,7 +6403,8 @@ private struct CaptureRecorderView: View {
     @StateObject private var sessionChat = MobileEpisodeChatClient(scope: .session)
 
     var body: some View {
-        ScrollView {
+        ScrollViewReader { scrollProxy in
+          ScrollView {
             // This surface can project a full Episode workspace. Lazy layout
             // is a correctness boundary on physical devices: eagerly laying
             // out every transcript, notes, follow-through, chat, Watch, and
@@ -6602,6 +6603,7 @@ private struct CaptureRecorderView: View {
                             onPauseResume: { Task { await model.togglePause(using: audioCapture) } },
                             onMark: { model.markMoment(using: audioCapture) }
                         )
+                        .id("CapturePrimaryRecorder")
                         if audioCapture.microphonePreflightState == .denied {
                             CapturePermissionRecoveryButton(
                                 title: "Allow microphone in Settings",
@@ -6673,6 +6675,7 @@ private struct CaptureRecorderView: View {
                                 }
                             }
                         )
+                        .id("CapturePrimaryRecorder")
 
                         if recordingMode.isCoordinatedPodcastCapture {
                             CoordinatedPodcastAudioStatus(
@@ -6726,7 +6729,8 @@ private struct CaptureRecorderView: View {
                         previewOnly: model.usesPreviewData
                     )
 
-                    if session.projectSlug?.nonempty != nil,
+                    if !session.isCoachingSession,
+                       session.projectSlug?.nonempty != nil,
                        session.episodeSlug?.nonempty != nil {
                         MobileEpisodeManuscriptCard(
                             client: episodeManuscript,
@@ -6984,7 +6988,8 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    if session.projectSlug?.nonempty != nil,
+                    if !session.isCoachingSession,
+                       session.projectSlug?.nonempty != nil,
                        session.episodeSlug?.nonempty != nil {
                         MobileEpisodeChatCard(
                             client: episodeChat,
@@ -7084,6 +7089,25 @@ private struct CaptureRecorderView: View {
         .background(CaptureCanvas())
         .navigationTitle("Record")
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: visibleTab) { _, tab in
+            guard tab == .record,
+                  let session = model.selectedSession,
+                  model.providerRoom.isConnected
+                    || localOnlyRecordingSessionID == session.id
+                    || audioCapture.activeSessionID == session.id
+                    || videoCapture.activeSessionID == session.id
+                    || model.activeCaptureSession?.id == session.id
+                    || model.activeVideoCaptureSession?.id == session.id
+                    || session.providerCanJoin == false else { return }
+            // TabView preserves the old scroll offset. A fresh tap on Record
+            // should reopen the primary recorder, not a stale notes/thread
+            // position from the previous visit.
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
+                }
+            }
+        }
         .sheet(isPresented: $showsSessionPicker) {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
                 .presentationDetents([.medium, .large])
@@ -7224,6 +7248,7 @@ private struct CaptureRecorderView: View {
                   videoCapture.state != .paused,
                   !model.providerRoom.isLocalVideoPublished else { return }
             Task { await videoCapture.shutdownPreview() }
+        }
         }
     }
 

@@ -888,6 +888,19 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         return title
     }
 
+    var isCoachingSession: Bool {
+        if coachingEngagementId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false {
+            return true
+        }
+        let normalizedPurpose = purpose?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        return normalizedPurpose == "coaching"
+            || normalizedPurpose.contains("coaching session")
+    }
+
     var detailLine: String {
         var parts: [String] = []
         if let purpose, !purpose.isEmpty { parts.append(purpose.lowercased()) }
