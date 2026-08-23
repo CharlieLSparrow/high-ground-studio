@@ -153,7 +153,16 @@ struct CapturePhoneShell: View {
                 // without rebuilding its call, picker, or local source state.
                 // Never move an active recorder: the global banner must return
                 // to the continuing source exactly where the person left it.
-                recorderFocusRequest += 1
+                Task { @MainActor in
+                    // TabView keeps every tab mounted. Wait until Record is the
+                    // visible subtree; a scroll request delivered while it is
+                    // still hidden is intentionally ignored by SwiftUI.
+                    try? await Task.sleep(for: .milliseconds(250))
+                    guard visibleTab == .record,
+                          !audioCaptureIsActive,
+                          !videoCaptureIsActive else { return }
+                    recorderFocusRequest += 1
+                }
             }
 
             guard tab == .today, !model.usesPreviewData else { return }
