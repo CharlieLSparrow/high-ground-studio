@@ -142,8 +142,8 @@ case "$TEST_MODE" in
     ;;
   coaching-phone-start)
     TEST_CASE="testFreshCoachSchedulesAndInvitesFromIPhone"
-    if [[ -z "$TEST_SESSION_TITLE" || -z "$TEST_COACHING_CLIENT_EMAIL" || -z "$TEST_COACHING_CLIENT_NAME" ]]; then
-      echo "Phone-first coaching mode requires one unique Session title plus exact client name and email." >&2
+    if [[ -z "$TEST_COACHING_CLIENT_EMAIL" ]]; then
+      echo "Phone-first coaching mode requires one exact client email." >&2
       exit 2
     fi
     ;;

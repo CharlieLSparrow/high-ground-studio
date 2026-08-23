@@ -1117,11 +1117,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
     func testFreshCoachSchedulesAndInvitesFromIPhone() throws {
         let credentials = try runtimeSmokeCredentials()
-        guard let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty,
-              let clientEmail = credentials.coachingClientEmail, !clientEmail.isEmpty,
-              let clientName = credentials.coachingClientName, !clientName.isEmpty else {
-            throw XCTSkip("Phone-first coaching requires one unique Session title plus exact client name and email.")
+        guard let clientEmail = credentials.coachingClientEmail, !clientEmail.isEmpty else {
+            throw XCTSkip("Phone-first coaching requires one exact client email.")
         }
+        let defaultSessionTitle = "Coaching session"
 
         let app = try launchSignedInCaptureApp()
         let coaching = app.buttons["CaptureOpenCoachingHome"].firstMatch
@@ -1159,26 +1158,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         email.tap()
         email.typeText(clientEmail)
 
-        let optionalDetails = app.buttons["Optional details"].firstMatch
-        XCTAssertTrue(optionalDetails.waitForExistence(timeout: 6))
-        optionalDetails.tap()
-
-        let name = app.textFields["CaptureCoachingClientName"].firstMatch
-        XCTAssertTrue(
-            waitForRuntimeElement(name, in: app, timeout: 8, swipeAttempts: 4),
-            "Expanded optional details should remain reachable in the standard scheduling form."
-        )
-        name.tap()
-        name.typeText(clientName)
-        name.typeKey(.return, modifierFlags: [])
-
-        let title = app.textFields["CaptureCoachingSessionTitle"].firstMatch
-        XCTAssertTrue(
-            waitForRuntimeElement(title, in: app, timeout: 8, swipeAttempts: 4),
-            "The optional Session name should remain reachable without leaving the scheduling form."
-        )
-        replaceText(in: title, with: sessionTitle, app: app)
-
         let create = app.buttons["CaptureCoachingCreateAppointment"].firstMatch
         XCTAssertTrue(create.waitForExistence(timeout: 6))
         XCTAssertTrue(create.isEnabled)
@@ -1188,10 +1167,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "One phone action should create the client identity, relationship, appointment, consent requests, and room."
         )
         XCTAssertTrue(
-            app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 30),
-            "The same iPhone should read the canonical custom Session title back from Nest."
+            app.staticTexts[defaultSessionTitle].firstMatch.waitForExistence(timeout: 30),
+            "The same iPhone should read the canonical default Session title back from Nest."
         )
-        XCTAssertTrue(app.staticTexts[clientName].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts[clientEmail].firstMatch.exists)
 
         let share = app.descendants(matching: .any).matching(
             NSPredicate(

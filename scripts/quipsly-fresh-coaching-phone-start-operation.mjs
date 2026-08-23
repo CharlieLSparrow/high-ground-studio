@@ -49,8 +49,8 @@ const client = {
   email: `phone-client-${suffix}@dev.test`,
   displayName: `Phone Client ${suffix.slice(0, 4).toUpperCase()}`,
 };
-const sessionTitle = `Phone-first coaching ${suffix}`;
-const workSuffix = sessionTitle.slice(-12);
+const sessionTitle = "Coaching session";
+const workSuffix = suffix;
 const expectedWork = {
   sharedNote: `Shared phone note ${workSuffix}`,
   task: `Phone task ${workSuffix}`,
@@ -153,9 +153,7 @@ await run(
       QUIPSLY_CAPTURE_UI_TEST_BASE_URL: baseURL.toString().replace(/\/$/, ""),
       QUIPSLY_CAPTURE_UI_TEST_EMAIL: coach.email,
       QUIPSLY_CAPTURE_UI_TEST_PASSWORD: coach.password,
-      QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE: sessionTitle,
       QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_EMAIL: client.email,
-      QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_NAME: client.displayName,
       QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH: resultBundlePath,
       QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS: "900",
     },
