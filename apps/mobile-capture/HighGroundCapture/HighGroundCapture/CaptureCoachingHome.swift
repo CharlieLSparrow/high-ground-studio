@@ -1513,7 +1513,6 @@ private struct NewMobileCoachingAppointmentSheet: View {
                         }
                         LabeledContent("Time zone", value: TimeZone.current.identifier)
                     }
-                    .accessibilityIdentifier("CaptureCoachingOptionalDetails")
                 }
 
                 if let error = client.errorMessage {

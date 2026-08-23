@@ -1159,7 +1159,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         email.tap()
         email.typeText(clientEmail)
 
-        let optionalDetails = app.descendants(matching: .any)["CaptureCoachingOptionalDetails"].firstMatch
+        let optionalDetails = app.buttons["Optional details"].firstMatch
         XCTAssertTrue(optionalDetails.waitForExistence(timeout: 6))
         optionalDetails.tap()
 
