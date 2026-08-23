@@ -12062,6 +12062,27 @@ private struct ProviderRoomControls: View {
                 .lineLimit(2)
                 .accessibilityIdentifier("CaptureCallInputRoute")
 
+            if model.providerRoom.isConnected {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(
+                        model.providerRoom.callAudioHealth.title,
+                        systemImage: model.providerRoom.callAudioHealth.systemImage
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(callAudioStatusTint)
+                    .accessibilityIdentifier("CaptureCallMicrophoneHealth")
+
+                    if model.providerRoom.callAudioHealth.needsVisibleGuidance,
+                       let guidance = model.providerRoom.callAudioHealth.detail {
+                        Text(guidance)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("CaptureCallMicrophoneGuidance")
+                    }
+                }
+            }
+
             if providerControlsLocked {
                 Label("Your recording will be saved before you leave", systemImage: "checkmark.shield.fill")
                     .font(.subheadline.weight(.semibold))
@@ -12182,6 +12203,17 @@ private struct ProviderRoomControls: View {
 
     private var providerControlsLocked: Bool {
         model.providerControlsLockedForLocalCapture
+    }
+
+    private var callAudioStatusTint: Color {
+        switch model.providerRoom.callAudioHealth {
+        case .healthy:
+            .green
+        case .noSignal, .tooQuiet, .hot, .clippingRisk, .needsAttention:
+            .orange
+        case .checking, .muted:
+            .secondary
+        }
     }
 
     private var providerControlHint: String {

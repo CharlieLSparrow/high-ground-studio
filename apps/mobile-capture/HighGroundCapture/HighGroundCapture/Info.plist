@@ -52,7 +52,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Quipsly may use the camera only after you explicitly choose video in a Quipsly session. Audio recording does not use the camera.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Quipsly uses the microphone to record coaching calls, podcast sessions, interviews, and field notes after you explicitly start recording.</string>
+	<string>Quipsly uses the microphone when you join a call or explicitly start recording a coaching session, podcast, interview, or field note.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Quipsly can transcribe a recording on this iPhone after you explicitly choose Transcribe. The audio stays on-device during recognition.</string>
 	<key>UIApplicationSceneManifest</key>

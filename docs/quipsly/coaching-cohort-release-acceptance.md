@@ -1502,3 +1502,43 @@ status and detailed meter describe the same live call track; mute/unmute; unplug
 and reconnect the interface; switch microphones; background/foreground; and
 confirm the separate retained source is still independently analyzed. No
 natural-speech, hardware-route, or human-listening proof is claimed yet.
+
+## iPhone live-call microphone confidence — 2026-08-23
+
+The iPhone call surface now shows one compact microphone state derived from the
+exact LiveKit local-input PCM after Join: checking, healthy, low, loud, possible
+clipping, no signal, muted, or needs attention. It does not expose dBFS or a
+mandatory sound-check workflow to an ordinary participant. Healthy audio adds
+no instructions; only actionable states show a short recovery suggestion.
+
+The one-time iOS system permission copy now truthfully covers both ordinary call
+audio and explicit recording. The system remembers the answer; Quipsly does not
+present a second permission ritual or claim that Join starts recording.
+
+The observer is transient and separate from Quipsly recording. It retains no
+PCM, writes no file, performs no upload, creates no transcript, and cannot imply
+consent. Mute, Leave, provider disconnect, CallKit reset, account change, and
+failed activation detach it. Unmute and recovered connection reattach it to the
+same SDK-owned microphone path. The retained participant master remains behind
+the explicit Record action and its Session consent receipt.
+
+Independent evidence is the focused deterministic health-state harness, the
+107/107 source-only mobile contract, a successful arm64 plus x86_64 iOS
+Simulator build, and 1,094/1,094 App Store static checks. Build 34 remains sealed
+and unchanged; this slice belongs to a later deliberately qualified candidate.
+
+Physical-device evidence remains on the continuous validation ledger:
+
+- join a real Session unmuted and confirm normal speech reaches healthy without
+  starting a retained recording;
+- speak very softly, normally, loudly, and at intentional near-clipping level
+  and compare the plain state with headphones and the retained-source meter;
+- mute and unmute from Capture, CallKit, and a connected headset where supported;
+- change between iPhone, Bluetooth, wired, and supported interface routes;
+- interrupt, background, foreground, lose/recover network, and end from the
+  native call surface; and
+- confirm no meter-only source, upload, transcript, consent, or recording receipt
+  exists afterward.
+
+These checks require real hardware and human listening. They remain deferred
+evidence and do not stall the next independent product lane.

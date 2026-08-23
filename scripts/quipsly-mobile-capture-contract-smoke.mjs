@@ -352,6 +352,9 @@ function checkMeetingSpineContractSources() {
     capturePhoneShellText.indexOf("private struct CaptureSessionFollowUpStatus: View"),
   );
   const providerRoomText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ProviderRoomController.swift");
+  const providerRoomCallAudioEvidenceText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ProviderRoomCallAudioEvidence.swift");
+  const providerRoomCallAudioMeterText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ProviderRoomCallAudioMeter.swift");
+  const providerAudioPCMLevelsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ProviderAudioPCMLevels.swift");
   const authManagerText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/AuthManager.swift");
   const audioCaptureText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/AudioCaptureController.swift");
   const authenticatedDataBoundary = authManagerText.slice(
@@ -462,6 +465,26 @@ function checkMeetingSpineContractSources() {
       && capturePhoneShellText.includes('accessibilityIdentifier("CaptureProviderRecordingBoundary")'),
     "nativeCallKitPresentationBoundary",
     "Native Capture protects CallKit as iPhone presentation for a Quipsly-owned room, never as recording, consent, transcript, or packet truth.",
+  );
+  expect(
+    providerRoomCallAudioMeterText.includes("AudioManager.shared.add(localAudioRenderer: self)")
+      && providerRoomCallAudioMeterText.includes("AudioManager.shared.remove(localAudioRenderer: self)")
+      && providerRoomCallAudioMeterText.includes("no PCM is retained, written, uploaded")
+      && !providerRoomCallAudioMeterText.includes("AVAudioRecorder")
+      && !providerRoomCallAudioMeterText.includes("AVAudioFile")
+      && !providerRoomCallAudioMeterText.includes("URLSession")
+      && providerAudioPCMLevelsText.includes("never stores, uploads, or writes an audio buffer")
+      && providerRoomCallAudioEvidenceText.includes('case healthy')
+      && providerRoomCallAudioEvidenceText.includes('case needsAttention')
+      && providerRoomCallAudioEvidenceText.includes('"Microphone sounds healthy"')
+      && providerRoomCallAudioEvidenceText.includes('"No microphone signal"')
+      && providerRoomText.includes("refreshCallAudioMeterLifecycle()")
+      && providerRoomText.includes("stopCallAudioMeter()")
+      && providerRoomText.includes("callAudioWatchdogTask?.cancel()")
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureCallMicrophoneHealth")')
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureCallMicrophoneGuidance")'),
+    "nativeLiveCallMicrophoneConfidence",
+    "Native Capture projects one plain-language live microphone state from transient exact-path PCM while mute, disconnect, and teardown stop observation without creating a recording.",
   );
   expect(
     authManagerText.includes("the denial belongs to that feature")

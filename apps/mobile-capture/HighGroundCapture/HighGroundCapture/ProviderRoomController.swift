@@ -49,6 +49,10 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var providerRuntimeDetail = ProviderRoomRuntime.liveKitDetail
     @Published var isCallAudioSessionActive = false
     @Published var callAudioSessionLabel = "Call audio idle"
+    @Published private(set) var callAudioHealth: ProviderRoomCallAudioHealth = .checking
+    @Published private(set) var callAudioAveragePowerDBFS: Float = -160
+    @Published private(set) var callAudioPeakPowerDBFS: Float = -160
+    @Published private(set) var callAudioReceivedPCMAt: Date?
     @Published private(set) var latestEpisodeWatchHint: MobileEpisodeWatchLiveHint?
     @Published private(set) var latestChatPersistedHint: MobileChatPersistedLiveHint?
 
@@ -70,6 +74,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     #if canImport(LiveKit)
     private let room = Room()
+    private var callAudioMeter: ProviderRoomCallAudioMeter?
+    private var callAudioWatchdogTask: Task<Void, Never>?
     #endif
 
     override init() {
@@ -83,6 +89,11 @@ final class ProviderRoomController: NSObject, ObservableObject {
         callKitProvider.setDelegate(self, queue: nil)
         #if canImport(LiveKit)
         room.add(delegate: self)
+        callAudioMeter = ProviderRoomCallAudioMeter { [weak self] levels, receivedAt in
+            Task { @MainActor [weak self] in
+                self?.receiveCallAudioLevels(levels, receivedAt: receivedAt)
+            }
+        }
         #endif
         accountObserver = NotificationCenter.default.addObserver(
             forName: .quipslyCaptureAccountIdentityDidChange,
@@ -239,8 +250,10 @@ final class ProviderRoomController: NSObject, ObservableObject {
             remoteParticipantCount = room.remoteParticipants.count
             connectionStateLabel = "\(room.connectionState)".capitalized
             reportNativeCallConnected()
+            refreshCallAudioMeterLifecycle()
             statusText = "Joined provider room. Recording still requires explicit Quipsly consent."
         } catch {
+            stopCallAudioMeter()
             await room.disconnect()
             await endNativeCallPresentation(reason: .failed)
             audioSessionCoordinator.providerDidDisconnect()
@@ -282,6 +295,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
                 return
             }
             isMuted = muted
+            refreshCallAudioMeterLifecycle()
             statusText = muted ? "Provider microphone muted." : "Provider microphone live. Quipsly recording is still separate."
         } catch {
             fail("Your microphone couldn't change. Try again.", technical: error.localizedDescription)
@@ -339,6 +353,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     func disconnect() async {
         #if canImport(LiveKit)
         guard isConnected || isConnecting else {
+            stopCallAudioMeter()
             statusText = "Provider room already disconnected."
             await endNativeCallPresentation(reason: .remoteEnded)
             audioSessionCoordinator.providerDidDisconnect()
@@ -347,6 +362,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             return
         }
 
+        stopCallAudioMeter()
         await room.disconnect()
         await endNativeCallPresentation(reason: .remoteEnded)
         audioSessionCoordinator.providerDidDisconnect()
@@ -395,6 +411,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private func fail(_ message: String, technical: String? = nil) {
         isConnecting = false
         if !isConnected {
+            stopCallAudioMeter()
             isReconnecting = false
             activeOwnerSnapshot = nil
             clearEpisodeWatchBridge()
@@ -502,11 +519,75 @@ final class ProviderRoomController: NSObject, ObservableObject {
             && AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot)
     }
 
+    /// Keeps one transient confidence signal attached to the exact LiveKit
+    /// microphone path. This lifecycle is independent from retained recording
+    /// and never writes or uploads PCM.
+    private func refreshCallAudioMeterLifecycle() {
+        #if canImport(LiveKit)
+        guard isConnected, !isMuted else {
+            stopCallAudioMeter()
+            callAudioHealth = isConnected && isMuted ? .muted : .checking
+            return
+        }
+
+        callAudioAveragePowerDBFS = -160
+        callAudioPeakPowerDBFS = -160
+        callAudioReceivedPCMAt = nil
+        callAudioHealth = .checking
+        callAudioMeter?.start()
+        callAudioWatchdogTask?.cancel()
+        callAudioWatchdogTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard !Task.isCancelled, let self else { return }
+                self.refreshCallAudioHealth(now: Date())
+            }
+        }
+        #else
+        callAudioHealth = isMuted ? .muted : .checking
+        #endif
+    }
+
+    private func receiveCallAudioLevels(
+        _ levels: ProviderAudioPCMLevelSnapshot,
+        receivedAt: Date
+    ) {
+        guard isConnected, !isMuted else { return }
+        callAudioAveragePowerDBFS = levels.averagePowerDBFS
+        callAudioPeakPowerDBFS = levels.peakPowerDBFS
+        callAudioReceivedPCMAt = receivedAt
+        refreshCallAudioHealth(now: receivedAt)
+    }
+
+    private func refreshCallAudioHealth(now: Date) {
+        callAudioHealth = ProviderRoomCallAudioEvidence.resolve(
+            isConnected: isConnected,
+            isMuted: isMuted,
+            averagePowerDBFS: callAudioAveragePowerDBFS,
+            peakPowerDBFS: callAudioPeakPowerDBFS,
+            receivedPCMAt: callAudioReceivedPCMAt,
+            now: now
+        )
+    }
+
+    private func stopCallAudioMeter() {
+        #if canImport(LiveKit)
+        callAudioWatchdogTask?.cancel()
+        callAudioWatchdogTask = nil
+        callAudioMeter?.stop()
+        #endif
+        callAudioAveragePowerDBFS = -160
+        callAudioPeakPowerDBFS = -160
+        callAudioReceivedPCMAt = nil
+        callAudioHealth = isConnected && isMuted ? .muted : .checking
+    }
+
     private var accountChangedMessage: String {
         "The Quipsly account changed while the provider room was connecting. Quipsly left the room so another account cannot inherit its join token."
     }
 
     private func abortForAccountChange() async {
+        stopCallAudioMeter()
         #if canImport(LiveKit)
         await room.disconnect()
         #endif
@@ -531,6 +612,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     private func abortAfterCallAudioActivationFailure(_ error: Error) async {
         let technicalMessage = "Provider audio could not activate safely, so Quipsly left the room instead of showing a silent connection: \(error.localizedDescription)"
+        stopCallAudioMeter()
         #if canImport(LiveKit)
         await room.disconnect()
         #endif
@@ -554,6 +636,10 @@ final class ProviderRoomController: NSObject, ObservableObject {
     }
 
     deinit {
+        #if canImport(LiveKit)
+        callAudioWatchdogTask?.cancel()
+        callAudioMeter?.stop()
+        #endif
         if let accountObserver {
             NotificationCenter.default.removeObserver(accountObserver)
         }
@@ -568,6 +654,7 @@ extension ProviderRoomController: CXProviderDelegate {
                 await self.room.disconnect()
             }
             #endif
+            self.stopCallAudioMeter()
             self.clearNativeCallPresentation()
             try? self.audioSessionCoordinator.callKitDidDeactivate()
             self.audioSessionCoordinator.providerDidDisconnect()
@@ -601,6 +688,7 @@ extension ProviderRoomController: CXProviderDelegate {
                 await self.room.disconnect()
             }
             #endif
+            self.stopCallAudioMeter()
             self.clearNativeCallPresentation()
             self.audioSessionCoordinator.providerDidDisconnect()
             self.isConnected = false
@@ -678,6 +766,7 @@ extension ProviderRoomController: RoomDelegate {
                 if recovered {
                     self.statusText = "Reconnected."
                 }
+                self.refreshCallAudioMeterLifecycle()
             case .reconnecting:
                 self.isConnecting = false
                 self.isConnected = true
@@ -687,6 +776,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.connectionStateLabel = "Reconnecting"
                 self.statusText = "Reconnecting…"
             case .disconnected:
+                self.stopCallAudioMeter()
                 self.isConnecting = false
                 self.isConnected = false
                 self.isReconnecting = false

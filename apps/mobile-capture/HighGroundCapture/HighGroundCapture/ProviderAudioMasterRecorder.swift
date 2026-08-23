@@ -123,11 +123,11 @@ final class ProviderAudioMasterRecorder: NSObject, @unchecked Sendable, AudioRen
         // schedules the buffer without opening another hardware input.
         source.render(pcmBuffer: pcmBuffer)
 
-        let levels = Self.levels(for: pcmBuffer)
+        let levels = ProviderAudioPCMLevelAnalyzer.levels(for: pcmBuffer)
         var firstPCMCallback: (@Sendable () -> Void)?
         stateLock.quipslyLocked {
-            averagePowerDB = levels.average
-            peakPowerDB = levels.peak
+            averagePowerDB = levels.averagePowerDBFS
+            peakPowerDB = levels.peakPowerDBFS
             receivedPCMAt = Date()
             if !didReportFirstPCM {
                 didReportFirstPCM = true
@@ -137,52 +137,6 @@ final class ProviderAudioMasterRecorder: NSObject, @unchecked Sendable, AudioRen
         firstPCMCallback?()
     }
 
-    private static func levels(for buffer: AVAudioPCMBuffer) -> (average: Float, peak: Float) {
-        guard buffer.format.commonFormat == .pcmFormatFloat32,
-              let channelData = buffer.floatChannelData,
-              buffer.frameLength > 0 else {
-            return (-160, -160)
-        }
-
-        let frameCount = Int(buffer.frameLength)
-        let channelCount = max(1, Int(buffer.format.channelCount))
-        var sumSquares: Double = 0
-        var peak: Float = 0
-        var sampleCount = 0
-
-        if buffer.format.isInterleaved {
-            let samples = channelData[0]
-            let count = frameCount * channelCount
-            for index in 0..<count {
-                let sample = samples[index]
-                sumSquares += Double(sample * sample)
-                peak = max(peak, abs(sample))
-            }
-            sampleCount = count
-        } else {
-            for channel in 0..<channelCount {
-                let samples = channelData[channel]
-                for index in 0..<frameCount {
-                    let sample = samples[index]
-                    sumSquares += Double(sample * sample)
-                    peak = max(peak, abs(sample))
-                }
-                sampleCount += frameCount
-            }
-        }
-
-        guard sampleCount > 0 else { return (-160, -160) }
-        let rms = Float(sqrt(sumSquares / Double(sampleCount)))
-        return (
-            decibels(forLinearAmplitude: rms),
-            decibels(forLinearAmplitude: peak)
-        )
-    }
-
-    private static func decibels(forLinearAmplitude amplitude: Float) -> Float {
-        guard amplitude.isFinite, amplitude > 0 else { return -160 }
-        return max(-160, min(0, 20 * log10(amplitude)))
-    }
 }
 
 private extension NSLock {

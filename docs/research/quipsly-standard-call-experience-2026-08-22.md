@@ -1103,3 +1103,62 @@ standard, while Quipsly quietly guards against the complaint that matters most
 after a call—discovering too late that the wrong or unusable microphone was live.
 The live meter still does not certify LUFS, true peak, mouth noise, room sound,
 or the independently retained master.
+
+## 2026-08-23 conventional call research checkpoint
+
+The reference pattern is intentionally familiar. Google Meet documents a
+private green room where a person can see the selected devices and speak once
+to verify that the microphone bar moves before choosing Join. Apple requires
+camera and microphone authorization only at the moment the capability is
+needed, and iOS remembers the person's answer. Quipsly therefore must not add a
+second fake permission, repeated acknowledgement, mandatory equipment wizard,
+or recording configuration ceremony to an ordinary call.
+
+The native permission sentence now matches that behavior precisely: Quipsly
+uses the microphone when the person joins a call or explicitly starts recording.
+It no longer misleadingly says the microphone is used only after Record.
+
+User-review themes clarify where the product should be ambitious. Descript is
+praised for making media editable like a document, but recurring complaints
+include resource-heavy or slow large projects, confusing controls, transcript
+corrections, and editing/sync problems. Riverside is praised for high-quality
+separate capture and fast production, while the consequential complaints are
+stuck uploads, stopped recordings, source loss, and audio/video drift. These
+are not arguments for more lobby controls. They are requirements for visible
+source truth, resumable upload, immutable evidence, exact clocks, recoverable
+edits, and plain-language live diagnostics.
+
+Product rule: use the industry vocabulary and layout for Join, Mute, Camera,
+Leave, device selection, system permission, and recording consent. Differentiate
+after and underneath those controls with participant-owned masters, source-bound
+transcription, audio mastery, reversible editing, and shared follow-through.
+
+References reviewed:
+
+- [Google Meet: connect video and audio](https://support.google.com/meet/answer/10409699?hl=en)
+- [Apple: requesting authorization to capture media](https://developer.apple.com/documentation/AVFoundation/requesting-authorization-to-capture-and-save-media)
+- [Apple Human Interface Guidelines: privacy](https://developer.apple.com/design/human-interface-guidelines/privacy)
+- [Descript reviews and recurring themes](https://www.g2.com/products/descript/reviews)
+- [Riverside customer reliability complaints](https://www.trustpilot.com/review/riverside.com)
+
+## 2026-08-23 native live-call microphone confidence
+
+The iPhone now follows the same non-ceremonial transparency rule as the browser.
+After a person taps Join and LiveKit publishes the local microphone, Capture
+attaches a transient renderer to that exact SDK-owned input. It shows one state:
+checking, muted, healthy, low, loud, possible clipping, no signal, or needs
+attention. Healthy and muted states add no instructions; recovery guidance
+appears only when there is something actionable.
+
+This observation is not a recording. The meter retains no PCM, opens no second
+hardware input, writes no file, makes no network request, creates no transcript,
+and grants no recording consent. Mute and disconnect detach it; unmute resumes
+it; a short watchdog makes a previously live-but-stalled input visible. The
+retained local master continues to use its separate explicit Record boundary,
+while both paths share one electrical-level analyzer so the same PCM is not
+interpreted by divergent math.
+
+Independent evidence is the focused state harness, 107/107 mobile source
+contracts, a successful dual-architecture iOS Simulator build, and 1,094/1,094
+App Store static checks. Human speech, real route changes, and listening quality
+remain physical validation rather than automated claims.

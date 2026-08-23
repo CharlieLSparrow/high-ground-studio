@@ -322,7 +322,7 @@ assert(
 requireIncludes(projectText, "GENERATE_INFOPLIST_FILE = NO", "explicit app information property list");
 requireIncludes(projectText, "INFOPLIST_FILE = HighGroundCapture/Info.plist", "app information property list source");
 requireIncludes(appInfoText, "NSMicrophoneUsageDescription", "microphone usage string");
-requireIncludes(appInfoText, "after you explicitly start recording", "microphone usage explicit action");
+requireIncludes(appInfoText, "when you join a call or explicitly start recording", "microphone usage call and recording boundary");
 requireIncludes(appInfoText, "NSSpeechRecognitionUsageDescription", "on-device speech usage string");
 requireIncludes(appInfoText, "after you explicitly choose Transcribe", "on-device speech requires explicit action");
 requireIncludes(appInfoText, "audio stays on-device during recognition", "on-device speech disclosure does not imply an Apple upload");
