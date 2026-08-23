@@ -184,7 +184,7 @@ function SessionPostCallPath({
   const next = !hasRecording
     ? { label: "Review recordings", href: sessionWorkspaceHref(roomId, "recordings"), detail: "A verified recording is needed before transcription." }
     : held
-      ? { label: "Review consent", href: sessionWorkspaceHref(roomId, "prepare"), detail: "Transcription is waiting for current consent and release evidence." }
+      ? { label: "Check recording permission", href: sessionWorkspaceHref(roomId, "prepare"), detail: "The transcript is waiting for a participant to allow recording or transcription." }
       : !transcriptReady
         ? { label: running ? "Transcription is running" : "Start or retry transcription", href: "#transcript-status", detail: running ? "Quipsly is processing the source in the background; this page refreshes automatically." : "Use the verified recording to create the timed transcript." }
         : !reviewReady
@@ -6018,6 +6018,15 @@ export function SessionReviewClient({
   const packetAttemptKey = packet?.transcriptJob?.id
     ? `${packet.transcriptJob.id}:${packet.packet?.transcriptReview?.snapshotSha256 || "missing"}`
     : null;
+  const transcriptPermissionReady = packet?.transcriptProcessingGate?.allowed === true;
+  const followUpReadyForReview = Boolean(packet?.packet?.summary) && !packetStale;
+  const followUpStatusLabel = followUpReadyForReview
+    ? "Ready to review"
+    : buildingPacket && canPrepareReviewMaterial
+      ? "Preparing"
+      : packetStale
+        ? "Refreshing"
+        : "Waiting for transcript";
 
   useEffect(() => {
     if (
@@ -6461,27 +6470,31 @@ export function SessionReviewClient({
               <div id="transcript-status" className="rounded-2xl border border-[#e5d5b7] bg-white p-5 scroll-mt-24">
                 <ShieldCheck className="text-sky-700" aria-hidden="true" />
                 <p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">
-                  Consent & release
+                  Recording permission
                 </p>
                 <p
                   className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(held ? "HELD" : packet.transcriptProcessingGate?.allowed ? "RELEASED" : "NOT_READY")}`}
                 >
                   {held
-                    ? "Transcript held"
-                    : packet.transcriptProcessingGate?.allowed
-                      ? "Release evidence verified"
-                      : "Release not ready"}
+                    ? "Needs attention"
+                    : transcriptPermissionReady
+                      ? "Ready"
+                      : "Waiting"}
                 </p>
                 <p className="mt-3 text-sm font-semibold leading-relaxed text-[#765f40]">
                   {held
                     ? packet.transcriptProcessingGate?.error
-                    : "Packet review reads only released transcript evidence; recording and consent are not changed here."}
+                    : transcriptPermissionReady
+                      ? "Quipsly has the permission needed to use this recording for the transcript."
+                      : "Quipsly is waiting for the required participant permission."}
                 </p>
-                <p className="mt-2 text-xs font-bold text-[#8a7354]">
-                  {consentSnapshot.granted}/{consentSnapshot.total} persisted
-                  consent record(s) granted ·{" "}
-                  {consentSnapshot.transcriptionPermitted} permit transcription
-                </p>
+                <details className="mt-3 text-xs text-[#765f40]">
+                  <summary className="cursor-pointer font-black">Permission details</summary>
+                  <p className="mt-2 font-semibold leading-5">
+                    {consentSnapshot.granted}/{consentSnapshot.total} signed-in participant permission record(s) granted ·{" "}
+                    {consentSnapshot.transcriptionPermitted} allow transcription
+                  </p>
+                </details>
               </div>
               <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5">
                 <FileAudio className="text-violet-700" aria-hidden="true" />
@@ -6499,7 +6512,7 @@ export function SessionReviewClient({
                   )}
                 </p>
                 <p className="mt-3 text-sm font-semibold text-[#765f40]">
-                  {packet.transcriptJob?.segmentCount ?? 0} persisted segment(s)
+                  {packet.transcriptJob?.segmentCount ?? 0} timed passage(s)
                   ·{" "}
                   {packet.transcriptJob?.asset?.fileName ||
                     packet.selectedRecordingAsset?.fileName ||
@@ -6507,9 +6520,12 @@ export function SessionReviewClient({
                 </p>
                 {packet.transcriptJob?.readiness ? <TranscriptConfidenceSummary confidence={packet.transcriptJob.readiness} /> : null}
                 {packet.selectedRecordingAsset?.explicitlySelected ? (
-                  <p className="mt-2 break-all font-mono text-[10px] font-bold text-violet-800">
-                    Focused RecordingAsset · {packet.selectedRecordingAsset.id}
-                  </p>
+                  <details className="mt-3 text-xs text-violet-900">
+                    <summary className="cursor-pointer font-black">Recording details</summary>
+                    <p className="mt-2 break-all font-mono text-[10px] font-bold">
+                      RecordingAsset · {packet.selectedRecordingAsset.id}
+                    </p>
+                  </details>
                 ) : null}
                 {!["RUNNING", "PROCESSING"].includes(
                   packet.transcriptJob?.status || "",
@@ -6535,7 +6551,7 @@ export function SessionReviewClient({
                         <Mic2 size={15} aria-hidden="true" />
                       )}
                       {runningTranscript
-                        ? "Starting durable worker…"
+                        ? "Starting transcription…"
                         : ["FAILED", "HELD"].includes(
                               packet.transcriptJob?.status || "",
                             )
@@ -6543,9 +6559,8 @@ export function SessionReviewClient({
                           : "Start transcription"}
                     </button>
                     <p className="mt-2 text-[10px] font-bold leading-4 text-violet-900">
-                      Runs only the released, source-bound transcript job. It
-                      creates derived text—not notes, tasks, goals, or client
-                      delivery.
+                      Uses this recording to create timed text. It does not
+                      create or send notes, tasks, goals, or messages.
                     </p>
                   </div>
                 ) : null}
@@ -6556,15 +6571,19 @@ export function SessionReviewClient({
                   aria-hidden="true"
                 />
                 <p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">
-                  Packet
+                  Follow-up
                 </p>
                 <p
                   className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(packet.packet?.status)}`}
                 >
-                  {humanize(packet.packet?.status)}
+                  {followUpStatusLabel}
                 </p>
                 <p className="mt-3 text-sm font-semibold text-[#765f40]">
-                  {packet.packet?.nextAction}
+                  {followUpReadyForReview
+                    ? "Your summary and suggested notes, tasks, and goals are ready to review."
+                    : buildingPacket && canPrepareReviewMaterial
+                      ? "Quipsly is preparing editable suggestions from the transcript."
+                      : "Quipsly will prepare editable suggestions when the transcript is ready."}
                 </p>
               </div>
             </section>
@@ -6575,13 +6594,13 @@ export function SessionReviewClient({
               className="scroll-mt-24 rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm"
             >
               <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
-                Human review material
+                Suggested follow-up
               </p>
               <h2
                 id="summary-heading"
                 className="mt-2 font-serif text-3xl font-black text-[#3d3122]"
               >
-                {packet.packet?.summary?.title || "No review packet yet"}
+                {packet.packet?.summary?.title || "Preparing your follow-up"}
               </h2>
               {packet.packet?.summary ? (
                 <>
@@ -6592,13 +6611,11 @@ export function SessionReviewClient({
                       role="status"
                     >
                       <p className="text-sm font-black text-amber-950">
-                        Transcript review changed after this packet was built.
+                        Your transcript changed, so Quipsly is refreshing these suggestions.
                       </p>
                       <p className="mt-2 text-xs font-bold leading-relaxed text-amber-900">
-                        This saved packet remains inspectable, but its notes,
-                        goals, and task candidates are locked. Build a new
-                        append-only packet from the current reviewed transcript
-                        before making decisions.
+                        The earlier suggestions remain visible, but they cannot
+                        be accepted until the refreshed version is ready.
                       </p>
                       <button
                         type="button"
@@ -6625,8 +6642,8 @@ export function SessionReviewClient({
               ) : (
                 <>
                   <p className="mt-3 text-sm font-semibold text-[#765f40]">
-                    A completed, released transcript can be built into a review
-                    packet. This desk will not fabricate a summary.
+                    Quipsly prepares the summary and suggestions automatically
+                    from the completed transcript.
                   </p>
                   {packetBuildAction ? (
                     <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
@@ -6682,20 +6699,19 @@ export function SessionReviewClient({
                   href={sessionWorkspaceHref(roomId, "notes")}
                   className="rounded-full border border-[#d8c7a7] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] hover:border-sky-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
                 >
-                  Open canonical Notes
+                  Open Notes
                 </Link>
               </div>
               <p className="mb-4 max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">
-                Each lane is a source-grounded way to inspect the packet.
-                Approving it means the material is useful for continued work
-                inside Quipsly; it does not make the text a canonical Session
-                note or authorize client delivery.
+                Review the suggestions by purpose, then choose what should
+                become a shared note, task, or goal. Nothing is sent to a client
+                until you choose to share it.
               </p>
               {reviewHeld ? (
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">
                   {packetStale
-                    ? "Packet lane review is held because transcript review changed. Build the current packet first."
-                    : "Packet lane review is held until the transcript release evidence is valid. No review state can be changed."}
+                    ? "Quipsly is refreshing these suggestions after the transcript changed."
+                    : "These suggestions are waiting for the required recording permission."}
                 </div>
               ) : actionableReviewLanes.length ? (
                 <div className="grid gap-4 xl:grid-cols-2">
@@ -6710,8 +6726,7 @@ export function SessionReviewClient({
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">
-                  No packet lanes contain candidate material. Quipsly will not
-                  infer approval or create replacement notes.
+                  No suggestions are available in these categories yet.
                 </div>
               )}
               {!reviewHeld && emptyReviewLanes.length ? (

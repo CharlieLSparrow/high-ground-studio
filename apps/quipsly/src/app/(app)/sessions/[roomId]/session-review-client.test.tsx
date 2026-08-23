@@ -525,7 +525,7 @@ describe("Session review goal candidates", () => {
     const workflow = screen.getByRole("region", { name: "Post-call workflow" });
     expect(within(workflow).getByRole("link", { name: /Start or retry transcription/i })).toHaveAttribute("href", "#transcript-status");
     expect(within(workflow).getByText("Recording")).toBeInTheDocument();
-    expect(screen.getByText(/creates derived text—not notes, tasks, goals, or client delivery/i)).toBeInTheDocument();
+    expect(screen.getByText(/does not create or send notes, tasks, goals, or messages/i)).toBeInTheDocument();
     await user.click(start);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
@@ -723,7 +723,8 @@ describe("Session review goal candidates", () => {
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Episode 9" mode="transcript" focusedRecordingAssetId="asset-recovered-2" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
 
-    expect(await screen.findByText("Focused RecordingAsset · asset-recovered-2")).toBeInTheDocument();
+    expect(await screen.findByText("Recording details")).toBeInTheDocument();
+    expect(screen.getByText("RecordingAsset · asset-recovered-2")).not.toBeVisible();
     expect(fetchMock.mock.calls[0][0]).toBe("/api/mobile/capture/transcripts/packet?callRoomId=room-1&recordingAssetId=asset-recovered-2");
     await user.click(screen.getByRole("button", { name: "Start transcription" }));
 
@@ -759,7 +760,7 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("1 review category has no candidates")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Goals and tasks" })).not.toBeInTheDocument();
     expect(screen.getAllByLabelText("Review note")).toHaveLength(1);
-    expect(screen.getByText(/does not make the text a canonical Session note or authorize client delivery/i)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is sent to a client until you choose to share it/i)).toBeInTheDocument();
     expect(screen.getByText(/creates no canonical note, task, goal, client delivery, message, calendar event, or publication/i)).toBeInTheDocument();
     await user.type(screen.getByLabelText("Review note"), "Useful recap once the client-safe wording is authored deliberately.");
     await user.click(screen.getByRole("button", { name: "Approve inside Quipsly" }));
@@ -853,7 +854,7 @@ describe("Session review goal candidates", () => {
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
 
-    expect(await screen.findByText("Transcript review changed after this packet was built.")).toBeInTheDocument();
+    expect(await screen.findByText("Your transcript changed, so Quipsly is refreshing these suggestions.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(screen.getByText(/Quipsly is refreshing these suggestions after transcript changes/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve inside Quipsly" })).not.toBeInTheDocument();

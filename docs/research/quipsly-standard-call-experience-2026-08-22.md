@@ -637,6 +637,12 @@ share`. The continuity panel says that the call, chat, recordings,
   idempotent check automatically, exposes progress as ordinary audio health,
   preserves the original, and stops after one failed attempt with a plain
   retry. Replacement, promotion, publishing, and delivery remain explicit.
+- Keep internal evidence vocabulary out of the ordinary post-call path. Coaches
+  now see `Recording permission`, `Transcript`, and `Follow-up`, with ordinary
+  states such as `Ready`, `Preparing`, and `Needs attention`. Consent counts,
+  exact recording identifiers, immutable bindings, packet states, and worker
+  details remain available under support disclosures or in the underlying
+  receipts without becoming concepts every user must learn.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB
