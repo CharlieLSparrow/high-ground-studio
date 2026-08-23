@@ -22,7 +22,7 @@ export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testCaptureFirstNavigationKeepsFiveFocusedDestinations",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashing",
   "CaptureExperienceUITests/testRecorderLeadsWithAStandardCallGreenRoom",
-  "CaptureExperienceUITests/testRecorderNamesItsAudioEvidenceInsteadOfShowingAnOpaquePercentage",
+  "CaptureExperienceUITests/testRecorderUsesAFamiliarMicrophoneLevelInsteadOfAnOpaquePercentage",
   "CaptureExperienceUITests/testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation",
   "CaptureExperienceUITests/testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord",
   "CaptureExperienceUITests/testConsentIsExplicitAndGatesStartRecording",
@@ -141,9 +141,10 @@ export function createPlan(tests, { suite = "critical", shard = 1, shards = 4 } 
   };
 }
 
-function parseArguments(argv) {
+export function parseArguments(argv) {
   const options = { suite: "critical", shard: 1, shards: 4, format: "json", source: DEFAULT_SOURCE };
   for (const argument of argv) {
+    if (argument === "--") continue;
     const [name, value] = argument.split("=", 2);
     if (name === "--suite") options.suite = value;
     else if (name === "--shard") options.shard = Number(value);

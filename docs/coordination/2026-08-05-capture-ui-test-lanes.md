@@ -16,12 +16,12 @@ assertions.
 `scripts/release/quipsly-capture-ui-test-plan.mjs` parses the shipping XCTest
 source and owns two explicit lanes:
 
-- `critical`: 11 reviewed journeys across navigation, the Episode 9 consent
+- `critical`: 14 reviewed journeys across navigation, the Episode 9 consent
   crash regression, recording consent boundaries, audio evidence, Shared
   Watch, rehearsal readiness, accessibility, Google login, support evidence,
   and the Safari share extension;
 - `full`: every deterministic non-screenshot journey exactly once across four
-  weighted shards.
+  weighted shards (currently 72 journeys).
 
 The planner contract tests fail when a shipping test disappears from discovery,
 when a critical selector no longer exists, when a full shard duplicates or
@@ -68,6 +68,23 @@ Evidence:
 This remains simulator evidence. It does not prove a TestFlight install,
 physical iPhone capture, retained-media upload, playback, or cross-device
 readback.
+
+### 2026-08-23 refresh
+
+The planner now follows the renamed familiar microphone-level journey, accepts
+the conventional `pnpm ... -- --suite=...` separator, and no longer mistakes a
+newly added shipping test for a broken shard merely because a historical total
+was hard-coded in its own test. The meaningful invariant remains strict: all 72
+discovered journeys appear exactly once in the four balanced full shards, and
+every critical selector must exist in shipping XCTest source.
+
+The current 14-test critical lane passed serially with zero failures in 264.423
+seconds. The result bundle is
+`/tmp/quipsly-capture-critical-serial-20260823.xcresult`. An earlier diagnostic
+attempt allowed Xcode to create parallel simulator clones; several clones failed
+to launch the XCTest runner even while two clones passed their journeys. The
+committed GitHub and Fastlane lanes already specify serial execution, so the
+parallel attempt is infrastructure diagnostics rather than product evidence.
 
 The first complete sharded attempt provided additional product evidence. Even
 after a clean app reinstall, the coaching follow-up unsaved-edit journey stalled

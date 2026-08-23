@@ -8,6 +8,7 @@ import {
   buildFullShards,
   createPlan,
   discoverDeterministicTests,
+  parseArguments,
 } from "./quipsly-capture-ui-test-plan.mjs";
 
 const SOURCE_URL = new URL(
@@ -36,12 +37,28 @@ final class ShareCaptureExtensionUITests: XCTestCase {
   ]);
 });
 
+test("accepts the conventional pnpm argument separator", () => {
+  assert.deepEqual(
+    parseArguments(["--", "--suite=full", "--shard=2", "--shards=4", "--format=lines"]),
+    {
+      suite: "full",
+      shard: 2,
+      shards: 4,
+      format: "lines",
+      source: new URL(
+        "../../apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift",
+        import.meta.url,
+      ).pathname,
+    },
+  );
+});
+
 test("full shards cover each current deterministic UI test exactly once", async () => {
   const tests = discoverDeterministicTests(await readFile(SOURCE_URL, "utf8"));
   const shards = buildFullShards(tests, 4);
   const flattened = shards.flatMap((shard) => shard.tests);
 
-  assert.equal(tests.length, 69);
+  assert.ok(tests.length > CRITICAL_TESTS.length);
   assert.equal(flattened.length, tests.length);
   assert.deepEqual([...new Set(flattened)].sort(), tests);
   assert.ok(Math.max(...shards.map((shard) => shard.estimatedWeight)) - Math.min(...shards.map((shard) => shard.estimatedWeight)) <= 1);
