@@ -528,7 +528,7 @@ requireIncludes(bridgeText, '"expectedRevision"', "the native bridge binds revis
 requireIncludes(bridgeText, '"callRoomId": session.callRoomId', "packet lane review targets the canonical call-room identity rather than the local session row ID");
 requireIncludes(bridgeText, '"clientInstanceId": CaptureClientInstallation.id', "native provider-room join keeps a stable installation-scoped endpoint identity");
 requireIncludes(bridgeText, '"clientKind": "ios"', "native provider-room join identifies its iOS client kind");
-requireIncludes(bridgeText, '"endpointRole": "primary"', "native provider-room join declares the call-audio endpoint role");
+requireIncludes(bridgeText, '"endpointRole": endpointRole == "companion" ? "companion" : "primary"', "native provider-room join declares the call-audio endpoint role");
 requireIncludes(bridgeText, "func reviewPacketLane", "the native bridge owns the bounded packet lane review mutation");
 requireIncludes(canonicalTaskStatusText, 'CanonicalTaskDecisionReason = "MISSED_OCCURRENCE_SKIPPED"', "canonical task status bounds the missed-occurrence decision vocabulary");
 requireIncludes(canonicalTaskStatusText, 'kind: "quipsly-task-occurrence-resolution-v1"', "canonical missed-occurrence resolution writes an inspectable occurrence receipt");
@@ -911,7 +911,7 @@ for (const needle of [
   "AI proposals stay outside transcript truth until you listen and decide.",
   "CaptureProviderRoomControls",
   "CaptureCallInputRoute",
-  "CaptureJoinMutedToggle",
+  "CaptureUseCallAudioToggle",
   "Join call",
   "CaptureStudioHandoffCard_",
   "CaptureSourceTruthFootnote",
@@ -960,7 +960,7 @@ for (const needle of [
   "CaptureConsentSaveChoicesButton",
   "Local source is production truth",
   "GlobalCaptureBanner",
-  "CaptureJoinMutedToggle",
+  "CaptureUseCallAudioToggle",
   "Finish or stop the current take first.",
   ".disabled(providerControlsLocked",
   "CaptureRecordingModePicker",
@@ -1590,9 +1590,12 @@ requireIncludes(audioSoundCheckModelText, "safeNearFullScaleObservationCount > 0
 requireIncludes(audioSoundCheckModelText, "Listen back for mouth noise", "healthy electrical evidence still requires perceptual review");
 requireIncludes(capturePhoneShellText, "ProviderRoomControls(", "shipping recorder reaches provider room controls");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureProviderRoomControls")', "shipping provider controls have a stable automation identity");
-requireIncludes(capturePhoneShellText, '@AppStorage("quipsly.call.join-muted.v1")', "shipping call entry remembers the safe join-muted choice on this device");
+requireIncludes(capturePhoneShellText, '@AppStorage("quipsly.call.join-muted.v1")', "shipping call entry remembers whether call audio belongs on this iPhone");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCallInputRoute")', "shipping call entry names the current microphone route");
-requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinMutedToggle")', "shipping call entry exposes an addressable join-muted control");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureUseCallAudioToggle")', "shipping call entry exposes an addressable audio-device control");
+requireIncludes(providerRoomText, "ConnectOptions(autoSubscribe: useCallAudio)", "native companion mode does not subscribe to remote call media");
+requireIncludes(providerRoomText, "setMicrophone(enabled: useCallAudio)", "native companion mode does not publish a call microphone");
+requireIncludes(captureExperienceModelText, "endpointRole: useCallAudio ? \"primary\" : \"companion\"", "native room token records primary versus companion endpoint intent");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderJoinRoomButton")', "shipping provider join action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderLeaveRoomButton"', "shipping persistent provider leave action is addressable");

@@ -7608,7 +7608,10 @@ final class CaptureSessionClient: ObservableObject {
         }
     }
 
-    func prepareRoomJoin(for session: MobileCaptureSession) async -> MobileCaptureRoomJoinResponse? {
+    func prepareRoomJoin(
+        for session: MobileCaptureSession,
+        endpointRole: String = "primary"
+    ) async -> MobileCaptureRoomJoinResponse? {
         guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/mobile/capture/rooms/join") else {
             status = "Bad Nest URL"
             errorMessage = "The configured Nest URL is not valid."
@@ -7632,7 +7635,7 @@ final class CaptureSessionClient: ObservableObject {
                 "clientInstanceId": CaptureClientInstallation.id,
                 "clientKind": "ios",
                 "deviceLabel": "Quipsly Capture · iPhone",
-                "endpointRole": "primary",
+                "endpointRole": endpointRole == "companion" ? "companion" : "primary",
             ])
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)

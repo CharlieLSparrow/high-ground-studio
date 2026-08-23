@@ -4257,7 +4257,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             scrollRuntimeElementIntoHittableView(liveRoom, in: app),
             "The standard call controls should be directly reachable before recorder details."
         )
-        XCTAssertTrue(waitForRuntimeElement(app.switches["CaptureJoinMutedToggle"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "The standard green room should expose a remembered join-muted choice.")
+        XCTAssertTrue(waitForRuntimeElement(app.switches["CaptureUseCallAudioToggle"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "The standard green room should expose a remembered call-audio device choice.")
         XCTAssertTrue(waitForRuntimeElement(app.buttons["ProviderJoinRoomButton"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "Joining a call must remain a distinct action from starting local recording.")
         XCTAssertTrue(waitForRuntimeElement(app.descendants(matching: .any)["CaptureSourceTruthFootnote"].firstMatch, in: app), "The selected-microphone source boundary should remain visible in the runtime path.")
 

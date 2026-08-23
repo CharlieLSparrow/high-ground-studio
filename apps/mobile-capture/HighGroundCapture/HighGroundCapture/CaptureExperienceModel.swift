@@ -2206,7 +2206,7 @@ final class CaptureExperienceModel: ObservableObject {
         message = "Moment marked in the source timeline."
     }
 
-    func joinRoom(initiallyMuted: Bool = false) async {
+    func joinRoom(useCallAudio: Bool = true) async {
         guard let session = selectedSession, !isChangingRoom else { return }
         guard providerControlsAreAvailable() else { return }
         guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
@@ -2221,9 +2221,11 @@ final class CaptureExperienceModel: ObservableObject {
             message = "Room join is disabled in preview mode."
             return
         }
-        guard await providerRoom.prepareMicrophonePermissionForJoin() else {
-            errorMessage = providerRoom.lastError
-            return
+        if useCallAudio {
+            guard await providerRoom.prepareMicrophonePermissionForJoin() else {
+                errorMessage = providerRoom.lastError
+                return
+            }
         }
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
             errorMessage = providerRoomOwnerChangedMessage
@@ -2231,7 +2233,10 @@ final class CaptureExperienceModel: ObservableObject {
         }
         activeRoomSession = session
         selectedSessionID = session.id
-        let preparedJoin = await sessionClient.prepareRoomJoin(for: session)
+        let preparedJoin = await sessionClient.prepareRoomJoin(
+            for: session,
+            endpointRole: useCallAudio ? "primary" : "companion"
+        )
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
             activeRoomSession = nil
             preparedRoomJoin = nil
@@ -2254,7 +2259,7 @@ final class CaptureExperienceModel: ObservableObject {
             using: join,
             session: session,
             expectedOwnerSnapshot: ownerSnapshot,
-            initiallyMuted: initiallyMuted
+            useCallAudio: useCallAudio
         )
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
             await providerRoom.disconnect()

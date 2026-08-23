@@ -37,6 +37,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var isConnected = false
     @Published var isReconnecting = false
     @Published var isMuted = true
+    @Published private(set) var usesCallAudio = false
     @Published var isNativeCallPresentationActive = false
     @Published var nativeCallPresentationLabel = "CallKit ready"
     @Published var remoteParticipantCount = 0
@@ -149,7 +150,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         using join: MobileCaptureRoomJoinResponse?,
         session: MobileCaptureSession,
         expectedOwnerSnapshot: AuthManager.StableOwnerSnapshot,
-        initiallyMuted: Bool = false
+        useCallAudio: Bool = true
     ) async {
         #if canImport(LiveKit)
         guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
@@ -183,12 +184,16 @@ final class ProviderRoomController: NSObject, ObservableObject {
             MobileChatPersistedLiveHint.sessionThreadKey(session.callRoomId),
             MobileChatPersistedLiveHint.episodeThreadKey(session.episodeSlug),
         ].compactMap { $0 })
+        usesCallAudio = useCallAudio
 
-        do {
-            try audioSessionCoordinator.providerWillConnect()
-        } catch {
-            fail("Your microphone couldn't be prepared. Check the selected input and try again.", technical: error.localizedDescription)
-            return
+        if useCallAudio {
+            do {
+                try audioSessionCoordinator.providerWillConnect()
+            } catch {
+                usesCallAudio = false
+                fail("Your microphone couldn't be prepared. Check the selected input and try again.", technical: error.localizedDescription)
+                return
+            }
         }
 
         isConnecting = true
@@ -197,30 +202,36 @@ final class ProviderRoomController: NSObject, ObservableObject {
         lastTechnicalError = nil
         statusText = "Connecting to \(join.provider ?? session.providerLabel)..."
         connectionStateLabel = "Connecting"
-        nativeCallPresentationLabel = "Preparing native call surface"
+        nativeCallPresentationLabel = useCallAudio
+            ? "Preparing native call surface"
+            : "Call audio on another device"
 
-        let callKitStarted = await startNativeCallPresentation(session: session, join: join)
+        let callKitStarted = useCallAudio
+            ? await startNativeCallPresentation(session: session, join: join)
+            : true
         guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
             await abortForAccountChange()
             return
         }
-        if !callKitStarted {
+        if useCallAudio && !callKitStarted {
             audioSessionCoordinator.providerDidDisconnect()
+            usesCallAudio = false
             fail("Call audio couldn't start. Try again, or record without joining.", technical: lastTechnicalError ?? "The native call presentation could not start.")
             return
         }
 
-        let callAudioActivated = await waitForCallAudioActivation(
-            expectedOwnerSnapshot: expectedOwnerSnapshot
-        )
+        let callAudioActivated = useCallAudio
+            ? await waitForCallAudioActivation(expectedOwnerSnapshot: expectedOwnerSnapshot)
+            : true
         guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
             await abortForAccountChange()
             return
         }
-        guard callAudioActivated else {
+        guard !useCallAudio || callAudioActivated else {
             await endNativeCallPresentation(reason: .failed)
             try? audioSessionCoordinator.callKitDidDeactivate()
             audioSessionCoordinator.providerDidDisconnect()
+            usesCallAudio = false
             fail("Call audio couldn't start. Try again, or record without joining.", technical: "CallKit did not activate the room audio session before timeout.")
             return
         }
@@ -230,28 +241,38 @@ final class ProviderRoomController: NSObject, ObservableObject {
                 await abortForAccountChange()
                 return
             }
-            try await room.connect(url: serverUrl, token: participantToken)
+            try await room.connect(
+                url: serverUrl,
+                token: participantToken,
+                connectOptions: ConnectOptions(autoSubscribe: useCallAudio)
+            )
             guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
                 await abortForAccountChange()
                 return
             }
-            // Apply pre-join mute before publishing the microphone so a person
-            // who chose Join muted is never briefly audible while the UI catches up.
-            try await room.localParticipant.setMicrophone(enabled: !initiallyMuted)
+            // A companion endpoint neither publishes nor subscribes to call
+            // media. It stays in the room for presence, Session data, shared
+            // Watch, and synchronized local capture without claiming the
+            // microphone or creating speaker echo.
+            try await room.localParticipant.setMicrophone(enabled: useCallAudio)
             guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
                 await abortForAccountChange()
                 return
             }
-            isMuted = initiallyMuted
+            isMuted = !useCallAudio
             isConnected = true
             isReconnecting = false
             lastTechnicalError = nil
             activeRoomName = room.name ?? join.roomName ?? session.displayTitle
             remoteParticipantCount = room.remoteParticipants.count
             connectionStateLabel = "\(room.connectionState)".capitalized
-            reportNativeCallConnected()
+            if useCallAudio {
+                reportNativeCallConnected()
+            }
             refreshCallAudioMeterLifecycle()
-            statusText = "Joined provider room. Recording still requires explicit Quipsly consent."
+            statusText = useCallAudio
+                ? "Joined the call. Recording still starts separately."
+                : "Joined as a second device. Call audio stays on your other device."
         } catch {
             stopCallAudioMeter()
             await room.disconnect()
@@ -262,6 +283,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             isConnected = false
             isReconnecting = false
             isMuted = true
+            usesCallAudio = false
             remoteParticipantCount = 0
             activeRoomName = nil
             fail("The call couldn't connect. Check your internet connection and try again.", technical: error.localizedDescription)
@@ -276,6 +298,10 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     func setMuted(_ muted: Bool) async {
         #if canImport(LiveKit)
+        guard usesCallAudio else {
+            fail("Call audio is on your other device.", technical: "A companion endpoint cannot publish a provider microphone.")
+            return
+        }
         guard isConnected,
               let activeOwnerSnapshot,
               AuthManager.shared.matchesStableOwnerSnapshot(activeOwnerSnapshot) else {
@@ -357,6 +383,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             statusText = "Provider room already disconnected."
             await endNativeCallPresentation(reason: .remoteEnded)
             audioSessionCoordinator.providerDidDisconnect()
+            usesCallAudio = false
             activeOwnerSnapshot = nil
             clearEpisodeWatchBridge()
             return
@@ -370,6 +397,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isConnected = false
         isReconnecting = false
         isMuted = true
+        usesCallAudio = false
         remoteParticipantCount = 0
         activeRoomName = nil
         activeOwnerSnapshot = nil
@@ -383,6 +411,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isConnecting = false
         isReconnecting = false
         isMuted = true
+        usesCallAudio = false
         activeOwnerSnapshot = nil
         clearEpisodeWatchBridge()
         connectionStateLabel = "Disconnected"
@@ -413,6 +442,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         if !isConnected {
             stopCallAudioMeter()
             isReconnecting = false
+            usesCallAudio = false
             activeOwnerSnapshot = nil
             clearEpisodeWatchBridge()
         }
@@ -602,6 +632,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isConnected = false
         isReconnecting = false
         isMuted = true
+        usesCallAudio = false
         remoteParticipantCount = 0
         activeRoomName = nil
         connectionStateLabel = "Disconnected"
@@ -625,6 +656,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isConnected = false
         isReconnecting = false
         isMuted = true
+        usesCallAudio = false
         remoteParticipantCount = 0
         activeRoomName = nil
         activeOwnerSnapshot = nil
@@ -662,6 +694,7 @@ extension ProviderRoomController: CXProviderDelegate {
             self.isConnecting = false
             self.isReconnecting = false
             self.isMuted = true
+            self.usesCallAudio = false
             self.isCallAudioSessionActive = false
             self.callAudioSessionLabel = "Call audio idle"
             self.connectionStateLabel = "Disconnected"
@@ -695,6 +728,7 @@ extension ProviderRoomController: CXProviderDelegate {
             self.isConnecting = false
             self.isReconnecting = false
             self.isMuted = true
+            self.usesCallAudio = false
             self.activeOwnerSnapshot = nil
             self.clearEpisodeWatchBridge()
             self.connectionStateLabel = "Disconnected"
@@ -781,6 +815,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.isConnected = false
                 self.isReconnecting = false
                 self.isMuted = true
+                self.usesCallAudio = false
                 self.remoteParticipantCount = 0
                 self.audioSessionCoordinator.providerDidDisconnect()
                 await self.endNativeCallPresentation(reason: .remoteEnded)

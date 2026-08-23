@@ -12079,7 +12079,8 @@ private struct ProviderRoomControls: View {
     let inputRoute: String
     let localRecordingWorkspaceOpen: Bool
     let onToggleLocalRecordingWorkspace: () -> Void
-    @AppStorage("quipsly.call.join-muted.v1") private var joinMuted = false
+    // Keep the existing storage key so upgrades preserve the person's choice.
+    @AppStorage("quipsly.call.join-muted.v1") private var callAudioOnAnotherDevice = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -12101,7 +12102,12 @@ private struct ProviderRoomControls: View {
                     .foregroundStyle(model.providerRoom.isConnected ? Color.green : Color.secondary)
             }
 
-            Label(inputRoute, systemImage: "mic.fill")
+            Label(
+                usesCallAudioForPresentation
+                    ? inputRoute
+                    : "Call audio on another device",
+                systemImage: usesCallAudioForPresentation ? "mic.fill" : "iphone.and.arrow.forward"
+            )
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
@@ -12123,21 +12129,28 @@ private struct ProviderRoomControls: View {
                     )
                     .accessibilityIdentifier("CaptureCallParticipantPresence")
 
-                    Label(
-                        model.providerRoom.callAudioHealth.title,
-                        systemImage: model.providerRoom.callAudioHealth.systemImage
-                    )
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(callAudioStatusTint)
-                    .accessibilityIdentifier("CaptureCallMicrophoneHealth")
+                    if model.providerRoom.usesCallAudio {
+                        Label(
+                            model.providerRoom.callAudioHealth.title,
+                            systemImage: model.providerRoom.callAudioHealth.systemImage
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(callAudioStatusTint)
+                        .accessibilityIdentifier("CaptureCallMicrophoneHealth")
 
-                    if model.providerRoom.callAudioHealth.needsVisibleGuidance,
-                       let guidance = model.providerRoom.callAudioHealth.detail {
-                        Text(guidance)
-                            .font(.caption)
+                        if model.providerRoom.callAudioHealth.needsVisibleGuidance,
+                           let guidance = model.providerRoom.callAudioHealth.detail {
+                            Text(guidance)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("CaptureCallMicrophoneGuidance")
+                        }
+                    } else {
+                        Label("Second device · no call audio", systemImage: "speaker.slash.fill")
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("CaptureCallMicrophoneGuidance")
+                            .accessibilityIdentifier("CaptureCompanionModeStatus")
                     }
                 }
             }
@@ -12157,23 +12170,23 @@ private struct ProviderRoomControls: View {
                 }
             } else {
                 Toggle(isOn: Binding(
-                    get: { !joinMuted },
-                    set: { joinMuted = !$0 }
+                    get: { !callAudioOnAnotherDevice },
+                    set: { callAudioOnAnotherDevice = !$0 }
                 )) {
                     Label(
                         "Use this iPhone for call audio",
-                        systemImage: joinMuted ? "mic.slash.fill" : "iphone.radiowaves.left.and.right"
+                        systemImage: callAudioOnAnotherDevice ? "mic.slash.fill" : "iphone.radiowaves.left.and.right"
                     )
                         .font(.subheadline)
                 }
                 .toggleStyle(.switch)
                 .disabled(providerControlsLocked || model.isChangingRoom)
-                .accessibilityIdentifier("CaptureJoinMutedToggle")
+                .accessibilityIdentifier("CaptureUseCallAudioToggle")
 
                 Text(
-                    joinMuted
-                        ? "This iPhone will join muted. Keep the call microphone and headphones on your other device to prevent echo. Local camera recording stays separate."
-                        : "This iPhone will handle the conversation audio. If another device joins too, keep its microphone and speaker off."
+                    callAudioOnAnotherDevice
+                        ? "Quipsly keeps call audio off on this iPhone to prevent echo. You can still use the Session and record a separate local camera source here."
+                        : "This iPhone will handle the conversation audio."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -12182,7 +12195,7 @@ private struct ProviderRoomControls: View {
 
                 Button {
                     Task {
-                        await model.joinRoom(initiallyMuted: joinMuted)
+                        await model.joinRoom(useCallAudio: !callAudioOnAnotherDevice)
                     }
                 } label: {
                     HStack {
@@ -12229,7 +12242,7 @@ private struct ProviderRoomControls: View {
                     .foregroundStyle(.orange)
             }
 
-            if AVAudioApplication.shared.recordPermission == .denied {
+            if !callAudioOnAnotherDevice && AVAudioApplication.shared.recordPermission == .denied {
                 CapturePermissionRecoveryButton(
                     title: "Allow microphone in Settings",
                     detail: "Microphone access is off. Turn it on once, then return and join the call."
@@ -12242,6 +12255,10 @@ private struct ProviderRoomControls: View {
 
     private var providerControlsLocked: Bool {
         model.providerControlsLockedForLocalCapture
+    }
+
+    private var usesCallAudioForPresentation: Bool {
+        model.providerRoom.isConnected ? model.providerRoom.usesCallAudio : !callAudioOnAnotherDevice
     }
 
     private var callAudioStatusTint: Color {
@@ -12279,17 +12296,25 @@ private struct ProviderRoomDock: View {
     var body: some View {
         HStack(spacing: 28) {
             Spacer(minLength: 0)
-            dockButton(
-                title: model.providerRoom.isMuted ? "Unmute" : "Mute",
-                systemImage: model.providerRoom.isMuted ? "mic.slash.fill" : "mic.fill",
-                tint: model.providerRoom.isMuted ? .orange : .primary,
-                disabled:
-                    model.providerControlsLockedForLocalCapture
-                    || model.isChangingRoom
-                    || model.providerRoom.isReconnecting,
-                accessibilityIdentifier: "ProviderToggleMuteButton"
-            ) {
-                Task { await model.toggleRoomMute() }
+            if model.providerRoom.usesCallAudio {
+                dockButton(
+                    title: model.providerRoom.isMuted ? "Unmute" : "Mute",
+                    systemImage: model.providerRoom.isMuted ? "mic.slash.fill" : "mic.fill",
+                    tint: model.providerRoom.isMuted ? .orange : .primary,
+                    disabled:
+                        model.providerControlsLockedForLocalCapture
+                        || model.isChangingRoom
+                        || model.providerRoom.isReconnecting,
+                    accessibilityIdentifier: "ProviderToggleMuteButton"
+                ) {
+                    Task { await model.toggleRoomMute() }
+                }
+            } else {
+                Label("Audio on other device", systemImage: "speaker.slash.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 96, minHeight: 48)
+                    .accessibilityIdentifier("ProviderCompanionAudioStatus")
             }
 
             dockButton(

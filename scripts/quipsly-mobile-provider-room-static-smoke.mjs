@@ -56,13 +56,15 @@ assertIncludes("ProviderRoomController", controller, "#if canImport(LiveKit)", "
 assertIncludes("ProviderRoomController", controller, "providerRuntimeAvailable", "native SDK readiness must be a visible app fact");
 assertIncludes("ProviderRoomController", controller, "didActivate audioSession", "CallKit audio activation should not be ignored");
 assertIncludes("ProviderRoomController", controller, "didDeactivate audioSession", "CallKit audio cleanup should be visible");
+assertIncludes("ProviderRoomController", controller, "ConnectOptions(autoSubscribe: useCallAudio)", "a second-device endpoint must not subscribe to remote call media");
+assertIncludes("ProviderRoomController", controller, "setMicrophone(enabled: useCallAudio)", "a second-device endpoint must not publish a provider microphone");
 
 for (const needle of [
   'accessibilityIdentifier("CaptureRecorderView")',
   'accessibilityIdentifier("CaptureSessionTruthPanel")',
   'accessibilityIdentifier("CaptureProviderRoomControls")',
   'accessibilityIdentifier("CaptureCallInputRoute")',
-  'accessibilityIdentifier("CaptureJoinMutedToggle")',
+  'accessibilityIdentifier("CaptureUseCallAudioToggle")',
   'accessibilityIdentifier("ProviderJoinRoomButton")',
   'accessibilityIdentifier: "ProviderToggleMuteButton"',
   'accessibilityIdentifier: "ProviderLeaveRoomButton"',

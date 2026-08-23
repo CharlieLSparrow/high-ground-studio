@@ -195,7 +195,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let call = app.descendants(matching: .any)["CaptureProviderRoomControls"]
         let join = app.buttons["ProviderJoinRoomButton"]
-        let joinMuted = app.switches["CaptureJoinMutedToggle"]
+        let useCallAudio = app.switches["CaptureUseCallAudioToggle"]
         let route = app.descendants(matching: .any)["CaptureCallInputRoute"]
         let consent = app.descendants(matching: .any)["CaptureConsentStrip"]
         let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"]
@@ -203,7 +203,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         XCTAssertTrue(call.waitForExistence(timeout: 5))
         XCTAssertTrue(join.exists, "The green room should expose one obvious Join call action.")
-        XCTAssertTrue(joinMuted.exists, "Mute state belongs in pre-join, not in a buried settings surface.")
+        XCTAssertTrue(useCallAudio.exists, "The familiar pre-join surface should make second-device audio routing obvious.")
         XCTAssertTrue(route.exists, "The current microphone route should be visible before joining.")
         XCTAssertTrue(localOnly.exists, "Local-only recording should remain one secondary escape hatch.")
         XCTAssertTrue(nextStep.exists)

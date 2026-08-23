@@ -77,6 +77,10 @@ Recurring complaints reveal the failure modes Quipsly must design out:
   companion endpoint publishes no call microphone and plays no remote call
   audio, so it cannot create echo. It may still show Session work, publish
   camera video, and operate a separately consented retained source.
+- On iPhone, companion mode joins provider presence and Session data without
+  activating CallKit, requesting microphone permission, or subscribing to
+  remote call media. The iPhone can therefore remain a synchronized retained
+  camera/source device while the audible conversation stays on the computer.
 - Conventional in-call controls remain in predictable locations and use
   conventional labels: Mute, Camera, Leave, Participants, Chat, and Record.
 - Reconnect automatically when safe. Interrupt only when the user must act.

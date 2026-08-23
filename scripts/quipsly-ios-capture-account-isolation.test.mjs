@@ -259,7 +259,7 @@ test("deterministic owner-change-during-permission contract carries one immutabl
 });
 
 test("provider join token is canceled when its preparing owner generation changes", () => {
-  const joinStart = captureModel.indexOf("func joinRoom(initiallyMuted:");
+  const joinStart = captureModel.indexOf("func joinRoom(useCallAudio:");
   const join = captureModel.slice(
     joinStart,
     captureModel.indexOf("func leaveRoom() async"),
@@ -271,13 +271,13 @@ test("provider join token is canceled when its preparing owner generation change
   const connectRecheck = join.indexOf("matchesStableOwnerSnapshot(ownerSnapshot)", connect);
   assert.ok(joinStart >= 0 && snapshot >= 0 && prepare > snapshot && prepareRecheck > prepare && connect > prepareRecheck && connectRecheck > connect);
   assert.match(join, /expectedOwnerSnapshot: ownerSnapshot/);
-  assert.match(join, /initiallyMuted: initiallyMuted/);
+  assert.match(join, /useCallAudio: useCallAudio/);
   assert.match(join, /await providerRoom\.disconnect\(\)/);
 
   assert.match(providerRoom, /forName: \.quipslyCaptureAccountIdentityDidChange/);
   assert.match(providerRoom, /var activeOwnerSnapshot: AuthManager\.StableOwnerSnapshot\?/);
   assert.match(providerRoom, /try await room\.connect[\s\S]*?matchesStableOwnerSnapshot\(expectedOwnerSnapshot\)[\s\S]*?setMicrophone/);
-  assert.match(providerRoom, /setMicrophone\(enabled: !initiallyMuted\)[\s\S]*?matchesStableOwnerSnapshot\(expectedOwnerSnapshot\)/);
+  assert.match(providerRoom, /setMicrophone\(enabled: useCallAudio\)[\s\S]*?matchesStableOwnerSnapshot\(expectedOwnerSnapshot\)/);
   assert.match(providerRoom, /private func abortForAccountChange\(\) async[\s\S]*?await room\.disconnect\(\)[\s\S]*?activeOwnerSnapshot = nil/);
 });
 
