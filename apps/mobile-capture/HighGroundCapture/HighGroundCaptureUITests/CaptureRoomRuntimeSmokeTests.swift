@@ -1909,6 +1909,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let sheet = app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 6))
 
+        let noteDetails = app.buttons["CaptureQuickEntryNoteDetails"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(noteDetails, in: app, timeout: 20, swipeAttempts: 8))
+        noteDetails.tap()
+
         let purpose = app.descendants(matching: .any)["CaptureQuickEntryNoteKind"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(purpose, in: app, timeout: 20, swipeAttempts: 8))
         purpose.tap()

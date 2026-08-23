@@ -684,12 +684,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(body.exists)
         body.tap()
         body.typeText("Let the opening breathe before the first cut.")
+        let noteDetails = app.buttons["CaptureQuickEntryNoteDetails"].firstMatch
         let purpose = app.descendants(matching: .any)["CaptureQuickEntryNoteKind"].firstMatch
         let audience = app.descendants(matching: .any)["CaptureQuickEntryNoteVisibility"].firstMatch
-        reveal(purpose)
-        XCTAssertTrue(purpose.exists, "A Session note should make its purpose explicit before save.")
-        XCTAssertTrue(audience.exists, "A Session note should make its audience explicit before save.")
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntryNoteVisibilityReadback"].exists)
+        reveal(noteDetails)
+        XCTAssertTrue(noteDetails.exists)
+        XCTAssertTrue((noteDetails.value as? String)?.contains("Only me") == true, "A Session note should default to private without interrupting capture.")
+        XCTAssertFalse(purpose.exists, "Advanced note details should stay collapsed during ordinary capture.")
+        XCTAssertFalse(audience.exists, "Advanced sharing should stay collapsed during ordinary capture.")
         let save = app.buttons["CaptureQuickEntrySave"]
         XCTAssertTrue(save.isEnabled)
         save.tap()
@@ -711,30 +713,17 @@ final class CaptureExperienceUITests: XCTestCase {
         noteButton.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].waitForExistence(timeout: 5))
-        let purpose = app.descendants(matching: .any)["CaptureQuickEntryNoteKind"].firstMatch
-        reveal(purpose)
-        XCTAssertTrue(purpose.exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntryNoteVisibility"].exists)
         let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
         reveal(destination)
         XCTAssertTrue(destination.exists)
         destination.tap()
         XCTAssertTrue(app.buttons["Home Nest"].waitForExistence(timeout: 3))
         app.buttons["Home Nest"].tap()
-        XCTAssertTrue(app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Home Nest")
-        ).firstMatch.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Session, None")
-        ).firstMatch.exists)
+        XCTAssertEqual(destination.value as? String, "Home Nest")
         XCTAssertTrue(app.textFields["CaptureQuickEntryTitle"].exists)
         let newTagField = app.textFields["CaptureQuickEntryNewTagField"]
         reveal(newTagField)
         XCTAssertTrue(newTagField.exists)
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "does not invent a Session")
-        ).firstMatch.exists)
-        XCTAssertTrue(purpose.waitForNonExistence(timeout: 3))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntryNoteVisibility"].waitForNonExistence(timeout: 3))
     }
 
@@ -744,6 +733,11 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(noteButton)
         noteButton.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].waitForExistence(timeout: 5))
+
+        let noteDetails = app.buttons["CaptureQuickEntryNoteDetails"].firstMatch
+        reveal(noteDetails)
+        XCTAssertTrue(noteDetails.isHittable)
+        noteDetails.tap()
 
         let purpose = app.descendants(matching: .any)["CaptureQuickEntryNoteKind"].firstMatch
         reveal(purpose)
@@ -759,13 +753,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Client-safe"].waitForExistence(timeout: 3))
         app.buttons["Client-safe"].tap()
 
-        let readback = app.descendants(matching: .any)["CaptureQuickEntryNoteVisibilityReadback"].firstMatch
-        XCTAssertTrue(readback.exists)
-        XCTAssertTrue(readback.label.contains("Client-safe"))
+        XCTAssertTrue((noteDetails.value as? String)?.contains("Client-safe") == true)
         let boundary = app.descendants(matching: .any)["CaptureQuickEntryNotePolicyBoundary"].firstMatch
         XCTAssertTrue(boundary.exists)
         XCTAssertTrue(boundary.label.contains("not sent"))
-        XCTAssertTrue(boundary.label.contains("never sends a message"))
     }
 
     func testPacketNoteLanesExposeSourceTruthAndKeepPreviewReviewReadOnly() {
@@ -1010,6 +1001,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let title = app.textFields["CaptureQuickEntryTitle"]
         title.tap()
         title.typeText("Weekly production review")
+        dismissQuickEntryKeyboard()
 
         let repeatPicker = app.descendants(matching: .any)["CaptureQuickEntryRecurrenceMode"].firstMatch
         reveal(repeatPicker, searchAboveFirst: false)
@@ -1050,12 +1042,9 @@ final class CaptureExperienceUITests: XCTestCase {
         let timezoneBoundary = app.descendants(matching: .any)["CaptureQuickEntryRecurrenceTimezoneBoundary"].firstMatch
         reveal(timezoneBoundary)
         XCTAssertTrue(timezoneBoundary.label.contains("Pacific/Honolulu"))
-        XCTAssertTrue(timezoneBoundary.label.contains("even if this iPhone travels"))
+        XCTAssertTrue(timezoneBoundary.label.contains("when you travel"))
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "three-occurrence planning horizon")
-        ).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "does not schedule a reminder or provider calendar event")
+            NSPredicate(format: "label CONTAINS %@", "next three dates")
         ).firstMatch.exists)
 
         let save = app.buttons["CaptureQuickEntrySave"]
@@ -1087,7 +1076,6 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(boundary.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Due"].exists)
         XCTAssertTrue(boundary.label.contains("Today, Work, and Calendar"))
-        XCTAssertTrue(boundary.label.contains("does not schedule an alert or provider calendar event"))
 
         let save = app.buttons["CaptureQuickEntrySave"]
         XCTAssertTrue(save.isEnabled)
@@ -1096,7 +1084,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
     }
 
-    func testTaskQuickCaptureKeepsReminderIntentSeparateAndExplainsPermissionBoundary() {
+    func testTaskQuickCaptureUsesOrdinaryReminderLanguage() {
         app.tabBars.buttons["Record"].tap()
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
         reveal(taskButton)
@@ -1119,12 +1107,7 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(reminderDate)
         XCTAssertTrue(reminderDate.waitForExistence(timeout: 5))
         reveal(boundary)
-        XCTAssertTrue(boundary.label.contains("intent syncs to Nest"))
-        XCTAssertTrue(boundary.label.contains("privately schedules the alert"))
-        XCTAssertTrue(boundary.label.contains("only when you save"))
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "Due dates organize Quipsly")
-        ).firstMatch.exists)
+        XCTAssertTrue(boundary.label.contains("iPhone will remind you"))
 
         let save = app.buttons["CaptureQuickEntrySave"]
         XCTAssertTrue(save.isEnabled)

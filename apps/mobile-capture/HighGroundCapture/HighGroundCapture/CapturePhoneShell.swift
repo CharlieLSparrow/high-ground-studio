@@ -8411,11 +8411,6 @@ struct CaptureQuickEntryBar: View {
                 }
             }
 
-            Text("The phone journals first. Nest retries use the same ID, so a timeout cannot create a duplicate.")
-                .font(.caption2)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-                .foregroundStyle(.secondary)
         }
         .captureCard()
         .accessibilityElement(children: .contain)
@@ -9143,6 +9138,7 @@ struct CaptureQuickEntrySheet: View {
     @State private var destination = "SESSION"
     @State private var noteKind = MobileSessionNoteKind.sessionNote
     @State private var noteVisibility = MobileSessionNoteVisibility.authorPrivate
+    @State private var showsNoteDetails = false
     @FocusState private var focusedField: FocusedField?
 
     init(
@@ -9257,7 +9253,7 @@ struct CaptureQuickEntrySheet: View {
                 .accessibilityValue(recurrenceTimezoneID)
                 .accessibilityHint("Choose the timezone that owns this task's wall-clock schedule.")
                 .accessibilityIdentifier("CaptureQuickEntryRecurrenceTimezone")
-                Text("The wall-clock due time stays in \(recurrenceTimezoneID), even if this iPhone travels.")
+                Text("This schedule stays in \(recurrenceTimezoneID) when you travel.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("CaptureQuickEntryRecurrenceTimezoneBoundary")
@@ -9265,11 +9261,11 @@ struct CaptureQuickEntrySheet: View {
         } header: {
             Text("Repeat")
         } footer: {
-            Text(recurrenceMode == "COMPLETION"
-                ? "Quipsly creates one next occurrence after completion. It does not schedule a reminder or provider calendar event."
-                : recurrenceMode == "FIXED"
-                    ? "Quipsly creates a three-occurrence planning horizon at this local wall-clock time. It does not schedule a reminder or provider calendar event."
-                    : "One-time tasks can have a due date or private iPhone reminder below.")
+            if recurrenceMode == "COMPLETION" {
+                Text("The next task appears when this one is completed.")
+            } else if recurrenceMode == "FIXED" {
+                Text("Quipsly keeps the next three dates ready.")
+            }
         }
         .onChange(of: recurrenceMode) { _, newValue in
             if newValue != "NONE" {
@@ -9288,7 +9284,7 @@ struct CaptureQuickEntrySheet: View {
                         displayedComponents: [.date, .hourAndMinute]
                     )
                     .accessibilityIdentifier("CaptureQuickEntryDueDate")
-                    Text("This makes the task visible at the right time in Quipsly Today, Work, and Calendar. It does not schedule an alert or provider calendar event.")
+                    Text("This date appears in Today, Work, and Calendar.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CaptureQuickEntryDueDateBoundary")
@@ -9303,15 +9299,13 @@ struct CaptureQuickEntrySheet: View {
                         displayedComponents: [.date, .hourAndMinute]
                     )
                     .accessibilityIdentifier("CaptureQuickEntryReminderDate")
-                    Text("The reminder intent syncs to Nest, while this iPhone privately schedules the alert. Quipsly asks for notification permission only when you save.")
+                    Text("Your iPhone will remind you at this time.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CaptureQuickEntryReminderBoundary")
                 }
             } header: {
                 Text("Timing")
-            } footer: {
-                Text("Due dates organize Quipsly. Reminders are separate, device-local alerts with canonical intent in Nest. Neither creates a provider calendar event.")
             }
         }
     }
@@ -9462,8 +9456,7 @@ struct CaptureQuickEntrySheet: View {
             Form {
                 Section {
                     if kind == .source {
-                        LabeledContent("Destination", value: "Personal Inbox")
-                        LabeledContent("Shared Nest", value: "Not chosen yet")
+                        LabeledContent("Save to", value: "Personal Inbox")
                     } else {
                         Picker("Save to", selection: $destination) {
                             if session != nil {
@@ -9476,27 +9469,11 @@ struct CaptureQuickEntrySheet: View {
                         }
                         .pickerStyle(.navigationLink)
                         .accessibilityIdentifier(kind == .note ? "CaptureQuickEntryNoteDestination" : "CaptureQuickEntryDestination")
-                        if savesToHomeNest {
-                            LabeledContent("Destination", value: homeNest?.name ?? "Private Home Nest")
-                            LabeledContent("Session", value: "None")
-                        } else if let selectedProject {
-                            LabeledContent("Destination", value: selectedProject.name)
-                            LabeledContent("Project capture", value: "No Session invented")
-                        } else {
-                            LabeledContent("Session", value: session?.displayTitle ?? "Unavailable")
-                            LabeledContent("Nest", value: session?.projectName?.nonempty ?? session?.projectSlug?.nonempty ?? "Unfiled")
-                        }
                     }
                 } footer: {
                     Text(kind == .source
-                        ? "This source stays private and unfiled in your Inbox until you deliberately choose a Research Nest. It does not send, schedule, deliver, or publish anything."
-                        : savesToHomeNest
-                            ? kind == .note
-                                ? "This note journals to the protected phone outbox first, then becomes one private document-kernel note in your Home Nest. It does not invent a Session, send, schedule, deliver, or publish anything."
-                                : "This \(kind.title.lowercased()) journals to the protected phone outbox first, then becomes private Home Nest work assigned to you. It does not invent a Session, send, schedule, deliver, or publish anything."
-                        : selectedProject != nil
-                            ? "This capture journals to the protected phone outbox first, then saves directly in \(destinationLabel) without inventing a Session. It does not send, schedule, deliver, or publish anything."
-                            : "This explicit capture stays private to your account and Session access. It does not send, schedule, deliver, or publish anything.")
+                        ? "Saved privately to Inbox until you file it."
+                        : "Saved privately by default. If you are offline, Quipsly syncs it when you reconnect.")
                 }
 
                 Section(kind == .note ? "Note" : kind.title) {
@@ -9519,29 +9496,50 @@ struct CaptureQuickEntrySheet: View {
 
                 if savesSessionNote {
                     Section {
-                        Picker("Purpose", selection: $noteKind) {
-                            ForEach(availableNoteKinds) { purpose in
-                                Text(purpose.title).tag(purpose)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showsNoteDetails.toggle()
                             }
-                        }
-                        .pickerStyle(.navigationLink)
-                        .accessibilityIdentifier("CaptureQuickEntryNoteKind")
-
-                        Picker("Audience", selection: $noteVisibility) {
-                            ForEach(availableNoteVisibilities) { audience in
-                                Text(audience.title).tag(audience)
+                        } label: {
+                            HStack {
+                                Text("Note type and sharing")
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Text(noteVisibility.title)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: showsNoteDetails ? "chevron.up" : "chevron.down")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
                             }
+                            .contentShape(Rectangle())
                         }
-                        .pickerStyle(.navigationLink)
-                        .accessibilityIdentifier("CaptureQuickEntryNoteVisibility")
+                        .buttonStyle(.plain)
+                        .accessibilityValue("\(showsNoteDetails ? "Expanded" : "Collapsed"), \(noteVisibility.title)")
+                        .accessibilityIdentifier("CaptureQuickEntryNoteDetails")
 
-                        LabeledContent("Current audience", value: noteVisibility.title)
-                            .accessibilityIdentifier("CaptureQuickEntryNoteVisibilityReadback")
-                    } header: {
-                        Text("Purpose & audience")
-                    } footer: {
-                        Text("\(noteVisibility.boundary) Choosing an audience never sends a message, changes a task, schedules an event, or publishes anything.")
-                            .accessibilityIdentifier("CaptureQuickEntryNotePolicyBoundary")
+                        if showsNoteDetails {
+                            Picker("Note type", selection: $noteKind) {
+                                ForEach(availableNoteKinds) { purpose in
+                                    Text(purpose.title).tag(purpose)
+                                }
+                            }
+                            .pickerStyle(.navigationLink)
+                            .accessibilityIdentifier("CaptureQuickEntryNoteKind")
+
+                            Picker("Who can see this?", selection: $noteVisibility) {
+                                ForEach(availableNoteVisibilities) { audience in
+                                    Text(audience.title).tag(audience)
+                                }
+                            }
+                            .pickerStyle(.navigationLink)
+                            .accessibilityIdentifier("CaptureQuickEntryNoteVisibility")
+
+                            Text(noteVisibility.boundary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityIdentifier("CaptureQuickEntryNotePolicyBoundary")
+                        }
                     }
                 }
 
@@ -9620,22 +9618,9 @@ struct CaptureQuickEntrySheet: View {
                                 .accessibilityIdentifier("CaptureQuickEntryNewTagAdd")
                         }
                     } header: {
-                        Text("Nest tags")
-                    } footer: {
-                        Text(savesToHomeNest
-                            ? "Choose or name up to eight private Home Nest tags. The protected phone outbox retains their exact identities until Nest links them to this \(kind.title.lowercased())."
-                            : selectedProject != nil
-                                ? "Choose or name up to eight tags from \(destinationLabel). New names stay protected on this iPhone until that Nest creates or reuses the canonical vocabulary."
-                            : "Choose or name up to eight tags. New names are protected in the phone outbox, then Nest creates or reuses the private canonical tag during sync. Work, Search, and this Session use that same canonical tag; Today keeps it when the work is planned or needs attention there.")
+                        Text("Tags")
                     }
                 }
-
-                Section {
-                    Label("Saved on this iPhone before Nest sync", systemImage: "iphone.gen3.radiowaves.left.and.right")
-                    Label("Retry keeps one canonical ID", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
             }
             .accessibilityIdentifier("CaptureQuickEntryForm")
             .scrollDismissesKeyboard(.interactively)

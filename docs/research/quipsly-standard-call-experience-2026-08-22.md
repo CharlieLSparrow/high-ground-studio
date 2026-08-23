@@ -792,6 +792,15 @@ share`. The continuity panel says that the call, chat, recordings,
   follow-up creates an idempotent in-app read receipt automatically. Stopping
   sharing remains one reversible action, while source records, revisions, and
   delivery history stay preserved behind the ordinary interface.
+- Apply the same restraint to phone capture. The ordinary Note, Task, and Goal
+  form should show the destination, the thing being written, and familiar
+  optional organization controls. Notes start private. `Note type and sharing`
+  is one collapsed row for the less-common decision to change type or audience.
+  Due dates say where the task appears; reminders say the iPhone will remind
+  the person; repeat settings describe the resulting schedule. Durable outbox
+  IDs, retry identity, provider-calendar exclusions, and canonical storage
+  terminology belong in support evidence and failure recovery, not beneath
+  every successful form.
 
 ## Acceptance consequences
 

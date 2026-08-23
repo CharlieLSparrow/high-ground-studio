@@ -1158,3 +1158,27 @@ asked to press a button confirming that they opened the page they are already
 viewing. The focused follow-up suite passes 7/7 and the full web typecheck
 passes. Cross-account production readback, notification delivery, and
 minimally-instructed mobile comprehension remain deferred acceptance evidence.
+
+## Standard iPhone capture checkpoint — 2026-08-23
+
+Quick Note, Task, Goal, and Source no longer narrate canonical IDs, protected
+outbox mechanics, non-delivery policy, or duplicate destination facts beneath
+every successful form. The safety mechanisms are unchanged: writes remain
+account-bound, local-first, idempotent, and retryable. Their normal UI now leads
+with familiar fields and plain result language; technical policy stays
+available when recovery or support actually needs it.
+
+Session notes remain private by default. `Note type and sharing` is a single
+collapsed, accessible row with an ordinary chevron; expanding it reveals note
+type, audience, and the exact visibility boundary. Tasks describe due dates,
+reminders, recurrence, and travel-aware timezone behavior in familiar language
+without requiring the person to understand Nest persistence or provider event
+boundaries.
+
+The universal arm64/x86_64 iOS Simulator build passes. Six focused simulator
+journeys pass across private note capture, Home Nest destination, explicit
+client-safe sharing, recurring tasks, due dates, and iPhone reminders. The
+client-safe runtime smoke journey was updated to open the new disclosure before
+changing its audience. Physical keyboard behavior, actual notification
+permission prompting, offline process death, and minimally instructed human
+comprehension remain deferred ledger evidence.
