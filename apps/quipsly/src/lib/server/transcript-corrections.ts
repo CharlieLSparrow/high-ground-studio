@@ -353,6 +353,8 @@ async function loadAccessibleRoom(
     select: {
       id: true,
       title: true,
+      purpose: true,
+      scheduledStart: true,
       projectId: true,
       participants: {
         orderBy: { createdAt: "asc" },
@@ -601,6 +603,9 @@ export async function readTranscriptCorrectionDesk(input: {
     return {
       ok: true,
       roomId: room.id,
+      roomTitle: room.title ?? null,
+      roomPurpose: room.purpose,
+      scheduledStart: room.scheduledStart instanceof Date ? room.scheduledStart.toISOString() : room.scheduledStart ?? null,
       projectId: room.projectId ?? null,
       transcriptJobId: job?.id ?? null,
       transcriptStatus: job?.status ?? null,
@@ -622,6 +627,9 @@ export async function readTranscriptCorrectionDesk(input: {
     return {
       ok: true,
       roomId: room.id,
+      roomTitle: room.title ?? null,
+      roomPurpose: room.purpose,
+      scheduledStart: room.scheduledStart instanceof Date ? room.scheduledStart.toISOString() : room.scheduledStart ?? null,
       projectId: room.projectId ?? null,
       transcriptJobId: job.id,
       transcriptStatus: job.status,
@@ -710,12 +718,16 @@ export async function readTranscriptCorrectionDesk(input: {
   return {
     ok: true,
     roomId: room.id,
+    roomTitle: room.title ?? null,
+    roomPurpose: room.purpose,
+    scheduledStart: room.scheduledStart instanceof Date ? room.scheduledStart.toISOString() : room.scheduledStart ?? null,
     projectId: room.projectId ?? null,
     transcriptJobId: job.id,
     transcriptStatus: job.status,
     processing,
     gate,
     recording: recordingForPlaybackPreparation(job.asset, true),
+    sourceSha256: text(job.sourceSha256).toLowerCase() || null,
     playback,
     spectralContext,
     participants: (room.participants ?? []).map((participant: any) => ({

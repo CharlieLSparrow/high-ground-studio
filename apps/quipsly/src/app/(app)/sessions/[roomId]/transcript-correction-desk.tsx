@@ -184,6 +184,7 @@ type Desk = {
   ok: boolean;
   error?: string;
   roomId: string;
+  roomPurpose?: string | null;
   transcriptJobId: string | null;
   transcriptStatus: string | null;
   processing: null | {
@@ -1626,6 +1627,7 @@ export function TranscriptCorrectionDesk({
   const [desk, setDesk] = useState<Desk | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [mentorReportBusy, setMentorReportBusy] = useState(false);
   const [preparingPlayback, setPreparingPlayback] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [preparedTranscript, setPreparedTranscript] = useState<{
@@ -1901,6 +1903,57 @@ export function TranscriptCorrectionDesk({
     setMessage("The transcript file is prepared below. This embedded browser did not open a system share sheet.");
   }
 
+  async function shareMentorTranscript() {
+    if (mentorReportBusy || !desk?.gate.allowed || !desk.segments.length) return;
+    setMentorReportBusy(true);
+    setMessage(null);
+    try {
+      const query = new URLSearchParams();
+      if (recordingAssetId) query.set("recordingAssetId", recordingAssetId);
+      const response = await fetch(
+        `/api/sessions/${encodeURIComponent(roomId)}/transcript-report${query.size ? `?${query.toString()}` : ""}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error || "The mentor transcript could not be prepared.");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      const fallbackName = `${sessionTitle.trim() || "Coaching Session"} Transcript.docx`;
+      const filename = encodedName ? decodeURIComponent(encodedName) : fallbackName;
+      const file = new File([blob], filename, { type: blob.type });
+      const shareData = { title: "Coaching Session transcript", files: [file] };
+      if (
+        typeof navigator.share === "function"
+        && (typeof navigator.canShare !== "function" || navigator.canShare(shareData))
+      ) {
+        try {
+          await navigator.share(shareData);
+          setMessage("The mentor transcript is in the system share sheet. Quipsly does not claim who received it.");
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            setMessage("Sharing was canceled. Nothing was sent.");
+            return;
+          }
+        }
+      }
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      setMessage("Mentor transcript downloaded. It keeps coach/client columns, timestamps, and source identity.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The mentor transcript could not be prepared.");
+    } finally {
+      setMentorReportBusy(false);
+    }
+  }
+
   if (loading) return <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Loading transcript and recording…</section>;
   if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{message || "No transcript text is substituted and no evidence was changed."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
 
@@ -1946,6 +1999,7 @@ export function TranscriptCorrectionDesk({
           </div>
           <div className="flex flex-wrap gap-2">
             {canEditRecording ? recordingEditor ? <button type="button" aria-expanded={showRecordingEditor} aria-controls="inline-recording-editor" onClick={() => { setRecordingEditorFocus(null); setShowRecordingEditor((current) => !current); }} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />{showRecordingEditor ? "Close recording editor" : "Trim or cut recording"}</button> : <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=outputs#recording-share`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />Trim or cut recording</Link> : null}
+            {desk.roomPurpose === "COACHING" ? <button type="button" onClick={() => void shareMentorTranscript()} disabled={busy || mentorReportBusy || !desk.gate.allowed || !desk.segments.length} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-orange-300 bg-orange-50 px-4 py-2 text-xs font-black text-orange-950 disabled:opacity-50">{mentorReportBusy ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <Download size={15} aria-hidden="true" />}Mentor report</button> : null}
             <button type="button" onClick={() => void prepareTranscriptFile()} disabled={busy || !desk.gate.allowed || !desk.segments.length} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50"><Share2 size={15} aria-hidden="true" />Share transcript</button>
             <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh</button>
           </div>

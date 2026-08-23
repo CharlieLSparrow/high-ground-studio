@@ -54,6 +54,7 @@ function desk(playback: boolean) {
   return {
     ok: true,
     roomId: "room-1",
+    roomPurpose: "COACHING",
     transcriptJobId: "job-1",
     transcriptStatus: "COMPLETED",
     processing: {
@@ -114,6 +115,28 @@ describe("TranscriptCorrectionDesk", () => {
     expect(text).toContain("Speaker not attributed (provider-only)");
     expect(text).toContain("I will bring the evidence.");
     expect(text).toContain("Provider evidence remains immutable");
+  });
+
+  it("offers a conventional mentor report download inside a coaching Session", async () => {
+    const click = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: jest.fn(() => "blob:mentor-report") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: jest.fn() });
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ "Content-Disposition": "attachment; filename*=UTF-8''20260823%20Coaching%20Transcript.docx" }),
+        blob: async () => new Blob(["PK synthetic"], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" sessionTitle="Coaching Session" />);
+    fireEvent.click(await screen.findByRole("button", { name: /mentor report/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/sessions/room-1/transcript-report");
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/mentor transcript downloaded/i)).toBeInTheDocument();
   });
 
   beforeEach(() => {

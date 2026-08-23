@@ -190,6 +190,7 @@ struct CaptureTranscriptEvidence: Codable, Equatable {
 struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
     let ok: Bool
     let roomId: String
+    let roomPurpose: String?
     let transcriptJobId: String?
     let gate: CaptureTranscriptGate
     let playback: CaptureTranscriptPlayback?
@@ -265,6 +266,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
         return .init(
             ok: true,
             roomId: roomID,
+            roomPurpose: "COACHING",
             transcriptJobId: "preview-transcript-job",
             gate: .init(allowed: true, error: nil),
             playback: .init(
@@ -801,6 +803,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isMutating = false
     @Published private(set) var isUsingProtectedCache = false
+    @Published private(set) var isPreparingMentorReport = false
+    @Published private(set) var mentorReportURL: URL?
     @Published private(set) var message: String?
     @Published private(set) var errorMessage: String?
     @Published private(set) var packetGoalCandidates: [CapturePacketGoalCandidate] = []
@@ -866,7 +870,11 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     }
 
     func load(roomID: String, previewOnly: Bool) async {
-        activeRoomID = roomID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedRoomID = roomID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if activeRoomID != normalizedRoomID {
+            removePreparedMentorReport()
+        }
+        activeRoomID = normalizedRoomID
         guard !previewOnly else {
             desk = .preview(roomID: roomID)
             if CaptureLaunchConfiguration.usesTranscriptReviewOutboxUITest,
@@ -989,6 +997,63 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    func prepareMentorReport(roomID: String, sessionTitle: String) async {
+        guard !isPreparingMentorReport else { return }
+        guard AuthManager.shared.networkActionsAllowed else {
+            errorMessage = "Reconnect to Quipsly before preparing the private mentor report."
+            return
+        }
+        let normalizedRoomID = roomID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedRoomID.isEmpty,
+              let encodedRoomID = normalizedRoomID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(baseURL)/api/sessions/\(encodedRoomID)/transcript-report") else {
+            errorMessage = "The mentor report URL could not be created."
+            return
+        }
+        isPreparingMentorReport = true
+        errorMessage = nil
+        defer { isPreparingMentorReport = false }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard response.statusCode < 400 else {
+                throw captureTranscriptError(data: data, fallback: "The mentor report could not be prepared.")
+            }
+            guard data.starts(with: [0x50, 0x4B]) else {
+                throw captureTranscriptClientError("Quipsly did not return a valid Word report.")
+            }
+            removePreparedMentorReport()
+            let serverName = response.suggestedFilename?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let fallbackTitle = sessionTitle
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+                .prefix(80)
+            let proposedName = serverName?.hasSuffix(".docx") == true
+                ? serverName!
+                : "\(fallbackTitle.isEmpty ? "Coaching Session" : String(fallbackTitle)) Transcript.docx"
+            let safeName = proposedName
+                .components(separatedBy: CharacterSet(charactersIn: "/\\:"))
+                .joined(separator: "-")
+            let reportURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("quipsly-\(UUID().uuidString.lowercased())-\(safeName)")
+            try data.write(to: reportURL, options: [.atomic, .completeFileProtection])
+            mentorReportURL = reportURL
+            message = "Mentor report ready to share. Nothing has been sent yet."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func removePreparedMentorReport() {
+        if let mentorReportURL {
+            try? FileManager.default.removeItem(at: mentorReportURL)
+        }
+        mentorReportURL = nil
     }
 
     func acceptHumanCorrection(
@@ -3328,6 +3393,41 @@ struct CaptureTranscriptReviewView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if client.desk?.roomPurpose == "COACHING", !previewOnly {
+                if let reportURL = client.mentorReportURL {
+                    ShareLink(
+                        item: reportURL,
+                        subject: Text("\(sessionTitle) transcript"),
+                        message: Text("Coaching Session transcript for mentor review")
+                    ) {
+                        Label("Share mentor report", systemImage: "square.and.arrow.up")
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .accessibilityHint("Opens the standard share sheet. Quipsly does not send the report until you choose a destination.")
+                    .accessibilityIdentifier("CaptureTranscriptShareMentorReport")
+                } else {
+                    Button {
+                        Task {
+                            await client.prepareMentorReport(
+                                roomID: roomID,
+                                sessionTitle: sessionTitle
+                            )
+                        }
+                    } label: {
+                        Label(
+                            client.isPreparingMentorReport ? "Preparing report…" : "Mentor report",
+                            systemImage: "doc.richtext"
+                        )
+                        .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(client.isPreparingMentorReport || client.isLoading || client.isUsingProtectedCache)
+                    .accessibilityHint("Creates a coach-left, client-right Word transcript with timestamps and competency notes. Nothing is sent automatically.")
+                    .accessibilityIdentifier("CaptureTranscriptPrepareMentorReport")
+                }
+            }
         }
         .reviewCard()
     }
