@@ -443,7 +443,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         localVideoStatus = "Turning camera off…"
         localVideoSource?.setLiveVideoFrameConsumer(nil)
         let publication = localVideoPublication
-        clearLocalVideoBridge()
+        clearLocalVideoBridge(finishesTransition: false)
         if let publication, room.connectionState != .disconnected {
             do {
                 try await room.localParticipant.unpublish(publication: publication)
@@ -660,20 +660,24 @@ final class ProviderRoomController: NSObject, ObservableObject {
     }
 
     #if canImport(LiveKit)
-    private func clearLocalVideoBridge() {
+    private func clearLocalVideoBridge(finishesTransition: Bool = true) {
         localVideoSource?.setLiveVideoFrameConsumer(nil)
         localVideoSource = nil
         localVideoPublication = nil
         localVideoTrack = nil
         localVideoFrameBridge = nil
         isLocalVideoPublished = false
-        isChangingLocalVideo = false
+        if finishesTransition {
+            isChangingLocalVideo = false
+        }
         localVideoStatus = "Camera off"
     }
     #else
-    private func clearLocalVideoBridge() {
+    private func clearLocalVideoBridge(finishesTransition: Bool = true) {
         isLocalVideoPublished = false
-        isChangingLocalVideo = false
+        if finishesTransition {
+            isChangingLocalVideo = false
+        }
         localVideoStatus = "Camera off"
     }
     #endif

@@ -429,6 +429,7 @@ export function LiveSessionRoom({
     "Cloud recording backup is off. Local recording remains available.",
   );
   const [providerStartArmed, setProviderStartArmed] = useState(false);
+  const [remoteVideoTrackCount, setRemoteVideoTrackCount] = useState(0);
 
   const roomRef = useRef<Room | null>(null);
   const cameraWantedRef = useRef(cameraWanted);
@@ -446,6 +447,7 @@ export function LiveSessionRoom({
   const preflightStreamRef = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteMediaRef = useRef<HTMLDivElement | null>(null);
+  const remoteVideoTrackSidsRef = useRef(new Set<string>());
   const meterCleanupRef = useRef<(() => void) | null>(null);
   const audioMeterGenerationRef = useRef(0);
   const automaticPreviewAttemptedRef = useRef(false);
@@ -565,6 +567,8 @@ export function LiveSessionRoom({
 
   const clearRemoteMedia = useCallback(() => {
     remoteMediaRef.current?.replaceChildren();
+    remoteVideoTrackSidsRef.current.clear();
+    setRemoteVideoTrackCount(0);
   }, []);
 
   const stopAudioMeter = useCallback(() => {
@@ -780,8 +784,12 @@ export function LiveSessionRoom({
   const attachRemoteTrack = useCallback((track: RemoteTrack) => {
     const container = remoteMediaRef.current;
     if (!container) return;
+    const trackKey = track.sid || track.mediaStreamTrack.id;
+    container.querySelectorAll<HTMLElement>("[data-livekit-track-sid]").forEach((element) => {
+      if (element.dataset.livekitTrackSid === trackKey) element.remove();
+    });
     const element = track.attach();
-    element.dataset.livekitTrackSid = track.sid;
+    element.dataset.livekitTrackSid = trackKey;
     element.autoplay = true;
     if (track.kind === Track.Kind.Audio) {
       element.className = "hidden";
@@ -790,10 +798,19 @@ export function LiveSessionRoom({
       element.volume = useAudioHere ? 1 : 0;
       if (useAudioHere) void routeAudioOutput(element);
     } else {
-      element.className = "aspect-video w-full rounded-2xl bg-black object-cover";
+      element.className = "h-full min-h-0 w-full bg-black object-cover";
+      remoteVideoTrackSidsRef.current.add(trackKey);
+      setRemoteVideoTrackCount(remoteVideoTrackSidsRef.current.size);
     }
     container.appendChild(element);
   }, [routeAudioOutput]);
+
+  const detachRemoteTrack = useCallback((track: RemoteTrack) => {
+    track.detach().forEach((element) => element.remove());
+    if (track.kind !== Track.Kind.Video) return;
+    remoteVideoTrackSidsRef.current.delete(track.sid || track.mediaStreamTrack.id);
+    setRemoteVideoTrackCount(remoteVideoTrackSidsRef.current.size);
+  }, []);
 
   const refreshDevices = useCallback(async (
     permission: "none" | "microphone" | "camera" | "media" = "none",
@@ -1238,7 +1255,7 @@ export function LiveSessionRoom({
       roomRef.current = room;
       room
         .on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => attachRemoteTrack(track))
-        .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => track.detach().forEach((element) => element.remove()))
+        .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => detachRemoteTrack(track))
         .on(RoomEvent.ParticipantConnected, () => updateRoster(room))
         .on(RoomEvent.ParticipantDisconnected, () => updateRoster(room))
         .on(RoomEvent.ActiveSpeakersChanged, () => updateRoster(room))
@@ -1336,7 +1353,7 @@ export function LiveSessionRoom({
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a call connection error.");
       setMessage("The call couldn't connect. Check your internet connection and try again.");
     }
-  }, [attachRemoteTrack, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
+  }, [attachRemoteTrack, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
@@ -1700,10 +1717,28 @@ export function LiveSessionRoom({
             </section>
           ) : null}
 
-          <div className={`relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14] ${!connected && !cameraWanted ? "h-28" : ""}`}>
-            <video ref={localVideoRef} muted playsInline className={`w-full object-cover ${!connected && !cameraWanted ? "h-full" : "aspect-video"} ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`} />
-            {!cameraWanted || cameraMuted ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
-            <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">You · {sessionTitle}</div>
+          <div
+            data-testid="call-video-stage"
+            className={`relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14] ${!connected && !cameraWanted ? "h-28" : "aspect-video"}`}
+            aria-label={remoteVideoTrackCount > 0 ? "Call video stage with your preview" : "Your camera preview"}
+          >
+            <div
+              ref={remoteMediaRef}
+              className={`absolute inset-0 grid overflow-hidden bg-black ${remoteVideoTrackCount > 1 ? "grid-cols-2" : "grid-cols-1"}`}
+              aria-label="Remote participant media"
+            />
+            <video
+              ref={localVideoRef}
+              muted
+              playsInline
+              aria-label="Your camera"
+              className={remoteVideoTrackCount > 0
+                ? `absolute bottom-3 right-3 z-10 aspect-video w-[32%] max-w-56 rounded-xl border-2 border-white/90 bg-black object-cover shadow-2xl ${cameraWanted && !cameraMuted ? "" : "invisible"}`
+                : `absolute inset-0 h-full w-full object-cover ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`}
+            />
+            {remoteVideoTrackCount === 0 && (!cameraWanted || cameraMuted) ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
+            {remoteVideoTrackCount > 0 && (!cameraWanted || cameraMuted) ? <div className="absolute bottom-3 right-3 z-10 inline-flex min-h-10 items-center gap-2 rounded-full bg-black/75 px-3 text-[10px] font-black uppercase tracking-wide text-white"><CameraOff size={14} aria-hidden="true" /> You · Camera off</div> : null}
+            {remoteVideoTrackCount === 0 ? <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">You · {sessionTitle}</div> : cameraWanted && !cameraMuted ? <div className="absolute bottom-5 right-5 z-20 rounded-full bg-black/70 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">You</div> : null}
           </div>
 
           {connected ? (
@@ -1814,8 +1849,6 @@ export function LiveSessionRoom({
           {showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status) ? (
             <p data-testid="call-status-message" role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
           ) : null}
-
-          <div ref={remoteMediaRef} className="grid gap-3 md:grid-cols-2" aria-label="Remote participant media" />
 
         </div>
 

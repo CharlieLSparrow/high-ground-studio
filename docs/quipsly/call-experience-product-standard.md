@@ -93,12 +93,24 @@ Recurring complaints reveal the failure modes Quipsly must design out:
 - A primary iPhone endpoint subscribes to and shows participant video inside
   the familiar call card. The other person owns the main stage; the local
   camera becomes a conventional picture-in-picture preview.
+- The browser follows that same spatial rule. Before joining, the stage is the
+  local preview. Once another person's video arrives, their video becomes the
+  stage and the local camera moves to picture-in-picture. Remote audio remains
+  attached but visually hidden inside that stage; it never creates a second
+  vertical media area below the controls.
 - One Quipsly-owned `AVCaptureSession` feeds local preview, a late-frame-
   discarding video-data output for LiveKit, and the fragmented retained movie
   output. The Camera control publishes a custom LiveKit buffer track; it never
   invokes a second SDK camera capturer. Call video is bounded to 720p/24 for
   network and thermal health while the independently selected local source may
   remain 4K/24. Turning camera video on or off never starts or stops recording.
+- Browser conversation tracks and retained masters have deliberately different
+  signal requirements. The call microphone may use echo cancellation, noise
+  suppression, and automatic gain control for intelligibility. A separately
+  consented retained source requests 48 kHz unprocessed audio and, for video,
+  the highest supported local camera profile. Quipsly reports the settings the
+  browser actually granted and locks device selection during the take; it does
+  not label the processed call track as the studio master.
 - Front/back switching reconfigures that same physical camera owner. During a
   retained take it creates the existing explicit source boundary rather than
   inventing a seamless file or losing the live-room track.

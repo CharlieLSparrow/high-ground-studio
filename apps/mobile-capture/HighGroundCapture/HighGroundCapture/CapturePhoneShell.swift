@@ -12125,7 +12125,8 @@ private struct ProviderRoomControls: View {
                         providerRoom: model.providerRoom,
                         videoCapture: videoCapture,
                         canSwitchCamera:
-                            !model.isChangingCapture
+                            model.providerRoom.isLocalVideoPublished
+                            && !model.isChangingCapture
                             && !model.providerRoom.isChangingLocalVideo
                             && !model.providerRoom.isReconnecting,
                         onSwitchCamera: {

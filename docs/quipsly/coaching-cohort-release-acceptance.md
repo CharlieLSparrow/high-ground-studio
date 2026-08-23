@@ -1776,3 +1776,44 @@ Physical-device evidence remains on the continuous validation ledger:
 
 These hardware and human observations are required before a released claim of
 mobile video parity. They do not stop the next independent product lane.
+
+## Conventional browser video stage — 2026-08-23
+
+The browser call no longer presents the local preview and remote participant
+media as two vertically separated regions. It retains one stable stage across
+the green room and connected call. The local camera fills that stage before a
+remote video exists; the first remote video becomes the primary far-end view
+and the local camera moves to a labelled picture-in-picture preview. Turning
+the local camera off leaves the remote person in place and replaces only the
+small self-view with a conventional `You · Camera off` state. When the remote
+video unsubscribes, the local preview returns to the main stage without leaving
+stale media elements or stale participant counts.
+
+The retained browser source remains intentionally separate from the processed
+conversation track. Call audio requests echo cancellation, noise suppression,
+and gain control. The retained recorder requests the same selected physical
+device with processing disabled, 48 kHz audio, and the highest available video
+profile, then journals and uploads that independently verifiable source. Device
+selection is locked during the retained take. This preserves quality and source
+truth, but simultaneous access to the Canon R8, MV7i, and ordinary webcams still
+needs explicit hardware/browser proof; automated DOM and source checks cannot
+establish that a particular driver permits both tracks for a sustained call.
+
+Independent evidence:
+
+- the focused browser room suite passes 27/27, including remote-video
+  subscription, main-stage promotion, local picture-in-picture, unsubscribe
+  restoration, green-room ordering, reconnect, remembered devices, and
+  second-device behavior;
+- the Quipsly TypeScript 7 typecheck passes after route generation; and
+- the iPhone durability and shared mobile source suites remain green at 93/93
+  and 107/107 after the camera teardown race and camera-switch affordance were
+  tightened.
+
+Physical evidence remains on the continuous validation ledger: run Chrome with
+the MV7i and Canon R8, confirm the far-end video and call audio remain stable
+while a raw retained source starts and stops, inspect the actual retained track
+settings, and prove upload, synchronization, and playback. Repeat with the
+built-in microphone/camera and a second participant. A failed hardware driver
+must produce one plain-language recovery action while keeping the conversation
+usable; it must not silently substitute the call track and claim studio quality.
