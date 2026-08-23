@@ -167,7 +167,7 @@ describe("Session source journey projection", () => {
     }));
   });
 
-  it("keeps an observed but unplanned source visible as attention instead of blessing it", () => {
+  it("accepts a verified observed source without requiring advance device-plan paperwork", () => {
     const source = retainedSource();
     const inputTopology = topology(source);
     inputTopology.expectedSources = [];
@@ -181,11 +181,14 @@ describe("Session source journey projection", () => {
     expect(projection.journeys).toHaveLength(1);
     expect(projection.journeys[0]).toMatchObject({
       id: "observed:asset-1",
-      state: "ATTENTION",
+      state: "COMPLETE",
     });
     expect(projection.journeys[0]!.checkpoints).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "plan", state: "HELD" }),
+      expect.objectContaining({ id: "plan", state: "NOT_APPLICABLE" }),
+      expect.objectContaining({ id: "capture", state: "COMPLETE" }),
+      expect.objectContaining({ id: "retention", state: "COMPLETE" }),
     ]));
+    expect(projection.boundaries.sourcePlanIsOptionalForVerifiedObservedMedia).toBe(true);
   });
 
   it("shows a missing planned master even when no device or file ever appeared", () => {

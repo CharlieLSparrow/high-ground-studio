@@ -267,6 +267,16 @@ if (controlledSpeechFlight) {
     true,
     "Automatic audio preparation changed an original participant source.",
   );
+  assert.equal(
+    audioPolish?.calmRecordingSummaryRendered,
+    true,
+    "The ordinary Session did not reduce post-call evidence to one calm recording summary.",
+  );
+  assert.equal(
+    audioPolish?.expertRecordingDetailsCollapsedByDefault,
+    true,
+    "Production evidence was expanded before the coach requested it.",
+  );
   assert(
     ["improved-listening-copy", "already-balanced"].includes(
       audioPolish?.outcome,
@@ -360,6 +370,10 @@ const result = {
         improvedReadyState: audioPolish.improvedReadyState,
         originalSourceAndCaptureManifestUnchanged:
           audioPolish.originalSourceAndCaptureManifestUnchanged,
+        calmRecordingSummaryRendered:
+          audioPolish.calmRecordingSummaryRendered,
+        expertRecordingDetailsCollapsedByDefault:
+          audioPolish.expertRecordingDetailsCollapsedByDefault,
       }
     : null,
   interactionSurfaceEvidence: {
@@ -393,6 +407,10 @@ const result = {
         share.boundaries?.revokeWasExplicit === true,
       automaticPostCallAudioReadiness:
         controlledSpeechFlight && audioPolish?.actionOperated === false,
+      calmPostCallRecordingSummary:
+        controlledSpeechFlight &&
+        audioPolish?.calmRecordingSummaryRendered === true &&
+        audioPolish?.expertRecordingDetailsCollapsedByDefault === true,
     },
     browserInitiatedServiceMechanics: {
       transcriptWorkerAndProtectedPlayback: true,

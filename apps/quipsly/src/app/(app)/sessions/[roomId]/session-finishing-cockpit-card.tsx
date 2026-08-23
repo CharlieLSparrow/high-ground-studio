@@ -63,6 +63,31 @@ function checkpointAction(input: {
 export function SessionFinishingCockpitCard(props: Props) {
   const cockpit = buildSessionFinishingCockpit(props);
   const sourceJourney = buildSessionSourceJourneyProjection(props);
+  const protectedSourceCount = props.sourceEvidence.counts.VERIFIED_MATCH;
+  const completedTranscriptCount = props.finishingEvidence.transcriptJobs.filter(
+    (job) => job.status === "COMPLETED" && job.segmentCount > 0,
+  ).length;
+  const firstAttention = cockpit.attention[0] ?? null;
+  const recordingHeadline = sourceJourney.counts.attention > 0
+    ? `${sourceJourney.counts.attention} recording ${sourceJourney.counts.attention === 1 ? "item needs" : "items need"} attention`
+    : sourceJourney.counts.inProgress > 0
+      ? "Finishing your recording"
+      : protectedSourceCount > 0
+        ? "Recording protected"
+        : "Waiting for recording";
+  const recordingDetail = sourceJourney.counts.attention > 0
+    ? "Quipsly preserved everything it received. Open the next action to recover or review the affected source."
+    : sourceJourney.counts.inProgress > 0
+      ? "You can leave this page. Quipsly will keep checking the recordings and prepare the transcript automatically."
+      : protectedSourceCount > 0
+        ? `${protectedSourceCount} participant-owned ${protectedSourceCount === 1 ? "source is" : "sources are"} verified and ready to play. Originals remain unchanged.`
+        : "Record this Session when everyone is ready. Missing expected participants remain visible.";
+  const primaryHref = firstAttention?.href ??
+    (completedTranscriptCount > 0
+      ? laneHref(props.roomId, "transcript")
+      : laneHref(props.roomId, "recordings"));
+  const primaryLabel = firstAttention?.actionLabel ??
+    (completedTranscriptCount > 0 ? "Review transcript" : "Open recording");
   const severityStyle = {
     BLOCKER: "border-rose-200 bg-rose-50 text-rose-950",
     HIGH: "border-amber-200 bg-amber-50 text-amber-950",
@@ -78,16 +103,22 @@ export function SessionFinishingCockpitCard(props: Props) {
   return <section className="rounded-3xl border border-[#ddcdaF] bg-[#fffdf8] p-5 shadow-sm sm:p-6" aria-labelledby="session-finishing-cockpit-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="max-w-3xl">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">Episode & Session finishing cockpit</p>
-        <h2 id="session-finishing-cockpit-heading" className="mt-1 font-serif text-3xl font-black text-[#3d3122]">What needs attention next</h2>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">One ranked projection over canonical source, transcript, audio-analysis, Studio handoff, and delivery evidence. It creates no workflow state and never treats a missing receipt as completed work.</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">Your recording</p>
+        <h2 id="session-finishing-cockpit-heading" className="mt-1 font-serif text-3xl font-black text-[#3d3122]">{recordingHeadline}</h2>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">{recordingDetail}</p>
       </div>
-      <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
-        <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-900">{cockpit.counts.blockers} blockers</span>
-        <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-900">{cockpit.counts.high} high</span>
-        <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-violet-900">{cockpit.counts.review} review</span>
-      </div>
+      <Link href={primaryHref} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 py-2 text-xs font-black uppercase tracking-wide text-white">{primaryLabel}<ArrowRight size={14} aria-hidden="true" /></Link>
     </div>
+
+    <dl className="mt-5 grid gap-2 sm:grid-cols-3" aria-label="Recording readiness">
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3"><dt className="text-[9px] font-black uppercase tracking-wide text-emerald-800">Sources</dt><dd className="mt-1 text-sm font-black text-emerald-950">{protectedSourceCount > 0 ? `${protectedSourceCount} protected` : sourceJourney.counts.inProgress > 0 ? "Finishing" : "Not recorded"}</dd></div>
+      <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3"><dt className="text-[9px] font-black uppercase tracking-wide text-sky-800">Transcript</dt><dd className="mt-1 text-sm font-black text-sky-950">{completedTranscriptCount > 0 ? `${completedTranscriptCount} ready` : protectedSourceCount > 0 ? "Preparing automatically" : "After recording"}</dd></div>
+      <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3"><dt className="text-[9px] font-black uppercase tracking-wide text-violet-800">Edit & share</dt><dd className="mt-1 text-sm font-black text-violet-950">{protectedSourceCount > 0 ? "Available here" : "After recording"}</dd></div>
+    </dl>
+
+    <details className="mt-5 rounded-2xl border border-slate-200 bg-white/70 p-4">
+      <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-violet-900">Recording details</summary>
+      <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]">Technical source, transcript, editor, and delivery evidence. Most people never need this; it remains available for support, recovery, and professional review.</p>
 
     <ol className="mt-6 grid gap-3 lg:grid-cols-5" aria-label="Finishing stages">
       {cockpit.stages.map((stage, index) => <li key={stage.id} className={`relative rounded-2xl border p-4 ${stageStyle[stage.state]}`}>
@@ -164,5 +195,6 @@ export function SessionFinishingCockpitCard(props: Props) {
         </li>)}
       </ol> : <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-950">No source, transcript, analysis-coverage, Studio-integrity, or delivery attention item is projected from the current canonical evidence.</p>}
     </div>
+    </details>
   </section>;
 }

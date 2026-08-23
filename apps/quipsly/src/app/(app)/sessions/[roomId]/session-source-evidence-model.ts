@@ -481,6 +481,14 @@ function isProviderReceiptSlot(row: RecordingAssetEvidenceRow) {
     && manifest.source === "provider-recording-receipt-slot";
 }
 
+function isDerivedSessionOutput(row: RecordingAssetEvidenceRow) {
+  const manifest = object(row.localManifestJson);
+  const share = object(manifest.sessionRecordingShare);
+  return manifest.source === "session-recording-share"
+    && share.originalsRemainImmutable === true
+    && Boolean(text(share.outputId));
+}
+
 function isNestExternalRecordingImport(manifest: UnknownRecord) {
   const profile = object(manifest.reportedSourceProfile);
   return profile.kind === "quipsly-nest-external-recording-import-v1"
@@ -497,7 +505,7 @@ export function buildSessionSourceEvidence(input: {
   audioSignalProfileJobs?: AudioSignalProfileJobRow[];
 }): SessionSourceEvidence {
   const sources = input.recordingAssets
-    .filter((row) => !isProviderReceiptSlot(row))
+    .filter((row) => !isProviderReceiptSlot(row) && !isDerivedSessionOutput(row))
     .map((recording) => {
       const manifest = object(recording.localManifestJson);
       const finalization = latestFinalization(input.finalizationReceipts, recording.id);

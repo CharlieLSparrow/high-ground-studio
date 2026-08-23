@@ -766,6 +766,36 @@ describe("Session readiness topology", () => {
     });
   });
 
+  it("keeps a share derivative out of participant-source readiness", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      captures: [],
+      recordings: [{
+        id: "share-preview",
+        participantId: null,
+        kind: "SERVER_MIX",
+        status: "VERIFIED",
+        fileName: "recording-share-output.m4a",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+        localManifestJson: {
+          exactBytesVerified: true,
+          source: "session-recording-share",
+          storageGeneration: "1785990000000",
+          sessionRecordingShare: {
+            outputId: "share-1",
+            originalsRemainImmutable: true,
+          },
+        },
+      }],
+    });
+
+    expect(topology.people[0].sources).toEqual([]);
+    expect(topology.unassignedSources).toEqual([]);
+    expect(topology.summary.retainedSourceCount).toBe(0);
+  });
+
   it("deduplicates refreshed grants but never turns them into live presence", () => {
     const topology = buildSessionReadinessTopology({
       generatedAt,

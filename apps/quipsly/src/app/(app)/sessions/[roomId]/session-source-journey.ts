@@ -34,6 +34,7 @@ export type SessionSourceJourneyProjection = {
     serverBytesDoNotProveEndpointDrain: true;
     transcriptAttemptIsNotReferenceTruth: true;
     editorMaterializationIsNotPublication: true;
+    sourcePlanIsOptionalForVerifiedObservedMedia: true;
   };
 };
 
@@ -76,8 +77,8 @@ function planCheckpoint(expectation: SessionReadinessExpectedSource | null): Ses
   if (!expectation) return {
     id: "plan",
     label: "Plan",
-    state: "HELD",
-    detail: "This observed source is not bound to a retained-source plan item.",
+    state: "NOT_APPLICABLE",
+    detail: "Recorded without an advance device plan. Capture and exact-byte evidence remain authoritative.",
     at: null,
   };
   if (expectation.status === "waived" || expectation.status === "canceled") return {
@@ -390,6 +391,7 @@ export function buildSessionSourceJourneyProjection(input: {
       serverBytesDoNotProveEndpointDrain: true,
       transcriptAttemptIsNotReferenceTruth: true,
       editorMaterializationIsNotPublication: true,
+      sourcePlanIsOptionalForVerifiedObservedMedia: true,
     },
   };
 }

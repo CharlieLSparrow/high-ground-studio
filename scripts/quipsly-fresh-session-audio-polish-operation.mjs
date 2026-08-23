@@ -242,6 +242,46 @@ async function operateRenderedSession({ baseURL, context, password }) {
       callbackPath,
     });
     await page.getByRole("heading", { name: "Your recordings are safe and ready" }).waitFor({ timeout: 30_000 });
+    const recordingSummary = page.locator(
+      'section[aria-labelledby="session-finishing-cockpit-heading"]',
+    );
+    const recordingHeadline = recordingSummary.locator(
+      "#session-finishing-cockpit-heading",
+    );
+    await recordingHeadline.waitFor({ timeout: 30_000 });
+    const recordingHeadlineText = await recordingHeadline.innerText();
+    checkpoint(`observed recording summary: ${recordingHeadlineText}`);
+    const projectedSourceDetail = await recordingSummary
+      .getByTestId("session-source-journey")
+      .textContent()
+      .catch(() => null);
+    assert(
+      recordingHeadlineText === "Recording protected",
+      `Completed participant recordings did not resolve to a calm protected state: ${recordingHeadlineText}. Projection: ${String(projectedSourceDetail || "unavailable").replace(/\s+/g, " ").slice(0, 1600)}`,
+    );
+    await recordingSummary.getByText(/participant-owned sources are verified and ready to play/i).waitFor();
+    const recordingReadiness = recordingSummary.locator(
+      'dl[aria-label="Recording readiness"]',
+    );
+    await recordingReadiness.getByText("Sources", { exact: true }).waitFor();
+    await recordingReadiness.getByText("Transcript", { exact: true }).waitFor();
+    await recordingReadiness.getByText("Edit & share", { exact: true }).waitFor();
+    const recordingDetails = recordingSummary.locator("details").first();
+    assert(
+      (await recordingDetails.getAttribute("open")) === null,
+      "Production evidence expanded before the coach requested recording details.",
+    );
+    assert(
+      !(await recordingSummary
+        .getByRole("heading", { name: "What happened to each planned master" })
+        .isVisible()
+        .catch(() => false)),
+      "Expert source-plan evidence was visible in the ordinary recording summary.",
+    );
+    await recordingSummary.getByText("Recording details", { exact: true }).click();
+    await recordingSummary
+      .getByRole("heading", { name: "What happened to each planned master" })
+      .waitFor();
     const sourceRegion = page.locator('section[aria-labelledby="source-evidence-heading"]');
     try {
       await assertNoHorizontalOverflow(sourceRegion, "Session recording quality");
@@ -338,6 +378,8 @@ async function operateRenderedSession({ baseURL, context, password }) {
       mobileViewportOperated: true,
       horizontalOverflow: false,
       browserExceptions: browserErrors.length,
+      calmRecordingSummaryRendered: true,
+      expertRecordingDetailsCollapsedByDefault: true,
     };
   } finally {
     await browserContext.close();

@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import "@testing-library/jest-dom";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import { SessionFinishingCockpitCard } from "./session-finishing-cockpit-card";
 import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessTopology } from "./session-readiness-topology";
@@ -154,6 +154,14 @@ describe("Session finishing cockpit card", () => {
       }}
     />);
 
+    expect(screen.getByRole("heading", { name: "Recording protected" })).toBeInTheDocument();
+    expect(screen.getByText("1 protected")).toBeInTheDocument();
+    expect(screen.getByText("1 ready")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review transcript" })).toHaveAttribute(
+      "href",
+      "/sessions/episode-9-room?mode=transcript",
+    );
+    fireEvent.click(screen.getByText("Recording details"));
     const journey = screen.getByTestId("session-source-journey");
     expect(within(journey).getByRole("heading", { name: "What happened to each planned master" })).toBeInTheDocument();
     expect(within(journey).getByRole("heading", { name: "Charlie clean microphone master" })).toBeInTheDocument();
@@ -181,6 +189,7 @@ describe("Session finishing cockpit card", () => {
       }}
     />);
 
+    fireEvent.click(screen.getByText("Recording details"));
     expect(screen.getByRole("link", { name: "Open this transcript" })).toHaveAttribute(
       "href",
       "/sessions/episode-9-room?mode=transcript&source=asset-mv7i",

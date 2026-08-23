@@ -304,6 +304,43 @@ function completedAudioSignalJob(sourceSha256 = sha256) {
 }
 
 describe("Session source evidence", () => {
+  it("does not recast an immutable share derivative as a participant source", () => {
+    const input = fixture();
+    input.recordingAssets.push({
+      id: "share-preview",
+      roomId,
+      fileName: "recording-share-output.m4a",
+      kind: "SERVER_MIX",
+      status: "VERIFIED",
+      byteSize: BigInt(2048),
+      storageBucket: "quipsly-private-media",
+      storageObjectPath: "session-exports/share.m4a",
+      checksum: "b".repeat(64),
+      verifiedAt: new Date("2026-07-29T15:10:00Z"),
+      recordedStartedAt: null,
+      recordedStoppedAt: null,
+      localManifestJson: {
+        exactBytesVerified: true,
+        source: "session-recording-share",
+        storageGeneration: "1743",
+        sessionRecordingShare: {
+          outputId: "share-1",
+          originalsRemainImmutable: true,
+        },
+      },
+    });
+
+    const result = buildSessionSourceEvidence(input);
+    expect(result.sources).toHaveLength(1);
+    expect(result.sources[0].recordingAssetId).toBe("asset-1");
+    expect(result.counts).toEqual({
+      VERIFIED_MATCH: 1,
+      HELD: 0,
+      DRIFT: 0,
+      INCOMPLETE: 0,
+    });
+  });
+
   it("exposes audio improvement coordinates only for the canonical Session project", () => {
     const input = fixture();
     input.project = { id: "project-coaching-1", slug: "coach-home" };

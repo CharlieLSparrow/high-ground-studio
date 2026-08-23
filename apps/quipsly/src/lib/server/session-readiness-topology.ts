@@ -539,6 +539,14 @@ function recordingSource(
   };
 }
 
+function isDerivedSessionOutput(recording: SessionTopologyRecordingInput) {
+  const manifest = object(recording.localManifestJson);
+  const share = object(manifest.sessionRecordingShare);
+  return manifest.source === "session-recording-share"
+    && share.originalsRemainImmutable === true
+    && Boolean(text(share.outputId));
+}
+
 function endpointKey(grant: SessionTopologyGrantInput) {
   const instanceId = text(grant.clientInstanceId);
   return instanceId
@@ -582,13 +590,15 @@ export function buildSessionReadinessTopology(input: {
       latestFinalizationByRecordingAssetId.set(recordingAssetId, finalization);
     }
   }
-  const recordingSources = input.recordings.map((recording) => ({
+  const recordingSources = input.recordings
+    .filter((recording) => !isDerivedSessionOutput(recording))
+    .map((recording) => ({
     participantId: recording.participantId ?? null,
     source: recordingSource(
       recording,
       latestFinalizationByRecordingAssetId.get(recording.id) ?? null,
     ),
-  }));
+    }));
   const recordingCaptureIds = new Set(
     recordingSources.map(({ source }) => source.captureId?.toLowerCase() ?? null).filter(Boolean),
   );

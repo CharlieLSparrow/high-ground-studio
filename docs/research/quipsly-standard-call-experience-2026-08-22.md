@@ -553,6 +553,20 @@ share`. The continuity panel says that the call, chat, recordings,
   receipts. Per-installation diagnostics remain collapsed. This status proves
   local recorder coordination only; exact-byte upload verification remains a
   separate downstream fact.
+- Keep professional source planning optional for ordinary calls. A verified
+  participant recording without an advance device plan is not an error and
+  must not become recurring setup paperwork. Explicit plans still preserve a
+  missing required master for complex productions, but Capture boundaries and
+  exact-byte verification are sufficient for a normal coaching source.
+- Never project a light-edit/share render as another participant master.
+  Derived previews retain immutable lineage to their originals, but remain
+  outputs; creating one must not add a false missing-source warning to the
+  Session.
+- Lead the post-call surface with `Recording protected`, `Finishing your
+  recording`, or one plain attention count. Sources, transcript, and edit/share
+  readiness stay visible at a glance. The former five-stage finishing cockpit,
+  source-plan checkpoints, and evidence identities remain available under a
+  collapsed `Recording details` disclosure for support and professional review.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB
