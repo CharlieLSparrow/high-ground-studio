@@ -13,6 +13,16 @@ export {
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
 };
 
+export const MOBILE_CAPTURE_CONSENT_PRESENTATION_SURFACES = Object.freeze([
+  "quipsly-capture-consent-v2",
+  "quipsly-session-workspace-consent-v1",
+]);
+
+export function isSupportedMobileCaptureConsentPresentationSurface(value) {
+  return typeof value === "string"
+    && MOBILE_CAPTURE_CONSENT_PRESENTATION_SURFACES.includes(value.trim());
+}
+
 function metadataObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value
@@ -85,7 +95,9 @@ export function mobileCaptureConsentHasCurrentPolicyEvidence(consent) {
     && consent.evidenceVersion === MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION
     && consent.recordingChoiceExplicit === true
     && consent.allAudibleParticipantsNotifiedAndAgreed === true
-    && consent.presentationSurface === "quipsly-capture-consent-v2"
+    && isSupportedMobileCaptureConsentPresentationSurface(
+      consent.presentationSurface,
+    )
     && consent.presentationVersion === 1
   );
 }

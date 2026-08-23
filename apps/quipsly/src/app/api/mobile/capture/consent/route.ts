@@ -7,9 +7,11 @@ import {
 } from "@/lib/server/mobile-capture-room-readiness";
 import {
   MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+  MOBILE_CAPTURE_CONSENT_PRESENTATION_SURFACES,
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+  isSupportedMobileCaptureConsentPresentationSurface,
   mobileCaptureConsentHasCurrentPolicyEvidence,
 } from "@/lib/server/mobile-capture-consent-readiness.js";
 import { quarantineRoomTranscriptsForConsentChange } from "@/lib/server/capture-transcript-privacy";
@@ -24,15 +26,8 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-const CONSENT_PRESENTATION_SURFACES = [
-  "quipsly-capture-consent-v2",
-  "quipsly-session-workspace-consent-v1",
-] as const;
-
 export function isSupportedConsentPresentationSurface(value: unknown) {
-  return CONSENT_PRESENTATION_SURFACES.includes(
-    text(value) as (typeof CONSENT_PRESENTATION_SURFACES)[number],
-  );
+  return isSupportedMobileCaptureConsentPresentationSurface(value);
 }
 
 function consentActionFromBody(body: Record<string, unknown>) {
@@ -88,7 +83,7 @@ export async function GET(request: Request) {
     text: MOBILE_CAPTURE_CONSENT_TEXT,
     sha256: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
     surface: "quipsly-capture-consent-v2",
-    supportedSurfaces: CONSENT_PRESENTATION_SURFACES,
+    supportedSurfaces: MOBILE_CAPTURE_CONSENT_PRESENTATION_SURFACES,
     presentationVersion: 1,
   };
   const callRoomId =
@@ -265,7 +260,7 @@ export async function POST(request: Request) {
             text: MOBILE_CAPTURE_CONSENT_TEXT,
             sha256: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
             surface: "quipsly-capture-consent-v2",
-            supportedSurfaces: CONSENT_PRESENTATION_SURFACES,
+            supportedSurfaces: MOBILE_CAPTURE_CONSENT_PRESENTATION_SURFACES,
             presentationVersion: 1,
           },
         },
