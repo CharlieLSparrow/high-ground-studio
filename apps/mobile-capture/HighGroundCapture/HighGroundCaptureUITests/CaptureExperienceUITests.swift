@@ -882,15 +882,14 @@ final class CaptureExperienceUITests: XCTestCase {
         destination.tap()
         XCTAssertTrue(app.buttons["Home Nest"].waitForExistence(timeout: 3))
         app.buttons["Home Nest"].tap()
-        XCTAssertTrue(app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Home Nest")
-        ).firstMatch.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Session, None")
-        ).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "private Home Nest work assigned to you")
-        ).firstMatch.exists)
+        XCTAssertEqual(destination.value as? String, "Home Nest")
+        XCTAssertTrue(app.staticTexts[
+            "Saved privately by default. If you are offline, Quipsly syncs it when you reconnect."
+        ].exists)
+        XCTAssertTrue(
+            app.buttons["CaptureQuickEntryTag_preview-home-personal"].exists,
+            "Choosing Home Nest must project its exact reusable tags instead of retaining Session tags."
+        )
 
         let title = app.textFields["CaptureQuickEntryTitle"]
         title.tap()
