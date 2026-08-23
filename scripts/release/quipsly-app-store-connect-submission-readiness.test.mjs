@@ -7,6 +7,7 @@ import {
   summarizeSubmissionReadiness,
 } from "./quipsly-app-store-connect-submission-readiness.mjs";
 import { readAppStoreMetadata } from "./quipsly-capture-app-store-metadata.mjs";
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const metadata = readAppStoreMetadata("release/app-store/quipsly-capture/en-US.json");
 const options = parseArguments([]);
@@ -154,7 +155,7 @@ function completeFixture() {
 }
 
 test("submission auditor has no mutation mode", () => {
-  assert.equal(parseArguments([]).build, "32");
+  assert.equal(parseArguments([]).build, QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber);
   assert.throws(() => parseArguments(["--apply"]), /Unknown argument/);
   assert.throws(() => parseArguments(["--submit"]), /Unknown argument/);
 });
@@ -175,7 +176,7 @@ test("complete provider state still preserves manual legal and physical gates", 
     [
       "app-privacy-manual-publication",
       "dsa-trader-manual-verification",
-      "physical-build32-acceptance",
+      `physical-build${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber}-acceptance`,
       "production-account-deletion-proof",
     ],
   );

@@ -5,6 +5,17 @@ import {
   parseArguments,
   validateMutationTarget,
 } from "./quipsly-app-store-connect-listing.mjs";
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
+
+const releaseConfirmation = [
+  QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
+  QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
+  QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
+].join("/");
+
+function escapedPattern(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 test("listing operator is read-only unless apply is explicit", () => {
   const options = parseArguments(["--api-key-path", "/private/key.json"]);
@@ -41,21 +52,28 @@ test("build-only apply requires the exact provider target", () => {
   const options = parseArguments([
     "--apply",
     "--assign-build-only",
-    "--confirm-target", "6780995957/1.0/32",
+    "--confirm-target", releaseConfirmation,
   ]);
   assert.equal(options.assignBuildOnly, true);
   assert.doesNotThrow(() => validateMutationTarget(options));
 });
 
 test("apply rejects a missing or stale provider confirmation", () => {
+  const currentBuild = QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber;
+  const staleBuild = String(Math.max(0, Number.parseInt(currentBuild, 10) - 1));
+  const expectedError = new RegExp(`--confirm-target ${escapedPattern(releaseConfirmation)}`);
   assert.throws(
-    () => validateMutationTarget(parseArguments(["--apply", "--build", "32"])),
-    /--confirm-target 6780995957\/1\.0\/32/,
+    () => validateMutationTarget(parseArguments(["--apply"])),
+    expectedError,
   );
   assert.throws(
     () => validateMutationTarget(parseArguments([
-      "--apply", "--build", "32", "--confirm-target", "6780995957/1.0/31",
+      "--apply", "--confirm-target", [
+        QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
+        QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
+        staleBuild,
+      ].join("/"),
     ])),
-    /--confirm-target 6780995957\/1\.0\/32/,
+    expectedError,
   );
 });

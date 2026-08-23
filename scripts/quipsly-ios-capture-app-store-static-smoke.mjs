@@ -498,8 +498,8 @@ for (const needle of [
   );
 }
 requireIncludes(uploadText, "lastRecordingAssetId", "Capture preserves canonical RecordingAsset identity separately from Studio MediaAsset identity");
-requireIncludes(capturePhoneShellText, "Internal review only · no note, task, goal, client delivery, message, calendar event, or publication", "packet lane review states its no-side-effect boundary on the phone");
-requireIncludes(capturePhoneShellText, "Preview shows the production review workflow without changing saved packet state.", "packet lane preview remains demonstrative and read-only");
+requireIncludes(capturePhoneShellText, "This choice only updates this private suggestion group. It does not create a note, task, or goal, and it does not send or publish anything.", "packet lane review states its no-side-effect boundary on the phone");
+requireIncludes(capturePhoneShellText, "Preview shows the real review workflow without keeping any suggestion.", "packet lane preview remains demonstrative and read-only");
 assert(!mobileText.includes("struct RecorderControlBoard"), "the retired duplicate recorder board is absent from the shipping target");
 requireIncludes(capturePhoneShellText, "MobileClientFollowUpCard(", "the production phone recorder reaches the released client follow-up card");
 requireIncludes(capturePhoneShellText, "MobileCoachClientFollowUpCard(", "the production phone recorder reaches the assigned-coach follow-up editor");
@@ -658,7 +658,8 @@ requireIncludes(capturePhoneShellText, "publishChatPersistedHint(hint)", "the sh
 requireIncludes(capturePhoneShellText, "episodeChat.receiveLiveHint", "the shipping Capture shell refreshes the episode thread from received hints");
 requireIncludes(capturePhoneShellText, "sessionChat.receiveLiveHint", "the shipping Capture shell refreshes only the exact Session thread from received hints");
 requireIncludes(capturePhoneShellText, "CaptureRecorderInputEvidence", "the primary recorder exposes inspectable audio evidence instead of an opaque percentage");
-requireIncludes(capturePhoneShellText, "Recorder average and peak power in dBFS—not LUFS or true peak.", "native audio metering names the AVAudioRecorder measurements and analysis limits");
+requireIncludes(capturePhoneShellText, 'accessibilityLabel("Microphone level")', "native audio metering uses a familiar primary label");
+requireIncludes(capturePhoneShellText, "Not LUFS or true peak.", "native audio metering keeps its engineering limits available to accessibility and diagnostics");
 requireIncludes(capturePhoneShellText, "averagePowerDB: audioCapture.inputLevelDB", "the recorder renders the measured average-power value");
 requireIncludes(capturePhoneShellText, "peakPowerDB: audioCapture.peakInputLevelDB", "the recorder renders the measured sample-peak value");
 requireIncludes(nestChatRouteText, "studioEpisodeProduction.findUnique", "episode chat validates the canonical parent episode");
@@ -788,7 +789,7 @@ assert(
   "Unverified account creation must never cache Firebase credentials.",
   { label: "unverified account creation leaves Firebase tokens memory-only" },
 );
-requireIncludes(loginText, "Continue with Google", "Google identities are directed to the canonical native provider");
+requireIncludes(loginText, "GoogleSignInButton(", "Google identities are directed to the canonical native provider");
 requireIncludes(loginText, "QuipslyCaptureGoogleSignInButton", "Google remains the standard first sign-in action");
 requireIncludes(loginText, "We will ask you to verify your email once.", "account creation states the one-time email verification step plainly");
 for (const forbidden of [
@@ -887,7 +888,7 @@ for (const needle of [
   "expectedOwnerSnapshot: AuthManager.StableOwnerSnapshot",
   "abortForAccountChange",
   "abortAfterCallAudioActivationFailure",
-  "did not join a silent provider room",
+  "CallKit did not activate the room audio session before timeout.",
 ]) {
   requireIncludes(providerRoomText, needle, "native CallKit room presentation");
 }
@@ -896,11 +897,11 @@ for (const needle of [
   "CaptureRecordingModePicker",
   "CaptureRehearsalReadinessCard",
   "CaptureConsentConfirmationSheet",
-  "Only continue after everyone who may be seen or heard agrees. Each signed-in participant confirms for themselves.",
+  "Review what this Session will record, then agree once.",
   "Setup needed",
   "Button(\"Cancel\")",
   "Revoke",
-  "Try again now",
+  "Try again",
   "Request account deletion",
   "privacy/account-deletion",
   "Review transcript",
@@ -968,7 +969,7 @@ for (const needle of [
   "CaptureVideoPauseResumeButton",
   "CaptureVideoSwitchCameraButton",
   "Podcast camera",
-  "Only continue after everyone who may be seen or heard agrees",
+  "Review what this Session will record, then agree once.",
   "model.providerControlsLockedForLocalCapture",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "capture-first iPhone UX");
@@ -1227,8 +1228,8 @@ for (const needle of [
   '"First due"',
   'Text("Timezone")',
   'Text(recurrenceTimezoneID)',
-  "The wall-clock due time stays in",
-  "It does not schedule a reminder or provider calendar event.",
+  "This schedule stays in",
+  "hasOneTimeReminder = false",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "explicit native recurrence authoring UX and side-effect boundary");
 }
@@ -1567,9 +1568,9 @@ requireIncludes(capturePhoneShellText, "onSwitchCamera:", "shipping video record
 requireIncludes(capturePhoneShellText, "CaptureRehearsalReadinessCard(", "shipping recorder exposes a preflight check");
 requireIncludes(capturePhoneShellText, "CaptureSessionGuardianCard(", "shipping recorder reaches one ranked operational Guardian");
 requireIncludes(captureSessionGuardianText, 'accessibilityIdentifier("CaptureSessionGuardian")', "shipping Guardian has a stable automation identity");
-requireIncludes(captureSessionGuardianText, "The live conversation is not a retained master", "shipping Guardian keeps call and retained-source evidence separate");
-requireIncludes(captureSessionGuardianText, "Retained master continues while the conversation is unavailable", "shipping Guardian preserves independent local capture through call loss");
-requireIncludes(captureSessionGuardianText, "No useful microphone signal is reaching the master", "shipping Guardian exposes retained-source signal loss");
+requireIncludes(captureSessionGuardianText, "The high-quality local recording is running separately from the call.", "shipping Guardian keeps call and retained-source evidence separate");
+requireIncludes(captureSessionGuardianText, "The high-quality recording continues even though the call disconnected.", "shipping Guardian preserves independent local capture through call loss");
+requireIncludes(captureSessionGuardianText, "No useful microphone signal is reaching the recording", "shipping Guardian exposes retained-source signal loss");
 requireIncludes(capturePhoneShellText, "CaptureAudioSoundCheckController()", "shipping recorder owns the local sound-check lifecycle");
 requireIncludes(captureRehearsalReadinessText, 'accessibilityIdentifier("CaptureSoundCheckStart")', "shipping rehearsal exposes an addressable sound-check action");
 assert(!captureRehearsalReadinessText.includes("consentReady"), "Private local sound check must not depend on Session recording consent.", { forbidden: "consentReady" });

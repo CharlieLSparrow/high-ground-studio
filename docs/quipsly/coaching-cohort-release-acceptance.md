@@ -1279,3 +1279,31 @@ signed archive/export, exact App Store metadata readback, and a source-bound
 candidate manifest still remain. Physical-device, natural-speech, real-mailbox,
 human-listening, minimally instructed use, and 50-simultaneous-call claims also
 remain explicitly unproved.
+
+## Simple-UX release-contract checkpoint — 2026-08-23
+
+The release contracts now match the standard call and follow-through language
+that ships in the product instead of requiring retired permission lectures or
+engineering vocabulary in the happy path. Durable identifiers, server
+authorization, stable request identities, immutable source anchors, protected
+outboxes, consent gates, measured audio evidence, and release-readiness rechecks
+remain mandatory.
+
+Current source proof after that reconciliation:
+
+- 1,094/1,094 App Store and Capture static invariants pass;
+- the complete mobile Capture source contract passes;
+- 6/6 App Store listing operator tests pass and derive the exact target from the
+  canonical release ledger;
+- 8/8 submission-readiness auditor tests pass and derive their physical-build
+  gate from the same ledger;
+- 4/4 privacy questionnaire tests pass, and strict source inspection reports 11
+  declared data types for Build 33; and
+- 6/6 submission-configuration tests pass without adding a submission or
+  screenshot mutation path.
+
+The submission metadata correctly remains fail-closed. Five approved largest-
+iPhone screenshots do not yet exist, no signed candidate archive was inspected
+for this source checkpoint, and physical Build 33 acceptance has not been
+performed. Those are real release proofs, not test failures, and remain queued
+for the deliberate release train.
