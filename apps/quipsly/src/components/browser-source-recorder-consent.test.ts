@@ -63,5 +63,10 @@ describe("browser retained-source consent", () => {
     expect(source).toContain('data-testid="recording-technical-detail"');
     expect(source).toContain("Your call is still connected.");
     expect(source).not.toContain("The browser source could not start.");
+    expect(source).toContain("readBrowserSourcePreferences()");
+    expect(source).toContain("preferredBrowserSourceType(sessionKind, preferences)");
+    expect(source).toContain('chooseSourceType("audio")');
+    expect(source).toContain('chooseSourceType("video")');
+    expect(source).toContain("chooseHeadphonesAttestation(event.target.checked)");
   });
 });

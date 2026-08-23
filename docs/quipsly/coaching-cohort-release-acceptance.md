@@ -1883,3 +1883,25 @@ passes after route generation. Physical proof of simultaneous Canon R8/MV7i
 conversation and retained recording remains on the continuous hardware ledger;
 this product slice does not convert automated error simulation into a hardware
 compatibility claim.
+
+## Remembered recording setup without blanket consent — 2026-08-23
+
+The browser recorder now remembers whether this device uses headphones and
+keeps separate preferred source modes for coaching and episode Sessions. A
+coach who consistently records audio with headphones, or camera plus audio,
+does not have to rebuild the same setup for every new Session. Corrupt or
+unsupported stored values fail back to the familiar coaching-audio and
+episode-video defaults without blocking the recorder.
+
+This is intentionally setup memory, not consent reuse. An existing Session's
+canonical source and transcription receipt still wins when it reopens, while a
+new private Session still presents one ordinary recording choice to each
+participant.
+
+Independent evidence: three preference-model regressions prove defaults,
+per-workflow retention, headphones retention, merge behavior, and corrupt-data
+fallback. The retained-recorder source contract also asserts that the controls
+use the remembered preference layer. Responsive visual proof remains pending
+because the local in-app and Chrome browser-control connections were
+unavailable during this slice; that did not stop source, interaction, or type
+verification.

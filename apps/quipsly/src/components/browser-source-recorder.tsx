@@ -68,6 +68,11 @@ import type {
 import { browserRetainedStorageIssue } from "@/lib/session-guardian";
 import { browserRetainedStartFailure } from "@/lib/browser-retained-start-failure";
 import {
+  preferredBrowserSourceType,
+  readBrowserSourcePreferences,
+  writeBrowserSourcePreferences,
+} from "@/lib/browser-source-preferences";
+import {
   browserSourceInterruptedRecoveryCandidate,
   browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
@@ -298,6 +303,21 @@ export function BrowserSourceRecorder({
     transcriptionAllowedRef.current = allowed;
     setTranscriptionAllowed(allowed);
   }, []);
+  const chooseSourceType = useCallback(
+    (next: BrowserSourceKind) => {
+      setSourceType(next);
+      writeBrowserSourcePreferences(
+        sessionKind === "episode"
+          ? { episodeSourceType: next }
+          : { coachingSourceType: next },
+      );
+    },
+    [sessionKind],
+  );
+  const chooseHeadphonesAttestation = useCallback((next: boolean) => {
+    setHeadphonesAttested(next);
+    writeBrowserSourcePreferences({ headphonesAttested: next });
+  }, []);
   const [policy, setPolicy] = useState<ConsentPolicy | null>(null);
   const [consentId, setConsentId] = useState<string | null>(null);
   const [participantId, setParticipantId] = useState<string | null>(null);
@@ -331,6 +351,12 @@ export function BrowserSourceRecorder({
     : null;
   const sourceLocked =
     status === "starting" || status === "recording" || status === "stopping";
+
+  useEffect(() => {
+    const preferences = readBrowserSourcePreferences();
+    setHeadphonesAttested(preferences.headphonesAttested === true);
+    setSourceType(preferredBrowserSourceType(sessionKind, preferences));
+  }, [sessionKind]);
   const protectedTransferActive =
     status === "uploading" ||
     recoveryRows.some((ledger) => ledger.state === "uploading");
@@ -2362,7 +2388,7 @@ export function BrowserSourceRecorder({
               <button
                 type="button"
                 disabled={status === "recording"}
-                onClick={() => setSourceType("audio")}
+                onClick={() => chooseSourceType("audio")}
                 className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "audio" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
               >
                 <Mic2 size={15} className="mr-1 inline" /> Studio audio
@@ -2370,7 +2396,7 @@ export function BrowserSourceRecorder({
               <button
                 type="button"
                 disabled={status === "recording"}
-                onClick={() => setSourceType("video")}
+                onClick={() => chooseSourceType("video")}
                 className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "video" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
               >
                 <Video size={15} className="mr-1 inline" /> Camera + audio
@@ -2389,7 +2415,7 @@ export function BrowserSourceRecorder({
                 type="checkbox"
                 checked={headphonesAttested}
                 onChange={(event) =>
-                  setHeadphonesAttested(event.target.checked)
+                  chooseHeadphonesAttestation(event.target.checked)
                 }
                 className="mt-1 accent-violet-800"
               />{" "}
@@ -2397,9 +2423,14 @@ export function BrowserSourceRecorder({
             </label>
             {!headphonesAttested ? (
               <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
-                You can still record without headphones.
+                You can still record without headphones. This choice is
+                remembered on this device.
               </p>
-            ) : null}
+            ) : (
+              <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
+                Remembered on this device.
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">

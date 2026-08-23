@@ -78,6 +78,11 @@ Recurring complaints reveal the failure modes Quipsly must design out:
   join-muted state per device. Also remember whether this is the person's audio
   device or a second device. If a hardware identifier rotates, match the
   retained human-readable label before falling back safely.
+- Remember non-consent recording setup per device too: headphones use and the
+  preferred coaching/episode source mode. Restore canonical source and
+  transcription choices for an existing Session. For a new Session, use the
+  remembered setup as the default but still require that Session's ordinary
+  recording choice.
 - If the browser reports that remembered camera/microphone permission is already
   granted, reopen the remembered preview automatically. If permission is new,
   denied, unsupported, or ambiguous, do not manufacture a prompt: wait for the
