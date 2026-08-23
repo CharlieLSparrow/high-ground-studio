@@ -1662,3 +1662,30 @@ automatic post-call audio readiness. The source commit was clean when the
 flight began. Human understanding, real mailbox delivery, natural speech,
 physical devices, human listening, and production scale remain explicitly
 unclaimed.
+
+## Post-call recording exit flight — 2026-08-23
+
+Leaving the conversation no longer unmounts the participant-owned recorder
+while its protected source is uploading or waiting for recovery. The post-call
+surface removes setup and consent controls, keeps the recovery owner rendered,
+and presents one conservative answer: **Keep Quipsly open**, **Safe to close**,
+or **Recording needs attention**. Active recording and transfer also use the
+browser's standard leave warning and a best-effort screen wake lock; completed
+or merely historical work does not create a recurring warning ceremony.
+
+The clean exact-commit flight at
+`f028416bda08f8e159544850400af7c8f850980e` passed the complete product path.
+Its private receipt is
+`artifacts/coaching-acceptance/d04ecae3/fresh-coaching-flight-receipt.json` and
+records `safePostCallRecordingExitOperated: true`. Both disconnected browser
+participants retained the rendered recovery surface and reached **Safe to
+close** only after their independent masters were server-verified.
+
+The same run re-proved fresh signup and exact-link client entry, neighboring
+tenant isolation, remembered Session consent, two verified participant-owned
+sources with 27.502 seconds of overlap, two-source attributed transcription,
+protected playback, shared/private work, text-based editing, explicit
+release/revoke, and automatic post-call audio readiness. It downloaded a
+12,552-byte `quipsly-coaching-transcript-report-v2` mentor report from the
+rendered UI. The receipt continues to report physical-device, natural-speech,
+real-mailbox, human-listening, and production-scale evidence as unproven.
