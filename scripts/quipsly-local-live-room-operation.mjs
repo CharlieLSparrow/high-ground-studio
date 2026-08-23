@@ -385,7 +385,9 @@ try {
     const deviceSettings = liveCallDock.getByTestId("call-device-settings");
     await deviceSettings.waitFor({ state: "visible", timeout: 20_000 });
     assert(
-      !(await deviceSettings.evaluate((element) => element.hasAttribute("open"))),
+      !(await deviceSettings.evaluate((element) =>
+        element.hasAttribute("open"),
+      )),
       `${identity.role} lobby opened device settings before the person asked for them.`,
     );
     const technicalDeviceDetails = liveCallDock.getByTestId(
@@ -597,6 +599,10 @@ try {
         );
       });
   }
+  await journeys[0].page
+    .getByRole("region", { name: "Recording status" })
+    .getByText("Everyone is recording", { exact: true })
+    .waitFor({ state: "visible", timeout: 20_000 });
   await new Promise((resolve) =>
     setTimeout(resolve, requestedRecordingMilliseconds),
   );
@@ -615,7 +621,9 @@ try {
     await recoveryPage
       .locator('[data-session-entry-ready="true"]')
       .waitFor({ state: "visible", timeout: 20_000 });
-    const recoveryDock = recoveryPage.locator('aside[aria-label$=" live call dock"]');
+    const recoveryDock = recoveryPage.locator(
+      'aside[aria-label$=" live call dock"]',
+    );
     const recoveryJoin = recoveryDock.getByRole("button", {
       name: "Join call",
       exact: true,
@@ -659,7 +667,9 @@ try {
     await coachJourney.page
       .locator('[data-session-entry-ready="true"]')
       .waitFor({ state: "visible", timeout: 20_000 });
-    const recoveryDock = coachJourney.page.locator('aside[aria-label$=" live call dock"]');
+    const recoveryDock = coachJourney.page.locator(
+      'aside[aria-label$=" live call dock"]',
+    );
     const recoveryJoin = recoveryDock.getByRole("button", {
       name: "Join call",
       exact: true,
@@ -904,6 +914,7 @@ try {
         crashedCoachRecorderRecoveredAfterReload: crashCoachRecorder,
         interruptedSourceProfilesVerified: recoveredSources.length,
         coordinatedRecordingDirective: "passed",
+        allExpectedParticipantsRecordingVisible: true,
         coordinatedEndpointBoundaries: directiveReceipts.length,
         verifiedSourceIds: verifiedSources.map((source) => source.id),
         browserSourceOverlapMilliseconds: overlapMilliseconds,

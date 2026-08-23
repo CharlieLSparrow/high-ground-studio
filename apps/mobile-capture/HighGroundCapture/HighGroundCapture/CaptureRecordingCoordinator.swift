@@ -23,7 +23,37 @@ struct CaptureRecordingDirective: Codable, Equatable, Identifiable {
     let captureGroupId: String
     let issuedAt: String
     let shouldRecord: Bool
+    let participantStatuses: [CaptureRecordingParticipantStatus]?
+    let recordingHealth: CaptureRecordingHealth?
     let endpointReceipts: [CaptureRecordingEndpointReceipt]?
+}
+
+enum CaptureRecordingParticipantState: String, Codable {
+    case recording = "RECORDING"
+    case gettingReady = "GETTING_READY"
+    case needsAttention = "NEEDS_ATTENTION"
+    case stopping = "STOPPING"
+    case stoppedSafely = "STOPPED_SAFELY"
+    case waiting = "WAITING"
+}
+
+struct CaptureRecordingParticipantStatus: Codable, Equatable, Identifiable {
+    let id: String
+    let participantLabel: String
+    let state: CaptureRecordingParticipantState
+    let endpointCount: Int
+    let recordingEndpointCount: Int
+    let attentionEndpointCount: Int
+}
+
+struct CaptureRecordingHealth: Codable, Equatable {
+    let expectedParticipantCount: Int
+    let participantWithEndpointCount: Int
+    let recordingParticipantCount: Int
+    let attentionParticipantCount: Int
+    let waitingParticipantCount: Int
+    let allParticipantsRecording: Bool
+    let allParticipantsStoppedSafely: Bool
 }
 
 struct CaptureRecordingEndpointReceipt: Codable, Equatable, Identifiable {

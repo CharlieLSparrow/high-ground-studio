@@ -6452,6 +6452,12 @@ private struct CaptureRecorderView: View {
                             message: coordinationMessage,
                             isRecording: captureIsActive,
                             joinConfirmationRequired: recordingCoordinator.joinConfirmationRequired,
+                            participantStatuses: session.canControlRecording == true
+                                ? (recordingCoordinator.currentDirective?.participantStatuses ?? [])
+                                : [],
+                            recordingHealth: session.canControlRecording == true
+                                ? recordingCoordinator.currentDirective?.recordingHealth
+                                : nil,
                             endpointReceipts: session.canControlRecording == true
                                 ? (recordingCoordinator.currentDirective?.endpointReceipts ?? [])
                                 : []
@@ -10845,6 +10851,8 @@ private struct CaptureRecordingCoordinationStatus: View {
     let message: String
     let isRecording: Bool
     let joinConfirmationRequired: Bool
+    let participantStatuses: [CaptureRecordingParticipantStatus]
+    let recordingHealth: CaptureRecordingHealth?
     let endpointReceipts: [CaptureRecordingEndpointReceipt]
 
     var body: some View {
@@ -10860,22 +10868,57 @@ private struct CaptureRecordingCoordinationStatus: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(isRecording ? .red : CapturePalette.accent)
 
-            if !endpointReceipts.isEmpty {
+            if !participantStatuses.isEmpty, let recordingHealth {
                 Divider()
-                Text("Recording devices")
-                    .font(.caption.weight(.bold))
-                ForEach(endpointReceipts) { receipt in
+                Label(
+                    healthTitle(recordingHealth),
+                    systemImage: healthSymbol(recordingHealth)
+                )
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(healthTint(recordingHealth))
+                Text(healthDetail(recordingHealth))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(participantStatuses) { participant in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("\(receipt.participantLabel) · \(receipt.deviceLabel)")
+                        Text(participant.participantLabel)
                             .font(.caption)
                             .lineLimit(2)
                         Spacer()
-                        Text(endpointLabel(receipt.state))
+                        Text(participantLabel(participant.state))
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(endpointTint(receipt.state))
+                            .foregroundStyle(participantTint(participant.state))
                     }
                 }
-                Text("Device status is live. Upload verification remains separate and automatic.")
+
+                if recordingHealth.attentionParticipantCount > 0 {
+                    Text("Recovery: have the affected person reopen this Session. Quipsly will retry their local recorder automatically.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+
+                if !endpointReceipts.isEmpty {
+                    DisclosureGroup("Device details · \(endpointReceipts.count)") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(endpointReceipts) { receipt in
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text("\(receipt.participantLabel) · \(receipt.deviceLabel)")
+                                        .font(.caption)
+                                        .lineLimit(2)
+                                    Spacer()
+                                    Text(endpointLabel(receipt.state))
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(endpointTint(receipt.state))
+                                }
+                            }
+                        }
+                        .padding(.top, 6)
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+
+                Text("Recorder status is not upload completion. Quipsly retains each local source until exact-byte verification succeeds.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -10883,6 +10926,73 @@ private struct CaptureRecordingCoordinationStatus: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .captureCard()
         .accessibilityIdentifier("CaptureRecordingCoordinationStatus")
+    }
+
+    private func healthTitle(_ health: CaptureRecordingHealth) -> String {
+        if health.attentionParticipantCount > 0 {
+            return health.attentionParticipantCount == 1
+                ? "1 person needs attention"
+                : "\(health.attentionParticipantCount) people need attention"
+        }
+        if health.allParticipantsRecording { return "Everyone is recording" }
+        if health.allParticipantsStoppedSafely { return "Everyone stopped safely" }
+        if isRecording {
+            return health.waitingParticipantCount == 1
+                ? "Waiting for 1 person"
+                : "Waiting for \(health.waitingParticipantCount) people"
+        }
+        return health.waitingParticipantCount == 1
+            ? "Finishing 1 recording"
+            : "Finishing \(health.waitingParticipantCount) recordings"
+    }
+
+    private func healthDetail(_ health: CaptureRecordingHealth) -> String {
+        if health.attentionParticipantCount > 0 {
+            return "One clear recovery step is shown below."
+        }
+        if health.allParticipantsRecording {
+            return "Each expected participant has a local source in progress."
+        }
+        if health.allParticipantsStoppedSafely {
+            return "Each expected recorder confirmed its local stop."
+        }
+        return isRecording
+            ? "The call can continue while Quipsly gets every recorder ready."
+            : "Keep this Session open while Quipsly finishes safely."
+    }
+
+    private func healthSymbol(_ health: CaptureRecordingHealth) -> String {
+        if health.attentionParticipantCount > 0 { return "exclamationmark.triangle.fill" }
+        if health.allParticipantsRecording { return "record.circle.fill" }
+        if health.allParticipantsStoppedSafely { return "checkmark.circle.fill" }
+        return "clock.fill"
+    }
+
+    private func healthTint(_ health: CaptureRecordingHealth) -> Color {
+        if health.attentionParticipantCount > 0 { return .orange }
+        if health.allParticipantsRecording { return .red }
+        if health.allParticipantsStoppedSafely { return .green }
+        return CapturePalette.accent
+    }
+
+    private func participantLabel(_ state: CaptureRecordingParticipantState) -> String {
+        switch state {
+        case .recording: "Recording"
+        case .gettingReady: "Getting ready"
+        case .needsAttention: "Needs attention"
+        case .stopping: "Saving safely"
+        case .stoppedSafely: "Stopped safely"
+        case .waiting: isRecording ? "Waiting for recorder" : "Waiting for safe stop"
+        }
+    }
+
+    private func participantTint(_ state: CaptureRecordingParticipantState) -> Color {
+        switch state {
+        case .recording: .red
+        case .needsAttention, .stopping: .orange
+        case .stoppedSafely: .green
+        case .gettingReady, .waiting: CapturePalette.accent
+        }
     }
 
     private func endpointLabel(_ state: CaptureRecordingEndpointState) -> String {

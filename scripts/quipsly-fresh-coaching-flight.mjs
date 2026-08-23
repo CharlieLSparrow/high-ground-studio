@@ -226,6 +226,11 @@ for (const [label, packet] of Object.entries({
     `${label} operated another Session.`,
   );
 }
+assert.equal(
+  call.allExpectedParticipantsRecordingVisible,
+  true,
+  "The host never received complete participant recording-health evidence.",
+);
 if (controlledSpeechFlight) {
   assert.equal(
     call.controlledAudibleSpeechUsed,
@@ -318,6 +323,8 @@ const result = {
     call.prejoinRecordingActionAbsent === true,
   unchangedSessionConsentRemembered:
     call.savedConsentRestoredAfterReentry === true,
+  participantRecordingCompletenessVisible:
+    call.allExpectedParticipantsRecordingVisible === true,
   sourceOverlapMilliseconds: call.browserSourceOverlapMilliseconds,
   transcriptSourceCount: transcript.sourceCount,
   protectedTranscriptPlaybackDecoded: transcript.renderedTranscriptRuns.every(
@@ -378,6 +385,8 @@ const result = {
         call.technicalDeviceDetailsCollapsedBeforeJoin === true,
       unchangedSessionConsentRemembered:
         call.savedConsentRestoredAfterReentry === true,
+      participantRecordingCompleteness:
+        call.allExpectedParticipantsRecordingVisible === true,
       relationshipWork: work.boundaries?.productFormsOnlyForWrites === true,
       lightEditPreviewReleaseAndRevoke:
         share.boundaries?.releaseWasExplicit === true &&

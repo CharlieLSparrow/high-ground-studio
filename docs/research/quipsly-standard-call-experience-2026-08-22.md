@@ -166,7 +166,7 @@ failure shapes recur often enough to influence the architecture:
    Diagnostics, provider details, clocks, receipts, and recovery evidence are
    available, but never occupy the happy path.
 8. **Failures name one next action.** Prefer `Microphone access is off — Open
-   Settings` to multi-paragraph state explanations.
+Settings` to multi-paragraph state explanations.
 9. **Local source truth is durable.** A crash, network loss, or incomplete upload
    must not erase a recoverable local recording. Upload progress and preservation
    state must be obvious after re-entry.
@@ -179,7 +179,7 @@ failure shapes recur often enough to influence the architecture:
 1. The direct one-to-one path asks for the client's email and a start time.
    Duration starts from the coach's saved preference; Session name, client name,
    timezone override, a temporary hold, and optional payment stay under `More
-   options`.
+options`.
 2. `Schedule and send invite` creates one canonical Session, one relationship,
    and one invitation attempt. Email delivery failure never loses the Session;
    copy and system-share remain available from the same result.
@@ -204,7 +204,7 @@ failure shapes recur often enough to influence the architecture:
 - Kept recording consent separate and Session-scoped; joining still never starts
   recording.
 - Reduced first-time consent to the familiar default summary and one `Agree and
-  continue` action on both browser and iPhone. Audio and transcription are the
+continue` action on both browser and iPhone. Audio and transcription are the
   coaching defaults; camera is a podcast default. Less-common changes remain in
   a `Recording options` disclosure, and saved consent stays compact for the rest
   of that Session.
@@ -276,7 +276,7 @@ failure shapes recur often enough to influence the architecture:
   exact-time listening, correction, and source-backed follow-through without
   making the whole transcript a wall of editorial controls.
 - Reframed the phone's old `Continue in Studio` handoff as `Advanced sync and
-  edit`. The deeper waveform/timeline surface remains available, but users are
+edit`. The deeper waveform/timeline surface remains available, but users are
   no longer told that ordinary Quipsly work requires a separate product.
 - Added a first-class phone `Review recording` card after a take. Basic trim,
   transcript removal, private verified playback, release, and revocation now
@@ -322,12 +322,12 @@ failure shapes recur often enough to influence the architecture:
   internal Sessions.
 - Replaced calendar-receipt language with familiar `Add to Google Calendar`,
   `Update Google Calendar`, `Add to Apple or Outlook`, and `Remove from Google
-  Calendar` actions. The explicit idempotent Add action no longer asks for a
+Calendar` actions. The explicit idempotent Add action no longer asks for a
   second confirmation; destructive removal still does.
 - Kept the connected-call surface focused on mic, camera, Leave, participant
   media, and local source safety. The internal provider panel no longer opens
   merely because a call connected; it is now an optional `Cloud recording
-  backup` and opens automatically only while recording or when attention is
+backup` and opens automatically only while recording or when attention is
   required.
 - Removed the source-to-editor handoff as a normal post-call chore. Once the
   exact required track set is verified and has a Nest destination, Quipsly now
@@ -338,7 +338,7 @@ failure shapes recur often enough to influence the architecture:
 - Kept useful audio evidence visible without exposing measurement vocabulary as
   the primary UI. People see highest level, peak, and possible clipping, while
   sampling method, gaps, and post-capture analysis limits stay under `How this
-  was measured`.
+was measured`.
 - Made rescheduling a direct save and cancellation a single inline destructive
   confirmation. The ordinary surface now speaks in appointments, Sessions,
   dates, and duration rather than app-owned truth, provider evidence, or audit
@@ -394,7 +394,7 @@ failure shapes recur often enough to influence the architecture:
   real failure needs one actionable recovery message.
 - Kept call-path RMS, peak, clipping, channel, and browser-processing evidence,
   but moved it behind `Audio and video settings` and a second `Technical device
-  details` disclosure. The green room now shows the selected device names,
+details` disclosure. The green room now shows the selected device names,
   mute/camera state, preview, and Join—not a measurement console. The evidence
   remains reachable for support and serious recording setup without becoming
   routine homework.
@@ -482,7 +482,7 @@ failure shapes recur often enough to influence the architecture:
   `Needs attention`, and summarizes decoded audio as clear, quiet, or a count of
   exact moments worth checking. Hashes, cloud generations, capture boundaries,
   codecs, and signal measurements remain available under `Technical recording
-  details`; they prove the state without becoming homework. An audio warning
+details`; they prove the state without becoming homework. An audio warning
   links directly to its transcript/audio review surface instead of opening a
   separate diagnostics workflow. Deep links automatically reveal the otherwise
   collapsed audio evidence, so a warning never lands on a page that appears to
@@ -494,18 +494,18 @@ failure shapes recur often enough to influence the architecture:
   plain `Try again` escape hatch only after the automatic path cannot finish.
   The everyday transcript surface says `Review and edit`, `Share transcript`,
   and `Refresh`; provider routing and receipts live under `Transcription
-  details`.
+details`.
 - Keep the iPhone's live safety monitoring, but translate its happy path and
   recovery guidance into ordinary recording language. Coaches now see `Ready
-  to record`, `Recording on this iPhone`, `Call disconnected`, or `This
-  recording needs attention`; retained-source, provider-path, and dBFS caveats
+to record`, `Recording on this iPhone`, `Call disconnected`, or `This
+recording needs attention`; retained-source, provider-path, and dBFS caveats
   remain implementation evidence or disclosed detail. Call audio is described
   plainly as conversation audio, while the saved iPhone file is the
   high-quality copy.
 - Let information architecture explain itself through familiar destinations,
   not architecture prose. Session navigation now uses `At a glance`, `Before
-  the call`, `Saved privately`, `Listen and edit`, `Next steps`, and `Ready to
-  share`. The continuity panel says that the call, chat, recordings,
+the call`, `Saved privately`, `Listen and edit`, `Next steps`, and `Ready to
+share`. The continuity panel says that the call, chat, recordings,
   transcript, notes, and next steps stay connected, then links directly to the
   related coaching, episode, research, or project space.
 - Refresh remembered iOS microphone permission and current free space passively
@@ -545,6 +545,14 @@ failure shapes recur often enough to influence the architecture:
   `Saved`, and the agreement prompt must stay absent. Quipsly asks again only
   when the participant, Session, requested audio/video/transcription scope,
   policy version, or recorded decision actually changes.
+- Treat participant completeness as a first-class recording-health contract.
+  A device-only list can look healthy while silently omitting the person whose
+  recorder never started. The host now sees one conventional aggregate state
+  (`Everyone is recording`, `Waiting for one person`, or `Needs attention`)
+  plus every expected participant, including participants with zero endpoint
+  receipts. Per-installation diagnostics remain collapsed. This status proves
+  local recorder coordination only; exact-byte upload verification remains a
+  separate downstream fact.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB

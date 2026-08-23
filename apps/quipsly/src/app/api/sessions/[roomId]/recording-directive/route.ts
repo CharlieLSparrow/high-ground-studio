@@ -53,12 +53,40 @@ function opaqueEndpointId(roomId: string, clientInstanceId: string) {
     .slice(0, 20)}`;
 }
 
+function opaqueParticipantId(roomId: string, participantId: string) {
+  return `recording-participant-${createHash("sha256")
+    .update(`${roomId}\0${participantId}`)
+    .digest("hex")
+    .slice(0, 20)}`;
+}
+
+type ExpectedRecordingParticipant = { id: string; label: string };
+
+function participantRecordingState(action: string, receipts: any[]) {
+  const states = new Set(receipts.map((receipt) => receipt.state));
+  if (states.has("START_FAILED") || states.has("STOP_FAILED"))
+    return "NEEDS_ATTENTION";
+  if (action === "START") {
+    if (states.has("STARTED")) return "RECORDING";
+    if (states.has("OBSERVED")) return "GETTING_READY";
+    return "WAITING";
+  }
+  if (
+    receipts.length > 0 &&
+    receipts.every((receipt) => receipt.state === "STOPPED")
+  )
+    return "STOPPED_SAFELY";
+  if (states.has("STOPPING") || states.has("STOPPED")) return "STOPPING";
+  return "WAITING";
+}
+
 function directiveView(
   directive: any,
   options: {
     viewerParticipantId?: string | null;
     includeAllEndpoints?: boolean;
     participantLabels?: Map<string, string>;
+    expectedParticipants?: ExpectedRecordingParticipant[];
   } = {},
 ) {
   if (!directive) return null;
@@ -73,6 +101,55 @@ function directiveView(
     if (!latestByEndpoint.has(receipt.clientInstanceId))
       latestByEndpoint.set(receipt.clientInstanceId, receipt);
   }
+  const endpointReceipts = [...latestByEndpoint.values()];
+  const participantStatuses = (options.expectedParticipants ?? []).map(
+    (participant) => {
+      const participantReceipts = endpointReceipts.filter(
+        (receipt) => receipt.participantId === participant.id,
+      );
+      const state = participantRecordingState(
+        directive.action,
+        participantReceipts,
+      );
+      return {
+        id: opaqueParticipantId(directive.roomId, participant.id),
+        participantLabel: participant.label,
+        state,
+        endpointCount: participantReceipts.length,
+        recordingEndpointCount: participantReceipts.filter(
+          (receipt) => receipt.state === "STARTED",
+        ).length,
+        attentionEndpointCount: participantReceipts.filter((receipt) =>
+          ["START_FAILED", "STOP_FAILED"].includes(receipt.state),
+        ).length,
+      };
+    },
+  );
+  const recordingHealth = {
+    expectedParticipantCount: participantStatuses.length,
+    participantWithEndpointCount: participantStatuses.filter(
+      (participant) => participant.endpointCount > 0,
+    ).length,
+    recordingParticipantCount: participantStatuses.filter(
+      (participant) => participant.state === "RECORDING",
+    ).length,
+    attentionParticipantCount: participantStatuses.filter(
+      (participant) => participant.state === "NEEDS_ATTENTION",
+    ).length,
+    waitingParticipantCount: participantStatuses.filter((participant) =>
+      ["WAITING", "GETTING_READY", "STOPPING"].includes(participant.state),
+    ).length,
+    allParticipantsRecording:
+      participantStatuses.length > 0 &&
+      participantStatuses.every(
+        (participant) => participant.state === "RECORDING",
+      ),
+    allParticipantsStoppedSafely:
+      participantStatuses.length > 0 &&
+      participantStatuses.every(
+        (participant) => participant.state === "STOPPED_SAFELY",
+      ),
+  };
   return {
     id: directive.id,
     sequence: String(directive.sequence),
@@ -81,7 +158,9 @@ function directiveView(
     issuedAt: new Date(directive.issuedAt).toISOString(),
     issuedByCurrentActor: directive.issuedByCurrentActor === true,
     shouldRecord: directive.action === "START",
-    endpointReceipts: [...latestByEndpoint.values()].map((receipt) => ({
+    participantStatuses,
+    recordingHealth,
+    endpointReceipts: endpointReceipts.map((receipt) => ({
       id: opaqueEndpointId(directive.roomId, receipt.clientInstanceId),
       clientKind: receipt.clientKind,
       deviceLabel: receipt.deviceLabel,
@@ -156,9 +235,25 @@ export async function GET(
     room.participants.map((participant: any) => [
       participant.id,
       text(participant.displayName) ||
-        (participant.id === viewerParticipant?.id ? "You" : "Session participant"),
+        (participant.id === viewerParticipant?.id
+          ? "You"
+          : "Session participant"),
     ]),
   );
+  const expectedParticipants = (
+    controller
+      ? room.participants
+      : viewerParticipant
+        ? [viewerParticipant]
+        : []
+  ).map((participant: any) => ({
+    id: participant.id,
+    label:
+      participantLabels.get(participant.id) ??
+      (participant.id === viewerParticipant?.id
+        ? "You"
+        : "Session participant"),
+  }));
   const latest = await readLatest(prisma, room.id, session.user.id);
   return privateJson({
     ok: true,
@@ -166,6 +261,7 @@ export async function GET(
       viewerParticipantId: viewerParticipant?.id,
       includeAllEndpoints: Boolean(controller),
       participantLabels,
+      expectedParticipants,
     }),
     captureGroupId: room.captureGroupId,
     boundaries: {
@@ -240,9 +336,15 @@ export async function POST(
     room.participants.map((participant: any) => [
       participant.id,
       text(participant.displayName) ||
-        (participant.id === actorParticipant?.id ? "You" : "Session participant"),
+        (participant.id === actorParticipant?.id
+          ? "You"
+          : "Session participant"),
     ]),
   );
+  const expectedParticipants = room.participants.map((participant: any) => ({
+    id: participant.id,
+    label: participantLabels.get(participant.id) ?? "Session participant",
+  }));
   const consentVersions = buildMobileCaptureConsentVersions({
     participants: room.participants,
     consents: room.recordingConsents,
@@ -331,6 +433,7 @@ export async function POST(
           directive: directiveView(result.directive, {
             includeAllEndpoints: true,
             participantLabels,
+            expectedParticipants,
           }),
         },
         409,
@@ -344,6 +447,7 @@ export async function POST(
           directive: directiveView(result.directive, {
             includeAllEndpoints: true,
             participantLabels,
+            expectedParticipants,
           }),
         },
         409,
@@ -356,6 +460,7 @@ export async function POST(
         directive: directiveView(result.directive, {
           includeAllEndpoints: true,
           participantLabels,
+          expectedParticipants,
         }),
       },
       result.replay ? 200 : 201,

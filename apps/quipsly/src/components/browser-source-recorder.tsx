@@ -77,6 +77,7 @@ import {
 import {
   acknowledgeBrowserRecordingDirective,
   issueBrowserRecordingDirective,
+  projectBrowserRecordingHealth,
   readBrowserRecordingDirective,
   type BrowserRecordingDirective,
 } from "@/lib/browser-recording-directive";
@@ -131,14 +132,20 @@ function retainedRecorderStatusLabel(
 function recordingEndpointStatus(state: string) {
   switch (state.toUpperCase()) {
     case "STARTED":
+    case "RECORDING":
       return { label: "Recording", tone: "bg-rose-100 text-rose-950" };
     case "START_FAILED":
     case "STOP_FAILED":
+    case "NEEDS_ATTENTION":
       return { label: "Needs attention", tone: "bg-amber-100 text-amber-950" };
     case "STOPPING":
       return { label: "Stopping", tone: "bg-amber-100 text-amber-950" };
     case "STOPPED":
-      return { label: "Stopped safely", tone: "bg-emerald-100 text-emerald-950" };
+    case "STOPPED_SAFELY":
+      return {
+        label: "Stopped safely",
+        tone: "bg-emerald-100 text-emerald-950",
+      };
     default:
       return { label: "Getting ready", tone: "bg-violet-100 text-violet-950" };
   }
@@ -306,6 +313,9 @@ export function BrowserSourceRecorder({
   const [recordingDirective, setRecordingDirective] =
     useState<BrowserRecordingDirective | null>(null);
   const [directiveBusy, setDirectiveBusy] = useState(false);
+  const recordingHealthProjection = recordingDirective
+    ? projectBrowserRecordingHealth(recordingDirective)
+    : null;
   const sourceLocked =
     status === "starting" || status === "recording" || status === "stopping";
 
@@ -1193,16 +1203,14 @@ export function BrowserSourceRecorder({
 
   useEffect(() => {
     if (handoffBusy) return;
-    const attempt = browserCaptureAutoHandoffAttempt(studioHandoff, projectSlug);
+    const attempt = browserCaptureAutoHandoffAttempt(
+      studioHandoff,
+      projectSlug,
+    );
     if (!attempt || autoHandoffAttemptRef.current === attempt.key) return;
     autoHandoffAttemptRef.current = attempt.key;
     void promoteStudioHandoff();
-  }, [
-    handoffBusy,
-    projectSlug,
-    promoteStudioHandoff,
-    studioHandoff,
-  ]);
+  }, [handoffBusy, projectSlug, promoteStudioHandoff, studioHandoff]);
 
   const retryUploadLedger = useCallback(
     async (ledger: BrowserSourceCaptureLedger) => {
@@ -1348,7 +1356,9 @@ export function BrowserSourceRecorder({
     )
       return;
     handledStopRequestVersionRef.current = stopRequestVersion;
-    stop("Stopping and protecting this local recording before leaving the call…");
+    stop(
+      "Stopping and protecting this local recording before leaving the call…",
+    );
   }, [status, stop, stopRequestVersion]);
 
   const clearGuardianMonitoring = useCallback(() => {
@@ -2470,39 +2480,78 @@ export function BrowserSourceRecorder({
             </span>
           )}
         </div>
-        {canControlRoom && recordingDirective?.endpointReceipts.length ? (
+        {canControlRoom &&
+        recordingDirective &&
+        recordingHealthProjection &&
+        recordingDirective.participantStatuses.length ? (
           <section
-            className="mt-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3"
-            aria-label="Recording devices"
+            className={`mt-3 rounded-xl border p-3 ${
+              recordingHealthProjection.tone === "ready"
+                ? "border-emerald-200 bg-emerald-50/70"
+                : recordingHealthProjection.tone === "attention"
+                  ? "border-amber-300 bg-amber-50"
+                  : "border-violet-200 bg-violet-50/60"
+            }`}
+            aria-label="Recording status"
             aria-live="polite"
           >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <strong className="text-xs text-violet-950">Recording devices</strong>
-              <span className="text-[10px] font-bold text-violet-800">
-                Live status from each Quipsly endpoint
-              </span>
-            </div>
+            <strong className="text-sm text-[#302316]">
+              {recordingHealthProjection.title}
+            </strong>
+            <p className="mt-1 text-[11px] font-semibold leading-4 text-[#6d563a]">
+              {recordingHealthProjection.detail}
+            </p>
             <ul className="mt-2 space-y-2">
-              {recordingDirective.endpointReceipts.map((receipt) => {
-                const endpointStatus = recordingEndpointStatus(receipt.state);
+              {recordingHealthProjection.participants.map((participant) => {
+                const participantStatus = recordingEndpointStatus(
+                  participant.state,
+                );
                 return (
                   <li
-                    key={receipt.id}
+                    key={participant.id}
                     className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#5b472f]"
                   >
-                    <span>
-                      {receipt.participantLabel} · {receipt.deviceLabel}
-                    </span>
-                    <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${endpointStatus.tone}`}>
-                      {endpointStatus.label}
+                    <span>{participant.participantLabel}</span>
+                    <span
+                      className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${participantStatus.tone}`}
+                    >
+                      {participant.label}
                     </span>
                   </li>
                 );
               })}
             </ul>
-            <p className="mt-2 text-[10px] font-semibold leading-4 text-violet-900">
-              This confirms recorder state, not upload completion. Quipsly keeps each local source until exact-byte verification succeeds.
-            </p>
+            {recordingHealthProjection.tone === "attention" ? (
+              <p className="mt-2 rounded-lg bg-white px-3 py-2 text-[11px] font-bold leading-4 text-amber-950">
+                Recovery: have the affected person reopen this Session. Quipsly
+                will retry their local recorder automatically.
+              </p>
+            ) : null}
+            <details className="mt-2 text-[10px] font-bold leading-4 text-[#725d43]">
+              <summary className="cursor-pointer">
+                Device details · {recordingDirective.endpointReceipts.length}
+              </summary>
+              <ul className="mt-2 space-y-2">
+                {recordingDirective.endpointReceipts.map((receipt) => {
+                  const endpointStatus = recordingEndpointStatus(receipt.state);
+                  return (
+                    <li
+                      key={receipt.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2"
+                    >
+                      <span>
+                        {receipt.participantLabel} · {receipt.deviceLabel}
+                      </span>
+                      <span>{endpointStatus.label}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-2">
+                Recorder status is not upload completion. Quipsly retains each
+                local source until exact-byte verification succeeds.
+              </p>
+            </details>
           </section>
         ) : null}
         <details
@@ -2586,7 +2635,9 @@ export function BrowserSourceRecorder({
               </span>
             </div>
             <details className="mt-2 text-[10px] font-bold leading-4 opacity-75">
-              <summary className="cursor-pointer">How this was measured</summary>
+              <summary className="cursor-pointer">
+                How this was measured
+              </summary>
               <p className="mt-2">
                 {activeLedger.sourceProfile.captureMeter.measurement ===
                 "audio-worklet-render-quantum-aggregate"
@@ -2603,7 +2654,8 @@ export function BrowserSourceRecorder({
                   captureMeterDisplayEvidence(
                     activeLedger.sourceProfile.captureMeter,
                   ).tailLabel
-                }. Full loudness and true-peak analysis runs after capture.
+                }
+                . Full loudness and true-peak analysis runs after capture.
               </p>
             </details>
           </section>
@@ -2704,11 +2756,13 @@ export function BrowserSourceRecorder({
           captureGroupId,
         }) ? (
           <a
-            href={browserCaptureStudioReviewHref({
-              projectSlug: projectSlug || studioHandoff.projectSlug,
-              episodeSlug: episodeSlug || studioHandoff.episodeSlug,
-              captureGroupId,
-            })!}
+            href={
+              browserCaptureStudioReviewHref({
+                projectSlug: projectSlug || studioHandoff.projectSlug,
+                episodeSlug: episodeSlug || studioHandoff.episodeSlug,
+                captureGroupId,
+              })!
+            }
             className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
           >
             <ExternalLink size={15} /> Edit recording
@@ -2716,178 +2770,190 @@ export function BrowserSourceRecorder({
         ) : null}
         <details className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-black text-violet-950">
-            <span className="flex items-center gap-2"><Layers3 size={14} /> Recording processing</span>
-            <span>{studioHandoff?.complete ? "Ready" : handoffBusy ? "Finishing…" : "In progress"}</span>
+            <span className="flex items-center gap-2">
+              <Layers3 size={14} /> Recording processing
+            </span>
+            <span>
+              {studioHandoff?.complete
+                ? "Ready"
+                : handoffBusy
+                  ? "Finishing…"
+                  : "In progress"}
+            </span>
           </summary>
           <section
             className="mt-3"
             aria-labelledby={`studio-handoff-${callRoomId}`}
           >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-violet-800">
-                <Layers3 size={14} /> Session take → Studio
-              </p>
-              <h4
-                id={`studio-handoff-${callRoomId}`}
-                className="mt-1 font-serif text-xl font-black text-violet-950"
-              >
-                Keep every device in the same take
-              </h4>
-              <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-violet-900">
-                This server snapshot includes browser, iPhone, and reconciled
-                provider sources with the exact capture-group identity. Refresh
-                after another device finishes. Quipsly refuses a changed or
-                partially verified source set at the attachment boundary.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void refreshStudioHandoff()}
-              disabled={handoffBusy}
-              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-violet-950 disabled:opacity-50"
-            >
-              <RefreshCw
-                size={14}
-                className={handoffBusy ? "animate-spin" : ""}
-              />{" "}
-              Refresh source set
-            </button>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
-            <span className="rounded-full bg-white px-3 py-1.5 text-violet-950">
-              Take {captureGroupId.slice(0, 8)}
-            </span>
-            <span className="rounded-full bg-white px-3 py-1.5 text-violet-950">
-              {studioHandoff?.requiredSourceCount ?? 0} required masters
-            </span>
-            <span
-              className={`rounded-full px-3 py-1.5 ${studioHandoff?.ready ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}
-            >
-              {studioHandoff?.verifiedRequiredSourceCount ?? 0}/
-              {studioHandoff?.requiredSourceCount ?? 0} masters verified
-            </span>
-            <span
-              className={`rounded-full px-3 py-1.5 ${studioHandoff?.complete ? "bg-emerald-100 text-emerald-950" : "bg-white text-violet-950"}`}
-            >
-              {studioHandoff?.promotedRequiredSourceCount ?? 0}/
-              {studioHandoff?.requiredSourceCount ?? 0} masters in Studio
-            </span>
-            {studioHandoff?.providerWitnessCount ? (
-              <span className="rounded-full bg-sky-100 px-3 py-1.5 text-sky-950">
-                {studioHandoff.providerWitnessCount} provider witness
-              </span>
-            ) : null}
-          </div>
-
-          {studioHandoff?.sources.length ? (
-            <div
-              className="mt-3 space-y-2"
-              aria-label="Exact Session take source roster"
-            >
-              {studioHandoff.sources.map((source) => (
-                <div
-                  key={source.recordingAssetId}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-100 bg-white px-3 py-2"
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-violet-800">
+                  <Layers3 size={14} /> Session take → Studio
+                </p>
+                <h4
+                  id={`studio-handoff-${callRoomId}`}
+                  className="mt-1 font-serif text-xl font-black text-violet-950"
                 >
-                  <span className="min-w-0 text-xs font-bold text-violet-950">
-                    <span className="block truncate">{source.fileName}</span>
-                    <span className="font-mono text-[10px] text-violet-700">
-                      {source.kind.replaceAll("_", " ")} ·{" "}
-                      {source.recordingAssetId.slice(0, 12)}
-                    </span>
-                  </span>
-                  <span className="flex flex-wrap items-center gap-1 text-[9px] font-black uppercase tracking-wide">
-                    {source.providerWitness ? (
-                      <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-950">
-                        optional witness · never blocks masters
-                      </span>
-                    ) : null}
-                    <span
-                      className={`rounded-full px-2 py-1 ${source.verifiedForStudio ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}
-                    >
-                      {source.verifiedForStudio
-                        ? "saved and ready"
-                        : source.interruptionRepairRequired
-                          ? "saved · preparing playback"
-                        : `${source.recordingStatus} · ${source.processingDisposition}`}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-1 ${source.promotedToStudio ? "bg-violet-800 text-white" : "bg-violet-100 text-violet-950"}`}
-                    >
-                      {source.promotedToStudio ? "ready to edit" : "preparing"}
-                    </span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-3 rounded-xl bg-white px-3 py-3 text-xs font-bold leading-5 text-violet-900">
-              No canonical source rows are visible for this exact take yet.
-              Browser files remain protected in the local vault;
-              upload/verification must finish before Studio attachment.
-            </p>
-          )}
-
-          <p
-            role="status"
-            aria-live="polite"
-            className="mt-3 text-xs font-bold leading-5 text-violet-950"
-          >
-            {handoffMessage}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {!studioHandoff?.complete ? (
+                  Keep every device in the same take
+                </h4>
+                <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-violet-900">
+                  This server snapshot includes browser, iPhone, and reconciled
+                  provider sources with the exact capture-group identity.
+                  Refresh after another device finishes. Quipsly refuses a
+                  changed or partially verified source set at the attachment
+                  boundary.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => void promoteStudioHandoff()}
-                disabled={handoffBusy || !studioHandoff?.ready}
-                className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-40"
+                onClick={() => void refreshStudioHandoff()}
+                disabled={handoffBusy}
+                className="inline-flex min-h-10 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-violet-950 disabled:opacity-50"
               >
-                <UploadCloud size={15} /> Retry processing
+                <RefreshCw
+                  size={14}
+                  className={handoffBusy ? "animate-spin" : ""}
+                />{" "}
+                Refresh source set
               </button>
-            ) : null}
-            {sessionKind === "episode" &&
-            studioHandoff?.complete &&
-            browserCaptureStudioReviewHref({
-              projectSlug: projectSlug || studioHandoff.projectSlug,
-              episodeSlug: episodeSlug || studioHandoff.episodeSlug,
-              captureGroupId,
-            }) ? (
-              <a
-                href={
-                  browserCaptureStudioReviewHref({
-                    projectSlug: projectSlug || studioHandoff.projectSlug,
-                    episodeSlug: episodeSlug || studioHandoff.episodeSlug,
-                    captureGroupId,
-                  })!
-                }
-                className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
+              <span className="rounded-full bg-white px-3 py-1.5 text-violet-950">
+                Take {captureGroupId.slice(0, 8)}
+              </span>
+              <span className="rounded-full bg-white px-3 py-1.5 text-violet-950">
+                {studioHandoff?.requiredSourceCount ?? 0} required masters
+              </span>
+              <span
+                className={`rounded-full px-3 py-1.5 ${studioHandoff?.ready ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}
               >
-                <ExternalLink size={15} /> Open exact take in editor
-              </a>
-            ) : null}
-            {sessionKind === "coaching" && studioHandoff?.complete ? (
-              <a
-                href={`/sessions/${encodeURIComponent(callRoomId)}?mode=recordings`}
-                className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
+                {studioHandoff?.verifiedRequiredSourceCount ?? 0}/
+                {studioHandoff?.requiredSourceCount ?? 0} masters verified
+              </span>
+              <span
+                className={`rounded-full px-3 py-1.5 ${studioHandoff?.complete ? "bg-emerald-100 text-emerald-950" : "bg-white text-violet-950"}`}
               >
-                <ExternalLink size={15} /> Review Session recordings
-              </a>
-            ) : null}
-          </div>
-          <p className="mt-3 text-[10px] font-bold leading-4 text-violet-700">
-            Attachment preserves immutable originals and source identities.
-            Network clocks and rough anchors remain proposals; waveform,
-            late-drift, and playback review still decide placement and the
-            approved master.
-          </p>
+                {studioHandoff?.promotedRequiredSourceCount ?? 0}/
+                {studioHandoff?.requiredSourceCount ?? 0} masters in Studio
+              </span>
+              {studioHandoff?.providerWitnessCount ? (
+                <span className="rounded-full bg-sky-100 px-3 py-1.5 text-sky-950">
+                  {studioHandoff.providerWitnessCount} provider witness
+                </span>
+              ) : null}
+            </div>
+
+            {studioHandoff?.sources.length ? (
+              <div
+                className="mt-3 space-y-2"
+                aria-label="Exact Session take source roster"
+              >
+                {studioHandoff.sources.map((source) => (
+                  <div
+                    key={source.recordingAssetId}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-100 bg-white px-3 py-2"
+                  >
+                    <span className="min-w-0 text-xs font-bold text-violet-950">
+                      <span className="block truncate">{source.fileName}</span>
+                      <span className="font-mono text-[10px] text-violet-700">
+                        {source.kind.replaceAll("_", " ")} ·{" "}
+                        {source.recordingAssetId.slice(0, 12)}
+                      </span>
+                    </span>
+                    <span className="flex flex-wrap items-center gap-1 text-[9px] font-black uppercase tracking-wide">
+                      {source.providerWitness ? (
+                        <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-950">
+                          optional witness · never blocks masters
+                        </span>
+                      ) : null}
+                      <span
+                        className={`rounded-full px-2 py-1 ${source.verifiedForStudio ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}
+                      >
+                        {source.verifiedForStudio
+                          ? "saved and ready"
+                          : source.interruptionRepairRequired
+                            ? "saved · preparing playback"
+                            : `${source.recordingStatus} · ${source.processingDisposition}`}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-1 ${source.promotedToStudio ? "bg-violet-800 text-white" : "bg-violet-100 text-violet-950"}`}
+                      >
+                        {source.promotedToStudio
+                          ? "ready to edit"
+                          : "preparing"}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl bg-white px-3 py-3 text-xs font-bold leading-5 text-violet-900">
+                No canonical source rows are visible for this exact take yet.
+                Browser files remain protected in the local vault;
+                upload/verification must finish before Studio attachment.
+              </p>
+            )}
+
+            <p
+              role="status"
+              aria-live="polite"
+              className="mt-3 text-xs font-bold leading-5 text-violet-950"
+            >
+              {handoffMessage}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {!studioHandoff?.complete ? (
+                <button
+                  type="button"
+                  onClick={() => void promoteStudioHandoff()}
+                  disabled={handoffBusy || !studioHandoff?.ready}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-40"
+                >
+                  <UploadCloud size={15} /> Retry processing
+                </button>
+              ) : null}
+              {sessionKind === "episode" &&
+              studioHandoff?.complete &&
+              browserCaptureStudioReviewHref({
+                projectSlug: projectSlug || studioHandoff.projectSlug,
+                episodeSlug: episodeSlug || studioHandoff.episodeSlug,
+                captureGroupId,
+              }) ? (
+                <a
+                  href={
+                    browserCaptureStudioReviewHref({
+                      projectSlug: projectSlug || studioHandoff.projectSlug,
+                      episodeSlug: episodeSlug || studioHandoff.episodeSlug,
+                      captureGroupId,
+                    })!
+                  }
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
+                >
+                  <ExternalLink size={15} /> Open exact take in editor
+                </a>
+              ) : null}
+              {sessionKind === "coaching" && studioHandoff?.complete ? (
+                <a
+                  href={`/sessions/${encodeURIComponent(callRoomId)}?mode=recordings`}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"
+                >
+                  <ExternalLink size={15} /> Review Session recordings
+                </a>
+              ) : null}
+            </div>
+            <p className="mt-3 text-[10px] font-bold leading-4 text-violet-700">
+              Attachment preserves immutable originals and source identities.
+              Network clocks and rough anchors remain proposals; waveform,
+              late-drift, and playback review still decide placement and the
+              approved master.
+            </p>
           </section>
           {activeLedger?.state === "verified" ? (
             <p className="mt-3 text-[10px] font-bold text-emerald-800">
               Verified editor evidence:{" "}
-              {activeLedger.serverRecordingAssetId || "recording receipt created"}
+              {activeLedger.serverRecordingAssetId ||
+                "recording receipt created"}
               . Session take {activeLedger.captureGroupId.slice(0, 8)} has{" "}
               {clockEvidenceLabel(activeLedger)}; clock drift remains a bounded
               proposal and waveform/listening review still decides final

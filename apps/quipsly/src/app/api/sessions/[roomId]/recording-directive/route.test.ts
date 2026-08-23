@@ -128,7 +128,20 @@ describe("Session recording directive route", () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject({
       ok: true,
-      directive: { action: "START", shouldRecord: true, endpointReceipts: [] },
+      directive: {
+        action: "START",
+        shouldRecord: true,
+        endpointReceipts: [],
+        participantStatuses: [
+          { participantLabel: "Coach Taylor", state: "WAITING" },
+          { participantLabel: "Jordan Client", state: "WAITING" },
+        ],
+        recordingHealth: {
+          expectedParticipantCount: 2,
+          waitingParticipantCount: 2,
+          allParticipantsRecording: false,
+        },
+      },
     });
     expect(prisma.callRecordingDirective.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -188,6 +201,24 @@ describe("Session recording directive route", () => {
       ok: true,
       directive: {
         shouldRecord: true,
+        participantStatuses: [
+          {
+            participantLabel: "Coach Taylor",
+            state: "RECORDING",
+            recordingEndpointCount: 1,
+          },
+          {
+            participantLabel: "Jordan Client",
+            state: "RECORDING",
+            recordingEndpointCount: 1,
+          },
+        ],
+        recordingHealth: {
+          expectedParticipantCount: 2,
+          recordingParticipantCount: 2,
+          waitingParticipantCount: 0,
+          allParticipantsRecording: true,
+        },
         endpointReceipts: [
           {
             state: "STARTED",
@@ -211,6 +242,49 @@ describe("Session recording directive route", () => {
     expect(JSON.stringify(packet)).not.toContain("participant-1");
     expect(JSON.stringify(packet)).not.toContain("participant-2");
     expect(JSON.stringify(packet)).not.toContain("ios-private-installation");
+  });
+
+  it("keeps an expected participant visible when their recorder never reports in", async () => {
+    prisma.callRecordingDirective.findFirst.mockResolvedValue({
+      ...directive,
+      receipts: [
+        {
+          participantId: "participant-1",
+          clientInstanceId: "browser-1",
+          clientKind: "web",
+          deviceLabel: "Coach Mac",
+          state: "STARTED",
+          captureId: null,
+          detail: null,
+          occurredAt: new Date("2026-08-22T22:30:02.000Z"),
+          receivedAt: new Date("2026-08-22T22:30:03.000Z"),
+        },
+      ],
+    });
+
+    const response = await GET(request("GET"), context);
+    const packet = await response.json();
+    expect(packet).toMatchObject({
+      ok: true,
+      directive: {
+        participantStatuses: [
+          { participantLabel: "Coach Taylor", state: "RECORDING" },
+          {
+            participantLabel: "Jordan Client",
+            state: "WAITING",
+            endpointCount: 0,
+          },
+        ],
+        recordingHealth: {
+          expectedParticipantCount: 2,
+          participantWithEndpointCount: 1,
+          recordingParticipantCount: 1,
+          waitingParticipantCount: 1,
+          allParticipantsRecording: false,
+        },
+      },
+    });
+    expect(JSON.stringify(packet)).not.toContain("participant-2");
   });
 
   it("keeps a non-controller scoped to their own endpoint state", async () => {
@@ -252,6 +326,10 @@ describe("Session recording directive route", () => {
     expect(await response.json()).toMatchObject({
       ok: true,
       directive: {
+        participantStatuses: [
+          { participantLabel: "Jordan Client", state: "GETTING_READY" },
+        ],
+        recordingHealth: { expectedParticipantCount: 1 },
         endpointReceipts: [
           {
             participantLabel: "Jordan Client",
@@ -291,7 +369,11 @@ describe("Session recording directive route", () => {
     const response = await GET(request("GET"), context);
     expect(await response.json()).toMatchObject({
       ok: true,
-      directive: { endpointReceipts: [] },
+      directive: {
+        participantStatuses: [],
+        recordingHealth: { expectedParticipantCount: 0 },
+        endpointReceipts: [],
+      },
       boundaries: { controllerCanSeeAllEndpointStates: false },
     });
   });
