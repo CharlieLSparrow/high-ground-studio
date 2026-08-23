@@ -158,6 +158,7 @@ function SessionPostCallPath({
   transcriptSegmentCount,
   reviewMaterialReady,
   packetStale,
+  preparingReviewMaterial,
   held,
   followUpReady,
 }: {
@@ -167,6 +168,7 @@ function SessionPostCallPath({
   transcriptSegmentCount: number;
   reviewMaterialReady: boolean;
   packetStale: boolean;
+  preparingReviewMaterial: boolean;
   held: boolean;
   followUpReady: boolean;
 }) {
@@ -186,7 +188,9 @@ function SessionPostCallPath({
       : !transcriptReady
         ? { label: running ? "Transcription is running" : "Start or retry transcription", href: "#transcript-status", detail: running ? "Quipsly is processing the source in the background; this page refreshes automatically." : "Use the verified recording to create the timed transcript." }
         : !reviewReady
-          ? { label: packetStale ? "Rebuild review material" : "Build review material", href: "#review-material", detail: "Turn the completed transcript into editable suggestions for review." }
+          ? preparingReviewMaterial
+            ? { label: "Preparing your follow-up", href: "#review-material", detail: "Quipsly is turning the completed transcript into editable suggestions. Nothing is assigned, sent, or shared automatically." }
+            : { label: "Review follow-up", href: "#review-material", detail: packetStale ? "Quipsly could not refresh the suggestions automatically. Try again without changing the saved transcript." : "Quipsly could not prepare the suggestions automatically. Try again without changing the saved transcript." }
           : !followUpReady
             ? { label: "Review transcript and suggestions", href: "#transcript-correction-review", detail: "Correct words and speakers, then choose which notes, tasks, and goals to keep." }
             : { label: "Open shared follow-up", href: sessionWorkspaceHref(roomId, "outputs"), detail: "The released follow-up is ready to review or share." };
@@ -5483,6 +5487,7 @@ export function SessionReviewClient({
   const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
   const [busyLaneId, setBusyLaneId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const automaticPacketAttempts = useRef(new Set<string>());
   const liveDock = useLiveSessionDock();
 
   const load = useCallback(async (options?: { background?: boolean }) => {
@@ -5539,7 +5544,7 @@ export function SessionReviewClient({
     return () => window.clearInterval(interval);
   }, [load, mode, transcriptJobStatus]);
 
-  async function buildPacket() {
+  const buildPacket = useCallback(async (options?: { automatic?: boolean }) => {
     const transcriptJobId = packet?.transcriptJob?.id;
     if (!transcriptJobId) return;
     setBuildingPacket(true);
@@ -5559,20 +5564,24 @@ export function SessionReviewClient({
         throw new Error(body.error || "The review packet was not built.");
       await load();
       setMessage(
-        body.idempotentReplay
+        options?.automatic
+          ? "Your session summary and suggested next steps are ready to review. Nothing was assigned, sent, or shared."
+          : body.idempotentReplay
           ? "The current source-bound review packet already existed; no duplicate review artifacts were created."
           : "Review packet built from the completed transcript. Its summary and candidates remain internal until you explicitly review them.",
       );
     } catch (error) {
       setMessage(
-        error instanceof Error
+        options?.automatic
+          ? "Quipsly could not prepare the follow-up yet. Your transcript is safe; try again below."
+          : error instanceof Error
           ? error.message
           : "The review packet was not built.",
       );
     } finally {
       setBuildingPacket(false);
     }
-  }
+  }, [load, packet?.transcriptJob?.id]);
 
   async function runTranscript() {
     const transcriptJobId = packet?.transcriptJob?.id;
@@ -5995,6 +6004,34 @@ export function SessionReviewClient({
   const held = packet?.transcriptProcessingGate?.allowed === false;
   const packetStale = packet?.packet?.transcriptReview?.packetStale === true;
   const reviewHeld = held || packetStale;
+  const packetBuildAction = packet?.packet?.safeActions?.find(
+    (action) => action.id === "build-review-packet" && action.enabled,
+  );
+  const canPrepareReviewMaterial = Boolean(
+    mode === "transcript" &&
+      packet?.transcriptJob?.status === "COMPLETED" &&
+      (packet?.transcriptJob?.segmentCount ?? 0) > 0 &&
+      !held &&
+      packetBuildAction &&
+      (!packet?.packet?.summary || packetStale),
+  );
+  const packetAttemptKey = packet?.transcriptJob?.id
+    ? `${packet.transcriptJob.id}:${packet.packet?.transcriptReview?.snapshotSha256 || "missing"}`
+    : null;
+
+  useEffect(() => {
+    if (
+      !canPrepareReviewMaterial ||
+      !packetAttemptKey ||
+      buildingPacket ||
+      automaticPacketAttempts.current.has(packetAttemptKey)
+    ) {
+      return;
+    }
+    automaticPacketAttempts.current.add(packetAttemptKey);
+    void buildPacket({ automatic: true });
+  }, [buildPacket, buildingPacket, canPrepareReviewMaterial, packetAttemptKey]);
+
   const clientFollowUpReady = finishingEvidence.outputs.some(
     (output) => output.kind === "CLIENT_FOLLOW_UP" && output.status === "RELEASED",
   );
@@ -6405,6 +6442,7 @@ export function SessionReviewClient({
               transcriptSegmentCount={packet.transcriptJob?.segmentCount ?? 0}
               reviewMaterialReady={Boolean(packet.packet?.summary)}
               packetStale={packetStale}
+              preparingReviewMaterial={buildingPacket && canPrepareReviewMaterial}
               held={held}
               followUpReady={clientFollowUpReady}
             />
@@ -6578,8 +6616,8 @@ export function SessionReviewClient({
                           <RefreshCw size={15} aria-hidden="true" />
                         )}
                         {buildingPacket
-                          ? "Rebuilding review material…"
-                          : "Build current packet"}
+                          ? "Refreshing suggestions…"
+                          : "Try again"}
                       </button>
                     </div>
                   ) : null}
@@ -6590,10 +6628,7 @@ export function SessionReviewClient({
                     A completed, released transcript can be built into a review
                     packet. This desk will not fabricate a summary.
                   </p>
-                  {packet.packet?.safeActions?.find(
-                    (action) =>
-                      action.id === "build-review-packet" && action.enabled,
-                  ) ? (
+                  {packetBuildAction ? (
                     <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
                       <button
                         type="button"
@@ -6611,13 +6646,13 @@ export function SessionReviewClient({
                           <MessageSquareText size={15} aria-hidden="true" />
                         )}
                         {buildingPacket
-                          ? "Building review material…"
-                          : "Build review packet"}
+                          ? "Preparing your follow-up…"
+                          : "Try again"}
                       </button>
                       <p className="mt-3 text-xs font-bold leading-relaxed text-violet-900">
-                        Creates internal summary, highlight, and candidate
-                        review artifacts from this exact transcript. It creates
-                        no task or goal and sends or publishes nothing.
+                        Quipsly normally prepares this automatically from the
+                        exact transcript. Retrying creates no task or goal and
+                        sends or publishes nothing.
                       </p>
                     </div>
                   ) : null}

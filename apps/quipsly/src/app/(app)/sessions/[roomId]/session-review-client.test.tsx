@@ -588,7 +588,9 @@ describe("Session review goal candidates", () => {
     const completed = packetReadyToBuild();
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse(running))
-      .mockResolvedValueOnce(jsonResponse(completed));
+      .mockResolvedValueOnce(jsonResponse(completed))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false }))
+      .mockResolvedValueOnce(jsonResponse(packet()));
     global.fetch = fetchMock as typeof fetch;
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
@@ -600,7 +602,8 @@ describe("Session review goal candidates", () => {
     });
 
     expect(await screen.findByText("Completed")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(await screen.findByRole("heading", { name: "Session brief" })).toBeInTheDocument();
     expect(screen.queryByText(/Loading transcript packet/i)).not.toBeInTheDocument();
   });
 
@@ -779,30 +782,47 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("Useful recap once the client-safe wording is authored deliberately.")).toBeInTheDocument();
   });
 
-  it("builds the available review packet from the exact transcript without forcing a rebuild", async () => {
+  it("automatically prepares review material from the exact transcript without forcing a rebuild", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse(packetReadyToBuild()))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false }))
+      .mockResolvedValueOnce(jsonResponse(packet()));
+    global.fetch = fetchMock as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/transcripts/packet");
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ transcriptJobId: "job-1", force: false });
+    expect(await screen.findByRole("status")).toHaveTextContent("Nothing was assigned, sent, or shared");
+    expect(screen.getByRole("heading", { name: "Session brief" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Candidate goals" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /00:12-00:17.*build a repeatable coaching review habit/i })).toHaveAttribute("href", "#transcript-segment-segment-1");
+    expect(screen.getByText("Every brief item points to immutable transcript evidence.")).toBeInTheDocument();
+    expect(screen.getByText("Inspect exact saved packet text")).toBeInTheDocument();
+  });
+
+  it("offers one plain retry when automatic follow-up preparation fails", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(packetReadyToBuild()))
+      .mockResolvedValueOnce(jsonResponse({ ok: false, error: "temporary worker error" }, 503))
       .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false }))
       .mockResolvedValueOnce(jsonResponse(packet()));
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
-    const build = await screen.findByRole("button", { name: "Build review packet" });
-    expect(screen.getByRole("link", { name: /Build review material/i })).toHaveAttribute("href", "#review-material");
-    expect(screen.getByText(/creates no task or goal and sends or publishes nothing/i)).toBeInTheDocument();
 
-    await user.click(build);
+    expect(await screen.findByRole("status")).toHaveTextContent("Your transcript is safe; try again below");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retry = screen.getByRole("button", { name: "Try again" });
+    expect(screen.getByRole("link", { name: /Review follow-up/i })).toHaveAttribute("href", "#review-material");
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/transcripts/packet");
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ transcriptJobId: "job-1", force: false });
-    expect(await screen.findByRole("status")).toHaveTextContent("remain internal until you explicitly review them");
-    expect(screen.getByRole("heading", { name: "Session brief" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Candidate goals" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /00:12-00:17.*build a repeatable coaching review habit/i })).toHaveAttribute("href", "#transcript-segment-segment-1");
-    expect(screen.getByText("Every brief item points to immutable transcript evidence.")).toBeInTheDocument();
-    expect(screen.getByText("Inspect exact saved packet text")).toBeInTheDocument();
+    await user.click(retry);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({ transcriptJobId: "job-1", force: false });
+    expect(await screen.findByRole("heading", { name: "Session brief" })).toBeInTheDocument();
   });
 
   it("locks stale packet decisions and offers an append-only rebuild from current transcript review", async () => {
@@ -834,7 +854,7 @@ describe("Session review goal candidates", () => {
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
 
     expect(await screen.findByText("Transcript review changed after this packet was built.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Build current packet" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(screen.getByText(/Quipsly is refreshing these suggestions after transcript changes/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve inside Quipsly" })).not.toBeInTheDocument();
   });

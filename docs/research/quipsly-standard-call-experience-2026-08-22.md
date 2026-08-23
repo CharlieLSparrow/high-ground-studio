@@ -624,6 +624,13 @@ share`. The continuity panel says that the call, chat, recordings,
   estimate uses the same exact-source word boundaries and merged exclusions as
   the server-side edit plan; `about` remains explicit because the verified
   renderer still owns codec duration and click-safe crossfades.
+- Prepare reversible internal follow-up automatically when the completed,
+  released transcript is ready. Building a source-bound summary and suggested
+  notes, tasks, and goals is an idempotent derivation with no external side
+  effects, so it is routine system work rather than a user decision. Quipsly
+  now performs that step once and shows a plain `Try again` only after failure.
+  Assigning work, messaging a participant, scheduling, and releasing or sharing
+  material remain explicit because those actions affect other people.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB
