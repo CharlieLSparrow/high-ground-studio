@@ -7100,47 +7100,24 @@ private struct CaptureRecorderView: View {
         .background(CaptureCanvas())
         .navigationTitle("Record")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            guard visibleTab == .record else { return }
+            focusPrimaryRecorderIfOpen(scrollProxy)
+        }
         .onChange(of: visibleTab) { _, tab in
-            guard tab == .record,
-                  let session = model.selectedSession,
-                  model.providerRoom.isConnected
-                    || localOnlyRecordingSessionID == session.id
-                    || audioCapture.activeSessionID == session.id
-                    || videoCapture.activeSessionID == session.id
-                    || model.activeCaptureSession?.id == session.id
-                    || model.activeVideoCaptureSession?.id == session.id
-                    || session.providerCanJoin == false else { return }
-            // TabView preserves the old scroll offset. A fresh tap on Record
-            // should reopen the primary recorder, not a stale notes/thread
-            // position from the previous visit.
-            DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
-                }
-            }
+            guard tab == .record else { return }
+            focusPrimaryRecorderIfOpen(scrollProxy)
         }
         .onChange(of: recorderFocusRequest) { _, _ in
-            DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
-                }
-            }
+            focusPrimaryRecorderIfOpen(scrollProxy)
         }
         .onChange(of: audioCapture.activeSessionID) { _, sessionID in
             guard sessionID == model.selectedSession?.id else { return }
-            DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
-                }
-            }
+            focusPrimaryRecorderIfOpen(scrollProxy)
         }
         .onChange(of: videoCapture.activeSessionID) { _, sessionID in
             guard sessionID == model.selectedSession?.id else { return }
-            DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
-                }
-            }
+            focusPrimaryRecorderIfOpen(scrollProxy)
         }
         .sheet(isPresented: $showsSessionPicker) {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
@@ -7302,6 +7279,28 @@ private struct CaptureRecorderView: View {
 
     private var captureIsActive: Bool {
         audioCaptureIsActive || videoCaptureIsActive
+    }
+
+    private var selectedRecordingWorkspaceIsOpen: Bool {
+        guard let session = model.selectedSession else { return false }
+        return model.providerRoom.isConnected
+            || localOnlyRecordingSessionID == session.id
+            || audioCapture.activeSessionID == session.id
+            || videoCapture.activeSessionID == session.id
+            || model.activeCaptureSession?.id == session.id
+            || model.activeVideoCaptureSession?.id == session.id
+            || session.providerCanJoin == false
+    }
+
+    private func focusPrimaryRecorderIfOpen(_ scrollProxy: ScrollViewProxy) {
+        guard selectedRecordingWorkspaceIsOpen else { return }
+        // TabView can remount this view after `visibleTab` already became
+        // `.record`, so use both the appearance and explicit-request paths.
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                scrollProxy.scrollTo("CapturePrimaryRecorder", anchor: .center)
+            }
+        }
     }
 
     private var recordingCoordinationTaskID: String {
