@@ -75,6 +75,19 @@ describe("SessionRecordingShareCard", () => {
     }));
   });
 
+  it("focuses the exact transcript cut requested by the review surface", async () => {
+    global.fetch = jest.fn(async (_input: RequestInfo | URL) => response(snapshot)) as jest.MockedFunction<typeof fetch>;
+    const focusTranscriptKey = `${transcriptSegment.transcriptJobId}:${transcriptSegment.segmentId}`;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" focusTranscriptKey={focusTranscriptKey} />);
+
+    const passage = await screen.findByText(transcriptSegment.text);
+    const row = passage.closest("label");
+    expect(row).toHaveAttribute("data-transcript-key", focusTranscriptKey);
+    expect(row).toHaveClass("ring-4");
+    expect((row?.querySelector("input[type=checkbox]") as HTMLInputElement)).toBeChecked();
+  });
+
   it("keeps overlapping speech included and explains why", async () => {
     const unsafeSnapshot = {
       ...snapshot,

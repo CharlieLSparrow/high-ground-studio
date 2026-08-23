@@ -1348,3 +1348,16 @@ productions. They do not appear as a prerequisite in the happy path. The change
 passes 29/29 focused projection/status/UI tests, 112/112 broader Session source
 regressions with one environment-gated integration test skipped, and Quipsly
 TypeScript typecheck. No deployment or Build 34 mutation occurred.
+
+## Transcript-to-recording edit continuity — 2026-08-23
+
+A coach can now start a text-based recording edit from the exact transcript
+passage being reviewed. `Edit recording here` opens the inline private-recording
+editor and focuses the same transcript job and segment. It does not silently
+exclude the passage or create/share a derivative. Unsafe timing stays included,
+and passages outside an existing trim explain why they are not currently in the
+cut list.
+
+Focused correction/editor tests pass 29/29, the wider transcript/share set
+passes 78/78, and Quipsly TypeScript typecheck passes. No render, share,
+deployment, or Build 34 mutation occurred.

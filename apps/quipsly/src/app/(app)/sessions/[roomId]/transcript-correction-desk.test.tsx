@@ -646,6 +646,22 @@ describe("TranscriptCorrectionDesk", () => {
     expect(edit).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("opens the recording editor on the exact transcript passage", async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk
+      roomId="room-1"
+      canEditRecording
+      recordingEditor={(focus) => <div>Focused recording passage: {focus?.segmentId || "none"}</div>}
+    />);
+
+    await screen.findByText("Welcome, everybody.");
+    expect(screen.queryByText(/focused recording passage/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit recording here" }));
+    expect(screen.getByText("Focused recording passage: segment-1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close recording editor" })).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("offers standard transcript and recording-plus-transcript workspaces without leaving the page", async () => {
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
 

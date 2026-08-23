@@ -986,3 +986,25 @@ status, and UI tests pass 29/29, the wider Session recording/source regression
 set passes 112/112 with one environment-gated integration test skipped, and the
 full Quipsly TypeScript typecheck passes. This is deterministic source proof,
 not physical-device, TestFlight, or real-participant proof.
+
+## 2026-08-23 transcript-to-recording edit continuity
+
+Transcript correction and text-based recording cuts now operate as one Session
+journey instead of adjacent tools. Every coaching transcript passage exposes
+`Edit recording here`; the action opens the existing inline recording editor
+focused on that exact transcript-job and segment identity. It does not toggle
+the cut, create a derivative, release a preview, change transcript wording, or
+touch the immutable participant masters.
+
+The focused cut row remains explicit: included passages stay checked, removing
+a safely timed passage requires a deliberate checkbox action, and overlapping
+or structurally unsafe timing remains disabled with its reason. Existing draft
+edits reopen from their current revision before focus is applied. A passage
+outside the current trim or selected sources explains the adjustment needed
+instead of silently widening the edit.
+
+The focused transcript/editor tests pass 29/29, the wider correction/evidence/
+recording-share set passes 78/78, and the Quipsly TypeScript typecheck passes.
+This closes navigation continuity and exact-segment focus; it
+does not claim a human listening decision, completed render, mobile UI parity,
+or physical-device proof.

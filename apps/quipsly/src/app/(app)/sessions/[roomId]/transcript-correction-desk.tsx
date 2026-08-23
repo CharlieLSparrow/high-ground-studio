@@ -133,6 +133,11 @@ type TranscriptExportSegment = Pick<
   | "acceptedVerification"
 >;
 
+export type RecordingEditorFocus = {
+  transcriptJobId: string;
+  segmentId: string;
+};
+
 export function reviewedTranscriptFileName(title: string, transcriptJobId: string) {
   const slug = title
     .normalize("NFKD")
@@ -1120,6 +1125,7 @@ function CorrectionEditor({
   busy,
   onPlay,
   onPlayAt,
+  onEditRecording,
   onSaved,
 }: {
   roomId: string;
@@ -1133,6 +1139,7 @@ function CorrectionEditor({
   busy: boolean;
   onPlay: () => Promise<void>;
   onPlayAt: (seconds: number) => Promise<void>;
+  onEditRecording?: (segment: Segment) => void;
   onSaved: (message: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -1510,6 +1517,7 @@ function CorrectionEditor({
             <button type="button" onClick={() => void confirmAsIs()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />Mark correct</button>
           )}
           <button type="button" onClick={() => { setEditing(true); if (!playbackReviewed) void onPlay(); }} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:cursor-not-allowed disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />{segment.acceptedCorrection ? "Revise transcript" : "Correct transcript"}</button>
+          {onEditRecording ? <button type="button" onClick={() => onEditRecording(segment)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50"><Scissors size={15} aria-hidden="true" />Edit recording here</button> : null}
           {segment.correctionHistory.length > 0 && <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#8a7354]"><History size={14} aria-hidden="true" />{segment.correctionHistory.length} correction record(s) preserved</span>}
         </div>
       )}
@@ -1611,7 +1619,7 @@ export function TranscriptCorrectionDesk({
   recordingAssetId?: string | null;
   canUseProjectTeamNotes?: boolean;
   canEditRecording?: boolean;
-  recordingEditor?: ReactNode;
+  recordingEditor?: ReactNode | ((focus: RecordingEditorFocus | null) => ReactNode);
 }) {
   const [desk, setDesk] = useState<Desk | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1628,6 +1636,7 @@ export function TranscriptCorrectionDesk({
   const [showQualityDetails, setShowQualityDetails] = useState(false);
   const [showSpeakerIdentity, setShowSpeakerIdentity] = useState(false);
   const [showRecordingEditor, setShowRecordingEditor] = useState(false);
+  const [recordingEditorFocus, setRecordingEditorFocus] = useState<RecordingEditorFocus | null>(null);
   const [transcriptView, setTranscriptView] = useState<"transcript" | "recording-transcript">("transcript");
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
@@ -1635,6 +1644,15 @@ export function TranscriptCorrectionDesk({
   const speakerNamingPromptedRef = useRef(false);
   const playbackReady = Boolean(desk?.playback) && playbackState === "ready";
   const detectorDurationSeconds = desk?.playback?.durationSeconds ?? desk?.evaluation?.sourceDurationSeconds ?? desk?.evidence?.audio.signal?.durationSeconds ?? 0;
+
+  const openRecordingEditorAt = useCallback((segment: Segment) => {
+    if (!desk?.transcriptJobId) return;
+    setRecordingEditorFocus({ transcriptJobId: desk.transcriptJobId, segmentId: segment.id });
+    setShowRecordingEditor(true);
+    window.requestAnimationFrame(() => {
+      document.getElementById("inline-recording-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [desk?.transcriptJobId]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -1925,7 +1943,7 @@ export function TranscriptCorrectionDesk({
             {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{reviewedSegmentCount} of {desk.segments.length} passages checked</p>}
           </div>
           <div className="flex flex-wrap gap-2">
-            {canEditRecording ? recordingEditor ? <button type="button" aria-expanded={showRecordingEditor} aria-controls="inline-recording-editor" onClick={() => setShowRecordingEditor((current) => !current)} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />{showRecordingEditor ? "Close recording editor" : "Trim or cut recording"}</button> : <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=outputs#recording-share`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />Trim or cut recording</Link> : null}
+            {canEditRecording ? recordingEditor ? <button type="button" aria-expanded={showRecordingEditor} aria-controls="inline-recording-editor" onClick={() => { setRecordingEditorFocus(null); setShowRecordingEditor((current) => !current); }} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />{showRecordingEditor ? "Close recording editor" : "Trim or cut recording"}</button> : <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=outputs#recording-share`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />Trim or cut recording</Link> : null}
             <button type="button" onClick={() => void prepareTranscriptFile()} disabled={busy || !desk.gate.allowed || !desk.segments.length} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50"><Share2 size={15} aria-hidden="true" />Share transcript</button>
             <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh</button>
           </div>
@@ -1980,7 +1998,7 @@ export function TranscriptCorrectionDesk({
         )}
       </div>
 
-      {showRecordingEditor && recordingEditor ? <div id="inline-recording-editor" className="scroll-mt-24">{recordingEditor}</div> : null}
+      {showRecordingEditor && recordingEditor ? <div id="inline-recording-editor" className="scroll-mt-24">{typeof recordingEditor === "function" ? recordingEditor(recordingEditorFocus) : recordingEditor}</div> : null}
 
       {desk.gate.allowed && (desk.speakerGroups ?? []).length > 0 ? (
         <section className={`rounded-2xl border p-4 shadow-sm ${unidentifiedSpeakerCount > 0 ? "border-indigo-300 bg-indigo-50" : "border-emerald-200 bg-emerald-50/45"}`} aria-labelledby="voice-labels-heading">
@@ -2049,6 +2067,7 @@ export function TranscriptCorrectionDesk({
                   busy={busy}
                   onPlay={() => playFrom(segment)}
                   onPlayAt={playFromTime}
+                  onEditRecording={canEditRecording && recordingEditor ? openRecordingEditorAt : undefined}
                   onSaved={saved}
                 />
               ))}

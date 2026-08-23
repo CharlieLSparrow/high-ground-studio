@@ -6454,7 +6454,12 @@ export function SessionReviewClient({
               recordingAssetId={focusedRecordingAssetId}
               canUseProjectTeamNotes={canUseProjectTeamNotes}
               canEditRecording={purpose === "COACHING"}
-              recordingEditor={purpose === "COACHING" ? <SessionRecordingShareCard roomId={roomId} /> : null}
+              recordingEditor={purpose === "COACHING"
+                ? (focus) => <SessionRecordingShareCard
+                    roomId={roomId}
+                    focusTranscriptKey={focus ? `${focus.transcriptJobId}:${focus.segmentId}` : null}
+                  />
+                : null}
             />
             <section
               className="grid gap-4 lg:grid-cols-3"

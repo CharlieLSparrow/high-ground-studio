@@ -98,6 +98,10 @@ function transcriptExclusionKeys(output: Output | null | undefined) {
   ));
 }
 
+function recordingCutElementId(key: string) {
+  return `recording-cut-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
 function editDuration(startSeconds: number, endSeconds: number, exclusions: TranscriptSegment[]) {
   const merged: Array<{ startSeconds: number; endSeconds: number }> = [];
   for (const segment of exclusions
@@ -121,7 +125,13 @@ function editDuration(startSeconds: number, endSeconds: number, exclusions: Tran
   };
 }
 
-export function SessionRecordingShareCard({ roomId }: { roomId: string }) {
+export function SessionRecordingShareCard({
+  roomId,
+  focusTranscriptKey = null,
+}: {
+  roomId: string;
+  focusTranscriptKey?: string | null;
+}) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -180,6 +190,38 @@ export function SessionRecordingShareCard({ roomId }: { roomId: string }) {
     () => editDuration(startSeconds, endSeconds, excludedTranscriptSegments),
     [endSeconds, excludedTranscriptSegments, startSeconds],
   );
+  const focusedTranscriptSegment = useMemo(() => (
+    focusTranscriptKey
+      ? (snapshot?.available?.transcriptSegments || []).find((segment) => (
+          `${segment.transcriptJobId}:${segment.segmentId}` === focusTranscriptKey
+        )) ?? null
+      : null
+  ), [focusTranscriptKey, snapshot?.available?.transcriptSegments]);
+  const focusedSegmentVisible = Boolean(focusedTranscriptSegment && editableTranscript.some((segment) => (
+    segment.transcriptJobId === focusedTranscriptSegment.transcriptJobId
+    && segment.segmentId === focusedTranscriptSegment.segmentId
+  )));
+
+  useEffect(() => {
+    if (!focusTranscriptKey || !snapshot?.role) return;
+    if (snapshot.output && !editing) {
+      setSelected(new Set(defaultParticipantSources(snapshot.available?.sources || [])));
+      setTitle(snapshot.output.title);
+      setStartSeconds(Number(snapshot.output.body.edit?.startSeconds) || 0);
+      setEndSeconds(Number(snapshot.output.body.edit?.endSeconds) || duration);
+      setExcludedTranscriptKeys(transcriptExclusionKeys(snapshot.output));
+      setEditing(true);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(recordingCutElementId(focusTranscriptKey));
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        target.focus({ preventScroll: true });
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [duration, editing, focusTranscriptKey, snapshot]);
 
   async function mutate(action: "PREPARE" | "RELEASE" | "REVOKE") {
     setBusy(action);
@@ -263,7 +305,7 @@ export function SessionRecordingShareCard({ roomId }: { roomId: string }) {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <legend className="flex items-center gap-2 text-sm font-black text-sky-950"><FileText size={16} />Cut the recording by transcript</legend>
-                  <p className="mt-1 text-xs font-semibold text-sky-800">Checked passages stay in the recording. Clear a passage to remove it from this private preview. Transcript wording does not change.</p>
+                  <p className="mt-1 text-xs font-semibold text-sky-800">Included passages stay in the recording. Clear a passage to remove it from this private preview. Transcript wording does not change.</p>
                 </div>
                 {excludedTranscriptSegments.length ? <button type="button" onClick={() => setExcludedTranscriptKeys(new Set())} className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] font-black text-sky-900"><RotateCcw className="mr-1 inline" size={12} />Restore all</button> : null}
               </div>
@@ -272,8 +314,9 @@ export function SessionRecordingShareCard({ roomId }: { roomId: string }) {
                   const key = `${segment.transcriptJobId}:${segment.segmentId}`;
                   const included = !excludedTranscriptKeys.has(key);
                   const safe = segment.cutSafety === "safe" && Boolean(segment.timingFingerprint);
+                  const focused = focusTranscriptKey === key;
                   return (
-                    <label key={key} className={`grid grid-cols-[auto_4.5rem_1fr] gap-3 rounded-xl border p-3 ${!safe ? "cursor-not-allowed border-amber-200 bg-amber-50" : included ? "cursor-pointer border-sky-100 bg-sky-50/50" : "cursor-pointer border-rose-200 bg-rose-50 text-rose-950"}`}>
+                    <label id={recordingCutElementId(key)} tabIndex={-1} data-transcript-key={key} key={key} className={`grid scroll-mt-28 grid-cols-[auto_4.5rem_1fr] gap-3 rounded-xl border p-3 outline-none ${focused ? "ring-4 ring-sky-300" : ""} ${!safe ? "cursor-not-allowed border-amber-200 bg-amber-50" : included ? "cursor-pointer border-sky-100 bg-sky-50/50" : "cursor-pointer border-rose-200 bg-rose-50 text-rose-950"}`}>
                       <input
                         type="checkbox"
                         className="mt-1 size-4 accent-sky-700"
@@ -306,6 +349,7 @@ export function SessionRecordingShareCard({ roomId }: { roomId: string }) {
           ) : (
             <div className="rounded-xl border border-sky-200 bg-white p-4"><p className="text-sm font-black text-sky-950">Recording cuts appear when the transcript is ready</p><p className="mt-1 text-xs font-semibold text-sky-800">You can trim the beginning and end now.</p></div>
           )}
+          {focusTranscriptKey && focusedTranscriptSegment && !focusedSegmentVisible ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">This passage is outside the current trim or source selection. Expand the start/end range or restore its participant track to edit it.</p> : null}
           <p className="text-xs font-bold text-sky-800"><Scissors className="mr-1 inline" size={14} />Prepared range {time(startSeconds)}–{time(endSeconds)} ({time(endSeconds - startSeconds)}) from {chosen.length} participant source{chosen.length === 1 ? "" : "s"}.</p>
           <button type="button" disabled={Boolean(busy) || !chosen.length || !rangeValid || !snapshot.readiness?.localRendererAvailable} onClick={() => void mutate("PREPARE")} className="w-full rounded-xl bg-sky-800 px-4 py-3 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">{busy === "PREPARE" ? "Creating preview…" : "Create private preview"}</button>
           {!snapshot.readiness?.localRendererAvailable ? <p className="text-xs font-bold text-amber-800">The verified renderer is not available in this environment. Quipsly will not create a misleading draft.</p> : null}
