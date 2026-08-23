@@ -20,7 +20,9 @@ The default journey is:
    requires it. A previously retained permission is reused.
 4. Talk using conventional mute, camera, participant, and leave controls.
 5. Start a retained recording with clear participant consent. High-quality
-   sources upload progressively while the call continues.
+   source chunks are durably journaled on the recording device while the call
+   continues; resumable cloud transfer begins automatically when the source
+   stops and resumes after a network or browser interruption.
 6. Leave only after Quipsly clearly reports whether this device's source is
    safely uploaded or still recovering.
 7. Return to the same Session for the synchronized recording, transcript, notes,
@@ -73,6 +75,10 @@ Recurring complaints reveal the failure modes Quipsly must design out:
   join-muted state per device. Also remember whether this is the person's audio
   device or a second device. If a hardware identifier rotates, match the
   retained human-readable label before falling back safely.
+- If the browser reports that remembered camera/microphone permission is already
+  granted, reopen the remembered preview automatically. If permission is new,
+  denied, unsupported, or ambiguous, do not manufacture a prompt: wait for the
+  person's **Join call** or **Preview** action.
 - Treat second-device use as a first-class mode, not troubleshooting copy. A
   companion endpoint publishes no call microphone and plays no remote call
   audio, so it cannot create echo. It may still show Session work, publish
@@ -96,8 +102,11 @@ Recurring complaints reveal the failure modes Quipsly must design out:
 
 - Show live microphone confidence without making a sound check mandatory:
   signal present, healthy range, hot, or clipping risk.
-- Record each participant locally and upload progressively in independently
-  verifiable chunks.
+- Record each participant locally into a periodic durable chunk journal. Upload
+  automatically through independently verifiable resumable ranges after Stop;
+  do not describe cloud progress as complete until exact-byte verification
+  passes. Progressive in-take cloud transfer is a future transport optimization,
+  not a reason to weaken the current local recovery boundary.
 - Show every participant's retained-source state to the host and their own state
   to the participant: recording, uploading, safely retained, recovering, or
   action required.
@@ -168,6 +177,14 @@ a tester does not stop independent product work.
   and <https://www.reddit.com/r/Descript/comments/1si8k8h/am_i_the_only_one_frustrated_with_descript_right/>
 - Recent production-user feedback on sync drift and upload visibility:
   <https://www.reddit.com/r/podcasting/comments/1snt1fj/riverside_just_keeps_getting_worse/>
+- Reports of guest tracks stalled at the final upload stage, guest-tab reopening
+  as a recovery dependency, and users preferring familiar Zoom reliability over
+  higher-quality but fragile production tooling:
+  <https://www.reddit.com/r/podcasting/comments/1rg08bh/riverside_stuck_at_97_processing_help/>
+  and <https://www.reddit.com/r/podcasting/comments/1gtggoo/recording_on_zoom/>
+- Descript's official stalled-recording recovery workflow, including participant
+  recovery links and replacement sources:
+  <https://help.descript.com/hc/en-us/articles/30176966037005-Recover-and-replace-stalled-Rooms-recordings>
 - Apple App Review login-service rule and native privacy-preserving account
   option: <https://developer.apple.com/app-store/review/guidelines/#login-services>
 - Google Meet's permission-prompt redesign, which removed competing prompts and

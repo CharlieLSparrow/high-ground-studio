@@ -145,6 +145,17 @@ function stopStream(stream: MediaStream | null) {
   stream?.getTracks().forEach((track) => track.stop());
 }
 
+async function retainedMediaPermissionState(name: "microphone" | "camera") {
+  if (!navigator.permissions?.query) return "unsupported" as const;
+  try {
+    return (await navigator.permissions.query({ name: name as PermissionName })).state;
+  } catch {
+    // Safari and some embedded browsers expose the Permissions API without
+    // accepting camera/microphone descriptors. Never turn that into a prompt.
+    return "unsupported" as const;
+  }
+}
+
 async function getUserMediaWithTimeout(
   constraints: MediaStreamConstraints,
   timeoutMs = 15_000,
@@ -437,6 +448,7 @@ export function LiveSessionRoom({
   const remoteMediaRef = useRef<HTMLDivElement | null>(null);
   const meterCleanupRef = useRef<(() => void) | null>(null);
   const audioMeterGenerationRef = useRef(0);
+  const automaticPreviewAttemptedRef = useRef(false);
   const providerRecordingRequestIdsRef = useRef<Record<"START_EGRESS" | "STOP_EGRESS", string | undefined>>({
     START_EGRESS: undefined,
     STOP_EGRESS: undefined,
@@ -1102,6 +1114,47 @@ export function LiveSessionRoom({
       return null;
     }
   }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId, startAudioMeter]);
+
+  useEffect(() => {
+    automaticPreviewAttemptedRef.current = false;
+  }, [callRoomId]);
+
+  useEffect(() => {
+    if (
+      automaticPreviewAttemptedRef.current ||
+      connected ||
+      status === "checking" ||
+      status === "joining"
+    ) return;
+
+    const useCallAudioHere = callAudioMode === "this-device";
+    if ((useCallAudioHere && !microphoneId) || (cameraWanted && !cameraId)) return;
+    automaticPreviewAttemptedRef.current = true;
+
+    const reopenRememberedSetup = async () => {
+      const requiredPermissions = [
+        useCallAudioHere ? "microphone" as const : null,
+        cameraWanted ? "camera" as const : null,
+      ].filter((name): name is "microphone" | "camera" => name !== null);
+      if (!requiredPermissions.length) return;
+      const states = await Promise.all(
+        requiredPermissions.map((name) => retainedMediaPermissionState(name)),
+      );
+      if (states.every((state) => state === "granted")) {
+        await startSelectedPreview();
+      }
+    };
+
+    void reopenRememberedSetup();
+  }, [
+    callAudioMode,
+    cameraId,
+    cameraWanted,
+    connected,
+    microphoneId,
+    startSelectedPreview,
+    status,
+  ]);
 
   const completeLeave = useCallback((protectedSourceStopped = false) => {
     // Invalidate any device refresh started when the retained source unlocked.

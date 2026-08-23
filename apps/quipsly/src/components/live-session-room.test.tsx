@@ -106,6 +106,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
 
 describe("LiveSessionRoom", () => {
   const originalMediaDevices = navigator.mediaDevices;
+  const originalPermissions = navigator.permissions;
   const originalFetch = global.fetch;
 
   beforeEach(() => {
@@ -120,6 +121,10 @@ describe("LiveSessionRoom", () => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: originalMediaDevices,
+    });
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: originalPermissions,
     });
     global.fetch = originalFetch;
     jest.restoreAllMocks();
@@ -216,6 +221,81 @@ describe("LiveSessionRoom", () => {
     fireEvent.click(join);
     expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false });
     await screen.findByText(/Microphone access is off/i);
+  });
+
+  it("reopens a remembered setup automatically only when browser permission is already granted", async () => {
+    window.localStorage.setItem("quipsly-live-preferred-devices-v3", JSON.stringify({
+      callAudioMode: "other-device",
+      cameraWanted: true,
+      cameraId: "remembered-camera",
+      cameraLabel: "Remembered camera",
+    }));
+    const videoTrack = {
+      label: "Remembered camera",
+      readyState: "live",
+      stop: jest.fn(),
+      getSettings: () => ({ width: 1920, height: 1080, frameRate: 30 }),
+    };
+    const getUserMedia = jest.fn().mockResolvedValue({
+      getTracks: () => [videoTrack],
+      getVideoTracks: () => [videoTrack],
+      getAudioTracks: () => [],
+    });
+    const query = jest.fn().mockResolvedValue({ state: "granted" });
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query },
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "videoinput", deviceId: "remembered-camera", label: "Remembered camera" },
+        ]),
+        getUserMedia,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-returning-preview" captureGroupId="55555555-5555-4555-8555-555555555540" sessionTitle="Returning setup" kind="coaching" />);
+    });
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({
+      audio: false,
+      video: expect.objectContaining({ deviceId: { exact: "remembered-camera" } }),
+    }));
+    expect(query).toHaveBeenCalledWith({ name: "camera" });
+    expect(screen.getByText("Preview checked")).toBeInTheDocument();
+  });
+
+  it("does not open devices automatically when a first-time browser still needs permission", async () => {
+    const getUserMedia = jest.fn();
+    const query = jest.fn().mockResolvedValue({ state: "prompt" });
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query },
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "first-mic", label: "First microphone" },
+        ]),
+        getUserMedia,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-first-permission" captureGroupId="55555555-5555-4555-8555-555555555539" sessionTitle="First setup" kind="coaching" />);
+    });
+
+    await waitFor(() => expect(query).toHaveBeenCalledWith({ name: "microphone" }));
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Join call" })).toBeEnabled();
   });
 
   it("joins as a remembered second device without asking for call-audio permission", async () => {
