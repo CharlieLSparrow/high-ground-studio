@@ -2003,3 +2003,30 @@ Sparrow profile, while its prior High Ground Odyssey grant and Episode 9
 participant access are revoked/removed. This repair was local only because
 Google Cloud reauthentication expired before the read-only production audit;
 no production identity mutation was attempted.
+
+## Clean-commit controlled-speech and audio-quality flight — 2026-08-23
+
+The extended fresh coaching flight passed from exact pushed source
+`4af74732a5caca8067edfaba14b78d8d03f51024` with a clean tracked worktree. It
+sent distinct controlled coach and client speech through the ordinary rendered
+two-endpoint call and produced two verified participant-owned sources with
+28,516 ms of overlap. The attributed transcript recovered the expected terms
+from each source, decoded protected playback, and exported the two-source
+mentor report through the rendered UI.
+
+The same Session proved the higher-quality workflow without a separate admin
+surface: audio preparation began automatically, ended with an improved
+listening copy, rendered original and improved playback together, and preserved
+the original source plus capture manifest unchanged. The ordinary transcript
+appeared before packet administration, opened its recording editor inline,
+operated both linear and side-by-side recording/transcript views, and began
+exact-source playback automatically when correcting a passage without a
+repeated listening-attestation step. The calm recording summary rendered while
+expert evidence stayed collapsed by default.
+
+Receipt:
+`artifacts/coaching-acceptance/c4c0da37/fresh-coaching-flight-receipt.json`.
+Its boundaries remain deliberate: controlled text-to-speech and synthetic
+browser devices are pipeline evidence, not natural-speech accuracy, physical
+device, human listening, external email delivery, or production-scale proof.
+The improved listening copy was not published automatically.
