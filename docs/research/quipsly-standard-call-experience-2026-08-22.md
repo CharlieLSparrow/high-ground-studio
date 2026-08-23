@@ -781,6 +781,11 @@ share`. The continuity panel says that the call, chat, recordings,
   plain language using the actual audience; keep canonical identity, revision,
   source anchors, taxonomy, and delivery boundaries available on the saved note
   or in edit details.
+- Use the same language for commitments. The ordinary Session surface is
+  `Tasks and goals`, not `committed Session work`. Show simple task and goal
+  counts, one `Add task or goal` action, and a direct route to Work. Ownership,
+  transcript provenance, optimistic revisions, tags, due dates, and canonical
+  identity remain enforced without becoming vocabulary a coach must learn.
 
 ## Acceptance consequences
 

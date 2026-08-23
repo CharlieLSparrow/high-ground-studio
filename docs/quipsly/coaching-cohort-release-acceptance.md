@@ -1132,3 +1132,14 @@ The focused Session Notes suite passes 5/5 and the full web typecheck passes.
 This is component and request-contract evidence; a minimally instructed coach,
 client visibility readback, mobile keyboard behavior, and screen-reader journey
 remain deferred acceptance evidence.
+
+The Work mode now presents `Tasks and goals`, ordinary per-kind counts, one
+`Add task or goal` action, and a direct link to Work. It no longer leads with
+`committed Session work` or explains canonical persistence before the user can
+act. The underlying task and goal records, actor ownership, visibility,
+transcript provenance, dates, tags, and cross-surface links are unchanged.
+
+The combined Session Notes and Session review suites pass 53/53 and the full
+web typecheck passes. Actual coach/client comprehension, keyboard-only entry,
+cross-account visibility, and return-use task completion remain deferred
+acceptance evidence.

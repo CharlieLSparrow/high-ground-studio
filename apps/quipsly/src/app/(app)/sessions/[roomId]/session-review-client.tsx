@@ -2535,9 +2535,11 @@ function SessionQuickEntryCard({
     }
   }
   const noteScope = scope === "notes";
+  const taskCount = currentEntries.filter((entry) => entry.kind === "TASK").length;
+  const goalCount = currentEntries.filter((entry) => entry.kind === "GOAL").length;
   const title = noteScope
     ? `${currentEntries.length} deliberate Session note${currentEntries.length === 1 ? "" : "s"}`
-    : `${currentEntries.length} committed task${currentEntries.length === 1 ? " or goal" : "s and goals"}`;
+    : "Tasks and goals";
   return (
     <section
       className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5"
@@ -2548,7 +2550,7 @@ function SessionQuickEntryCard({
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
             {noteScope
               ? "Actor-owned Session context"
-              : "Committed Session work"}
+              : "Session follow-through"}
           </p>
           <h2
             id={`quick-entry-${scope}-heading`}
@@ -2559,7 +2561,7 @@ function SessionQuickEntryCard({
           <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">
             {noteScope
               ? "These notes were deliberately captured for this Session. They are not transcript suggestions or copied phone drafts."
-              : "Create the next task or goal here, or continue work captured from Quipsly Capture. Transcript suggestions stay separate until a person reviews and accepts them."}
+              : `${taskCount} task${taskCount === 1 ? "" : "s"} · ${goalCount} goal${goalCount === 1 ? "" : "s"}. Add the next step here or continue it in Work.`}
           </p>
         </div>
         {noteScope ? null : (
@@ -2577,7 +2579,7 @@ function SessionQuickEntryCard({
           className="mt-4 rounded-xl border border-emerald-200 bg-white p-4"
         >
           <summary className="cursor-pointer text-sm font-black text-emerald-950">
-            Add a task or goal
+            Add task or goal
           </summary>
           <form
             ref={createWorkFormRef}
@@ -2658,8 +2660,7 @@ function SessionQuickEntryCard({
             </button>
           </form>
           <p className="mt-3 text-[11px] font-semibold leading-5 text-emerald-900">
-            This saves canonical Quipsly work. It does not send a message,
-            schedule a reminder, change a calendar, or publish anything.
+            Saved in this Session and in Work. No message or reminder is sent.
           </p>
         </details>
       )}

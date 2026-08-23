@@ -1695,14 +1695,14 @@ describe("Session review goal candidates", () => {
         { id: "mobile-goal-1", kind: "GOAL", title: "Make coaching follow-through obvious", body: null, status: "ACTIVE", createdAt: "2026-07-19T09:02:00.000Z", updatedAt: "2026-07-19T09:02:00.000Z", tags: [] },
       ]}
     />);
-    expect(await screen.findByRole("heading", { name: "1 deliberate note" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "1 note" })).toBeInTheDocument();
     expect(screen.getAllByText("Let the opening breathe.")[0]).toBeInTheDocument();
     expect(screen.getByText("#Opening")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Find all accessible work tagged Opening" })).toHaveAttribute("href", "/find?tag=tag-1");
     expect(screen.getByRole("heading", { name: "Quick note" }).closest("article")).toHaveAttribute("id", "session-note-mobile-note-1");
     expect(screen.queryByText("Proof-listen act one")).not.toBeInTheDocument();
     expect(screen.queryByText("Make coaching follow-through obvious")).not.toBeInTheDocument();
-    expect(screen.getByText(/Transcript candidates and committed work stay in their own modes/i)).toBeInTheDocument();
+    expect(screen.getByText(/capture what matters.*private or is shared in this Session/i)).toBeInTheDocument();
   });
 
   it("keeps canonical iPhone tasks and goals in Work without mixing in notes", async () => {
@@ -1719,11 +1719,11 @@ describe("Session review goal candidates", () => {
       ]}
     />);
 
-    expect(await screen.findByRole("heading", { name: "2 committed tasks and goals" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Tasks and goals" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open same task in Work" })).toHaveAttribute("href", "/work?task=mobile-task-1");
     expect(screen.getByRole("link", { name: "Open same goal in Work" })).toHaveAttribute("href", "/work?goal=mobile-goal-1");
     expect(screen.queryByText("Quick note")).not.toBeInTheDocument();
-    expect(screen.getByText(/Transcript suggestions stay separate until a person reviews and accepts them/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 task · 1 goal.*continue it in Work/i)).toBeInTheDocument();
   });
 
   it("edits the same iPhone note and replaces its canonical Nest tags with optimistic revisions", async () => {
@@ -1785,7 +1785,7 @@ describe("Session review goal candidates", () => {
     await user.clear(note);
     await user.type(note, "Pause, then let the question breathe.");
     await user.click(within(article).getByRole("button", { name: "Save revision" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("append-only revision history");
+    expect(await screen.findByRole("status")).toHaveTextContent("earlier versions remain available");
     expect(fetchMock.mock.calls[0][0]).toBe("/api/notes/mobile-note-1");
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
       title: "Opening rhythm",
@@ -1798,7 +1798,7 @@ describe("Session review goal candidates", () => {
     const updatedArticle = screen.getByRole("heading", { name: "Opening rhythm" }).closest("article")!;
     await user.click(within(updatedArticle).getByRole("checkbox", { name: "#Edit point" }));
     await user.click(within(updatedArticle).getByRole("button", { name: "Save tags" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Canonical Nest tags are saved");
+    expect(await screen.findByRole("status")).toHaveTextContent("Tags saved");
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
       entityKind: "note",
       entityId: "mobile-note-1",
