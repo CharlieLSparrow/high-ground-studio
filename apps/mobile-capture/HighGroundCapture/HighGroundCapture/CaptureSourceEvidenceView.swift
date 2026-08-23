@@ -5,6 +5,7 @@ struct CaptureSourceEvidenceView: View {
 
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var playback = LocalRecordingPlaybackController()
+    @StateObject private var mastery = CaptureAudioMasteryClient()
     @State private var evidenceFileURL: URL?
     @State private var isPreparing = false
     @State private var errorMessage: String?
@@ -23,6 +24,10 @@ struct CaptureSourceEvidenceView: View {
                 if let recording = library.recording(id: recordingID) {
                     explanation
                     audioSignalCard(recording)
+                    audioImprovementCard(recording)
+                        .task(id: audioMasteryTaskID(recording)) {
+                            await mastery.open(recording: recording)
+                        }
                     audibleEventAnalysisCard(recording)
                     DisclosureGroup(
                         "Recording and upload details",
@@ -57,6 +62,7 @@ struct CaptureSourceEvidenceView: View {
         .accessibilityIdentifier("CaptureSourceEvidenceView")
         .onDisappear {
             playback.stop()
+            mastery.stop()
             comparisonTask?.cancel()
             comparisonTask = nil
         }
@@ -186,6 +192,7 @@ struct CaptureSourceEvidenceView: View {
                                     ? min(max(tap.location.x / geometry.size.width, 0), 1)
                                     : 0
                                 selectedAudioSeconds = signal.durationSeconds * fraction
+                                mastery.stop()
                                 playback.play(
                                     recording: recording,
                                     library: library,
@@ -217,6 +224,7 @@ struct CaptureSourceEvidenceView: View {
                         .accessibilityLabel("Selected playback time")
                         .accessibilityValue(durationLabel(selectedAudioSeconds))
                         Button {
+                            mastery.stop()
                             playback.play(
                                 recording: recording,
                                 library: library,
@@ -314,6 +322,98 @@ struct CaptureSourceEvidenceView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func audioImprovementCard(_ recording: LocalRecording) -> some View {
+        if recording.sourceProfile?.includesAudio == true {
+            evidenceCard(title: "Improved audio", systemImage: "wand.and.sparkles") {
+                if recording.projectSlug == nil
+                    || recording.uploadedMediaAssetId == nil
+                    || recording.uploadedSourceId == nil {
+                    Label("Available after secure upload", systemImage: "icloud.and.arrow.up")
+                        .font(.subheadline.weight(.bold))
+                    Text("Once this recording reaches Nest, Quipsly can prepare a balanced listening copy automatically. The original always stays unchanged.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if mastery.isLoading && mastery.snapshot == nil {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Checking the whole recording…")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    Text("You can leave this screen. Quipsly keeps the original untouched while it checks the audio.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let status = mastery.snapshot {
+                    switch status.status {
+                    case "queued", "processing", "output-ready":
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Preparing improved copy…")
+                                .font(.subheadline.weight(.bold))
+                        }
+                        Text("Quipsly is balancing the complete recording. Your original is safe and still available above.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    case "completed" where status.derivative?.playbackUrl != nil:
+                        Label("Improved copy ready", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.green)
+                            .accessibilityIdentifier("CaptureAudioMasteryReady")
+                        Text("Listen to the balanced copy. This is a separate preview; your original has not been replaced.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            playback.stop()
+                            Task { await mastery.togglePreview(recording: recording) }
+                        } label: {
+                            HStack {
+                                if mastery.isLoading { ProgressView() }
+                                Label(
+                                    mastery.isPlaying ? "Stop improved copy" : "Play improved copy",
+                                    systemImage: mastery.isPlaying ? "stop.fill" : "play.fill"
+                                )
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(mastery.isLoading)
+                        .accessibilityIdentifier("CaptureAudioMasteryPlay")
+                    case "completed":
+                        Label("This recording is already balanced", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.green)
+                        Text("Quipsly checked the complete recording and did not create a louder copy just for the sake of making one.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    case "failed", "blocked":
+                        Label("Improved copy was not prepared", systemImage: "exclamationmark.triangle.fill")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.orange)
+                        Button("Try again") {
+                            Task { await mastery.retry(recording: recording) }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(mastery.isLoading)
+                        .accessibilityIdentifier("CaptureAudioMasteryRetry")
+                    default:
+                        Text("Quipsly is checking whether this recording needs an improved listening copy.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let notice = mastery.notice {
+                    Label(notice, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("CaptureAudioMasteryNotice")
+                }
+            }
+            .accessibilityIdentifier("CaptureAudioMasteryCard")
         }
     }
 
@@ -878,6 +978,7 @@ struct CaptureSourceEvidenceView: View {
             max(endSeconds, startSeconds) + 1
         )
         selectedAudioSeconds = startSeconds
+        mastery.stop()
         playback.play(
             recording: recording,
             library: library,
@@ -947,6 +1048,16 @@ struct CaptureSourceEvidenceView: View {
         return hours > 0
             ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
             : String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func audioMasteryTaskID(_ recording: LocalRecording) -> String {
+        [
+            recording.id.uuidString.lowercased(),
+            recording.ownerAccountID ?? "",
+            recording.projectSlug ?? "",
+            recording.uploadedMediaAssetId ?? "",
+            recording.uploadedSourceId ?? "",
+        ].joined(separator: "|")
     }
 
     private func nonempty(_ value: String?) -> String? {
@@ -1064,6 +1175,19 @@ struct CaptureSourceEvidencePreviewView: View {
                     Text("Preview values demonstrate the signal-review vocabulary only. No source was decoded and no audio-health claim was created.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                previewCard(title: "Improved audio", systemImage: "wand.and.sparkles") {
+                    Label("Improved copy ready", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.green)
+                        .accessibilityIdentifier("CaptureAudioMasteryReady")
+                    Text("A real improved copy is downloaded privately, checked against its verified SHA-256 and byte count, and played without replacing the original.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Label("Preview only · no audio downloaded", systemImage: "eye")
+                        .font(.caption.weight(.semibold))
+                        .accessibilityIdentifier("CaptureAudioMasteryPreviewBoundary")
                 }
 
                 previewCard(title: "Sounds to review", systemImage: "waveform.badge.magnifyingglass") {

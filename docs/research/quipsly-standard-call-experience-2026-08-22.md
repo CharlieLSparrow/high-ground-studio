@@ -655,6 +655,17 @@ share`. The continuity panel says that the call, chat, recordings,
   idempotent check automatically, exposes progress as ordinary audio health,
   preserves the original, and stops after one failed attempt with a plain
   retry. Replacement, promotion, publishing, and delivery remain explicit.
+- Make the quality improvement understandable before exposing mastering
+  vocabulary. Sessions now offer one synchronized `Original` / `Improved`
+  comparison at the same playhead, default to a loudness-matched fair audition,
+  and keep final-volume listening secondary. Approval still requires observed
+  playback and never replaces the immutable source.
+- Carry that same simple result back to iPhone. Opening `Recording quality`
+  quietly checks or prepares the separate balanced copy, then shows either
+  `This recording is already balanced` or one `Play improved copy` action. The
+  app downloads through the active account, rejects cross-origin playback, and
+  verifies the complete SHA-256 and byte count before opening the protected
+  temporary WAV. Source identity and upload receipts remain under details.
 - Keep internal evidence vocabulary out of the ordinary post-call path. Coaches
   now see `Recording permission`, `Transcript`, and `Follow-up`, with ordinary
   states such as `Ready`, `Preparing`, and `Needs attention`. Consent counts,

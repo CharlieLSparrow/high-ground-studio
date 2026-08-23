@@ -54,6 +54,8 @@ describe("Session audio mastery", () => {
         signalDiagnosis: null,
         derivative: {
           playbackUrl: "/api/ingest/media/mastered-source-1",
+          sha256: "b".repeat(64),
+          sizeBytes: 1_152_044,
           measured: improvedMeasurement,
           verification: { integratedStatus: "passes", truePeakStatus: "passes", integratedDeltaLu: 0, passes: true },
         },

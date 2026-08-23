@@ -34,6 +34,8 @@ export type AudioMasteryClientStatus = {
   };
   derivative: null | {
     playbackUrl: string | null;
+    sha256: string;
+    sizeBytes: number;
     verification: {
       integratedStatus: string;
       truePeakStatus: string;

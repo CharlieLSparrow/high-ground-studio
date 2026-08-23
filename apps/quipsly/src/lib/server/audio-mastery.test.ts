@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import {
+  assessAudioMastery,
   buildAudioMasteryTargetLocator,
   newAudioMasteryJob,
   newAudioMasteryProposal,
@@ -70,6 +71,93 @@ describe("public audio mastery status", () => {
     });
     expect(status.status).toBe("failed");
     expect(status.error).toBe("Audio mastery evidence failed integrity validation.");
+  });
+
+  it("exposes only the verified derivative identity needed by authenticated mobile playback", () => {
+    const derivativeSha256 = "b".repeat(64);
+    const sourceMeasurement = {
+      kind: "quipsly-audio-measurement-v1" as const,
+      version: 1 as const,
+      measurementId: "measurement_source_mobile_001",
+      measuredAt: "2026-08-22T18:00:00.000Z",
+      source,
+      profileId: "apple-podcasts-dialogue-v1" as const,
+      durationSeconds: 2,
+      channels: 1,
+      sampleRateHz: 48_000,
+      integratedLufs: -24,
+      truePeakDbtp: -6,
+      loudnessRangeLu: 2,
+      thresholdLufs: -34,
+      targetOffsetLu: 8,
+      seriesResolutionMs: 1_000 as const,
+      series: [{ timeMs: 1_000, momentaryLufs: -24, shortTermLufs: null, integratedLufs: -24, truePeakDbtp: -6 }],
+      analyzer: { name: "ffmpeg-loudnorm-ebur128" as const, version: "8.1.1", standard: "ITU-R BS.1770 / EBU R128" as const, completeDecode: true as const },
+    };
+    const proposal = newAudioMasteryProposal({
+      proposalId: "proposal_mobile_001",
+      createdAt: sourceMeasurement.measuredAt,
+      measurement: sourceMeasurement,
+      profileId: "apple-podcasts-dialogue-v1",
+    });
+    const derivativeSource = {
+      assetId: source.assetId,
+      provider: "local" as const,
+      locator: job.target.locator,
+      generation: `sha256:${derivativeSha256}`,
+      sha256: derivativeSha256,
+      sizeBytes: 192_044,
+      contentType: "audio/wav",
+    };
+    const verificationMeasurement = {
+      ...sourceMeasurement,
+      measurementId: "measurement_derivative_mobile_001",
+      source: derivativeSource,
+      integratedLufs: -16,
+      truePeakDbtp: -1.5,
+      thresholdLufs: -26,
+      targetOffsetLu: 0,
+      series: [{ timeMs: 1_000, momentaryLufs: -16, shortTermLufs: null, integratedLufs: -16, truePeakDbtp: -1.5 }],
+    };
+    const receipt = {
+      kind: "quipsly-audio-mastery-result-v1" as const,
+      version: 1 as const,
+      jobId: job.jobId,
+      completedAt: "2026-08-22T18:01:00.000Z",
+      source,
+      sourceMeasurement,
+      signalDiagnosis: null,
+      proposal,
+      derivative: {
+        ...derivativeSource,
+        codec: "pcm_s24le" as const,
+        sampleRateHz: 48_000 as const,
+        variantKind: "audio-master-preview" as const,
+        verificationMeasurement,
+        verification: assessAudioMastery(verificationMeasurement, "apple-podcasts-dialogue-v1"),
+      },
+      worker: { executionId: "private-execution", buildId: "private-build", imageDigest: null, attempt: 1 },
+      boundaries: { originalRemainsSourceTruth: true as const, outputIsUnpromotedPreview: true as const, promotionRequiresExplicitApproval: true as const },
+    };
+
+    const status = toPublicAudioMasteryStatus({
+      id: job.jobId,
+      status: "completed",
+      inputJson: job,
+      resultJson: { state: "completed", receipt, registration: { playbackUrl: "/api/ingest/media/mobile-master" } },
+      error: null,
+      updatedAt: new Date("2026-08-22T18:01:01.000Z"),
+    });
+
+    expect(status.derivative).toMatchObject({
+      playbackUrl: "/api/ingest/media/mobile-master",
+      sha256: derivativeSha256,
+      sizeBytes: derivativeSource.sizeBytes,
+    });
+    const serialized = JSON.stringify(status);
+    expect(serialized).not.toContain(source.locator);
+    expect(serialized).not.toContain(source.sha256);
+    expect(serialized).not.toContain("private-execution");
   });
 
   it("publishes listening candidates without leaking immutable source or worker authority", () => {

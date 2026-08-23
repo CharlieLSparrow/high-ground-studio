@@ -2223,6 +2223,10 @@ final class CaptureExperienceUITests: XCTestCase {
         let audioSummary = app.descendants(matching: .any)["CaptureAudioQualitySummary"].firstMatch
         XCTAssertTrue(audioSummary.exists)
         XCTAssertTrue(audioSummary.label.contains("1 moment worth checking"))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioMasteryReady"].exists)
+        let masteryBoundary = app.descendants(matching: .any)["CaptureAudioMasteryPreviewBoundary"]
+        XCTAssertTrue(masteryBoundary.exists)
+        XCTAssertTrue(masteryBoundary.label.contains("no audio downloaded"))
         XCTAssertTrue(app.staticTexts["Video source truth"].exists)
         XCTAssertTrue(app.staticTexts["4K · 24 fps"].exists)
         XCTAssertTrue(app.staticTexts["3840×2160 · 24 fps · HEVC · P3-D65"].exists)

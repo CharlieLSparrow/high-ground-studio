@@ -57,6 +57,8 @@ export type PublicAudioMasteryStatus = {
   };
   derivative: null | {
     playbackUrl: string | null;
+    sha256: string;
+    sizeBytes: number;
     verification: ReturnType<typeof publicAssessment>;
     measured: ReturnType<typeof publicMeasurement>;
   };
@@ -455,6 +457,8 @@ export function toPublicAudioMasteryStatus(job: any): PublicAudioMasteryStatus {
     } : null,
     derivative: result?.derivative ? {
       playbackUrl: typeof registration.playbackUrl === "string" ? registration.playbackUrl : null,
+      sha256: result.derivative.sha256,
+      sizeBytes: result.derivative.sizeBytes,
       verification: publicAssessment(result.derivative.verification),
       measured: publicMeasurement(result.derivative.verificationMeasurement),
     } : null,
