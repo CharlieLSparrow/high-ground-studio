@@ -42,5 +42,14 @@ describe("browser retained-source consent", () => {
     expect(source).toContain("Recording on this device. Your call continues normally.");
     expect(source).not.toContain("Checking durable browser storage and consent");
     expect(source).not.toContain("LOCAL SOURCE RECORDING");
+    expect(source).not.toMatch(
+      /canControlRoom\s*&&\s*recordingDirective\s*&&\s*recordingHealthProjection/,
+    );
+    expect(source).toContain(
+      "Open Quipsly on the affected recording device. It will retry",
+    );
+    expect(source).toContain(
+      "Wait for Upload complete before closing a recording device.",
+    );
   });
 });

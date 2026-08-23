@@ -1033,3 +1033,16 @@ The recording-directive API suite passes 8/8, and the updated Capture target
 builds successfully as a universal arm64/x86_64 iOS Simulator app with signing
 disabled. This does not claim a physical-device background upload, interruption,
 or minimally instructed recovery pass.
+
+Browser recording coordination now follows the same rule. The client sees the
+self-only directive projection already authorized by the API instead of losing
+it behind a host-control UI condition. Non-controller API projections label the
+single authorized participant and endpoint `You`, allowing both browser and
+iPhone to say `Your recording is working`, `Starting your recording`, or `Your
+recording needs attention` without falsely inferring that everyone else is
+recording. Controllers still receive named room-wide status.
+
+The focused browser projection, consent-surface, and recording-directive API
+suites pass 16/16; the web typecheck and another universal iOS Simulator build
+also pass. Cross-browser media permission, two-participant network, and
+physical-device proof remain ledger evidence rather than inferred completion.

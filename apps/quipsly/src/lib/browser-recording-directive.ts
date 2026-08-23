@@ -53,34 +53,51 @@ export function projectBrowserRecordingHealth(
   const health = directive.recordingHealth;
   const attentionCount = health.attentionParticipantCount;
   const waitingCount = health.waitingParticipantCount;
+  const selfOnly = directive.participantStatuses.length === 1
+    && directive.participantStatuses[0]?.participantLabel === "You";
   let title = "Recording status";
   let detail = "Quipsly is checking each participant's recording.";
   let tone: "ready" | "waiting" | "attention" = "waiting";
 
   if (attentionCount > 0) {
-    title = `${attentionCount} ${attentionCount === 1 ? "person needs" : "people need"} attention`;
-    detail = "Open the participant status below for the recovery step.";
+    title = selfOnly
+      ? "Your recording needs attention"
+      : `${attentionCount} ${attentionCount === 1 ? "person needs" : "people need"} attention`;
+    detail = selfOnly
+      ? "Keep this browser open and retry your protected recording."
+      : "Open Quipsly on the affected recording device so it can retry.";
     tone = "attention";
   } else if (directive.action === "START" && health.allParticipantsRecording) {
-    title = "Everyone is recording";
-    detail = "Each expected participant has a local source in progress.";
+    title = selfOnly ? "Your recording is working" : "Everyone is recording";
+    detail = selfOnly
+      ? "This browser is recording your protected local source."
+      : "Each expected participant has a local source in progress.";
     tone = "ready";
   } else if (
     directive.action === "STOP" &&
     health.allParticipantsStoppedSafely
   ) {
-    title = "Everyone stopped safely";
-    detail = "Each expected recorder confirmed its local stop.";
+    title = selfOnly ? "Your recording stopped safely" : "Everyone stopped safely";
+    detail = selfOnly
+      ? "This browser confirmed that your protected local source stopped."
+      : "Each expected recorder confirmed its local stop.";
     tone = "ready";
   } else if (waitingCount > 0) {
-    title =
-      directive.action === "START"
-        ? `Waiting for ${waitingCount} ${waitingCount === 1 ? "person" : "people"}`
-        : `Finishing ${waitingCount} ${waitingCount === 1 ? "recording" : "recordings"}`;
+    title = selfOnly
+      ? directive.action === "START"
+        ? "Starting your recording"
+        : "Saving your recording"
+      : directive.action === "START"
+          ? `Waiting for ${waitingCount} ${waitingCount === 1 ? "person" : "people"}`
+          : `Finishing ${waitingCount} ${waitingCount === 1 ? "recording" : "recordings"}`;
     detail =
-      directive.action === "START"
+      selfOnly
+        ? directive.action === "START"
+          ? "Keep this Session open while your recorder gets ready."
+          : "Keep this Session open while your recording finishes saving."
+        : directive.action === "START"
         ? "The call can continue while Quipsly gets their recorder ready."
-        : "Keep this Session open while Quipsly finishes safely.";
+        : "Keep this Session open while the recordings finish saving.";
   }
 
   return {

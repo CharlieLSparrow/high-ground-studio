@@ -129,8 +129,40 @@ describe("browser recording directive client", () => {
 
     expect(projectBrowserRecordingHealth(directive)).toMatchObject({
       title: "1 person needs attention",
+      detail: "Open Quipsly on the affected recording device so it can retry.",
       tone: "attention",
       participants: [{ label: "Needs attention" }],
+    });
+  });
+
+  it("describes a privacy-scoped client projection as their recording, not everyone", () => {
+    const directive = {
+      action: "START",
+      participantStatuses: [
+        {
+          id: "participant-self",
+          participantLabel: "You",
+          state: "RECORDING",
+          endpointCount: 1,
+          recordingEndpointCount: 1,
+          attentionEndpointCount: 0,
+        },
+      ],
+      recordingHealth: {
+        expectedParticipantCount: 1,
+        participantWithEndpointCount: 1,
+        recordingParticipantCount: 1,
+        attentionParticipantCount: 0,
+        waitingParticipantCount: 0,
+        allParticipantsRecording: true,
+        allParticipantsStoppedSafely: false,
+      },
+    } as BrowserRecordingDirective;
+
+    expect(projectBrowserRecordingHealth(directive)).toMatchObject({
+      title: "Your recording is working",
+      detail: "This browser is recording your protected local source.",
+      participants: [{ participantLabel: "You", label: "Recording" }],
     });
   });
 

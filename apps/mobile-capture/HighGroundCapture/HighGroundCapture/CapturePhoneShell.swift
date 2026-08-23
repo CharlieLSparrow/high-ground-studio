@@ -10920,7 +10920,9 @@ private struct CaptureRecordingCoordinationStatus: View {
                 }
 
                 if recordingHealth.attentionParticipantCount > 0 {
-                    Text("Open Quipsly on the affected recording device. It will retry the protected recording automatically.")
+                    Text(selfOnly
+                        ? "Keep Quipsly open on this iPhone. It will retry your protected recording automatically."
+                        : "Open Quipsly on the affected recording device. It will retry the protected recording automatically.")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                 }
@@ -10957,12 +10959,20 @@ private struct CaptureRecordingCoordinationStatus: View {
 
     private func healthTitle(_ health: CaptureRecordingHealth) -> String {
         if health.attentionParticipantCount > 0 {
+            if selfOnly { return "Your recording needs attention" }
             return health.attentionParticipantCount == 1
                 ? "1 person needs attention"
                 : "\(health.attentionParticipantCount) people need attention"
         }
-        if health.allParticipantsRecording { return "Everyone is recording" }
-        if health.allParticipantsStoppedSafely { return "Everyone stopped safely" }
+        if health.allParticipantsRecording {
+            return selfOnly ? "Your recording is working" : "Everyone is recording"
+        }
+        if health.allParticipantsStoppedSafely {
+            return selfOnly ? "Your recording stopped safely" : "Everyone stopped safely"
+        }
+        if selfOnly {
+            return isRecording ? "Starting your recording" : "Saving your recording"
+        }
         if isRecording {
             return health.waitingParticipantCount == 1
                 ? "Waiting for 1 person"
@@ -10975,17 +10985,33 @@ private struct CaptureRecordingCoordinationStatus: View {
 
     private func healthDetail(_ health: CaptureRecordingHealth) -> String {
         if health.attentionParticipantCount > 0 {
-            return "One clear recovery step is shown below."
+            return selfOnly
+                ? "Keep this Session open so Quipsly can retry on this iPhone."
+                : "The affected participant has one clear action below."
         }
         if health.allParticipantsRecording {
-            return "Each expected participant has a local source in progress."
+            return selfOnly
+                ? "This iPhone is recording your protected local source."
+                : "Each expected participant has a local source in progress."
         }
         if health.allParticipantsStoppedSafely {
-            return "Each expected recorder confirmed its local stop."
+            return selfOnly
+                ? "This iPhone confirmed that your protected local source stopped."
+                : "Each expected recorder confirmed its local stop."
+        }
+        if selfOnly {
+            return isRecording
+                ? "Keep this Session open while your recorder gets ready."
+                : "Keep this Session open while your recording finishes saving."
         }
         return isRecording
             ? "The call can continue while Quipsly gets every recorder ready."
-            : "Keep this Session open while Quipsly finishes safely."
+            : "Keep this Session open while the recordings finish saving."
+    }
+
+    private var selfOnly: Bool {
+        participantStatuses.count == 1
+            && participantStatuses.first?.participantLabel == "You"
     }
 
     private func healthSymbol(_ health: CaptureRecordingHealth) -> String {

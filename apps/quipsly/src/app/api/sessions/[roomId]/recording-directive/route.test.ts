@@ -327,12 +327,12 @@ describe("Session recording directive route", () => {
       ok: true,
       directive: {
         participantStatuses: [
-          { participantLabel: "Jordan Client", state: "GETTING_READY" },
+          { participantLabel: "You", state: "GETTING_READY" },
         ],
         recordingHealth: { expectedParticipantCount: 1 },
         endpointReceipts: [
           {
-            participantLabel: "Jordan Client",
+            participantLabel: "You",
             deviceLabel: "Client browser",
             state: "OBSERVED",
           },

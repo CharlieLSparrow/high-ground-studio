@@ -2524,8 +2524,7 @@ export function BrowserSourceRecorder({
             </span>
           )}
         </div>
-        {canControlRoom &&
-        recordingDirective &&
+        {recordingDirective &&
         recordingHealthProjection &&
         recordingDirective.participantStatuses.length ? (
           <section
@@ -2567,8 +2566,8 @@ export function BrowserSourceRecorder({
             </ul>
             {recordingHealthProjection.tone === "attention" ? (
               <p className="mt-2 rounded-lg bg-white px-3 py-2 text-[11px] font-bold leading-4 text-amber-950">
-                Recovery: have the affected person reopen this Session. Quipsly
-                will retry their local recorder automatically.
+                Open Quipsly on the affected recording device. It will retry
+                the protected recording automatically.
               </p>
             ) : null}
             <details className="mt-2 text-[10px] font-bold leading-4 text-[#725d43]">
@@ -2592,8 +2591,9 @@ export function BrowserSourceRecorder({
                 })}
               </ul>
               <p className="mt-2">
-                Recorder status is not upload completion. Quipsly retains each
-                local source until exact-byte verification succeeds.
+                Wait for Upload complete before closing a recording device.
+                Source receipts and verification details remain available for
+                support.
               </p>
             </details>
           </section>

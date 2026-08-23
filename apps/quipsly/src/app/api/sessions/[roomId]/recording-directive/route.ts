@@ -234,10 +234,9 @@ export async function GET(
   const participantLabels = new Map<string, string>(
     room.participants.map((participant: any) => [
       participant.id,
-      text(participant.displayName) ||
-        (participant.id === viewerParticipant?.id
-          ? "You"
-          : "Session participant"),
+      !controller && participant.id === viewerParticipant?.id
+        ? "You"
+        : text(participant.displayName) || "Session participant",
     ]),
   );
   const expectedParticipants = (

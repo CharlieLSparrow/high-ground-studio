@@ -578,6 +578,10 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   self-status merely because the client cannot control the room-wide Record
   button. Held uploads now say `Upload needs attention`, preserve one obvious
   retry, and place the failure explanation behind `What happened?`.
+- Applied the same server-authorized self-status rule in the browser. A
+  privacy-scoped participant projection is explicitly labeled `You`, so the
+  client sees `Your recording is working` rather than a misleading `Everyone is
+  recording`; controller projections retain the full named room view.
   During capture, the familiar `Microphone level` surface leads with Voice,
   Peak, and plain healthy/clipping states while retaining exact dBFS values for
   accessibility and expert diagnosis.
