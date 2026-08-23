@@ -921,3 +921,45 @@ The simulator generated all five 1320 by 2868 draft images through the real UI
 test journey. This is layout evidence only. The receipt remains deliberately
 ineligible for submission until the same journey is recaptured from the signed
 candidate and approved as release creative.
+
+## 2026-08-23 research refresh and Build 34 decision
+
+Current Riverside guidance still centers the guest path on one link, a device
+check, one Join action, participant-owned high-quality capture, and keeping the
+endpoint open until upload completion. Current Descript Rooms guidance likewise
+starts collaborative recording from the project and uses a single Invite action
+with Guest as the default role. Google Meet and Zoom continue to make device and
+sound checks available in the green room without turning them into recurring
+certification.
+
+The positive and negative evidence is unusually consistent. People praise
+simple guest entry, local-quality isolated tracks, transcript-based editing,
+automatic cleanup, and immediate project continuity. They are most frustrated
+by lost or stalled tracks, silent recording stops, upload uncertainty, audio and
+video drift, long-project performance, transcript errors that cut the wrong
+media, and source files hidden behind an editor. Quipsly should therefore stay
+conventional before and during the call, then differentiate through visible
+participant-master health, resumable recovery, source-bound transcription,
+reversible editing, and lightweight collaboration.
+
+This evidence changed one shipping interaction: the primary `Send invite`
+action is now visible directly on each coaching appointment instead of hiding
+inside `Invitation options`. `Share invite` remains the secondary system-share
+fallback. The UI test asserts the ordinary visible action and durable fallback,
+not retired administrative prose.
+
+Exact source `d86cf288cfaa510ebe3f090a28668023a3b1410c` passed all 72/72
+deterministic iPhone and Share Extension journeys across four serial shards with
+zero retries. The source contract passed 105/105 checks and the App Store static
+contract passed 1,094/1,094 checks. A signed App Store archive and 25,803,921-byte
+IPA for Quipsly Capture 1.0 (34) passed nested signature, entitlement,
+provisioning-profile, privacy-manifest, extension, version, and packaged metadata
+inspection. The sealed candidate digest is
+`709fe8a45a7acff30635f2789bb8b515cf8f630fa9d46456ecf41f871a87991c`.
+
+The release pipeline can now seal separately completed exact-source UI evidence
+and signed-artifact evidence after independently re-reading every result bundle,
+rechecking the source commit and IPA digest, and rerunning packaged artifact
+inspection. This avoids an expensive duplicate 72-journey run without weakening
+the upload gate. Build 34 has not been uploaded; physical-device, real-participant,
+natural-speech, real-mailbox, and human-listening evidence remains separate.

@@ -1307,3 +1307,29 @@ iPhone screenshots do not yet exist, no signed candidate archive was inspected
 for this source checkpoint, and physical Build 33 acceptance has not been
 performed. Those are real release proofs, not test failures, and remain queued
 for the deliberate release train.
+
+## Build 34 standard-call candidate — 2026-08-23
+
+Exact app source `d86cf288cfaa510ebe3f090a28668023a3b1410c` is now a sealed,
+not-uploaded Quipsly Capture 1.0 (34) candidate:
+
+- 72/72 deterministic iPhone and Share Extension journeys passed in four serial
+  shards with zero retries;
+- 105/105 mobile source-contract checks and 1,094/1,094 App Store static checks
+  passed;
+- the signed archive and 25,803,921-byte IPA passed nested signature,
+  distribution entitlement, App Store profile, privacy-manifest, extension,
+  packaged permission-string, platform, and version inspection; and
+- the IPA SHA-256 is
+  `709fe8a45a7acff30635f2789bb8b515cf8f630fa9d46456ecf41f871a87991c`.
+
+The standard workflow now exposes `Send invite` directly on an appointment and
+keeps system sharing secondary. It retains one ordinary call green room,
+contextual system permission requests, Session-scoped consent, remembered safe
+preferences, local originals, account-partitioned offline work, source-linked
+follow-through, and visible upload/Studio handoff state.
+
+The receipt remains explicit: upload was not attempted, tester assignment was
+not performed, and physical TestFlight installation was not read back. Those
+steps belong to the next deliberate TestFlight train rather than being inferred
+from simulator, signing, or App Store Connect evidence.
