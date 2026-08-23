@@ -77,7 +77,8 @@ require_text "$app_info_plist" "NSCameraUsageDescription" "Dependency-required c
 require_text "$app_info_plist" "only after you explicitly choose video" "Camera purpose string requires explicit video choice"
 require_text "$app_info_plist" "Audio recording does not use the camera" "Camera purpose string preserves the audio boundary"
 require_text "$app_info_plist" "NSMicrophoneUsageDescription" "Microphone purpose key is configured"
-require_text "$app_info_plist" "after you explicitly start recording" "Microphone purpose string requires explicit capture"
+require_text "$app_info_plist" "explicitly start recording" "Microphone purpose string requires explicit capture"
+require_absent_text "$app_info_plist" "authorize" "Microphone purpose string avoids administrative authorization language"
 require_text "$app_info_plist" "UIBackgroundModes" "Call and audio background mode key is configured"
 [[ "$(/usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$app_info_plist")" == "false" ]] ||
   fail "Export compliance metadata must declare no non-exempt encryption"
