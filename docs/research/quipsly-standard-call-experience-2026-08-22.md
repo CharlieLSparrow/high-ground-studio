@@ -480,6 +480,13 @@ failure shapes recur often enough to influence the architecture:
   The everyday transcript surface says `Review and edit`, `Share transcript`,
   and `Refresh`; provider routing and receipts live under `Transcription
   details`.
+- Keep the iPhone's live safety monitoring, but translate its happy path and
+  recovery guidance into ordinary recording language. Coaches now see `Ready
+  to record`, `Recording on this iPhone`, `Call disconnected`, or `This
+  recording needs attention`; retained-source, provider-path, and dBFS caveats
+  remain implementation evidence or disclosed detail. Call audio is described
+  plainly as conversation audio, while the saved iPhone file is the
+  high-quality copy.
 
 ## Acceptance consequences
 

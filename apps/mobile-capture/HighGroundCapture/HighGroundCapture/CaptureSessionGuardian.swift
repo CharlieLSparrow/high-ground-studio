@@ -62,10 +62,10 @@ enum CaptureSessionGuardianProjector {
         ) {
             return projection(
                 .intervene,
-                "Protected recovery",
-                "The retained source needs attention",
+                "Recording recovery",
+                "This recording needs attention",
                 failure,
-                "Keep the saved local source, correct the device or capacity problem, then begin a new take.",
+                "Keep the saved recording, fix the device or storage problem, then start a new take.",
                 evidence
             )
         }
@@ -74,10 +74,10 @@ enum CaptureSessionGuardianProjector {
             || (videoRelevant && input.videoState == .failed) {
             return projection(
                 .intervene,
-                "Protected recovery",
-                "A local source is held for review",
-                "Quipsly did not promote this source as a healthy completed master.",
-                "Open Library, retain the protected file, and review its exact failure evidence before retrying.",
+                "Recording recovery",
+                "This recording needs attention",
+                "Quipsly saved the file but could not confirm it as a complete recording.",
+                "Open Library, keep the saved file, and review what happened before starting a new take.",
                 evidence
             )
         }
@@ -87,9 +87,9 @@ enum CaptureSessionGuardianProjector {
                 return projection(
                     .watch,
                     "Background capture",
-                    "A protected source is active while Capture is not visible",
-                    "Audio may continue under its recorded background contract; video closes safely when iOS backgrounds the camera.",
-                    "Return to Quipsly Capture and confirm the current source state before continuing the Session.",
+                    "Recording while Quipsly is not visible",
+                    "Audio may continue in the background. iOS safely closes a camera recording when the app leaves the screen.",
+                    "Return to Quipsly Capture and check the recording before continuing.",
                     evidence
                 )
             }
@@ -101,27 +101,27 @@ enum CaptureSessionGuardianProjector {
                         .watch,
                         "Local capacity",
                         "Audio recording space is getting low",
-                        "\(ByteCountFormatter.string(fromByteCount: available, countStyle: .file)) remains available to the retained microphone source.",
-                        "Plan to end this take soon. Quipsly will stop before its protected reserve is consumed.",
+                        "\(ByteCountFormatter.string(fromByteCount: available, countStyle: .file)) remains available on this iPhone.",
+                        "Plan to end this take soon. Quipsly will stop before the safe storage reserve is used.",
                         evidence
                     )
                 }
                 if input.audioDuration < 2 {
                     return projection(
                         .watch,
-                        "Signal baseline",
-                        "Listening for a stable microphone level",
-                        "Quipsly waits two seconds before treating an initial quiet meter as a missing signal.",
-                        "Speak naturally and watch for the Guardian to settle before continuing the take.",
+                        "Microphone",
+                        "Checking the microphone level",
+                        "Quipsly waits two seconds before deciding that an initially quiet meter may be a problem.",
+                        "Speak naturally and watch for the level to settle.",
                         evidence
                     )
                 }
                 if input.audioPeakPowerDB >= -1 {
                     return projection(
                         .intervene,
-                        "Live retained-source watch",
+                        "Microphone",
                         "The microphone is reaching clipping risk",
-                        "Recorder sample peak is within 1 dB of digital full scale. This is dBFS evidence, not true peak or LUFS.",
+                        "The live level is within 1 dB of clipping.",
                         "Lower input gain now. End and restart the take if clipping continues.",
                         evidence
                     )
@@ -129,9 +129,9 @@ enum CaptureSessionGuardianProjector {
                 if input.audioAveragePowerDB < -60 && input.audioPeakPowerDB < -54 {
                     return projection(
                         .intervene,
-                        "Live retained-source watch",
-                        "No useful microphone signal is reaching the master",
-                        "The retained recorder is active, but its observed average and peak remain below the useful-signal threshold.",
+                        "Microphone",
+                        "No useful microphone signal is reaching the recording",
+                        "The recorder is running, but the observed level remains too quiet.",
                         "Check mute, cable, route, and microphone power now. Stop the take if signal does not return.",
                         evidence
                     )
@@ -139,9 +139,9 @@ enum CaptureSessionGuardianProjector {
                 if input.audioPeakPowerDB >= -3 || input.audioAveragePowerDB >= -12 {
                     return projection(
                         .watch,
-                        "Live retained-source watch",
+                        "Microphone",
                         "The microphone is running hot",
-                        "The retained source has not reached the clipping threshold, but it has little remaining headroom.",
+                        "The recording has not clipped, but it has little level headroom left.",
                         "Lower input gain slightly and watch the peak lane.",
                         evidence
                     )
@@ -162,20 +162,20 @@ enum CaptureSessionGuardianProjector {
             if !input.providerConnected && input.mode != .soloVideo {
                 return projection(
                     .watch,
-                    "Independent capture",
-                    "Retained master continues while the conversation is unavailable",
-                    "The iPhone recorder is independent from the provider call and preserves its own source clock and bytes.",
-                    "Reconnect the conversation without changing Session or source identity. Stop locally only if the conversation cannot recover.",
+                    "Call disconnected",
+                    "This iPhone is still recording",
+                    "The high-quality recording continues even though the call disconnected.",
+                    "Reconnect the call. Stop the recording only if the conversation cannot continue.",
                     evidence
                 )
             }
 
             return projection(
                 .ready,
-                "Session Guardian",
-                "Protected iPhone source is recording",
-                "The selected local master is active and the live conversation remains a separate path.",
-                "Keep Capture visible, monitor with headphones, and stop from Quipsly when the take is complete.",
+                "Recording",
+                "Recording on this iPhone",
+                "The high-quality local recording is running separately from the call.",
+                "Keep Quipsly visible and tap Stop when the Session is complete.",
                 evidence
             )
         }
@@ -184,10 +184,10 @@ enum CaptureSessionGuardianProjector {
             || (videoRelevant && [.preparing, .arming, .finalizing].contains(input.videoState)) {
             return projection(
                 .watch,
-                "Protected transition",
-                "Quipsly is changing retained-source state",
-                "The recorder is preparing or finalizing a protected local file.",
-                "Keep Capture open until the source reaches a stable ready, saved, or recovery state.",
+                "Recording",
+                "Getting the recording ready",
+                "Quipsly is starting or safely finishing the local file.",
+                "Keep Quipsly open until the recording is ready or saved.",
                 evidence
             )
         }
@@ -195,10 +195,10 @@ enum CaptureSessionGuardianProjector {
         if !input.sessionSafeToRecord {
             return projection(
                 .intervene,
-                "Recording boundary",
-                "Session readiness is holding the local start",
+                "Before recording",
+                "Recording is not ready yet",
                 input.sessionNextAction,
-                "Complete the highlighted consent or Session requirement before recording.",
+                "Complete the highlighted item, then tap Record again.",
                 evidence
             )
         }
@@ -206,10 +206,10 @@ enum CaptureSessionGuardianProjector {
         if videoRelevant && input.videoProfileLabel == nil {
             return projection(
                 .watch,
-                "Camera preflight",
-                "Prepare the exact camera profile",
-                "Quipsly has not yet resolved the selected lens, dimensions, frame rate, orientation, audio inclusion, and capacity estimate.",
-                "Tap Prepare camera, review the measured profile, then start the retained source.",
+                "Camera",
+                "Camera is not ready yet",
+                "Quipsly still needs to confirm the selected lens and recording quality.",
+                "Tap Prepare camera, check the preview, then start recording.",
                 evidence
             )
         }
@@ -217,10 +217,10 @@ enum CaptureSessionGuardianProjector {
         if let providerError = nonempty(input.providerError) {
             return projection(
                 .watch,
-                "Conversation path",
-                "The provider room needs attention",
+                "Call",
+                "The call needs attention",
                 providerError,
-                "Repair the conversation path. Local capture stays explicit and independent.",
+                "Reconnect the call. The local recording remains separate.",
                 evidence
             )
         }
@@ -228,20 +228,20 @@ enum CaptureSessionGuardianProjector {
         if !input.providerConnected && input.mode != .soloVideo {
             return projection(
                 .watch,
-                "Conversation preflight",
-                input.providerConnecting ? "Joining the conversation" : "Live conversation is not connected",
-                "Joining never starts a retained source, and a prepared recorder never proves live presence.",
-                "Join when collaboration is needed, then start the retained source explicitly after everyone is ready.",
+                "Call",
+                input.providerConnecting ? "Joining the call" : "Call is not connected",
+                "Joining the call does not start recording.",
+                "Join the call, then tap Record when everyone is ready.",
                 evidence
             )
         }
 
         return projection(
             .ready,
-            "Session Guardian",
-            "iPhone paths are ready for a deliberate start",
-            "Session readiness, the selected local source, and the live conversation have no observed blocker.",
-            "Start recording when everyone is ready. The private sound check remains optional.",
+            "Ready",
+            "Ready to record",
+            "The call and this iPhone's recorder are ready.",
+            "Tap Record when everyone is ready. Sound check is optional.",
             evidence
         )
     }
@@ -269,9 +269,9 @@ enum CaptureSessionGuardianProjector {
         return [
             CaptureSessionGuardianEvidenceRow(lane: "Session", value: input.sessionSafeToRecord ? "Local start allowed" : "Held by readiness"),
             CaptureSessionGuardianEvidenceRow(lane: "Conversation", value: roomValue),
-            CaptureSessionGuardianEvidenceRow(lane: "Audio master", value: audioValue),
-            CaptureSessionGuardianEvidenceRow(lane: "Camera master", value: videoValue),
-            CaptureSessionGuardianEvidenceRow(lane: "Audio capacity", value: capacityValue),
+            CaptureSessionGuardianEvidenceRow(lane: "Microphone", value: audioValue),
+            CaptureSessionGuardianEvidenceRow(lane: "Camera", value: videoValue),
+            CaptureSessionGuardianEvidenceRow(lane: "Storage", value: capacityValue),
         ]
     }
 
@@ -422,7 +422,7 @@ struct CaptureSessionGuardianCard: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    Text("The live conversation is not a retained master. Local-source claims require this iPhone's recorder and preserved file evidence.")
+                    Text("Call audio is for conversation. This iPhone's saved recording is the high-quality copy.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
