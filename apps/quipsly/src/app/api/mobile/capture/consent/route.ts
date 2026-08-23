@@ -24,6 +24,17 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const CONSENT_PRESENTATION_SURFACES = [
+  "quipsly-capture-consent-v2",
+  "quipsly-session-workspace-consent-v1",
+] as const;
+
+export function isSupportedConsentPresentationSurface(value: unknown) {
+  return CONSENT_PRESENTATION_SURFACES.includes(
+    text(value) as (typeof CONSENT_PRESENTATION_SURFACES)[number],
+  );
+}
+
 function consentActionFromBody(body: Record<string, unknown>) {
   const explicit = text(body.consentAction).toUpperCase();
 
@@ -77,6 +88,7 @@ export async function GET(request: Request) {
     text: MOBILE_CAPTURE_CONSENT_TEXT,
     sha256: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
     surface: "quipsly-capture-consent-v2",
+    supportedSurfaces: CONSENT_PRESENTATION_SURFACES,
     presentationVersion: 1,
   };
   const callRoomId =
@@ -227,7 +239,7 @@ export async function POST(request: Request) {
     const presentedAt = new Date(text(presentationEvidence.presentedAt));
     const presentationValid =
       presentationEvidence.version === 1 &&
-      text(presentationEvidence.surface) === "quipsly-capture-consent-v2" &&
+      isSupportedConsentPresentationSurface(presentationEvidence.surface) &&
       presentationEvidence.recordingChoicePresented === true &&
       presentationEvidence.transcriptionChoicePresented === true &&
       presentationEvidence.audibleParticipantAttestationPresented === true &&
@@ -253,6 +265,7 @@ export async function POST(request: Request) {
             text: MOBILE_CAPTURE_CONSENT_TEXT,
             sha256: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
             surface: "quipsly-capture-consent-v2",
+            supportedSurfaces: CONSENT_PRESENTATION_SURFACES,
             presentationVersion: 1,
           },
         },
@@ -411,7 +424,7 @@ export async function POST(request: Request) {
         consentAction === "GRANT"
           ? {
               version: 1,
-              surface: "quipsly-capture-consent-v2",
+              surface: text(presentationEvidence.surface),
               presentedAt: text(presentationEvidence.presentedAt),
               serverConfirmedAt: now.toISOString(),
               recordingChoicePresented: true,
