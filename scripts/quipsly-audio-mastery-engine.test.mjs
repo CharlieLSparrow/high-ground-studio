@@ -38,6 +38,7 @@ import {
 import { FfmpegAudioDeliveryEncoder } from "../apps/quipsly-media-processor/src/audio-delivery-ffmpeg.ts";
 import {
   FfmpegAudioMasteringEngine,
+  parseFfmpegProgressDuration,
   parseLoudnormReading,
 } from "../apps/quipsly-media-processor/src/audio-mastering-ffmpeg.ts";
 import { sha256File } from "../apps/quipsly-media-processor/src/transcoder.ts";
@@ -88,6 +89,29 @@ test("a compliant source yields a measured no-change proposal", () => {
   assert.throws(
     () => assessAudioMastery(measurement, "ebu-r128-broadcast-v1"),
     /different mastering profile/,
+  );
+});
+
+test("MediaRecorder sources can recover duration from a complete FFmpeg decode", () => {
+  assert.equal(parseFfmpegProgressDuration([
+    "bitrate=N/A",
+    "out_time_us=10080000",
+    "out_time_ms=10080000",
+    "out_time=00:00:10.080000",
+    "progress=end",
+    "",
+  ].join("\n")), 10.08);
+  assert.throws(
+    () => parseFfmpegProgressDuration("out_time_us=N/A\nprogress=end\n"),
+    /complete audio decode did not produce a finite source duration/i,
+  );
+  assert.throws(
+    () => parseFfmpegProgressDuration("out_time_us=10080000\nprogress=continue\n"),
+    /did not complete its full decode/i,
+  );
+  assert.equal(
+    parseFfmpegProgressDuration("out_time=00:01:02.500000\nprogress=end\n"),
+    62.5,
   );
 });
 

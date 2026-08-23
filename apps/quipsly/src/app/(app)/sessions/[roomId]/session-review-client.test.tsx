@@ -1904,7 +1904,9 @@ describe("Session review goal candidates", () => {
     />);
 
     expect(screen.getByRole("heading", { name: "Your recordings are safe and ready" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "homer-camera.mov" })).toBeInTheDocument();
+    const sourceHeading = screen.getByRole("heading", { name: "homer-camera.mov" });
+    expect(sourceHeading).toBeInTheDocument();
+    expect(sourceHeading.closest("article")).toHaveClass("min-w-0", "overflow-hidden");
     expect(screen.getByText("Verified Match")).toBeInTheDocument();
     expect(screen.getByText("Quipsly Capture 1.0 (9)")).toBeInTheDocument();
     expect(screen.getByText("iPhone17,3 · iOS 26.2")).toBeInTheDocument();

@@ -1,0 +1,424 @@
+#!/usr/bin/env node
+
+import { createRequire } from "node:module";
+import { chmod, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  assertNoHorizontalOverflow,
+  clearRenderedSession,
+  loadPlaywright,
+  requireLoopbackOrigin,
+  signInThroughRenderedLogin,
+} from "./lib/retained-qa-browser.mjs";
+import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
+
+const requireFromQuipsly = createRequire(new URL("../apps/quipsly/package.json", import.meta.url));
+const { PrismaClient } = requireFromQuipsly("@prisma/client");
+const { PrismaPg } = requireFromQuipsly("@prisma/adapter-pg");
+const { deleteApp, initializeApp } = requireFromQuipsly("firebase-admin/app");
+const { getAuth } = requireFromQuipsly("firebase-admin/auth");
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ACCEPTANCE_ROOT = path.join(REPO_ROOT, "artifacts", "coaching-acceptance");
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function checkpoint(message) {
+  process.stderr.write(`[fresh Session audio polish] ${message}\n`);
+}
+
+function requireLocalDatabase(value) {
+  const url = new URL(String(value || ""));
+  assert(
+    ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname),
+    "Fresh Session audio polish refuses a non-local PostgreSQL database.",
+  );
+  return url.toString();
+}
+
+function object(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function text(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value instanceof Date) return value.toISOString();
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, stable(child)]),
+    );
+  }
+  return typeof value === "bigint" ? value.toString() : value;
+}
+
+function contextArgument() {
+  const index = process.argv.indexOf("--context");
+  if (index < 0) return null;
+  const value = process.argv[index + 1];
+  assert(value && !value.startsWith("--"), "--context requires a JSON path.");
+  return path.resolve(value);
+}
+
+async function latestFreshContext() {
+  const candidates = [];
+  for (const entry of await readdir(ACCEPTANCE_ROOT, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const candidate = path.join(ACCEPTANCE_ROOT, entry.name, "fresh-start-context.json");
+    try {
+      const info = await stat(candidate);
+      candidates.push({ candidate, modifiedAt: info.mtimeMs });
+    } catch {}
+  }
+  candidates.sort((left, right) => right.modifiedAt - left.modifiedAt);
+  assert(candidates.length > 0, "No fresh coaching context is available. Run pnpm quipsly:fresh:coaching-flight first.");
+  return candidates[0].candidate;
+}
+
+async function loadContext() {
+  const contextPath = contextArgument() || await latestFreshContext();
+  const resolved = path.resolve(contextPath);
+  assert(
+    resolved.startsWith(`${ACCEPTANCE_ROOT}${path.sep}`),
+    "Fresh Session audio polish only accepts a context below artifacts/coaching-acceptance.",
+  );
+  const context = JSON.parse(await readFile(resolved, "utf8"));
+  assert(context?.schema === "quipsly-fresh-coaching-acceptance-context-v1", "Fresh coaching context schema is invalid.");
+  assert(typeof context.roomId === "string" && context.roomId, "Fresh coaching context has no Session room.");
+  assert(typeof context.keychainService === "string" && context.keychainService, "Fresh coaching context has no credential service.");
+  assert(context.identities?.coach?.email?.endsWith(".test"), "Fresh coaching context has no reserved coach identity.");
+  return { context, contextPath: resolved };
+}
+
+async function restoreFreshCoachAuth(context, password) {
+  const host = String(process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099");
+  const emulator = new URL(`http://${host}`);
+  assert(
+    ["localhost", "127.0.0.1", "[::1]"].includes(emulator.hostname) && Boolean(emulator.port),
+    "Fresh Session audio polish requires the loopback Firebase Auth emulator.",
+  );
+  process.env.FIREBASE_AUTH_EMULATOR_HOST = emulator.host;
+  const identity = context.identities.coach;
+  const app = initializeApp({ projectId: "quipsly-reef" }, `fresh-session-audio-polish-${Date.now()}`);
+  try {
+    const auth = getAuth(app);
+    const fields = {
+      email: identity.email,
+      password,
+      displayName: identity.displayName,
+      emailVerified: true,
+      disabled: false,
+    };
+    const current = await auth.getUser(identity.firebaseUid).catch((error) => {
+      if (error?.code === "auth/user-not-found") return null;
+      throw error;
+    });
+    if (current) {
+      await auth.updateUser(identity.firebaseUid, fields);
+      return;
+    }
+    const conflict = await auth.getUserByEmail(identity.email).catch((error) => {
+      if (error?.code === "auth/user-not-found") return null;
+      throw error;
+    });
+    if (conflict && conflict.uid !== identity.firebaseUid) await auth.deleteUser(conflict.uid);
+    await auth.createUser({ uid: identity.firebaseUid, ...fields });
+  } finally {
+    await deleteApp(app);
+  }
+}
+
+function sourceCoordinates(recording) {
+  const promotion = object(object(recording.localManifestJson).promotion);
+  const projectId = text(promotion.projectId);
+  const projectSlug = text(promotion.nestSlug);
+  const mediaAssetId = text(promotion.mediaAssetId);
+  const sourceId = text(promotion.sourceId);
+  const playbackUrl = text(promotion.playbackUrl);
+  if (!projectId || !projectSlug || !mediaAssetId || !sourceId || playbackUrl !== `/api/ingest/media/${sourceId}`) return null;
+  return { projectId, projectSlug, mediaAssetId, sourceId, playbackUrl };
+}
+
+async function sourceSnapshot(prisma, roomId) {
+  const recordings = await prisma.recordingAsset.findMany({
+    where: { roomId },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      roomId: true,
+      kind: true,
+      status: true,
+      fileName: true,
+      contentType: true,
+      byteSize: true,
+      durationSeconds: true,
+      storageBucket: true,
+      storageObjectPath: true,
+      checksum: true,
+      verifiedAt: true,
+      recordedStartedAt: true,
+      recordedStoppedAt: true,
+      localManifestJson: true,
+    },
+  });
+  const promoted = recordings
+    .map((recording) => ({ recording, coordinates: sourceCoordinates(recording) }))
+    .filter((entry) => entry.coordinates);
+  assert(promoted.length > 0, "The fresh Session has no canonical audio-polish source coordinates.");
+  const assets = await prisma.studioMediaAsset.findMany({
+    where: { id: { in: promoted.map((entry) => entry.coordinates.mediaAssetId) } },
+    select: {
+      id: true,
+      filename: true,
+      url: true,
+      mimeType: true,
+      sizeBytes: true,
+      duration: true,
+      resolution: true,
+      fps: true,
+      cloudProvider: true,
+      isProxy: true,
+      rawAssetId: true,
+    },
+  });
+  const assetById = new Map(assets.map((asset) => [asset.id, asset]));
+  return promoted.map(({ recording, coordinates }) => {
+    const asset = assetById.get(coordinates.mediaAssetId);
+    assert(asset, `Canonical media asset ${coordinates.mediaAssetId} is missing.`);
+    return stable({ recording, coordinates, asset });
+  });
+}
+
+async function masteryJobs(prisma, projectId, assetId) {
+  return stable(await prisma.studioAssetProcessingJob.findMany({
+    where: { projectId, assetId, type: "audio-mastery" },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      projectId: true,
+      assetId: true,
+      type: true,
+      status: true,
+      inputJson: true,
+      resultJson: true,
+      error: true,
+      startedAt: true,
+      completedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  }));
+}
+
+async function operateRenderedSession({ baseURL, context, password }) {
+  const callbackPath = `/sessions/${encodeURIComponent(context.roomId)}?mode=recordings`;
+  const { chromium } = await loadPlaywright();
+  const browser = await chromium.launch({ headless: true, channel: "chrome" });
+  const browserContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    colorScheme: "light",
+    locale: "en-US",
+    reducedMotion: "reduce",
+  });
+  const page = await browserContext.newPage();
+  const browserErrors = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+
+  try {
+    checkpoint("signing in as the fresh coach");
+    await signInThroughRenderedLogin({
+      page,
+      baseURL,
+      identity: { role: "fresh-coach", email: context.identities.coach.email },
+      password,
+      callbackPath,
+    });
+    await page.getByRole("heading", { name: "Your recordings are safe and ready" }).waitFor({ timeout: 30_000 });
+    const sourceRegion = page.locator('section[aria-labelledby="source-evidence-heading"]');
+    try {
+      await assertNoHorizontalOverflow(sourceRegion, "Session recording quality");
+    } catch (error) {
+      const overflow = await sourceRegion.evaluate((element) => Array.from(element.querySelectorAll("*")).flatMap((child) => {
+        const node = child;
+        if (node.scrollWidth <= node.clientWidth + 1) return [];
+        return [{
+          tag: node.tagName,
+          className: String(node.className || "").slice(0, 240),
+          text: String(node.textContent || "").trim().replace(/\s+/g, " ").slice(0, 240),
+          clientWidth: node.clientWidth,
+          scrollWidth: node.scrollWidth,
+        }];
+      }).slice(0, 12));
+      throw new Error(`${error instanceof Error ? error.message : String(error)} Offenders: ${JSON.stringify(overflow)}`);
+    }
+
+    const polishCards = page.getByRole("region", { name: "Audio improvement" });
+    const cardCount = await polishCards.count();
+    assert(cardCount > 0, "No verified Session recording exposed the ordinary Audio polish action.");
+    const card = polishCards.first();
+    await card.getByText("Audio polish", { exact: true }).waitFor();
+    await card.getByText(/original recording stays untouched/i).waitFor();
+    await assertNoHorizontalOverflow(card, "Session audio polish");
+
+    const improve = card.getByRole("button", { name: /^(Improve audio|Try audio polish again)$/ });
+    const improving = card.getByRole("button", { name: "Improving audio…" });
+    const readyComparison = card.getByText(/Ready to compare\. Quipsly has not replaced or published either version\./i);
+    const alreadyBalanced = card.getByText(/already meets Quipsly's spoken-word loudness target/i);
+    await Promise.race([
+      improve.waitFor({ timeout: 30_000 }),
+      improving.waitFor({ timeout: 30_000 }),
+      readyComparison.waitFor({ timeout: 30_000 }),
+      alreadyBalanced.waitFor({ timeout: 30_000 }),
+    ]);
+    const canImprove = await improve.isVisible().catch(() => false);
+    if (canImprove) {
+      checkpoint("requesting one-step audio polish");
+      await improve.click();
+      await improve.waitFor({ state: "hidden", timeout: 15_000 });
+    } else if (await improving.isVisible().catch(() => false)) {
+      checkpoint("resuming an in-progress audio polish result");
+    } else {
+      checkpoint("rechecking an already-completed audio polish result");
+    }
+
+    const retry = card.getByRole("button", { name: "Try audio polish again" });
+    const terminal = await Promise.race([
+      readyComparison.waitFor({ timeout: 120_000 }).then(() => "comparison"),
+      alreadyBalanced.waitFor({ timeout: 120_000 }).then(() => "balanced"),
+      retry.waitFor({ timeout: 120_000 }).then(() => "failed"),
+    ]);
+    if (terminal === "failed") {
+      const reason = await card.getByText(/audio-mastery-|could not|did not finish/i).last().textContent().catch(() => null);
+      throw new Error(`Audio polish reached a visible retry state instead of hiding the failure. ${reason || "No failure reason was rendered."}`);
+    }
+    const comparisonReady = await readyComparison.count() > 0 && await readyComparison.isVisible().catch(() => false);
+    const balanced = await alreadyBalanced.count() > 0 && await alreadyBalanced.isVisible().catch(() => false);
+    assert(comparisonReady || balanced, "Audio polish never reached a calm terminal state.");
+
+    let originalReadyState = null;
+    let improvedReadyState = null;
+    if (comparisonReady) {
+      const media = card.locator("audio, video");
+      assert(await media.count() === 2, "Completed Session audio polish did not expose original and improved playback together.");
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('[aria-label="Audio improvement"] audio, [aria-label="Audio improvement"] video')).slice(0, 2).every((element) => element.readyState >= 1),
+        undefined,
+        { timeout: 30_000 },
+      );
+      originalReadyState = await media.nth(0).evaluate((element) => element.readyState);
+      improvedReadyState = await media.nth(1).evaluate((element) => element.readyState);
+    }
+
+    assert(browserErrors.length === 0, `Session audio polish raised browser exceptions: ${browserErrors.join(" | ")}`);
+    await clearRenderedSession(page, baseURL, "fresh-coach");
+    return {
+      cardCount,
+      ordinaryOneStepActionRendered: true,
+      actionOperated: canImprove,
+      rerunRecognizedCompletedState: !canImprove,
+      outcome: comparisonReady ? "improved-listening-copy" : "already-balanced",
+      originalAndImprovedPlaybackRendered: comparisonReady,
+      originalReadyState,
+      improvedReadyState,
+      originalUntouchedMessageRendered: true,
+      automaticPublicationAbsentMessageRendered: comparisonReady,
+      mobileViewportOperated: true,
+      horizontalOverflow: false,
+      browserExceptions: browserErrors.length,
+    };
+  } finally {
+    await browserContext.close();
+    await browser.close();
+  }
+}
+
+async function main() {
+  assert(
+    process.env.QUIPSLY_FRESH_SESSION_AUDIO_POLISH === "1",
+    "Set QUIPSLY_FRESH_SESSION_AUDIO_POLISH=1 to operate the local fresh Session.",
+  );
+  const { context, contextPath } = await loadContext();
+  const baseURL = requireLoopbackOrigin(
+    process.env.QUIPSLY_FRESH_SESSION_AUDIO_POLISH_BASE_URL || context.baseURL || "http://127.0.0.1:3012",
+    "QUIPSLY_FRESH_SESSION_AUDIO_POLISH_BASE_URL",
+  );
+  const databaseURL = requireLocalDatabase(
+    process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio",
+  );
+  const password = readRetainedQAPassword({
+    service: context.keychainService,
+    account: context.identities.coach.email,
+  });
+  assert(password, "The fresh coach Keychain credential is unavailable.");
+  await restoreFreshCoachAuth(context, password);
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: databaseURL, max: 2 }),
+    log: ["error"],
+  });
+
+  try {
+    checkpoint("binding the exact original sources");
+    const sourcesBefore = await sourceSnapshot(prisma, context.roomId);
+    const operatedSource = sourcesBefore[0];
+    const jobsBefore = await masteryJobs(
+      prisma,
+      operatedSource.coordinates.projectId,
+      operatedSource.coordinates.mediaAssetId,
+    );
+    const rendered = await operateRenderedSession({ baseURL, context, password });
+    checkpoint("proving the original source is unchanged");
+    const sourcesAfter = await sourceSnapshot(prisma, context.roomId);
+    assert(
+      JSON.stringify(sourcesAfter) === JSON.stringify(sourcesBefore),
+      "One-step audio polish changed an original RecordingAsset, Capture manifest, or canonical source asset.",
+    );
+    const jobsAfter = await masteryJobs(
+      prisma,
+      operatedSource.coordinates.projectId,
+      operatedSource.coordinates.mediaAssetId,
+    );
+    const completed = jobsAfter.find((job) => job.status === "completed");
+    assert(completed, "One-step audio polish has no completed processing receipt.");
+    assert(jobsAfter.length >= jobsBefore.length, "Audio polish removed retained processing history.");
+
+    const receiptPath = path.join(path.dirname(contextPath), "session-audio-polish-receipt.json");
+    const receipt = {
+      schema: "quipsly-fresh-session-audio-polish-receipt-v1",
+      ok: true,
+      createdAt: new Date().toISOString(),
+      localOnly: true,
+      contextPath,
+      roomId: context.roomId,
+      operatedRecordingAssetId: operatedSource.recording.id,
+      operatedMediaAssetId: operatedSource.coordinates.mediaAssetId,
+      completedMasteryJobId: completed.id,
+      originalSourceChecksum: operatedSource.recording.checksum,
+      originalSourceAndCaptureManifestUnchanged: true,
+      processingHistoryRetained: true,
+      credentialsPrinted: false,
+      freshCoachAuthRestoredToEphemeralEmulator: true,
+      screenshotsCaptured: false,
+      externalSideEffects: false,
+      humanAcceptanceSatisfied: false,
+      physicalDeviceProven: false,
+      humanListeningProven: false,
+      ...rendered,
+    };
+    await mkdir(path.dirname(receiptPath), { recursive: true });
+    await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    await chmod(receiptPath, 0o600);
+    console.log(JSON.stringify({ ...receipt, receiptPath }, null, 2));
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+await main();

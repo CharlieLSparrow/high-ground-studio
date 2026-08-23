@@ -1860,7 +1860,7 @@ function SessionSourceEvidenceCard({
     return (
       <article
         key={source.recordingAssetId}
-        className={`rounded-xl border bg-white p-4 ${drift ? "border-rose-300" : verified ? "border-emerald-200" : "border-amber-200"}`}
+        className={`min-w-0 overflow-hidden rounded-xl border bg-white p-4 ${drift ? "border-rose-300" : verified ? "border-emerald-200" : "border-amber-200"}`}
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -2298,7 +2298,7 @@ function SessionSourceEvidenceCard({
           </a>
         </div>
       </div>
-      <div className="mt-4 grid gap-3 xl:grid-cols-2">
+      <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-2">
         {evidence.sources.map(sourceArticle)}
       </div>
       {evidence.sources.length === 0 ? (

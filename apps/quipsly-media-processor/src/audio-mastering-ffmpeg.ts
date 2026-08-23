@@ -60,7 +60,7 @@ export class FfmpegAudioMasteringEngine {
   }): Promise<AudioMasteryMeasurement> {
     const sourceBefore = await inspectBoundSource(inputPath, input.source);
     const [probe, version, reading, series] = await Promise.all([
-      probeAudio(inputPath, this.ffprobePath),
+      probeAudio(inputPath, this.ffprobePath, this.ffmpegPath),
       ffmpegVersion(this.ffmpegPath),
       measureLoudnorm(inputPath, this.ffmpegPath, input.profileId),
       measureSeries(inputPath, this.ffmpegPath),
@@ -105,7 +105,7 @@ export class FfmpegAudioMasteringEngine {
   }): Promise<AudioSignalDiagnosis> {
     const sourceBefore = await inspectBoundSource(inputPath, input.source);
     const [probe, version, statistics, nearSilenceSpans] = await Promise.all([
-      probeAudio(inputPath, this.ffprobePath),
+      probeAudio(inputPath, this.ffprobePath, this.ffmpegPath),
       ffmpegVersion(this.ffmpegPath),
       measureAstats(inputPath, this.ffmpegPath),
       measureNearSilence(inputPath, this.ffmpegPath),
@@ -330,7 +330,7 @@ async function inspectBoundSource(inputPath: string, source: AudioMasterySourceB
   return { sizeBytes: sourceStat.size, sha256 };
 }
 
-async function probeAudio(inputPath: string, ffprobePath: string): Promise<AudioProbe> {
+async function probeAudio(inputPath: string, ffprobePath: string, ffmpegPath: string): Promise<AudioProbe> {
   const result = await runProcess(ffprobePath, [
     "-v",
     "error",
@@ -345,13 +345,70 @@ async function probeAudio(inputPath: string, ffprobePath: string): Promise<Audio
   const root = record(JSON.parse(result.stdout));
   const stream = Array.isArray(root.streams) ? record(root.streams[0]) : {};
   const format = record(root.format);
-  const durationSeconds = numberField(format.duration, "duration");
+  const declaredDuration = Number(format.duration);
+  const durationSeconds = Number.isFinite(declaredDuration) && declaredDuration > 0
+    ? declaredDuration
+    : await decodeAudioDuration(inputPath, ffmpegPath);
   const channels = numberField(stream.channels, "channels");
   const sampleRateHz = numberField(stream.sample_rate, "sample_rate");
   if (durationSeconds <= 0 || !Number.isSafeInteger(channels) || channels <= 0 || !Number.isSafeInteger(sampleRateHz) || sampleRateHz <= 0) {
     throw new ProxyTranscodeError("audio-mastery-probe-invalid", "The source has no valid primary audio stream.");
   }
   return { durationSeconds, channels, sampleRateHz };
+}
+
+async function decodeAudioDuration(inputPath: string, ffmpegPath: string) {
+  const result = await runProcess(ffmpegPath, [
+    "-hide_banner",
+    "-nostdin",
+    "-v",
+    "error",
+    "-progress",
+    "pipe:1",
+    "-i",
+    inputPath,
+    "-map",
+    "0:a:0",
+    "-vn",
+    "-sn",
+    "-dn",
+    "-f",
+    "null",
+    "-",
+  ], "audio-mastery-duration-decode-failed");
+  return parseFfmpegProgressDuration(result.stdout);
+}
+
+export function parseFfmpegProgressDuration(stdout: string) {
+  if (!/^progress=end$/m.test(stdout)) {
+    throw new ProxyTranscodeError(
+      "audio-mastery-duration-incomplete",
+      "The audio duration probe did not complete its full decode.",
+    );
+  }
+  const modernMicroseconds = [...stdout.matchAll(/^out_time_us=(\d+)$/gm)]
+    .map((match) => Number(match[1]))
+    .filter(Number.isFinite);
+  const legacyMicroseconds = [...stdout.matchAll(/^out_time_ms=(\d+)$/gm)]
+    .map((match) => Number(match[1]))
+    .filter(Number.isFinite);
+  const clockSeconds = [...stdout.matchAll(/^out_time=(\d+):(\d+):([0-9.]+)$/gm)]
+    .map((match) => Number(match[1]) * 3_600 + Number(match[2]) * 60 + Number(match[3]))
+    .filter(Number.isFinite);
+  const seconds = modernMicroseconds.length
+    ? Math.max(...modernMicroseconds) / 1_000_000
+    : legacyMicroseconds.length
+      ? Math.max(...legacyMicroseconds) / 1_000_000
+      : clockSeconds.length
+        ? Math.max(...clockSeconds)
+        : Number.NaN;
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new ProxyTranscodeError(
+      "audio-mastery-duration-invalid",
+      "A complete audio decode did not produce a finite source duration.",
+    );
+  }
+  return seconds;
 }
 
 async function ffmpegVersion(ffmpegPath: string) {
@@ -518,10 +575,10 @@ async function measureAstats(inputPath: string, ffmpegPath: string) {
 
 async function measureNearSilence(inputPath: string, ffmpegPath: string) {
   const result = await runProcess(ffmpegPath, [
-    "-hide_banner", "-nostdin", "-nostats", "-i", inputPath,
+    "-hide_banner", "-nostdin", "-nostats", "-progress", "pipe:1", "-i", inputPath,
     "-map", "0:a:0", "-filter:a", "silencedetect=noise=-55dB:d=0.25", "-f", "null", "-",
   ], "audio-signal-silence-failed");
-  const duration = durationFromFfmpegInput(result.stderr);
+  const duration = parseFfmpegProgressDuration(result.stdout);
   return parseNearSilenceSpans(result.stderr, duration);
 }
 
@@ -556,12 +613,6 @@ function diagnosticNumber(value: string, label: string) {
   if (normalized === "-inf" && /(?:level|floor|through)/i.test(label)) return -200;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function durationFromFfmpegInput(stderr: string) {
-  const match = /Duration:\s*(\d+):(\d+):([0-9.]+)/.exec(stderr);
-  if (!match) throw new ProxyTranscodeError("audio-signal-duration-invalid", "FFmpeg did not report the decoded source duration.");
-  return Number(match[1]) * 3_600 + Number(match[2]) * 60 + Number(match[3]);
 }
 
 async function runProcess(executable: string, args: string[], code: string) {
