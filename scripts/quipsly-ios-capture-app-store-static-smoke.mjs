@@ -526,6 +526,9 @@ requireIncludes(bridgeText, '"action": action', "the native bridge uses canonica
 requireIncludes(bridgeText, '"action": "RELEASE"', "the native bridge uses the canonical bounded release action");
 requireIncludes(bridgeText, '"expectedRevision"', "the native bridge binds revisions and release to current canonical truth");
 requireIncludes(bridgeText, '"callRoomId": session.callRoomId', "packet lane review targets the canonical call-room identity rather than the local session row ID");
+requireIncludes(bridgeText, '"clientInstanceId": CaptureClientInstallation.id', "native provider-room join keeps a stable installation-scoped endpoint identity");
+requireIncludes(bridgeText, '"clientKind": "ios"', "native provider-room join identifies its iOS client kind");
+requireIncludes(bridgeText, '"endpointRole": "primary"', "native provider-room join declares the call-audio endpoint role");
 requireIncludes(bridgeText, "func reviewPacketLane", "the native bridge owns the bounded packet lane review mutation");
 requireIncludes(canonicalTaskStatusText, 'CanonicalTaskDecisionReason = "MISSED_OCCURRENCE_SKIPPED"', "canonical task status bounds the missed-occurrence decision vocabulary");
 requireIncludes(canonicalTaskStatusText, 'kind: "quipsly-task-occurrence-resolution-v1"', "canonical missed-occurrence resolution writes an inspectable occurrence receipt");

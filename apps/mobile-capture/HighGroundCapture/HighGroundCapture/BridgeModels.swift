@@ -7624,6 +7624,15 @@ final class CaptureSessionClient: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: [
                 "callRoomId": session.callRoomId,
+                // A person may intentionally keep the browser call open while
+                // Capture joins from iPhone. The installation-scoped suffix
+                // prevents the provider from treating those endpoints as one
+                // replaceable connection; Quipsly still owns one canonical
+                // participant identity on the server.
+                "clientInstanceId": CaptureClientInstallation.id,
+                "clientKind": "ios",
+                "deviceLabel": "Quipsly Capture · iPhone",
+                "endpointRole": "primary",
             ])
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
