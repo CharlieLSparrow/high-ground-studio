@@ -14,6 +14,7 @@ struct CapturePhoneShell: View {
     @State private var completedInitialLoad = false
     @State private var isRoutingSessionLink = false
     @State private var localOnlyRecordingSessionID: String?
+    @State private var recorderVisitGeneration = 0
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -35,6 +36,7 @@ struct CapturePhoneShell: View {
                     localOnlyRecordingSessionID: $localOnlyRecordingSessionID
                 )
             }
+            .id(recorderVisitGeneration)
             .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
             .tag(CaptureRootTab.record)
 
@@ -143,6 +145,18 @@ struct CapturePhoneShell: View {
             showRejectedLinkNotice()
         }
         .onChange(of: visibleTab) { _, tab in
+            if tab == .record,
+               !audioCaptureIsActive,
+               !videoCaptureIsActive {
+                // Returning to an idle recorder is a new capture intent. Start
+                // at the familiar room and primary controls instead of
+                // preserving an arbitrary scroll position from prior notes,
+                // review, or follow-through work. Never rebuild an active
+                // recorder: the global banner must return to the continuing
+                // source without perturbing its view subtree.
+                recorderVisitGeneration += 1
+            }
+
             guard tab == .today, !model.usesPreviewData else { return }
             // Today is a projection over work that can be created from Record,
             // Work, or a Session review. Refresh on entry so a successful
