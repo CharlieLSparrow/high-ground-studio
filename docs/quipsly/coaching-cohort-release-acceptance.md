@@ -1046,3 +1046,11 @@ The focused browser projection, consent-surface, and recording-directive API
 suites pass 16/16; the web typecheck and another universal iOS Simulator build
 also pass. Cross-browser media permission, two-participant network, and
 physical-device proof remain ledger evidence rather than inferred completion.
+
+Browser local-source state now distinguishes three ordinary facts without
+overloading the word `safe`: `Saved on this device`, `Uploading`, and `Verified
+in Quipsly`. A held local source explicitly says it is not yet verified in
+Quipsly, and an interrupted source says `Recording interrupted`. Focused upload
+recovery, recorder-surface, and recording-health tests pass 16/16 with the full
+web typecheck. Browser process death, actual durable-storage eviction, and
+network-resume evidence remain open.

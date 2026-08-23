@@ -191,11 +191,11 @@ export async function resumeBrowserSourceUploads(input: {
 export function browserSourceSafetyLabel(ledger: BrowserSourceCaptureLedger) {
   if (ledger.state === "verified") return "Verified in Quipsly";
   if (ledger.state === "uploading" || ledger.state === "verifying")
-    return "Uploading safely";
+    return "Uploading";
   if (ledger.state === "stopped" || ledger.state === "held")
-    return "Safe on this device";
+    return "Saved on this device";
   if (ledger.state === "preparing" || ledger.state === "recording")
-    return "Interrupted · needs recovery";
+    return "Recording interrupted";
   return "Needs attention";
 }
 
@@ -247,7 +247,7 @@ export function browserSourceRecoverySummary(
   }
   if (uploadingCount > 0) {
     return {
-      label: "Uploading safely",
+      label: "Uploading",
       detail: `Quipsly resumes ${uploadingCount === 1 ? "this upload" : "these uploads"} automatically while this Session is open. ${verifiedCount ? `${verifiedCount} already ${verifiedCount === 1 ? "is" : "are"} verified.` : "The local originals remain available."}`,
       shouldExpand: false,
       verifiedCount,
@@ -258,8 +258,8 @@ export function browserSourceRecoverySummary(
   }
   if (safeCount > 0) {
     return {
-      label: "Safe on this device",
-      detail: `${safeCount} ${safeCount === 1 ? "recording is" : "recordings are"} protected locally and can be retried without affecting verified sources.`,
+      label: "Saved on this device",
+      detail: `${safeCount} ${safeCount === 1 ? "recording is" : "recordings are"} protected locally but not yet verified in Quipsly. Upload can be retried without affecting verified sources.`,
       shouldExpand: false,
       verifiedCount,
       uploadingCount,

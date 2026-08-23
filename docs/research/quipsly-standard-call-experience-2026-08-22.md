@@ -582,6 +582,10 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   privacy-scoped participant projection is explicitly labeled `You`, so the
   client sees `Your recording is working` rather than a misleading `Everyone is
   recording`; controller projections retain the full named room view.
+- Removed the ambiguous browser source label `Safe on this device`. Local and
+  cloud state now read as the familiar progression `Saved on this device` →
+  `Uploading` → `Verified in Quipsly`; interruption and attention remain
+  explicit and never masquerade as cloud completion.
   During capture, the familiar `Microphone level` surface leads with Voice,
   Peak, and plain healthy/clipping states while retaining exact dBFS values for
   accessibility and expert diagnosis.

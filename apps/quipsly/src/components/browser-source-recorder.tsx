@@ -133,9 +133,9 @@ function retainedRecorderStatusLabel(
   if (status === "recording") return `Recording ${elapsedSeconds}s`;
   if (status === "checking") return "Getting ready";
   if (status === "starting") return "Starting";
-  if (status === "stopping") return "Saving safely";
-  if (status === "uploading") return "Uploading safely";
-  if (status === "held") return "Safe on this device";
+  if (status === "stopping") return "Saving recording";
+  if (status === "uploading") return "Uploading";
+  if (status === "held") return "Saved on this device";
   if (status === "error") return "Needs attention";
   return "Ready";
 }
@@ -2767,7 +2767,7 @@ export function BrowserSourceRecorder({
                       <LoaderCircle
                         size={18}
                         className="animate-spin text-violet-700"
-                        aria-label="Uploading safely"
+                        aria-label="Uploading"
                       />
                     ) : ledger.state === "recording" ||
                       ledger.state === "preparing" ||
@@ -2775,7 +2775,7 @@ export function BrowserSourceRecorder({
                       <AlertTriangle
                         size={18}
                         className="text-amber-700"
-                        aria-label="Interrupted take needs recovery"
+                        aria-label="Recording needs attention"
                       />
                     ) : null}
                   </span>

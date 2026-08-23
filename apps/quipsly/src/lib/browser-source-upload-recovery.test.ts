@@ -170,12 +170,12 @@ describe("browser source upload recovery", () => {
       nextBrowserSourceUploadRecovery([first, second], new Set(["first"]))
         ?.captureId,
     ).toBe("second");
-    expect(browserSourceSafetyLabel(first)).toBe("Safe on this device");
+    expect(browserSourceSafetyLabel(first)).toBe("Saved on this device");
     expect(browserSourceSafetyLabel(ledger("verified"))).toBe(
       "Verified in Quipsly",
     );
     expect(browserSourceSafetyLabel(ledger("recording"))).toBe(
-      "Interrupted · needs recovery",
+      "Recording interrupted",
     );
   });
 
@@ -238,7 +238,7 @@ describe("browser source upload recovery", () => {
         ledger("uploading", { captureId: "uploading" }),
       ]),
     ).toMatchObject({
-      label: "Uploading safely",
+      label: "Uploading",
       verifiedCount: 1,
       uploadingCount: 1,
       shouldExpand: false,
@@ -267,6 +267,16 @@ describe("browser source upload recovery", () => {
       label: "Needs attention",
       attentionCount: 1,
       shouldExpand: true,
+    });
+
+    expect(
+      browserSourceRecoverySummary([
+        ledger("held", { captureId: "local-only", failureReason: null }),
+      ]),
+    ).toMatchObject({
+      label: "Saved on this device",
+      detail: expect.stringContaining("not yet verified in Quipsly"),
+      safeCount: 1,
     });
   });
 });
