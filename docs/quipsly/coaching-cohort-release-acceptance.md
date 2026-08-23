@@ -1689,3 +1689,40 @@ release/revoke, and automatic post-call audio readiness. It downloaded a
 12,552-byte `quipsly-coaching-transcript-report-v2` mentor report from the
 rendered UI. The receipt continues to report physical-device, natural-speech,
 real-mailbox, human-listening, and production-scale evidence as unproven.
+
+## Build 35 exact-commit candidate — 2026-08-23
+
+Quipsly Capture 1.0 (35) is a sealed, signed, not-uploaded candidate built from
+exact clean source commit `8d019469d251b564ce25c31dccef27ab406dcb1c`.
+The fresh qualification run selected 72 deterministic UI journeys across four
+shards. All 72 passed with zero failures, skips, or expected failures. The
+same run archived and exported the iPhone app, verified the app and share
+extension signatures and App Store profiles, inspected packaged privacy and
+permission metadata, and confirmed matching app/extension version 1.0 (35).
+
+The first exact-commit attempt at `4227425d` failed closed before archive when
+`testRehearsalControlsRemainReachableAtLargestAccessibilityTextSize` timed out
+twice while auditing an unnecessarily expanded, off-screen readiness hierarchy.
+It produced no qualified candidate. The product control was already reachable;
+the test now collapses the checklist after proving that control and audits the
+current manuscript/watch screen with the same hit-region, element-description,
+and clipped-text categories. The focused repaired journey passed in 49 seconds,
+and the subsequent fresh 72-test qualification passed without suppressing an
+accessibility issue category or accepting a failure.
+
+Retained machine evidence:
+
+- UI manifest:
+  `/tmp/quipsly-capture-ui-tests/8d019469d251/20260823T160026Z-12078/quipsly-capture-ui-test-evidence.json`;
+- signed release receipt:
+  `/tmp/quipsly-capture-release/8d019469d251/20260823T160026Z-12078/QuipslyCapture-1.0.35-release-receipt.json`;
+- IPA size: 25,985,973 bytes; and
+- IPA SHA-256:
+  `098082d50c005a3fdc77fb2b0f26a8a9db36bfca07a3e225ec5ed06c9273fde3`.
+
+No upload, tester assignment, processing wait, TestFlight installation, or
+physical-device readback was attempted. Build 34 remains unchanged. Build 35
+is eligible for a deliberate release only after the matching Nest production
+compatibility lane passes; physical-device, natural-speech, human-listening,
+real-mailbox, and multi-account production evidence remain on the continuous
+validation ledger and do not stop independent product work.
