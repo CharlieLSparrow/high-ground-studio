@@ -1631,3 +1631,34 @@ ledger and do not invalidate the independently proven local product path.
 
 Build 34 remains the sealed prior candidate. This work was not deployed,
 uploaded, assigned, or folded into that archive.
+
+## Multi-source mentor report flight — 2026-08-23
+
+The mentor transcript exporter no longer assumes one participant recording
+contains the whole conversation. For a participant-isolated coaching call it
+now selects one source per coach/client from the same coherent take, validates
+the latest completed transcript against each verified source checksum, binds
+speaker identity from the participant-owned recording, applies reviewed
+corrections without changing provider evidence, and projects both sources onto
+one shared Session clock. A single diarized source remains supported only when
+its speaker attribution is explicit.
+
+The clean exact-commit flight at
+`95c0f5d6dbf1dd73c4b163f6512d3184ed67f19e` passed the complete product path
+again. Its private receipt is
+`artifacts/coaching-acceptance/b4f77f2f/fresh-coaching-flight-receipt.json`.
+In addition to the prior acceptance coverage, it records a rendered UI
+download of a 12,575-byte OOXML mentor report using
+`quipsly-coaching-transcript-report-v2`, exactly two source-bound participant
+recordings, and a retained report SHA-256. The report route fails closed on
+missing perspectives, source drift, ambiguous coach/client membership, stale
+transcripts, or unresolved speaker identity.
+
+The same flight re-proved fresh-account scheduling and invitation acceptance,
+neighboring-tenant isolation, a two-endpoint call, remembered consent, 27.562
+seconds of independently captured source overlap, protected transcript
+playback, relationship work, inline editing, recipient release/revoke, and
+automatic post-call audio readiness. The source commit was clean when the
+flight began. Human understanding, real mailbox delivery, natural speech,
+physical devices, human listening, and production scale remain explicitly
+unclaimed.
