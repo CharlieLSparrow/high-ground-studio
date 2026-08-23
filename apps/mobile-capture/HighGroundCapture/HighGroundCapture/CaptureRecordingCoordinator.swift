@@ -109,13 +109,15 @@ final class CaptureRecordingCoordinator: ObservableObject {
         statusMessage = nil
     }
 
-    /// Returns only a new command that this endpoint should act on now. The
-    /// first active START observed after entering a room is deliberately held
-    /// for one explicit late-join confirmation; entering a room never starts
-    /// recording by itself.
+    /// Returns only a new command that this endpoint should act on now. A
+    /// participant with current Session consent and already-granted system
+    /// access joins an active recording without another ceremonial tap. An
+    /// endpoint that still needs consent or an iOS permission waits for the
+    /// person's ordinary Record action.
     func poll(
         roomID: String,
-        localRecordingActive: Bool
+        localRecordingActive: Bool,
+        localRecordingReady: Bool
     ) async -> CaptureRecordingDirective? {
         reset(roomID: roomID)
         do {
@@ -124,8 +126,13 @@ final class CaptureRecordingCoordinator: ObservableObject {
                 baselineEstablished = true
                 currentDirective = directive
                 if directive?.action == .start, !localRecordingActive {
+                    if localRecordingReady {
+                        joinConfirmationRequired = false
+                        statusMessage = "Starting this iPhone's recording…"
+                        return directive
+                    }
                     joinConfirmationRequired = true
-                    statusMessage = "Recording is already in progress. Join it when you are ready."
+                    statusMessage = "Recording is already in progress. Quipsly will start this iPhone after your Session choice and iOS access are ready."
                     return nil
                 }
                 if directive?.action == .stop, localRecordingActive {
@@ -135,10 +142,18 @@ final class CaptureRecordingCoordinator: ObservableObject {
             }
 
             currentDirective = directive
-            guard let directive else { return nil }
-            if joinConfirmationRequired, directive.action == .start {
+            guard let directive else {
+                joinConfirmationRequired = false
                 return nil
             }
+            if joinConfirmationRequired, directive.action == .start {
+                guard localRecordingReady,
+                      handledStates[directive.id] == nil else { return nil }
+                joinConfirmationRequired = false
+                statusMessage = "Starting this iPhone's recording…"
+                return directive
+            }
+            if directive.action == .stop { joinConfirmationRequired = false }
             if handledStates[directive.id] != nil {
                 return nil
             }
@@ -198,8 +213,13 @@ final class CaptureRecordingCoordinator: ObservableObject {
     ) {
         handledStates[directive.id] = state
         if state == .started {
+            joinConfirmationRequired = false
             statusMessage = "Recording on this iPhone"
+        } else if state == .startFailed {
+            joinConfirmationRequired = true
+            statusMessage = "Recording couldn’t start on this iPhone. Your call is still connected; try again."
         } else if state == .stopped {
+            joinConfirmationRequired = false
             statusMessage = "Recording stopped · source stays protected on this iPhone"
         }
     }

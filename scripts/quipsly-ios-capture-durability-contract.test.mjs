@@ -25,6 +25,7 @@ const [
   providerAudio,
   providerRoom,
   uploadManager,
+  recordingCoordinator,
 ] = await Promise.all([
   readFile(path.join(captureRoot, "AudioCaptureController.swift"), "utf8"),
   readFile(path.join(captureRoot, "VideoCaptureController.swift"), "utf8"),
@@ -38,6 +39,7 @@ const [
   readFile(path.join(captureRoot, "ProviderAudioMasterRecorder.swift"), "utf8"),
   readFile(path.join(captureRoot, "ProviderRoomController.swift"), "utf8"),
   readFile(path.join(captureRoot, "UploadManager.swift"), "utf8"),
+  readFile(path.join(captureRoot, "CaptureRecordingCoordinator.swift"), "utf8"),
 ]);
 
 const checks = [];
@@ -409,6 +411,20 @@ check("needs-repair playback is disabled in primary Library", phoneShell.include
 check("needs-repair playback is disabled offline", offlineView.includes("recording.status.isPlaybackEligible"));
 check("playback controller rejects unvalidated status", playback.includes("guard recording.status.isPlaybackEligible else"));
 check("auto-stop result reaches coordinator UX", model.includes("activeAudioCapture?.automaticStopReason"));
+check(
+  "ready iPhone endpoints join an active recording without repeated ceremony",
+  recordingCoordinator.includes("localRecordingReady: Bool")
+    && recordingCoordinator.includes("if localRecordingReady {")
+    && phoneShell.includes("coordinatedLocalRecordingReady(")
+    && phoneShell.includes("AVAudioApplication.shared.recordPermission != .granted")
+    && phoneShell.includes("AVCaptureDevice.authorizationStatus(for: .video) != .authorized"),
+);
+check(
+  "failed native recording keeps the call and exposes one retry",
+  recordingCoordinator.includes("else if state == .startFailed")
+    && recordingCoordinator.includes("Your call is still connected; try again.")
+    && recordingCoordinator.includes("joinConfirmationRequired = true"),
+);
 const networkRecovery = uploadManager.slice(
   uploadManager.indexOf("pathMonitor.pathUpdateHandler"),
   uploadManager.indexOf("pathMonitor.start"),

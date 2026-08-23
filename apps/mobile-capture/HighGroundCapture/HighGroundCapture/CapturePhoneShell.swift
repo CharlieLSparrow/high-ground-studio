@@ -7200,7 +7200,10 @@ private struct CaptureRecorderView: View {
             while !Task.isCancelled {
                 if let directive = await recordingCoordinator.poll(
                     roomID: session.callRoomId,
-                    localRecordingActive: captureIsActive
+                    localRecordingActive: captureIsActive,
+                    localRecordingReady: coordinatedLocalRecordingReady(
+                        for: session
+                    )
                 ) {
                     await applyRecordingDirective(directive, for: session)
                 }
@@ -7250,6 +7253,31 @@ private struct CaptureRecorderView: View {
               visibleTab == .record,
               AuthManager.shared.networkActionsAllowed else { return false }
         return model.providerRoom.isConnected
+    }
+
+    private func coordinatedLocalRecordingReady(
+        for session: MobileCaptureSession
+    ) -> Bool {
+        let consentReady: Bool
+        switch recordingMode {
+        case .audio:
+            consentReady = session.canRecordAudioNow ?? session.canRecordNow
+        case .podcastAV, .soloVideo:
+            consentReady = session.canRecordVideoNow == true
+                && (session.canRecordAudioNow ?? session.canRecordNow)
+        case .podcastCamera:
+            consentReady = session.canRecordVideoNow == true
+        }
+        guard consentReady else { return false }
+        if recordingMode.requiresAudioConsent,
+           AVAudioApplication.shared.recordPermission != .granted {
+            return false
+        }
+        if recordingMode.recordsVideo,
+           AVCaptureDevice.authorizationStatus(for: .video) != .authorized {
+            return false
+        }
+        return true
     }
 
     private func requestCoordinatedStart(for session: MobileCaptureSession) async {

@@ -158,7 +158,9 @@ Recurring complaints reveal the failure modes Quipsly must design out:
   A participant who joins while recording is active starts automatically as
   soon as their existing Session choice and source are ready; do not add a
   second ceremonial **Join recording** step. If their local source actually
-  fails, show one **Try recording again** action while the call continues.
+  fails, show one **Try recording again** action while the call continues. The
+  same rule applies to browser and iPhone endpoints: normal operating-system
+  microphone or camera access is the only platform permission boundary.
 - On iPhone, offer the platform-standard **Continue with Apple** and Google
   paths before the optional password path. Federated sign-in skips Quipsly
   password creation and mailbox-verification chores while still resolving one

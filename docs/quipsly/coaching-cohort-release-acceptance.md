@@ -1927,3 +1927,24 @@ only for a ready local `START_FAILED` state. The focused directive and rendered
 source-contract suites pass 11/11, and the complete Quipsly TypeScript 7 gate
 passes after route generation. Two-browser physical proof remains on the
 continuous validation ledger and does not stop the next product lane.
+
+## One coordinated Record action on iPhone — 2026-08-23
+
+The compiled iPhone path now follows the same rule as the browser. When a host
+has started recording, an iPhone with the current Session's source consent and
+already-granted iOS microphone or camera access starts its participant-owned
+source automatically. It does not invent a second Quipsly permission or
+**Join recording** ceremony. If either ordinary prerequisite is missing, the
+call remains connected and Quipsly waits for the person's normal Record action
+to resolve it.
+
+A real local start failure also stays recoverable. The iPhone keeps the call
+connected, explains that recording did not start, and leaves one retry path
+instead of silently looping or ejecting the participant. A host STOP directive
+still clears any pending start state.
+
+Independent evidence: the native durability contract passes 95/95, the App
+Store static contract passes 1128/1128, the source-evidence contract passes
+30/30, and a universal unsigned iOS simulator build succeeds. Physical-device
+proof remains on the continuous validation ledger; Build 35 remains sealed and
+was not replaced by this local source change.
