@@ -2,17 +2,14 @@
 
 import { LoaderCircle, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-media-processing";
 
+import { AudioMasteryAudition } from "../../editor/AudioMasteryAudition";
+import type { AudioMasteryClientStatus } from "../../audio/audio-mastery-workspace-model";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 
 type AudioMasteryCoordinates = NonNullable<SessionSourceEvidence["sources"][number]["audioMastery"]>;
-type MasteryState = "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
-type MasteryStatus = {
-  status: MasteryState;
-  derivative?: { playbackUrl: string | null } | null;
-  proposal?: { action: "no-change" | "render-loudness-master"; profile: { integratedLufs: number; maximumTruePeakDbtp: number } } | null;
-  error?: string | null;
-};
+type MasteryStatus = AudioMasteryClientStatus;
 
 function payloadError(payload: unknown, fallback: string) {
   if (payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string") {
@@ -33,6 +30,7 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
   const [status, setStatus] = useState<MasteryStatus | null>(null);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [retryAvailable, setRetryAvailable] = useState(false);
   const automaticAttempted = useRef(false);
@@ -121,6 +119,39 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
     }
   }, [operate]);
 
+  const reviewImprovement = useCallback(async (
+    decision: "approved" | "rejected",
+    playbackEvidence: AudioMasteryPlaybackReviewEvidence,
+    note: string | null,
+  ) => {
+    if (!status?.jobId) throw new Error("Refresh this Session before saving your audio choice.");
+    setReviewing(true);
+    try {
+      const response = await fetch("/api/media-vault/audio-mastery/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: coordinates.projectId,
+          projectSlug: coordinates.projectSlug,
+          assetId: coordinates.assetId,
+          sourceId: coordinates.sourceId,
+          jobId: status.jobId,
+          clientRequestId: crypto.randomUUID(),
+          decision,
+          playbackEvidence,
+          note,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; review?: MasteryStatus["review"] } | null;
+      if (!response.ok || !payload?.ok || !payload.review) {
+        throw new Error(payload?.error || "Quipsly could not save your audio choice.");
+      }
+      setStatus((current) => current ? { ...current, review: payload.review! } : current);
+    } finally {
+      setReviewing(false);
+    }
+  }, [coordinates, status?.jobId]);
+
   useEffect(() => {
     if (checking || status?.status !== "not-queued" || busy || automaticAttempted.current) return;
     automaticAttempted.current = true;
@@ -130,6 +161,23 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
   const working = status && ["queued", "processing", "output-ready"].includes(status.status);
   const failed = status?.status === "failed" || status?.status === "blocked" || retryAvailable;
   const improvedUrl = status?.status === "completed" ? status.derivative?.playbackUrl : null;
+  const audition = status?.status === "completed"
+    && status.jobId
+    && status.sourceMeasurement
+    && status.derivative?.playbackUrl
+    && status.derivative.measured
+    && status.proposal
+    ? {
+        jobId: status.jobId,
+        source: status.sourceMeasurement,
+        masteredUrl: status.derivative.playbackUrl,
+        mastered: status.derivative.measured,
+        targetLufs: status.proposal.profile.integratedLufs,
+        maximumTruePeakDbtp: status.proposal.profile.maximumTruePeakDbtp,
+        diagnosis: status.signalDiagnosis,
+        review: status.review,
+      }
+    : null;
   const alreadyBalanced = status?.status === "completed" && !improvedUrl;
   const qualityLabel = checking
     ? "Checking audio"
@@ -166,6 +214,21 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
         <p className="mt-3 flex items-center gap-2 text-xs font-black text-fuchsia-900">
           <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> Checking audio…
         </p>
+      ) : audition ? (
+        <AudioMasteryAudition
+          masteryJobId={audition.jobId}
+          sourceUrl={coordinates.sourceUrl}
+          masteredUrl={audition.masteredUrl}
+          source={audition.source}
+          mastered={audition.mastered}
+          targetLufs={audition.targetLufs}
+          maximumTruePeakDbtp={audition.maximumTruePeakDbtp}
+          diagnosis={audition.diagnosis}
+          review={audition.review}
+          isReviewing={reviewing}
+          onReview={reviewImprovement}
+          presentation="session"
+        />
       ) : improvedUrl ? (
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-[#eadfc9] bg-white p-3">

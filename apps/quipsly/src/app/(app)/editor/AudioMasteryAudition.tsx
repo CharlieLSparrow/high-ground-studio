@@ -265,6 +265,7 @@ export function AudioMasteryAudition({
   onPromotion,
   onDelivery,
   onDeliveryReview,
+  presentation = "studio",
 }: {
   masteryJobId?: string | null;
   sourceUrl: string;
@@ -284,6 +285,7 @@ export function AudioMasteryAudition({
   onPromotion?: (operation: "promote" | "withdraw", reviewReceiptId: string | null, reason: string | null) => Promise<void>;
   onDelivery?: () => Promise<void>;
   onDeliveryReview?: (decision: "approved" | "rejected", evidence: { schema: typeof AUDIO_DELIVERY_REVIEW_EVIDENCE_SCHEMA; listenedSecondBins: number[]; completedAt: string }, note: string | null) => Promise<void>;
+  presentation?: "studio" | "session";
 }) {
   const sourceRef = useRef<HTMLAudioElement>(null);
   const masteredRef = useRef<HTMLAudioElement>(null);
@@ -309,6 +311,7 @@ export function AudioMasteryAudition({
     && promotion.activePromotion?.jobId === masteryJobId,
   );
   const anotherPreviewPromoted = promotion.active && !thisPreviewPromoted;
+  const sessionPresentation = presentation === "session";
   const moments = useMemo(() => audioMasteryReviewMoments(source, mastered), [mastered, source]);
   const auditionGains = useMemo(
     () => audioMasteryAuditionGains(source.integratedLufs, mastered.integratedLufs, monitorMode),
@@ -466,9 +469,11 @@ export function AudioMasteryAudition({
       <section className="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3 text-white" aria-label="Audio mastery audition summary">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <div className="text-xs font-black">Mastering audition</div>
+            <div className="text-xs font-black">{sessionPresentation ? "Compare audio" : "Mastering audition"}</div>
             <p className="mt-1 text-[9px] font-bold leading-4 text-slate-400">
-              Verified preview ready. {diagnosis ? `${diagnosis.observations.length} signal candidate${diagnosis.observations.length === 1 ? "" : "s"} to review.` : "Add decoded signal evidence to this legacy preview."}
+              {sessionPresentation
+                ? "Your improved copy is ready. Hear the same moment in both versions before choosing what sounds best."
+                : <>Verified preview ready. {diagnosis ? `${diagnosis.observations.length} signal candidate${diagnosis.observations.length === 1 ? "" : "s"} to review.` : "Add decoded signal evidence to this legacy preview."}</>}
             </p>
             {review.latest ? <p className="mt-1 text-[9px] font-black text-sky-200">Latest decision: {review.latest.decision} · {new Date(review.latest.reviewedAt).toLocaleString()}</p> : null}
             {thisPreviewPromoted ? <p className="mt-1 text-[9px] font-black text-emerald-200">This preview is the active delivery candidate · source and episode spine unchanged</p> : null}
@@ -483,7 +488,7 @@ export function AudioMasteryAudition({
           <div className="rounded-md bg-slate-900 px-2 py-2"><span className="font-mono font-black text-emerald-200">{mastered.integratedLufs.toFixed(1)}</span><br /><span className="text-slate-400">Preview LUFS</span></div>
         </div>
         <button type="button" onClick={() => setExpanded(true)} className="mt-2 w-full rounded-md bg-fuchsia-300 px-3 py-2 text-[10px] font-black text-fuchsia-950 hover:bg-fuchsia-200">
-          Open full audition desk
+          {sessionPresentation ? "Compare original and improved" : "Open full audition desk"}
         </button>
       </section>
       {expanded && createPortal(
@@ -491,17 +496,19 @@ export function AudioMasteryAudition({
           <div className="max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-3 shadow-2xl sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-3 text-white">
               <div>
-                <div className="text-[9px] font-black uppercase tracking-[0.16em] text-fuchsia-200">Audio mastery</div>
-                <h2 id="audio-mastery-dialog-title" className="mt-1 text-xl font-black">Source-to-master audition desk</h2>
+                <div className="text-[9px] font-black uppercase tracking-[0.16em] text-fuchsia-200">{sessionPresentation ? "Audio comparison" : "Audio mastery"}</div>
+                <h2 id="audio-mastery-dialog-title" className="mt-1 text-xl font-black">{sessionPresentation ? "Original and improved" : "Source-to-master audition desk"}</h2>
               </div>
               <button type="button" onClick={closeDesk} className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-black hover:bg-slate-800">Close</button>
             </div>
     <section className="rounded-xl border border-slate-700 bg-slate-950 p-3 text-white sm:p-5" aria-label="Audio mastering audition desk">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="font-black">Audition the evidence</div>
+          <div className="font-black">{sessionPresentation ? "Listen and compare" : "Audition the evidence"}</div>
           <p className="mt-1 max-w-2xl text-[10px] font-bold leading-4 text-slate-300">
-            Switch versions without losing the playhead. Measurements can verify delivery readiness; only listening can decide whether this is the sound you want.
+            {sessionPresentation
+              ? "Switch versions without losing your place. Quipsly starts at equal listening volume so louder does not automatically sound better."
+              : "Switch versions without losing the playhead. Measurements can verify delivery readiness; only listening can decide whether this is the sound you want."}
           </p>
         </div>
         <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${passes ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>
@@ -518,7 +525,7 @@ export function AudioMasteryAudition({
             onClick={() => void switchVersion(candidate)}
             className={`rounded-md px-3 py-2 text-xs font-black ${version === candidate ? "bg-white text-slate-950" : "text-slate-300 hover:bg-slate-800"}`}
           >
-            {candidate === "source" ? "Immutable source" : "Mastered preview"}
+            {candidate === "source" ? (sessionPresentation ? "Original" : "Immutable source") : (sessionPresentation ? "Improved" : "Mastered preview")}
           </button>
         ))}
       </div>
@@ -533,14 +540,18 @@ export function AudioMasteryAudition({
               onClick={() => setMonitorMode(candidate)}
               className={`rounded-md px-3 py-2 text-[10px] font-black ${monitorMode === candidate ? "bg-sky-200 text-sky-950" : "text-slate-300 hover:bg-slate-800"}`}
             >
-              {candidate === "matched" ? "Matched loudness" : "Delivery level"}
+              {candidate === "matched" ? (sessionPresentation ? "Fair comparison" : "Matched loudness") : (sessionPresentation ? "Final volume" : "Delivery level")}
             </button>
           ))}
         </div>
         <p className="mt-2 px-1 text-[9px] font-bold leading-4 text-slate-400">
           {monitorMode === "matched"
-            ? `Compare processing without the louder-is-better bias. Quipsly only attenuates the louder monitor feed; source ${auditionGains.sourceAdjustmentDb.toFixed(1)} dB, preview ${auditionGains.masteredAdjustmentDb.toFixed(1)} dB. Files and measurements are unchanged.`
-            : "Hear both files at unity monitor gain to judge the verified delivery level and peak headroom. Files and measurements are unchanged."}
+            ? sessionPresentation
+              ? "A fair comparison temporarily turns down the louder version. This changes only what you hear here; neither recording is changed."
+              : `Compare processing without the louder-is-better bias. Quipsly only attenuates the louder monitor feed; source ${auditionGains.sourceAdjustmentDb.toFixed(1)} dB, preview ${auditionGains.masteredAdjustmentDb.toFixed(1)} dB. Files and measurements are unchanged.`
+            : sessionPresentation
+              ? "Final volume plays each version at its actual level. Neither recording is changed."
+              : "Hear both files at unity monitor gain to judge the verified delivery level and peak headroom. Files and measurements are unchanged."}
         </p>
       </div>
 
@@ -649,8 +660,8 @@ export function AudioMasteryAudition({
       )}
       {onReview ? <section className="mt-3 rounded-xl border border-fuchsia-700 bg-slate-900 p-3" aria-label="Mastering decision review">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><div className="text-xs font-black">Playback-tracked decision</div><p className="mt-1 max-w-3xl text-[9px] font-bold leading-4 text-slate-400">Approval needs about three seconds around every evidence-selected moment in both versions, plus matched-loudness and delivery-level monitoring. Rejection can happen as soon as the preview is heard, with a note explaining why. This desk records player progress; it cannot prove audibility or attention.</p></div>
-          <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wide ${reviewCoverage.approvalReady ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>{reviewCoverage.approvalReady ? "Approval evidence complete" : "Listening in progress"}</span>
+          <div><div className="text-xs font-black">{sessionPresentation ? "Choose when you are ready" : "Playback-tracked decision"}</div><p className="mt-1 max-w-3xl text-[9px] font-bold leading-4 text-slate-400">{sessionPresentation ? "Listen to Quipsly’s suggested moments in both versions, once at a fair comparison volume and once at final volume. Your original always stays available." : "Approval needs about three seconds around every evidence-selected moment in both versions, plus matched-loudness and delivery-level monitoring. Rejection can happen as soon as the preview is heard, with a note explaining why. This desk records player progress; it cannot prove audibility or attention."}</p></div>
+          <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wide ${reviewCoverage.approvalReady ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>{reviewCoverage.approvalReady ? (sessionPresentation ? "Ready to choose" : "Approval evidence complete") : (sessionPresentation ? "Listen to compare" : "Listening in progress")}</span>
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-3">
           {reviewCoverage.requiredMoments.map((moment) => {
@@ -659,11 +670,11 @@ export function AudioMasteryAudition({
             return <button key={`review-${moment.id}`} type="button" onClick={() => seek(moment.timeSeconds)} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-left hover:border-fuchsia-300"><div className="flex items-center justify-between gap-2"><span className="font-mono text-[9px] font-black text-fuchsia-200">{clock(moment.timeSeconds)}</span><span className={`text-[8px] font-black ${sourceDone && masterDone ? "text-emerald-300" : "text-amber-300"}`}>{sourceDone ? "source ✓" : "source ○"} · {masterDone ? "preview ✓" : "preview ○"}</span></div><div className="mt-1 text-[9px] font-black">{moment.label}</div></button>;
           })}
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-2 text-[9px] font-black"><div className={`rounded-lg border px-3 py-2 ${reviewCoverage.matchedMonitorObserved ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-slate-700 bg-slate-950 text-slate-400"}`}>Matched loudness {reviewCoverage.matchedMonitorObserved ? "heard ✓" : "not heard"}</div><div className={`rounded-lg border px-3 py-2 ${reviewCoverage.deliveryMonitorObserved ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-slate-700 bg-slate-950 text-slate-400"}`}>Delivery level {reviewCoverage.deliveryMonitorObserved ? "heard ✓" : "not heard"}</div></div>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-[9px] font-black"><div className={`rounded-lg border px-3 py-2 ${reviewCoverage.matchedMonitorObserved ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-slate-700 bg-slate-950 text-slate-400"}`}>{sessionPresentation ? "Fair comparison" : "Matched loudness"} {reviewCoverage.matchedMonitorObserved ? "heard ✓" : "not heard"}</div><div className={`rounded-lg border px-3 py-2 ${reviewCoverage.deliveryMonitorObserved ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-slate-700 bg-slate-950 text-slate-400"}`}>{sessionPresentation ? "Final volume" : "Delivery level"} {reviewCoverage.deliveryMonitorObserved ? "heard ✓" : "not heard"}</div></div>
         <label className="mt-3 block text-[9px] font-black text-slate-300">Review note
           <textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} rows={3} placeholder="Optional for approval; required to reject." className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[10px] text-white focus:border-fuchsia-300 focus:outline-none" />
         </label>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" disabled={isReviewing || !reviewCoverage.approvalReady} onClick={() => void saveReview("approved")} className="rounded-lg border border-emerald-600 bg-emerald-950 px-3 py-2 text-left text-[10px] font-black text-emerald-100 hover:bg-emerald-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">Approve as heard<span className="mt-1 block text-[9px] opacity-75">Creates a receipt only; promotion stays separate.</span></button><button type="button" disabled={isReviewing || masteredListenedSecondBins.length === 0 || reviewNote.trim().length < 3} onClick={() => void saveReview("rejected")} className="rounded-lg border border-rose-700 bg-rose-950 px-3 py-2 text-left text-[10px] font-black text-rose-100 hover:bg-rose-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">Reject preview<span className="mt-1 block text-[9px] opacity-75">Keeps both files and records what failed.</span></button></div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" disabled={isReviewing || !reviewCoverage.approvalReady} onClick={() => void saveReview("approved")} className="rounded-lg border border-emerald-600 bg-emerald-950 px-3 py-2 text-left text-[10px] font-black text-emerald-100 hover:bg-emerald-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">{sessionPresentation ? "Approve improved copy" : "Approve as heard"}<span className="mt-1 block text-[9px] opacity-75">{sessionPresentation ? "Saves your choice. Your original stays unchanged." : "Creates a receipt only; promotion stays separate."}</span></button><button type="button" disabled={isReviewing || masteredListenedSecondBins.length === 0 || reviewNote.trim().length < 3} onClick={() => void saveReview("rejected")} className="rounded-lg border border-rose-700 bg-rose-950 px-3 py-2 text-left text-[10px] font-black text-rose-100 hover:bg-rose-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">{sessionPresentation ? "Reject improved copy" : "Reject preview"}<span className="mt-1 block text-[9px] opacity-75">{sessionPresentation ? "Keeps both versions and saves what you noticed." : "Keeps both files and records what failed."}</span></button></div>
         {reviewMessage ? <p role="status" className="mt-3 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 text-slate-300">{reviewMessage}</p> : null}
         {review.latest ? <p className="mt-2 text-[8px] font-bold leading-4 text-slate-500">Latest retained decision {review.latest.id.slice(0, 12)} · {review.approvalCount} approval{review.approvalCount === 1 ? "" : "s"} · {review.rejectionCount} rejection{review.rejectionCount === 1 ? "" : "s"}. A later receipt does not erase this history.</p> : null}
       </section> : null}

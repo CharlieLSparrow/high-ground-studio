@@ -16,6 +16,23 @@ const coordinates = {
   sourceKind: "audio" as const,
 };
 
+function measurement(integratedLufs: number, truePeakDbtp: number) {
+  return {
+    measuredAt: "2026-08-22T12:00:00.000Z",
+    durationSeconds: 12,
+    integratedLufs,
+    truePeakDbtp,
+    loudnessRangeLu: 4,
+    thresholdLufs: -32,
+    seriesResolutionMs: 1_000,
+    series: [
+      { timeMs: 1_000, momentaryLufs: integratedLufs - 2, shortTermLufs: integratedLufs - 1, integratedLufs, truePeakDbtp },
+      { timeMs: 6_000, momentaryLufs: integratedLufs, shortTermLufs: integratedLufs, integratedLufs, truePeakDbtp },
+      { timeMs: 10_000, momentaryLufs: integratedLufs + 2, shortTermLufs: integratedLufs + 1, integratedLufs, truePeakDbtp },
+    ],
+  };
+}
+
 describe("Session audio mastery", () => {
   const fetchMock = jest.fn();
 
@@ -24,30 +41,50 @@ describe("Session audio mastery", () => {
     Object.defineProperty(global, "fetch", { configurable: true, writable: true, value: fetchMock });
   });
 
-  it("automatically prepares a listening copy and keeps the original beside it", async () => {
+  it("automatically prepares a level-matched comparison without replacing the original", async () => {
+    const sourceMeasurement = measurement(-24, -3);
+    const improvedMeasurement = measurement(-16, -1.5);
     fetchMock
       .mockResolvedValueOnce(response({ ok: true, status: "not-queued" }))
       .mockResolvedValueOnce(response({
         ok: true,
+        jobId: "mastery-job-1",
         status: "completed",
-        derivative: { playbackUrl: "/api/ingest/media/mastered-source-1" },
+        sourceMeasurement,
+        signalDiagnosis: null,
+        derivative: {
+          playbackUrl: "/api/ingest/media/mastered-source-1",
+          measured: improvedMeasurement,
+          verification: { integratedStatus: "passes", truePeakStatus: "passes", integratedDeltaLu: 0, passes: true },
+        },
         proposal: {
           action: "render-loudness-master",
-          profile: { integratedLufs: -16, maximumTruePeakDbtp: -1 },
+          profile: { id: "apple-podcasts-dialogue-v1", label: "Podcast dialogue", integratedLufs: -16, maximumTruePeakDbtp: -1, renderTruePeakDbtp: -1.5 },
+          assessment: { integratedStatus: "below-target", truePeakStatus: "passes", integratedDeltaLu: -8, passes: false },
         },
+        review: { latest: null, approvalCount: 0, rejectionCount: 0 },
       }));
+    const user = userEvent.setup();
     render(<SessionAudioMasteryCard coordinates={coordinates} />);
 
-    expect(await screen.findByText("Improved listening copy")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Compare original and improved" })).toBeInTheDocument();
     expect(screen.getByText("Improved copy ready")).toBeInTheDocument();
-    expect(screen.getByText("Original")).toBeInTheDocument();
-    expect(screen.getByText(/has not replaced or published either version/i)).toBeInTheDocument();
+    expect(screen.getByText(/original stays untouched/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/media-vault/audio-mastery", expect.objectContaining({
       method: "POST",
       body: expect.stringContaining('"sourceId":"source-recording-1"'),
     }));
+
+    await user.click(screen.getByRole("button", { name: "Compare original and improved" }));
+
+    expect(screen.getByRole("dialog", { name: "Original and improved" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Original" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Improved" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fair comparison" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Final volume" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Approve improved copy/ })).toBeDisabled();
     await waitFor(() => expect(document.querySelector('audio[src="/api/ingest/media/source-recording-1"]')).toBeInTheDocument());
-    expect(document.querySelector('audio[src="/api/ingest/media/mastered-source-1"]')).toBeInTheDocument();
+    expect(document.querySelector('audio[src="/api/ingest/media/mastered-source-1"]')).toHaveAttribute("data-monitor-adjustment-db", "-8");
   });
 
   it("keeps a failed processor detail optional and offers a familiar retry", async () => {
