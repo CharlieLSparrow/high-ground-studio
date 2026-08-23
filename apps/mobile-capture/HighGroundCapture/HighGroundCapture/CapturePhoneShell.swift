@@ -7086,7 +7086,9 @@ private struct CaptureRecorderView: View {
                         }
                     )
                     .background(.bar)
-                } else if localRecordingWorkspaceIsOpen(for: session) {
+                } else if localRecordingWorkspaceIsOpen(for: session)
+                    || hasSelectedSessionRecording
+                {
                     CapturePersistentRecorderDock(
                         session: session,
                         mode: recordingMode,
