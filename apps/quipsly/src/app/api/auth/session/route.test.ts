@@ -67,4 +67,23 @@ describe("Quipsly session creation error boundaries", () => {
     });
     expect(adminAuth.createSessionCookie).not.toHaveBeenCalled();
   });
+
+  it("classifies an unreadable request body before authentication or onboarding", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/auth/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Quipsly could not read the secure sign-in request. Try again.",
+      code: "INVALID_SESSION_REQUEST",
+    });
+    expect(adminAuth.verifyIdToken).not.toHaveBeenCalled();
+    expect(ensureStudioUserFromFirebaseIdentity).not.toHaveBeenCalled();
+    expect(adminAuth.createSessionCookie).not.toHaveBeenCalled();
+  });
 });

@@ -101,10 +101,23 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  let input: { idToken?: unknown; inviteToken?: unknown };
   try {
-    const { idToken, inviteToken } = await req.json();
+    input = await req.json();
+  } catch {
+    return NextResponse.json(
+      {
+        error: 'Quipsly could not read the secure sign-in request. Try again.',
+        code: 'INVALID_SESSION_REQUEST',
+      },
+      { status: 400 },
+    );
+  }
 
-    if (!idToken) {
+  try {
+    const { idToken, inviteToken } = input;
+
+    if (typeof idToken !== 'string' || !idToken) {
       return NextResponse.json({ error: 'Missing ID token' }, { status: 400 });
     }
 

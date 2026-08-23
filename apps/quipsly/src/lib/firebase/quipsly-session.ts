@@ -19,6 +19,43 @@ export {
   quipslyEmailActionSettings,
 } from "@/lib/firebase/quipsly-auth-input";
 
+const RETRYABLE_SESSION_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+async function createQuipslyServerSession({
+  idToken,
+  inviteToken,
+  fetcher,
+}: {
+  idToken: string;
+  inviteToken?: string;
+  fetcher: typeof fetch;
+}) {
+  let lastError = "Quipsly could not create a server session.";
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetcher("/api/auth/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idToken, inviteToken }),
+      });
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : lastError;
+      if (attempt === 1) throw new Error(lastError);
+      continue;
+    }
+    const payload = await response.json().catch(() => ({})) as {
+      error?: string;
+      code?: string;
+    };
+    if (response.ok) return;
+    lastError = String(payload.error || lastError);
+    const retryable = RETRYABLE_SESSION_STATUSES.has(response.status)
+      || payload.code === "INVALID_SESSION_REQUEST";
+    if (!retryable || attempt === 1) throw new Error(lastError);
+  }
+}
+
 export async function finishQuipslyFirebaseSignIn({
   user,
   callbackUrl,
@@ -56,21 +93,11 @@ export async function finishQuipslyFirebaseSignIn({
 
   const idToken = await user.getIdToken(true);
   const safeInviteToken = cleanQuipslyInviteToken(inviteToken);
-  const response = await fetcher("/api/auth/session", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      idToken,
-      inviteToken: safeInviteToken || undefined,
-    }),
+  await createQuipslyServerSession({
+    idToken,
+    inviteToken: safeInviteToken || undefined,
+    fetcher,
   });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(
-      String(payload.error || "Quipsly could not create a server session."),
-    );
-  }
 
   const safeCallbackUrl = cleanQuipslyCallbackUrl(callbackUrl);
   navigate(safeCallbackUrl);

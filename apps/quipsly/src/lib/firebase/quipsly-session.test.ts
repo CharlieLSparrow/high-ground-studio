@@ -96,6 +96,55 @@ describe("Quipsly Firebase session completion", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  it("retries one malformed or transient server-session handoff and then navigates", async () => {
+    const user = firebaseUser();
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: jest.fn().mockResolvedValue({
+          code: "INVALID_SESSION_REQUEST",
+          error: "Quipsly could not read the secure sign-in request. Try again.",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({ success: true }),
+      });
+    const navigate = jest.fn();
+
+    await finishQuipslyFirebaseSignIn({
+      user: user as any,
+      callbackUrl: "/sessions/session-1",
+      fetcher: fetcher as any,
+      navigate,
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(navigate).toHaveBeenCalledWith("/sessions/session-1");
+  });
+
+  it("does not retry access denial", async () => {
+    const user = firebaseUser();
+    const fetcher = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: jest.fn().mockResolvedValue({ error: "This account cannot enter that Session." }),
+    });
+    const navigate = jest.fn();
+
+    await expect(finishQuipslyFirebaseSignIn({
+      user: user as any,
+      callbackUrl: "/sessions/session-1",
+      fetcher: fetcher as any,
+      navigate,
+    })).rejects.toThrow("This account cannot enter that Session.");
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it("rejects external callbacks and malformed invite tokens", () => {
     expect(cleanQuipslyCallbackUrl("https://attacker.example")).toBe("/projects");
     expect(cleanQuipslyCallbackUrl("//attacker.example")).toBe("/projects");

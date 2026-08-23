@@ -602,6 +602,11 @@ share`. The continuity panel says that the call, chat, recordings,
   proposal remains immediate and reversible; accepting words or applying a
   voice identity still requires source playback and retains its exact source
   timestamp.
+- Treat server-session creation as a quiet idempotent handoff, not another login
+  decision. Quipsly now distinguishes an unreadable request from bad credentials
+  and retries one malformed or transient handoff automatically. Verification,
+  credential, and access denials still fail immediately; the retry never turns
+  a policy refusal into repeated background attempts.
 - Keep Apple delivery verification strict instead of making synthetic test
   audio pass by weakening the product profile. Apple's current creator guidance
   recommends roughly -16 dB LKFS with +/-1 dB tolerance and no more than -1 dB
