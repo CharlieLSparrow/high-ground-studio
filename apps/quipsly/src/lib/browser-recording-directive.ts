@@ -77,7 +77,7 @@ export function projectBrowserRecordingHealth(
     directive.action === "STOP" &&
     health.allParticipantsStoppedSafely
   ) {
-    title = selfOnly ? "Your recording stopped safely" : "Everyone stopped safely";
+    title = selfOnly ? "Your recording is saved locally" : "Everyone’s recording is saved locally";
     detail = selfOnly
       ? "This browser confirmed that your protected local source stopped."
       : "Each expected recorder confirmed its local stop.";
@@ -114,12 +114,12 @@ export function projectBrowserRecordingHealth(
             : participant.state === "NEEDS_ATTENTION"
               ? "Needs attention"
               : participant.state === "STOPPING"
-                ? "Saving safely"
+                ? "Saving recording"
                 : participant.state === "STOPPED_SAFELY"
-                  ? "Stopped safely"
+                  ? "Saved locally"
                   : directive.action === "START"
                     ? "Waiting for recorder"
-                    : "Waiting for safe stop",
+                    : "Waiting to save",
     })),
   };
 }

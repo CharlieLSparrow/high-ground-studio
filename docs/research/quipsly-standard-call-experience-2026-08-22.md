@@ -586,6 +586,9 @@ recording needs attention`; retained-source, provider-path, and dBFS caveats
   cloud state now read as the familiar progression `Saved on this device` →
   `Uploading` → `Verified in Quipsly`; interruption and attention remain
   explicit and never masquerade as cloud completion.
+- Applied that distinction to room-wide stop coordination too: `Saving
+  recording` and `Saved locally` describe the endpoint fact, while cloud
+  upload and verification remain separate states.
   During capture, the familiar `Microphone level` surface leads with Voice,
   Peak, and plain healthy/clipping states while retaining exact dBFS values for
   accessibility and expert diagnosis.

@@ -154,7 +154,7 @@ function recordingEndpointStatus(state: string) {
     case "STOPPED":
     case "STOPPED_SAFELY":
       return {
-        label: "Stopped safely",
+        label: "Saved locally",
         tone: "bg-emerald-100 text-emerald-950",
       };
     default:

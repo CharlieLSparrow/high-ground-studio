@@ -166,6 +166,36 @@ describe("browser recording directive client", () => {
     });
   });
 
+  it("separates a locally saved stop from later upload verification", () => {
+    const directive = {
+      action: "STOP",
+      participantStatuses: [
+        {
+          id: "participant-self",
+          participantLabel: "You",
+          state: "STOPPED_SAFELY",
+          endpointCount: 1,
+          recordingEndpointCount: 0,
+          attentionEndpointCount: 0,
+        },
+      ],
+      recordingHealth: {
+        expectedParticipantCount: 1,
+        participantWithEndpointCount: 1,
+        recordingParticipantCount: 0,
+        attentionParticipantCount: 0,
+        waitingParticipantCount: 0,
+        allParticipantsRecording: false,
+        allParticipantsStoppedSafely: true,
+      },
+    } as BrowserRecordingDirective;
+
+    expect(projectBrowserRecordingHealth(directive)).toMatchObject({
+      title: "Your recording is saved locally",
+      participants: [{ participantLabel: "You", label: "Saved locally" }],
+    });
+  });
+
   it("reads the latest private coordination intent", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

@@ -1054,3 +1054,9 @@ Quipsly, and an interrupted source says `Recording interrupted`. Focused upload
 recovery, recorder-surface, and recording-health tests pass 16/16 with the full
 web typecheck. Browser process death, actual durable-storage eviction, and
 network-resume evidence remain open.
+
+Room-level stop intent now uses `Saving recording` and `Saved locally` across
+browser and iPhone. It no longer uses `Stopped safely` as a shortcut for a
+local stop receipt, which could be misread as completed cloud verification.
+The updated call, recording projection, and browser recovery suites pass 31/31;
+the full web typecheck and universal iOS Simulator build pass.

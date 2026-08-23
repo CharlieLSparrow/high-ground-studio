@@ -10968,7 +10968,7 @@ private struct CaptureRecordingCoordinationStatus: View {
             return selfOnly ? "Your recording is working" : "Everyone is recording"
         }
         if health.allParticipantsStoppedSafely {
-            return selfOnly ? "Your recording stopped safely" : "Everyone stopped safely"
+            return selfOnly ? "Your recording is saved locally" : "Everyone’s recording is saved locally"
         }
         if selfOnly {
             return isRecording ? "Starting your recording" : "Saving your recording"
@@ -11033,9 +11033,9 @@ private struct CaptureRecordingCoordinationStatus: View {
         case .recording: "Recording"
         case .gettingReady: "Getting ready"
         case .needsAttention: "Needs attention"
-        case .stopping: "Saving safely"
-        case .stoppedSafely: "Stopped safely"
-        case .waiting: isRecording ? "Waiting for recorder" : "Waiting for safe stop"
+        case .stopping: "Saving recording"
+        case .stoppedSafely: "Saved locally"
+        case .waiting: isRecording ? "Waiting for recorder" : "Waiting to save"
         }
     }
 
@@ -11053,7 +11053,7 @@ private struct CaptureRecordingCoordinationStatus: View {
         case .started: "Recording"
         case .startFailed, .stopFailed: "Needs attention"
         case .stopping: "Stopping"
-        case .stopped: "Stopped safely"
+        case .stopped: "Saved locally"
         case .observed: "Getting ready"
         }
     }
@@ -12087,7 +12087,7 @@ private struct ProviderRoomControls: View {
                     } label: {
                         Label(
                             isSafelyLeaving
-                                ? "Finishing safely…"
+                                ? "Saving recording…"
                                 : providerControlsLocked
                                     ? "Stop recording & leave"
                                     : "Leave",
