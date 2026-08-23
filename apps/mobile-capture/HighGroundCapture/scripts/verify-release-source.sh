@@ -159,6 +159,7 @@ require_text "$isolated_release_runner" 'export QUIPSLY_CAPTURE_RELEASE_ISOLATED
 require_text "$isolated_release_runner" 'export QUIPSLY_CAPTURE_RELEASE_RUN_ID=' "Capture release isolates each invocation's evidence"
 require_text "$isolated_release_runner" '"$capture_runner" "$lane"' "Isolated release invokes the pinned Capture runner"
 require_text "$isolated_release_runner" 'candidate | release | beta | seal_candidate | upload_qualified' "Isolated release accepts proof sealing and sealed-candidate upload reuse"
+require_text "$fastlane_runner" 'candidate|release|beta|seal_candidate|upload_qualified' "Pinned Capture runner accepts proof sealing and sealed-candidate upload reuse"
 require_text "$isolated_preflight_runner" 'worktree add --detach "$worktree_path" "$source_revision"' "Full Capture preflight uses a detached committed worktree"
 require_text "$isolated_preflight_runner" 'pnpm install --frozen-lockfile' "Full Capture preflight recreates the locked pnpm workspace graph"
 require_text "$isolated_preflight_runner" 'export QUIPSLY_CAPTURE_PREFLIGHT_ISOLATED=1' "Full Capture preflight marks the isolated source boundary"
