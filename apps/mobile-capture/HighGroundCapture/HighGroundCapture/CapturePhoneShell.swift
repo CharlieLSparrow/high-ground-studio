@@ -6406,15 +6406,10 @@ private struct CaptureRecorderView: View {
                         model: model,
                         session: session,
                         inputRoute: audioCapture.inputRouteName,
-                        localRecordingActive: captureIsActive,
-                        isSafelyLeaving: isSafelyLeavingRoom,
                         localRecordingWorkspaceOpen:
                             model.providerRoom.isConnected
                             || localOnlyRecordingSessionID == session.id
                             || session.providerCanJoin == false,
-                        onLeave: {
-                            Task { await leaveRoomSafely(for: session) }
-                        },
                         onToggleLocalRecordingWorkspace: {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 localOnlyRecordingSessionID =
@@ -7026,6 +7021,20 @@ private struct CaptureRecorderView: View {
                 .padding(.leading, 18)
                 .padding(.trailing, 8)
                 .padding(.vertical, 6)
+                .background(.bar)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let session = model.selectedSession,
+               model.providerRoom.isConnected {
+                ProviderRoomDock(
+                    model: model,
+                    localRecordingActive: captureIsActive,
+                    isSafelyLeaving: isSafelyLeavingRoom,
+                    onLeave: {
+                        Task { await leaveRoomSafely(for: session) }
+                    }
+                )
                 .background(.bar)
             }
         }
@@ -12029,10 +12038,7 @@ private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
     let session: MobileCaptureSession
     let inputRoute: String
-    let localRecordingActive: Bool
-    let isSafelyLeaving: Bool
     let localRecordingWorkspaceOpen: Bool
-    let onLeave: () -> Void
     let onToggleLocalRecordingWorkspace: () -> Void
     @AppStorage("quipsly.call.join-muted.v1") private var joinMuted = false
 
@@ -12065,6 +12071,20 @@ private struct ProviderRoomControls: View {
             if model.providerRoom.isConnected {
                 VStack(alignment: .leading, spacing: 4) {
                     Label(
+                        participantPresenceLabel,
+                        systemImage: model.providerRoom.remoteParticipantCount > 0
+                            ? "person.2.fill"
+                            : "person.badge.clock.fill"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(
+                        model.providerRoom.remoteParticipantCount > 0
+                            ? Color.primary
+                            : Color.secondary
+                    )
+                    .accessibilityIdentifier("CaptureCallParticipantPresence")
+
+                    Label(
                         model.providerRoom.callAudioHealth.title,
                         systemImage: model.providerRoom.callAudioHealth.systemImage
                     )
@@ -12095,42 +12115,6 @@ private struct ProviderRoomControls: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.orange)
                         .accessibilityIdentifier("CaptureProviderRoomReconnecting")
-                }
-                HStack(spacing: 10) {
-                    Button {
-                        Task { await model.toggleRoomMute() }
-                    } label: {
-                        Label(model.providerRoom.isMuted ? "Unmute" : "Mute", systemImage: model.providerRoom.isMuted ? "mic.slash" : "mic")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(providerControlsLocked || model.isChangingRoom || model.providerRoom.isReconnecting)
-                    .accessibilityHint(providerControlHint)
-                    .accessibilityIdentifier("ProviderToggleMuteButton")
-
-                    Button(role: .destructive) {
-                        onLeave()
-                    } label: {
-                        Label(
-                            isSafelyLeaving
-                                ? "Saving recording…"
-                                : providerControlsLocked
-                                    ? "Stop recording & leave"
-                                    : "Leave",
-                            systemImage: "phone.down.fill"
-                        )
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(
-                        isSafelyLeaving
-                            || model.isChangingRoom
-                            || (model.isChangingCapture && !localRecordingActive)
-                    )
-                    .accessibilityHint(
-                        providerControlsLocked
-                            ? "Stops and saves only this iPhone's local recording, then leaves the call. Other devices keep recording."
-                            : providerControlHint
-                    )
-                    .accessibilityIdentifier("ProviderLeaveRoomButton")
                 }
             } else {
                 Toggle(isOn: $joinMuted) {
@@ -12216,10 +12200,89 @@ private struct ProviderRoomControls: View {
         }
     }
 
+    private var participantPresenceLabel: String {
+        ProviderRoomParticipantPresence.label(
+            remoteParticipantCount: model.providerRoom.remoteParticipantCount
+        )
+    }
+
     private var providerControlHint: String {
         providerControlsLocked
             ? "Finish or stop the current take first."
             : "Joins the conversation. Recording starts only when someone taps Record."
+    }
+}
+
+/// Persistent, conventional call controls remain reachable while the Session's
+/// recording, notes, and transcript workspace scrolls independently above.
+private struct ProviderRoomDock: View {
+    @ObservedObject var model: CaptureExperienceModel
+    let localRecordingActive: Bool
+    let isSafelyLeaving: Bool
+    let onLeave: () -> Void
+
+    var body: some View {
+        HStack(spacing: 28) {
+            Spacer(minLength: 0)
+            dockButton(
+                title: model.providerRoom.isMuted ? "Unmute" : "Mute",
+                systemImage: model.providerRoom.isMuted ? "mic.slash.fill" : "mic.fill",
+                tint: model.providerRoom.isMuted ? .orange : .primary,
+                disabled:
+                    model.providerControlsLockedForLocalCapture
+                    || model.isChangingRoom
+                    || model.providerRoom.isReconnecting,
+                accessibilityIdentifier: "ProviderToggleMuteButton"
+            ) {
+                Task { await model.toggleRoomMute() }
+            }
+
+            dockButton(
+                title: isSafelyLeaving ? "Saving…" : "Leave",
+                systemImage: "phone.down.fill",
+                tint: .red,
+                disabled:
+                    isSafelyLeaving
+                    || model.isChangingRoom
+                    || (model.isChangingCapture && !localRecordingActive),
+                accessibilityIdentifier: "ProviderLeaveRoomButton",
+                action: onLeave
+            )
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 9)
+        .padding(.bottom, 7)
+        .overlay(alignment: .top) { Divider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CapturePersistentCallDock")
+    }
+
+    private func dockButton(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        disabled: Bool,
+        accessibilityIdentifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.headline)
+                    .frame(width: 44, height: 32)
+                    .background(tint.opacity(0.12), in: Capsule())
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(tint)
+            .frame(minWidth: 72, minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
 

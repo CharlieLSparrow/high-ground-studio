@@ -99,3 +99,16 @@ enum ProviderRoomCallAudioEvidence {
         }
     }
 }
+
+enum ProviderRoomParticipantPresence {
+    static func label(remoteParticipantCount: Int) -> String {
+        switch max(0, remoteParticipantCount) {
+        case 0:
+            "Waiting for others"
+        case 1:
+            "2 people here"
+        default:
+            "\(remoteParticipantCount + 1) people here"
+        }
+    }
+}

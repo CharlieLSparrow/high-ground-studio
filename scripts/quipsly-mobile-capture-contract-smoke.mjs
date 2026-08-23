@@ -482,9 +482,16 @@ function checkMeetingSpineContractSources() {
       && providerRoomText.includes("stopCallAudioMeter()")
       && providerRoomText.includes("callAudioWatchdogTask?.cancel()")
       && capturePhoneShellText.includes('accessibilityIdentifier("CaptureCallMicrophoneHealth")')
-      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureCallMicrophoneGuidance")'),
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureCallMicrophoneGuidance")')
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureCallParticipantPresence")')
+      && capturePhoneShellText.includes('accessibilityIdentifier("CapturePersistentCallDock")')
+      && capturePhoneShellText.includes('accessibilityIdentifier: "ProviderToggleMuteButton"')
+      && capturePhoneShellText.includes('accessibilityIdentifier: "ProviderLeaveRoomButton"')
+      && capturePhoneShellText.includes('.safeAreaInset(edge: .bottom, spacing: 0)')
+      && providerRoomCallAudioEvidenceText.includes('"Waiting for others"')
+      && providerRoomCallAudioEvidenceText.includes('"2 people here"'),
     "nativeLiveCallMicrophoneConfidence",
-    "Native Capture projects one plain-language live microphone state from transient exact-path PCM while mute, disconnect, and teardown stop observation without creating a recording.",
+    "Native Capture keeps participant presence plus persistent Mute and Leave controls conventional while projecting one plain-language live microphone state from transient exact-path PCM without creating a recording.",
   );
   expect(
     authManagerText.includes("the denial belongs to that feature")

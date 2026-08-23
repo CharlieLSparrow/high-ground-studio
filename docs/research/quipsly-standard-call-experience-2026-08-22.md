@@ -1158,6 +1158,13 @@ retained local master continues to use its separate explicit Record boundary,
 while both paths share one electrical-level analyzer so the same PCM is not
 interpreted by divergent math.
 
+The spatial model now matches a familiar call as well. The joined Session shows
+`Waiting for others` or the total number of people near the call header, while
+Mute and Leave live in a persistent bottom dock. Recording, notes, transcript,
+and follow-through can scroll above without carrying the person's escape and
+audio controls away. This preserves Quipsly's deep Session workspace without
+making the conversation itself feel like a long form.
+
 Independent evidence is the focused state harness, 107/107 mobile source
 contracts, a successful dual-architecture iOS Simulator build, and 1,094/1,094
 App Store static checks. Human speech, real route changes, and listening quality

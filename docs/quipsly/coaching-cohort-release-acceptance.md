@@ -1522,6 +1522,12 @@ failed activation detach it. Unmute and recovered connection reattach it to the
 same SDK-owned microphone path. The retained participant master remains behind
 the explicit Record action and its Session consent receipt.
 
+Joined-call presence now says `Waiting for others`, `2 people here`, or the
+larger total including the local participant. Mute and Leave move with the
+person in a persistent bottom call dock while consent, recording, notes, and
+transcript tools scroll independently. Leaving during a retained take still
+uses the existing protected-source stop-and-save boundary before disconnect.
+
 Independent evidence is the focused deterministic health-state harness, the
 107/107 source-only mobile contract, a successful arm64 plus x86_64 iOS
 Simulator build, and 1,094/1,094 App Store static checks. Build 34 remains sealed
@@ -1531,6 +1537,10 @@ Physical-device evidence remains on the continuous validation ledger:
 
 - join a real Session unmuted and confirm normal speech reaches healthy without
   starting a retained recording;
+- scroll from the top of a long Session through recording, notes, and transcript
+  surfaces and confirm Mute and Leave remain reachable without duplicate controls;
+- join alone, then with one and multiple remote participants, and confirm the
+  waiting/total-person copy changes without exposing provider identifiers;
 - speak very softly, normally, loudly, and at intentional near-clipping level
   and compare the plain state with headphones and the retained-source meter;
 - mute and unmute from Capture, CallKit, and a connected headset where supported;

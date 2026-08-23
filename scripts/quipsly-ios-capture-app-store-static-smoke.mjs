@@ -1591,8 +1591,8 @@ requireIncludes(capturePhoneShellText, '@AppStorage("quipsly.call.join-muted.v1"
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCallInputRoute")', "shipping call entry names the current microphone route");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinMutedToggle")', "shipping call entry exposes an addressable join-muted control");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderJoinRoomButton")', "shipping provider join action is addressable");
-requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderToggleMuteButton")', "shipping provider mute action is addressable");
-requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderLeaveRoomButton")', "shipping provider leave action is addressable");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderLeaveRoomButton"', "shipping persistent provider leave action is addressable");
 requireIncludes(capturePhoneShellText, "Finish or stop the current take first.", "shipping room controls cannot reconfigure active local capture");
 requireIncludes(capturePhoneShellText, "Joins the conversation. Recording starts only when someone taps Record.", "shipping call control hint preserves explicit recording start");
 requireIncludes(capturePhoneShellText, "CaptureConsentConfirmationSheet(", "shipping recorder reaches explicit participant consent");

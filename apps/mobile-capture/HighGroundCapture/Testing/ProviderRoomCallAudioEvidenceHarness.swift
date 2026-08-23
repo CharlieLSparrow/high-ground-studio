@@ -84,6 +84,21 @@ struct ProviderRoomCallAudioEvidenceHarness {
             ProviderRoomCallAudioHealth.clippingRisk.title == "Microphone may clip",
             "ordinary call copy must avoid unexplained technical units"
         )
+        require(
+            ProviderRoomParticipantPresence.label(remoteParticipantCount: 0)
+                == "Waiting for others",
+            "a solo joined participant must get a familiar waiting state"
+        )
+        require(
+            ProviderRoomParticipantPresence.label(remoteParticipantCount: 1)
+                == "2 people here",
+            "one remote participant must produce the ordinary total-person count"
+        )
+        require(
+            ProviderRoomParticipantPresence.label(remoteParticipantCount: 4)
+                == "5 people here",
+            "larger calls must include the local participant in the total"
+        )
 
         print("PASS Provider room call audio evidence keeps live mic confidence plain, transient, and distinct from recording.")
     }
