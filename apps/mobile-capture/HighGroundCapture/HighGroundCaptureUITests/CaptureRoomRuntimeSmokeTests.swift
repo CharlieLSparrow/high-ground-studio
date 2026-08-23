@@ -1284,7 +1284,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             )
         }
 
-        let workSuffix = String(sessionTitle.suffix(12))
+        let workSuffix = clientEmail
+            .split(separator: "@", maxSplits: 1)
+            .first
+            .map(String.init)?
+            .replacingOccurrences(of: "phone-client-", with: "")
+            ?? clientEmail
         addRelationshipWork(kind: "Note", title: "Shared phone note \(workSuffix)")
         addRelationshipWork(kind: "Task", title: "Phone task \(workSuffix)")
         addRelationshipWork(kind: "Goal", title: "Phone goal \(workSuffix)")
@@ -1321,11 +1326,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         open.tap()
         XCTAssertTrue(app.scrollViews["CaptureRecorderView"].waitForExistence(timeout: 45))
         XCTAssertTrue(
-            app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 20),
+            app.staticTexts[defaultSessionTitle].firstMatch.waitForExistence(timeout: 20),
             "The iPhone must enter the exact Session it just scheduled, not a fixture or generic room."
         )
         attachRecordingIdentity(
-            "\(credentials.email)|\(clientEmail)|\(sessionTitle)",
+            "\(credentials.email)|\(clientEmail)|\(defaultSessionTitle)",
             name: "Fresh phone-first coaching identity"
         )
     }
