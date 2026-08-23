@@ -1589,3 +1589,45 @@ force-quit and reopen one endpoint, and verify the simple status never advances
 beyond its durable server and queue evidence. This is deferred validation, not
 a blocker for the next independent product lane. Build 34 remains sealed and
 unchanged.
+
+## Clean-commit fresh coaching product flight — 2026-08-23
+
+The full local coaching flight passes from exact clean source commit
+`2ff92867b85b049e4d4645a11c5323a3eb7e786f`. The flight initially exposed five
+acceptance selectors that still described older, more technical UI language.
+The product retained its simplified language; the automation was repaired to
+operate the ordinary controls. The appointment duration selector now also has
+an explicit label/control association rather than relying on nested-label
+inference.
+
+One orchestrated run created entirely fresh coach and client accounts and then
+proved, without fixture identifiers or direct database acceptance writes:
+
+- rendered account creation, appointment scheduling, invitation creation,
+  one-time invitation acceptance, and return to the exact Session;
+- coach/client isolation from real neighboring Nests, Sessions, and coaching
+  relationships, with no unrelated podcast or test-artifact leakage;
+- one conventional two-endpoint call, remembered Session consent, live chat,
+  two participant-owned audible sources, 27.168 seconds of overlap, complete
+  recording visibility, and immutable source readback;
+- two source-bound transcript jobs, protected playback, deterministic speaker
+  attribution, and recovery of the controlled coach and client phrases;
+- shared and private notes, tasks, goals, cross-account task completion, and a
+  collaboration-message round trip;
+- light edit, private preview, explicit client release, decoded client
+  playback, explicit revoke, and denied playback after revocation; and
+- automatic post-call audio readiness, original-source checksum preservation,
+  collapsed technical recording evidence, inline trim/cut editing, linear and
+  side-by-side transcript views, and automatic exact-source playback before a
+  transcript correction.
+
+The private machine-readable receipt is
+`artifacts/coaching-acceptance/59e3d3a1/fresh-coaching-flight-receipt.json`.
+It truthfully records `humanAcceptanceSatisfied: false`, fake browser media,
+controlled text-to-speech, local mailbox delivery, no external invitation, no
+physical-device proof, no natural-speech accuracy proof, no human listening,
+and no production-scale claim. Those remain on the continuous validation
+ledger and do not invalidate the independently proven local product path.
+
+Build 34 remains the sealed prior candidate. This work was not deployed,
+uploaded, assigned, or folded into that archive.
