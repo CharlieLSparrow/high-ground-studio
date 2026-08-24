@@ -1219,6 +1219,16 @@ protected-media tests plus a clean strict Quipsly TypeScript check. Natural
 speech, human listening quality, and production object streaming remain
 physical/authenticated validation rather than automated claims.
 
+Capture now uses the same passage action on iPhone. It maps the Session program
+clock to the retained participant source clock, prepares the existing
+account-partitioned protected cache, verifies the complete download against its
+byte and SHA-256 receipt, and plays only the selected interval. Audio and camera
+masters share the AVPlayer path. Source audition closes before derivative
+preview playback, and leaving the editor closes both players; neither path
+applies a cut or creates a review decision. Static contracts and a generic iOS
+Simulator build verify the native wiring, while physical output routing and
+human word-boundary judgment remain deferred evidence.
+
 ## 2026-08-24 automatic proof-listen release gate
 
 The rendered private preview now behaves like a conventional finishing step

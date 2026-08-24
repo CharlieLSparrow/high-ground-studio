@@ -9,10 +9,35 @@ struct CaptureRecordingShareSource: Codable, Identifiable, Equatable {
     let participantLabel: String
     let kind: String
     let fileName: String?
+    let contentType: String?
     let sizeBytes: Int64
+    let sha256: String
     let startedAt: String
     let stoppedAt: String
     let programOffsetSeconds: TimeInterval
+    let playbackUrl: String
+
+    var mobileProtectedSource: MobileCaptureSourceSummary {
+        MobileCaptureSourceSummary(
+            recordingAssetId: id,
+            captureGroupId: nil,
+            fileName: fileName,
+            kind: kind,
+            contentType: contentType,
+            recordingStatus: "VERIFIED",
+            exactBytesVerified: true,
+            processingDisposition: "RELEASED",
+            recordedStartedAt: startedAt,
+            recordedStoppedAt: stoppedAt,
+            mediaAssetId: nil,
+            playbackUrl: nil,
+            byteSize: String(sizeBytes),
+            sha256: sha256,
+            durationSeconds: nil,
+            sourceId: id,
+            sessionPlaybackUrl: playbackUrl
+        )
+    }
 }
 
 struct CaptureRecordingShareTranscriptSegment: Codable, Identifiable, Equatable {
@@ -271,6 +296,10 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         previewReviewSaveFailed = false
         reviewSubmissionIdentity = nil
         await savePlaybackReviewIfReady(roomID: roomID)
+    }
+
+    func stopPreviewPlayback() {
+        clearPlayback()
     }
 
     func togglePreview(roomID: String) async {
@@ -587,6 +616,7 @@ struct CaptureRecordingShareEditor: View {
     let focus: CaptureRecordingEditorFocus?
 
     @StateObject private var client = CaptureRecordingShareClient()
+    @StateObject private var sourcePlayback = CaptureSessionProtectedPlaybackController()
     @State private var selectedSourceIDs = Set<String>()
     @State private var excludedSegmentIDs = Set<String>()
     @State private var startSeconds: TimeInterval = 0
@@ -594,6 +624,8 @@ struct CaptureRecordingShareEditor: View {
     @State private var title = ""
     @State private var initializedSnapshot = false
     @State private var editing = false
+    @State private var auditionSegmentID: String?
+    @State private var auditionNotice: String?
 
     init(roomID: String, focus: CaptureRecordingEditorFocus? = nil) {
         self.roomID = roomID
@@ -677,6 +709,10 @@ struct CaptureRecordingShareEditor: View {
             }
         }
         .onChange(of: client.snapshot) { _, _ in initializeFromSnapshotIfNeeded() }
+        .onDisappear {
+            client.stopPreviewPlayback()
+            sourcePlayback.close()
+        }
     }
 
     @ViewBuilder
@@ -792,6 +828,9 @@ struct CaptureRecordingShareEditor: View {
                     }
                     Text("Turn off a passage to remove its word-timed audio. Quipsly keeps passages that overlap another speaker.")
                         .font(.caption).foregroundStyle(.secondary)
+                    Text("Listen opens the exact retained participant master. It does not preview or apply the cut.")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
                     ForEach(transcript) { segment in
                         Toggle(isOn: segmentBinding(segment.id)) {
                             VStack(alignment: .leading, spacing: 3) {
@@ -812,12 +851,43 @@ struct CaptureRecordingShareEditor: View {
                         .padding(10)
                         .background(segment.canRippleDelete ? Color.indigo.opacity(0.06) : Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityIdentifier("CaptureRecordingShareSegment_\(segment.segmentId)")
-                        if !segment.canRippleDelete {
+                        if segment.canRippleDelete {
+                            Button {
+                                Task { await auditionPassage(segment, snapshot: snapshot) }
+                            } label: {
+                                if sourcePlayback.isPreparing && auditionSegmentID == segment.id {
+                                    Label("Preparing exact source…", systemImage: "arrow.down.circle")
+                                } else {
+                                    Label(
+                                        sourcePlayback.isPlaying && auditionSegmentID == segment.id
+                                            ? "Playing exact passage"
+                                            : "Listen to exact passage",
+                                        systemImage: sourcePlayback.isPlaying && auditionSegmentID == segment.id
+                                            ? "speaker.wave.2.fill"
+                                            : "waveform"
+                                    )
+                                }
+                            }
+                            .font(.caption.weight(.bold))
+                            .buttonStyle(.bordered)
+                            .disabled(sourcePlayback.isPreparing || client.busyAction != nil)
+                            .padding(.horizontal, 10)
+                            .accessibilityIdentifier("CaptureRecordingShareAudition_\(segment.segmentId)")
+                        } else {
                             Text(segment.cutSafetyReason ?? "Precise source timing is unavailable, so this passage stays included.")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.orange)
                                 .padding(.horizontal, 10)
                         }
+                    }
+                    if let auditionNotice {
+                        Text(auditionNotice)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(sourcePlayback.errorMessage == nil ? Color.secondary : Color.orange)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+                            .accessibilityIdentifier("CaptureRecordingShareAuditionNotice")
                     }
                 }
 
@@ -900,6 +970,28 @@ struct CaptureRecordingShareEditor: View {
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
 
+                if segment.canRippleDelete {
+                    Button {
+                        Task { await auditionPassage(segment, snapshot: snapshot) }
+                    } label: {
+                        if sourcePlayback.isPreparing && auditionSegmentID == segment.id {
+                            Label("Preparing exact source…", systemImage: "arrow.down.circle")
+                        } else {
+                            Label(
+                                sourcePlayback.isPlaying && auditionSegmentID == segment.id
+                                    ? "Playing exact passage"
+                                    : "Listen to exact passage",
+                                systemImage: sourcePlayback.isPlaying && auditionSegmentID == segment.id
+                                    ? "speaker.wave.2.fill"
+                                    : "waveform"
+                            )
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(sourcePlayback.isPreparing || client.busyAction != nil)
+                    .accessibilityIdentifier("CaptureRecordingShareFocusedAudition_\(segment.segmentId)")
+                }
+
                 if !selectedSourceIDs.contains(segment.sourceRecordingAssetId) {
                     Label(
                         "This passage belongs to a recording source that is not selected. Choose that source below; Quipsly did not change the source set.",
@@ -976,6 +1068,9 @@ struct CaptureRecordingShareEditor: View {
 
             if output.render.status == "VERIFIED" {
                 Button {
+                    sourcePlayback.close()
+                    auditionSegmentID = nil
+                    auditionNotice = nil
                     Task { await client.togglePreview(roomID: roomID) }
                 } label: {
                     Label(client.isPlaying ? "Pause private preview" : "Play private preview", systemImage: client.isPlaying ? "pause.fill" : "play.fill")
@@ -1073,6 +1168,39 @@ struct CaptureRecordingShareEditor: View {
         guard let output = client.snapshot?.output,
               output.render.status == "QUEUED" || output.render.status == "PROCESSING" else { return nil }
         return "\(output.id):\(output.revision):\(output.render.status)"
+    }
+
+    @MainActor
+    private func auditionPassage(
+        _ segment: CaptureRecordingShareTranscriptSegment,
+        snapshot: CaptureRecordingShareSnapshot
+    ) async {
+        guard let source = snapshot.available?.sources.first(where: {
+            $0.id == segment.sourceRecordingAssetId
+        }) else {
+            auditionSegmentID = segment.id
+            auditionNotice = "The exact retained source for this passage is unavailable. Quipsly did not substitute another track."
+            return
+        }
+        client.stopPreviewPlayback()
+        auditionSegmentID = segment.id
+        auditionNotice = "Preparing \(source.participantLabel)'s exact retained source…"
+        await sourcePlayback.prepare(source: source.mobileProtectedSource)
+        guard sourcePlayback.preparedSourceID == source.id else {
+            auditionNotice = sourcePlayback.errorMessage
+                ?? "The exact retained participant source could not be prepared on this iPhone."
+            return
+        }
+        let programStart = segment.cutStartSeconds ?? segment.startSeconds
+        let programEnd = segment.cutEndSeconds ?? segment.endSeconds
+        let sourceStart = max(0, programStart - source.programOffsetSeconds)
+        let sourceEnd = max(sourceStart, programEnd - source.programOffsetSeconds)
+        sourcePlayback.playRange(startSeconds: sourceStart, endSeconds: sourceEnd)
+        if let error = sourcePlayback.errorMessage {
+            auditionNotice = error
+        } else {
+            auditionNotice = "Exact \(source.participantLabel) master · \(captureRecordingShareTime(sourceStart))–\(captureRecordingShareTime(sourceEnd)) source time. The proposed cut is still unapplied."
+        }
     }
 
     private func editableTranscript(_ snapshot: CaptureRecordingShareSnapshot) -> [CaptureRecordingShareTranscriptSegment] {

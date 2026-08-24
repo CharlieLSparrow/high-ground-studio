@@ -1949,6 +1949,10 @@ function checkTranscriptCorrectionContractSources() {
       && nativeRecordingShareText.includes("sourceManifest")
       && nativeRecordingShareText.includes("restoreEditorFromCurrentOutput")
       && nativeRecordingShareText.includes("will not substitute another track")
+      && nativeRecordingShareText.includes("Listen to exact passage")
+      && nativeRecordingShareText.includes("source.programOffsetSeconds")
+      && nativeRecordingShareText.includes("sourcePlayback.playRange")
+      && nativeRecordingShareText.includes("source.mobileProtectedSource")
       && bridgeText.includes("transcriptionConsentGrantedParticipantCount")
       && shellText.includes("the transcript waits for everyone to enable it")
       && nativeText.includes('Label("Edit recording here"')
@@ -1961,7 +1965,7 @@ function checkTranscriptCorrectionContractSources() {
       && nativeRecordingShareText.includes("does not have qualified source timing")
       && nativeRecordingShareText.includes("it is not an edit decision"),
     "nativePrivateRecordingEditAndShare",
-    "Capture exposes source-bound private trim, exact receipt-verified playback with required listening checkpoints, fail-closed release and revocation, direct in-app reachability, and an exact transcript-passage handoff that preserves the reviewed source manifest and prior text cuts without mutating masters or silently substituting tracks.",
+    "Capture exposes source-bound private trim, receipt-verified exact-passage audition, exact derivative playback with required listening checkpoints, fail-closed release and revocation, direct in-app reachability, and an exact transcript-passage handoff that preserves the reviewed source manifest and prior text cuts without mutating masters or silently substituting tracks.",
   );
   expect(
     recordingPromotionText.includes("resolveCaptureGroupPromotionPlan")

@@ -2177,6 +2177,15 @@ and compare both joins around a removed passage. This local checkpoint does not
 claim human audibility, natural-speech correctness, production GCS streaming,
 or physical-device playback.
 
+The iPhone editor now reaches the same exact-source boundary through Capture's
+existing protected Session cache. It verifies the complete source bytes before
+mapping the transcript's program interval into participant source time and
+playing that bounded range. The control labels the source audition as distinct
+from the unapplied cut and later rendered private preview. Native static
+contracts and a generic iOS Simulator build pass; a physical phone still must
+prove routed audio, actual word boundaries, video-master audio, and the final
+rendered joins with real dialogue.
+
 ## Local checkpoint: revision-bound private-preview review — 2026-08-24
 
 Sharing a rendered coaching recording is no longer unlocked by advisory copy.

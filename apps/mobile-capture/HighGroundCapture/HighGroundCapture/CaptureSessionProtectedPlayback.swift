@@ -50,6 +50,8 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
     private var timeObserver: Any?
     private var completionObserver: NSObjectProtocol?
     private var accountCancellable: AnyCancellable?
+    private var boundedPlaybackStart: TimeInterval?
+    private var boundedPlaybackEnd: TimeInterval?
 
     init() {
         let rawBaseURL = normalizedNestBaseURL(
@@ -200,6 +202,8 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
             errorMessage = "Prepare the exact recording before playback."
             return
         }
+        boundedPlaybackStart = nil
+        boundedPlaybackEnd = nil
         if isPlaying {
             player.pause()
             isPlaying = false
@@ -215,6 +219,46 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
             isPlaying = true
             errorMessage = nil
         } catch {
+            isPlaying = false
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Plays one exact source-clock interval from the already receipt-verified
+    /// protected copy. This is audition navigation only; it creates no review,
+    /// edit, transcript, sharing, or publication decision.
+    func playRange(startSeconds: TimeInterval, endSeconds: TimeInterval) {
+        guard let player, preparedSourceID != nil else {
+            errorMessage = "Prepare the exact recording before listening to this passage."
+            return
+        }
+        let knownDuration = player.currentItem?.duration.seconds ?? duration
+        let safeDuration = knownDuration.isFinite && knownDuration > 0
+            ? knownDuration
+            : max(endSeconds, 0)
+        let start = min(max(startSeconds.isFinite ? startSeconds : 0, 0), safeDuration)
+        let end = min(max(endSeconds.isFinite ? endSeconds : start, start), safeDuration)
+        guard end > start + 0.01 else {
+            errorMessage = "This passage does not have a playable source-clock range."
+            return
+        }
+        do {
+            try audioSession.beginLocalPlayback()
+            boundedPlaybackStart = start
+            boundedPlaybackEnd = end
+            player.seek(
+                to: CMTime(seconds: start, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            )
+            position = start
+            player.play()
+            isPlaying = true
+            errorMessage = nil
+            statusMessage = "Playing exact source passage"
+        } catch {
+            boundedPlaybackStart = nil
+            boundedPlaybackEnd = nil
             isPlaying = false
             errorMessage = error.localizedDescription
         }
@@ -258,6 +302,8 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
         isPlaying = false
         position = 0
         duration = 0
+        boundedPlaybackStart = nil
+        boundedPlaybackEnd = nil
         audioSession.endLocalPlayback()
     }
 
@@ -286,6 +332,23 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
                 let itemDuration = player?.currentItem?.duration.seconds ?? 0
                 if itemDuration.isFinite, itemDuration > 0 {
                     self.duration = itemDuration
+                }
+                if let end = self.boundedPlaybackEnd,
+                   seconds.isFinite,
+                   seconds >= end - 0.015 {
+                    let start = self.boundedPlaybackStart ?? 0
+                    player?.pause()
+                    player?.seek(
+                        to: CMTime(seconds: start, preferredTimescale: 600),
+                        toleranceBefore: .zero,
+                        toleranceAfter: .zero
+                    )
+                    self.position = start
+                    self.isPlaying = false
+                    self.boundedPlaybackStart = nil
+                    self.boundedPlaybackEnd = nil
+                    self.statusMessage = "Exact source passage ready to replay"
+                    self.audioSession.endLocalPlayback()
                 }
             }
         }
