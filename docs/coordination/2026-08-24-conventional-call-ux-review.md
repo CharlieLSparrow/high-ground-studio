@@ -25,6 +25,12 @@ The cross-platform contract is therefore:
 9. A second-device or companion join keeps call audio off on that device to
    prevent echo while still allowing camera, chat, and local capture.
 10. Camera failure must not destroy an otherwise usable audio call.
+11. Automatic call reconnection remains quiet. If provider recovery is
+    exhausted, the same surface offers one **Rejoin call** action using a fresh
+    short-lived token and the person's remembered device choices.
+12. A call-transport failure never ends, hides, or implicitly discards a
+    participant-owned recording. Only a deliberate recording action controls
+    that source.
 
 ## Research basis
 
@@ -74,14 +80,31 @@ both coaching and Episode Sessions. Settings remain below it and collapsed.
 After consent, the next normal action is therefore visible nearby instead of
 requiring a hunt down the page.
 
+The recovery path now follows the same separation of concerns. On the web, an
+exhausted LiveKit reconnect keeps the participant-owned recorder and durable
+coordinated-stop polling visible, clears stale remote media, and offers one
+Rejoin action. Rejoin obtains a new room token and reuses the remembered mic,
+camera, and companion choices.
+
+On iPhone, programmatic CallKit cleanup after an exhausted reconnect is
+explicitly distinguished from a person's lock-screen, headset, or system-call
+hang-up. Programmatic cleanup preserves the local master and exposes **Rejoin
+call**. A genuine system hang-up still protects the local source before leaving
+the room. Rejoining while retained provider-PCM capture is active keeps the
+same capture lease; the audio coordinator preserves the selected route and the
+recorder represents the disconnected interval as timeline silence rather than
+inventing or compressing time.
+
 ## Evidence and limits
 
-- 33 focused web call-room and app/browser handoff tests pass.
+- The 29-test focused web call-room suite passes, including exhausted reconnect
+  while a retained participant source remains active and deliberate leave while
+  that source is protected.
 - The regression explicitly proves that the connected recording surface
   precedes optional device settings and that those settings remain collapsed.
 - Strict Quipsly TypeScript passes.
-- Native source inspection confirms contextual system permission and the
-  separate outer-room, Join, consent, and Record controls.
+- A generic iOS Simulator build passes for both simulator architectures after
+  compiling the native reconnect, CallKit, and source-protection path.
 
 This does not claim a minimally instructed two-person browser/iPhone flight.
 That flight must still observe first grant, remembered re-entry, denial

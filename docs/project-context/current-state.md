@@ -3394,3 +3394,28 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   its isolated 70 MB output was removed afterward. The retained
   database/browser journey remains pending because Docker Desktop's engine was
   not responsive during this checkpoint.
+
+### 2026-08-24 call recovery preserves participant-owned recording
+
+- Browser and iPhone now treat the live call transport and the local recording
+  master as separate lifecycles. An exhausted provider reconnect exposes one
+  **Rejoin call** action, obtains fresh room authority, and remembers the
+  participant's device choices without ending or hiding an active source.
+- Browser recovery keeps durable coordinated-stop polling alive while remote
+  media is cleared. A focused regression proves that a retained source remains
+  active through provider disconnect and rejoin; deliberate Leave still marks
+  the conversation ended and protects the recording.
+- Native CallKit cleanup now distinguishes Quipsly's programmatic removal of a
+  failed call surface from a genuine lock-screen, headset, or system-call
+  hang-up. The former preserves the local master for rejoin. The latter still
+  invokes source protection before disconnecting.
+- The retained provider-PCM path reuses the active capture lease and preserves
+  the disconnected interval as timeline silence, so rejoin does not compress
+  or fabricate time. Making that gap first-class visible evidence remains the
+  next audio-transparency slice.
+- The 29-test focused web call-room suite and strict web TypeScript pass. A
+  generic iOS Simulator build succeeds for arm64 and x86_64 after compiling the
+  native recovery path. Rendered browser operation was unavailable because both
+  browser-control surfaces could not attach; physical iPhone interruption,
+  exact-byte upload/readback, and genuine CallKit operation remain in the
+  deferred validation ledger rather than being inferred from compilation.

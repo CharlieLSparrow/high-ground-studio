@@ -49,6 +49,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var isConnecting = false
     @Published var isConnected = false
     @Published var isReconnecting = false
+    @Published private(set) var canRejoin = false
     @Published var isMuted = true
     @Published private(set) var usesCallAudio = false
     @Published var isNativeCallPresentationActive = false
@@ -84,6 +85,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private let callController = CXCallController()
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
     private var activeCallUUID: UUID?
+    private var intentionalProviderDisconnect = false
+    private var skipProtectionForPendingCallKitEnd = false
     private var activeOwnerSnapshot: AuthManager.StableOwnerSnapshot?
     private var accountObserver: NSObjectProtocol?
     private var activeCallRoomID: String?
@@ -221,6 +224,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
         isConnecting = true
         isReconnecting = false
+        canRejoin = false
+        intentionalProviderDisconnect = false
         lastError = nil
         lastTechnicalError = nil
         statusText = "Connecting to \(join.provider ?? session.providerLabel)..."
@@ -299,6 +304,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
                 : "Joined as a second device. Call audio stays on your other device."
         } catch {
             stopCallAudioMeter()
+            canRejoin = false
+            intentionalProviderDisconnect = true
             await room.disconnect()
             await endNativeCallPresentation(reason: .failed)
             audioSessionCoordinator.providerDidDisconnect()
@@ -509,6 +516,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     }
 
     func disconnect() async {
+        canRejoin = false
+        intentionalProviderDisconnect = true
         #if canImport(LiveKit)
         await unpublishSharedCamera()
         guard isConnected || isConnecting else {
@@ -628,7 +637,10 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isNativeCallPresentationActive = true
     }
 
-    private func endNativeCallPresentation(reason: CXCallEndedReason) async {
+    private func endNativeCallPresentation(
+        reason: CXCallEndedReason,
+        protectLocalSource: Bool = false
+    ) async {
         guard let uuid = activeCallUUID else {
             isNativeCallPresentationActive = false
             activeCallUUIDString = nil
@@ -636,9 +648,18 @@ final class ProviderRoomController: NSObject, ObservableObject {
             return
         }
 
+        // Programmatic CallKit cleanup must not masquerade as a person ending
+        // the call from the lock screen or a headset. In particular, an
+        // exhausted LiveKit reconnect must leave the participant-owned master
+        // running so the person can rejoin without losing the take.
+        skipProtectionForPendingCallKitEnd = !protectLocalSource
         let action = CXEndCallAction(call: uuid)
         let transaction = CXTransaction(action: action)
-        _ = try? await requestCallKitTransaction(transaction)
+        do {
+            try await requestCallKitTransaction(transaction)
+        } catch {
+            skipProtectionForPendingCallKitEnd = false
+        }
         callKitProvider.reportCall(with: uuid, endedAt: Date(), reason: reason)
         clearNativeCallPresentation()
     }
@@ -810,12 +831,14 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     private func abortForAccountChange() async {
         stopCallAudioMeter()
+        canRejoin = false
+        intentionalProviderDisconnect = true
         #if canImport(LiveKit)
         localVideoSource?.setLiveVideoFrameConsumer(nil)
         await room.disconnect()
         clearLocalVideoBridge()
         #endif
-        await endNativeCallPresentation(reason: .failed)
+        await endNativeCallPresentation(reason: .failed, protectLocalSource: true)
         try? audioSessionCoordinator.callKitDidDeactivate()
         audioSessionCoordinator.providerDidDisconnect()
         activeOwnerSnapshot = nil
@@ -839,12 +862,14 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private func abortAfterCallAudioActivationFailure(_ error: Error) async {
         let technicalMessage = "Provider audio could not activate safely, so Quipsly left the room instead of showing a silent connection: \(error.localizedDescription)"
         stopCallAudioMeter()
+        canRejoin = false
+        intentionalProviderDisconnect = true
         #if canImport(LiveKit)
         localVideoSource?.setLiveVideoFrameConsumer(nil)
         await room.disconnect()
         clearLocalVideoBridge()
         #endif
-        await endNativeCallPresentation(reason: .failed)
+        await endNativeCallPresentation(reason: .failed, protectLocalSource: true)
         try? audioSessionCoordinator.callKitDidDeactivate()
         audioSessionCoordinator.providerDidDisconnect()
         isCallAudioSessionActive = false
@@ -915,7 +940,16 @@ extension ProviderRoomController: CXProviderDelegate {
             // audio lease independently while the already-issued recorder stop
             // finishes closing durable bytes.
             action.fulfill()
-            let localSourceProtected = await self.protectLocalSourceBeforeNativeCallEnd?() ?? true
+            let shouldProtectLocalSource = !self.skipProtectionForPendingCallKitEnd
+            self.skipProtectionForPendingCallKitEnd = false
+            let localSourceProtected: Bool
+            if shouldProtectLocalSource {
+                localSourceProtected = await self.protectLocalSourceBeforeNativeCallEnd?() ?? true
+            } else {
+                localSourceProtected = true
+            }
+            self.canRejoin = false
+            self.intentionalProviderDisconnect = true
             #if canImport(LiveKit)
             self.localVideoSource?.setLiveVideoFrameConsumer(nil)
             if self.isConnected || self.isConnecting {
@@ -997,6 +1031,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.isConnecting = false
                 self.isConnected = true
                 self.isReconnecting = false
+                self.canRejoin = false
                 self.lastError = nil
                 self.lastTechnicalError = nil
                 if recovered {
@@ -1007,11 +1042,14 @@ extension ProviderRoomController: RoomDelegate {
                 self.isConnecting = false
                 self.isConnected = true
                 self.isReconnecting = true
+                self.canRejoin = false
                 self.lastError = nil
                 self.lastTechnicalError = nil
                 self.connectionStateLabel = "Reconnecting"
                 self.statusText = "Reconnecting…"
             case .disconnected:
+                let reconnectWasExhausted = !self.intentionalProviderDisconnect
+                    && self.activeCallRoomID != nil
                 self.stopCallAudioMeter()
                 self.clearLocalVideoBridge()
                 self.isConnecting = false
@@ -1025,7 +1063,10 @@ extension ProviderRoomController: RoomDelegate {
                 self.activeOwnerSnapshot = nil
                 self.clearEpisodeWatchBridge()
                 self.clearRemoteVideoTrack()
-                self.statusText = "Provider room disconnected. Local recording and preserved uploads remain separate."
+                self.canRejoin = reconnectWasExhausted
+                self.statusText = reconnectWasExhausted
+                    ? "The call disconnected. Your recording is still protected on this iPhone. Tap Rejoin call when ready."
+                    : "Provider room disconnected. Local recording and preserved uploads remain separate."
             default:
                 self.isConnecting = true
                 self.isReconnecting = false

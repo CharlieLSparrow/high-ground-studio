@@ -2222,7 +2222,13 @@ final class CaptureExperienceModel: ObservableObject {
 
     func joinRoom(useCallAudio: Bool = true) async {
         guard let session = selectedSession, !isChangingRoom else { return }
-        guard providerControlsAreAvailable() else { return }
+        // An exhausted provider reconnect is the one safe exception to the
+        // ordinary route-change lock. The coordinator preserves the active
+        // local-capture lease, while LiveKit's attached PCM renderer represents
+        // the gap as timeline silence until the same call input resumes.
+        if !providerRoom.canRejoin {
+            guard providerControlsAreAvailable() else { return }
+        }
         guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
             errorMessage = "Verify the current Quipsly account before joining the live room."
             return

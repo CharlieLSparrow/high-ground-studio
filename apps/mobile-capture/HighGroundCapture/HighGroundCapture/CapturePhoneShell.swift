@@ -12230,7 +12230,9 @@ private struct ProviderRoomControls: View {
                         ? "Reconnecting"
                         : model.providerRoom.isConnected
                             ? "Call in progress"
-                            : "Ready to join",
+                            : model.providerRoom.canRejoin
+                                ? "Call disconnected"
+                                : "Ready to join",
                     systemImage: model.providerRoom.isConnected
                         ? "person.2.wave.2.fill"
                         : "person.2.wave.2"
@@ -12362,7 +12364,10 @@ private struct ProviderRoomControls: View {
                         if model.isChangingRoom {
                             ProgressView()
                         } else {
-                            Label("Join call", systemImage: "phone.fill")
+                            Label(
+                                model.providerRoom.canRejoin ? "Rejoin call" : "Join call",
+                                systemImage: "phone.fill"
+                            )
                         }
                         Spacer()
                     }
@@ -12370,7 +12375,7 @@ private struct ProviderRoomControls: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(providerControlsLocked || model.isChangingRoom || session.providerCanJoin != true)
+                .disabled((providerControlsLocked && !model.providerRoom.canRejoin) || model.isChangingRoom || session.providerCanJoin != true)
                 .accessibilityHint(providerControlHint)
                 .accessibilityIdentifier("ProviderJoinRoomButton")
 
@@ -12438,7 +12443,9 @@ private struct ProviderRoomControls: View {
     }
 
     private var providerControlHint: String {
-        providerControlsLocked
+        model.providerRoom.canRejoin
+            ? "Reconnects the conversation with the saved call-audio choice. Your local recording remains separate."
+            : providerControlsLocked
             ? "Finish or stop the current take first."
             : "Joins the conversation. Recording starts only when someone taps Record."
     }

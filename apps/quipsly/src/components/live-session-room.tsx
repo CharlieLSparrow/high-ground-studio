@@ -430,8 +430,11 @@ export function LiveSessionRoom({
   );
   const [providerStartArmed, setProviderStartArmed] = useState(false);
   const [remoteVideoTrackCount, setRemoteVideoTrackCount] = useState(0);
+  const [callRecoveryAvailable, setCallRecoveryAvailable] = useState(false);
+  const [callEndedByPerson, setCallEndedByPerson] = useState(false);
 
   const roomRef = useRef<Room | null>(null);
+  const intentionalDisconnectRef = useRef(false);
   const cameraWantedRef = useRef(cameraWanted);
   const callAudioModeRef = useRef(callAudioMode);
   const microphoneIdRef = useRef(microphoneId);
@@ -465,10 +468,10 @@ export function LiveSessionRoom({
       case "joining": return "Joining";
       case "connected": return "You’re connected";
       case "reconnecting": return "Reconnecting";
-      case "ended": return "Call ended";
+      case "ended": return callRecoveryAvailable ? "Call disconnected" : "Call ended";
       case "error": return "Needs attention";
     }
-  }, [status]);
+  }, [callRecoveryAvailable, status]);
   const providerRecordingState = providerRecording?.state || "off";
   const providerRecordingStateLabel = providerRecordingState === "needs-review"
     ? "Needs review"
@@ -1178,12 +1181,15 @@ export function LiveSessionRoom({
     // A late preflight result must not overwrite the final safe-leave state.
     deviceRefreshGenerationRef.current += 1;
     clearPreflightPreview();
+    intentionalDisconnectRef.current = true;
     roomRef.current?.disconnect(true);
     roomRef.current = null;
     clearRemoteMedia();
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     setParticipants([]);
     setSourceStopRequestVersion(0);
+    setCallRecoveryAvailable(false);
+    setCallEndedByPerson(true);
     setStatus("ended");
     setMessage(
       protectedSourceStopped
@@ -1209,6 +1215,7 @@ export function LiveSessionRoom({
   }, [completeLeave, leaveAfterSourceStops, sourceLocked]);
 
   const join = useCallback(async () => {
+    const recoveringCall = callRecoveryAvailable;
     const useCallAudioHere = callAudioModeRef.current === "this-device";
     let selectedMicrophoneId = microphoneIdRef.current;
     let selectedCameraId = cameraIdRef.current;
@@ -1232,6 +1239,9 @@ export function LiveSessionRoom({
     }
     setStatus("joining");
     setMessage("Joining…");
+    setCallRecoveryAvailable(false);
+    setCallEndedByPerson(false);
+    intentionalDisconnectRef.current = false;
     try {
       clearPreflightPreview();
       const response = await fetch("/api/mobile/capture/rooms/join", {
@@ -1287,19 +1297,31 @@ export function LiveSessionRoom({
           }
         })
         .on(RoomEvent.Reconnecting, () => {
+          if (roomRef.current !== room) return;
+          setCallRecoveryAvailable(false);
           setStatus("reconnecting");
           setMessage("Connection interrupted. Reconnecting… Any local recording continues safely on this device.");
         })
         .on(RoomEvent.Reconnected, () => {
+          if (roomRef.current !== room) return;
+          setCallRecoveryAvailable(false);
           setStatus("connected");
           setMessage("Reconnected.");
         })
         .on(RoomEvent.Disconnected, () => {
+          if (roomRef.current !== room) return;
+          const canRejoin = !intentionalDisconnectRef.current;
+          roomRef.current = null;
           stopAudioMeter();
           setStatus("ended");
-          setMessage("The call ended.");
+          setCallRecoveryAvailable(canRejoin);
+          setCallEndedByPerson(!canRejoin);
+          setMessage(canRejoin
+            ? "The call disconnected. Your local recording is still protected. Rejoin when you’re ready."
+            : "The call ended.");
           setParticipants([]);
           clearRemoteMedia();
+          if (localVideoRef.current) localVideoRef.current.srcObject = null;
         });
 
       await room.connect(packet.serverUrl, packet.participantToken);
@@ -1374,13 +1396,15 @@ export function LiveSessionRoom({
             ? "You’re connected. Recording is off."
             : "You’re connected. Recording is off until everyone chooses to allow it.");
     } catch (error) {
+      intentionalDisconnectRef.current = true;
       roomRef.current?.disconnect(true);
       roomRef.current = null;
+      setCallRecoveryAvailable(recoveringCall);
       setStatus("error");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a call connection error.");
       setMessage("The call couldn't connect. Check your internet connection and try again.");
     }
-  }, [attachRemoteTrack, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
+  }, [attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
@@ -1617,7 +1641,9 @@ export function LiveSessionRoom({
       navigator.mediaDevices?.removeEventListener?.("devicechange", changed);
       meterCleanupRef.current?.();
       stopStream(preflightStreamRef.current);
+      intentionalDisconnectRef.current = true;
       roomRef.current?.disconnect(true);
+      roomRef.current = null;
       clearRemoteMedia();
     };
   }, [clearRemoteMedia, refreshDevices]);
@@ -1680,8 +1706,8 @@ export function LiveSessionRoom({
       microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
       cameraId={cameraId}
       cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
-      conversationConnected={connected}
-      conversationEnded={status === "ended"}
+      conversationConnected={connected || callRecoveryAvailable || sourceLocked}
+      conversationEnded={callEndedByPerson}
       onSourceLockChange={setSourceLocked}
       stopRequestVersion={sourceStopRequestVersion}
       onGuardianEvidenceChange={setRetainedGuardianEvidence}
@@ -1694,7 +1720,7 @@ export function LiveSessionRoom({
       <p className="mt-2 text-[10px] font-black leading-4">Refresh the Session. If recording is still unavailable, ask the host to reopen it.</p>
     </section>
   );
-  const showRetainedSourceControls = connected || status === "ended" || sourceLocked || leaveAfterSourceStops;
+  const showRetainedSourceControls = connected || callRecoveryAvailable || status === "ended" || sourceLocked || leaveAfterSourceStops;
 
   return (
     <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
@@ -1712,11 +1738,11 @@ export function LiveSessionRoom({
       <div className={`mt-5 grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
         <div className="space-y-4">
           {!connected ? (
-            <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4" aria-label="Ready to join">
+            <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4" aria-label={callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Ready to join?</p>
-                  <h3 className="mt-1 font-serif text-2xl font-black text-violet-950">Check how you’ll enter the call</h3>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">{callRecoveryAvailable ? "Call disconnected" : "Ready to join?"}</p>
+                  <h3 className="mt-1 font-serif text-2xl font-black text-violet-950">{callRecoveryAvailable ? "Rejoin with your saved setup" : "Check how you’ll enter the call"}</h3>
                   <p className="mt-1 text-xs font-bold leading-5 text-violet-900">
                     {callAudioMode === "other-device"
                       ? "Call audio on your other device"
@@ -1746,7 +1772,7 @@ export function LiveSessionRoom({
                   {cameraWanted ? <Camera size={16} /> : <CameraOff size={16} />}{cameraWanted ? "Camera on" : "Camera off"}
                 </button>
                 <button type="button" onClick={() => void join()} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-6 text-xs font-black text-white disabled:opacity-50">
-                  {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} Join call
+                  {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} {callRecoveryAvailable ? "Rejoin call" : "Join call"}
                 </button>
               </div>
               <p className="mt-3 text-[11px] font-bold leading-5 text-violet-900">

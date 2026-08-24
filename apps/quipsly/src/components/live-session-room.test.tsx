@@ -43,7 +43,12 @@ jest.mock("livekit-client", () => {
     connect: jest.fn(async () => { state = actual.ConnectionState.Connected; }),
     disconnect: jest.fn(() => { state = actual.ConnectionState.Disconnected; }),
     switchActiveDevice: jest.fn().mockResolvedValue(undefined),
-    __emit: (event, ...args) => handlers.get(event)?.(...args),
+    __emit: (event, ...args) => {
+      if (event === actual.RoomEvent.Reconnecting) state = actual.ConnectionState.Reconnecting;
+      if (event === actual.RoomEvent.Reconnected) state = actual.ConnectionState.Connected;
+      if (event === actual.RoomEvent.Disconnected) state = actual.ConnectionState.Disconnected;
+      handlers.get(event)?.(...args);
+    },
     __reset: () => {
       state = actual.ConnectionState.Disconnected;
       room.on.mockClear();
@@ -747,6 +752,67 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByTestId("call-technical-error")).toHaveTextContent(
       "LiveKit websocket token rejected",
     );
+  });
+
+  it("keeps the retained source active when automatic reconnect is exhausted and rejoins with one action", async () => {
+    const livekit = jest.requireActual("livekit-client") as typeof import("livekit-client");
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    let joinRequests = 0;
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/mobile/capture/rooms/join")) {
+        joinRequests += 1;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: `room-scoped-test-token-${joinRequests}`,
+            recordingConsentGranted: true,
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
+    }) as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-rejoin" captureGroupId="55555555-5555-4555-8555-555555555537" sessionTitle="Recovery call" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Simulate retained source start" }));
+
+    await act(async () => {
+      mockLiveKitRoom.__emit(livekit.RoomEvent.Reconnecting);
+    });
+    expect(screen.getByText("Reconnecting", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("active");
+
+    await act(async () => {
+      mockLiveKitRoom.__emit(livekit.RoomEvent.Disconnected);
+    });
+    expect(screen.getByText("Call disconnected", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Ready to rejoin" })).toHaveTextContent("Rejoin with your saved setup");
+    expect(screen.getByRole("button", { name: "Rejoin call" })).toBeEnabled();
+    expect(screen.getByTestId("call-status-message")).toHaveTextContent(/local recording is still protected/i);
+    expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
+    expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("active");
+
+    fireEvent.click(screen.getByRole("button", { name: "Rejoin call" }));
+    expect(await screen.findByRole("button", { name: "Stop recording & leave" })).toBeInTheDocument();
+    expect(joinRequests).toBe(2);
+    expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("active");
   });
 
   it("keeps camera permission independent from an audio-only coaching join", async () => {
