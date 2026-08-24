@@ -1218,3 +1218,29 @@ before streaming. Focused evidence is 27 passing editor, edit-contract, and
 protected-media tests plus a clean strict Quipsly TypeScript check. Natural
 speech, human listening quality, and production object streaming remain
 physical/authenticated validation rather than automated claims.
+
+## 2026-08-24 automatic proof-listen release gate
+
+The rendered private preview now behaves like a conventional finishing step
+instead of an honor-system instruction. Quipsly derives a small review plan
+from the exact derivative: the opening, middle, ending, and a five-second
+window around every text-edit join. The ordinary media player observes those
+seconds during playback and saves the review automatically. One **Play next
+review point** action seeks to the next missing checkpoint on long recordings;
+ordinary scrubbing remains available. There is no checkbox, separate
+certification form, or repeated consent ceremony.
+
+The saved evidence is a `PLAYBACK_REVIEWED` Session output revision bound to the
+current output content hash, derivative RecordingAsset, rendered SHA-256, and
+required second bins. The transactional Release path refuses a missing or stale
+receipt. Editing or rerendering therefore makes the old review incapable of
+authorizing a new recipient-visible copy. A stable request UUID makes an
+ambiguous automatic-save response safely replayable without creating a second
+decision.
+
+This is deliberately described as browser-observed playback coverage. It does
+not claim a person paid attention, heard the speakers, or judged a join clean.
+Those human conclusions remain in the deferred flight. The local checkpoint is
+109/109 passing Session recording, transcript, review, and protected-media
+tests plus strict Quipsly TypeScript. It performs no deployment, public-link
+creation, email, publication, or source mutation.

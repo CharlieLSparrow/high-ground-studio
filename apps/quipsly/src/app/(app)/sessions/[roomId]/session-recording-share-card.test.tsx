@@ -158,11 +158,12 @@ describe("SessionRecordingShareCard", () => {
       id: "session_output_0001",
       status: "DRAFT",
       title: "First coaching session recording",
-      revision: 1,
+      revision: 2,
       contentSha256: "d".repeat(64),
       recipient: { id: "client_user_0001", label: "Client" },
       render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
       mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_0001",
+      playbackReview: { schema: "quipsly-session-recording-share-playback-review-v1", requiredSecondBins: [0, 15, 29], joinSecondBins: [], reviewed: true, reviewedAt: "2026-08-24T12:00:00.000Z", clientTrackedPlaybackIsNotProofOfAudibility: true },
       body: { edit: { startSeconds: 0, endSeconds: 30, transcriptExclusions: [] } },
     };
     const draft = { ...snapshot, output };
@@ -180,8 +181,61 @@ describe("SessionRecordingShareCard", () => {
     expect(requests[0]).toEqual(expect.objectContaining({
       action: "RELEASE",
       outputId: output.id,
-      expectedRevision: 1,
+      expectedRevision: 2,
     }));
+  });
+
+  it("observes required preview checkpoints and saves review without a checkbox", async () => {
+    const draftOutput = {
+      id: "session_output_review_0001",
+      status: "DRAFT",
+      title: "First coaching session recording",
+      revision: 2,
+      contentSha256: "d".repeat(64),
+      recipient: { id: "client_user_0001", label: "Client" },
+      render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
+      mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_review_0001",
+      playbackReview: { schema: "quipsly-session-recording-share-playback-review-v1", requiredSecondBins: [0, 15, 29], joinSecondBins: [], reviewed: false, reviewedAt: null, clientTrackedPlaybackIsNotProofOfAudibility: true },
+      body: { edit: { startSeconds: 0, endSeconds: 30, transcriptExclusions: [] } },
+    };
+    const reviewedOutput = { ...draftOutput, revision: 3, playbackReview: { ...draftOutput.playbackReview, reviewed: true, reviewedAt: "2026-08-24T12:00:00.000Z" } };
+    let currentOutput: typeof draftOutput | typeof reviewedOutput = draftOutput;
+    const requests: Array<Record<string, any>> = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        requests.push(body);
+        if (body.action === "REVIEW") currentOutput = reviewedOutput;
+      }
+      return response({ ...snapshot, output: currentOutput });
+    }) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const audio = await screen.findByLabelText("Private recording preview") as HTMLAudioElement;
+    const play = jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    Object.defineProperties(audio, {
+      duration: { configurable: true, value: 30 },
+      paused: { configurable: true, value: false },
+      seeking: { configurable: true, value: false },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Play next review point" }));
+    expect(audio.currentTime).toBe(0);
+    expect(play).toHaveBeenCalled();
+    for (const second of [0, 15, 29]) {
+      audio.currentTime = second + 0.1;
+      fireEvent.play(audio);
+      fireEvent.timeUpdate(audio);
+      fireEvent.pause(audio);
+    }
+
+    await waitFor(() => expect(requests.some((request) => request.action === "REVIEW")).toBe(true));
+    expect(requests.find((request) => request.action === "REVIEW")).toMatchObject({
+      outputId: draftOutput.id,
+      expectedRevision: 2,
+      playbackEvidence: { listenedSecondBins: [0, 15, 29], clientTrackedPlaybackIsNotProofOfAudibility: true },
+    });
+    expect(await screen.findByText(/listening review saved for this exact revision/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share with Client" })).toBeEnabled();
   });
 
   it("reopens the current edit without losing transcript cuts and cancels safely", async () => {

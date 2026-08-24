@@ -7,7 +7,10 @@ import {
   buildSessionRecordingShareEdit,
   classifyRecordingShareTranscriptCutSafety,
   newestCoherentRecordingTake,
+  recordSessionRecordingSharePlaybackReview,
+  sessionRecordingSharePlaybackPlan,
   stableJson,
+  transitionSessionRecordingShare,
 } from "./session-recording-share";
 import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
 
@@ -206,5 +209,177 @@ describe("Session recording share text edits", () => {
     expect(first?.cutSafety).toBe("timing-overlap");
     expect(second?.cutSafety).toBe("timing-overlap");
     expect(first?.cutSafetyReason).toMatch(/shares timing with nearby words/i);
+  });
+});
+
+describe("Session recording share playback review", () => {
+  function verifiedBody(keptRanges: Array<{ startSeconds: number; endSeconds: number }> = [{ startSeconds: 0, endSeconds: 60 }]) {
+    return {
+      edit: { keptRanges },
+      render: {
+        status: "VERIFIED",
+        recordingAssetId: "recording_share_asset_0001",
+        sha256: "e".repeat(64),
+        durationSeconds: keptRanges.reduce((total, range) => total + range.endSeconds - range.startSeconds, 0),
+      },
+    };
+  }
+
+  function fixture() {
+    const actor = { id: "coach_user_0001", email: "coach@example.test", primaryEmail: "coach@example.test", isStaff: false };
+    const room = {
+      id: "session_room_0001",
+      title: "First coaching session",
+      booking: {
+        coachUserId: actor.id,
+        clientUserId: "client_user_0001",
+        coachUser: { id: actor.id, name: "Coach", primaryEmail: actor.primaryEmail },
+        clientUser: { id: "client_user_0001", name: "Client", primaryEmail: "client@example.test" },
+      },
+    };
+    const output: any = {
+      id: "session_output_0001",
+      roomId: room.id,
+      createdByUserId: actor.id,
+      recipientUserId: room.booking.clientUserId,
+      kind: "RECORDING_SHARE",
+      status: "DRAFT",
+      title: "Reviewed coaching recording",
+      bodyJson: verifiedBody(),
+      sourceManifestJson: {},
+      contentSha256: "d".repeat(64),
+      revision: 2,
+      releasedAt: null,
+      revokedAt: null,
+      createdAt: new Date("2026-08-24T12:00:00.000Z"),
+      updatedAt: new Date("2026-08-24T12:01:00.000Z"),
+      recipient: { id: room.booking.clientUserId, name: "Client", primaryEmail: "client@example.test" },
+      createdBy: { id: actor.id, name: "Coach", primaryEmail: actor.primaryEmail },
+      deliveries: [],
+      revisions: [],
+    };
+    const revisions = new Map<string, any>();
+    const client: any = {
+      callRoom: { findFirst: jest.fn().mockResolvedValue(room) },
+      sessionOutput: {
+        findFirst: jest.fn().mockImplementation(async () => output),
+        findUnique: jest.fn().mockImplementation(async () => output),
+        updateMany: jest.fn(),
+      },
+      sessionOutputRevision: { findUnique: jest.fn().mockImplementation(async ({ where }: any) => revisions.get(where.id) ?? null) },
+      deliveryEvent: { findUnique: jest.fn() },
+      $transaction: jest.fn(async (operation: (tx: any) => Promise<any>) => operation({
+        sessionOutput: {
+          updateMany: jest.fn(async ({ data }: any) => { Object.assign(output, data); return { count: 1 }; }),
+          findUnique: jest.fn(async () => output),
+        },
+        sessionOutputRevision: {
+          create: jest.fn(async ({ data }: any) => {
+            const created = { ...data, createdAt: new Date(data.snapshotJson.completedAt || "2026-08-24T12:02:00.000Z") };
+            revisions.set(data.id, created);
+            output.revisions = data.operation === "PLAYBACK_REVIEWED" ? [created] : output.revisions;
+            return created;
+          }),
+        },
+        deliveryEvent: { create: jest.fn(async ({ data }: any) => { output.deliveries.push({ ...data }); return data; }) },
+      })),
+    };
+    return { actor, client, output, room };
+  }
+
+  it("requires opening, middle, ending, and every rendered edit join", () => {
+    const plan = sessionRecordingSharePlaybackPlan(verifiedBody([
+      { startSeconds: 0, endSeconds: 10 },
+      { startSeconds: 15, endSeconds: 30 },
+    ]));
+    expect(plan.joinSecondBins).toEqual([10]);
+    expect(plan.requiredSecondBins).toEqual(expect.arrayContaining([0, 1, 2, 8, 9, 10, 11, 12, 23, 24]));
+  });
+
+  it("rejects incomplete browser-observed review evidence without changing the draft", async () => {
+    const { actor, client, output, room } = fixture();
+    await expect(recordSessionRecordingSharePlaybackReview(client, {
+      roomId: room.id,
+      outputId: output.id,
+      actor,
+      clientRequestId: "11111111-1111-4111-8111-111111111111",
+      expectedRevision: output.revision,
+      listenedSecondBins: [0, 1, 2],
+      clientTrackedPlaybackIsNotProofOfAudibility: true,
+    })).rejects.toMatchObject({ code: "PLAYBACK_REVIEW_INCOMPLETE", status: 409 });
+    expect(client.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("persists an exact-revision review and requires it before release", async () => {
+    const { actor, client, output, room } = fixture();
+    const plan = sessionRecordingSharePlaybackPlan(output.bodyJson);
+    const reviewInput = {
+      roomId: room.id,
+      outputId: output.id,
+      actor,
+      clientRequestId: "22222222-2222-4222-8222-222222222222",
+      expectedRevision: output.revision,
+      listenedSecondBins: plan.requiredSecondBins,
+      clientTrackedPlaybackIsNotProofOfAudibility: true,
+    };
+    const reviewed = await recordSessionRecordingSharePlaybackReview(client, reviewInput);
+    expect(reviewed.output?.playbackReview).toMatchObject({ reviewed: true, requiredSecondBins: plan.requiredSecondBins });
+    expect(output.revision).toBe(3);
+    const replay = await recordSessionRecordingSharePlaybackReview(client, reviewInput);
+    expect(replay).toMatchObject({ idempotentReplay: true, output: { playbackReview: { reviewed: true } } });
+    expect(client.$transaction).toHaveBeenCalledTimes(1);
+
+    const released = await transitionSessionRecordingShare(client, {
+      roomId: room.id,
+      outputId: output.id,
+      actor,
+      clientRequestId: "33333333-3333-4333-8333-333333333333",
+      expectedRevision: output.revision,
+      action: "RELEASE",
+    });
+    expect(released.output?.status).toBe("RELEASED");
+    expect(output.revision).toBe(4);
+  });
+
+  it("refuses recipient release when the current rendered revision has no review receipt", async () => {
+    const { actor, client, output, room } = fixture();
+    await expect(transitionSessionRecordingShare(client, {
+      roomId: room.id,
+      outputId: output.id,
+      actor,
+      clientRequestId: "44444444-4444-4444-8444-444444444444",
+      expectedRevision: output.revision,
+      action: "RELEASE",
+    })).rejects.toMatchObject({ code: "PLAYBACK_REVIEW_REQUIRED", status: 409 });
+    expect(client.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a prior review after the derivative revision changes", async () => {
+    const { actor, client, output, room } = fixture();
+    const plan = sessionRecordingSharePlaybackPlan(output.bodyJson);
+    await recordSessionRecordingSharePlaybackReview(client, {
+      roomId: room.id,
+      outputId: output.id,
+      actor,
+      clientRequestId: "55555555-5555-4555-8555-555555555555",
+      expectedRevision: output.revision,
+      listenedSecondBins: plan.requiredSecondBins,
+      clientTrackedPlaybackIsNotProofOfAudibility: true,
+    });
+    output.revision += 1;
+    output.contentSha256 = "a".repeat(64);
+    output.bodyJson = {
+      ...output.bodyJson,
+      render: { ...output.bodyJson.render, sha256: "b".repeat(64) },
+    };
+
+    await expect(transitionSessionRecordingShare(client, {
+      roomId: room.id,
+      outputId: output.id,
+      actor,
+      clientRequestId: "66666666-6666-4666-8666-666666666666",
+      expectedRevision: output.revision,
+      action: "RELEASE",
+    })).rejects.toMatchObject({ code: "PLAYBACK_REVIEW_REQUIRED", status: 409 });
   });
 });

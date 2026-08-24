@@ -2176,3 +2176,23 @@ the selected words match the audible source, create the private derivative,
 and compare both joins around a removed passage. This local checkpoint does not
 claim human audibility, natural-speech correctness, production GCS streaming,
 or physical-device playback.
+
+## Local checkpoint: revision-bound private-preview review — 2026-08-24
+
+Sharing a rendered coaching recording is no longer unlocked by advisory copy.
+The server derives review checkpoints for the derivative opening, middle,
+ending, and every text-edit join. The standard player records contiguous
+browser playback bins and automatically writes one idempotent
+`PLAYBACK_REVIEWED` output revision after coverage is complete. The receipt is
+bound to the current output content hash, rendered RecordingAsset, and rendered
+SHA-256. A single **Play next review point** control navigates to missing
+checkpoints without hiding the ordinary player. The Release transaction refuses
+missing or stale review evidence.
+
+The combined Session regression passes 109/109 and strict Quipsly TypeScript
+passes. Physical acceptance still requires a coach to hear real dialogue and
+every rendered join, refresh on a second authenticated endpoint, release to the
+named client, and then prove a changed/rerendered edit invalidates the earlier
+review. Client-observed playback cannot prove human attention or audibility;
+the checkpoint makes no such claim and performs no deployment or external
+delivery.

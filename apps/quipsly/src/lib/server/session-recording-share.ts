@@ -17,6 +17,7 @@ import { buildSessionTranscriptReadiness, type SessionTranscriptReadiness } from
 
 export const SESSION_RECORDING_SHARE_SCHEMA = "quipsly-session-recording-share-v2";
 export const SESSION_RECORDING_SHARE_MANIFEST_SCHEMA = "quipsly-session-recording-share-manifest-v1";
+export const SESSION_RECORDING_SHARE_PLAYBACK_REVIEW_SCHEMA = "quipsly-session-recording-share-playback-review-v1";
 
 type RestoreClient = any;
 
@@ -62,6 +63,68 @@ export function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function safeSecondBins(value: unknown) {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((item): item is number => Number.isSafeInteger(item) && item >= 0))].sort((left, right) => left - right)
+    : [];
+}
+
+export function sessionRecordingSharePlaybackPlan(bodyJson: unknown) {
+  const body = object(bodyJson);
+  const render = object(body.render);
+  const edit = object(body.edit);
+  const durationSeconds = Number(render.durationSeconds);
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || clean(render.status, 40) !== "VERIFIED") {
+    return { durationSeconds: 0, requiredSecondBins: [] as number[], joinSecondBins: [] as number[] };
+  }
+  const finalSecond = Math.max(0, Math.ceil(durationSeconds) - 1);
+  const required = new Set<number>();
+  const joins = new Set<number>();
+  const addWindow = (center: number, radius: number) => {
+    const bounded = Math.max(0, Math.min(finalSecond, Math.floor(center)));
+    for (let second = Math.max(0, bounded - radius); second <= Math.min(finalSecond, bounded + radius); second += 1) required.add(second);
+  };
+  addWindow(0, 2);
+  addWindow(durationSeconds / 2, 1);
+  addWindow(finalSecond, 2);
+
+  const keptRanges = Array.isArray(edit.keptRanges)
+    ? edit.keptRanges.map((value: unknown) => object(value)).map((range) => ({
+        startSeconds: Number(range.startSeconds),
+        endSeconds: Number(range.endSeconds),
+      })).filter((range) => Number.isFinite(range.startSeconds) && Number.isFinite(range.endSeconds) && range.endSeconds > range.startSeconds)
+    : [];
+  const nominalDuration = keptRanges.reduce((total, range) => total + range.endSeconds - range.startSeconds, 0);
+  let elapsed = 0;
+  for (const range of keptRanges.slice(0, -1)) {
+    elapsed += range.endSeconds - range.startSeconds;
+    const renderedJoin = nominalDuration > 0 ? (elapsed / nominalDuration) * durationSeconds : elapsed;
+    const joinSecond = Math.max(0, Math.min(finalSecond, Math.floor(renderedJoin)));
+    joins.add(joinSecond);
+    addWindow(joinSecond, 2);
+  }
+  return {
+    durationSeconds,
+    requiredSecondBins: [...required].sort((left, right) => left - right),
+    joinSecondBins: [...joins].sort((left, right) => left - right),
+  };
+}
+
+function currentPlaybackReview(output: any) {
+  const revision = output?.revisions?.[0];
+  const snapshot = object(revision?.snapshotJson);
+  const render = object(object(output?.bodyJson).render);
+  const current = Boolean(
+    revision
+    && revision.operation === "PLAYBACK_REVIEWED"
+    && revision.revision === output.revision
+    && clean(snapshot.contentSha256, 64) === clean(output.contentSha256, 64)
+    && clean(snapshot.recordingAssetId, 240) === clean(render.recordingAssetId, 240)
+    && clean(snapshot.renderSha256, 64) === clean(render.sha256, 64),
+  );
+  return { revision, snapshot, current };
+}
+
 const OUTPUT_SELECT = {
   id: true,
   roomId: true,
@@ -84,12 +147,20 @@ const OUTPUT_SELECT = {
     orderBy: { occurredAt: "asc" as const },
     select: { id: true, kind: true, status: true, destination: true, occurredAt: true, contentSha256: true },
   },
+  revisions: {
+    where: { operation: "PLAYBACK_REVIEWED" },
+    orderBy: { revision: "desc" as const },
+    take: 1,
+    select: { id: true, revision: true, operation: true, actorUserId: true, snapshotJson: true, createdAt: true },
+  },
 };
 
 function serializeOutput(output: any) {
   if (!output) return null;
   const body = object(output.bodyJson);
   const render = object(body.render);
+  const playbackPlan = sessionRecordingSharePlaybackPlan(body);
+  const playbackReview = currentPlaybackReview(output);
   return {
     id: output.id,
     roomId: output.roomId,
@@ -115,6 +186,14 @@ function serializeOutput(output: any) {
       completedAt: clean(render.completedAt, 80) || null,
     },
     mediaUrl: render.recordingAssetId ? `/api/sessions/${encodeURIComponent(output.roomId)}/recording-share/media/${encodeURIComponent(output.id)}` : null,
+    playbackReview: {
+      schema: SESSION_RECORDING_SHARE_PLAYBACK_REVIEW_SCHEMA,
+      requiredSecondBins: playbackPlan.requiredSecondBins,
+      joinSecondBins: playbackPlan.joinSecondBins,
+      reviewed: playbackReview.current,
+      reviewedAt: playbackReview.current ? playbackReview.revision.createdAt?.toISOString?.() ?? playbackReview.revision.createdAt ?? null : null,
+      clientTrackedPlaybackIsNotProofOfAudibility: true,
+    },
     deliveryEvents: (output.deliveries || []).map((event: any) => ({ ...event, occurredAt: event.occurredAt.toISOString() })),
   };
 }
@@ -808,6 +887,99 @@ export async function prepareSessionRecordingShare(client: RestoreClient, input:
   }
 }
 
+export async function recordSessionRecordingSharePlaybackReview(client: RestoreClient, input: {
+  roomId: string;
+  outputId: string;
+  actor: SessionAccessActor;
+  clientRequestId: string;
+  expectedRevision: number;
+  listenedSecondBins: number[];
+  clientTrackedPlaybackIsNotProofOfAudibility: boolean;
+}) {
+  const room = await loadRoom(client, input.roomId, input.actor, "release");
+  let current = await client.sessionOutput.findFirst({
+    where: { id: input.outputId, roomId: room.id, kind: "RECORDING_SHARE", recipientUserId: room.booking.clientUserId },
+    select: OUTPUT_SELECT,
+  });
+  if (!current) throw new SessionRecordingShareError(404, "RECORDING_SHARE_NOT_FOUND", "That prepared recording is unavailable.");
+
+  const replay = await client.sessionOutputRevision.findUnique({
+    where: { id: input.clientRequestId },
+    select: { outputId: true, actorUserId: true, operation: true },
+  });
+  if (replay) {
+    if (replay.outputId !== current.id || replay.actorUserId !== input.actor.id || replay.operation !== "PLAYBACK_REVIEWED") {
+      throw new SessionRecordingShareError(409, "REQUEST_ID_CONFLICT", "That review request identity belongs to a different recording decision.");
+    }
+    return { output: serializeOutput(current), idempotentReplay: true };
+  }
+
+  current = await reconcileRender(client, current);
+  if (!current) throw new SessionRecordingShareError(404, "RECORDING_SHARE_NOT_FOUND", "That prepared recording is unavailable.");
+  const body = object(current.bodyJson);
+  const render = object(body.render);
+  if (render.status !== "VERIFIED" || !clean(render.recordingAssetId, 240) || !clean(render.sha256, 64)) {
+    throw new SessionRecordingShareError(409, "RECORDING_NOT_VERIFIED", "Preview is not ready for listening review.");
+  }
+  if (current.status !== "DRAFT" || current.revision !== input.expectedRevision) {
+    throw new SessionRecordingShareError(409, "STALE_RECORDING_SHARE", "The prepared recording changed during playback. Refresh and review the current version.");
+  }
+  if (input.clientTrackedPlaybackIsNotProofOfAudibility !== true) {
+    throw new SessionRecordingShareError(400, "PLAYBACK_EVIDENCE_INVALID", "Playback tracking records browser-observed coverage; it is not proof that a person heard the sound.");
+  }
+  const plan = sessionRecordingSharePlaybackPlan(body);
+  const listened = safeSecondBins(input.listenedSecondBins);
+  const missing = plan.requiredSecondBins.filter((second) => !listened.includes(second));
+  if (!plan.requiredSecondBins.length || missing.length) {
+    throw new SessionRecordingShareError(
+      409,
+      "PLAYBACK_REVIEW_INCOMPLETE",
+      `Listen through the remaining ${missing.length || plan.requiredSecondBins.length} review checkpoint${(missing.length || plan.requiredSecondBins.length) === 1 ? "" : "s"} before sharing.`,
+      { requiredSecondBins: plan.requiredSecondBins, missingSecondBins: missing.length ? missing : plan.requiredSecondBins },
+    );
+  }
+
+  const now = new Date();
+  const nextRevision = current.revision + 1;
+  const snapshot = {
+    schema: SESSION_RECORDING_SHARE_PLAYBACK_REVIEW_SCHEMA,
+    contentSha256: current.contentSha256,
+    recordingAssetId: clean(render.recordingAssetId, 240),
+    renderSha256: clean(render.sha256, 64),
+    durationSeconds: plan.durationSeconds,
+    requiredSecondBins: plan.requiredSecondBins,
+    listenedSecondBins: plan.requiredSecondBins,
+    joinSecondBins: plan.joinSecondBins,
+    completedAt: now.toISOString(),
+    clientTrackedPlaybackIsNotProofOfAudibility: true,
+  };
+  try {
+    const updated = await client.$transaction(async (tx: any) => {
+      const changed = await tx.sessionOutput.updateMany({
+        where: { id: current.id, status: "DRAFT", revision: current.revision },
+        data: { revision: nextRevision },
+      });
+      if (changed.count !== 1) throw new SessionRecordingShareError(409, "STALE_RECORDING_SHARE", "The prepared recording changed during playback review.");
+      await tx.sessionOutputRevision.create({
+        data: { id: input.clientRequestId, outputId: current.id, revision: nextRevision, operation: "PLAYBACK_REVIEWED", actorUserId: input.actor.id, snapshotJson: snapshot },
+      });
+      return tx.sessionOutput.findUnique({ where: { id: current.id }, select: OUTPUT_SELECT });
+    });
+    return { output: serializeOutput(updated), idempotentReplay: false };
+  } catch (error: any) {
+    if (error?.code !== "P2002") throw error;
+    const duplicate = await client.sessionOutputRevision.findUnique({
+      where: { id: input.clientRequestId },
+      select: { outputId: true, actorUserId: true, operation: true },
+    });
+    if (!duplicate || duplicate.outputId !== current.id || duplicate.actorUserId !== input.actor.id || duplicate.operation !== "PLAYBACK_REVIEWED") {
+      throw new SessionRecordingShareError(409, "REQUEST_ID_CONFLICT", "That review request identity belongs to a different recording decision.");
+    }
+    const existing = await client.sessionOutput.findUnique({ where: { id: current.id }, select: OUTPUT_SELECT });
+    return { output: serializeOutput(existing), idempotentReplay: true };
+  }
+}
+
 export async function transitionSessionRecordingShare(client: RestoreClient, input: {
   roomId: string;
   outputId: string;
@@ -840,6 +1012,9 @@ export async function transitionSessionRecordingShare(client: RestoreClient, inp
   }
   if (current.status !== expectedStatus || current.revision !== input.expectedRevision) {
     throw new SessionRecordingShareError(409, "STALE_RECORDING_SHARE", "The prepared recording changed before this visibility decision. Refresh and review it again.");
+  }
+  if (input.action === "RELEASE" && !currentPlaybackReview(current).current) {
+    throw new SessionRecordingShareError(409, "PLAYBACK_REVIEW_REQUIRED", "Listen to the current private preview before sharing it with the client.");
   }
   const now = new Date();
   const nextRevision = current.revision + 1;

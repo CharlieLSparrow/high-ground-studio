@@ -5,6 +5,7 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
   prepareSessionRecordingShare,
   readSessionRecordingShare,
+  recordSessionRecordingSharePlaybackReview,
   SessionRecordingShareError,
   transitionSessionRecordingShare,
 } from "@/lib/server/session-recording-share";
@@ -86,13 +87,26 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
       });
       return privateJson({ ok: true, ...result, boundaries: { sourceFilesMutated: false, releasedToClient: false, externalMessageSent: false } });
     }
-    if (action !== "RELEASE" && action !== "REVOKE") {
-      return privateJson({ ok: false, code: "ACTION_UNSUPPORTED", error: "Choose prepare, release, or revoke." }, 400);
-    }
     const outputId = text(body.outputId);
     const expectedRevision = Number(body.expectedRevision);
     if (!outputId || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
       return privateJson({ ok: false, code: "CURRENT_RECORDING_REQUIRED", error: "Refresh and review the current prepared recording before changing its visibility." }, 400);
+    }
+    if (action === "REVIEW") {
+      const evidence = object(body.playbackEvidence);
+      const result = await recordSessionRecordingSharePlaybackReview(prisma, {
+        roomId,
+        outputId,
+        actor: signedIn,
+        clientRequestId,
+        expectedRevision,
+        listenedSecondBins: Array.isArray(evidence.listenedSecondBins) ? evidence.listenedSecondBins.map(Number) : [],
+        clientTrackedPlaybackIsNotProofOfAudibility: evidence.clientTrackedPlaybackIsNotProofOfAudibility === true,
+      });
+      return privateJson({ ok: true, ...result, boundaries: { sourceFilesMutated: false, releasedToClient: false, externalMessageSent: false, clientPlaybackIsNotProofOfAudibility: true } });
+    }
+    if (action !== "RELEASE" && action !== "REVOKE") {
+      return privateJson({ ok: false, code: "ACTION_UNSUPPORTED", error: "Choose prepare, review, release, or revoke." }, 400);
     }
     const result = await transitionSessionRecordingShare(prisma, { roomId, outputId, actor: signedIn, clientRequestId, expectedRevision, action });
     return privateJson({ ok: true, ...result, boundaries: { sourceFilesMutated: false, releasedToClient: action === "RELEASE", externalMessageSent: false } });
