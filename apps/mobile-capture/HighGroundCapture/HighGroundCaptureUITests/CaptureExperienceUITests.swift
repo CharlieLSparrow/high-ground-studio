@@ -2262,6 +2262,20 @@ final class CaptureExperienceUITests: XCTestCase {
         let masteryBoundary = app.descendants(matching: .any)["CaptureAudioMasteryPreviewBoundary"]
         XCTAssertTrue(masteryBoundary.exists)
         XCTAssertTrue(masteryBoundary.label.contains("no audio downloaded"))
+        let delivery = app.descendants(matching: .any)["CaptureAudioDelivery"]
+        reveal(delivery, searchAboveFirst: false)
+        XCTAssertTrue(delivery.exists)
+        XCTAssertTrue(app.buttons["CaptureAudioDeliveryPrepare"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioDeliveryOutput"].exists)
+        XCTAssertTrue(app.buttons["CaptureAudioDeliveryPlay"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioDeliveryReview"].exists)
+        XCTAssertTrue(app.textFields["CaptureAudioDeliveryReviewNote"].exists)
+        XCTAssertTrue(app.buttons["CaptureAudioDeliveryReject"].exists)
+        XCTAssertTrue(app.buttons["CaptureAudioDeliveryApprove"].exists)
+        let deliveryBoundary = app.descendants(matching: .any)["CaptureAudioDeliveryPreviewBoundary"]
+        XCTAssertTrue(deliveryBoundary.exists)
+        XCTAssertTrue(deliveryBoundary.label.contains("no network"))
+        XCTAssertTrue(deliveryBoundary.label.contains("no review receipt"))
         XCTAssertTrue(app.staticTexts["Video source truth"].exists)
         XCTAssertTrue(app.staticTexts["4K · 24 fps"].exists)
         XCTAssertTrue(app.staticTexts["3840×2160 · 24 fps · HEVC · P3-D65"].exists)

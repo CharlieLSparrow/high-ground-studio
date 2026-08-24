@@ -15,6 +15,7 @@ struct CaptureSourceEvidenceView: View {
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var playback = LocalRecordingPlaybackController()
     @StateObject private var mastery = CaptureAudioMasteryClient()
+    @StateObject private var delivery = CaptureAudioDeliveryClient()
     @State private var evidenceFileURL: URL?
     @State private var isPreparing = false
     @State private var errorMessage: String?
@@ -26,6 +27,7 @@ struct CaptureSourceEvidenceView: View {
     @State private var masteryMonitorMode = MasteryMonitorMode.fair
     @State private var masteryReviewNote = ""
     @State private var masteryWithdrawalReason = ""
+    @State private var deliveryReviewNote = ""
     @State private var showsTechnicalAudioDetails = false
     @State private var showsTechnicalSoundDetails = false
     @State private var showsRecordingDetails = false
@@ -39,6 +41,14 @@ struct CaptureSourceEvidenceView: View {
                     audioImprovementCard(recording)
                         .task(id: audioMasteryTaskID(recording)) {
                             await mastery.open(recording: recording)
+                        }
+                        .task(id: audioDeliveryTaskID(recording)) {
+                            guard let active = mastery.snapshot?.promotion?.activePromotion,
+                                  active.jobId == mastery.snapshot?.jobId else {
+                                delivery.reset()
+                                return
+                            }
+                            await delivery.open(recording: recording)
                         }
                     audibleEventAnalysisCard(recording)
                     DisclosureGroup(
@@ -84,6 +94,7 @@ struct CaptureSourceEvidenceView: View {
         .onDisappear {
             playback.stop()
             mastery.stop()
+            delivery.stop()
             comparisonTask?.cancel()
             comparisonTask = nil
         }
@@ -214,6 +225,7 @@ struct CaptureSourceEvidenceView: View {
                                     : 0
                                 selectedAudioSeconds = signal.durationSeconds * fraction
                                 mastery.stop()
+                                delivery.stop()
                                 playback.play(
                                     recording: recording,
                                     library: library,
@@ -246,6 +258,7 @@ struct CaptureSourceEvidenceView: View {
                         .accessibilityValue(durationLabel(selectedAudioSeconds))
                         Button {
                             mastery.stop()
+                            delivery.stop()
                             playback.play(
                                 recording: recording,
                                 library: library,
@@ -436,6 +449,7 @@ struct CaptureSourceEvidenceView: View {
                         HStack(spacing: 10) {
                             Button {
                                 mastery.stop()
+                                delivery.stop()
                                 if playback.playingRecordingID == recording.id {
                                     playback.stop()
                                 } else {
@@ -458,6 +472,7 @@ struct CaptureSourceEvidenceView: View {
 
                             Button {
                                 playback.stop()
+                                delivery.stop()
                                 Task {
                                     await mastery.togglePreview(
                                         recording: recording,
@@ -481,6 +496,7 @@ struct CaptureSourceEvidenceView: View {
                             .accessibilityIdentifier("CaptureAudioMasteryPlay")
                         }
                         masteryReviewSection(recording: recording, status: status)
+                        audioDeliverySection(recording: recording, masteryStatus: status)
                     case "completed":
                         Label("This recording is already balanced", systemImage: "checkmark.circle.fill")
                             .font(.subheadline.weight(.bold))
@@ -561,6 +577,7 @@ struct CaptureSourceEvidenceView: View {
                         HStack(spacing: 8) {
                             Button {
                                 mastery.stop()
+                                delivery.stop()
                                 playback.play(
                                     recording: recording,
                                     library: library,
@@ -575,6 +592,7 @@ struct CaptureSourceEvidenceView: View {
 
                             Button {
                                 playback.stop()
+                                delivery.stop()
                                 Task {
                                     await mastery.togglePreview(
                                         recording: recording,
@@ -708,7 +726,7 @@ struct CaptureSourceEvidenceView: View {
                     .disabled(mastery.isPromoting)
                     .accessibilityIdentifier("CaptureAudioMasteryPromote")
                 }
-            } else if let activePromotion {
+            } else if activePromotion != nil {
                 Label(
                     thisPreviewIsActive
                         ? "This improved copy is the active delivery candidate."
@@ -765,6 +783,323 @@ struct CaptureSourceEvidenceView: View {
                 .foregroundStyle(.secondary)
         }
         .accessibilityIdentifier("CaptureAudioMasteryPromotion")
+    }
+
+    @ViewBuilder
+    private func audioDeliverySection(
+        recording: LocalRecording,
+        masteryStatus: CaptureAudioMasterySnapshot
+    ) -> some View {
+        if let masteryJobID = masteryStatus.jobId,
+           masteryStatus.promotion?.activePromotion?.jobId == masteryJobID {
+            VStack(alignment: .leading, spacing: 12) {
+                Divider()
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Share-ready audio")
+                        .font(.subheadline.weight(.bold))
+                    Text("Create the exact AAC file people will receive, then hear that encoded file before allowing any later delivery step.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if delivery.isLoading && delivery.snapshot == nil {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Checking encoded audio…")
+                            .font(.caption.weight(.semibold))
+                    }
+                } else if let status = delivery.snapshot {
+                    if !status.promotionStillActive {
+                        Label(
+                            "The prior encoded file is held because its selected improved version is no longer current.",
+                            systemImage: "exclamationmark.shield.fill"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        Button("Prepare current share-ready audio") {
+                            Task {
+                                await delivery.prepare(
+                                    recording: recording,
+                                    masteryJobID: masteryJobID
+                                )
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(delivery.isLoading)
+                        .accessibilityIdentifier("CaptureAudioDeliveryPrepare")
+                    } else {
+                        switch status.status {
+                        case "queued", "processing", "output-ready":
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("Encoding verified AAC…")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            Text("Quipsly is encoding from the selected improved copy and will completely decode and measure the result before it appears here.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        case "completed":
+                            if let output = status.output {
+                                audioDeliveryOutput(
+                                    recording: recording,
+                                    status: status,
+                                    output: output
+                                )
+                            } else {
+                                Label("The encoded file receipt is incomplete.", systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.orange)
+                            }
+                        case "failed":
+                            Label(
+                                status.error ?? "Share-ready audio could not be prepared.",
+                                systemImage: "exclamationmark.triangle.fill"
+                            )
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            Button("Try encoding again") {
+                                Task {
+                                    await delivery.prepare(
+                                        recording: recording,
+                                        masteryJobID: masteryJobID
+                                    )
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(delivery.isLoading)
+                            .accessibilityIdentifier("CaptureAudioDeliveryPrepare")
+                        default:
+                            audioDeliveryPrepareButton(
+                                recording: recording,
+                                masteryJobID: masteryJobID
+                            )
+                        }
+                    }
+                } else {
+                    audioDeliveryPrepareButton(
+                        recording: recording,
+                        masteryJobID: masteryJobID
+                    )
+                }
+
+                if let notice = delivery.notice {
+                    Label(notice, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Text("This artifact remains private and unpublished. Preparing or approving it does not share a file, create an output packet, or alter the source recording.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityIdentifier("CaptureAudioDelivery")
+        }
+    }
+
+    private func audioDeliveryPrepareButton(
+        recording: LocalRecording,
+        masteryJobID: String
+    ) -> some View {
+        Button {
+            Task {
+                await delivery.prepare(
+                    recording: recording,
+                    masteryJobID: masteryJobID
+                )
+            }
+        } label: {
+            HStack {
+                if delivery.isLoading { ProgressView() }
+                Label("Prepare share-ready audio", systemImage: "waveform.badge.plus")
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(delivery.isLoading)
+        .accessibilityIdentifier("CaptureAudioDeliveryPrepare")
+    }
+
+    private func audioDeliveryOutput(
+        recording: LocalRecording,
+        status: CaptureAudioDeliverySnapshot,
+        output: CaptureAudioDeliverySnapshot.Output
+    ) -> some View {
+        let coverage = delivery.coverage(for: status)
+        return VStack(alignment: .leading, spacing: 12) {
+            Label("Encoded file verified", systemImage: "checkmark.seal.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 7) {
+                EvidenceRow(
+                    label: "Format",
+                    value: "AAC-\(output.codecProfile) · \(output.sampleRateHz / 1_000) kHz · \(output.channels) channels"
+                )
+                EvidenceRow(label: "Bitrate", value: "\(output.bitrateBps / 1_000) kbps")
+                EvidenceRow(
+                    label: "Measured",
+                    value: String(format: "%.1f LUFS · peak %.1f dBTP", output.integratedLufs, output.truePeakDbtp)
+                )
+                EvidenceRow(
+                    label: "Integrity",
+                    value: "SHA-256 verified · \(ByteCountFormatter.string(fromByteCount: output.sizeBytes, countStyle: .file))"
+                )
+                EvidenceRow(
+                    label: "Decode",
+                    value: output.completeDecode && output.fastStart ? "Complete · fast start verified" : "Verification incomplete"
+                )
+            }
+            .accessibilityIdentifier("CaptureAudioDeliveryOutput")
+
+            Button {
+                mastery.stop()
+                playback.stop()
+                Task { await delivery.togglePlayback(recording: recording) }
+            } label: {
+                Label(
+                    delivery.isPlaying ? "Stop encoded audio" : "Play encoded audio",
+                    systemImage: delivery.isPlaying ? "stop.fill" : "play.fill"
+                )
+                .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(delivery.isLoading)
+            .accessibilityIdentifier("CaptureAudioDeliveryPlay")
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Proof-listen the delivered bytes")
+                    .font(.caption.weight(.bold))
+                Text("Hear a short section at the beginning, middle, and end. These controls play the downloaded AAC—not the source or improved WAV.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                audioDeliveryMomentButton(
+                    "Beginning",
+                    at: 0,
+                    duration: output.durationSeconds,
+                    recording: recording
+                )
+                audioDeliveryMomentButton(
+                    "Middle",
+                    at: output.durationSeconds / 2,
+                    duration: output.durationSeconds,
+                    recording: recording
+                )
+                audioDeliveryMomentButton(
+                    "Ending",
+                    at: max(output.durationSeconds - 1, 0),
+                    duration: output.durationSeconds,
+                    recording: recording
+                )
+            }
+
+            if let latest = status.review.latest {
+                Label(
+                    "Latest encoded-file decision: \(latest.decision.capitalized) · \(latest.actorEmail)",
+                    systemImage: latest.decision == "approved" ? "checkmark.seal.fill" : "arrow.uturn.backward.circle.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(latest.decision == "approved" ? .green : .orange)
+            }
+
+            TextField(
+                "Optional approval note; required when rejecting",
+                text: $deliveryReviewNote,
+                axis: .vertical
+            )
+            .lineLimit(2...5)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityIdentifier("CaptureAudioDeliveryReviewNote")
+
+            HStack(spacing: 10) {
+                Button("Reject encoded file") {
+                    Task {
+                        await delivery.saveReview(
+                            recording: recording,
+                            decision: "rejected",
+                            note: deliveryReviewNote
+                        )
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(
+                    delivery.isReviewing
+                        || delivery.listenedSecondBins.isEmpty
+                        || deliveryReviewNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+                .accessibilityIdentifier("CaptureAudioDeliveryReject")
+
+                Button("Approve encoded file") {
+                    Task {
+                        await delivery.saveReview(
+                            recording: recording,
+                            decision: "approved",
+                            note: deliveryReviewNote
+                        )
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(delivery.isReviewing || !coverage.approvalReady)
+                .accessibilityIdentifier("CaptureAudioDeliveryApprove")
+            }
+
+            Text(
+                coverage.approvalReady
+                    ? "Beginning, middle, and ending playback recorded. Ready for your decision."
+                    : "Approval unlocks after beginning, middle, and ending playback."
+            )
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(coverage.approvalReady ? .green : .secondary)
+        }
+        .accessibilityIdentifier("CaptureAudioDeliveryReview")
+    }
+
+    private func audioDeliveryMomentButton(
+        _ label: String,
+        at anchorSeconds: TimeInterval,
+        duration: TimeInterval,
+        recording: LocalRecording
+    ) -> some View {
+        let required = audioDeliveryMomentBins(
+            around: anchorSeconds,
+            duration: duration
+        )
+        let heard = !required.isEmpty && required.isSubset(of: delivery.listenedSecondBins)
+        return Button {
+            mastery.stop()
+            playback.stop()
+            Task {
+                await delivery.togglePlayback(
+                    recording: recording,
+                    from: max(anchorSeconds - 1, 0),
+                    restartIfPlaying: true
+                )
+            }
+        } label: {
+            HStack {
+                Label(
+                    heard ? "\(label) heard" : "Hear \(label.lowercased())",
+                    systemImage: heard ? "checkmark.circle.fill" : "play.fill"
+                )
+                Spacer()
+                Text(durationLabel(anchorSeconds))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 38)
+        }
+        .buttonStyle(.bordered)
+        .disabled(delivery.isLoading)
+    }
+
+    private func audioDeliveryMomentBins(
+        around anchorSeconds: TimeInterval,
+        duration: TimeInterval
+    ) -> Set<Int> {
+        guard duration.isFinite, duration > 0 else { return [] }
+        let finalBin = max(0, Int(floor(duration - 0.001)))
+        let anchor = min(max(Int(floor(anchorSeconds)), 0), finalBin)
+        return Set([anchor - 1, anchor, anchor + 1].filter { $0 >= 0 && $0 <= finalBin })
     }
 
     @ViewBuilder
@@ -1329,6 +1664,7 @@ struct CaptureSourceEvidenceView: View {
         )
         selectedAudioSeconds = startSeconds
         mastery.stop()
+        delivery.stop()
         playback.play(
             recording: recording,
             library: library,
@@ -1407,6 +1743,15 @@ struct CaptureSourceEvidenceView: View {
             recording.projectSlug ?? "",
             recording.uploadedMediaAssetId ?? "",
             recording.uploadedSourceId ?? "",
+        ].joined(separator: "|")
+    }
+
+    private func audioDeliveryTaskID(_ recording: LocalRecording) -> String {
+        [
+            audioMasteryTaskID(recording),
+            mastery.snapshot?.jobId ?? "",
+            mastery.snapshot?.promotion?.activePromotion?.id ?? "",
+            mastery.snapshot?.promotion?.activePromotion?.jobId ?? "",
         ].joined(separator: "|")
     }
 
@@ -1647,6 +1992,61 @@ struct CaptureSourceEvidencePreviewView: View {
                             .foregroundStyle(.secondary)
                     }
                     .accessibilityIdentifier("CaptureAudioMasteryPromotion")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Divider()
+                        Text("Share-ready audio")
+                            .font(.subheadline.weight(.bold))
+                        Text("A real selected improvement is encoded to a completely decoded, measured AAC artifact. Capture then downloads the authenticated bytes and verifies their SHA-256 and byte count before playback.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Prepare share-ready audio") {}
+                            .buttonStyle(.borderedProminent)
+                            .disabled(true)
+                            .accessibilityIdentifier("CaptureAudioDeliveryPrepare")
+                        VStack(alignment: .leading, spacing: 6) {
+                            EvidenceRow(label: "Format", value: "AAC-LC · 48 kHz · 2 channels")
+                            EvidenceRow(label: "Bitrate", value: "128 kbps")
+                            EvidenceRow(label: "Measured", value: "−16.0 LUFS · peak −1.1 dBTP")
+                            EvidenceRow(label: "Integrity", value: "SHA-256 verified · 8.4 MB")
+                        }
+                        .accessibilityIdentifier("CaptureAudioDeliveryOutput")
+                        Button("Play encoded audio") {}
+                            .buttonStyle(.borderedProminent)
+                            .disabled(true)
+                            .accessibilityIdentifier("CaptureAudioDeliveryPlay")
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Proof-listen the delivered bytes")
+                                .font(.caption.weight(.bold))
+                            Text("Beginning · Middle · Ending")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            TextField(
+                                "Optional approval note; required when rejecting",
+                                text: .constant("")
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(true)
+                            .accessibilityIdentifier("CaptureAudioDeliveryReviewNote")
+                            HStack {
+                                Button("Reject encoded file") {}
+                                    .buttonStyle(.bordered)
+                                    .disabled(true)
+                                    .accessibilityIdentifier("CaptureAudioDeliveryReject")
+                                Button("Approve encoded file") {}
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(true)
+                                    .accessibilityIdentifier("CaptureAudioDeliveryApprove")
+                            }
+                        }
+                        .accessibilityIdentifier("CaptureAudioDeliveryReview")
+                        Label(
+                            "Preview only · no network, artifact, playback evidence, or review receipt",
+                            systemImage: "eye"
+                        )
+                        .font(.caption2.weight(.semibold))
+                        .accessibilityIdentifier("CaptureAudioDeliveryPreviewBoundary")
+                    }
+                    .accessibilityIdentifier("CaptureAudioDelivery")
                     Label("Preview only · no audio downloaded", systemImage: "eye")
                         .font(.caption.weight(.semibold))
                         .accessibilityIdentifier("CaptureAudioMasteryPreviewBoundary")

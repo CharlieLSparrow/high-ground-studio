@@ -1271,6 +1271,7 @@ function checkTranscriptCorrectionContractSources() {
   const studioTranscriptSpeakerAuthorityText = sourceText("apps/quipsly/src/lib/server/studio-transcript-speaker-authority.ts");
   const captureSourceEvidenceText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureSourceEvidenceView.swift");
   const captureAudioMasteryClientText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureAudioMasteryClient.swift");
+  const captureAudioDeliveryClientText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureAudioDeliveryClient.swift");
   const localRecordingPlaybackText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/LocalRecordingPlaybackController.swift");
   const mobileComponentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const nestDashboardText = sourceText("apps/quipsly/src/app/(app)/nests/[slug]/page.tsx");
@@ -2072,6 +2073,28 @@ function checkTranscriptCorrectionContractSources() {
       && captureUITestText.includes("CaptureAudioMasteryPromotion"),
     "nativeAudioMasteryPromotionAuthority",
     "iPhone can select only the latest exact approved mastery preview as a reversible delivery candidate, can withdraw an active current or earlier pass only with a reason, and keeps encoding, sharing, publication, and original source truth separate.",
+  );
+  expect(
+    captureAudioDeliveryClientText.includes("api/media-vault/audio-delivery")
+      && captureAudioDeliveryClientText.includes("api/media-vault/audio-delivery/review")
+      && captureAudioDeliveryClientText.includes("apple-podcasts-aac-stereo-v1")
+      && captureAudioDeliveryClientText.includes("authenticatedDownload")
+      && captureAudioDeliveryClientText.includes("computeDigest")
+      && captureAudioDeliveryClientText.includes("FileProtectionType.complete")
+      && captureAudioDeliveryClientText.includes("quipsly-audio-delivery-playback-review-v1")
+      && captureAudioDeliveryClientText.includes("reviewRequestIDs")
+      && captureAudioDeliveryClientText.includes("requiredSecondBins")
+      && captureAudioDeliveryClientText.includes("playbackIsStillAuthorized")
+      && captureAudioDeliveryClientText.includes("promotionStillActive")
+      && captureSourceEvidenceText.includes("CaptureAudioDeliveryPrepare")
+      && captureSourceEvidenceText.includes("CaptureAudioDeliveryOutput")
+      && captureSourceEvidenceText.includes("CaptureAudioDeliveryPlay")
+      && captureSourceEvidenceText.includes("CaptureAudioDeliveryReview")
+      && captureSourceEvidenceText.includes("CaptureAudioDeliveryApprove")
+      && captureSourceEvidenceText.includes("CaptureAudioDeliveryReject")
+      && captureUITestText.includes("CaptureAudioDeliveryPreviewBoundary"),
+    "nativeAudioDeliveryArtifactReview",
+    "iPhone deliberately encodes the selected approved improvement, downloads and verifies the exact authenticated AAC bytes, requires beginning-middle-ending proof listening, and records an append-only approval or rejection without sharing, publishing, or replacing the source.",
   );
   expect(
     durableWorkText.includes("TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority}")

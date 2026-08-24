@@ -72,6 +72,39 @@ evidence independently recheck that the promotion's exact approval is still
 the latest listening decision. A subsequent new approval can be deliberately
 promoted again without erasing the held history.
 
+## Native share-ready artifact review
+
+Once the current improved copy is both approved and deliberately selected,
+Capture can now request the existing production AAC delivery pipeline directly
+from Recording Quality. This is a separate, explicit step: choosing an
+improved master does not silently encode it.
+
+The server encodes the exact selected candidate to the Apple Podcasts stereo
+profile, then completely decodes and measures the output before registration.
+Capture shows the returned codec profile, sample rate, channel count, bitrate,
+LUFS, true peak, fast-start/decode result, SHA-256 status, and byte size. It
+downloads the artifact only through account-bound authenticated access, rejects
+cross-origin playback URLs, bypasses stale caches, verifies the downloaded
+SHA-256 and byte count, and moves only matching bytes into a complete-protection
+temporary file.
+
+The phone provides direct beginning, middle, and ending controls so the person
+can proof-listen the encoded AAC rather than accidentally reviewing the source
+or lossless mastering preview. Player progress records bounded second bins.
+Approval stays unavailable until all three server-compatible coverage regions
+have played; rejection requires heard playback plus a note. Both decisions use
+stable idempotent request IDs and append-only authenticated server receipts.
+
+The temporary AAC is discarded whenever the account, retained recording,
+delivery job, artifact SHA-256, byte size, completion state, playback route, or
+underlying promotion authority changes. A refreshed stale status therefore
+cannot leave previously authorized bytes playable.
+
+Preparation and review still do not share a file, create an output packet,
+upload to a publisher, publish an episode, replace a source, or delete media.
+Those later transitions must consume a current exact-byte approval and remain
+separately visible and reversible.
+
 ## Integrity and playback boundary
 
 - The improved file still downloads through authenticated, account-bound
@@ -99,8 +132,11 @@ promoted again without erasing the held history.
 - The complete unsigned generic iOS Simulator `build-for-testing` succeeds for
   arm64 and x86_64, including the deterministic UI assertions.
 - The deterministic Recording Quality preview exposes the measurement, target,
-  A/B controls, and review decision surface while explicitly stating that it
-  downloaded no audio and created no evidence receipt.
+  A/B controls, mastering decision, delivery-artifact controls, and encoded-byte
+  review surface while explicitly stating that it made no network request,
+  downloaded no audio, created no artifact, and created no evidence receipt.
+- Twenty focused delivery, delivery-route, delivery-review-route, and mastery
+  promotion tests pass, and the complete Nest TypeScript typecheck passes.
 
 This checkpoint is local source and automated compile evidence. It does not
 claim physical-device listening, authenticated live derivative download, or a
