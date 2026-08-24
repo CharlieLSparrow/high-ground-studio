@@ -2,6 +2,7 @@ import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
 import {
   browserSourceInterruptedRecoveryCandidate,
   browserSourcePostStopReceipt,
+  browserSourceReviewHref,
   browserSourceSafetyLabel,
   browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
@@ -214,6 +215,24 @@ describe("browser source upload recovery", () => {
       title: "Saved on this device",
       safeToClose: false,
     });
+  });
+
+  it("opens only an exact verified recording in the in-app Session workspace", () => {
+    expect(
+      browserSourceReviewHref(
+        "room / coaching",
+        ledger("verified", { serverRecordingAssetId: "asset / exact" }),
+      ),
+    ).toBe(
+      "/sessions/room%20%2F%20coaching?mode=recordings&source=asset+%2F+exact",
+    );
+    expect(
+      browserSourceReviewHref(
+        "room-1",
+        ledger("uploading", { serverRecordingAssetId: "asset-1" }),
+      ),
+    ).toBeNull();
+    expect(browserSourceReviewHref("room-1", ledger("verified"))).toBeNull();
   });
 
   it("resumes each eligible source once without looping on a repeated held row", async () => {

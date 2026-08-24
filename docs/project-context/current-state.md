@@ -28,11 +28,13 @@ Date: 2026-08-24
   recovery, and separate local/provider recording boundaries remain intact.
 - Browser Stop now presents one visible latest-source receipt from local save
   through upload and exact-byte verification, including an honest Keep open or
-  Safe to close boundary. Detailed recovery remains secondary.
+  Safe to close boundary. A verified receipt opens its exact canonical source
+  in the in-app Session recording workspace immediately; multi-device Studio
+  assembly continues independently. Detailed recovery remains secondary.
 - Native Stop already waits for terminal local save and opens Library on the
   new immutable source; the release gate now protects that transition and its
   runtime assertion.
-- Forty-three focused call/handoff/stop tests and strict Quipsly TypeScript
+- Forty-four focused call/handoff/stop tests and strict Quipsly TypeScript
   pass.
   The two-person browser/iPhone flight is retained as human/device evidence.
 

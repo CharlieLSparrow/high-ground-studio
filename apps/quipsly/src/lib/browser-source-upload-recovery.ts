@@ -260,6 +260,20 @@ export function browserSourcePostStopReceipt(
   };
 }
 
+export function browserSourceReviewHref(
+  roomId: string,
+  ledger: BrowserSourceCaptureLedger,
+) {
+  const room = roomId.trim();
+  const recordingAssetId = ledger.serverRecordingAssetId?.trim() ?? "";
+  if (ledger.state !== "verified" || !room || !recordingAssetId) return null;
+  const query = new URLSearchParams({
+    mode: "recordings",
+    source: recordingAssetId,
+  });
+  return `/sessions/${encodeURIComponent(room)}?${query.toString()}`;
+}
+
 export function browserSourceManualUploadRetryAvailable(
   ledger: BrowserSourceCaptureLedger,
 ) {

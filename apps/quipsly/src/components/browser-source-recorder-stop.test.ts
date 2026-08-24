@@ -16,5 +16,9 @@ describe("browser source stop confidence", () => {
     expect(source).toContain("latestRecordingReceipt.safeToClose");
     expect(source).toContain("activeLedger.fileName");
     expect(source).toContain("formatBytes(activeLedger.sizeBytes)");
+    expect(source).toContain(
+      "browserSourceReviewHref(callRoomId, activeLedger)",
+    );
+    expect(source).toContain("Review recording");
   });
 });

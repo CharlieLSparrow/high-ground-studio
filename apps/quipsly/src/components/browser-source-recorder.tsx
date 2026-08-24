@@ -77,6 +77,7 @@ import {
   browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
   browserSourcePostStopReceipt,
+  browserSourceReviewHref,
   browserSourceRecoverySummary,
   browserSourceSafetyLabel,
   browserSourceUploadRetryDelayMs,
@@ -2437,6 +2438,9 @@ export function BrowserSourceRecorder({
   const latestRecordingReceipt = activeLedger
     ? browserSourcePostStopReceipt(status, activeLedger)
     : null;
+  const latestRecordingReviewHref = activeLedger
+    ? browserSourceReviewHref(callRoomId, activeLedger)
+    : null;
 
   return (
     <section
@@ -2932,11 +2936,21 @@ export function BrowserSourceRecorder({
                   {activeLedger.fileName} · {formatBytes(activeLedger.sizeBytes)}
                 </p>
               </div>
-              <span className="rounded-full bg-white/80 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide">
-                {latestRecordingReceipt.safeToClose
-                  ? "Safe to close"
-                  : "Keep open"}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-white/80 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide">
+                  {latestRecordingReceipt.safeToClose
+                    ? "Safe to close"
+                    : "Keep open"}
+                </span>
+                {latestRecordingReviewHref ? (
+                  <a
+                    href={latestRecordingReviewHref}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-full bg-violet-800 px-4 text-[10px] font-black uppercase tracking-wide text-white"
+                  >
+                    <ExternalLink size={14} aria-hidden="true" /> Review recording
+                  </a>
+                ) : null}
+              </div>
             </div>
           </section>
         ) : null}
