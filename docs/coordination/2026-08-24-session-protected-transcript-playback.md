@@ -47,10 +47,13 @@ copies, mutates, or replaces source media.
 ## Native transcript review
 
 Capture decodes the protected binding carried by each passage. If the matching
-local original is absent, it reuses the existing account-bound Session download
-cache, repeats byte-count and SHA-256 verification, and hands only that verified
-file to the transcript player. The transcript player keys its listened-through
-position to the expected RecordingAsset before correction controls unlock.
+local original is absent and the protected source is audio, it reuses the
+existing account-bound Session download cache, repeats byte-count and SHA-256
+verification, and hands only that verified file to the transcript player. The
+transcript player keys its listened-through position to the expected
+RecordingAsset before correction controls unlock. It will not silently download
+a full protected video to play one sentence; that requires the explicit recording
+sheet until a source-bound audio derivative exists.
 
 This is compile- and contract-qualified, not physical-device acceptance. A real
 two-account flight must still prove the second participant source downloads,

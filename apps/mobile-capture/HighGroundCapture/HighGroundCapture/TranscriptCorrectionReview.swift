@@ -159,6 +159,7 @@ struct CaptureTranscriptPlayback: Codable, Equatable {
         guard let protectedSource,
               protectedSource.schema == "quipsly-session-protected-playback-v1",
               protectedSource.byteSize > 0,
+              kind == "audio",
               protectedSource.sha256.range(
                 of: #"^[0-9a-f]{64}$"#,
                 options: .regularExpression
@@ -2953,7 +2954,19 @@ struct CaptureTranscriptReviewView: View {
                         .id("speaker-attribution-outbox-status")
                         .accessibilityIdentifier("CaptureTranscriptSpeakerOutboxDetailBoundary")
                     }
-                    if let error = client.errorMessage ?? playback.errorMessage {
+                    if protectedSessionPlayback.isPreparing {
+                        reviewNotice(
+                            title: "Preparing exact recording",
+                            detail: protectedSessionPlayback.statusMessage
+                                ?? "Downloading and verifying the retained participant source before playback.",
+                            tint: .blue,
+                            icon: "arrow.down.circle.fill"
+                        )
+                        .accessibilityIdentifier("CaptureTranscriptProtectedPlaybackPreparing")
+                    }
+                    if let error = client.errorMessage
+                        ?? playback.errorMessage
+                        ?? protectedSessionPlayback.errorMessage {
                         reviewNotice(title: "Needs attention", detail: error, tint: .orange, icon: "exclamationmark.triangle.fill")
                     }
 
@@ -3341,15 +3354,24 @@ struct CaptureTranscriptReviewView: View {
                             )
                         }
                     } label: {
-                        Label("Play", systemImage: "play.fill")
-                            .frame(minHeight: 36)
+                        if protectedSessionPlayback.isPreparing
+                            && !hasExactLocalSource(
+                                expectedRecordingAssetID: segment.recordingAssetId
+                                    ?? desk.playback?.recordingAssetId
+                            ) {
+                            Label("Preparing…", systemImage: "arrow.down.circle")
+                                .frame(minHeight: 36)
+                        } else {
+                            Label("Play", systemImage: "play.fill")
+                                .frame(minHeight: 36)
+                        }
                     }
                     .buttonStyle(.bordered)
                     .disabled(
                         !canPlay(
                             segment: segment,
                             desk: desk
-                        ) || client.isMutating
+                        ) || client.isMutating || protectedSessionPlayback.isPreparing
                     )
                     Button("Review") {
                         transcriptPresentationMode = .timeline
@@ -5899,13 +5921,29 @@ private struct CaptureTranscriptSegmentCard: View {
                         )
                     }
                 } label: {
-                    Label("Play", systemImage: "play.fill")
-                        .frame(minHeight: 44)
+                    if protectedPlayback.isPreparing && !hasExactLocalSource {
+                        Label("Preparing…", systemImage: "arrow.down.circle")
+                            .frame(minHeight: 44)
+                    } else {
+                        Label("Play", systemImage: "play.fill")
+                            .frame(minHeight: 44)
+                    }
                 }
                 .buttonStyle(.bordered)
-                .disabled(!canPlaySource || client.isMutating)
+                .disabled(!canPlaySource || client.isMutating || protectedPlayback.isPreparing)
                 .accessibilityLabel("Play transcript segment from Session time \(segment.sessionStartSeconds.captureTranscriptTimestamp)")
                 .accessibilityIdentifier("CaptureTranscriptPlayButton_\(segment.id)")
+            }
+
+            if !hasExactLocalSource && protectedSource?.kind == "video" {
+                Label(
+                    "Quipsly will not download the full video just to review this sentence. Prepare an audio source or review the protected recording explicitly.",
+                    systemImage: "video.badge.ellipsis"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureTranscriptVideoDownloadBoundary_\(segment.id)")
             }
 
             if let attention {

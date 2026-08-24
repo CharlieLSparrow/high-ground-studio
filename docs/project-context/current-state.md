@@ -3637,7 +3637,9 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - One hundred focused tests, strict Quipsly TypeScript, both release static
   gates, and a signing-independent iOS Simulator build pass. Capture now reuses
   its verified protected Session cache for a non-local passage and keys the
-  listened-through position to that passage's expected RecordingAsset. Real
+  listened-through position to that passage's expected RecordingAsset. Automatic
+  transcript preparation is audio-only so one Play tap cannot fetch a 4K master.
+  Real
   two-account download, listening, correction, and wrong-source refusal remain
   deferred evidence. Detailed decision record:
   `docs/coordination/2026-08-24-session-protected-transcript-playback.md`.

@@ -1429,6 +1429,8 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("recordingAssetID: expectedRecordingAssetID")
       && nativeText.includes(".quipslyCaptureAccountIdentityDidChange")
       && nativeText.includes("AuthManager.shared.matchesStableOwnerSnapshot(owner)")
+      && nativeText.includes('kind == "audio"')
+      && nativeText.includes("CaptureTranscriptVideoDownloadBoundary_")
       && nativeSessionPlaybackText.includes("prepareTranscriptReviewFile")
       && nativeText.includes("AI proposal · not transcript truth")
       && nativeText.includes("Preview data — no server actions")

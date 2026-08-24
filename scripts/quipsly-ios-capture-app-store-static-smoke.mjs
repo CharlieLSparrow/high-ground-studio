@@ -1834,6 +1834,16 @@ requireIncludes(
   "native protected transcript playback rechecks account ownership after preparation",
 );
 requireIncludes(
+  transcriptReviewText,
+  'kind == "audio"',
+  "one-tap transcript playback cannot silently download a protected 4K video source",
+);
+requireIncludes(
+  transcriptReviewText,
+  "CaptureTranscriptVideoDownloadBoundary_",
+  "native transcript review explains the protected video download boundary",
+);
+requireIncludes(
   sessionProtectedPlaybackText,
   "prepareTranscriptReviewFile",
   "transcript review reuses the verified account-bound Session playback cache",
