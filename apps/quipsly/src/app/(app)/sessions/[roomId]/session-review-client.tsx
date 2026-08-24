@@ -183,7 +183,7 @@ function SessionPostCallPath({
     { label: "Review", ready: reviewReady },
     { label: "Follow-up", ready: followUpReady },
   ];
-  const running = ["RUNNING", "PROCESSING"].includes(transcriptStatus);
+  const running = ["QUEUED", "RUNNING", "PROCESSING"].includes(transcriptStatus);
   const next = !hasRecording
     ? { label: "Review recordings", href: sessionWorkspaceHref(roomId, "recordings"), detail: "A verified recording is needed before transcription." }
     : held
@@ -6561,7 +6561,7 @@ export function SessionReviewClient({
                     </p>
                   </details>
                 ) : null}
-                {!["RUNNING", "PROCESSING"].includes(
+                {!["QUEUED", "RUNNING", "PROCESSING"].includes(
                   packet.transcriptJob?.status || "",
                 ) &&
                 packet.packet?.safeActions?.find(

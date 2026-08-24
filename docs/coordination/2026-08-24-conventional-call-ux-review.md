@@ -196,6 +196,11 @@ and Follow-up. A compact **Recording choice** card appears only when processing
 is actually waiting or held, shows the actionable reason, and keeps participant
 counts under a collapsed **Details** disclosure.
 
+Queued transcription is also treated as work already in progress. The Session
+workspace polls it alongside running and processing jobs and does not offer a
+contradictory **Start transcription** button. Start/Retry is reserved for an
+exact source with no job or a failed/held job that genuinely needs recovery.
+
 The iPhone already has the stronger native equivalent: coordinated Stop waits
 for the local recorder to reach a terminal state, opens Library, and places the
 new immutable source in the ordinary saved-source list before upload is called

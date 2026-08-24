@@ -40,6 +40,9 @@ Date: 2026-08-24
 - The normal fully allowed transcript workspace omits permission administration
   and leads with Transcript and Follow-up. Recording choice appears only for a
   real waiting/held state, with its reason visible and counts collapsed.
+- Queued transcripts are background work, not a manual start step. The Session
+  workspace polls queued/running/processing jobs and reserves Start/Retry for
+  missing, failed, or held work.
 - Native Stop already waits for terminal local save and opens Library on the
   new immutable source; the release gate now protects that transition and its
   runtime assertion.

@@ -494,7 +494,7 @@ describe("Session review goal candidates", () => {
     expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("starts the durable released transcript job from the Session workspace", async () => {
+  it("keeps an automatically queued transcript hands-off while background refresh owns progress", async () => {
     const queued = packetReadyToBuild();
     queued.transcriptJob = {
       ...queued.transcriptJob!,
@@ -513,30 +513,20 @@ describe("Session review goal candidates", () => {
         boundary: "Creates derived transcript evidence only.",
       }],
     };
-    const running = JSON.parse(JSON.stringify(queued)) as SessionReviewPacket;
-    running.transcriptJob!.status = "RUNNING";
-    running.packet!.safeActions = [];
-    const fetchMock = jest.fn()
-      .mockResolvedValueOnce(jsonResponse(queued))
-      .mockResolvedValueOnce(jsonResponse({ ok: true, status: "RUNNING", executionRequested: true }, 202))
-      .mockResolvedValueOnce(jsonResponse(running));
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse(queued));
     global.fetch = fetchMock as typeof fetch;
-    const user = userEvent.setup();
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 3, granted: 3, transcriptionPermitted: 3 }} />);
-    const start = await screen.findByRole("button", { name: "Start transcription" });
+    expect(await screen.findByText("Queued")).toBeInTheDocument();
     const workflow = screen.getByRole("region", { name: "Post-call workflow" });
-    expect(within(workflow).getByRole("link", { name: /Start or retry transcription/i })).toHaveAttribute("href", "#transcript-status");
+    expect(within(workflow).getByRole("link", { name: /Transcription is running/i })).toHaveAttribute("href", "#transcript-status");
     expect(within(workflow).getByText("Recording")).toBeInTheDocument();
-    expect(screen.getByText(/does not create or send notes, tasks, goals, or messages/i)).toBeInTheDocument();
-    await user.click(start);
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/transcripts/run");
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ transcriptJobId: "job-1" });
-    expect(await screen.findByRole("status")).toHaveTextContent(/Transcription started from the released immutable source/i);
-    expect(screen.getByText("Running")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start transcription" })).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        String(url).includes("/transcripts/run"),
+      ),
+    ).toBe(false);
   });
 
   it("summarizes source, timing, speaker, and human-review confidence without exposing diagnostics by default", async () => {
