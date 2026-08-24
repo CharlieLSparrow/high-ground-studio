@@ -3587,3 +3587,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   playback, beginning/middle/ending listening, video decode, and sync remain
   in the deferred validation ledger. Detailed decision record:
   `docs/coordination/2026-08-24-native-session-protected-playback.md`.
+
+### 2026-08-24 Session transcript program clock
+
+- Participant-isolated transcripts now enter one reusable Session program-clock
+  assembler instead of relying on report-route wall-time arithmetic.
+- Complete validated capture-clock proposals from the same take outrank reported
+  recording starts. Incomplete evidence falls back visibly; different declared
+  capture groups fail closed.
+- Provider/source segment timing stays immutable. The report builder applies
+  the derived source offset exactly once and retains both source-local and
+  Session-program timestamps for every turn.
+- Multi-source output discloses timing authority, maximum estimated uncertainty,
+  and mandatory waveform review. It never claims sample-accurate alignment.
+- Fourteen focused clock/report/route tests and strict Quipsly TypeScript pass.
+  Real two-device waveform correlation, late-drift measurement, and transcript
+  readback remain in the deferred validation ledger. Detailed decision record:
+  `docs/coordination/2026-08-24-session-transcript-program-clock.md`.

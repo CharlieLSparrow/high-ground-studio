@@ -47,6 +47,23 @@ function desk(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function alignment(start: string, uncertaintyMilliseconds: number) {
+  return {
+    schema: "quipsly-capture-alignment-proposal-v1",
+    status: "proposal-ready",
+    captureGroupId: "capture-group-1",
+    estimatedServerStartedAt: start,
+    uncertaintyMilliseconds,
+    sampleAccurateClaimed: false,
+    reviewRequired: true,
+    reviewGate: {
+      waveformCorrelationRequired: true,
+      driftReviewRequired: true,
+      humanApprovalRequired: true,
+    },
+  };
+}
+
 describe("coaching transcript report route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -112,8 +129,30 @@ describe("coaching transcript report route", () => {
       .mockResolvedValueOnce(isolated("coach", "coach-source", "coach-job", "Coach Example", "coach-turn", "What matters today?"))
       .mockResolvedValueOnce(isolated("client", "client-source", "client-job", "Client Example", "client-turn", "A clear next step."));
     mockRecordingAssetFindMany.mockResolvedValue([
-      { id: "coach-source", participantId: "coach", kind: "LOCAL_AUDIO", checksum: "a".repeat(64), recordedStartedAt: startedAt, transcriptJobs: [{ id: "coach-job", createdAt: startedAt }] },
-      { id: "client-source", participantId: "client", kind: "LOCAL_AUDIO", checksum: "b".repeat(64), recordedStartedAt: new Date(startedAt.getTime() + 500), transcriptJobs: [{ id: "client-job", createdAt: startedAt }] },
+      {
+        id: "coach-source",
+        participantId: "coach",
+        kind: "LOCAL_AUDIO",
+        checksum: "a".repeat(64),
+        recordedStartedAt: startedAt,
+        localManifestJson: {
+          captureGroupId: "capture-group-1",
+          alignment: alignment("2026-08-23T16:00:00.000Z", 35),
+        },
+        transcriptJobs: [{ id: "coach-job", createdAt: startedAt }],
+      },
+      {
+        id: "client-source",
+        participantId: "client",
+        kind: "LOCAL_AUDIO",
+        checksum: "b".repeat(64),
+        recordedStartedAt: new Date(startedAt.getTime() + 500),
+        localManifestJson: {
+          captureGroupId: "capture-group-1",
+          alignment: alignment("2026-08-23T16:00:00.625Z", 48),
+        },
+        transcriptJobs: [{ id: "client-job", createdAt: startedAt }],
+      },
     ]);
 
     const response = await GET(
@@ -124,6 +163,8 @@ describe("coaching transcript report route", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("X-Quipsly-Transcript-Schema")).toBe("quipsly-coaching-transcript-report-v2");
     expect(response.headers.get("X-Quipsly-Transcript-Source-Count")).toBe("2");
+    expect(response.headers.get("X-Quipsly-Transcript-Timing")).toBe("capture-clock-proposal");
+    expect(response.headers.get("X-Quipsly-Transcript-Waveform-Review")).toBe("required");
     expect(readTranscriptCorrectionDesk).toHaveBeenCalledTimes(3);
   });
 });

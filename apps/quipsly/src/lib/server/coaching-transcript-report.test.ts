@@ -104,8 +104,8 @@ describe("coaching transcript mentor report", () => {
     const report = buildCoachingTranscriptReport({
       ...input(),
       sources: [
-        { transcriptJobId: "coach-job", recordingAssetId: "coach-source", sourceSha256: "a".repeat(64), participantId: "participant-coach", programOffsetSeconds: 0 },
-        { transcriptJobId: "client-job", recordingAssetId: "client-source", sourceSha256: "b".repeat(64), participantId: "participant-client", programOffsetSeconds: 1.25 },
+        { transcriptJobId: "coach-job", recordingAssetId: "coach-source", sourceSha256: "a".repeat(64), participantId: "participant-coach", programOffsetSeconds: 0, timingAuthority: "capture-clock-proposal" as const, timingUncertaintyMilliseconds: 35, timingReviewRequired: true },
+        { transcriptJobId: "client-job", recordingAssetId: "client-source", sourceSha256: "b".repeat(64), participantId: "participant-client", programOffsetSeconds: 1.25, timingAuthority: "capture-clock-proposal" as const, timingUncertaintyMilliseconds: 48, timingReviewRequired: true },
       ],
       speakerGroups: [],
       segments: [
@@ -120,5 +120,16 @@ describe("coaching transcript mentor report", () => {
       ["coach", "coach-job"],
       ["client", "client-job"],
     ]);
+    expect(report.turns[1]).toMatchObject({
+      timestamp: "1:06",
+      startSeconds: 66.25,
+      sourceStartSeconds: 65,
+    });
+    expect(report.timelineTiming).toEqual({
+      authority: "capture-clock-proposal",
+      waveformReviewRequired: true,
+      maximumUncertaintyMilliseconds: 48,
+      sampleAccurateClaimed: false,
+    });
   });
 });

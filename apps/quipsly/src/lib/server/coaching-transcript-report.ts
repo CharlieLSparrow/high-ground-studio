@@ -68,6 +68,10 @@ export type CoachingTranscriptReportSource = {
   sourceSha256?: string | null;
   participantId?: string | null;
   programOffsetSeconds?: number;
+  timingAuthority?: "single-source-origin" | "capture-clock-proposal" | "reported-wall-clock-fallback";
+  timingUncertaintyMilliseconds?: number | null;
+  timingReviewRequired?: boolean;
+  sampleAccurateClaimed?: false;
 };
 
 type ReportSpeakerGroup = {
@@ -93,6 +97,8 @@ export type CoachingTranscriptReportTurn = {
   timestamp: string;
   startSeconds: number;
   endSeconds: number;
+  sourceStartSeconds: number;
+  sourceEndSeconds: number;
   text: string;
   reviewState: "corrected" | "confirmed" | "unreviewed";
   transcriptJobId: string;
@@ -111,6 +117,10 @@ export type CoachingTranscriptReport = {
     sourceSha256: string | null;
     participantId: string | null;
     programOffsetSeconds: number;
+    timingAuthority: "single-source-origin" | "capture-clock-proposal" | "reported-wall-clock-fallback";
+    timingUncertaintyMilliseconds: number | null;
+    timingReviewRequired: boolean;
+    sampleAccurateClaimed: false;
   }>;
   coach: ReportParticipant;
   client: ReportParticipant;
@@ -119,6 +129,12 @@ export type CoachingTranscriptReport = {
     correctedTurns: number;
     confirmedTurns: number;
     unreviewedTurns: number;
+  };
+  timelineTiming: {
+    authority: "single-source-origin" | "capture-clock-proposal" | "reported-wall-clock-fallback" | "mixed";
+    waveformReviewRequired: boolean;
+    maximumUncertaintyMilliseconds: number | null;
+    sampleAccurateClaimed: false;
   };
 };
 
@@ -167,6 +183,18 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
     sourceSha256: clean(source.sourceSha256, 64).toLowerCase() || null,
     participantId: clean(source.participantId, 240) || null,
     programOffsetSeconds: Number.isFinite(source.programOffsetSeconds) ? Math.max(0, Number(source.programOffsetSeconds)) : 0,
+    timingAuthority: source.timingAuthority === "capture-clock-proposal"
+      || source.timingAuthority === "reported-wall-clock-fallback"
+      || source.timingAuthority === "single-source-origin"
+      ? source.timingAuthority
+      : input.sources.length === 1
+        ? "single-source-origin" as const
+        : "reported-wall-clock-fallback" as const,
+    timingUncertaintyMilliseconds: Number.isFinite(source.timingUncertaintyMilliseconds)
+      ? Math.max(0, Number(source.timingUncertaintyMilliseconds))
+      : null,
+    timingReviewRequired: input.sources.length > 1 || source.timingReviewRequired === true,
+    sampleAccurateClaimed: false as const,
   }));
   if (
     !sources.length
@@ -222,13 +250,19 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
       unresolved.push(`${transcriptTimestamp(segment.startSeconds)} ${clean(segment.speakerLabel) || "unnamed speaker"}`);
       return null;
     }
+    const sourceStartSeconds = Number(segment.startSeconds);
+    const sourceEndSeconds = Number(segment.endSeconds);
+    const startSeconds = source.programOffsetSeconds + sourceStartSeconds;
+    const endSeconds = source.programOffsetSeconds + sourceEndSeconds;
     return {
       segmentId: segment.id,
       speaker: participantRole,
       speakerLabel: participant.displayLabel,
-      timestamp: transcriptTimestamp(segment.startSeconds),
-      startSeconds: segment.startSeconds,
-      endSeconds: segment.endSeconds,
+      timestamp: transcriptTimestamp(startSeconds),
+      startSeconds,
+      endSeconds,
+      sourceStartSeconds,
+      sourceEndSeconds,
       text: clean(segment.text, 20_000),
       reviewState: segment.acceptedCorrection
         ? "corrected" as const
@@ -264,6 +298,10 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
   }
   const generatedAt = iso(input.generatedAt) ?? new Date(0).toISOString();
   const sessionDate = iso(input.scheduledStart) ?? generatedAt;
+  const timingAuthorities = [...new Set(sources.map((source) => source.timingAuthority))];
+  const uncertainties = sources
+    .map((source) => source.timingUncertaintyMilliseconds)
+    .filter((value): value is number => value !== null);
   return {
     schema: COACHING_TRANSCRIPT_REPORT_SCHEMA,
     roomId: clean(input.roomId, 240),
@@ -278,6 +316,12 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
       correctedTurns: turns.filter((turn) => turn.reviewState === "corrected").length,
       confirmedTurns: turns.filter((turn) => turn.reviewState === "confirmed").length,
       unreviewedTurns: turns.filter((turn) => turn.reviewState === "unreviewed").length,
+    },
+    timelineTiming: {
+      authority: timingAuthorities.length === 1 ? timingAuthorities[0]! : "mixed",
+      waveformReviewRequired: sources.some((source) => source.timingReviewRequired),
+      maximumUncertaintyMilliseconds: uncertainties.length ? Math.max(...uncertainties) : null,
+      sampleAccurateClaimed: false,
     },
   };
 }
@@ -342,6 +386,14 @@ export async function renderCoachingTranscriptReport(report: CoachingTranscriptR
   const reviewDescription = report.review.unreviewedTurns === 0
     ? "Every turn in this export has been confirmed or corrected against the source recording."
     : `${report.review.unreviewedTurns} of ${report.turns.length} turns have not yet been explicitly checked against playback.`;
+  const uncertaintyDescription = report.timelineTiming.maximumUncertaintyMilliseconds === null
+    ? ""
+    : ` (up to ${report.timelineTiming.maximumUncertaintyMilliseconds} ms estimated uncertainty)`;
+  const timingDescription = report.timelineTiming.authority === "capture-clock-proposal"
+    ? `Cross-device timestamps use preserved monotonic/server clock proposals${uncertaintyDescription}. Waveform and drift review are still required before sample-accurate editing.`
+    : report.timelineTiming.authority === "reported-wall-clock-fallback"
+      ? "Cross-device timestamps use reported recording starts because complete capture-clock evidence was unavailable. Treat them as estimates until waveform and drift review."
+      : "Timestamps use the recording's source-local clock; no cross-device synchronization is implied.";
   const transcriptRows = report.turns.map((turn) => new TableRow({
     cantSplit: true,
     children: turn.speaker === "coach"
@@ -407,6 +459,7 @@ export async function renderCoachingTranscriptReport(report: CoachingTranscriptR
         new Paragraph({ spacing: { before: 180, after: 180 }, children: [
           new TextRun({ text: reviewDescription, bold: true, color: report.review.unreviewedTurns ? "9A5B00" : "237A45", size: 19 }),
           new TextRun({ break: 1, text: "Timestamps stay linked to the protected source. Provider evidence remains unchanged underneath reviewed corrections.", color: MUTED, size: 18 }),
+          new TextRun({ break: 1, text: timingDescription, color: report.timelineTiming.waveformReviewRequired ? "9A5B00" : MUTED, size: 17 }),
         ] }),
         new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
@@ -431,7 +484,7 @@ export async function renderCoachingTranscriptReport(report: CoachingTranscriptR
           new TextRun({ text: `Evidence: ${report.sources.length} independently source-bound participant recording${report.sources.length === 1 ? "" : "s"}`, color: MUTED, size: 15 }),
           ...report.sources.flatMap((source, index) => [new TextRun({
             break: 1,
-            text: `Source ${index + 1}: transcript ${source.transcriptJobId}  •  recording ${source.recordingAssetId}${source.sourceSha256 ? `  •  SHA-256 ${source.sourceSha256}` : ""}`,
+            text: `Source ${index + 1}: transcript ${source.transcriptJobId}  •  recording ${source.recordingAssetId}  •  program +${source.programOffsetSeconds.toFixed(3)}s  •  ${source.timingAuthority}${source.sourceSha256 ? `  •  SHA-256 ${source.sourceSha256}` : ""}`,
             color: MUTED,
             size: 15,
           })]),

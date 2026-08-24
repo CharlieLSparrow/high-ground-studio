@@ -13,6 +13,10 @@ import {
   TranscriptCorrectionError,
 } from "@/lib/server/transcript-corrections";
 import { newestCoherentRecordingTake } from "@/lib/server/session-recording-share";
+import {
+  assembleSessionTranscriptProgramClock,
+  SessionTranscriptAssemblyError,
+} from "@/lib/server/session-transcript-assembly";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,8 +46,15 @@ type TranscriptSourceCandidate = {
   kind: string;
   checksum: string | null;
   recordedStartedAt: Date;
+  localManifestJson: unknown;
   transcriptJobs: Array<{ id: string; createdAt: Date }>;
 };
+
+function object(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
 
 function isParticipantIsolatedDesk(desk: any) {
   return desk?.processing?.routing?.sourceTopology === "participant-isolated"
@@ -91,7 +102,17 @@ async function readCompleteCoachingTranscript(input: {
     programOffsetSeconds: 0,
   };
   if (!isParticipantIsolatedDesk(anchor)) {
-    return { desks: [anchor], sources: [anchorSource], segments: anchor.segments };
+    const programClock = assembleSessionTranscriptProgramClock([{
+      recordingAssetId: anchor.recording.id,
+      transcriptJobId: anchor.transcriptJobId,
+      recordedStartedAt: anchor.recording.recordedStartedAt ?? anchor.createdAt ?? new Date(0),
+    }]);
+    return {
+      desks: [anchor],
+      sources: [{ ...anchorSource, ...programClock.sources[0] }],
+      segments: anchor.segments,
+      programClock,
+    };
   }
 
   const reportParticipants = anchor.participants.filter((participant: any) => ["COACH", "HOST", "CLIENT"].includes(text(participant.role).toUpperCase()));
@@ -124,6 +145,7 @@ async function readCompleteCoachingTranscript(input: {
       kind: true,
       checksum: true,
       recordedStartedAt: true,
+      localManifestJson: true,
       transcriptJobs: {
         where: { status: "COMPLETED" },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -147,9 +169,20 @@ async function readCompleteCoachingTranscript(input: {
     actor: input.actor,
     recordingAssetId: source.id,
   })));
-  const originMs = Math.min(...completeSources.map((source) => source.recordedStartedAt.getTime()));
+  const programClock = assembleSessionTranscriptProgramClock(completeSources.map((source) => {
+    const manifest = object(source.localManifestJson);
+    return {
+      recordingAssetId: source.id,
+      transcriptJobId: source.transcriptJobs[0].id,
+      captureGroupId: text(manifest.captureGroupId) || null,
+      recordedStartedAt: source.recordedStartedAt,
+      alignment: manifest.alignment,
+    };
+  }));
+  const timingByRecordingId = new Map(programClock.sources.map((source) => [source.recordingAssetId, source]));
   const sources = desks.map((desk, index) => {
     const selectedSource = completeSources[index];
+    const timing = timingByRecordingId.get(selectedSource.id);
     if (
       !desk.gate.allowed
       || !desk.transcriptJobId
@@ -157,6 +190,7 @@ async function readCompleteCoachingTranscript(input: {
       || desk.recording?.participantId !== selectedSource.participantId
       || !isParticipantIsolatedDesk(desk)
       || text(desk.sourceSha256).toLowerCase() !== text(selectedSource.checksum).toLowerCase()
+      || !timing
     ) {
       throw new CoachingTranscriptReportError(
         "One participant transcript no longer matches its verified source recording. Refresh the Session before exporting.",
@@ -169,7 +203,11 @@ async function readCompleteCoachingTranscript(input: {
       recordingAssetId: selectedSource.id,
       sourceSha256: desk.sourceSha256,
       participantId: selectedSource.participantId,
-      programOffsetSeconds: Math.max(0, (selectedSource.recordedStartedAt.getTime() - originMs) / 1_000),
+      programOffsetSeconds: timing.programOffsetSeconds,
+      timingAuthority: timing.timingAuthority,
+      timingUncertaintyMilliseconds: timing.timingUncertaintyMilliseconds,
+      timingReviewRequired: timing.timingReviewRequired,
+      sampleAccurateClaimed: timing.sampleAccurateClaimed,
     };
   });
   const segments = desks.flatMap((desk, index) => desk.segments.map((segment: any) => ({
@@ -177,10 +215,8 @@ async function readCompleteCoachingTranscript(input: {
     transcriptJobId: sources[index].transcriptJobId,
     recordingAssetId: sources[index].recordingAssetId,
     speakerAttribution: { participantId: sources[index].participantId },
-    startSeconds: sources[index].programOffsetSeconds + Number(segment.startSeconds),
-    endSeconds: sources[index].programOffsetSeconds + Number(segment.endSeconds),
   })));
-  return { desks, sources, segments };
+  return { desks, sources, segments, programClock };
 }
 
 export async function GET(request: Request, context: { params: Promise<{ roomId: string }> }) {
@@ -248,9 +284,14 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
         "Content-Length": String(document.byteLength),
         "X-Quipsly-Transcript-Schema": report.schema,
         "X-Quipsly-Transcript-Source-Count": String(report.sources.length),
+        "X-Quipsly-Transcript-Timing": complete.programClock.authority,
+        "X-Quipsly-Transcript-Waveform-Review": complete.programClock.waveformReviewRequired ? "required" : "not-required",
       },
     });
   } catch (error) {
+    if (error instanceof SessionTranscriptAssemblyError) {
+      return privateJson({ ok: false, code: error.code, error: error.message }, 409);
+    }
     if (error instanceof CoachingTranscriptReportError || error instanceof TranscriptCorrectionError) {
       return privateJson({ ok: false, code: error.code, error: error.message }, error.status);
     }
