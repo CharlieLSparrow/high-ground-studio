@@ -2056,3 +2056,33 @@ physical device, local Firebase and mailbox adapters rather than production
 identity and external email, and no human comprehension or 50-coach load
 claim. The invitation's standard Share path was present because outbound email
 is intentionally unconfigured in this local flight.
+
+## Fresh invited-client and native recorder recovery flight — 2026-08-24
+
+The complete native recovery flight passed from exact pushed source
+`2e8f012844a46da89ca8a00de825647977a283b5` with a clean tracked worktree at
+start. It created fresh ordinary coach and client accounts and a fresh Session,
+then opened the rendered client invitation in a fresh compiled Capture app. The
+app reauthorized the exact invited client and canonical Session without joining
+the call or beginning a recording automatically. The client and coach each
+completed the ordinary in-product consent flow; the recording consent included
+transcription by default.
+
+The coach recorded a real `AVAudioRecorder` take, added a mark, stopped and
+saved it, played the immutable local source, and reached server-verified byte
+size and SHA-256 evidence. Another take remained directly reachable after
+Library re-entry. The harness then terminated the app during that second take,
+relaunched against an unavailable server, and found both exact local source
+identities. The finalized source remained playable offline; the crash-open
+receipt was preserved without falsely claiming its bytes playable or its take
+still active. Reconnection retained those identities and the verified first
+source completed a durable Studio handoff.
+
+Receipt:
+`artifacts/coaching-acceptance/4b63e92b/native-capture-recovery-receipt.json`.
+The native client-entry and recovery UI tests each passed 1/1 with no unexpected
+runtime warnings. The flight used a fresh simulator container and pre-granted
+simulator microphone permission, so it does not claim first-run system-prompt
+UX, physical microphone or camera behavior, natural speech, human listening,
+novice comprehension, TestFlight networking, or production scale. Those remain
+physical/human release checks rather than hidden assumptions in this evidence.
