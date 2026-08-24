@@ -132,11 +132,18 @@ struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let proposals: [CaptureTranscriptCorrection]
     let correctionHistory: [CaptureTranscriptCorrection]
     var downstreamImpacts: [CaptureTranscriptDownstreamImpact]? = nil
+    var sourcePlayback: CaptureTranscriptPlayback? = nil
 
     var playbackStartSeconds: TimeInterval { sourceStartSeconds ?? startSeconds }
     var playbackEndSeconds: TimeInterval { sourceEndSeconds ?? endSeconds }
     var sessionStartSeconds: TimeInterval { programStartSeconds ?? startSeconds }
     var sessionEndSeconds: TimeInterval { programEndSeconds ?? endSeconds }
+}
+
+struct CaptureTranscriptProtectedSource: Codable, Equatable {
+    let schema: String
+    let sha256: String
+    let byteSize: Int64
 }
 
 struct CaptureTranscriptPlayback: Codable, Equatable {
@@ -146,6 +153,41 @@ struct CaptureTranscriptPlayback: Codable, Equatable {
     let recordingAssetId: String
     let durationSeconds: TimeInterval?
     let label: String
+    var protectedSource: CaptureTranscriptProtectedSource? = nil
+
+    var mobileProtectedSource: MobileCaptureSourceSummary? {
+        guard let protectedSource,
+              protectedSource.schema == "quipsly-session-protected-playback-v1",
+              protectedSource.byteSize > 0,
+              protectedSource.sha256.range(
+                of: #"^[0-9a-f]{64}$"#,
+                options: .regularExpression
+              ) != nil,
+              url.range(
+                of: #"^/api/sessions/[A-Za-z0-9_-]{1,240}/recordings/[A-Za-z0-9_-]{1,240}/media$"#,
+                options: .regularExpression
+              ) != nil,
+              url.hasSuffix("/recordings/\(recordingAssetId)/media") else { return nil }
+        return MobileCaptureSourceSummary(
+            recordingAssetId: recordingAssetId,
+            captureGroupId: nil,
+            fileName: label,
+            kind: kind == "video" ? "LOCAL_VIDEO" : "LOCAL_AUDIO",
+            contentType: kind == "video" ? "video/mp4" : "audio/mp4",
+            recordingStatus: "VERIFIED",
+            exactBytesVerified: true,
+            processingDisposition: "RELEASED",
+            recordedStartedAt: nil,
+            recordedStoppedAt: nil,
+            mediaAssetId: nil,
+            playbackUrl: nil,
+            byteSize: String(protectedSource.byteSize),
+            sha256: protectedSource.sha256,
+            durationSeconds: durationSeconds,
+            sourceId: recordingAssetId,
+            sessionPlaybackUrl: url
+        )
+    }
 }
 
 struct CaptureTranscriptGate: Codable, Equatable {
@@ -2422,13 +2464,23 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
 
     private var player: AVAudioPlayer?
     private var playbackClock: Task<Void, Never>?
-    private var activeRecordingID: UUID?
+    private var activeRecordingAssetID: String?
     private var activeAnchorID: String?
     private var activeSegmentEnd: TimeInterval?
     private var playedSegmentIDs = Set<String>()
     @Published private var confirmedPositionsByAnchorID: [String: TimeInterval] = [:]
     private var pauseAt: TimeInterval?
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
+    private var accountCancellable: AnyCancellable?
+
+    override init() {
+        super.init()
+        accountCancellable = NotificationCenter.default.publisher(
+            for: .quipslyCaptureAccountIdentityDidChange
+        ).sink { [weak self] _ in
+            Task { @MainActor in self?.pause(resetPosition: true) }
+        }
+    }
 
     func play(
         segment: CaptureTranscriptSegment,
@@ -2443,6 +2495,47 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
             recording: recording,
             library: library,
             expectedRecordingAssetID: expectedRecordingAssetID
+        )
+    }
+
+    func play(
+        segment: CaptureTranscriptSegment,
+        recording: LocalRecording?,
+        library: LocalRecordingLibrary,
+        expectedRecordingAssetID: String?,
+        protectedSource: CaptureTranscriptPlayback?,
+        protectedController: CaptureSessionProtectedPlaybackController
+    ) async {
+        if let recording,
+           recording.status.isPlaybackEligible,
+           recording.recordingAssetId == expectedRecordingAssetID,
+           library.fileURL(for: recording) != nil {
+            play(
+                segment: segment,
+                recording: recording,
+                library: library,
+                expectedRecordingAssetID: expectedRecordingAssetID
+            )
+            return
+        }
+        guard let expectedRecordingAssetID,
+              protectedSource?.recordingAssetId == expectedRecordingAssetID,
+              let source = protectedSource?.mobileProtectedSource,
+              let owner = AuthManager.shared.stableOwnerSnapshot(),
+              let fileURL = await protectedController.prepareTranscriptReviewFile(
+                source: source
+              ),
+              AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
+            errorMessage = protectedController.errorMessage
+                ?? "The exact protected Session source could not be prepared on this iPhone."
+            return
+        }
+        playFile(
+            anchorID: segment.id,
+            startSeconds: segment.playbackStartSeconds,
+            endSeconds: segment.playbackEndSeconds,
+            fileURL: fileURL,
+            recordingAssetID: expectedRecordingAssetID
         )
     }
 
@@ -2500,6 +2593,23 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
             return
         }
 
+        playFile(
+            anchorID: anchorID,
+            startSeconds: startSeconds,
+            endSeconds: endSeconds,
+            fileURL: fileURL,
+            recordingAssetID: localAssetID
+        )
+    }
+
+    private func playFile(
+        anchorID: String,
+        startSeconds: TimeInterval,
+        endSeconds: TimeInterval,
+        fileURL: URL,
+        recordingAssetID: String
+    ) {
+        pause(resetPosition: false)
         do {
             try audioSessionCoordinator.beginLocalPlayback()
             let player = try AVAudioPlayer(contentsOf: fileURL)
@@ -2512,11 +2622,12 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
                 throw NSError(domain: "CaptureTranscriptPlayback", code: 2, userInfo: [NSLocalizedDescriptionKey: "The retained recording could not begin playback."])
             }
             self.player = player
-            if let activeRecordingID, activeRecordingID != recording.id {
+            if let activeRecordingAssetID,
+               activeRecordingAssetID != recordingAssetID {
                 confirmedPositionsByAnchorID.removeAll()
                 playedSegmentIDs.removeAll()
             }
-            activeRecordingID = recording.id
+            activeRecordingAssetID = recordingAssetID
             activeAnchorID = anchorID
             activeSegmentEnd = endSeconds
             currentTime = player.currentTime
@@ -2528,14 +2639,17 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
         } catch {
             audioSessionCoordinator.endLocalPlayback()
             player = nil
-            activeRecordingID = nil
+            activeRecordingAssetID = nil
             isPlaying = false
             errorMessage = error.localizedDescription
         }
     }
 
-    func confirmedPosition(for segment: CaptureTranscriptSegment, recording: LocalRecording?) -> TimeInterval? {
-        guard recording?.id == activeRecordingID,
+    func confirmedPosition(
+        for segment: CaptureTranscriptSegment,
+        recordingAssetID: String?
+    ) -> TimeInterval? {
+        guard recordingAssetID == activeRecordingAssetID,
               playedSegmentIDs.contains(segment.id),
               let position = confirmedPositionsByAnchorID[segment.id],
               position >= max(segment.playbackStartSeconds, segment.playbackEndSeconds - 0.25),
@@ -2543,8 +2657,11 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
         return position
     }
 
-    func confirmedPosition(for sample: CaptureTranscriptSpeakerSample, recording: LocalRecording?) -> TimeInterval? {
-        guard recording?.id == activeRecordingID,
+    func confirmedPosition(
+        for sample: CaptureTranscriptSpeakerSample,
+        recordingAssetID: String?
+    ) -> TimeInterval? {
+        guard recordingAssetID == activeRecordingAssetID,
               playedSegmentIDs.contains(sample.segmentId),
               let position = confirmedPositionsByAnchorID[sample.segmentId],
               position >= max(sample.startSeconds, sample.endSeconds - 0.25),
@@ -2560,7 +2677,7 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
         isPlaying = false
         if resetPosition {
             player = nil
-            activeRecordingID = nil
+            activeRecordingAssetID = nil
             activeAnchorID = nil
             activeSegmentEnd = nil
             currentTime = 0
@@ -2739,6 +2856,7 @@ struct CaptureTranscriptReviewView: View {
 
     @StateObject private var client = CaptureTranscriptCorrectionClient()
     @StateObject private var playback = CaptureTranscriptPlaybackController()
+    @StateObject private var protectedSessionPlayback = CaptureSessionProtectedPlaybackController()
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var scrollTargetSegmentID: String?
     @State private var packetCandidateFilter = CapturePacketCandidateReviewFilter.open
@@ -3135,6 +3253,8 @@ struct CaptureTranscriptReviewView: View {
                             canUseProjectTeamNotes: canUseProjectTeamNotes,
                             client: client,
                             playback: playback,
+                            protectedSource: segment.sourcePlayback ?? desk.playback,
+                            protectedPlayback: protectedSessionPlayback,
                             library: library
                         )
                         .id(segment.id)
@@ -3210,18 +3330,27 @@ struct CaptureTranscriptReviewView: View {
                 HStack(spacing: 8) {
                     Button {
                         let expectedRecordingAssetID = segment.recordingAssetId ?? desk.playback?.recordingAssetId
-                        playback.play(
-                            segment: segment,
-                            recording: recording,
-                            library: library,
-                            expectedRecordingAssetID: expectedRecordingAssetID
-                        )
+                        Task {
+                            await playback.play(
+                                segment: segment,
+                                recording: recording,
+                                library: library,
+                                expectedRecordingAssetID: expectedRecordingAssetID,
+                                protectedSource: segment.sourcePlayback ?? desk.playback,
+                                protectedController: protectedSessionPlayback
+                            )
+                        }
                     } label: {
                         Label("Play", systemImage: "play.fill")
                             .frame(minHeight: 36)
                     }
                     .buttonStyle(.bordered)
-                    .disabled(!hasExactLocalSource(expectedRecordingAssetID: segment.recordingAssetId ?? desk.playback?.recordingAssetId) || client.isMutating)
+                    .disabled(
+                        !canPlay(
+                            segment: segment,
+                            desk: desk
+                        ) || client.isMutating
+                    )
                     Button("Review") {
                         transcriptPresentationMode = .timeline
                         // The conversation row and precision editor intentionally
@@ -3261,6 +3390,18 @@ struct CaptureTranscriptReviewView: View {
             let label = captureTranscriptNonempty(candidate.speakerLabel) ?? "Unlabelled speaker"
             if !labels.contains(label) { labels.append(label) }
         }
+    }
+
+    private func canPlay(
+        segment: CaptureTranscriptSegment,
+        desk: CaptureTranscriptCorrectionDesk
+    ) -> Bool {
+        let expectedRecordingAssetID = segment.recordingAssetId
+            ?? desk.playback?.recordingAssetId
+        return !previewOnly && (
+            hasExactLocalSource(expectedRecordingAssetID: expectedRecordingAssetID)
+            || (segment.sourcePlayback ?? desk.playback)?.mobileProtectedSource != nil
+        )
     }
 
     private func hasExactLocalSource(expectedRecordingAssetID: String?) -> Bool {
@@ -5610,7 +5751,10 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
 
     @ViewBuilder
     private func speakerSample(_ sample: CaptureTranscriptSpeakerSample) -> some View {
-        let livePosition = playback.confirmedPosition(for: sample, recording: recording)
+        let livePosition = playback.confirmedPosition(
+            for: sample,
+            recordingAssetID: expectedRecordingAssetID
+        )
         let chosenPosition = confirmedSamplePositions[sample.segmentId]
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .top) {
@@ -5699,6 +5843,8 @@ private struct CaptureTranscriptSegmentCard: View {
     let canUseProjectTeamNotes: Bool
     @ObservedObject var client: CaptureTranscriptCorrectionClient
     @ObservedObject var playback: CaptureTranscriptPlaybackController
+    let protectedSource: CaptureTranscriptPlayback?
+    @ObservedObject var protectedPlayback: CaptureSessionProtectedPlaybackController
     let library: LocalRecordingLibrary
 
     @State private var isEditing = false
@@ -5742,18 +5888,22 @@ private struct CaptureTranscriptSegmentCard: View {
                 }
                 Spacer(minLength: 12)
                 Button {
-                    playback.play(
-                        segment: segment,
-                        recording: recording,
-                        library: library,
-                        expectedRecordingAssetID: expectedRecordingAssetID
-                    )
+                    Task {
+                        await playback.play(
+                            segment: segment,
+                            recording: recording,
+                            library: library,
+                            expectedRecordingAssetID: expectedRecordingAssetID,
+                            protectedSource: protectedSource,
+                            protectedController: protectedPlayback
+                        )
+                    }
                 } label: {
                     Label("Play", systemImage: "play.fill")
                         .frame(minHeight: 44)
                 }
                 .buttonStyle(.bordered)
-                .disabled(!hasExactLocalSource || client.isMutating)
+                .disabled(!canPlaySource || client.isMutating)
                 .accessibilityLabel("Play transcript segment from Session time \(segment.sessionStartSeconds.captureTranscriptTimestamp)")
                 .accessibilityIdentifier("CaptureTranscriptPlayButton_\(segment.id)")
             }
@@ -6525,7 +6675,10 @@ private struct CaptureTranscriptSegmentCard: View {
     }
 
     private var playbackPosition: TimeInterval? {
-        playback.confirmedPosition(for: segment, recording: recording)
+        playback.confirmedPosition(
+            for: segment,
+            recordingAssetID: expectedRecordingAssetID
+        )
     }
 
     private var hasExactLocalSource: Bool {
@@ -6535,6 +6688,16 @@ private struct CaptureTranscriptSegmentCard: View {
               recording.recordingAssetId == expectedRecordingAssetID,
               recording.status.isPlaybackEligible else { return false }
         return library.fileURL(for: recording) != nil
+    }
+
+    private var canPlaySource: Bool {
+        !previewOnly && (
+            hasExactLocalSource
+            || (
+                protectedSource?.recordingAssetId == expectedRecordingAssetID
+                && protectedSource?.mobileProtectedSource != nil
+            )
+        )
     }
 
     private var pendingDecision: PendingTranscriptReviewDecision? {

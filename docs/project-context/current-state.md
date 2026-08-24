@@ -3634,8 +3634,10 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   directly from its authenticated Session route without waiting for Studio
   promotion. Correction and speaker-attribution mutations reconstruct the same
   server authority before accepting playback evidence.
-- One hundred focused tests, strict Quipsly TypeScript, and both release static
-  gates pass. Capture remains fail-closed for another participant's
-  playback-backed transcript review until its protected downloader is connected
-  to transcript listened-position receipts. Detailed decision record:
+- One hundred focused tests, strict Quipsly TypeScript, both release static
+  gates, and a signing-independent iOS Simulator build pass. Capture now reuses
+  its verified protected Session cache for a non-local passage and keys the
+  listened-through position to that passage's expected RecordingAsset. Real
+  two-account download, listening, correction, and wrong-source refusal remain
+  deferred evidence. Detailed decision record:
   `docs/coordination/2026-08-24-session-protected-transcript-playback.md`.

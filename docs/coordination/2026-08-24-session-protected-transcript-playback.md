@@ -44,11 +44,15 @@ copies, mutates, or replaces source media.
 - Strict Quipsly TypeScript passes.
 - The App Store static gate and broader mobile Capture contract gate pass.
 
-## Honest native boundary
+## Native transcript review
 
-Capture still authorizes transcript corrections only against the exact retained
-original already on that iPhone. The existing Session protected-download
-controller uses the same route and receipt shape, but it is not yet connected to
-the transcript review player's listened-position receipts. Until that connection
-is made and tested, another participant's passage remains readable on iPhone but
-cannot be called playback-reviewed there.
+Capture decodes the protected binding carried by each passage. If the matching
+local original is absent, it reuses the existing account-bound Session download
+cache, repeats byte-count and SHA-256 verification, and hands only that verified
+file to the transcript player. The transcript player keys its listened-through
+position to the expected RecordingAsset before correction controls unlock.
+
+This is compile- and contract-qualified, not physical-device acceptance. A real
+two-account flight must still prove the second participant source downloads,
+plays the intended words, unlocks only its own passage, survives refresh, and
+cannot be substituted with another retained or cached source.

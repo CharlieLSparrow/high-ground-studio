@@ -1234,6 +1234,7 @@ function checkTranscriptCorrectionContractSources() {
   const transcriptSourceSpanText = sourceText("apps/quipsly/src/lib/server/transcript-source-span.ts");
   const coachingPacketText = sourceText("apps/quipsly/src/lib/server/coaching-packets.ts");
   const nativeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptCorrectionReview.swift");
+  const nativeSessionPlaybackText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureSessionProtectedPlayback.swift");
   const nativeAudioAttentionText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureTranscriptAudioAttention.swift");
   const nativeAudioAttentionHarnessText = sourceText("apps/mobile-capture/HighGroundCapture/Testing/CaptureTranscriptAudioAttentionHarness.swift");
   const nativeRecordingShareText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureRecordingShare.swift");
@@ -1423,6 +1424,12 @@ function checkTranscriptCorrectionContractSources() {
     nativeText.includes("CaptureTranscriptReviewView")
       && nativeText.includes("recording.recordingAssetId == expectedRecordingAssetID")
       && nativeText.includes("confirmedPosition(for segment")
+      && nativeText.includes("sourcePlayback: CaptureTranscriptPlayback?")
+      && nativeText.includes("protectedSource?.recordingAssetId == expectedRecordingAssetID")
+      && nativeText.includes("recordingAssetID: expectedRecordingAssetID")
+      && nativeText.includes(".quipslyCaptureAccountIdentityDidChange")
+      && nativeText.includes("AuthManager.shared.matchesStableOwnerSnapshot(owner)")
+      && nativeSessionPlaybackText.includes("prepareTranscriptReviewFile")
       && nativeText.includes("AI proposal · not transcript truth")
       && nativeText.includes("Preview data — no server actions")
       && nativeText.includes("This iPhone does not have the exact recording asset behind this transcript")

@@ -176,6 +176,25 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
         }
     }
 
+    /// Reuses the verified Session cache for transcript review. The caller gets
+    /// only the account-bound file that passed the same receipt, byte-count,
+    /// and SHA-256 checks as the ordinary protected playback sheet.
+    func prepareTranscriptReviewFile(
+        source: MobileCaptureSourceSummary
+    ) async -> URL? {
+        await prepare(source: source)
+        guard preparedSourceID == source.recordingAssetId,
+              let binding = binding(for: source),
+              let owner = AuthManager.shared.stableOwnerSnapshot(),
+              let locations = cacheLocations(binding: binding, owner: owner),
+              FileManager.default.fileExists(atPath: locations.media.path),
+              AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
+            return nil
+        }
+        close()
+        return locations.media
+    }
+
     func togglePlayback() {
         guard let player, preparedSourceID != nil else {
             errorMessage = "Prepare the exact recording before playback."

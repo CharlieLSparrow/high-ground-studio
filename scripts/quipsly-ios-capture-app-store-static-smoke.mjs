@@ -71,6 +71,7 @@ const files = {
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
   captureRecordingShare: path.join(sourceRoot, "CaptureRecordingShare.swift"),
   transcriptReview: path.join(sourceRoot, "TranscriptCorrectionReview.swift"),
+  sessionProtectedPlayback: path.join(sourceRoot, "CaptureSessionProtectedPlayback.swift"),
   transcriptReviewDecisionOutbox: path.join(sourceRoot, "TranscriptReviewDecisionOutbox.swift"),
   captureAudioDecisionOutbox: path.join(sourceRoot, "CaptureAudioDecisionOutbox.swift"),
   onDeviceTranscriptManager: path.join(sourceRoot, "OnDeviceTranscriptManager.swift"),
@@ -225,6 +226,7 @@ const captureCalendarEventEditorText = read(files.captureCalendarEventEditor);
 const captureSupportSnapshotText = read(files.captureSupportSnapshot);
 const captureRecordingShareText = read(files.captureRecordingShare);
 const transcriptReviewText = read(files.transcriptReview);
+const sessionProtectedPlaybackText = read(files.sessionProtectedPlayback);
 const transcriptReviewDecisionOutboxText = read(files.transcriptReviewDecisionOutbox);
 const captureAudioDecisionOutboxText = read(files.captureAudioDecisionOutbox);
 const onDeviceTranscriptManagerText = read(files.onDeviceTranscriptManager);
@@ -1805,6 +1807,36 @@ requireIncludes(
   transcriptReviewText,
   "CaptureTranscriptSegmentVerification",
   "native transcript review decodes the append-only verification receipt",
+);
+requireIncludes(
+  transcriptReviewText,
+  "sourcePlayback: CaptureTranscriptPlayback?",
+  "native transcript passages retain their exact participant playback binding",
+);
+requireIncludes(
+  transcriptReviewText,
+  "protectedSource?.recordingAssetId == expectedRecordingAssetID",
+  "native protected playback refuses a different transcript source identity",
+);
+requireIncludes(
+  transcriptReviewText,
+  "recordingAssetID: expectedRecordingAssetID",
+  "native listened-position receipts remain keyed to the expected RecordingAsset",
+);
+requireIncludes(
+  transcriptReviewText,
+  ".quipslyCaptureAccountIdentityDidChange",
+  "native transcript playback discards listening authority when the account changes",
+);
+requireIncludes(
+  transcriptReviewText,
+  "AuthManager.shared.matchesStableOwnerSnapshot(owner)",
+  "native protected transcript playback rechecks account ownership after preparation",
+);
+requireIncludes(
+  sessionProtectedPlaybackText,
+  "prepareTranscriptReviewFile",
+  "transcript review reuses the verified account-bound Session playback cache",
 );
 requireIncludes(bridgeText, "visibleRecordingIndicatorRequired", "readiness recording policy");
 requireIncludes(bridgeText, "api/account/deletion-request", "native deletion request client");
