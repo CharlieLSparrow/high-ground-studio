@@ -3604,3 +3604,22 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   Real two-device waveform correlation, late-drift measurement, and transcript
   readback remain in the deferred validation ledger. Detailed decision record:
   `docs/coordination/2026-08-24-session-transcript-program-clock.md`.
+
+### 2026-08-24 Session transcript correction assembly
+
+- The ordinary transcript correction endpoint now assembles ready
+  participant-isolated sources instead of returning only the newest job.
+  Focused-source reads remain exactly scoped to one RecordingAsset.
+- A shared selector respects capture-group identity before the legacy coherent
+  wall-time fallback. Every passage retains transcript, recording, source-local,
+  Session-program, and protected-playback coordinates.
+- Correction mutations locate the job that owns the segment rather than
+  assuming the newest job owns all Session passages.
+- Browser playback switches to the passage's exact participant source before
+  seeking, and review coverage is source-qualified. Capture displays Session
+  time but seeks on source time and refuses to borrow a different local original.
+- Forty-seven focused server tests, 26 browser interaction tests, strict Quipsly
+  TypeScript, and a signing-independent iOS Simulator build pass. Real
+  two-source playback, correction/readback, and wrong-source iPhone rejection
+  remain in the deferred validation ledger. Detailed decision record:
+  `docs/coordination/2026-08-24-session-transcript-correction-assembly.md`.

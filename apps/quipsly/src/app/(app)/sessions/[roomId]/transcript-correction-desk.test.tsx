@@ -638,6 +638,46 @@ describe("TranscriptCorrectionDesk", () => {
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
   });
 
+  it("switches to the exact participant source before playing an assembled Session turn", async () => {
+    const assembled = desk(true) as any;
+    const clientPlayback = {
+      sourceId: "source-2",
+      url: "/api/ingest/media/source-2",
+      kind: "audio",
+      recordingAssetId: "asset-2",
+      durationSeconds: 60,
+      label: "Client source",
+    };
+    assembled.sessionTranscript = {
+      schema: "quipsly-session-transcript-correction-desk-v1",
+      status: "assembled",
+      reason: "Clock proposal ready; waveform review remains required.",
+      sourceCount: 2,
+      programClock: { authority: "capture-clock-proposal", waveformReviewRequired: true, sampleAccurateClaimed: false },
+      sources: [
+        { transcriptJobId: "job-1", recordingAssetId: "asset-1", participantId: "coach", playback: assembled.playback, programOffsetSeconds: 0, timingAuthority: "capture-clock-proposal", timingUncertaintyMilliseconds: 35, timingReviewRequired: true, sampleAccurateClaimed: false },
+        { transcriptJobId: "job-2", recordingAssetId: "asset-2", participantId: "client", playback: clientPlayback, programOffsetSeconds: 0.625, timingAuthority: "capture-clock-proposal", timingUncertaintyMilliseconds: 48, timingReviewRequired: true, sampleAccurateClaimed: false },
+      ],
+    };
+    assembled.segments = [
+      { ...segment, transcriptJobId: "job-1", recordingAssetId: "asset-1", sourceStartSeconds: 3.66, sourceEndSeconds: 4.84, programStartSeconds: 3.66, programEndSeconds: 4.84, sourcePlayback: assembled.playback },
+      { ...segment, id: "client-turn", transcriptJobId: "job-2", recordingAssetId: "asset-2", speakerLabel: "Client", providerSpeakerLabel: "Client", startSeconds: 2, endSeconds: 3, sourceStartSeconds: 2, sourceEndSeconds: 3, programStartSeconds: 2.625, programEndSeconds: 3.625, text: "One clear next step.", providerText: "One clear next step.", words: [], sourcePlayback: clientPlayback },
+    ];
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => assembled })) as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("One clear next step.");
+    await markProtectedPlaybackReady();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /play transcript segment from session time 00:02/i })); });
+    const clientMedia = await screen.findByLabelText("Protected session recording") as HTMLMediaElement;
+    fireEvent.loadedMetadata(clientMedia);
+
+    await waitFor(() => expect(clientMedia.getAttribute("src")).toBe("/api/ingest/media/source-2"));
+    expect(clientMedia.currentTime).toBe(2);
+    expect(screen.getByText(/2 participant recordings on one session timeline/i)).toBeInTheDocument();
+    expect(screen.getByText(/waveform and drift review still required/i)).toBeInTheDocument();
+  });
+
   it("creates an explicit self-owned task with the exact provider segment identity", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })

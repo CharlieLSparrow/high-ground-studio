@@ -7,10 +7,10 @@ import {
   attributeTranscriptSpeaker,
   confirmTranscriptSegmentAsIs,
   createTranscriptCorrection,
-  readTranscriptCorrectionDesk,
   reviewTranscriptCorrectionProposal,
   TranscriptCorrectionError,
 } from "@/lib/server/transcript-corrections";
+import { readSessionTranscriptCorrectionDesk } from "@/lib/server/session-transcript-correction-desk";
 import {
   approveTranscriptEvaluationWindow,
   readTranscriptEvaluationReadiness,
@@ -98,7 +98,7 @@ export async function GET(request: Request) {
     );
   }
   try {
-    const result = await readTranscriptCorrectionDesk({
+    const result = await readSessionTranscriptCorrectionDesk({
       prisma: getPrismaClient() as any,
       roomId,
       actor: actorFromSession(session),

@@ -12,11 +12,14 @@ import {
   readTranscriptCorrectionDesk,
   TranscriptCorrectionError,
 } from "@/lib/server/transcript-corrections";
-import { newestCoherentRecordingTake } from "@/lib/server/session-recording-share";
 import {
   assembleSessionTranscriptProgramClock,
   SessionTranscriptAssemblyError,
 } from "@/lib/server/session-transcript-assembly";
+import {
+  selectSessionTranscriptSources,
+  type SessionTranscriptSourceCandidate,
+} from "@/lib/server/session-transcript-source-selection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,7 +43,7 @@ function contentDisposition(filename: string) {
   return `attachment; filename="${ascii.replaceAll('"', "")}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
-type TranscriptSourceCandidate = {
+type TranscriptSourceCandidate = SessionTranscriptSourceCandidate & {
   id: string;
   participantId: string | null;
   kind: string;
@@ -59,31 +62,6 @@ function object(value: unknown): Record<string, unknown> {
 function isParticipantIsolatedDesk(desk: any) {
   return desk?.processing?.routing?.sourceTopology === "participant-isolated"
     && desk.processing.routing.speakerAuthority === "source-binding";
-}
-
-function selectCoherentTranscriptSources(
-  rows: TranscriptSourceCandidate[],
-  participantIds: string[],
-  anchorRecordingAssetId?: string | null,
-) {
-  const sorted = [...rows].sort((left, right) => left.recordedStartedAt.getTime() - right.recordedStartedAt.getTime());
-  const anchor = sorted.find((row) => row.id === anchorRecordingAssetId) ?? null;
-  const take = anchor
-    ? newestCoherentRecordingTake(sorted.filter((row) => (
-      Math.abs(row.recordedStartedAt.getTime() - anchor.recordedStartedAt.getTime()) <= 30_000
-    )))
-    : newestCoherentRecordingTake(sorted);
-  return participantIds.map((participantId) => {
-    const candidates = take.filter((row) => row.participantId === participantId && row.transcriptJobs[0]?.id);
-    return candidates.sort((left, right) => {
-      if (left.id === anchorRecordingAssetId) return -1;
-      if (right.id === anchorRecordingAssetId) return 1;
-      const kindPriority = (kind: string) => kind === "LOCAL_AUDIO" ? 0 : kind === "LOCAL_VIDEO" ? 1 : 2;
-      return kindPriority(left.kind) - kindPriority(right.kind)
-        || right.transcriptJobs[0].createdAt.getTime() - left.transcriptJobs[0].createdAt.getTime()
-        || left.id.localeCompare(right.id);
-    })[0] ?? null;
-  });
 }
 
 async function readCompleteCoachingTranscript(input: {
@@ -154,7 +132,11 @@ async function readCompleteCoachingTranscript(input: {
       },
     },
   }) as TranscriptSourceCandidate[];
-  const selected = selectCoherentTranscriptSources(rows, participantIds, input.recordingAssetId ?? anchor.recording.id);
+  const selected = selectSessionTranscriptSources({
+    rows,
+    participantIds,
+    anchorRecordingAssetId: input.recordingAssetId ?? anchor.recording.id,
+  });
   if (selected.some((source) => !source)) {
     throw new CoachingTranscriptReportError(
       "The complete mentor transcript is still preparing. Wait for both participant recordings to finish transcribing.",

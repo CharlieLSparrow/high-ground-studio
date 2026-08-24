@@ -75,14 +75,30 @@ type SessionParticipant = {
   isCurrentActor: boolean;
 };
 
+type TranscriptPlayback = {
+  sourceId: string;
+  url: string;
+  kind: "audio" | "video";
+  recordingAssetId: string;
+  durationSeconds: number | null;
+  label: string;
+};
+
 type Segment = {
   id: string;
+  transcriptJobId?: string;
+  recordingAssetId?: string;
   speakerLabel: string | null;
   providerSpeakerLabel: string | null;
   speakerAuthority?: TranscriptSourceSpeakerAuthority | null;
   sourceBoundParticipantId?: string | null;
   startSeconds: number;
   endSeconds: number;
+  sourceStartSeconds?: number;
+  sourceEndSeconds?: number;
+  programStartSeconds?: number;
+  programEndSeconds?: number;
+  sourcePlayback?: TranscriptPlayback | null;
   text: string;
   providerText: string;
   providerTextSha256: string;
@@ -225,13 +241,28 @@ type Desk = {
     durationSeconds: number | null;
     eligibleForProtectedPlaybackPreparation: boolean;
   };
-  playback: null | {
-    sourceId: string;
-    url: string;
-    kind: "audio" | "video";
-    recordingAssetId: string;
-    durationSeconds: number | null;
-    label: string;
+  playback: TranscriptPlayback | null;
+  sessionTranscript?: {
+    schema: "quipsly-session-transcript-correction-desk-v1";
+    status: "single-source" | "assembled" | "incomplete" | "held";
+    reason: string;
+    sourceCount: number;
+    programClock: null | {
+      authority: "single-source-origin" | "capture-clock-proposal" | "reported-wall-clock-fallback";
+      waveformReviewRequired: boolean;
+      sampleAccurateClaimed: false;
+    };
+    sources: Array<{
+      transcriptJobId: string;
+      recordingAssetId: string;
+      participantId: string | null;
+      playback: TranscriptPlayback | null;
+      programOffsetSeconds: number;
+      timingAuthority: string;
+      timingUncertaintyMilliseconds: number | null;
+      timingReviewRequired: boolean;
+      sampleAccurateClaimed: false;
+    }>;
   };
   spectralContext?: null | {
     projectSlug: string;
@@ -1147,6 +1178,8 @@ function CorrectionEditor({
   onEditRecording?: (segment: Segment) => void;
   onSaved: (message: string) => Promise<void>;
 }) {
+  const programStartSeconds = segment.programStartSeconds ?? segment.startSeconds;
+  const programEndSeconds = segment.programEndSeconds ?? segment.endSeconds;
   const [editing, setEditing] = useState(false);
   const [correctedText, setCorrectedText] = useState(segment.text);
   const [correctedSpeaker, setCorrectedSpeaker] = useState(segment.speakerLabel || "");
@@ -1154,11 +1187,11 @@ function CorrectionEditor({
   const [error, setError] = useState<string | null>(null);
   const [creatingTask, setCreatingTask] = useState(false);
   const [taskTitle, setTaskTitle] = useState(segment.text.slice(0, 180));
-  const [taskDetail, setTaskDetail] = useState(`From ${timestampForSeconds(segment.startSeconds)}–${timestampForSeconds(segment.endSeconds)}: ${segment.text}`);
+  const [taskDetail, setTaskDetail] = useState(`From ${timestampForSeconds(programStartSeconds)}–${timestampForSeconds(programEndSeconds)} on the Session timeline: ${segment.text}`);
   const [taskRequestId, setTaskRequestId] = useState(() => requestId(`task-${segment.id}`));
   const [creatingGoal, setCreatingGoal] = useState(false);
   const [goalTitle, setGoalTitle] = useState(segment.text.slice(0, 180));
-  const [goalDescription, setGoalDescription] = useState(`Source commitment at ${timestampForSeconds(segment.startSeconds)}–${timestampForSeconds(segment.endSeconds)}: ${segment.text}`);
+  const [goalDescription, setGoalDescription] = useState(`Source commitment at ${timestampForSeconds(programStartSeconds)}–${timestampForSeconds(programEndSeconds)} on the Session timeline: ${segment.text}`);
   const [goalRequestId, setGoalRequestId] = useState(() => requestId(`goal-${segment.id}`));
   const [creatingNote, setCreatingNote] = useState(false);
   const [noteTitle, setNoteTitle] = useState(`Note — ${segment.text}`.slice(0, 180));
@@ -1360,8 +1393,9 @@ function CorrectionEditor({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-wide text-sky-800">
-            {timestampForSeconds(segment.startSeconds)}–{timestampForSeconds(segment.endSeconds)} · {segment.speakerLabel || "Unlabelled speaker"}
+            {timestampForSeconds(programStartSeconds)}–{timestampForSeconds(programEndSeconds)} · {segment.speakerLabel || "Unlabelled speaker"}
           </p>
+          {segment.programStartSeconds !== undefined && segment.sourceStartSeconds !== undefined ? <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-sky-700">Session time · protected source {timestampForSeconds(segment.sourceStartSeconds)}</p> : null}
           <TranscriptSpeakerEvidenceBadge authority={segment.speakerAuthority} />
           <p className="mt-2 text-sm font-semibold leading-relaxed text-[#5f4d37]">{segment.text}</p>
           {segment.words.length > 0 && (
@@ -1372,7 +1406,7 @@ function CorrectionEditor({
               <p className="mt-2 text-xs font-semibold leading-relaxed text-sky-800">
                 Choose a provider word to play its exact immutable timestamp. Reviewed corrections above never move these anchors.
               </p>
-              <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={`Timed words from ${timestampForSeconds(segment.startSeconds)}`}>
+              <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={`Timed words from protected source ${timestampForSeconds(segment.sourceStartSeconds ?? segment.startSeconds)}`}>
                 {segment.words.map((word) => (
                   <button
                     key={word.id}
@@ -1390,7 +1424,7 @@ function CorrectionEditor({
             </details>
           )}
         </div>
-        <button type="button" onClick={() => void onPlay()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Play transcript segment from ${timestampForSeconds(segment.startSeconds)}`}>
+        <button type="button" onClick={() => void onPlay()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Play transcript segment from Session time ${timestampForSeconds(programStartSeconds)}`}>
           <Play size={14} fill="currentColor" aria-hidden="true" /> Play from here
         </button>
       </div>
@@ -1640,6 +1674,8 @@ export function TranscriptCorrectionDesk({
     filename: string;
   } | null>(null);
   const [listenedSecondBins, setListenedSecondBins] = useState<Set<number>>(() => new Set());
+  const [sourceReviewedSecondBins, setSourceReviewedSecondBins] = useState<Set<string>>(() => new Set());
+  const [activePlayback, setActivePlayback] = useState<TranscriptPlayback | null>(null);
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [playbackState, setPlaybackState] = useState<"absent" | "loading" | "ready" | "error">("absent");
   const [showQualityDetails, setShowQualityDetails] = useState(false);
@@ -1649,14 +1685,17 @@ export function TranscriptCorrectionDesk({
   const [transcriptView, setTranscriptView] = useState<"transcript" | "recording-transcript">("transcript");
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
+  const pendingSourcePlaybackRef = useRef<{ sourceId: string; seconds: number } | null>(null);
   const automaticPlaybackPreparationRef = useRef<string | null>(null);
   const speakerNamingPromptedRef = useRef(false);
-  const playbackReady = Boolean(desk?.playback) && playbackState === "ready";
+  const currentPlayback = activePlayback ?? desk?.playback ?? null;
+  const playbackReady = Boolean(currentPlayback) && playbackState === "ready";
   const detectorDurationSeconds = desk?.playback?.durationSeconds ?? desk?.evaluation?.sourceDurationSeconds ?? desk?.evidence?.audio.signal?.durationSeconds ?? 0;
 
   const openRecordingEditorAt = useCallback((segment: Segment) => {
-    if (!desk?.transcriptJobId) return;
-    setRecordingEditorFocus({ transcriptJobId: desk.transcriptJobId, segmentId: segment.id });
+    const transcriptJobId = segment.transcriptJobId ?? desk?.transcriptJobId;
+    if (!transcriptJobId) return;
+    setRecordingEditorFocus({ transcriptJobId, segmentId: segment.id });
     setShowRecordingEditor(true);
     window.requestAnimationFrame(() => {
       document.getElementById("inline-recording-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1688,8 +1727,11 @@ export function TranscriptCorrectionDesk({
 
   useEffect(() => {
     setListenedSecondBins(new Set());
+    setSourceReviewedSecondBins(new Set());
     setPlaybackSeconds(0);
     lastPlaybackTimeRef.current = null;
+    pendingSourcePlaybackRef.current = null;
+    setActivePlayback(desk?.playback ?? null);
     setPlaybackState(desk?.playback ? ((mediaRef.current?.readyState ?? 0) >= 1 ? "ready" : "loading") : "absent");
   }, [desk?.playback?.sourceId]);
 
@@ -1769,9 +1811,31 @@ export function TranscriptCorrectionDesk({
     })),
   ], [desk?.evidence?.audio.signal?.observations, desk?.evidence?.audio.timelineEvents]);
 
-  async function playFromTime(seconds: number) {
+  function sourceBin(sourceId: string, seconds: number) {
+    return `${sourceId}:${Math.max(0, Math.floor(seconds))}`;
+  }
+
+  function recordPlaybackStart(playback: TranscriptPlayback, seconds: number) {
+    setSourceReviewedSecondBins((current) => {
+      const key = sourceBin(playback.sourceId, seconds);
+      if (current.has(key)) return current;
+      const updated = new Set(current);
+      updated.add(key);
+      return updated;
+    });
+    if (playback.sourceId !== desk?.playback?.sourceId) return;
+    setListenedSecondBins((current) => {
+      const second = Math.max(0, Math.floor(seconds));
+      if (current.has(second)) return current;
+      const updated = new Set(current);
+      updated.add(second);
+      return updated;
+    });
+  }
+
+  async function playActiveSourceAt(seconds: number) {
     const media = mediaRef.current;
-    if (!media || !playbackReady) {
+    if (!media || !playbackReady || !currentPlayback) {
       setMessage(playbackState === "error"
         ? "Protected source bytes are unavailable. Restore or re-import the original before claiming playback review."
         : "Protected playback is still loading. Wait for the source to become ready before reviewing this timestamp.");
@@ -1782,20 +1846,45 @@ export function TranscriptCorrectionDesk({
     setPlaybackSeconds(next);
     try {
       await media.play();
-      setListenedSecondBins((current) => {
-        const second = Math.max(0, Math.floor(next));
-        if (current.has(second)) return current;
-        const updated = new Set(current);
-        updated.add(second);
-        return updated;
-      });
+      recordPlaybackStart(currentPlayback, next);
     } catch {
       setMessage("Playback needs your direct interaction. Press play in the recording controls, then try this timestamp again.");
     }
   }
 
+  async function playSourceAt(playback: TranscriptPlayback, seconds: number) {
+    const next = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+    if (currentPlayback?.sourceId === playback.sourceId && playbackState === "ready") {
+      return playActiveSourceAt(next);
+    }
+    pendingSourcePlaybackRef.current = { sourceId: playback.sourceId, seconds: next };
+    setPlaybackState("loading");
+    setActivePlayback(playback);
+  }
+
+  function selectPlaybackSource(playback: TranscriptPlayback) {
+    mediaRef.current?.pause();
+    pendingSourcePlaybackRef.current = null;
+    lastPlaybackTimeRef.current = null;
+    setPlaybackState("loading");
+    setActivePlayback(playback);
+  }
+
+  async function playFromTime(seconds: number) {
+    if (!currentPlayback) {
+      setMessage("Protected playback is not available for this source yet.");
+      return;
+    }
+    return playSourceAt(currentPlayback, seconds);
+  }
+
   async function playFrom(segment: Segment) {
-    return playFromTime(segment.startSeconds);
+    const playback = segment.sourcePlayback ?? desk?.playback ?? null;
+    if (!playback) {
+      setMessage("This participant source still needs protected playback before it can be reviewed.");
+      return;
+    }
+    return playSourceAt(playback, segment.sourceStartSeconds ?? segment.startSeconds);
   }
 
   function observePlayback(media: HTMLMediaElement, ended = false) {
@@ -1809,7 +1898,14 @@ export function TranscriptCorrectionDesk({
     const contiguous = previousTime !== null && currentTime >= previousTime && currentTime - previousTime <= 1.5;
     const firstSecond = contiguous ? Math.floor(previousTime) : second;
     lastPlaybackTimeRef.current = currentTime;
-    setListenedSecondBins((current) => {
+    if (currentPlayback) {
+      setSourceReviewedSecondBins((current) => {
+        const next = new Set(current);
+        for (let bin = firstSecond; bin <= second; bin += 1) next.add(sourceBin(currentPlayback.sourceId, bin));
+        return next.size === current.size ? current : next;
+      });
+    }
+    if (currentPlayback?.sourceId === desk?.playback?.sourceId) setListenedSecondBins((current) => {
       const next = new Set(current);
       for (let bin = firstSecond; bin <= second; bin += 1) next.add(bin);
       return next.size === current.size ? current : next;
@@ -1818,6 +1914,15 @@ export function TranscriptCorrectionDesk({
 
   function playbackLoaded() {
     setPlaybackState("ready");
+    const pending = pendingSourcePlaybackRef.current;
+    const media = mediaRef.current;
+    if (!pending || !media || pending.sourceId !== currentPlayback?.sourceId || !currentPlayback) return;
+    pendingSourcePlaybackRef.current = null;
+    media.currentTime = pending.seconds;
+    setPlaybackSeconds(pending.seconds);
+    void media.play()
+      .then(() => recordPlaybackStart(currentPlayback, pending.seconds))
+      .catch(() => setMessage("Playback needs your direct interaction. Press play in the recording controls, then try this timestamp again."));
   }
 
   function playbackFailed() {
@@ -1968,12 +2073,12 @@ export function TranscriptCorrectionDesk({
   const timingIntegrity = desk.evidence?.transcript.timingIntegrity ?? null;
   const protectedPlaybackSurface = !desk.gate.allowed ? (
     <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-900">{desk.gate.error || "Transcript evidence remains held by consent and release policy."}</p>
-  ) : desk.playback ? (
+  ) : currentPlayback ? (
     <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4">
-      <p className="mb-3 text-xs font-black text-sky-900">Recording · {desk.playback.label}</p>
-      {desk.playback.kind === "video"
-        ? <video ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
-        : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-black text-sky-900">Recording · {currentPlayback.label}</p>{(desk.sessionTranscript?.sources.length ?? 0) > 1 ? <div className="flex flex-wrap gap-1" role="group" aria-label="Participant recording source">{desk.sessionTranscript!.sources.filter((source) => source.playback).map((source, index) => <button key={source.recordingAssetId} type="button" aria-pressed={source.playback?.sourceId === currentPlayback.sourceId} onClick={() => source.playback && selectPlaybackSource(source.playback)} className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${source.playback?.sourceId === currentPlayback.sourceId ? "border-sky-700 bg-sky-800 text-white" : "border-sky-200 bg-white text-sky-900"}`}>Source {index + 1}</button>)}</div> : null}</div>
+      {currentPlayback.kind === "video"
+        ? <video key={currentPlayback.sourceId} ref={(node) => { mediaRef.current = node; }} src={currentPlayback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
+        : <audio key={currentPlayback.sourceId} ref={(node) => { mediaRef.current = node; }} src={currentPlayback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
       {playbackState === "loading" ? <p role="status" className="mt-3 rounded-lg border border-sky-200 bg-white p-3 text-xs font-bold text-sky-900">Loading recording…</p> : null}
       {playbackState === "error" ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950">The original recording is unavailable. Historical review receipts remain visible, but new edits stay locked until it is restored.</p> : null}
     </div>
@@ -2010,6 +2115,7 @@ export function TranscriptCorrectionDesk({
           </div>
         </div>
         {message && <p role="status" className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-900">{message}</p>}
+        {desk.sessionTranscript ? <div className={`mt-4 rounded-xl border p-4 text-sm font-semibold leading-relaxed ${desk.sessionTranscript.status === "assembled" ? "border-indigo-200 bg-indigo-50 text-indigo-950" : desk.sessionTranscript.status === "held" || desk.sessionTranscript.status === "incomplete" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-slate-200 bg-slate-50 text-slate-800"}`}><p className="font-black">{desk.sessionTranscript.status === "assembled" ? `${desk.sessionTranscript.sourceCount} participant recordings on one Session timeline` : desk.sessionTranscript.status === "single-source" ? "One participant recording ready" : "Complete Session transcript still preparing"}</p><p className="mt-1 text-xs">{desk.sessionTranscript.reason}</p>{desk.sessionTranscript.programClock?.waveformReviewRequired ? <p className="mt-2 text-xs font-black uppercase tracking-wide">Provisional clock placement · waveform and drift review still required</p> : null}</div> : null}
         {preparedTranscript ? <a href={preparedTranscript.url} download={preparedTranscript.filename} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"><Download size={15} aria-hidden="true" />Download prepared transcript</a> : null}
         {desk.processing && (
           <div className="mt-5 grid gap-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4">
@@ -2089,9 +2195,9 @@ export function TranscriptCorrectionDesk({
               participants={desk.participants ?? []}
               playbackReady={playbackReady}
               reviewedSecondBins={listenedSecondBins}
-              currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
+              currentPlaybackPosition={() => currentPlayback?.sourceId === desk.playback?.sourceId ? mediaRef.current?.currentTime ?? null : null}
               busy={busy}
-              onPlayAt={playFromTime}
+              onPlayAt={(seconds) => desk.playback ? playSourceAt(desk.playback, seconds) : playFromTime(seconds)}
               onSaved={saved}
             />
           </div> : null}
@@ -2117,22 +2223,31 @@ export function TranscriptCorrectionDesk({
             </div>
             <ol className="min-w-0 space-y-4">
               {desk.segments.map((segment) => (
+                (() => {
+                  const segmentPlayback = segment.sourcePlayback ?? desk.playback;
+                  const segmentStart = segment.sourceStartSeconds ?? segment.startSeconds;
+                  const segmentIsCurrentSource = segmentPlayback?.sourceId === currentPlayback?.sourceId;
+                  const segmentCanPlay = Boolean(segmentPlayback) && (!segmentIsCurrentSource || playbackState === "ready");
+                  const segmentReviewed = Boolean(segmentPlayback) && sourceReviewedSecondBins.has(sourceBin(segmentPlayback!.sourceId, segmentStart));
+                  return (
                 <CorrectionEditor
                   key={segment.id}
                   roomId={roomId}
-                  transcriptJobId={desk.transcriptJobId!}
+                  transcriptJobId={segment.transcriptJobId ?? desk.transcriptJobId!}
                   segment={segment}
                   canUseProjectTeamNotes={canUseProjectTeamNotes}
-                  playbackReady={playbackReady}
-                  playbackReviewed={listenedSecondBins.has(Math.max(0, Math.floor(segment.startSeconds)))}
-                  reviewedPlaybackPositionSeconds={listenedSecondBins.has(Math.max(0, Math.floor(segment.startSeconds))) ? segment.startSeconds : null}
-                  currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
+                  playbackReady={segmentCanPlay}
+                  playbackReviewed={segmentReviewed}
+                  reviewedPlaybackPositionSeconds={segmentReviewed ? segmentStart : null}
+                  currentPlaybackPosition={() => currentPlayback?.sourceId === segmentPlayback?.sourceId ? mediaRef.current?.currentTime ?? null : null}
                   busy={busy}
                   onPlay={() => playFrom(segment)}
-                  onPlayAt={playFromTime}
+                  onPlayAt={(seconds) => segmentPlayback ? playSourceAt(segmentPlayback, seconds) : playFromTime(seconds)}
                   onEditRecording={canEditRecording && recordingEditor ? openRecordingEditorAt : undefined}
                   onSaved={saved}
                 />
+                  );
+                })()
               ))}
             </ol>
           </div>
@@ -2201,7 +2316,7 @@ export function TranscriptCorrectionDesk({
             evaluation={desk.evaluation}
             busy={busy}
             listenedSecondBins={[...listenedSecondBins].sort((left, right) => left - right)}
-            playbackSourceId={playbackReady ? desk.playback?.sourceId ?? null : null}
+            playbackSourceId={playbackReady && currentPlayback?.sourceId === desk.playback?.sourceId ? desk.playback?.sourceId ?? null : null}
             onSaved={saved}
           /> : null}
         </div> : null}

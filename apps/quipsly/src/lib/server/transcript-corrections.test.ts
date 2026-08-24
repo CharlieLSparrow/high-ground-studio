@@ -1022,6 +1022,13 @@ describe("transcript correction desk", () => {
     });
 
     expect(result).toMatchObject({ ok: true, idempotentReplay: false, correction: { status: "accepted" } });
+    expect(prisma.callRoom.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        transcriptJobs: expect.objectContaining({
+          where: { segments: { some: { id: "segment-1" } } },
+        }),
+      }),
+    }));
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(tx.transcriptCorrection.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       status: "accepted",

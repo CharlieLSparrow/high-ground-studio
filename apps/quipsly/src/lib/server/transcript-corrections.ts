@@ -1405,6 +1405,7 @@ async function loadMutationEvidence(prisma: any, input: {
     select: {
       id: true,
       transcriptJobs: {
+        where: { segments: { some: { id: input.segmentId } } },
         orderBy: { createdAt: "desc" },
         take: 1,
         select: {

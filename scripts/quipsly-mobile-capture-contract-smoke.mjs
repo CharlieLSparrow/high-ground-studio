@@ -366,6 +366,7 @@ function checkMeetingSpineContractSources() {
     authManagerText.indexOf("func stableOwnerSnapshot()"),
   );
   const episodeChatText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileEpisodeChat.swift");
+  const sessionConversationText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileSessionConversation.swift");
   const nestChatRouteText = sourceText("apps/quipsly/src/app/api/nest-chat/route.ts");
   const liveKitEgressText = sourceText("apps/quipsly/src/lib/server/coaching-livekit-egress.ts");
   const providerRecordingCommandText = sourceText("apps/quipsly/src/lib/server/provider-recording-command.ts");
@@ -529,13 +530,12 @@ function checkMeetingSpineContractSources() {
   expect(
     episodeChatText.includes("enum MobileCollaborationChatScope")
       && episodeChatText.includes("case episode")
-      && episodeChatText.includes("case session")
-      && episodeChatText.includes("payload.thread?.key == context.threadKey")
-      && episodeChatText.includes('requestBody[scope == .episode ? "episodeSlug" : "threadKey"]')
-      && episodeChatText.includes("QuipslyCapture/SessionChat")
-      && episodeChatText.includes("Posts stay with this exact call.")
-      && capturePhoneShellText.includes("MobileSessionChatCard")
-      && capturePhoneShellText.includes("sessionChat.receiveLiveHint")
+      && sessionConversationText.includes('hint.threadKey == "session:\\(context.roomID)"')
+      && sessionConversationText.includes('"clientRequestId": send.requestID.uuidString.lowercased()')
+      && sessionConversationText.includes("QuipslyCapture/SessionConversation")
+      && sessionConversationText.includes("Messages stay with this Session.")
+      && capturePhoneShellText.includes("MobileSessionConversationCard")
+      && capturePhoneShellText.includes("sessionConversation.receiveLiveHint")
       && nestChatRouteText.includes("sessionConversationAccessWhere")
       && nestChatRouteText.includes("sessionMutationAccessWhere"),
     "nativeSessionAndEpisodeThreadsRemainDistinct",
@@ -813,7 +813,9 @@ function checkTranscriptPacketContractSources() {
   );
   expect(
     transcriptProcessingText.includes("Recording asset is not uploaded or verified yet.")
-      && transcriptProcessingText.includes("Recording asset does not have a durable storage object path.")
+      && transcriptProcessingText.includes("captureTranscriptProcessingSource(job.asset)")
+      && transcriptProcessingText.includes('requiredText(asset?.storageBucket, "recording storage bucket")')
+      && transcriptProcessingText.includes('requiredText(asset?.storageObjectPath, "recording storage object")')
       && transcriptProcessingText.includes("getMobileCaptureObjectEvidence")
       && transcriptProcessingText.includes("newCaptureTranscriptManifest")
       && transcriptProcessingText.includes('const diarize = input.topology.kind !== "participant-isolated"')

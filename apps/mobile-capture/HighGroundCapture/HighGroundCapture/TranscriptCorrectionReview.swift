@@ -110,12 +110,18 @@ struct CaptureTranscriptDownstreamImpact: Codable, Identifiable, Equatable {
 
 struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let id: String
+    var transcriptJobId: String? = nil
+    var recordingAssetId: String? = nil
     let speakerLabel: String?
     let providerSpeakerLabel: String?
     var speakerAuthority: String? = nil
     var sourceBoundParticipantId: String? = nil
     let startSeconds: TimeInterval
     let endSeconds: TimeInterval
+    var sourceStartSeconds: TimeInterval? = nil
+    var sourceEndSeconds: TimeInterval? = nil
+    var programStartSeconds: TimeInterval? = nil
+    var programEndSeconds: TimeInterval? = nil
     let text: String
     let providerText: String
     let providerTextSha256: String
@@ -126,6 +132,11 @@ struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let proposals: [CaptureTranscriptCorrection]
     let correctionHistory: [CaptureTranscriptCorrection]
     var downstreamImpacts: [CaptureTranscriptDownstreamImpact]? = nil
+
+    var playbackStartSeconds: TimeInterval { sourceStartSeconds ?? startSeconds }
+    var playbackEndSeconds: TimeInterval { sourceEndSeconds ?? endSeconds }
+    var sessionStartSeconds: TimeInterval { programStartSeconds ?? startSeconds }
+    var sessionEndSeconds: TimeInterval { programEndSeconds ?? endSeconds }
 }
 
 struct CaptureTranscriptPlayback: Codable, Equatable {
@@ -899,7 +910,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                             expectedProviderText: segment.providerText,
                             expectedProviderSpeakerLabel: segment.providerSpeakerLabel,
                             expectedAcceptedCorrectionID: segment.acceptedCorrection?.id,
-                            playbackPositionSeconds: segment.endSeconds
+                            playbackPositionSeconds: segment.playbackEndSeconds
                         )
                     } catch {
                         errorMessage = "Transcript outbox UI proof could not stage its protected decision: \(error.localizedDescription)"
@@ -2427,8 +2438,8 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
     ) {
         play(
             anchorID: segment.id,
-            startSeconds: segment.startSeconds,
-            endSeconds: segment.endSeconds,
+            startSeconds: segment.playbackStartSeconds,
+            endSeconds: segment.playbackEndSeconds,
             recording: recording,
             library: library,
             expectedRecordingAssetID: expectedRecordingAssetID
@@ -2527,8 +2538,8 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
         guard recording?.id == activeRecordingID,
               playedSegmentIDs.contains(segment.id),
               let position = confirmedPositionsByAnchorID[segment.id],
-              position >= max(segment.startSeconds, segment.endSeconds - 0.25),
-              position <= segment.endSeconds + 3 else { return nil }
+              position >= max(segment.playbackStartSeconds, segment.playbackEndSeconds - 0.25),
+              position <= segment.playbackEndSeconds + 3 else { return nil }
         return position
     }
 
@@ -3114,10 +3125,10 @@ struct CaptureTranscriptReviewView: View {
                         CaptureTranscriptSegmentCard(
                             roomID: roomID,
                             sessionTitle: sessionTitle,
-                            transcriptJobID: desk.transcriptJobId,
+                            transcriptJobID: segment.transcriptJobId ?? desk.transcriptJobId,
                             segment: segment,
                             recording: recording,
-                            expectedRecordingAssetID: desk.playback?.recordingAssetId,
+                            expectedRecordingAssetID: segment.recordingAssetId ?? desk.playback?.recordingAssetId,
                             attention: desk.evidence?.transcript.attentionSegments.first(where: { $0.segmentId == segment.id }),
                             previewOnly: previewOnly,
                             decisionsLocked: client.isUsingProtectedCache,
@@ -3189,7 +3200,7 @@ struct CaptureTranscriptReviewView: View {
                     Text(label)
                         .font(.caption.weight(.bold))
                     Spacer(minLength: 8)
-                    Text(segment.startSeconds.captureTranscriptTimestamp)
+                    Text(segment.sessionStartSeconds.captureTranscriptTimestamp)
                         .font(.caption2.monospacedDigit().weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
@@ -3198,18 +3209,19 @@ struct CaptureTranscriptReviewView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
                     Button {
+                        let expectedRecordingAssetID = segment.recordingAssetId ?? desk.playback?.recordingAssetId
                         playback.play(
                             segment: segment,
                             recording: recording,
                             library: library,
-                            expectedRecordingAssetID: desk.playback?.recordingAssetId
+                            expectedRecordingAssetID: expectedRecordingAssetID
                         )
                     } label: {
                         Label("Play", systemImage: "play.fill")
                             .frame(minHeight: 36)
                     }
                     .buttonStyle(.bordered)
-                    .disabled(!hasExactLocalSource(expectedRecordingAssetID: desk.playback?.recordingAssetId) || client.isMutating)
+                    .disabled(!hasExactLocalSource(expectedRecordingAssetID: segment.recordingAssetId ?? desk.playback?.recordingAssetId) || client.isMutating)
                     Button("Review") {
                         transcriptPresentationMode = .timeline
                         // The conversation row and precision editor intentionally
@@ -5715,7 +5727,7 @@ private struct CaptureTranscriptSegmentCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("\(segment.startSeconds.captureTranscriptTimestamp)–\(segment.endSeconds.captureTranscriptTimestamp)")
+                    Text("\(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp)")
                         .font(.caption.monospacedDigit().weight(.bold))
                         .foregroundStyle(.blue)
                     Text(captureTranscriptNonempty(segment.speakerLabel) ?? "Unlabelled speaker")
@@ -5742,7 +5754,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(!hasExactLocalSource || client.isMutating)
-                .accessibilityLabel("Play transcript segment from \(segment.startSeconds.captureTranscriptTimestamp)")
+                .accessibilityLabel("Play transcript segment from Session time \(segment.sessionStartSeconds.captureTranscriptTimestamp)")
                 .accessibilityIdentifier("CaptureTranscriptPlayButton_\(segment.id)")
             }
 
@@ -6253,7 +6265,7 @@ private struct CaptureTranscriptSegmentCard: View {
             } else {
                 Button {
                     taskTitle = defaultTaskTitle
-                    taskDetail = "From \(segment.startSeconds.captureTranscriptTimestamp)–\(segment.endSeconds.captureTranscriptTimestamp): \(segment.text)"
+                    taskDetail = "From \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp) on the Session timeline: \(segment.text)"
                     isCreatingTask = true
                 } label: {
                     Label("Make this my task", systemImage: "checklist")
@@ -6317,7 +6329,7 @@ private struct CaptureTranscriptSegmentCard: View {
             } else {
                 Button {
                     goalTitle = defaultTaskTitle
-                    goalDescription = "Source commitment at \(segment.startSeconds.captureTranscriptTimestamp)–\(segment.endSeconds.captureTranscriptTimestamp): \(segment.text)"
+                    goalDescription = "Source commitment at \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp) on the Session timeline: \(segment.text)"
                     isCreatingGoal = true
                 } label: {
                     Label("Make this my goal", systemImage: "target")

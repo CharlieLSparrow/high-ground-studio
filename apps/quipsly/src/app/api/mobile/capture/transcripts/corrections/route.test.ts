@@ -2,7 +2,8 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { acknowledgeTranscriptCorrectionImpact, readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
+import { acknowledgeTranscriptCorrectionImpact } from "@/lib/server/transcript-corrections";
+import { readSessionTranscriptCorrectionDesk } from "@/lib/server/session-transcript-correction-desk";
 import { approveTranscriptEvaluationWindow, readTranscriptEvaluationReadiness } from "@/lib/server/transcript-evaluation-windows";
 import { readTranscriptEvaluationCandidates } from "@/lib/server/transcript-evaluation-candidates";
 
@@ -10,6 +11,7 @@ import { GET, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn(() => ({ marker: "prisma" })) }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/session-transcript-correction-desk", () => ({ readSessionTranscriptCorrectionDesk: jest.fn() }));
 jest.mock("@/lib/server/transcript-corrections", () => {
   class MockTranscriptCorrectionError extends Error {
     constructor(message: string, public status: number, public code: string) { super(message); }
@@ -19,7 +21,6 @@ jest.mock("@/lib/server/transcript-corrections", () => {
     attributeTranscriptSpeaker: jest.fn(),
     confirmTranscriptSegmentAsIs: jest.fn(),
     createTranscriptCorrection: jest.fn(),
-    readTranscriptCorrectionDesk: jest.fn(),
     reviewTranscriptCorrectionProposal: jest.fn(),
     TranscriptCorrectionError: MockTranscriptCorrectionError,
   };
@@ -46,13 +47,13 @@ describe("transcript correction and accuracy-corpus route", () => {
     const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/corrections?callRoomId=room-1"));
     expect(response.status).toBe(401);
     expect(getPrismaClient).not.toHaveBeenCalled();
-    expect(readTranscriptCorrectionDesk).not.toHaveBeenCalled();
+    expect(readSessionTranscriptCorrectionDesk).not.toHaveBeenCalled();
     expect(readTranscriptEvaluationReadiness).not.toHaveBeenCalled();
   });
 
   it("adds private corpus readiness to the canonical correction desk", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
-    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({ ok: true, roomId: "room-1", segments: [] } as any);
+    jest.mocked(readSessionTranscriptCorrectionDesk).mockResolvedValue({ ok: true, roomId: "room-1", segments: [] } as any);
     jest.mocked(readTranscriptEvaluationReadiness).mockResolvedValue({ eligible: false, blockers: [{ code: "REVIEW_REQUIRED", detail: "Listen first." }], approvedWindows: [] } as any);
     jest.mocked(readTranscriptEvaluationCandidates).mockResolvedValue({ candidates: [{ id: "candidate-1", outcome: "succeeded" }] } as any);
     const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/corrections?callRoomId=room-1"));
@@ -63,7 +64,7 @@ describe("transcript correction and accuracy-corpus route", () => {
 
   it("keeps an exact-source correction desk bound to one RecordingAsset and suppresses room-wide scorecards", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
-    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({ ok: true, roomId: "room-1", transcriptJobId: "job-backup", segments: [] } as any);
+    jest.mocked(readSessionTranscriptCorrectionDesk).mockResolvedValue({ ok: true, roomId: "room-1", transcriptJobId: "job-backup", segments: [] } as any);
 
     const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/corrections?callRoomId=room-1&recordingAssetId=asset-backup"));
     expect(response.status).toBe(200);
@@ -73,7 +74,7 @@ describe("transcript correction and accuracy-corpus route", () => {
       evaluation: null,
       focusedSource: { recordingAssetId: "asset-backup", roomWideEvaluationSuppressed: true },
     });
-    expect(readTranscriptCorrectionDesk).toHaveBeenCalledWith(expect.objectContaining({
+    expect(readSessionTranscriptCorrectionDesk).toHaveBeenCalledWith(expect.objectContaining({
       roomId: "room-1",
       recordingAssetId: "asset-backup",
     }));
