@@ -900,8 +900,14 @@ function checkTranscriptPacketContractSources() {
       && packetBuilderText.includes("buildTranscriptPacketReviewLanes")
       && coachingPacketVersionText.includes('SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v4"')
       && packetBuilderText.includes("SESSION_PACKET_TEMPLATE_VERSION")
-      && packetBuilderText.includes('TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v1"')
+      && packetBuilderText.includes('TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v2"')
       && packetBuilderText.includes("projectTranscriptSegmentsForPacket")
+      && packetBuilderText.includes("projectTranscriptJobSegmentsForPacket")
+      && packetBuilderText.includes("sourceBoundTranscriptSpeakerLabel")
+      && packetBuilderText.includes("sourceBoundTranscriptParticipantId")
+      && packetBuilderText.includes('speakerAuthority: "correction" | "attribution" | "source-binding" | "provider" | "unresolved"')
+      && packetBuilderText.includes("sourceBoundParticipantId")
+      && packetBuilderText.includes("packetSnapshotMatchesTranscriptJob")
       && packetBuilderText.includes("packetSnapshotMatches")
       && packetBuilderText.includes('visibility: "AUTHOR_PRIVATE"')
       && packetBuilderText.includes("reviewLaneDefinitionsForPurpose")
@@ -912,7 +918,7 @@ function checkTranscriptPacketContractSources() {
       && packetBuilderText.includes("humanApprovalRequired: true")
       && packetBuilderText.includes("externalSideEffects: false"),
     "coachingPacketBuilderProvenance",
-    "Packet builder requires a completed segmented transcript and produces review-required summary, highlight, quarantined action-candidate, and multi-lane follow-up evidence without creating open work.",
+    "Packet builder requires a completed segmented transcript, carries exact isolated-source speaker authority into its versioned snapshot, and produces review-required summary, highlight, quarantined action-candidate, and multi-lane follow-up evidence without creating open work.",
   );
   expect(
     lifecycleSmokeText.includes("transcriptSegment.createMany")

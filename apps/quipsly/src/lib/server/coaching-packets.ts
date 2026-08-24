@@ -24,7 +24,7 @@ type BuildCoachingPacketArgs = {
 type SessionPacketPurpose = "COACHING" | "PODCAST" | "RESEARCH_INTERVIEW" | "INTERNAL_MEETING";
 
 export { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coaching-packet";
-export const TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v1";
+export const TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v2";
 export const TRANSCRIPT_PACKET_SEGMENT_ORDER_BY = [
   { startSeconds: "asc" as const },
   { id: "asc" as const },
@@ -152,6 +152,8 @@ export type PacketTranscriptSegment = {
   acceptedReviewId: string | null;
   acceptedCorrectionId: string | null;
   acceptedSpeakerAttributionId: string | null;
+  speakerAuthority: "correction" | "attribution" | "source-binding" | "provider" | "unresolved";
+  sourceBoundParticipantId: string | null;
 };
 
 export type PacketTranscriptEvidenceSpan = PacketTranscriptSegment & {
@@ -178,8 +180,51 @@ function packetSpeakerProviderSnapshotSha256(segments: any[], providerSpeakerLab
  * read. Accepted corrections are overlays; a current confirmed-as-is receipt
  * advances review status without changing provider text.
  */
-export function projectTranscriptSegmentsForPacket(segments: unknown, speakerAttributions: unknown = []): PacketTranscriptSegment[] {
+function sourceBoundTranscriptRouting(job: unknown) {
+  const transcriptJob = typeof job === "object" && job !== null && !Array.isArray(job)
+    ? job as Record<string, unknown>
+    : {};
+  const result = typeof transcriptJob.resultJson === "object" && transcriptJob.resultJson !== null && !Array.isArray(transcriptJob.resultJson)
+    ? transcriptJob.resultJson as Record<string, unknown>
+    : {};
+  const control = typeof result.processingControl === "object" && result.processingControl !== null && !Array.isArray(result.processingControl)
+    ? result.processingControl as Record<string, unknown>
+    : {};
+  const routing = typeof control.routing === "object" && control.routing !== null && !Array.isArray(control.routing)
+    ? control.routing as Record<string, unknown>
+    : {};
+  return routing.schema !== "quipsly-transcript-routing-summary-v1"
+      || routing.sourceTopology !== "participant-isolated"
+      || routing.speakerAuthority !== "source-binding"
+    ? null
+    : routing;
+}
+
+export function sourceBoundTranscriptSpeakerLabel(job: unknown) {
+  const routing = sourceBoundTranscriptRouting(job);
+  return cleanText(routing?.participantLabel) || null;
+}
+
+export function sourceBoundTranscriptParticipantId(job: unknown) {
+  if (!sourceBoundTranscriptRouting(job)) return null;
+  const transcriptJob = typeof job === "object" && job !== null && !Array.isArray(job)
+    ? job as Record<string, unknown>
+    : {};
+  const asset = typeof transcriptJob.asset === "object" && transcriptJob.asset !== null && !Array.isArray(transcriptJob.asset)
+    ? transcriptJob.asset as Record<string, unknown>
+    : {};
+  return cleanText(asset.participantId) || null;
+}
+
+export function projectTranscriptSegmentsForPacket(
+  segments: unknown,
+  speakerAttributions: unknown = [],
+  sourceBoundSpeakerLabel: unknown = null,
+  sourceBoundParticipantId: unknown = null,
+): PacketTranscriptSegment[] {
   const providerSegments = Array.isArray(segments) ? segments : [];
+  const exactSourceSpeaker = cleanText(sourceBoundSpeakerLabel) || null;
+  const exactSourceParticipantId = cleanText(sourceBoundParticipantId) || null;
   const activeSpeakerAttributions = new Map(
     (Array.isArray(speakerAttributions) ? speakerAttributions : [])
       .filter((attribution) => attribution?.status === "active"
@@ -211,10 +256,20 @@ export function projectTranscriptSegmentsForPacket(segments: unknown, speakerAtt
     const speakerAttribution = activeSpeakerAttributions.get(providerSpeakerLabel || "") ?? null;
     const attributedSpeaker = cleanText(speakerAttribution?.participantDisplaySnapshot);
     const acceptedReviewId = cleanText(acceptedCorrection?.id) || cleanText(acceptedVerification?.id) || null;
+    const resolvedSpeakerLabel = correctedSpeaker || attributedSpeaker || exactSourceSpeaker || providerSpeakerLabel;
+    const speakerAuthority = correctedSpeaker
+      ? "correction" as const
+      : attributedSpeaker
+        ? "attribution" as const
+        : exactSourceSpeaker
+          ? "source-binding" as const
+          : providerSpeakerLabel
+            ? "provider" as const
+            : "unresolved" as const;
 
     return {
       id: String(segment?.id ?? ""),
-      speakerLabel: correctedSpeaker || attributedSpeaker || providerSpeakerLabel,
+      speakerLabel: resolvedSpeakerLabel,
       startSeconds: Number(segment?.startSeconds),
       endSeconds: Number(segment?.endSeconds),
       text: correctedText || cleanText(providerText),
@@ -226,8 +281,19 @@ export function projectTranscriptSegmentsForPacket(segments: unknown, speakerAtt
       acceptedReviewId,
       acceptedCorrectionId: cleanText(acceptedCorrection?.id) || null,
       acceptedSpeakerAttributionId: cleanText(speakerAttribution?.id) || null,
+      speakerAuthority,
+      sourceBoundParticipantId: exactSourceParticipantId,
     };
   });
+}
+
+export function projectTranscriptJobSegmentsForPacket(job: any): PacketTranscriptSegment[] {
+  return projectTranscriptSegmentsForPacket(
+    job?.segments,
+    job?.speakerAttributions,
+    sourceBoundTranscriptSpeakerLabel(job),
+    sourceBoundTranscriptParticipantId(job),
+  );
 }
 
 const MAX_PACKET_SPAN_SEGMENTS = 6;
@@ -315,8 +381,18 @@ export function packetTemplateMatches(sourceJson: unknown) {
   return source.packetTemplateVersion === SESSION_PACKET_TEMPLATE_VERSION;
 }
 
-export function transcriptPacketSnapshot(segments: unknown, speakerAttributions: unknown = []) {
-  const projected = projectTranscriptSegmentsForPacket(segments, speakerAttributions);
+export function transcriptPacketSnapshot(
+  segments: unknown,
+  speakerAttributions: unknown = [],
+  sourceBoundSpeakerLabel: unknown = null,
+  sourceBoundParticipantId: unknown = null,
+) {
+  const projected = projectTranscriptSegmentsForPacket(
+    segments,
+    speakerAttributions,
+    sourceBoundSpeakerLabel,
+    sourceBoundParticipantId,
+  );
   const segmentReviews = projected.map((segment) => ({
     segmentId: segment.id,
     providerTextSha256: segment.providerTextSha256,
@@ -325,6 +401,8 @@ export function transcriptPacketSnapshot(segments: unknown, speakerAttributions:
     acceptedReviewId: segment.acceptedReviewId,
     acceptedCorrectionId: segment.acceptedCorrectionId,
     acceptedSpeakerAttributionId: segment.acceptedSpeakerAttributionId,
+    speakerAuthority: segment.speakerAuthority,
+    sourceBoundParticipantId: segment.sourceBoundParticipantId,
     reviewStatus: segment.reviewStatus,
     startSeconds: segment.startSeconds,
     endSeconds: segment.endSeconds,
@@ -341,16 +419,46 @@ export function transcriptPacketSnapshot(segments: unknown, speakerAttributions:
   };
 }
 
-export function packetSnapshotMatches(sourceJson: unknown, segments: unknown, speakerAttributions: unknown = []) {
+export function transcriptJobPacketSnapshot(job: any) {
+  return transcriptPacketSnapshot(
+    job?.segments,
+    job?.speakerAttributions,
+    sourceBoundTranscriptSpeakerLabel(job),
+    sourceBoundTranscriptParticipantId(job),
+  );
+}
+
+export function packetSnapshotMatches(
+  sourceJson: unknown,
+  segments: unknown,
+  speakerAttributions: unknown = [],
+  sourceBoundSpeakerLabel: unknown = null,
+  sourceBoundParticipantId: unknown = null,
+) {
   const source = typeof sourceJson === "object" && sourceJson !== null && !Array.isArray(sourceJson)
     ? sourceJson as Record<string, unknown>
     : {};
   const snapshot = typeof source.transcriptSnapshot === "object" && source.transcriptSnapshot !== null && !Array.isArray(source.transcriptSnapshot)
     ? source.transcriptSnapshot as Record<string, unknown>
     : {};
-  const current = transcriptPacketSnapshot(segments, speakerAttributions);
+  const current = transcriptPacketSnapshot(
+    segments,
+    speakerAttributions,
+    sourceBoundSpeakerLabel,
+    sourceBoundParticipantId,
+  );
   return snapshot.schema === TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA
     && snapshot.sha256 === current.sha256;
+}
+
+export function packetSnapshotMatchesTranscriptJob(sourceJson: unknown, job: any) {
+  return packetSnapshotMatches(
+    sourceJson,
+    job?.segments,
+    job?.speakerAttributions,
+    sourceBoundTranscriptSpeakerLabel(job),
+    sourceBoundTranscriptParticipantId(job),
+  );
 }
 
 function noteTime(value: unknown) {
@@ -718,7 +826,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     return { ok: false, status: 409, error: "Transcript has no segments to turn into a coaching packet." };
   }
 
-  const transcriptSnapshot = transcriptPacketSnapshot(job.segments, job.speakerAttributions);
+  const transcriptSnapshot = transcriptJobPacketSnapshot(job);
   const packetSegments = transcriptSnapshot.projected;
   const { projected: _projected, ...transcriptSnapshotEvidence } = transcriptSnapshot;
 
@@ -734,7 +842,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     orderBy: { createdAt: "desc" },
   });
 
-  if (existing && !args.force && packetTemplateMatches(existing.sourceJson) && packetSnapshotMatches(existing.sourceJson, job.segments, job.speakerAttributions)) {
+  if (existing && !args.force && packetTemplateMatches(existing.sourceJson) && packetSnapshotMatchesTranscriptJob(existing.sourceJson, job)) {
     const existingSource = typeof existing.sourceJson === "object" && existing.sourceJson !== null
       ? existing.sourceJson as Record<string, any>
       : {};

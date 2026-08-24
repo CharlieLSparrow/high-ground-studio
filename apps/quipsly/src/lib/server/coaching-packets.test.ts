@@ -9,10 +9,13 @@ import {
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
   packetSnapshotMatches,
+  packetSnapshotMatchesTranscriptJob,
   projectTranscriptSegmentsForPacket,
+  projectTranscriptJobSegmentsForPacket,
   reviewLaneDefinitionsForPurpose,
   selectLatestCorrelatedPacketNotes,
   transcriptPacketSnapshot,
+  transcriptJobPacketSnapshot,
 } from "./coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "./mobile-capture-processing-gates";
 
@@ -29,7 +32,7 @@ function completedTranscriptJob() {
     assetId: "asset-1",
     provider: "test-provider",
     status: "COMPLETED",
-    asset: { id: "asset-1", roomId: "room-1" },
+    asset: { id: "asset-1", roomId: "room-1", participantId: "participant-charlie" },
     room: { bookingId: "booking-1", purpose: "COACHING", booking: { id: "booking-1" } },
     segments: [
       {
@@ -116,6 +119,58 @@ describe("transcript coaching packet action review boundary", () => {
       actionItemCount: 0,
       actionItemIds: [],
     }));
+  });
+
+  it("keeps source-bound participant identity on generated follow-through candidates", async () => {
+    const isolatedJob: any = completedTranscriptJob();
+    isolatedJob.asset.participantId = "participant-scott";
+    isolatedJob.segments = [{
+      ...isolatedJob.segments[0],
+      speakerLabel: null,
+    }];
+    Object.assign(isolatedJob, {
+      resultJson: {
+        processingControl: {
+          routing: {
+            schema: "quipsly-transcript-routing-summary-v1",
+            sourceTopology: "participant-isolated",
+            participantLabel: "Scott Sparrow",
+            speakerAuthority: "source-binding",
+          },
+        },
+      },
+    });
+    const coachingNoteCreate = jest.fn(async ({ data }: any) => ({
+      id: data.kind === "SUMMARY" ? "summary-isolated" : `highlight-${data.sourceJson.segmentId}`,
+      ...data,
+    }));
+    const prisma = {
+      transcriptJob: { findUnique: jest.fn().mockResolvedValue(isolatedJob) },
+      coachingNote: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: coachingNoteCreate,
+      },
+      actionItem: { create: jest.fn() },
+    };
+
+    await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: isolatedJob.id,
+      authorUserId: "coach-1",
+    });
+
+    const summaryWrite = coachingNoteCreate.mock.calls.find(
+      ([call]) => call.data.kind === "SUMMARY",
+    )?.[0].data;
+    expect(summaryWrite.sourceJson.actionCandidates[0]).toMatchObject({
+      segmentId: "segment-action",
+      speakerLabel: "Scott Sparrow",
+    });
+    expect(summaryWrite.sourceJson.transcriptSnapshot.segmentReviews[0]).toMatchObject({
+      resolvedSpeakerLabel: "Scott Sparrow",
+      speakerAuthority: "source-binding",
+      sourceBoundParticipantId: "participant-scott",
+    });
   });
 
   it("keeps one explicit goal commitment across adjacent provider segments as a quarantined task candidate", async () => {
@@ -297,6 +352,7 @@ describe("transcript coaching packet action review boundary", () => {
     const projected = projectTranscriptSegmentsForPacket(segments, firstAttribution);
     expect(projected[0]).toMatchObject({
       speakerLabel: "Scott",
+      speakerAuthority: "attribution",
       providerSpeakerLabel: "Speaker 0",
       reviewStatus: "provider",
       acceptedReviewId: null,
@@ -312,6 +368,63 @@ describe("transcript coaching packet action review boundary", () => {
       id: "speaker-attribution-2",
       participantDisplaySnapshot: "Charlie",
     }])).toBe(false);
+  });
+
+  it("carries exact participant identity from an isolated source into every packet projection", () => {
+    const job = {
+      segments: [{
+        id: "segment-isolated",
+        speakerLabel: null,
+        startSeconds: 4,
+        endSeconds: 8,
+        text: "I will bring the completed reflection next time.",
+        corrections: [],
+        verifications: [],
+      }],
+      speakerAttributions: [],
+      asset: { participantId: "participant-scott" },
+      resultJson: {
+        processingControl: {
+          routing: {
+            schema: "quipsly-transcript-routing-summary-v1",
+            sourceTopology: "participant-isolated",
+            participantLabel: "Scott Sparrow",
+            speakerAuthority: "source-binding",
+          },
+        },
+      },
+    };
+
+    expect(projectTranscriptJobSegmentsForPacket(job)[0]).toMatchObject({
+      speakerLabel: "Scott Sparrow",
+      providerSpeakerLabel: null,
+      acceptedSpeakerAttributionId: null,
+      speakerAuthority: "source-binding",
+      sourceBoundParticipantId: "participant-scott",
+      reviewStatus: "provider",
+    });
+
+    const snapshot = transcriptJobPacketSnapshot(job);
+    const persisted = { transcriptSnapshot: { ...snapshot, projected: undefined } };
+    expect(snapshot.segmentReviews[0]).toMatchObject({
+      sourceBoundParticipantId: "participant-scott",
+    });
+    expect(packetSnapshotMatchesTranscriptJob(persisted, job)).toBe(true);
+    expect(packetSnapshotMatchesTranscriptJob(persisted, {
+      ...job,
+      resultJson: {
+        processingControl: {
+          routing: {
+            ...job.resultJson.processingControl.routing,
+            participantLabel: "Different participant",
+          },
+        },
+      },
+    })).toBe(false);
+    expect(packetSnapshotMatchesTranscriptJob(persisted, {
+      ...job,
+      asset: { participantId: "participant-someone-else" },
+    })).toBe(false);
   });
 
   it("ignores a speaker identity whose full provider cluster no longer matches its reviewed snapshot", () => {

@@ -16,9 +16,9 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
-  packetSnapshotMatches,
+  packetSnapshotMatchesTranscriptJob,
   packetTemplateMatches,
-  projectTranscriptSegmentsForPacket,
+  projectTranscriptJobSegmentsForPacket,
   resolvePacketEvidenceSpan,
   selectLatestCorrelatedPacketNotes,
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
@@ -336,7 +336,7 @@ export async function POST(request: Request) {
       }
       const gate = await mobileCaptureTranscriptProcessingGate({ prisma: tx, recordingAsset: transcriptJob.asset });
       if (!gate.allowed) throw new GoalReviewBoundaryError(409, gate.errorCode, gate.error);
-      if (!packetTemplateMatches(lockedSource) || !packetSnapshotMatches(lockedSource, transcriptJob.segments, transcriptJob.speakerAttributions)) {
+      if (!packetTemplateMatches(lockedSource) || !packetSnapshotMatchesTranscriptJob(lockedSource, transcriptJob)) {
         throw new GoalReviewBoundaryError(409, "TRANSCRIPT_REVIEW_CHANGED", "Transcript review changed after this packet was built. Build a new packet before reviewing the goal candidate.");
       }
       const transcriptSnapshotSha256 = text(object(lockedSource.transcriptSnapshot).sha256);
@@ -363,7 +363,7 @@ export async function POST(request: Request) {
       }
       const evidenceSegments = resolvePacketEvidenceSpan(
         candidate,
-        projectTranscriptSegmentsForPacket(transcriptJob.segments, transcriptJob.speakerAttributions),
+        projectTranscriptJobSegmentsForPacket(transcriptJob),
       );
       if (!evidenceSegments) {
         throw new GoalReviewBoundaryError(

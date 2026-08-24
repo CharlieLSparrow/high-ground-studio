@@ -19,10 +19,10 @@ import {
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
-  packetSnapshotMatches,
+  packetSnapshotMatchesTranscriptJob,
   packetTemplateMatches,
   packetActionCandidatesFromSource,
-  projectTranscriptSegmentsForPacket,
+  projectTranscriptJobSegmentsForPacket,
   resolvePacketEvidenceSpan,
   selectLatestCorrelatedPacketNotes,
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
@@ -588,7 +588,7 @@ export async function POST(request: Request) {
         recordingAssetId,
         packetBuildId,
       });
-      if (!packetTemplateMatches(lockedSource) || !packetSnapshotMatches(lockedSource, lockedTranscriptJob.segments, lockedTranscriptJob.speakerAttributions)) {
+      if (!packetTemplateMatches(lockedSource) || !packetSnapshotMatchesTranscriptJob(lockedSource, lockedTranscriptJob)) {
         throw new ReviewBoundaryError(
           409,
           "TRANSCRIPT_REVIEW_CHANGED",
@@ -606,7 +606,7 @@ export async function POST(request: Request) {
         );
       }
       validateCandidateEvidence({ candidate, roomId, transcriptJobId, recordingAssetId, packetBuildId });
-      const projectedSegments = projectTranscriptSegmentsForPacket(lockedTranscriptJob.segments, lockedTranscriptJob.speakerAttributions);
+      const projectedSegments = projectTranscriptJobSegmentsForPacket(lockedTranscriptJob);
       const evidenceSegments = resolvePacketEvidenceSpan(candidate, projectedSegments);
       if (!evidenceSegments) {
         throw new ReviewBoundaryError(

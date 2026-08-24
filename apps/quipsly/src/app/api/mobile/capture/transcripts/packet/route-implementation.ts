@@ -15,13 +15,13 @@ import {
   buildCoachingPacketFromTranscriptJob,
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
-  packetSnapshotMatches,
+  packetSnapshotMatchesTranscriptJob,
   packetTemplateMatches,
-  projectTranscriptSegmentsForPacket,
+  projectTranscriptJobSegmentsForPacket,
   resolvePacketEvidenceSpan,
   selectLatestCorrelatedPacketNotes,
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
-  transcriptPacketSnapshot,
+  transcriptJobPacketSnapshot,
 } from "@/lib/server/coaching-packets";
 import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
 import { buildSessionTranscriptConfidence } from "@/lib/session-transcript-confidence";
@@ -101,10 +101,7 @@ export function buildPacketGoalCandidates(input: {
   if (brief.kind !== "quipsly-transcript-packet-brief-v1" || brief.candidateOnly !== true || brief.humanApprovalRequired !== true) return [];
   const goalsSection = asArray(brief.sections).filter(isObject).find((section) => section.id === "goals");
   if (!goalsSection) return [];
-  const projectedSegments = projectTranscriptSegmentsForPacket(
-    asArray(input.latestTranscriptJob.segments),
-    asArray(input.latestTranscriptJob.speakerAttributions),
-  );
+  const projectedSegments = projectTranscriptJobSegmentsForPacket(input.latestTranscriptJob);
   const committedByRequest = new Map(input.goals.flatMap((goal) => {
     const source = sourceJson(goal.sourceJson);
     const requestId = text(source.clientRequestId);
@@ -191,10 +188,7 @@ export function buildPacketNoteCandidates(input: {
   const summarySource = sourceJson(input.summary.sourceJson);
   const lanes = asArray(summarySource.reviewLanes).filter(isObject);
   if (!lanes.length) return [];
-  const projectedSegments = projectTranscriptSegmentsForPacket(
-    asArray(input.latestTranscriptJob.segments),
-    asArray(input.latestTranscriptJob.speakerAttributions),
-  );
+  const projectedSegments = projectTranscriptJobSegmentsForPacket(input.latestTranscriptJob);
   const reviewReceipts = asArray(summarySource.noteCandidateReviewReceipts).filter(isObject);
   const transcriptSnapshotSha256 = text(sourceJson(summarySource.transcriptSnapshot).sha256);
   const committedByCandidate = new Map(input.notes.flatMap((note) => {
@@ -684,6 +678,7 @@ export async function GET(request: Request) {
           select: {
             id: true,
             roomId: true,
+            participantId: true,
             fileName: true,
             status: true,
             kind: true,
@@ -706,6 +701,7 @@ export async function GET(request: Request) {
           select: {
             id: true,
             roomId: true,
+            participantId: true,
             fileName: true,
             status: true,
             kind: true,
@@ -772,11 +768,11 @@ export async function GET(request: Request) {
   const summary = selectedPacketBuild.summary;
   const highlights = selectedPacketBuild.highlights;
   const currentTranscriptSnapshot = latestTranscriptJob
-    ? transcriptPacketSnapshot(latestTranscriptJob.segments, latestTranscriptJob.speakerAttributions)
+    ? transcriptJobPacketSnapshot(latestTranscriptJob)
     : null;
   const packetStale = Boolean(summary && latestTranscriptJob
     && (!packetTemplateMatches(summary.sourceJson)
-      || !packetSnapshotMatches(summary.sourceJson, latestTranscriptJob.segments, latestTranscriptJob.speakerAttributions)));
+      || !packetSnapshotMatchesTranscriptJob(summary.sourceJson, latestTranscriptJob)));
   const allPacketActionItems = transcriptProcessingAllowed
     ? actionItems.filter((item: any) => {
         const source = sourceJson(item.sourceJson);
@@ -1347,7 +1343,7 @@ export async function PATCH(request: Request) {
       if (!transcriptGate.allowed) {
         throw new PacketReviewBoundaryError(409, transcriptGate.errorCode, transcriptGate.error);
       }
-      if (!packetTemplateMatches(source) || !packetSnapshotMatches(source, packetTranscriptJob.segments, packetTranscriptJob.speakerAttributions)) {
+      if (!packetTemplateMatches(source) || !packetSnapshotMatchesTranscriptJob(source, packetTranscriptJob)) {
         throw new PacketReviewBoundaryError(409, "TRANSCRIPT_REVIEW_CHANGED", "Transcript review changed after this packet was built. Build a new packet before reviewing this lane.");
       }
       const reviewedAt = new Date().toISOString();

@@ -2,6 +2,25 @@
 
 Date: 2026-08-24
 
+## Source-bound follow-through speaker checkpoint
+
+- Participant-isolated source recordings now carry their exact participant
+  display snapshot and stable `RecordingAsset.participantId` through transcript
+  packet projection. Coaching notes, task candidates, goal candidates,
+  highlights, and review lanes no longer lose a known speaker merely because
+  diarization was correctly disabled for the isolated master.
+- Effective speaker precedence is explicit: accepted human correction,
+  reviewed group-source attribution, exact isolated-source binding, provider
+  label, then unresolved. Source ownership does not claim provider text was
+  human reviewed.
+- Transcript packet snapshots are version two and bind speaker authority plus
+  stable source participant identity. Version-one packets become visibly stale
+  and rebuildable instead of being silently reused with incomplete provenance.
+- Quipsly TypeScript, 73 focused packet/follow-through tests, and the mobile
+  Capture source-contract smoke pass. This is local automated evidence; live
+  deployment, physical-device readback, and minimally instructed human
+  acceptance remain future release evidence.
+
 ## Cross-device transcript-readiness checkpoint
 
 - Canonical Session consent projections now carry separate audio, video, and
