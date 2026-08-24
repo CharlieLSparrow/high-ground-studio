@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
   if (!session?.user) {
     return NextResponse.json(
-      { ok: false, error: "Sign in before joining a capture room." },
+      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before joining a capture room." },
       { status: 401 },
     );
   }
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
 
   if (!callRoomId) {
     return NextResponse.json(
-      { ok: false, error: "Choose a Quipsly capture session before joining a room." },
+      { ok: false, code: "ROOM_REQUIRED", error: "Choose a Quipsly capture session before joining a room." },
       { status: 400 },
     );
   }
@@ -71,14 +71,14 @@ export async function POST(request: Request) {
 
   if (!room) {
     return NextResponse.json(
-      { ok: false, error: "You do not have access to this capture room." },
+      { ok: false, code: "ROOM_ACCESS_DENIED", error: "You do not have access to this capture room." },
       { status: 404 },
     );
   }
 
   if (!["PLANNED", "OPEN", "RECORDING"].includes(room.status)) {
     return NextResponse.json(
-      { ok: false, error: "This capture room is not open for joining." },
+      { ok: false, code: "ROOM_NOT_OPEN", error: "This call has ended and is no longer open for joining." },
       { status: 409 },
     );
   }
@@ -88,6 +88,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
+        code: "PAYMENT_HOLD",
         error: "This paid one-to-one coaching session is waiting on payment evidence before joining or recording.",
         canJoin: false,
         provider: room.provider || "planned",

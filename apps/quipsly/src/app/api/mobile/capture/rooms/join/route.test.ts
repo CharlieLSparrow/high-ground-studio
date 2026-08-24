@@ -134,6 +134,20 @@ describe("mobile capture room join", () => {
     expect(mockedPrisma).not.toHaveBeenCalled();
   });
 
+  it("returns a stable terminal code when a call is no longer open", async () => {
+    findFirst.mockResolvedValue(liveKitRoom({ status: "COMPLETED" }));
+
+    const response = await POST(joinRequest("room-1"));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      code: "ROOM_NOT_OPEN",
+      error: expect.stringMatching(/call has ended/i),
+    });
+    expect(mockedToken).not.toHaveBeenCalled();
+  });
+
   it("mints a short-lived join packet without joining or recording", async () => {
     findFirst.mockResolvedValue(liveKitRoom());
 
@@ -236,6 +250,7 @@ describe("mobile capture room join", () => {
     expect(response.status).toBe(409);
     expect(payload).toMatchObject({
       ok: false,
+      code: "PAYMENT_HOLD",
       canJoin: false,
       providerReadiness: "payment-hold",
       effects: {

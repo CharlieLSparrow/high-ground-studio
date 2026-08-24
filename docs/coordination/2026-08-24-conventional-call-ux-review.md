@@ -100,6 +100,13 @@ ledger. An open gap survives until rejoin or recorder stop, is merged into the
 final exact-byte manifest beside MediaRecorder chunk timing, and projects into
 the same Nest audio-evidence span as an iPhone source.
 
+Rejoin also has a terminal boundary. Nest returns stable codes for expired
+sign-in, changed room access, payment hold, and a room that is no longer open.
+If a rejoin discovers that the call genuinely ended, the browser stops offering
+an endless retry loop and shows one closed Session state while leaving the
+retained source controls available. Transient provider/network failures keep
+the ordinary one-action retry.
+
 ## Evidence and limits
 
 - The 29-test focused web call-room suite passes, including exhausted reconnect
@@ -116,6 +123,8 @@ the same Nest audio-evidence span as an iPhone source.
 - Focused tests cover browser ledger projection and call-room propagation. The
   stop path closes any still-open outage into that ledger before final
   exact-byte manifest construction without changing captured media bytes.
+- Route and call-room regressions prove that a server-confirmed closed call
+  ends rejoin without discarding or hiding a still-active local source.
 
 This does not claim a minimally instructed two-person browser/iPhone flight.
 That flight must still observe first grant, remembered re-entry, denial

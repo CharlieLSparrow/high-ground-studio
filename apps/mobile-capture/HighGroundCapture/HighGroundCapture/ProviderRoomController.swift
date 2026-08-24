@@ -1054,6 +1054,12 @@ extension ProviderRoomController: RoomDelegate {
             case .disconnected:
                 let reconnectWasExhausted = !self.intentionalProviderDisconnect
                     && self.activeCallRoomID != nil
+                if reconnectWasExhausted {
+                    // Some provider/server terminations move directly from
+                    // connected to disconnected without a reconnecting event.
+                    // The recorder de-duplicates an already-open span.
+                    self.onCallTransportInterrupted?(Date())
+                }
                 self.stopCallAudioMeter()
                 self.clearLocalVideoBridge()
                 self.isConnecting = false

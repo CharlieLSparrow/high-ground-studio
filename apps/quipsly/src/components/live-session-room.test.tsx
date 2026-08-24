@@ -821,6 +821,68 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByTestId("browser-source-call-transport")).toHaveTextContent("available");
   });
 
+  it("ends the rejoin loop when Nest confirms the call is closed while preserving source controls", async () => {
+    const livekit = jest.requireActual("livekit-client") as typeof import("livekit-client");
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    let joinRequests = 0;
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/mobile/capture/rooms/join")) {
+        joinRequests += 1;
+        if (joinRequests === 2) {
+          return {
+            ok: false,
+            status: 409,
+            json: async () => ({
+              ok: false,
+              code: "ROOM_NOT_OPEN",
+              error: "This call has ended and is no longer open for joining.",
+            }),
+          } as Response;
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: "room-scoped-first-token",
+            recordingConsentGranted: true,
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
+    }) as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-closed-during-recovery" captureGroupId="55555555-5555-4555-8555-555555555538" sessionTitle="Completed call" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Simulate retained source start" }));
+    await act(async () => {
+      mockLiveKitRoom.__emit(livekit.RoomEvent.Disconnected);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rejoin call" }));
+
+    expect(await screen.findByRole("region", { name: "Call closed" })).toHaveTextContent("This Session is closed");
+    expect(screen.queryByRole("button", { name: /join call/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId("call-status-message")).toHaveTextContent(/local recording is still protected/i);
+    expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("ended");
+    expect(screen.getByTestId("browser-source-call-transport")).toHaveTextContent("available");
+    expect(joinRequests).toBe(2);
+  });
+
   it("keeps camera permission independent from an audio-only coaching join", async () => {
     const permissionStream = { getTracks: () => [{ stop: jest.fn() }] };
     const getUserMedia = jest.fn().mockResolvedValue(permissionStream);

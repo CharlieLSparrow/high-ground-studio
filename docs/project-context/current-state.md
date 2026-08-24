@@ -3420,6 +3420,11 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   at the recording boundary. Finalization merges those spans with the latest
   chunk journal before upload, and Nest projects both the native array and the
   browser manifest envelope through one audio-evidence contract.
+- The join API now returns stable machine-readable failure codes. A rejoin that
+  receives `ROOM_NOT_OPEN` becomes a conventional closed-Session surface with
+  no further Join button, while source stop/save/upload/recovery stays visible.
+  Authentication, access, payment, and transient transport failures retain
+  distinct messages instead of collapsing into a misleading network error.
 - The 29-test focused web call-room suite and strict web TypeScript pass. A
   generic iOS Simulator build succeeds for arm64 and x86_64 after compiling the
   native recovery path. Rendered browser operation was unavailable because both

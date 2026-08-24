@@ -94,6 +94,7 @@ type PreferredDevices = {
 };
 type JoinPacket = {
   ok?: boolean;
+  code?: string;
   error?: string;
   canJoin?: boolean;
   serverUrl?: string;
@@ -104,6 +105,17 @@ type JoinPacket = {
   recordingConsentStatus?: string;
   nextAction?: string;
 };
+
+class CallJoinFailure extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string | null,
+  ) {
+    super(message);
+    this.name = "CallJoinFailure";
+  }
+}
 
 type ProviderRecordingState = {
   state: "off" | "starting" | "recording" | "stopping" | "needs-review" | "held";
@@ -432,6 +444,7 @@ export function LiveSessionRoom({
   const [remoteVideoTrackCount, setRemoteVideoTrackCount] = useState(0);
   const [callRecoveryAvailable, setCallRecoveryAvailable] = useState(false);
   const [callEndedByPerson, setCallEndedByPerson] = useState(false);
+  const [callPermanentlyClosed, setCallPermanentlyClosed] = useState(false);
 
   const roomRef = useRef<Room | null>(null);
   const intentionalDisconnectRef = useRef(false);
@@ -1241,6 +1254,7 @@ export function LiveSessionRoom({
     setMessage("Joining…");
     if (!recoveringCall) setCallRecoveryAvailable(false);
     setCallEndedByPerson(false);
+    if (!recoveringCall) setCallPermanentlyClosed(false);
     intentionalDisconnectRef.current = false;
     try {
       clearPreflightPreview();
@@ -1258,7 +1272,11 @@ export function LiveSessionRoom({
       const packet = await response.json().catch(() => ({})) as JoinPacket;
       setRecordingConsentGranted(packet.recordingConsentGranted === true);
       if (!response.ok || !packet.ok || !packet.canJoin || !packet.serverUrl || !packet.participantToken) {
-        throw new Error(packet.error || packet.nextAction || "This Session is not ready for a live room.");
+        throw new CallJoinFailure(
+          packet.error || packet.nextAction || "This Session is not ready for a live room.",
+          response.status,
+          packet.code || null,
+        );
       }
 
       const room = new Room({ adaptiveStream: true, dynacast: true });
@@ -1400,10 +1418,23 @@ export function LiveSessionRoom({
       intentionalDisconnectRef.current = true;
       roomRef.current?.disconnect(true);
       roomRef.current = null;
+      if (recoveringCall && error instanceof CallJoinFailure && error.code === "ROOM_NOT_OPEN") {
+        setCallRecoveryAvailable(false);
+        setCallEndedByPerson(true);
+        setCallPermanentlyClosed(true);
+        setStatus("ended");
+        setTechnicalMessage(null);
+        setMessage("This call has ended. Your local recording is still protected; stop and save it when you’re ready.");
+        return;
+      }
       setCallRecoveryAvailable(recoveringCall);
       setStatus("error");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a call connection error.");
-      setMessage("The call couldn't connect. Check your internet connection and try again.");
+      setMessage(error instanceof CallJoinFailure && error.code === "AUTH_REQUIRED"
+        ? "Your sign-in expired. Sign in again, then return to this Session. Any local recording remains protected on this device."
+        : error instanceof CallJoinFailure && error.code === "ROOM_ACCESS_DENIED"
+          ? "Your access to this Session changed. Return to Quipsly Home or ask the host for a new invitation."
+          : "The call couldn't connect. Check your internet connection and try again.");
     }
   }, [attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
 
@@ -1739,7 +1770,13 @@ export function LiveSessionRoom({
 
       <div className={`mt-5 grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
         <div className="space-y-4">
-          {!connected ? (
+          {!connected && callPermanentlyClosed ? (
+            <section className="rounded-2xl border border-slate-300 bg-slate-50 p-4" aria-label="Call closed">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">Call ended</p>
+              <h3 className="mt-1 font-serif text-2xl font-black text-slate-950">This Session is closed</h3>
+              <p className="mt-2 text-xs font-bold leading-5 text-slate-800">Your retained recording is separate and remains available below to stop, save, upload, or recover.</p>
+            </section>
+          ) : !connected ? (
             <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4" aria-label={callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
