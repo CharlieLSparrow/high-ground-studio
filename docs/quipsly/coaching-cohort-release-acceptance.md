@@ -2196,3 +2196,15 @@ named client, and then prove a changed/rerendered edit invalidates the earlier
 review. Client-observed playback cannot prove human attention or audibility;
 the checkpoint makes no such claim and performs no deployment or external
 delivery.
+
+### Native parity checkpoint
+
+Capture now decodes the same server review plan, verifies the exact downloaded
+preview bytes, records contiguous player coverage, offers one **Play next review
+point** action, and automatically submits the revision-bound `REVIEW` request.
+The native release button and client mutation both refuse release until fresh
+server readback marks that exact derivative reviewed; a failed receipt save has
+an explicit retry. Static contracts and a generic Simulator build are the local
+acceptance target for this parity slice. They do not replace a physical-iPhone
+headset/speaker listen, real-dialogue join judgment, cross-device readback, or
+named-client delivery flight, all of which remain in the ledger above.

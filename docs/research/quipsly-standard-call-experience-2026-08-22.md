@@ -1244,3 +1244,14 @@ Those human conclusions remain in the deferred flight. The local checkpoint is
 109/109 passing Session recording, transcript, review, and protected-media
 tests plus strict Quipsly TypeScript. It performs no deployment, public-link
 creation, email, publication, or source mutation.
+
+The same finishing contract is decoded and enforced by Capture on iPhone. The
+app downloads the exact authenticated derivative, verifies its byte size and
+SHA-256 before opening it, tracks only contiguous player time, guides the coach
+to each server-selected checkpoint, and submits the same idempotent `REVIEW`
+request. Both the button and the native mutation path fail closed until the
+server reads the current revision-bound receipt back as reviewed. Finishing the
+last checkpoint also attempts the receipt save, while an explicit retry remains
+available after an ambiguous or failed response. This is native implementation
+and automated contract evidence, not a claim that a person heard a physical
+iPhone speaker or headset.

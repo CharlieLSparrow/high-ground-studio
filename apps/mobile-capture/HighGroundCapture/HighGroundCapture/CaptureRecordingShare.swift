@@ -66,6 +66,15 @@ struct CaptureRecordingShareOutput: Codable, Identifiable, Equatable {
         let sources: [Source]?
     }
 
+    struct PlaybackReview: Codable, Equatable {
+        let schema: String
+        let requiredSecondBins: [Int]
+        let joinSecondBins: [Int]
+        let reviewed: Bool
+        let reviewedAt: String?
+        let clientTrackedPlaybackIsNotProofOfAudibility: Bool
+    }
+
     let id: String
     let status: String
     let title: String
@@ -74,6 +83,7 @@ struct CaptureRecordingShareOutput: Codable, Identifiable, Equatable {
     let recipient: Recipient
     let render: Render
     let mediaUrl: String?
+    let playbackReview: PlaybackReview?
     let body: Body
     let sourceManifest: SourceManifest?
 }
@@ -124,6 +134,8 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     @Published private(set) var busyAction: String?
     @Published private(set) var notice: String?
     @Published private(set) var isPlaying = false
+    @Published private(set) var previewListenedSecondBins = Set<Int>()
+    @Published private(set) var previewReviewSaveFailed = false
 
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
@@ -134,8 +146,14 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     private var protectedPreviewURL: URL?
     private var protectedPreviewOutputID: String?
     private var protectedPreviewSHA256: String?
+    private var playbackProgressTask: Task<Void, Never>?
+    private var previewLastPlaybackTime: TimeInterval?
+    private var playbackRoomID: String?
+    private var trackedReviewOutputIdentity: String?
+    private var reviewSubmissionIdentity: String?
 
     deinit {
+        playbackProgressTask?.cancel()
         if let protectedPreviewURL {
             try? FileManager.default.removeItem(at: protectedPreviewURL)
         }
@@ -165,6 +183,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
                 throw CaptureRecordingShareClientError.message(decoded.error ?? "The private recording workspace could not load.")
             }
             reconcilePlaybackAuthorization(with: decoded)
+            reconcileReviewTracking(with: decoded)
             snapshot = decoded
             if !quiet { notice = nil }
         } catch {
@@ -208,6 +227,10 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             notice = "Refresh before changing recording visibility."
             return false
         }
+        if action == "RELEASE", output.playbackReview?.reviewed != true {
+            notice = "Listen through the private preview review points before sharing."
+            return false
+        }
         return await mutate(
             roomID: roomID,
             action: action,
@@ -215,15 +238,53 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         )
     }
 
+    var requiredPreviewSecondBins: [Int] {
+        snapshot?.output?.playbackReview?.requiredSecondBins ?? []
+    }
+
+    var observedRequiredPreviewSecondCount: Int {
+        requiredPreviewSecondBins.filter { previewListenedSecondBins.contains($0) }.count
+    }
+
+    var previewReviewComplete: Bool {
+        !requiredPreviewSecondBins.isEmpty
+            && observedRequiredPreviewSecondCount == requiredPreviewSecondBins.count
+    }
+
+    func playNextReviewPoint(roomID: String) async {
+        if player == nil {
+            await togglePreview(roomID: roomID)
+        }
+        guard let player,
+              let nextSecond = requiredPreviewSecondBins.first(where: { !previewListenedSecondBins.contains($0) }) else {
+            return
+        }
+        player.currentTime = max(0, TimeInterval(nextSecond) - 0.1)
+        previewLastPlaybackTime = player.currentTime
+        player.play()
+        isPlaying = true
+        startPreviewProgressTracking(roomID: roomID, player: player)
+    }
+
+    func retryPlaybackReview(roomID: String) async {
+        guard previewReviewComplete else { return }
+        previewReviewSaveFailed = false
+        reviewSubmissionIdentity = nil
+        await savePlaybackReviewIfReady(roomID: roomID)
+    }
+
     func togglePreview(roomID: String) async {
         if let player, player.isPlaying {
             player.pause()
             isPlaying = false
+            previewLastPlaybackTime = nil
             return
         }
         if let player {
             player.play()
             isPlaying = true
+            previewLastPlaybackTime = player.currentTime
+            startPreviewProgressTracking(roomID: roomID, player: player)
             return
         }
         guard let output = snapshot?.output,
@@ -277,6 +338,8 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             self.player = player
             player.play()
             isPlaying = true
+            previewLastPlaybackTime = player.currentTime
+            startPreviewProgressTracking(roomID: roomID, player: player)
             notice = nil
         } catch {
             notice = error.localizedDescription
@@ -284,7 +347,12 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     }
 
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        observePreviewPlayback(player: player, ended: true)
+        playbackProgressTask?.cancel()
+        playbackProgressTask = nil
         isPlaying = false
+        guard let playbackRoomID else { return }
+        Task { await savePlaybackReviewIfReady(roomID: playbackRoomID) }
     }
 
     private func reconcilePlaybackAuthorization(with snapshot: CaptureRecordingShareSnapshot) {
@@ -299,10 +367,96 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         }
     }
 
+    private func reconcileReviewTracking(with snapshot: CaptureRecordingShareSnapshot) {
+        guard let output = snapshot.output else {
+            trackedReviewOutputIdentity = nil
+            reviewSubmissionIdentity = nil
+            previewListenedSecondBins.removeAll()
+            previewReviewSaveFailed = false
+            previewLastPlaybackTime = nil
+            return
+        }
+        let identity = "\(output.id):\(output.contentSha256)"
+        if identity != trackedReviewOutputIdentity {
+            trackedReviewOutputIdentity = identity
+            reviewSubmissionIdentity = nil
+            requestIDs["REVIEW"] = nil
+            previewListenedSecondBins.removeAll()
+            previewReviewSaveFailed = false
+            previewLastPlaybackTime = nil
+        }
+        if output.playbackReview?.reviewed == true {
+            previewReviewSaveFailed = false
+        }
+    }
+
+    private func startPreviewProgressTracking(roomID: String, player: AVAudioPlayer) {
+        playbackProgressTask?.cancel()
+        playbackRoomID = roomID
+        playbackProgressTask = Task { [weak self, weak player] in
+            while !Task.isCancelled {
+                guard let self, let player, self.player === player else { return }
+                if player.isPlaying {
+                    self.observePreviewPlayback(player: player)
+                    await self.savePlaybackReviewIfReady(roomID: roomID)
+                }
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+    }
+
+    private func observePreviewPlayback(player: AVAudioPlayer, ended: Bool = false) {
+        let duration = player.duration
+        guard duration > 0 else { return }
+        let currentTime = ended ? max(0, duration - 0.001) : player.currentTime
+        let finalSecond = max(0, Int(ceil(duration)) - 1)
+        let second = max(0, min(finalSecond, Int(floor(currentTime))))
+        let contiguous = previewLastPlaybackTime.map {
+            currentTime >= $0 && currentTime - $0 <= 1.5
+        } ?? false
+        let firstSecond = contiguous ? Int(floor(previewLastPlaybackTime ?? currentTime)) : second
+        previewLastPlaybackTime = currentTime
+        for bin in min(firstSecond, second)...max(firstSecond, second) {
+            previewListenedSecondBins.insert(bin)
+        }
+    }
+
+    private func savePlaybackReviewIfReady(roomID: String) async {
+        guard let output = snapshot?.output,
+              output.status == "DRAFT",
+              output.render.status == "VERIFIED",
+              output.playbackReview?.reviewed != true,
+              previewReviewComplete,
+              !previewReviewSaveFailed,
+              busyAction == nil else { return }
+        let identity = "\(output.id):\(output.revision):\(output.contentSha256)"
+        guard reviewSubmissionIdentity != identity else { return }
+        reviewSubmissionIdentity = identity
+        let success = await mutate(
+            roomID: roomID,
+            action: "REVIEW",
+            payload: [
+                "outputId": output.id,
+                "expectedRevision": output.revision,
+                "playbackEvidence": [
+                    "listenedSecondBins": previewListenedSecondBins.sorted(),
+                    "clientTrackedPlaybackIsNotProofOfAudibility": true,
+                ],
+            ]
+        )
+        if !success {
+            previewReviewSaveFailed = true
+        }
+    }
+
     private func clearPlayback() {
+        playbackProgressTask?.cancel()
+        playbackProgressTask = nil
         player?.stop()
         player = nil
         isPlaying = false
+        previewLastPlaybackTime = nil
+        playbackRoomID = nil
         if let protectedPreviewURL {
             try? FileManager.default.removeItem(at: protectedPreviewURL)
         }
@@ -342,11 +496,16 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
                 throw responseError(data, fallback: "The private recording decision was not confirmed.")
             }
             requestIDs[action] = nil
-            notice = action == "PREPARE"
-                ? "Private preview queued. Your client cannot see it until you listen and release it."
-                : action == "RELEASE"
-                    ? "Released only inside this client's private Session."
-                    : "Client access revoked; originals and decision history remain."
+            switch action {
+            case "PREPARE":
+                notice = "Private preview queued. Your client cannot see it until you listen and release it."
+            case "REVIEW":
+                notice = "Listening review saved for this exact private preview. It is ready to share."
+            case "RELEASE":
+                notice = "Released only inside this client's private Session."
+            default:
+                notice = "Client access revoked; originals and decision history remain."
+            }
             await load(roomID: roomID, quiet: true)
             return true
         } catch {
@@ -833,15 +992,67 @@ struct CaptureRecordingShareEditor: View {
             }
 
             if coach && output.status == "DRAFT" && output.render.status == "VERIFIED" {
-                Text("Listen once, then share this private copy with \(output.recipient.label).")
+                if output.playbackReview?.reviewed == true {
+                    Label(
+                        "This exact private preview passed its listening review.",
+                        systemImage: "checkmark.shield.fill"
+                    )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Button("Share with \(output.recipient.label)") {
+                    .foregroundStyle(.green)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Listen before sharing")
+                            .font(.caption.weight(.bold))
+                        Text("Quipsly guides you through the beginning, middle, ending, and every edit join. Playback tracking only confirms that the preview played; use your ears to decide whether it sounds right.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        ProgressView(
+                            value: Double(client.observedRequiredPreviewSecondCount),
+                            total: Double(max(1, client.requiredPreviewSecondBins.count))
+                        )
+                        .tint(.indigo)
+                        .accessibilityIdentifier("CaptureRecordingShareReviewProgress")
+
+                        Text("\(client.observedRequiredPreviewSecondCount) of \(client.requiredPreviewSecondBins.count) review checkpoints played")
+                            .font(.caption2.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        if !client.previewReviewComplete {
+                            Button {
+                                Task { await client.playNextReviewPoint(roomID: roomID) }
+                            } label: {
+                                Label("Play next review point", systemImage: "forward.end.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(client.busyAction != nil || client.requiredPreviewSecondBins.isEmpty)
+                            .accessibilityIdentifier("CaptureRecordingShareReviewNext")
+                        } else if client.previewReviewSaveFailed {
+                            Button("Retry saving listening review") {
+                                Task { await client.retryPlaybackReview(roomID: roomID) }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(client.busyAction != nil)
+                            .accessibilityIdentifier("CaptureRecordingShareReviewRetry")
+                        } else {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("Saving this preview's listening review…")
+                                    .font(.caption.weight(.semibold))
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.indigo.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                }
+
+                Button(output.playbackReview?.reviewed == true ? "Share with \(output.recipient.label)" : "Listen before sharing") {
                     Task { _ = await client.changeVisibility(roomID: roomID, action: "RELEASE") }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
-                .disabled(client.busyAction != nil)
+                .disabled(client.busyAction != nil || output.playbackReview?.reviewed != true)
                 .accessibilityIdentifier("CaptureRecordingShareRelease")
             }
 
