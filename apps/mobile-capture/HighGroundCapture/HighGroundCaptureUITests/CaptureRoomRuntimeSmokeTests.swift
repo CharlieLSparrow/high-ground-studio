@@ -498,6 +498,36 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         return element.exists
     }
 
+    /// Recorder recovery and Studio cards sit above the recorder hero. After
+    /// relaunch, SwiftUI restores the hero's offset, so searching downward can
+    /// never discover those cards and needlessly expands the later workspace.
+    private func waitForRuntimeElementAbove(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 18,
+        swipeAttempts: Int = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        var attempts = 0
+        while Date() < deadline {
+            if element.exists { return true }
+            if attempts < swipeAttempts {
+                let namedRecorderSurface = app.scrollViews["CaptureRecorderView"].firstMatch
+                let recorderSurface = namedRecorderSurface.exists
+                    ? namedRecorderSurface
+                    : app.scrollViews.firstMatch
+                if recorderSurface.exists && recorderSurface.isHittable {
+                    recorderSurface.swipeDown()
+                } else {
+                    app.swipeDown()
+                }
+                attempts += 1
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        return element.exists
+    }
+
     private func waitForAnyRuntimeElement(
         _ elements: [XCUIElement],
         timeout: TimeInterval
@@ -5120,7 +5150,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let waiveMissingMaster = app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "CaptureWaiveMissingPlannedSource_")
         ).firstMatch
-        if waitForRuntimeElement(missingPlanReason, in: app, timeout: 30, swipeAttempts: 12) {
+        if waitForRuntimeElementAbove(missingPlanReason, in: app, timeout: 18, swipeAttempts: 8) {
             XCTAssertTrue(
                 waitForRuntimeElement(waiveMissingMaster, in: app, timeout: 8, swipeAttempts: 4),
                 "A missing required master should expose the phone-only, reason-required recovery decision."
