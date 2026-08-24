@@ -480,7 +480,7 @@ export async function POST(request: Request) {
         metadataJson: json({
           schema: "quipsly-capture-source-recovery-finalization-v1",
           originalDecision,
-          immutableUploadBinding: { uploadSessionId, roomId: original.roomId, sha256: evidence.sha256, bucketName: storage.bucketName, objectName: storage.objectName, sizeBytes: evidence.sizeBytes },
+          immutableUploadBinding: { uploadSessionId, roomId: original.roomId, sha256: evidence.sha256, bucketName: storage.bucketName, objectName: storage.objectName, generation: storage.generation, sizeBytes: evidence.sizeBytes },
           recoveryAuthority: {
             requestId,
             requestSha256,

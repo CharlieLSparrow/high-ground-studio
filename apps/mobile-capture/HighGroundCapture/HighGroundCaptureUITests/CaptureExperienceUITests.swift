@@ -2428,6 +2428,42 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testVerifiedRemoteSessionSourceOffersProtectedPlaybackWithoutPreviewDownload() {
+        app.tabBars.buttons["Record"].tap()
+        let chooser = app.buttons["CaptureSessionChooser"]
+        XCTAssertTrue(chooser.waitForExistence(timeout: 5))
+        chooser.tap()
+        let completeSession = app.staticTexts["Studio group complete"]
+        XCTAssertTrue(completeSession.waitForExistence(timeout: 5))
+        completeSession.tap()
+        openLocalRecorderIfNeeded()
+
+        let check = app.buttons["CaptureSessionTruthDisclosure"]
+        reveal(check)
+        XCTAssertTrue(check.isHittable)
+        check.tap()
+
+        let listen = app.buttons[
+            "CaptureProtectedSourcePlayback_preview-take-complete-audio"
+        ]
+        reveal(listen)
+        XCTAssertTrue(listen.waitForExistence(timeout: 5))
+        listen.tap()
+
+        let prepare = app.buttons["CaptureSessionProtectedPlaybackPrepare"]
+        XCTAssertTrue(prepare.waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            prepare.isEnabled,
+            "Deterministic preview must prove the exact-source playback surface without downloading protected media."
+        )
+        XCTAssertTrue(app.staticTexts["Preview only · no recording is downloaded"].exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "exact source")
+            ).firstMatch.exists
+        )
+    }
+
     func testConsentActionRemainsReachableAtLargestAccessibilityTextSize() throws {
         app.terminate()
         app.launchArguments = [

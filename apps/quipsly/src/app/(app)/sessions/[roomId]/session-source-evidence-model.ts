@@ -326,16 +326,17 @@ function sourceRuntime(manifest: UnknownRecord) {
   };
 }
 
-function protectedPlayback(recording: RecordingAssetEvidenceRow) {
-  const manifest = object(recording.localManifestJson);
-  const promotion = object(manifest.promotion);
-  const sourceId = text(promotion.sourceId);
-  const url = text(promotion.playbackUrl);
-  if (!sourceId || !/^[A-Za-z0-9_-]{8,160}$/.test(sourceId) || url !== `/api/ingest/media/${sourceId}`) return null;
+function protectedPlayback(
+  recording: RecordingAssetEvidenceRow,
+  status: SessionSourceEvidenceStatus,
+) {
+  if (status !== "VERIFIED_MATCH") return null;
+  const sourceId = recording.id;
+  if (!/^[A-Za-z0-9_-]{1,240}$/.test(sourceId)) return null;
   const durationSeconds = finiteNumber(recording.durationSeconds);
   return {
     sourceId,
-    url,
+    url: `/api/sessions/${encodeURIComponent(recording.roomId)}/recordings/${encodeURIComponent(recording.id)}/media`,
     kind: String(recording.kind).includes("VIDEO") ? "video" as const : "audio" as const,
     durationSeconds,
   };
@@ -654,7 +655,7 @@ export function buildSessionSourceEvidence(input: {
           objectPath: bindingObjectPath ?? text(recording.storageObjectPath),
           verifiedAt: iso(recording.verifiedAt),
         },
-        protectedPlayback: protectedPlayback(recording),
+        protectedPlayback: protectedPlayback(recording, status),
         audioMastery: audioMasteryCoordinates(recording, input.project),
         captureRuntime: sourceRuntime(manifest),
         analysis: audioSignalAnalysis(recording, input.audioSignalProfileJobs ?? []),

@@ -570,6 +570,9 @@ describe("mobile Session canonical capture sources", () => {
             kind: "LOCAL_VIDEO",
             contentType: "video/quicktime",
             byteSize: BigInt(4_000_000_000),
+            checksum: "a".repeat(64),
+            storageBucket: "quipsly-private-media",
+            storageObjectPath: "mobile/room-1/homer-iphone.mov",
             durationSeconds: 1_800,
             status: "VERIFIED",
             recordedStartedAt: new Date("2026-07-27T18:00:00Z"),
@@ -577,6 +580,7 @@ describe("mobile Session canonical capture sources", () => {
             localManifestJson: {
               exactBytesVerified: true,
               byteVerificationKind: "server-size-and-sha256",
+              storageGeneration: "1742",
               captureGroupId: "take-1",
               reportedSourceProfile: {
                 schemaVersion: 1,
@@ -636,10 +640,22 @@ describe("mobile Session canonical capture sources", () => {
           actorUserId: "user-1",
           startReceiptId: "start-1",
           recordingAssetId: "recording-1",
+          roomId: "room-1",
           mediaAssetId: "media-1",
           sourceId: "source-1",
           processingDisposition: "RELEASED",
           transcriptDisposition: "RELEASED",
+          metadataJson: {
+            immutableUploadBinding: {
+              uploadSessionId: "upload-1",
+              roomId: "room-1",
+              sha256: "a".repeat(64),
+              bucketName: "quipsly-private-media",
+              objectName: "mobile/room-1/homer-iphone.mov",
+              generation: "1742",
+              sizeBytes: 4_000_000_000,
+            },
+          },
         },
       ],
       [
@@ -670,6 +686,9 @@ describe("mobile Session canonical capture sources", () => {
       sourceId: "source-1",
       mediaAssetId: "media-1",
       playbackUrl: "/api/ingest/media/source-1",
+      sessionPlaybackUrl:
+        "/api/sessions/room-1/recordings/recording-1/media",
+      sha256: "a".repeat(64),
       alignment: {
         status: "proposal-ready",
         sourceClockEvidence: "lowest-rtt-monotonic-projection",
@@ -693,6 +712,55 @@ describe("mobile Session canonical capture sources", () => {
         status: "QUEUED",
         segmentCount: 0,
       },
+    });
+  });
+
+  it("keeps a released source visible but withholds playback when immutable storage evidence drifts", () => {
+    const room = {
+      id: "room-1",
+      recordingAssets: [{
+        id: "recording-1",
+        kind: "LOCAL_AUDIO",
+        contentType: "audio/mp4",
+        byteSize: BigInt(1024),
+        checksum: "a".repeat(64),
+        storageBucket: "quipsly-private-media",
+        storageObjectPath: "mobile/room-1/audio.m4a",
+        status: "VERIFIED",
+        localManifestJson: {
+          exactBytesVerified: true,
+          storageGeneration: "1742",
+        },
+        transcriptJobs: [],
+      }],
+      stateReceipts: [],
+    };
+    const receipts = [{
+      uploadSessionId: "upload-1",
+      captureId: "capture-1",
+      roomId: "room-1",
+      recordingAssetId: "recording-1",
+      processingDisposition: "RELEASED",
+      transcriptDisposition: "HELD",
+      metadataJson: {
+        immutableUploadBinding: {
+          roomId: "room-1",
+          sha256: "b".repeat(64),
+          bucketName: "quipsly-private-media",
+          objectName: "mobile/room-1/audio.m4a",
+          generation: "1742",
+          sizeBytes: 1024,
+        },
+      },
+    }];
+
+    const [source] = captureSourceSummaries(room, receipts, []);
+    expect(source).toMatchObject({
+      recordingAssetId: "recording-1",
+      recordingStatus: "VERIFIED",
+      processingDisposition: "RELEASED",
+      exactBytesVerified: true,
+      sessionPlaybackUrl: null,
     });
   });
 

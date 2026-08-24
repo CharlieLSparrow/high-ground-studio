@@ -8180,8 +8180,10 @@ private struct CapturePacketLaneReviewSheet: View {
 private struct CaptureSessionTruthPanel: View {
     let session: MobileCaptureSession
     @ObservedObject var model: CaptureExperienceModel
+    @StateObject private var protectedPlayback = CaptureSessionProtectedPlaybackController()
     @State private var isPreparingProviderReceipt = false
     @State private var showsTechnicalDetails = false
+    @State private var protectedPlaybackSource: MobileCaptureSourceSummary?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -8344,6 +8346,13 @@ private struct CaptureSessionTruthPanel: View {
             .accessibilityElement(children: .contain)
         }
         .accessibilityIdentifier("CaptureSessionTruthPanel")
+        .sheet(item: $protectedPlaybackSource) { source in
+            CaptureSessionProtectedPlaybackSheet(
+                source: source,
+                controller: protectedPlayback,
+                previewOnly: model.usesPreviewData
+            )
+        }
     }
 
     @ViewBuilder
@@ -8377,8 +8386,21 @@ private struct CaptureSessionTruthPanel: View {
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(.green)
                     }
+                    if source.protectedPlaybackReady {
+                        Button {
+                            protectedPlaybackSource = source
+                        } label: {
+                            Label(
+                                source.isVideoSource ? "Watch" : "Listen",
+                                systemImage: source.isVideoSource ? "play.rectangle.fill" : "play.circle.fill"
+                            )
+                            .font(.caption.weight(.bold))
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CaptureProtectedSourcePlayback_\(source.recordingAssetId)")
+                    }
                 }
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("CaptureRetainedSource_\(source.recordingAssetId)")
             }
 

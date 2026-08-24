@@ -311,6 +311,20 @@ Current boundaries:
 Detailed decision record:
 `docs/coordination/2026-08-24-session-conversation.md`.
 
+## Native Session Protected Playback
+
+A mobile Session source is playable only when its released RecordingAsset and
+immutable finalization receipt agree on Session, exact byte count, SHA-256,
+private-vault object, and immutable generation. The canonical protected path is
+`/api/sessions/{roomId}/recordings/{recordingAssetId}/media`; it requires
+Session access but deliberately does not require a Project or Studio promotion.
+The iPhone's prepared copy is an account-bound, file-protected,
+backup-excluded cache; it is not a new canonical source and removing it never
+removes the retained server original.
+
+Detailed decision record:
+`docs/coordination/2026-08-24-native-session-protected-playback.md`.
+
 ## Coaching Feature Access
 
 Coaching tools are modeled separately from subscription tiers. This lets Homer

@@ -388,6 +388,11 @@ describe("Session source evidence", () => {
         byteSize: "4096",
         generation: "1742",
       },
+      protectedPlayback: {
+        sourceId: "asset-1",
+        url: "/api/sessions/room-1/recordings/asset-1/media",
+        kind: "video",
+      },
       captureRuntime: {
         appVersion: "1.0",
         appBuild: "9",
@@ -609,8 +614,8 @@ describe("Session source evidence", () => {
         originalSourceMediaUnchanged: true,
       },
       protectedPlayback: {
-        sourceId: "studio-source-1",
-        url: "/api/ingest/media/studio-source-1",
+        sourceId: "asset-1",
+        url: "/api/sessions/room-1/recordings/asset-1/media",
         kind: "video",
       },
       issues: [],
@@ -620,21 +625,31 @@ describe("Session source evidence", () => {
     expect(JSON.stringify(result)).not.toContain("gs://private-import");
   });
 
-  it("refuses to expose a promotion URL that is not the protected source route", () => {
+  it("ignores an external promotion URL and keeps Session playback on its protected route", () => {
     const input = fixture();
     markAsAuditedRecoveryReplica(input);
     (input.recordingAssets[0].localManifestJson as any).promotion.playbackUrl = "https://storage.example.test/private.wav";
 
-    expect(buildSessionSourceEvidence(input).sources[0].protectedPlayback).toBeNull();
+    expect(buildSessionSourceEvidence(input).sources[0].protectedPlayback).toEqual({
+      sourceId: "asset-1",
+      url: "/api/sessions/room-1/recordings/asset-1/media",
+      kind: "video",
+      durationSeconds: null,
+    });
   });
 
-  it("refuses to project an unsafe protected-playback source identity", () => {
+  it("does not trust a promoted Studio source identity for Session playback", () => {
     const input = fixture();
     markAsAuditedRecoveryReplica(input);
     (input.recordingAssets[0].localManifestJson as any).promotion.sourceId = "../private-object";
     (input.recordingAssets[0].localManifestJson as any).promotion.playbackUrl = "/api/ingest/media/../private-object";
 
-    expect(buildSessionSourceEvidence(input).sources[0].protectedPlayback).toBeNull();
+    expect(buildSessionSourceEvidence(input).sources[0].protectedPlayback).toEqual({
+      sourceId: "asset-1",
+      url: "/api/sessions/room-1/recordings/asset-1/media",
+      kind: "video",
+      durationSeconds: null,
+    });
   });
 
   it("joins a completed exact-byte signal receipt without mutating the recovery manifest", () => {

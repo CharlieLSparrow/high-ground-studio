@@ -271,6 +271,26 @@ function iso(value: unknown) {
     : label(value);
 }
 
+function sha256(value: unknown) {
+  const normalized = label(value)?.trim().toLowerCase() || "";
+  return /^[0-9a-f]{64}$/.test(normalized) ? normalized : null;
+}
+
+function positiveByteSize(value: unknown) {
+  const normalized =
+    typeof value === "bigint"
+      ? value.toString()
+      : typeof value === "number" && Number.isSafeInteger(value)
+        ? String(value)
+        : label(value)?.trim() || "";
+  return /^[1-9][0-9]*$/.test(normalized) ? normalized : null;
+}
+
+function storageGeneration(value: unknown) {
+  const normalized = label(value)?.trim() || "";
+  return /^[1-9][0-9]*$/.test(normalized) ? normalized : null;
+}
+
 export function captureSourceSummaries(
   room: any,
   receipts: any[],
@@ -329,6 +349,49 @@ export function captureSourceSummaries(
       const exactBytesVerified =
         manifest.exactBytesVerified === true &&
         Boolean(receipt?.uploadSessionId);
+      const receiptMetadata = sourceJson(receipt?.metadataJson);
+      const immutableBinding = sourceJson(
+        receiptMetadata.immutableUploadBinding,
+      );
+      const durableRecoveryReplica = sourceJson(
+        sourceJson(receiptMetadata.recoveryAuthority)
+          .durableCaptureReplica,
+      );
+      const durableRecoveryStorage = sourceJson(
+        sourceJson(manifest.captureSourceRecovery).durableStorage,
+      );
+      const canonicalSha256 = exactBytesVerified
+        ? sha256(asset.checksum)
+        : null;
+      const canonicalByteSize = positiveByteSize(asset.byteSize);
+      const recordingStatus = label(asset.status) || "UNKNOWN";
+      const processingDisposition =
+        label(receipt?.processingDisposition) ||
+        label(manifest.processingDisposition) ||
+        "HELD";
+      const bindingGeneration =
+        storageGeneration(immutableBinding.generation) ||
+        storageGeneration(durableRecoveryReplica.generation);
+      const manifestGeneration =
+        storageGeneration(manifest.storageGeneration) ||
+        storageGeneration(durableRecoveryStorage.generation);
+      const immutablePlaybackBindingMatches =
+        label(receipt?.roomId) === label(room?.id) &&
+        label(receipt?.recordingAssetId) === label(asset.id) &&
+        label(immutableBinding.roomId) === label(room?.id) &&
+        sha256(immutableBinding.sha256) === canonicalSha256 &&
+        positiveByteSize(immutableBinding.sizeBytes) === canonicalByteSize &&
+        label(immutableBinding.bucketName) === label(asset.storageBucket) &&
+        label(immutableBinding.objectName) === label(asset.storageObjectPath) &&
+        bindingGeneration !== null &&
+        bindingGeneration === manifestGeneration;
+      const sessionPlaybackReady =
+        exactBytesVerified &&
+        recordingStatus === "VERIFIED" &&
+        processingDisposition === "RELEASED" &&
+        canonicalSha256 !== null &&
+        canonicalByteSize !== null &&
+        immutablePlaybackBindingMatches;
       const captureGroupId =
         label(manifest.captureGroupId) || label(receipt?.captureId);
       const startReceiptId = label(receipt?.startReceiptId);
@@ -356,19 +419,17 @@ export function captureSourceSummaries(
         fileName: label(asset.fileName) || "Unnamed capture source",
         kind,
         contentType: label(asset.contentType),
-        byteSize: asset.byteSize == null ? null : String(asset.byteSize),
+        byteSize: canonicalByteSize,
+        sha256: canonicalSha256,
         durationSeconds: asset.durationSeconds ?? null,
         recordedStartedAt: iso(asset.recordedStartedAt),
         recordedStoppedAt: iso(asset.recordedStoppedAt),
-        recordingStatus: label(asset.status) || "UNKNOWN",
+        recordingStatus,
         exactBytesVerified,
         byteVerificationKind:
           label(manifest.byteVerificationKind) ||
           (exactBytesVerified ? "server-size-and-sha256" : "unverified"),
-        processingDisposition:
-          label(receipt?.processingDisposition) ||
-          label(manifest.processingDisposition) ||
-          "HELD",
+        processingDisposition,
         transcriptDisposition:
           label(receipt?.transcriptDisposition) ||
           label(manifest.transcriptionDisposition) ||
@@ -376,6 +437,9 @@ export function captureSourceSummaries(
         sourceId: label(receipt?.sourceId) || label(promotion.sourceId),
         mediaAssetId,
         playbackUrl: label(media?.url) || label(promotion.playbackUrl),
+        sessionPlaybackUrl: sessionPlaybackReady
+          ? `/api/sessions/${encodeURIComponent(room.id)}/recordings/${encodeURIComponent(asset.id)}/media`
+          : null,
         sourceProfile,
         interruptionRepairRequired,
         interruptionRepair:

@@ -3139,7 +3139,15 @@ extension MobileCaptureSession {
                     : nil,
                 playbackUrl: promotedSourceCount >= 1
                     ? "/api/ingest/media/\(captureGroupID)-audio"
-                    : nil
+                    : nil,
+                byteSize: "288000000",
+                sha256: String(repeating: "a", count: 64),
+                durationSeconds: 1_800,
+                sourceId: promotedSourceCount >= 1
+                    ? "\(captureGroupID)-audio"
+                    : nil,
+                sessionPlaybackUrl:
+                    "/api/sessions/preview-studio-group-complete/recordings/\(captureGroupID)-audio/media"
             ),
             MobileCaptureSourceSummary(
                 recordingAssetId: "\(captureGroupID)-video",
@@ -3157,7 +3165,15 @@ extension MobileCaptureSession {
                     : nil,
                 playbackUrl: promotedSourceCount >= 2
                     ? "/api/ingest/media/\(captureGroupID)-video"
-                    : nil
+                    : nil,
+                byteSize: "4000000000",
+                sha256: String(repeating: "b", count: 64),
+                durationSeconds: 1_800,
+                sourceId: promotedSourceCount >= 2
+                    ? "\(captureGroupID)-video"
+                    : nil,
+                sessionPlaybackUrl:
+                    "/api/sessions/preview-studio-group-complete/recordings/\(captureGroupID)-video/media"
             ),
         ]
     }

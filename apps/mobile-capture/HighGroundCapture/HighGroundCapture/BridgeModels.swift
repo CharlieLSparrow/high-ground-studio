@@ -505,13 +505,77 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
     let fileName: String?
     let kind: String?
     let contentType: String?
+    let byteSize: String?
+    let sha256: String?
+    let durationSeconds: TimeInterval?
     let recordingStatus: String?
     let exactBytesVerified: Bool?
     let processingDisposition: String?
     let recordedStartedAt: String?
     let recordedStoppedAt: String?
     let mediaAssetId: String?
+    let sourceId: String?
     let playbackUrl: String?
+    let sessionPlaybackUrl: String?
+
+    init(
+        recordingAssetId: String,
+        captureGroupId: String?,
+        fileName: String?,
+        kind: String?,
+        contentType: String?,
+        recordingStatus: String?,
+        exactBytesVerified: Bool?,
+        processingDisposition: String?,
+        recordedStartedAt: String?,
+        recordedStoppedAt: String?,
+        mediaAssetId: String?,
+        playbackUrl: String?,
+        byteSize: String? = nil,
+        sha256: String? = nil,
+        durationSeconds: TimeInterval? = nil,
+        sourceId: String? = nil,
+        sessionPlaybackUrl: String? = nil
+    ) {
+        self.recordingAssetId = recordingAssetId
+        self.captureGroupId = captureGroupId
+        self.fileName = fileName
+        self.kind = kind
+        self.contentType = contentType
+        self.byteSize = byteSize
+        self.sha256 = sha256
+        self.durationSeconds = durationSeconds
+        self.recordingStatus = recordingStatus
+        self.exactBytesVerified = exactBytesVerified
+        self.processingDisposition = processingDisposition
+        self.recordedStartedAt = recordedStartedAt
+        self.recordedStoppedAt = recordedStoppedAt
+        self.mediaAssetId = mediaAssetId
+        self.sourceId = sourceId
+        self.playbackUrl = playbackUrl
+        self.sessionPlaybackUrl = sessionPlaybackUrl
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        recordingAssetId = try container.decode(String.self, forKey: .recordingAssetId)
+        captureGroupId = try container.decodeIfPresent(String.self, forKey: .captureGroupId)
+        fileName = try container.decodeIfPresent(String.self, forKey: .fileName)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind)
+        contentType = try container.decodeIfPresent(String.self, forKey: .contentType)
+        byteSize = try container.decodeIfPresent(String.self, forKey: .byteSize)
+        sha256 = try container.decodeIfPresent(String.self, forKey: .sha256)
+        durationSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .durationSeconds)
+        recordingStatus = try container.decodeIfPresent(String.self, forKey: .recordingStatus)
+        exactBytesVerified = try container.decodeIfPresent(Bool.self, forKey: .exactBytesVerified)
+        processingDisposition = try container.decodeIfPresent(String.self, forKey: .processingDisposition)
+        recordedStartedAt = try container.decodeIfPresent(String.self, forKey: .recordedStartedAt)
+        recordedStoppedAt = try container.decodeIfPresent(String.self, forKey: .recordedStoppedAt)
+        mediaAssetId = try container.decodeIfPresent(String.self, forKey: .mediaAssetId)
+        sourceId = try container.decodeIfPresent(String.self, forKey: .sourceId)
+        playbackUrl = try container.decodeIfPresent(String.self, forKey: .playbackUrl)
+        sessionPlaybackUrl = try container.decodeIfPresent(String.self, forKey: .sessionPlaybackUrl)
+    }
 
     var id: String { recordingAssetId }
 
@@ -528,6 +592,37 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
     var isPromotedToStudio: Bool {
         mediaAssetId?.trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty == false
+    }
+
+    var isVideoSource: Bool {
+        kind?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased().contains("VIDEO") == true
+            || contentType?.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased().hasPrefix("video/") == true
+    }
+
+    var protectedPlaybackReady: Bool {
+        guard isVerifiedForStudio,
+              recordingAssetId.range(
+                of: #"^[A-Za-z0-9][A-Za-z0-9_-]{0,239}$"#,
+                options: .regularExpression
+              ) != nil,
+              let sessionPlaybackUrl = sessionPlaybackUrl?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              sessionPlaybackUrl.range(
+                of: #"^/api/sessions/[A-Za-z0-9_-]{1,240}/recordings/[A-Za-z0-9_-]{1,240}/media$"#,
+                options: .regularExpression
+              ) != nil,
+              let byteSize,
+              let bytes = Int64(byteSize),
+              bytes > 0,
+              let checksum = sha256?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              checksum.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil else {
+            return false
+        }
+        return sessionPlaybackUrl.hasSuffix(
+            "/recordings/\(recordingAssetId)/media"
+        )
     }
 }
 

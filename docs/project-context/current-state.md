@@ -3515,3 +3515,28 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   keys present. Two-account browser/iPhone comprehension, isolation, readback,
   and reconnect behavior remain in the deferred validation ledger. Detailed decision record:
   `docs/coordination/2026-08-24-session-conversation.md`.
+
+### 2026-08-24 native Session protected playback
+
+- Quipsly Capture can now review a verified retained Session source even when
+  it is not in that iPhone's local recording library. The Session projection
+  carries the exact RecordingAsset ID, byte count, SHA-256, duration, optional
+  Studio identity, and canonical protected Session playback path.
+- Coaching playback no longer depends on podcast/Studio promotion. The new
+  Session route authenticates and applies Session access before storage lookup,
+  refuses held or drifting evidence, pins the immutable GCS generation, and
+  supports browser byte ranges plus metadata-only HEAD.
+- The app exposes **Listen** or **Watch** only when released source evidence is
+  complete. Preparation is user-initiated, account-bound, capacity-checked,
+  same-origin, byte-count checked, and completely SHA-256 verified before an
+  AVPlayer receives the file.
+- Prepared copies use iOS file protection, are excluded from backup, expire
+  after 30 days, stop on account change, and can be removed without changing
+  the retained original.
+- The focused 61-test route/evidence/mobile projection suite, 23 adjacent
+  Session player/journey tests, and strict Quipsly TypeScript pass. A
+  signing-independent simulator build and focused iPhone 17 Pro/iOS 26.3.1 UI
+  test also pass. Real authenticated download, physical-device
+  playback, beginning/middle/ending listening, video decode, and sync remain
+  in the deferred validation ledger. Detailed decision record:
+  `docs/coordination/2026-08-24-native-session-protected-playback.md`.
