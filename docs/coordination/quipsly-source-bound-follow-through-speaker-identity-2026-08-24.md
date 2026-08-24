@@ -110,6 +110,13 @@ dropped at the client boundary; only the plain-language authority appears in
 the UI. A reviewer can therefore see the difference before correcting words,
 confirming a turn, or creating follow-through—not only after saving it.
 
+Studio uses the same badge vocabulary without manufacturing Session ownership
+for generic imported media. Its selected transcript turn now distinguishes a
+speaker name explicitly corrected or confirmed by a person from an automatic
+provider label or unresolved identity. Because a Studio import does not
+necessarily belong to a Session participant, it never receives the
+`participant recording` claim merely for being editable in Studio.
+
 ## Mutation boundary
 
 Packet outputs remain candidates that require explicit human review. This
@@ -131,6 +138,8 @@ message a client, share a follow-up, publish content, or alter recording media.
   after carrying the evidence into both current and prior Session continuity.
 - Thirty-one focused transcript-desk and shared-badge tests pass with the
   per-turn evidence visible in the primary Nest correction workflow.
+- Eighteen focused Studio authority, desk, route, and shared-badge tests pass
+  with the imported-media boundary kept explicit.
 - The mobile Capture source-contract smoke passes, including the new v2
   source-bound speaker provenance assertion and a durable-work UI contract.
 - A complete unsigned generic iOS Simulator build and all 1,143 App Store

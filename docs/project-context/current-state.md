@@ -39,9 +39,12 @@ Date: 2026-08-24
 - Nest and Capture now decode and display the authority on each primary
   transcript turn before correction or follow-through. The internal stable
   participant ID remains available for integrity checks but is never rendered.
+- Studio transcript review now labels a selected imported-media speaker as
+  human reviewed, automatic, or unresolved. It intentionally does not claim
+  participant-owned source binding when a generic Studio import has none.
 - Quipsly TypeScript, 132 focused packet/review tests, 101 focused durable UI
   tests, 17 focused continuity/follow-up tests, 31 focused transcript-desk
-  tests, the mobile Capture
+  tests, 18 focused Studio speaker-evidence tests, the mobile Capture
   source-contract smoke, a complete unsigned generic iOS Simulator build and
   UI-test build, and all 1,143 App Store static checks pass. This is local
   automated evidence; live

@@ -6,7 +6,9 @@ import { createPortal } from "react-dom";
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
 import { SpectralEvidenceViewer } from "@/components/audio/SpectralEvidenceViewer";
 import type { SpectralEvidenceMarker, SpectralLoudnessEvidence } from "@/components/audio/spectral-evidence-overlay";
+import { TranscriptSpeakerEvidenceBadge } from "@/components/transcript-speaker-evidence-badge";
 import { transcriptConfidenceTriagePolicy, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+import type { TranscriptSourceSpeakerAuthority } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 type ReviewCorrection = {
   id: string;
@@ -29,6 +31,7 @@ type ReviewSegment = {
   providerSpeakerLabel: string | null;
   text: string;
   speakerLabel: string | null;
+  speakerAuthority?: TranscriptSourceSpeakerAuthority | null;
   confidence: number | null;
   acceptedCorrection: ReviewCorrection | null;
   confirmedAsIs: { id: string; reviewedAt: string } | null;
@@ -464,6 +467,7 @@ export function StudioTranscriptReviewDesk({
                 <span className="font-mono text-[10px] font-black text-cyan-900">{clock(selected.startSeconds)}–{clock(selected.endSeconds)}</span>
                 <button type="button" onClick={() => selectSegment(selected, true)} className="rounded-lg border border-cyan-300 bg-white px-3 py-1.5 text-[10px] font-black text-cyan-950 hover:bg-cyan-50">Listen to exact source</button>
               </div>
+              <TranscriptSpeakerEvidenceBadge authority={selected.speakerAuthority} />
               <div className="mt-2 flex flex-wrap gap-1" aria-label="Provider word probability evidence">
                 {selected.words.map((word) => (
                   <span key={word.id} className={`rounded border px-1.5 py-1 text-[10px] font-bold ${probabilityTone(word.confidence)}`} title={`${clock(word.startSeconds)}–${clock(word.endSeconds)} · ${word.confidence === null ? "probability unavailable" : `provider probability ${(word.confidence * 100).toFixed(1)}%`}`}>

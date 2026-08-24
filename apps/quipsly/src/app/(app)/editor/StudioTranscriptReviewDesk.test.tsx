@@ -13,6 +13,7 @@ const segment = {
   providerSpeakerLabel: null,
   text: "Curious, not judgmental.",
   speakerLabel: null,
+  speakerAuthority: "unresolved" as const,
   confidence: null,
   acceptedCorrection: null,
   confirmedAsIs: null,
@@ -94,6 +95,7 @@ describe("StudioTranscriptReviewDesk", () => {
 
     expect(await screen.findByRole("heading", { name: /Listen, correct, or confirm/i })).toBeInTheDocument();
     expect(screen.getByText(/provider probability, not measured accuracy/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Speaker needs review\. Quipsly has not identified this speaker yet\./i)).toBeInTheDocument();
     expect(await screen.findByText("Curious,")).toHaveAttribute("title", expect.stringContaining("98.0%"));
     expect(screen.getByRole("button", { name: /Save reviewed correction/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Confirm exactly as heard/i })).toBeDisabled();

@@ -8,6 +8,7 @@ import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collabor
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { authorizeStudioMediaSource } from "@/lib/server/studio-media-source-access";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
+import { studioTranscriptSpeakerAuthority } from "@/lib/server/studio-transcript-speaker-authority";
 import {
   TranscriptCorrectionError,
   transcriptCorrectionBoundaries,
@@ -155,6 +156,11 @@ function currentVerification(segment: any, accepted: any) {
 function publicSegment(segment: any) {
   const accepted = acceptedOverlay(segment);
   const verification = currentVerification(segment, accepted);
+  const speakerAuthority = studioTranscriptSpeakerAuthority({
+    correctedSpeakerLabel: accepted?.correctedSpeakerLabel,
+    confirmedAsIs: Boolean(verification),
+    providerSpeakerLabel: segment.speakerLabel,
+  });
   return {
     id: segment.id as string,
     startSeconds: segment.startSeconds as number,
@@ -164,6 +170,7 @@ function publicSegment(segment: any) {
     providerSpeakerLabel: segment.speakerLabel as string | null,
     text: accepted?.correctedText ?? segment.text,
     speakerLabel: accepted?.correctedSpeakerLabel ?? segment.speakerLabel ?? null,
+    speakerAuthority,
     confidence: segment.confidence as number | null,
     acceptedCorrection: accepted ? publicCorrection(accepted) : null,
     confirmedAsIs: verification ? {

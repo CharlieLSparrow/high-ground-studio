@@ -1266,6 +1266,9 @@ function checkTranscriptCorrectionContractSources() {
   const sessionFollowThroughServiceText = sourceText("apps/quipsly/src/lib/server/session-follow-through.ts");
   const sessionContinuityServiceText = sourceText("apps/quipsly/src/lib/server/session-continuity.ts");
   const sessionContinuityCardText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-continuity-card.tsx");
+  const studioTranscriptReviewDeskText = sourceText("apps/quipsly/src/app/(app)/editor/StudioTranscriptReviewDesk.tsx");
+  const studioTranscriptReviewServiceText = sourceText("apps/quipsly/src/lib/server/studio-transcript-review.ts");
+  const studioTranscriptSpeakerAuthorityText = sourceText("apps/quipsly/src/lib/server/studio-transcript-speaker-authority.ts");
   const mobileComponentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const nestDashboardText = sourceText("apps/quipsly/src/app/(app)/nests/[slug]/page.tsx");
   const nestFollowThroughText = sourceText("apps/quipsly/src/lib/server/nest-project-follow-through.ts");
@@ -2009,6 +2012,15 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("Speaker needs review"),
     "packetSpeakerIdentityEvidenceVisible",
     "Nest and iPhone Session follow-through explain whether a speaker name was reviewed, bound to an isolated participant recording, supplied automatically, or remains unresolved without conflating that identity with word review.",
+  );
+  expect(
+    studioTranscriptReviewServiceText.includes("studioTranscriptSpeakerAuthority")
+      && studioTranscriptSpeakerAuthorityText.includes('return "correction" as const')
+      && studioTranscriptSpeakerAuthorityText.includes('return "provider" as const')
+      && studioTranscriptSpeakerAuthorityText.includes('return "unresolved" as const')
+      && studioTranscriptReviewDeskText.includes("TranscriptSpeakerEvidenceBadge authority={selected.speakerAuthority}"),
+    "studioTranscriptSpeakerEvidenceVisible",
+    "Studio transcript review distinguishes a human-reviewed speaker name from an automatic or unresolved label without claiming imported media has participant-source identity.",
   );
   expect(
     durableWorkText.includes("TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority}")
