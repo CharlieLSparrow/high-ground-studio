@@ -77,7 +77,7 @@ import {
   browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
   browserSourcePostStopReceipt,
-  browserSourceReviewHref,
+  browserSourceNextReviewAction,
   browserSourceReceiptExitStatus,
   browserSourceRecoverySummary,
   browserSourceSafetyLabel,
@@ -2439,8 +2439,8 @@ export function BrowserSourceRecorder({
   const latestRecordingReceipt = activeLedger
     ? browserSourcePostStopReceipt(status, activeLedger)
     : null;
-  const latestRecordingReviewHref = activeLedger
-    ? browserSourceReviewHref(callRoomId, activeLedger)
+  const latestRecordingReviewAction = activeLedger
+    ? browserSourceNextReviewAction(callRoomId, activeLedger)
     : null;
   const latestRecordingExit = latestRecordingReceipt
     ? browserSourceReceiptExitStatus(latestRecordingReceipt, exitSafety)
@@ -2944,17 +2944,23 @@ export function BrowserSourceRecorder({
                     {latestRecordingExit.detail}
                   </p>
                 ) : null}
+                {latestRecordingReviewAction ? (
+                  <p className="mt-1 text-[10px] font-bold leading-4">
+                    {latestRecordingReviewAction.detail}
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-white/80 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide">
                   {latestRecordingExit?.label ?? "Keep open"}
                 </span>
-                {latestRecordingReviewHref ? (
+                {latestRecordingReviewAction ? (
                   <a
-                    href={latestRecordingReviewHref}
+                    href={latestRecordingReviewAction.href}
                     className="inline-flex min-h-10 items-center gap-2 rounded-full bg-violet-800 px-4 text-[10px] font-black uppercase tracking-wide text-white"
                   >
-                    <ExternalLink size={14} aria-hidden="true" /> Review recording
+                    <ExternalLink size={14} aria-hidden="true" />{" "}
+                    {latestRecordingReviewAction.label}
                   </a>
                 ) : null}
               </div>

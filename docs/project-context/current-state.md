@@ -33,11 +33,18 @@ Date: 2026-08-24
   assembly continues independently. Safe to close still requires every local
   browser source to be settled, so an older upload cannot be hidden by a newer
   verified take. Detailed recovery remains secondary.
+- When exact finalization creates a transcript job, Capture changes its one
+  next action to Review transcript and opens the exact source in the polling
+  Session transcript workspace. Without a transcript job, it keeps Review
+  recording. No manual start or provider job identifier enters the happy path.
 - Native Stop already waits for terminal local save and opens Library on the
   new immutable source; the release gate now protects that transition and its
   runtime assertion.
 - Forty-five focused call/handoff/stop tests and strict Quipsly TypeScript
   pass.
+- The combined call, Capture, and Session review regression passes 95/95; the
+  parent workspace test now isolates independently tested source-alignment
+  background work instead of counting unrelated fetches.
   The two-person browser/iPhone flight is retained as human/device evidence.
 
 ## Automatic post-call transcription checkpoint

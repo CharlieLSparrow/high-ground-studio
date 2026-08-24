@@ -183,6 +183,13 @@ the latest take. A verified latest recording may say **Saved and ready** while
 the page continues to say **Keep open** if an older local upload still needs
 the browser.
 
+When exact-byte finalization also returns a transcript job, the receipt's one
+next action becomes **Review transcript** and opens the exact source in the
+Session transcript workspace. That workspace polls quietly while the job is
+queued or running. If transcription was not created, the same slot remains
+**Review recording**. Capture exposes no provider job ID and does not ask the
+person to start a job that Quipsly already started automatically.
+
 The iPhone already has the stronger native equivalent: coordinated Stop waits
 for the local recorder to reach a terminal state, opens Library, and places the
 new immutable source in the ordinary saved-source list before upload is called
@@ -209,6 +216,9 @@ runtime new-source assertion.
 - The 45-test live-room, stop receipt, exact review-route, multi-source exit,
   consent, and upload-recovery regression
   passes. Strict Quipsly TypeScript also passes.
+- The combined live-room, Capture handoff, and Session review regression passes
+  95/95. The Session parent test isolates source alignment, whose asynchronous
+  behavior remains covered by its own focused component suite.
 - Native and Nest evidence projections recognize a source-timed
   `call-transport-gap` span without adding its duration to media-segment totals;
   focused parser and audio-map tests preserve its beginning and ending.

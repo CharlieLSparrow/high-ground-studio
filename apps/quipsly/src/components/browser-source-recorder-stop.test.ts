@@ -20,8 +20,9 @@ describe("browser source stop confidence", () => {
     expect(source).toContain("activeLedger.fileName");
     expect(source).toContain("formatBytes(activeLedger.sizeBytes)");
     expect(source).toContain(
-      "browserSourceReviewHref(callRoomId, activeLedger)",
+      "browserSourceNextReviewAction(callRoomId, activeLedger)",
     );
-    expect(source).toContain("Review recording");
+    expect(source).toContain("latestRecordingReviewAction.detail");
+    expect(source).toContain("latestRecordingReviewAction.label");
   });
 });

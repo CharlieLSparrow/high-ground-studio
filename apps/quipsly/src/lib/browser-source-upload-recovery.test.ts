@@ -2,6 +2,7 @@ import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
 import {
   browserSourceInterruptedRecoveryCandidate,
   browserSourcePostStopReceipt,
+  browserSourceNextReviewAction,
   browserSourceReviewHref,
   browserSourceReceiptExitStatus,
   browserSourceSafetyLabel,
@@ -234,6 +235,40 @@ describe("browser source upload recovery", () => {
       ),
     ).toBeNull();
     expect(browserSourceReviewHref("room-1", ledger("verified"))).toBeNull();
+  });
+
+  it("makes automatic transcription the next action without hiding recording review", () => {
+    expect(
+      browserSourceNextReviewAction(
+        "room / coaching",
+        ledger("verified", {
+          serverRecordingAssetId: "asset / exact",
+          serverTranscriptJobId: "transcript-1",
+        }),
+      ),
+    ).toEqual({
+      label: "Review transcript",
+      href: "/sessions/room%20%2F%20coaching?mode=transcript&source=asset+%2F+exact",
+      detail: "The timed transcript is being prepared automatically.",
+    });
+    expect(
+      browserSourceNextReviewAction(
+        "room-1",
+        ledger("verified", { serverRecordingAssetId: "asset-1" }),
+      ),
+    ).toMatchObject({
+      label: "Review recording",
+      href: "/sessions/room-1?mode=recordings&source=asset-1",
+    });
+    expect(
+      browserSourceNextReviewAction(
+        "room-1",
+        ledger("uploading", {
+          serverRecordingAssetId: "asset-1",
+          serverTranscriptJobId: "transcript-1",
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("never calls the page safe while another local recording still needs it", () => {

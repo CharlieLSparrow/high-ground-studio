@@ -7,6 +7,9 @@ import type { SessionReviewCandidate, SessionReviewGoalCandidate, SessionReviewN
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 
 jest.mock("./transcript-correction-desk", () => ({ TranscriptCorrectionDesk: () => <div>Exact transcript desk</div> }));
+jest.mock("./session-source-alignment-card", () => ({
+  SessionSourceAlignmentCard: () => <div>Source alignment evidence</div>,
+}));
 jest.mock("@/components/session-invitations", () => ({ SessionInvitations: () => <div>Session invitation manager</div> }));
 const mockRouterRefresh = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRouterRefresh }) }));

@@ -280,6 +280,30 @@ export function browserSourceReviewHref(
   return `/sessions/${encodeURIComponent(room)}?${query.toString()}`;
 }
 
+export function browserSourceNextReviewAction(
+  roomId: string,
+  ledger: BrowserSourceCaptureLedger,
+) {
+  const recordingHref = browserSourceReviewHref(roomId, ledger);
+  if (!recordingHref) return null;
+  if (!ledger.serverTranscriptJobId?.trim()) {
+    return {
+      label: "Review recording",
+      href: recordingHref,
+      detail: "The exact recording is ready to review.",
+    };
+  }
+  const query = new URLSearchParams({
+    mode: "transcript",
+    source: ledger.serverRecordingAssetId!.trim(),
+  });
+  return {
+    label: "Review transcript",
+    href: `/sessions/${encodeURIComponent(roomId.trim())}?${query.toString()}`,
+    detail: "The timed transcript is being prepared automatically.",
+  };
+}
+
 export function browserSourceReceiptExitStatus(
   receipt: BrowserSourcePostStopReceipt,
   exitSafety: BrowserSourceExitSafety,
