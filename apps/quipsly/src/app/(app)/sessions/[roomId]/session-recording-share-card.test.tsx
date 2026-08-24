@@ -27,7 +27,7 @@ const snapshot = {
   room: { id: "session_room_0001", title: "First coaching session", coach: { id: "coach_user_0001", label: "Coach" }, client: { id: "client_user_0001", label: "Client" } },
   available: {
     programDurationSeconds: 30,
-    sources: [{ id: "recording_asset_0001", participantLabel: "Coach", kind: "LOCAL_AUDIO", fileName: "coach.webm", sizeBytes: 4_000, startedAt: "2026-08-22T12:00:00.000Z", stoppedAt: "2026-08-22T12:00:30.000Z", programOffsetSeconds: 0 }],
+    sources: [{ id: "recording_asset_0001", participantLabel: "Coach", kind: "LOCAL_AUDIO", fileName: "coach.webm", sizeBytes: 4_000, startedAt: "2026-08-22T12:00:00.000Z", stoppedAt: "2026-08-22T12:00:30.000Z", programOffsetSeconds: 0, playbackUrl: "/api/sessions/session_room_0001/recordings/recording_asset_0001/media" }],
     transcriptSegments: [transcriptSegment],
   },
   output: null,
@@ -86,6 +86,21 @@ describe("SessionRecordingShareCard", () => {
     expect(row).toHaveAttribute("data-transcript-key", focusTranscriptKey);
     expect(row).toHaveClass("ring-4");
     expect((row?.querySelector("input[type=checkbox]") as HTMLInputElement)).toBeChecked();
+  });
+
+  it("auditions the exact source-bound passage before rendering a cut", async () => {
+    global.fetch = jest.fn(async (_input: RequestInfo | URL) => response(snapshot)) as jest.MockedFunction<typeof fetch>;
+    const play = jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Listen to exact passage" }));
+
+    const source = screen.getByLabelText("Source passage from Coach") as HTMLAudioElement;
+    expect(source).toHaveAttribute("src", "/api/sessions/session_room_0001/recordings/recording_asset_0001/media");
+    fireEvent.loadedMetadata(source);
+    expect(source.currentTime).toBeCloseTo(8.1, 3);
+    expect(play).toHaveBeenCalled();
+    expect(screen.getByText(/plays only the exact source passage/i)).toBeInTheDocument();
   });
 
   it("keeps overlapping speech included and explains why", async () => {

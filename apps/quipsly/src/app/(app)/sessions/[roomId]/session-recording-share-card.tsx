@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, FileAudio, FileText, LockKeyhole, RefreshCw, RotateCcw, Scissors, Send, ShieldCheck, Undo2 } from "lucide-react";
+import { Download, FileAudio, FileText, Headphones, LockKeyhole, Play, RefreshCw, RotateCcw, Scissors, Send, ShieldCheck, Undo2 } from "lucide-react";
 
 type Source = {
   id: string;
@@ -12,6 +12,7 @@ type Source = {
   startedAt: string;
   stoppedAt: string;
   programOffsetSeconds: number;
+  playbackUrl: string;
 };
 
 type TranscriptSegment = {
@@ -58,6 +59,17 @@ type Snapshot = {
   available?: { programDurationSeconds: number; sources: Source[]; transcriptSegments: TranscriptSegment[] };
   output?: Output | null;
   readiness?: { canPrepare: boolean; hasVerifiedParticipantSources: boolean; localRendererAvailable: boolean; cloudRendererAvailable: boolean };
+};
+
+type PassageAudition = {
+  key: string;
+  sourceId: string;
+  sourceStartSeconds: number;
+  sourceEndSeconds: number;
+  programStartSeconds: number;
+  programEndSeconds: number;
+  speakerLabel: string;
+  text: string;
 };
 
 function time(value: number) {
@@ -159,6 +171,9 @@ export function SessionRecordingShareCard({
   const [title, setTitle] = useState("");
   const [excludedTranscriptKeys, setExcludedTranscriptKeys] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(false);
+  const [audition, setAudition] = useState<PassageAudition | null>(null);
+  const [auditionNotice, setAuditionNotice] = useState<string | null>(null);
+  const auditionMediaRef = useRef<HTMLMediaElement | null>(null);
   const requestIds = useRef<Partial<Record<"PREPARE" | "RELEASE" | "REVOKE", string>>>({});
 
   const load = useCallback(async (quiet = false) => {
@@ -224,6 +239,56 @@ export function SessionRecordingShareCard({
     segment.transcriptJobId === focusedTranscriptSegment.transcriptJobId
     && segment.segmentId === focusedTranscriptSegment.segmentId
   )));
+  const auditionSource = useMemo(() => (
+    audition ? (snapshot?.available?.sources || []).find((source) => source.id === audition.sourceId) ?? null : null
+  ), [audition, snapshot?.available?.sources]);
+
+  const loadPassageAudition = useCallback((segment: TranscriptSegment) => {
+    const source = (snapshot?.available?.sources || []).find((candidate) => candidate.id === segment.sourceRecordingAssetId);
+    if (!source?.playbackUrl) {
+      setAuditionNotice("This exact participant master is not playable yet. Refresh after its protected source finishes preparing.");
+      return;
+    }
+    const programStartSeconds = Number(segment.cutStartSeconds ?? segment.startSeconds);
+    const programEndSeconds = Number(segment.cutEndSeconds ?? segment.endSeconds);
+    const sourceStartSeconds = Math.max(0, programStartSeconds - source.programOffsetSeconds);
+    const sourceEndSeconds = Math.max(sourceStartSeconds, programEndSeconds - source.programOffsetSeconds);
+    setAuditionNotice(null);
+    setAudition({
+      key: `${segment.transcriptJobId}:${segment.segmentId}`,
+      sourceId: source.id,
+      sourceStartSeconds,
+      sourceEndSeconds,
+      programStartSeconds,
+      programEndSeconds,
+      speakerLabel: segment.speakerLabel,
+      text: segment.text,
+    });
+    window.requestAnimationFrame(() => {
+      document.getElementById("recording-cut-audition")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }, [snapshot?.available?.sources]);
+
+  const beginAuditionPlayback = useCallback(() => {
+    const media = auditionMediaRef.current;
+    if (!media || !audition) return;
+    try {
+      media.currentTime = audition.sourceStartSeconds;
+      const started = media.play();
+      void started?.catch(() => setAuditionNotice("The passage is loaded. Press Play in the recording control to listen."));
+    } catch {
+      setAuditionNotice("The passage is loaded. Press Play in the recording control to listen.");
+    }
+  }, [audition]);
+
+  const stopAtAuditionBoundary = useCallback(() => {
+    const media = auditionMediaRef.current;
+    if (!media || !audition) return;
+    if (media.currentTime >= audition.sourceEndSeconds - 0.015) {
+      media.pause();
+      media.currentTime = audition.sourceStartSeconds;
+    }
+  }, [audition]);
 
   useEffect(() => {
     if (!focusTranscriptKey || !snapshot?.role) return;
@@ -333,6 +398,46 @@ export function SessionRecordingShareCard({
                 </div>
                 {excludedTranscriptSegments.length ? <button type="button" onClick={() => setExcludedTranscriptKeys(new Set())} className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] font-black text-sky-900"><RotateCcw className="mr-1 inline" size={12} />Restore all</button> : null}
               </div>
+              {audition && auditionSource ? (
+                <div id="recording-cut-audition" className="mt-4 scroll-mt-28 rounded-xl border border-indigo-200 bg-indigo-50 p-3" aria-label="Exact passage audition">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-indigo-900"><Headphones size={14} aria-hidden="true" />Exact participant master</p>
+                      <p className="mt-1 text-sm font-black text-indigo-950">{audition.speakerLabel} · {time(audition.programStartSeconds)}–{time(audition.programEndSeconds)}</p>
+                      <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-indigo-900">{audition.text}</p>
+                    </div>
+                    <button type="button" onClick={beginAuditionPlayback} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-indigo-800 px-4 py-2 text-xs font-black text-white"><Play size={13} fill="currentColor" aria-hidden="true" />Play passage</button>
+                  </div>
+                  {auditionSource.kind === "LOCAL_VIDEO" ? (
+                    <video
+                      ref={(node) => { auditionMediaRef.current = node; }}
+                      aria-label={`Source passage from ${auditionSource.participantLabel}`}
+                      className="mt-3 aspect-video w-full max-w-xl rounded-lg bg-black"
+                      controls
+                      playsInline
+                      preload="metadata"
+                      src={auditionSource.playbackUrl}
+                      onLoadedMetadata={beginAuditionPlayback}
+                      onTimeUpdate={stopAtAuditionBoundary}
+                      onError={() => setAuditionNotice("Quipsly could not open this protected participant master. Refresh after source preparation finishes.")}
+                    />
+                  ) : (
+                    <audio
+                      ref={(node) => { auditionMediaRef.current = node; }}
+                      aria-label={`Source passage from ${auditionSource.participantLabel}`}
+                      className="mt-3 w-full"
+                      controls
+                      preload="metadata"
+                      src={auditionSource.playbackUrl}
+                      onLoadedMetadata={beginAuditionPlayback}
+                      onTimeUpdate={stopAtAuditionBoundary}
+                      onError={() => setAuditionNotice("Quipsly could not open this protected participant master. Refresh after source preparation finishes.")}
+                    >Your browser cannot play this private participant recording.</audio>
+                  )}
+                  <p className="mt-2 text-[11px] font-bold leading-5 text-indigo-800">This plays only the exact source passage. Your reversible cut is not applied until you create and listen to the private preview.</p>
+                </div>
+              ) : null}
+              {auditionNotice ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950" role="status">{auditionNotice}</p> : null}
               <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
                 {editableTranscript.map((segment) => {
                   const key = `${segment.transcriptJobId}:${segment.segmentId}`;
@@ -340,31 +445,34 @@ export function SessionRecordingShareCard({
                   const safe = segment.cutSafety === "safe" && Boolean(segment.timingFingerprint);
                   const focused = focusTranscriptKey === key;
                   return (
-                    <label id={recordingCutElementId(key)} tabIndex={-1} data-transcript-key={key} key={key} className={`grid scroll-mt-28 grid-cols-[auto_4.5rem_1fr] gap-3 rounded-xl border p-3 outline-none ${focused ? "ring-4 ring-sky-300" : ""} ${!safe ? "cursor-not-allowed border-amber-200 bg-amber-50" : included ? "cursor-pointer border-sky-100 bg-sky-50/50" : "cursor-pointer border-rose-200 bg-rose-50 text-rose-950"}`}>
-                      <input
-                        type="checkbox"
-                        className="mt-1 size-4 accent-sky-700"
-                        checked={included}
-                        disabled={!safe}
-                        aria-label={`${included ? "Keep in recording" : "Restore to recording"}: ${segment.text}`}
-                        aria-describedby={!safe ? `${key}-safety` : undefined}
-                        onChange={() => setExcludedTranscriptKeys((current) => {
-                          const next = new Set(current);
-                          if (next.has(key)) next.delete(key);
-                          else next.add(key);
-                          return next;
-                        })}
-                      />
-                      <span className="pt-0.5 text-[11px] font-black tabular-nums text-sky-700">{time(segment.startSeconds)}</span>
-                      <span>
-                        <span className="flex flex-wrap items-center gap-2 text-xs font-black text-sky-950">
-                          {segment.speakerLabel}
-                          <span className={`rounded-full px-2 py-0.5 text-[9px] uppercase ${!safe ? "bg-amber-100 text-amber-950" : included ? "bg-emerald-100 text-emerald-900" : "bg-rose-100 text-rose-900"}`}>{!safe ? "Kept safe" : included ? "Included" : "Removed"}</span>
+                    <div id={recordingCutElementId(key)} tabIndex={-1} key={key} className="scroll-mt-28 outline-none">
+                      <label data-transcript-key={key} className={`grid grid-cols-[auto_4.5rem_1fr] gap-3 rounded-xl border p-3 outline-none ${focused ? "ring-4 ring-sky-300" : ""} ${!safe ? "cursor-not-allowed border-amber-200 bg-amber-50" : included ? "cursor-pointer border-sky-100 bg-sky-50/50" : "cursor-pointer border-rose-200 bg-rose-50 text-rose-950"}`}>
+                        <input
+                          type="checkbox"
+                          className="mt-1 size-4 accent-sky-700"
+                          checked={included}
+                          disabled={!safe}
+                          aria-label={`${included ? "Keep in recording" : "Restore to recording"}: ${segment.text}`}
+                          aria-describedby={!safe ? `${key}-safety` : undefined}
+                          onChange={() => setExcludedTranscriptKeys((current) => {
+                            const next = new Set(current);
+                            if (next.has(key)) next.delete(key);
+                            else next.add(key);
+                            return next;
+                          })}
+                        />
+                        <span className="pt-0.5 text-[11px] font-black tabular-nums text-sky-700">{time(segment.startSeconds)}</span>
+                        <span>
+                          <span className="flex flex-wrap items-center gap-2 text-xs font-black text-sky-950">
+                            {segment.speakerLabel}
+                            <span className={`rounded-full px-2 py-0.5 text-[9px] uppercase ${!safe ? "bg-amber-100 text-amber-950" : included ? "bg-emerald-100 text-emerald-900" : "bg-rose-100 text-rose-900"}`}>{!safe ? "Kept safe" : included ? "Included" : "Removed"}</span>
+                          </span>
+                          <span className={`mt-0.5 block text-sm leading-5 ${included ? "text-sky-950" : "line-through decoration-rose-500"}`}>{segment.text}</span>
+                          {!safe ? <span id={`${key}-safety`} className="mt-1 block text-[11px] font-bold leading-4 text-amber-900">{segment.cutSafetyReason || "Precise source timing is unavailable, so this passage stays included."}</span> : null}
                         </span>
-                        <span className={`mt-0.5 block text-sm leading-5 ${included ? "text-sky-950" : "line-through decoration-rose-500"}`}>{segment.text}</span>
-                        {!safe ? <span id={`${key}-safety`} className="mt-1 block text-[11px] font-bold leading-4 text-amber-900">{segment.cutSafetyReason || "Precise source timing is unavailable, so this passage stays included."}</span> : null}
-                      </span>
-                    </label>
+                      </label>
+                      <button type="button" onClick={() => loadPassageAudition(segment)} aria-pressed={audition?.key === key} className="ml-[6.75rem] mt-1 inline-flex min-h-9 items-center gap-2 rounded-full border border-indigo-200 bg-white px-3 py-1.5 text-[11px] font-black text-indigo-900 aria-pressed:bg-indigo-100"><Headphones size={13} aria-hidden="true" />Listen to exact passage</button>
+                    </div>
                   );
                 })}
               </div>

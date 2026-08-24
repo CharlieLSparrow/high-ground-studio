@@ -1194,3 +1194,27 @@ static checks, a dual-architecture Simulator build, and a passing targeted
 Simulator UI journey from Today finishing queue into the exact Session and its
 expanded evidence. Real device background upload, termination, recovery, and
 cross-endpoint drain remain physical validation.
+
+## 2026-08-24 source-bound cut audition
+
+Text-based editing now closes the listening gap between transcript review and
+rendering. Every removable transcript passage has one conventional **Listen to
+exact passage** action. It opens the retained participant master, seeks from the
+Session program clock into that source's local clock, and stops at the exact
+word-timed cut boundary. Audio and camera masters use the same control and the
+same room-authorized byte-serving contract.
+
+The player does not pretend to preview an edit that has not been rendered. It
+labels itself as the exact participant master and explains that the reversible
+cut is applied only after **Create private preview**. That later derivative is
+still verified and listened to before named-recipient release. This gives the
+coach immediate evidence for a cut without weakening immutable-source rules,
+creating a public URL, or conflating transcript correction with media mutation.
+
+The server projection exposes only the existing private Session media route.
+That route independently rechecks authenticated room access, the released
+finalization receipt, byte size, SHA-256, storage bucket and object generation
+before streaming. Focused evidence is 27 passing editor, edit-contract, and
+protected-media tests plus a clean strict Quipsly TypeScript check. Natural
+speech, human listening quality, and production object streaming remain
+physical/authenticated validation rather than automated claims.

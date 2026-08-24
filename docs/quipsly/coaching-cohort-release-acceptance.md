@@ -2159,3 +2159,20 @@ ambiguous-response retry. Before release evidence claims the behavior live:
 
 The local 17-test and strict-TypeScript checkpoint is not a production deploy
 or authenticated cross-Episode runtime claim.
+
+## Local checkpoint: exact-passage text-edit audition — 2026-08-24
+
+The inline coaching recording editor can now audition every text-based cut
+against its exact participant master before rendering. Session program time is
+translated to source-local time using the retained participant offset; playback
+seeks to the word-timed in-point and stops at the proposed out-point. Camera and
+audio sources share the protected Session media boundary. The UI explicitly
+distinguishes source audition from the later rendered private preview.
+
+Focused editor, edit-contract, and private-media suites pass 27/27 and strict
+Quipsly TypeScript passes. Before release acceptance, use a real two-participant
+Session to listen near the beginning, middle, and end of both sources, confirm
+the selected words match the audible source, create the private derivative,
+and compare both joins around a removed passage. This local checkpoint does not
+claim human audibility, natural-speech correctness, production GCS streaming,
+or physical-device playback.

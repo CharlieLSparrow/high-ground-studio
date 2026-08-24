@@ -176,6 +176,7 @@ async function loadSources(client: RestoreClient, roomId: string) {
     orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
+      roomId: true,
       participantId: true,
       kind: true,
       status: true,
@@ -227,6 +228,7 @@ function sourceSummary(rows: any[]) {
       startedAt: row.recordedStartedAt.toISOString(),
       stoppedAt: row.recordedStoppedAt.toISOString(),
       programOffsetSeconds: (row.recordedStartedAt.getTime() - originMs) / 1_000,
+      playbackUrl: `/api/sessions/${encodeURIComponent(row.roomId)}/recordings/${encodeURIComponent(row.id)}/media`,
     })),
   };
 }
