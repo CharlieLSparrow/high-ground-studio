@@ -1754,6 +1754,40 @@ export function LiveSessionRoom({
     </section>
   );
   const showRetainedSourceControls = connected || callRecoveryAvailable || status === "ended" || sourceLocked || leaveAfterSourceStops;
+  const callVideoStage = (
+    <div
+      data-testid="call-video-stage"
+      className={`relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14] ${!connected && !cameraWanted ? "h-28" : "aspect-video"}`}
+      aria-label={remoteVideoTrackCount > 0 ? "Call video stage with your preview" : "Your camera preview"}
+    >
+      <div
+        ref={remoteMediaRef}
+        className={`absolute inset-0 grid overflow-hidden bg-black ${remoteVideoTrackCount > 1 ? "grid-cols-2" : "grid-cols-1"}`}
+        aria-label="Remote participant media"
+      />
+      <video
+        ref={localVideoRef}
+        muted
+        playsInline
+        aria-label="Your camera"
+        className={remoteVideoTrackCount > 0
+          ? `absolute bottom-3 right-3 z-10 aspect-video w-[32%] max-w-56 rounded-xl border-2 border-white/90 bg-black object-cover shadow-2xl ${cameraWanted && !cameraMuted ? "" : "invisible"}`
+          : `absolute inset-0 h-full w-full object-cover ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`}
+      />
+      {remoteVideoTrackCount === 0 && (!cameraWanted || cameraMuted) ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
+      {!connected && remoteVideoTrackCount === 0 && cameraWanted && !cameraMuted && !previewTested ? (
+        <div className="absolute inset-0 grid place-items-center bg-black/35 px-6 text-center text-white">
+          <div>
+            <Camera className="mx-auto" aria-hidden="true" />
+            <p className="mt-2 text-xs font-black uppercase tracking-wide">Camera starts when you join</p>
+            <p className="mt-1 text-[10px] font-bold text-white/80">Preview is available in audio and video settings.</p>
+          </div>
+        </div>
+      ) : null}
+      {remoteVideoTrackCount > 0 && (!cameraWanted || cameraMuted) ? <div className="absolute bottom-3 right-3 z-10 inline-flex min-h-10 items-center gap-2 rounded-full bg-black/75 px-3 text-[10px] font-black uppercase tracking-wide text-white"><CameraOff size={14} aria-hidden="true" /> You · Camera off</div> : null}
+      {remoteVideoTrackCount === 0 ? <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">You · {sessionTitle}</div> : cameraWanted && !cameraMuted ? <div className="absolute bottom-5 right-5 z-20 rounded-full bg-black/70 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">You</div> : null}
+    </div>
+  );
 
   return (
     <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
@@ -1777,11 +1811,11 @@ export function LiveSessionRoom({
               <p className="mt-2 text-xs font-bold leading-5 text-slate-800">Your retained recording is separate and remains available below to stop, save, upload, or recover.</p>
             </section>
           ) : !connected ? (
-            <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4" aria-label={callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}>
+            <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 sm:p-5" aria-label={callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">{callRecoveryAvailable ? "Call disconnected" : "Ready to join?"}</p>
-                  <h3 className="mt-1 font-serif text-2xl font-black text-violet-950">{callRecoveryAvailable ? "Rejoin with your saved setup" : "Check how you’ll enter the call"}</h3>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">{callRecoveryAvailable ? "Call disconnected" : "Call lobby"}</p>
+                  <h3 className="mt-1 font-serif text-2xl font-black text-violet-950">{callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}</h3>
                   <p className="mt-1 text-xs font-bold leading-5 text-violet-900">
                     {callAudioMode === "other-device"
                       ? "Call audio on your other device"
@@ -1789,10 +1823,9 @@ export function LiveSessionRoom({
                     {cameraWanted ? ` · ${cameras.find((device) => device.deviceId === cameraId)?.label || "Camera not available yet"}` : " · Camera off"}
                   </p>
                 </div>
-                <span className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${previewTested ? "bg-emerald-100 text-emerald-950" : "bg-white text-violet-950"}`}>
-                  {previewTested ? "Preview checked" : "Preview optional"}
-                </span>
+                {previewTested ? <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-950">Preview ready</span> : null}
               </div>
+              <div className="mt-4">{callVideoStage}</div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {callAudioMode === "this-device" ? <button
                   type="button"
@@ -1825,29 +1858,7 @@ export function LiveSessionRoom({
             </section>
           ) : null}
 
-          <div
-            data-testid="call-video-stage"
-            className={`relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14] ${!connected && !cameraWanted ? "h-28" : "aspect-video"}`}
-            aria-label={remoteVideoTrackCount > 0 ? "Call video stage with your preview" : "Your camera preview"}
-          >
-            <div
-              ref={remoteMediaRef}
-              className={`absolute inset-0 grid overflow-hidden bg-black ${remoteVideoTrackCount > 1 ? "grid-cols-2" : "grid-cols-1"}`}
-              aria-label="Remote participant media"
-            />
-            <video
-              ref={localVideoRef}
-              muted
-              playsInline
-              aria-label="Your camera"
-              className={remoteVideoTrackCount > 0
-                ? `absolute bottom-3 right-3 z-10 aspect-video w-[32%] max-w-56 rounded-xl border-2 border-white/90 bg-black object-cover shadow-2xl ${cameraWanted && !cameraMuted ? "" : "invisible"}`
-                : `absolute inset-0 h-full w-full object-cover ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`}
-            />
-            {remoteVideoTrackCount === 0 && (!cameraWanted || cameraMuted) ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
-            {remoteVideoTrackCount > 0 && (!cameraWanted || cameraMuted) ? <div className="absolute bottom-3 right-3 z-10 inline-flex min-h-10 items-center gap-2 rounded-full bg-black/75 px-3 text-[10px] font-black uppercase tracking-wide text-white"><CameraOff size={14} aria-hidden="true" /> You · Camera off</div> : null}
-            {remoteVideoTrackCount === 0 ? <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">You · {sessionTitle}</div> : cameraWanted && !cameraMuted ? <div className="absolute bottom-5 right-5 z-20 rounded-full bg-black/70 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">You</div> : null}
-          </div>
+          {connected ? callVideoStage : null}
 
           {connected ? (
             <div className="flex flex-wrap gap-2" aria-label="Call controls">

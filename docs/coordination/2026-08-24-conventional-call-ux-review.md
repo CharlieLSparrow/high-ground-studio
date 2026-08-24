@@ -80,6 +80,16 @@ both coaching and Episode Sessions. Settings remain below it and collapsed.
 After consent, the next normal action is therefore visible nearby instead of
 requiring a hunt down the page.
 
+One disconnected-state hierarchy defect also remained: the Join card appeared
+above the camera stage, so the lobby felt like a vertical checklist instead of
+one outer room. The browser now contains the participant preview, selected
+mic/camera summary, familiar mic/camera toggles, and the single **Join call**
+action in one `Ready to join` region. A camera that has not yet received its
+first contextual grant says that it starts on Join; Quipsly does not claim a
+preview or remembered setup that has not actually been proved. Device selectors,
+the private sound check, refresh, and technical evidence remain in the one
+collapsed settings disclosure immediately below the lobby.
+
 The recovery path now follows the same separation of concerns. On the web, an
 exhausted LiveKit reconnect keeps the participant-owned recorder and durable
 coordinated-stop polling visible, clears stale remote media, and offers one
@@ -113,7 +123,8 @@ another Session is not disabled by the old room's state.
 
 ## Evidence and limits
 
-- The 29-test focused web call-room suite passes, including exhausted reconnect
+- The 30-test focused web call-room suite passes, including preview-first lobby
+  order, contextual first-grant behavior, exhausted reconnect
   while a retained participant source remains active and deliberate leave while
   that source is protected.
 - The regression explicitly proves that the connected recording surface

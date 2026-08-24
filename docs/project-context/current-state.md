@@ -11,6 +11,11 @@ Date: 2026-08-24
 - Device permission remains contextual and OS-owned. Recording consent remains
   a separate Session-scoped decision; neither is presented as recurring Quipsly
   administration.
+- Before joining on the web, the camera stage now lives inside the same outer
+  room as the selected mic/camera summary, familiar toggles, and one Join
+  action. Optional settings remain collapsed below it. The ordinary surface
+  never claims a preview or remembered setup unless the browser actually
+  opened the selected devices.
 - After joining on the web, the participant-owned recording consent/Record
   surface now appears directly after call controls for coaching and Episode
   Sessions. Optional device settings no longer interrupt the primary

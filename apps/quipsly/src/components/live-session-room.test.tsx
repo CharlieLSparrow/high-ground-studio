@@ -283,7 +283,7 @@ describe("LiveSessionRoom", () => {
       video: expect.objectContaining({ deviceId: { exact: "remembered-camera" } }),
     }));
     expect(query).toHaveBeenCalledWith({ name: "camera" });
-    expect(screen.getByText("Preview checked")).toBeInTheDocument();
+    expect(screen.getByText("Preview ready")).toBeInTheDocument();
   });
 
   it("does not open devices automatically when a first-time browser still needs permission", async () => {
@@ -518,9 +518,8 @@ describe("LiveSessionRoom", () => {
       },
     });
 
-    let view: ReturnType<typeof render>;
     await act(async () => {
-      view = render(
+      render(
         <LiveSessionRoom
           callRoomId="room-coaching-order"
           captureGroupId="55555555-5555-4555-8555-555555555549"
@@ -535,15 +534,21 @@ describe("LiveSessionRoom", () => {
       screen.getByRole("heading", { name: "Simple coaching Session" }),
     ).toBeInTheDocument();
     const greenRoom = screen.getByRole("region", { name: "Ready to join" });
-    expect(greenRoom).toHaveTextContent(/Check how you’ll enter the call/i);
+    expect(greenRoom).toHaveTextContent(/Call lobby/i);
+    expect(greenRoom).toHaveTextContent(/Ready to join/i);
     expect(greenRoom).toHaveTextContent(/Coach microphone/i);
-    expect(greenRoom).toHaveTextContent(/Preview optional/i);
+    expect(greenRoom).not.toHaveTextContent(/permission|setup required|preview required/i);
     expect(greenRoom).toHaveTextContent(/Joining doesn’t start recording/i);
     const join = screen.getByRole("button", { name: /Join call/i });
     const devices = screen.getByRole("group", { name: "Preflight studio devices" });
     const soundCheck = screen.getByRole("region", { name: "Private studio sound check" });
-    const preview = view!.container.querySelector("video");
+    const stage = screen.getByTestId("call-video-stage");
+    const preview = stage.querySelector("video");
+    expect(greenRoom).toContainElement(stage);
     expect(preview).not.toBeNull();
+    expect(
+      stage.compareDocumentPosition(join) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
       preview!.compareDocumentPosition(devices) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -806,7 +811,7 @@ describe("LiveSessionRoom", () => {
       mockLiveKitRoom.__emit(livekit.RoomEvent.Disconnected);
     });
     expect(screen.getByText("Call disconnected", { selector: "span" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Ready to rejoin" })).toHaveTextContent("Rejoin with your saved setup");
+    expect(screen.getByRole("region", { name: "Ready to rejoin" })).toHaveTextContent("Ready to rejoin");
     expect(screen.getByRole("button", { name: "Rejoin call" })).toBeEnabled();
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(/local recording is still protected/i);
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
