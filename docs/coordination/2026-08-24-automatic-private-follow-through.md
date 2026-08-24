@@ -24,13 +24,15 @@ message, calendar event, edit, upload, publication, or billing action.
 
 The packet author is selected from canonical authority in this order:
 
-1. `TranscriptJob.requestedBy`;
-2. the booking's coach; or
+1. the booking's assigned coach for a booked coaching Session;
+2. `TranscriptJob.requestedBy` for non-booked production/research Sessions; or
 3. the room creator for legacy jobs.
 
-It is never assigned to whichever account happened to poll the Session. New
-Capture transcript jobs retain the recording actor as `requestedBy` at initial
-creation, held-state update, and retry.
+It is never assigned to whichever account happened to poll the Session, and a
+client upload cannot take ownership of the coach's private follow-through. New
+Capture transcript jobs still retain the recording actor as `requestedBy` at
+initial creation, held-state update, and retry so non-booked work has durable
+authorship evidence.
 
 The transcript packet route now applies the same Session-note visibility policy
 as the iPhone Session projection. An authorized client can read their own

@@ -29,7 +29,7 @@ describe("automatic transcript follow-through", () => {
     } as any);
   });
 
-  it("uses canonical transcript authorship instead of the polling account", async () => {
+  it("uses the assigned coach for booked coaching even when another participant queued transcription", async () => {
     const prisma = {
       coachingNote: { findFirst: jest.fn().mockResolvedValue(null) },
       transcriptJob: {
@@ -50,17 +50,17 @@ describe("automatic transcript follow-through", () => {
     expect(buildCoachingPacketFromTranscriptJob).toHaveBeenCalledWith({
       prisma,
       transcriptJobId: "job-1",
-      authorUserId: "recording-owner",
+      authorUserId: "coach-owner",
       force: false,
     });
   });
 
-  it("uses the canonical coach and then room creator only for legacy jobs", async () => {
+  it("uses the transcript requester and then room creator for non-booked or legacy jobs", async () => {
     const findUnique = jest.fn()
       .mockResolvedValueOnce({
         roomId: "room-1",
-        requestedBy: null,
-        room: { createdByUserId: "room-owner", booking: { coachUserId: "coach-owner" } },
+        requestedBy: "recording-owner",
+        room: { createdByUserId: "room-owner", booking: null },
       })
       .mockResolvedValueOnce({
         roomId: "room-1",
@@ -73,7 +73,7 @@ describe("automatic transcript follow-through", () => {
     };
     await reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId: "job-1" });
     await reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId: "job-1" });
-    expect(jest.mocked(buildCoachingPacketFromTranscriptJob).mock.calls[0]?.[0].authorUserId).toBe("coach-owner");
+    expect(jest.mocked(buildCoachingPacketFromTranscriptJob).mock.calls[0]?.[0].authorUserId).toBe("recording-owner");
     expect(jest.mocked(buildCoachingPacketFromTranscriptJob).mock.calls[1]?.[0].authorUserId).toBe("room-owner");
   });
 

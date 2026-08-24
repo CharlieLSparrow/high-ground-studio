@@ -49,8 +49,11 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
       },
     },
   });
-  const authorUserId = authority?.requestedBy
-    || authority?.room?.booking?.coachUserId
+  // A booked coaching Session belongs in the assigned coach's private review
+  // lane even when the client's phone uploaded or queued the source first.
+  // Non-booked production/research Sessions retain the transcript requester.
+  const authorUserId = authority?.room?.booking?.coachUserId
+    || authority?.requestedBy
     || authority?.room?.createdByUserId
     || null;
   if (!authorUserId) {

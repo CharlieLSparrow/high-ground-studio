@@ -52,8 +52,9 @@ Date: 2026-08-24
   or reuse the deterministic source-bound review packet. This no longer depends
   on a particular browser tab remaining open or a person finding Build packet.
 - New transcript jobs retain the recording actor as requester. Packet authorship
-  resolves from that requester, the canonical booking coach, then the room
-  creator for legacy evidence—never from the account that happened to poll.
+  resolves to the assigned coach for booked coaching, then the requester for
+  non-booked work, then the room creator for legacy evidence—never from the
+  account that happened to poll or merely uploaded a client's source first.
 - Automatic output remains author-private and candidate-only. Canonical tasks,
   goals, shared notes, client deliveries, messages, calendar events, edits, and
   publications still require an explicit reviewed action.
