@@ -4,19 +4,35 @@ import CryptoKit
 import Foundation
 
 struct CaptureAudioMasterySnapshot: Decodable, Equatable {
+    struct Measurement: Decodable, Equatable {
+        let durationSeconds: TimeInterval
+        let integratedLufs: Double
+        let truePeakDbtp: Double
+        let loudnessRangeLu: Double
+    }
+
     struct Derivative: Decodable, Equatable {
         let playbackUrl: String?
         let sha256: String
         let sizeBytes: Int64
+        let measured: Measurement?
     }
 
     struct Proposal: Decodable, Equatable {
+        struct Profile: Decodable, Equatable {
+            let label: String
+            let integratedLufs: Double
+            let maximumTruePeakDbtp: Double
+        }
+
         let action: String
+        let profile: Profile?
     }
 
     let ok: Bool
     let jobId: String?
     let status: String
+    let sourceMeasurement: Measurement?
     let proposal: Proposal?
     let derivative: Derivative?
     let error: String?
@@ -140,7 +156,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         }
     }
 
-    func togglePreview(recording: LocalRecording) async {
+    func togglePreview(recording: LocalRecording, from requestedSeconds: TimeInterval = 0) async {
         if let player, player.isPlaying {
             player.pause()
             isPlaying = false
@@ -149,6 +165,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         }
         if let player {
             do {
+                player.currentTime = Self.clampedPlaybackTime(requestedSeconds, duration: player.duration)
                 try audioSessionCoordinator.beginLocalPlayback()
                 guard player.play() else { throw ClientError.message("The improved copy could not begin playback.") }
                 isPlaying = true
@@ -210,6 +227,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
             try audioSessionCoordinator.beginLocalPlayback()
             let player = try AVAudioPlayer(contentsOf: destination)
             player.delegate = self
+            player.currentTime = Self.clampedPlaybackTime(requestedSeconds, duration: player.duration)
             guard player.prepareToPlay(), player.play() else {
                 throw ClientError.message("The improved copy could not begin playback.")
             }
@@ -409,6 +427,13 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
                   CharacterSet(charactersIn: "0123456789abcdef").contains($0)
               }) else { return nil }
         return normalized
+    }
+
+    private nonisolated static func clampedPlaybackTime(
+        _ requestedSeconds: TimeInterval,
+        duration: TimeInterval
+    ) -> TimeInterval {
+        min(max(requestedSeconds.isFinite ? requestedSeconds : 0, 0), max(duration - 0.05, 0))
     }
 
     private nonisolated static func nonempty(_ value: String?) -> String? {

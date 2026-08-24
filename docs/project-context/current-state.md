@@ -2,6 +2,24 @@
 
 Date: 2026-08-24
 
+## Native audio mastery evidence-comparison checkpoint
+
+- Capture Recording Quality now decodes complete source and verified preview
+  loudness measurements instead of offering an unexplained improved-file play
+  button. It shows integrated LUFS, true peak, loudness range, and the named
+  delivery target in the same simple card.
+- Original and Improved playback begin at the same selected source time and
+  stop one another, making the comparison useful without mixing two players.
+  The improved file still requires account-bound download plus exact SHA-256
+  and byte-count verification.
+- The original remains source truth. Opening, measuring, or playing the card
+  does not approve, promote, replace, publish, or delete media, and measured
+  levels do not claim a person listened or preferred the result.
+- The mobile source contract, Swift parsing, deterministic preview assertions,
+  and complete unsigned two-architecture Simulator `build-for-testing` pass.
+  Physical-device listening and authenticated live derivative playback remain
+  release evidence rather than automated claims.
+
 ## Source-bound follow-through speaker checkpoint
 
 - Participant-isolated source recordings now carry their exact participant

@@ -1269,6 +1269,8 @@ function checkTranscriptCorrectionContractSources() {
   const studioTranscriptReviewDeskText = sourceText("apps/quipsly/src/app/(app)/editor/StudioTranscriptReviewDesk.tsx");
   const studioTranscriptReviewServiceText = sourceText("apps/quipsly/src/lib/server/studio-transcript-review.ts");
   const studioTranscriptSpeakerAuthorityText = sourceText("apps/quipsly/src/lib/server/studio-transcript-speaker-authority.ts");
+  const captureSourceEvidenceText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureSourceEvidenceView.swift");
+  const captureAudioMasteryClientText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureAudioMasteryClient.swift");
   const mobileComponentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const nestDashboardText = sourceText("apps/quipsly/src/app/(app)/nests/[slug]/page.tsx");
   const nestFollowThroughText = sourceText("apps/quipsly/src/lib/server/nest-project-follow-through.ts");
@@ -2021,6 +2023,19 @@ function checkTranscriptCorrectionContractSources() {
       && studioTranscriptReviewDeskText.includes("TranscriptSpeakerEvidenceBadge authority={selected.speakerAuthority}"),
     "studioTranscriptSpeakerEvidenceVisible",
     "Studio transcript review distinguishes a human-reviewed speaker name from an automatic or unresolved label without claiming imported media has participant-source identity.",
+  );
+  expect(
+    captureAudioMasteryClientText.includes("let sourceMeasurement: Measurement?")
+      && captureAudioMasteryClientText.includes("let measured: Measurement?")
+      && captureAudioMasteryClientText.includes("clampedPlaybackTime")
+      && captureSourceEvidenceText.includes("CaptureAudioMasteryMeasurements")
+      && captureSourceEvidenceText.includes("CaptureAudioMasteryTarget")
+      && captureSourceEvidenceText.includes("CaptureAudioMasteryPlayOriginal")
+      && captureSourceEvidenceText.includes("from: selectedAudioSeconds")
+      && captureUITestText.includes("CaptureAudioMasteryMeasurements")
+      && captureUITestText.includes("CaptureAudioMasteryPlayOriginal"),
+    "nativeAudioMasteryEvidenceComparison",
+    "iPhone recording quality decodes complete source and verified preview loudness evidence, shows the delivery target, and compares original versus improved audio from the same selected source time without replacing the original.",
   );
   expect(
     durableWorkText.includes("TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority}")

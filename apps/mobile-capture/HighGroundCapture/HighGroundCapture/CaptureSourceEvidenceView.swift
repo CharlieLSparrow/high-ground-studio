@@ -362,25 +362,81 @@ struct CaptureSourceEvidenceView: View {
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.green)
                             .accessibilityIdentifier("CaptureAudioMasteryReady")
-                        Text("Listen to the balanced copy. This is a separate preview; your original has not been replaced.")
+                        Text("Compare the original and improved copy from the same selected time. This is a separate preview; your original has not been replaced.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Button {
-                            playback.stop()
-                            Task { await mastery.togglePreview(recording: recording) }
-                        } label: {
-                            HStack {
-                                if mastery.isLoading { ProgressView() }
-                                Label(
-                                    mastery.isPlaying ? "Stop improved copy" : "Play improved copy",
-                                    systemImage: mastery.isPlaying ? "stop.fill" : "play.fill"
-                                )
+                        if let source = status.sourceMeasurement,
+                           let improved = status.derivative?.measured {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(alignment: .top, spacing: 12) {
+                                    signalMetric(
+                                        "Original",
+                                        value: String(format: "%.1f LUFS", source.integratedLufs),
+                                        detail: String(format: "Peak %.1f dBTP · range %.1f LU", source.truePeakDbtp, source.loudnessRangeLu)
+                                    )
+                                    signalMetric(
+                                        "Improved",
+                                        value: String(format: "%.1f LUFS", improved.integratedLufs),
+                                        detail: String(format: "Peak %.1f dBTP · range %.1f LU", improved.truePeakDbtp, improved.loudnessRangeLu)
+                                    )
+                                }
+                                if let profile = status.proposal?.profile {
+                                    Text(String(format: "Target: %@ · %.1f LUFS · no higher than %.1f dBTP true peak.", profile.label, profile.integratedLufs, profile.maximumTruePeakDbtp))
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .accessibilityIdentifier("CaptureAudioMasteryTarget")
+                                }
+                                Text("Comparison starts at \(durationLabel(selectedAudioSeconds)). These are complete-decode measurements; listening remains the approval step.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
                             }
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .accessibilityIdentifier("CaptureAudioMasteryMeasurements")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(mastery.isLoading)
-                        .accessibilityIdentifier("CaptureAudioMasteryPlay")
+                        HStack(spacing: 10) {
+                            Button {
+                                mastery.stop()
+                                if playback.playingRecordingID == recording.id {
+                                    playback.stop()
+                                } else {
+                                    playback.play(
+                                        recording: recording,
+                                        library: library,
+                                        from: selectedAudioSeconds
+                                    )
+                                }
+                            } label: {
+                                Label(
+                                    playback.playingRecordingID == recording.id ? "Stop original" : "Play original",
+                                    systemImage: playback.playingRecordingID == recording.id ? "stop.fill" : "play.fill"
+                                )
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("CaptureAudioMasteryPlayOriginal")
+
+                            Button {
+                                playback.stop()
+                                Task {
+                                    await mastery.togglePreview(
+                                        recording: recording,
+                                        from: selectedAudioSeconds
+                                    )
+                                }
+                            } label: {
+                                HStack {
+                                    if mastery.isLoading { ProgressView() }
+                                    Label(
+                                        mastery.isPlaying ? "Stop improved" : "Play improved",
+                                        systemImage: mastery.isPlaying ? "stop.fill" : "play.fill"
+                                    )
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(mastery.isLoading)
+                            .accessibilityIdentifier("CaptureAudioMasteryPlay")
+                        }
                     case "completed":
                         Label("This recording is already balanced", systemImage: "checkmark.circle.fill")
                             .font(.subheadline.weight(.bold))
@@ -1185,6 +1241,25 @@ struct CaptureSourceEvidencePreviewView: View {
                     Text("A real improved copy is downloaded privately, checked against its verified SHA-256 and byte count, and played without replacing the original.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        EvidenceRow(label: "Original", value: "−21.8 LUFS · peak −2.1 dBTP · range 8.4 LU")
+                        EvidenceRow(label: "Improved", value: "−16.1 LUFS · peak −1.2 dBTP · range 7.9 LU")
+                    }
+                    .accessibilityIdentifier("CaptureAudioMasteryMeasurements")
+                    Text("Target: Apple Podcasts dialogue · −16.0 LUFS · no higher than −1.0 dBTP true peak.")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureAudioMasteryTarget")
+                    HStack(spacing: 10) {
+                        Button("Play original") {}
+                            .buttonStyle(.bordered)
+                            .disabled(true)
+                            .accessibilityIdentifier("CaptureAudioMasteryPlayOriginal")
+                        Button("Play improved") {}
+                            .buttonStyle(.borderedProminent)
+                            .disabled(true)
+                            .accessibilityIdentifier("CaptureAudioMasteryPlay")
+                    }
                     Label("Preview only · no audio downloaded", systemImage: "eye")
                         .font(.caption.weight(.semibold))
                         .accessibilityIdentifier("CaptureAudioMasteryPreviewBoundary")
