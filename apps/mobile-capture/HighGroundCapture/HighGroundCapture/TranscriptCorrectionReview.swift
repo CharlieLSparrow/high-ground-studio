@@ -112,6 +112,8 @@ struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let id: String
     let speakerLabel: String?
     let providerSpeakerLabel: String?
+    var speakerAuthority: String? = nil
+    var sourceBoundParticipantId: String? = nil
     let startSeconds: TimeInterval
     let endSeconds: TimeInterval
     let text: String
@@ -220,6 +222,8 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
             id: "preview-segment",
             speakerLabel: "Speaker",
             providerSpeakerLabel: "Speaker",
+            speakerAuthority: "source-binding",
+            sourceBoundParticipantId: "preview-participant-charlie",
             startSeconds: 3.66,
             endSeconds: 4.84,
             text: "My goal is to publish a thoughtful first episode, and I will review the final cut this week.",
@@ -5716,6 +5720,10 @@ private struct CaptureTranscriptSegmentCard: View {
                         .foregroundStyle(.blue)
                     Text(captureTranscriptNonempty(segment.speakerLabel) ?? "Unlabelled speaker")
                         .font(.headline)
+                    CaptureTranscriptSpeakerEvidenceBadge(
+                        authority: segment.speakerAuthority,
+                        identifier: "CaptureTranscriptSegmentSpeakerEvidence_\(segment.id)"
+                    )
                     Text(segment.text)
                         .font(.body)
                         .fixedSize(horizontal: false, vertical: true)

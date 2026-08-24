@@ -8,7 +8,9 @@ import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components
 import { AudibleEventQualificationLab } from "@/components/audio/AudibleEventQualificationLab";
 import { SpectralEvidenceViewer } from "@/components/audio/SpectralEvidenceViewer";
 import type { SpectralEvidenceMarker } from "@/components/audio/spectral-evidence-overlay";
+import { TranscriptSpeakerEvidenceBadge } from "@/components/transcript-speaker-evidence-badge";
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+import type { TranscriptSourceSpeakerAuthority } from "@high-ground/quipsly-domain/transcript-derived-task";
 import { timestampForSeconds } from "./session-review-model";
 import {
   EDITABLE_SESSION_NOTE_KINDS,
@@ -77,6 +79,8 @@ type Segment = {
   id: string;
   speakerLabel: string | null;
   providerSpeakerLabel: string | null;
+  speakerAuthority?: TranscriptSourceSpeakerAuthority | null;
+  sourceBoundParticipantId?: string | null;
   startSeconds: number;
   endSeconds: number;
   text: string;
@@ -1358,6 +1362,7 @@ function CorrectionEditor({
           <p className="text-xs font-black uppercase tracking-wide text-sky-800">
             {timestampForSeconds(segment.startSeconds)}–{timestampForSeconds(segment.endSeconds)} · {segment.speakerLabel || "Unlabelled speaker"}
           </p>
+          <TranscriptSpeakerEvidenceBadge authority={segment.speakerAuthority} />
           <p className="mt-2 text-sm font-semibold leading-relaxed text-[#5f4d37]">{segment.text}</p>
           {segment.words.length > 0 && (
             <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3">

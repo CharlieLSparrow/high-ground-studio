@@ -103,6 +103,13 @@ the exact transcript return. Continuity therefore does not flatten a
 participant-owned recording into a generic quotation or imply that an
 automatic label was human reviewed.
 
+The primary transcript correction surface now exposes this evidence directly
+on every transcript turn in both Nest and Quipsly Capture. The server's
+per-segment authority and stable source-owner ID are decoded instead of being
+dropped at the client boundary; only the plain-language authority appears in
+the UI. A reviewer can therefore see the difference before correcting words,
+confirming a turn, or creating follow-through—not only after saving it.
+
 ## Mutation boundary
 
 Packet outputs remain candidates that require explicit human review. This
@@ -122,6 +129,8 @@ message a client, share a follow-up, publish content, or alter recording media.
   carrying the evidence into released client artifacts and Markdown exports.
 - Seventeen focused continuity, client-follow-up, and shared-badge tests pass
   after carrying the evidence into both current and prior Session continuity.
+- Thirty-one focused transcript-desk and shared-badge tests pass with the
+  per-turn evidence visible in the primary Nest correction workflow.
 - The mobile Capture source-contract smoke passes, including the new v2
   source-bound speaker provenance assertion and a durable-work UI contract.
 - A complete unsigned generic iOS Simulator build and all 1,143 App Store

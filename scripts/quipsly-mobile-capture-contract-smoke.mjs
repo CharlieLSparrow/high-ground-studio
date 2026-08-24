@@ -2027,7 +2027,10 @@ function checkTranscriptCorrectionContractSources() {
       && clientFollowUpWebText.includes("TranscriptSpeakerEvidenceBadge authority={anchor.speakerAuthority}")
       && clientFollowUpWebText.includes("Speaker evidence: ${evidence.label}")
       && sessionContinuityCardText.includes("TranscriptSpeakerEvidenceBadge authority={evidence.sourceAnchor.speakerAuthority}")
-      && sessionContinuityCardText.includes("task.lastMergedTranscriptEvidence.sourceAnchor.speakerAuthority"),
+      && sessionContinuityCardText.includes("task.lastMergedTranscriptEvidence.sourceAnchor.speakerAuthority")
+      && webText.includes("TranscriptSpeakerEvidenceBadge authority={segment.speakerAuthority}")
+      && nativeText.includes("CaptureTranscriptSegmentSpeakerEvidence_")
+      && captureUITestText.includes("CaptureTranscriptSegmentSpeakerEvidence_preview-segment"),
     "durableFollowThroughSpeakerEvidenceVisible",
     "Saved transcript-backed notes, tasks, goals, focus plans, and released follow-up sources show the same plain-language speaker-authority evidence across Nest and iPhone after users leave Session review.",
   );

@@ -1396,6 +1396,9 @@ final class CaptureExperienceUITests: XCTestCase {
         sourceLink.tap()
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
         assertFocusedTranscriptSegment("preview-segment")
+        let transcriptSpeakerEvidence = app.descendants(matching: .any)["CaptureTranscriptSegmentSpeakerEvidence_preview-segment"]
+        XCTAssertTrue(transcriptSpeakerEvidence.waitForExistence(timeout: 3))
+        XCTAssertTrue(transcriptSpeakerEvidence.label.contains("Participant recording"))
     }
 
     func testTodayWeeklyReviewKeepsPlannedActualAndMissingTimeTruthDistinct() {

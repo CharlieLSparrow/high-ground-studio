@@ -215,12 +215,20 @@ describe("TranscriptCorrectionDesk", () => {
       manifestBacked: true,
       providerOutputRemainsImmutable: true,
     };
+    routed.segments = [{
+      ...segment,
+      speakerLabel: "Scott Sparrow",
+      speakerAuthority: "source-binding",
+      sourceBoundParticipantId: "participant-scott",
+    }];
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => routed })) as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     const summary = await screen.findByText("Transcription details");
     fireEvent.click(summary);
     expect(screen.getByText(/scott sparrow owns this isolated source/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toBeInTheDocument();
+    expect(screen.queryByText("participant-scott")).not.toBeInTheDocument();
     expect(screen.getByText(/nova-3@latest.*moving latest/i)).toBeInTheDocument();
     expect(screen.getByText(/source binding.*diarization off/i)).toBeInTheDocument();
     expect(screen.getByText("7 frozen keyterms")).toBeInTheDocument();
