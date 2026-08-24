@@ -80,6 +80,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var storageCapacityProbeFailed = false
     private var pendingFinalizationMessage: String?
     private var pendingProviderSegmentStart: Date?
+    private var providerCallTransportGapStartedAt: Date?
 
     var capturePipelineLabel: String {
         #if canImport(LiveKit)
@@ -967,6 +968,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         lastStorageCheckAt = .distantPast
         pausedByInterruption = false
         pendingProviderSegmentStart = nil
+        providerCallTransportGapStartedAt = nil
 
         guard AuthManager.shared.matchesStableOwnerSnapshot(captureIntent.ownerSnapshot),
               !captureOwnerAuthorityLost else {
@@ -1089,6 +1091,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
         #endif
 
         let stoppedAt = Date()
+        closeProviderCallTransportGap(
+            at: stoppedAt,
+            resolution: "The recording ended before the call transport returned."
+        )
         let monotonicStoppedNanoseconds = DispatchTime.now().uptimeNanoseconds
         if captureState == .recording {
             endCurrentSegment(reason: .userStop, at: stoppedAt)
@@ -1149,6 +1155,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
         guard captureState == .recording else { return }
 
         let pausedAt = Date()
+        closeProviderCallTransportGap(
+            at: pausedAt,
+            resolution: "The local recording was paused before the call transport returned."
+        )
         #if canImport(LiveKit)
         if let providerAudioMaster {
             providerAudioMaster.pause()
@@ -1275,6 +1285,61 @@ final class AudioCaptureController: NSObject, ObservableObject {
         endCurrentSegment(reason: .userMark, at: breakAt)
         userMarkOffsets.append(max(0, offset))
         startNewSegment(at: breakAt)
+    }
+
+    /// Preserves call-network truth without making a claim about the local
+    /// microphone bytes. LiveKit's local input may continue, pause, or recover
+    /// independently while the remote conversation transport is unavailable.
+    /// Finalized evidence marks the exact wall-clock span and requires
+    /// listening instead of calling it silence or lost audio.
+    func noteProviderCallTransportInterrupted(at date: Date = Date()) {
+        #if canImport(LiveKit)
+        guard providerAudioMaster != nil,
+              activeLocalRecordingID != nil,
+              captureState == .recording || captureState == .preparing,
+              providerCallTransportGapStartedAt == nil else { return }
+        providerCallTransportGapStartedAt = date
+        #endif
+    }
+
+    func noteProviderCallTransportRestored(at date: Date = Date()) {
+        closeProviderCallTransportGap(
+            at: date,
+            resolution: "The call transport returned. Listen across this interval to verify what the local microphone retained."
+        )
+    }
+
+    private func closeProviderCallTransportGap(
+        at endedAt: Date,
+        resolution: String
+    ) {
+        guard let startedAt = providerCallTransportGapStartedAt else { return }
+        providerCallTransportGapStartedAt = nil
+        let safeEndedAt = max(endedAt, startedAt)
+        let duration = max(0, safeEndedAt.timeIntervalSince(startedAt))
+        segments.append(
+            RecordingSegment(
+                id: "gap-\(UUID().uuidString.lowercased())",
+                sessionId: activeCallRoomId
+                    ?? activeEpisodeSlug
+                    ?? localFallbackSessionId
+                    ?? "local-recording-\(UUID().uuidString.lowercased())",
+                participantId: activeParticipantId ?? localFallbackParticipantId,
+                deviceKind: UIDevice.current.name,
+                status: "timeline-gap",
+                startedAt: ISO8601DateFormatter().string(from: startedAt),
+                stoppedAt: ISO8601DateFormatter().string(from: safeEndedAt),
+                // This is evidence layered over the wall-clock-preserving
+                // source, not another media segment to sum into duration.
+                durationSeconds: 0,
+                stopReason: .callTransportGap,
+                boundaryDetail: String(
+                    format: "Call transport unavailable for %.2f seconds. %@",
+                    duration,
+                    resolution
+                )
+            )
+        )
     }
 
     private func startNewSegment(at date: Date = Date()) {
@@ -1618,6 +1683,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             providerAudioStartWatchdogTask?.cancel()
             providerAudioStartWatchdogTask = nil
             pendingProviderSegmentStart = nil
+            providerCallTransportGapStartedAt = nil
             pendingFinalizationStoppedAt = nil
             pendingFinalizationMonotonicStoppedNanoseconds = nil
             pendingFinalizationDuration = 0
@@ -1754,6 +1820,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         startTime = nil
         currentSegmentStart = nil
         pendingProviderSegmentStart = nil
+        providerCallTransportGapStartedAt = nil
         pausedByInterruption = false
         failureMessage = message
         lastErrorMessage = message

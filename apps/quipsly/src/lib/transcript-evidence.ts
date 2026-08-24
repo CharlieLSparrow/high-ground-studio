@@ -102,8 +102,9 @@ export type AudioTranscriptEvidence = {
       }>;
     } | null;
     timelineEvents: Array<{
-      kind: "pause" | "interruption" | "user-mark" | "app-backgrounded";
+      kind: "pause" | "interruption" | "user-mark" | "app-backgrounded" | "call-transport-gap";
       startSeconds: number;
+      endSeconds: number;
       detail: string | null;
       routeName: string | null;
       routePortType: string | null;
@@ -668,18 +669,29 @@ function captureTimelineEvents(input: {
     const durationSeconds = finite(row.durationSeconds) ?? 0;
     cumulativeActiveSeconds += durationSeconds;
     const reason = text(row.stopReason);
-    if (!reason || !["pause", "interruption", "user-mark", "app-backgrounded"].includes(reason)) return [];
+    if (!reason || !["pause", "interruption", "user-mark", "app-backgrounded", "call-transport-gap"].includes(reason)) return [];
+    const startedAt = text(row.startedAt);
+    const startedAtMilliseconds = startedAt ? new Date(startedAt).getTime() : Number.NaN;
     const stoppedAt = text(row.stoppedAt);
     const stoppedAtMilliseconds = stoppedAt ? new Date(stoppedAt).getTime() : Number.NaN;
     const wallClockOffset = Number.isFinite(stoppedAtMilliseconds) && Number.isFinite(recordingStartedAt)
       ? Math.max(0, (stoppedAtMilliseconds - recordingStartedAt) / 1_000)
       : null;
-    const startSeconds = input.pauseTimelinePolicy === "silence-preserves-wall-clock" && wallClockOffset !== null
-      ? wallClockOffset
-      : cumulativeActiveSeconds;
+    const gapStartOffset = Number.isFinite(startedAtMilliseconds) && Number.isFinite(recordingStartedAt)
+      ? Math.max(0, (startedAtMilliseconds - recordingStartedAt) / 1_000)
+      : null;
+    const startSeconds = reason === "call-transport-gap" && gapStartOffset !== null
+      ? gapStartOffset
+      : input.pauseTimelinePolicy === "silence-preserves-wall-clock" && wallClockOffset !== null
+        ? wallClockOffset
+        : cumulativeActiveSeconds;
+    const endSeconds = reason === "call-transport-gap" && wallClockOffset !== null
+      ? Math.max(startSeconds, wallClockOffset)
+      : startSeconds;
     return [{
-      kind: reason as "pause" | "interruption" | "user-mark" | "app-backgrounded",
+      kind: reason as "pause" | "interruption" | "user-mark" | "app-backgrounded" | "call-transport-gap",
       startSeconds: rounded(startSeconds),
+      endSeconds: rounded(endSeconds),
       detail: text(row.boundaryDetail),
       routeName: text(row.boundaryAudioRouteName),
       routePortType: text(row.boundaryAudioRoutePortType),

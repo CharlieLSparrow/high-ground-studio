@@ -3409,13 +3409,17 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   failed call surface from a genuine lock-screen, headset, or system-call
   hang-up. The former preserves the local master for rejoin. The latter still
   invokes source protection before disconnecting.
-- The retained provider-PCM path reuses the active capture lease and preserves
-  the disconnected interval as timeline silence, so rejoin does not compress
-  or fabricate time. Making that gap first-class visible evidence remains the
-  next audio-transparency slice.
+- The retained provider-PCM path reuses the active capture lease. Capture now
+  writes the exact interrupted/recovered call interval as a zero-additive
+  `call-transport-gap` evidence span, while Nest and the iPhone audio review
+  surface preserve its beginning and ending. It deliberately requires
+  listening: network loss alone does not prove that the independent local input
+  became silent or lost bytes.
 - The 29-test focused web call-room suite and strict web TypeScript pass. A
   generic iOS Simulator build succeeds for arm64 and x86_64 after compiling the
   native recovery path. Rendered browser operation was unavailable because both
   browser-control surfaces could not attach; physical iPhone interruption,
   exact-byte upload/readback, and genuine CallKit operation remain in the
   deferred validation ledger rather than being inferred from compilation.
+- Focused transcript-evidence and audio-map tests also pass, proving the gap is
+  presented as a warning span and is not summed as another media duration.

@@ -110,7 +110,7 @@ describe("AudioEvidenceMap", () => {
     const onSelect = jest.fn();
     render(<AudioEvidenceMap
       signal={signal}
-      timelineEvents={[{ kind: "interruption", startSeconds: 75, detail: "Route lost", routeName: "MV7i", routePortType: "USB" }]}
+      timelineEvents={[{ kind: "interruption", startSeconds: 75, endSeconds: 75, detail: "Route lost", routeName: "MV7i", routePortType: "USB" }]}
       transcriptEndSeconds={100}
       playbackReady
       selectedSeconds={42}
@@ -136,7 +136,7 @@ describe("AudioEvidenceMap", () => {
     expect(screen.getByRole("button", { name: /Broad-band frequency evidence map/i })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /complete-decode broad-band frequency energy/i })).toBeInTheDocument();
 
-    const moments = audioEvidenceAttentionMoments(signal, [{ kind: "interruption", startSeconds: 75, detail: "Route lost", routeName: "MV7i", routePortType: "USB" }], transcriptWords, 0.65);
+    const moments = audioEvidenceAttentionMoments(signal, [{ kind: "interruption", startSeconds: 75, endSeconds: 75, detail: "Route lost", routeName: "MV7i", routePortType: "USB" }], transcriptWords, 0.65);
     expect(moments.map((moment) => [moment.category, moment.startSeconds])).toEqual([
       ["signal", 30],
       ["transcript", 40],

@@ -141,10 +141,10 @@ export function audioEvidenceAttentionMoments(
     id: `capture-${event.kind}-${event.startSeconds}-${index}`,
     category: "capture",
     startSeconds: event.startSeconds,
-    endSeconds: event.startSeconds,
+    endSeconds: event.endSeconds,
     label: humanizeEvidenceKind(event.kind),
     detail: event.detail || [event.routeName, event.routePortType].filter(Boolean).join(" · ") || "Capture boundary preserved without route detail.",
-    severity: event.kind === "interruption" ? "warning" : "attention",
+    severity: event.kind === "interruption" || event.kind === "call-transport-gap" ? "warning" : "attention",
   }));
   const transcriptMoments = lowConfidenceThreshold === null ? [] : transcriptWords
     .filter((word) => word.reviewState === "unchecked" && word.confidence !== null && word.confidence < lowConfidenceThreshold)

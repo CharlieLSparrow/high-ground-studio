@@ -91,9 +91,10 @@ explicitly distinguished from a person's lock-screen, headset, or system-call
 hang-up. Programmatic cleanup preserves the local master and exposes **Rejoin
 call**. A genuine system hang-up still protects the local source before leaving
 the room. Rejoining while retained provider-PCM capture is active keeps the
-same capture lease; the audio coordinator preserves the selected route and the
-recorder represents the disconnected interval as timeline silence rather than
-inventing or compressing time.
+same capture lease and the audio coordinator preserves the selected route.
+Quipsly records the exact call-transport outage as a source-clock span. It does
+not call that span silence or lost local audio: the participant-owned input can
+continue independently, so the review surface requires listening across it.
 
 ## Evidence and limits
 
@@ -105,6 +106,9 @@ inventing or compressing time.
 - Strict Quipsly TypeScript passes.
 - A generic iOS Simulator build passes for both simulator architectures after
   compiling the native reconnect, CallKit, and source-protection path.
+- Native and Nest evidence projections recognize a source-timed
+  `call-transport-gap` span without adding its duration to media-segment totals;
+  focused parser and audio-map tests preserve its beginning and ending.
 
 This does not claim a minimally instructed two-person browser/iPhone flight.
 That flight must still observe first grant, remembered re-entry, denial

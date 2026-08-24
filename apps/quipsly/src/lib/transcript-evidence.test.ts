@@ -325,6 +325,28 @@ describe("audio and transcript evidence", () => {
     });
   });
 
+  it("preserves a call transport outage as a source-clock span without calling local audio lost", () => {
+    const evidence = buildAudioTranscriptEvidence({
+      recordingStartedAt: "2026-08-24T18:00:00.000Z",
+      sourceProfile: { pauseTimelinePolicy: "silence-preserves-wall-clock" },
+      recordingSegments: [{
+        status: "timeline-gap",
+        startedAt: "2026-08-24T18:00:12.250Z",
+        stoppedAt: "2026-08-24T18:00:19.750Z",
+        durationSeconds: 0,
+        stopReason: "call-transport-gap",
+        boundaryDetail: "Call transport unavailable for 7.50 seconds. Listen to verify the local microphone source.",
+      }],
+    });
+
+    expect(evidence.audio.timelineEvents).toEqual([expect.objectContaining({
+      kind: "call-transport-gap",
+      startSeconds: 12.25,
+      endSeconds: 19.75,
+      detail: expect.stringMatching(/listen to verify/i),
+    })]);
+  });
+
   it("uses ordered word edit distance for substitutions, insertions, and deletions", () => {
     expect(transcriptWordEditDistance("one fast fox", "one brown fox")).toEqual({ errors: 1, referenceWords: 3 });
     expect(transcriptWordEditDistance("one very fast fox", "one fast fox")).toEqual({ errors: 1, referenceWords: 3 });

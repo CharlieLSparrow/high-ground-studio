@@ -434,6 +434,12 @@ final class CaptureExperienceModel: ObservableObject {
             guard let self else { return false }
             return await self.protectLocalSourceForNativeCallEnd()
         }
+        providerRoom.onCallTransportInterrupted = { [weak self] date in
+            self?.activeAudioCapture?.noteProviderCallTransportInterrupted(at: date)
+        }
+        providerRoom.onCallTransportRestored = { [weak self] date in
+            self?.activeAudioCapture?.noteProviderCallTransportRestored(at: date)
+        }
     }
 
     var sessions: [MobileCaptureSession] {

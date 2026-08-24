@@ -80,6 +80,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     /// screen. CaptureExperienceModel installs this endpoint-local protection
     /// boundary so that action cannot strand an active retained source.
     var protectLocalSourceBeforeNativeCallEnd: (() async -> Bool)?
+    var onCallTransportInterrupted: ((Date) -> Void)?
+    var onCallTransportRestored: ((Date) -> Void)?
 
     private let callKitProvider: CXProvider
     private let callController = CXCallController()
@@ -1032,6 +1034,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.isConnected = true
                 self.isReconnecting = false
                 self.canRejoin = false
+                self.onCallTransportRestored?(Date())
                 self.lastError = nil
                 self.lastTechnicalError = nil
                 if recovered {
@@ -1043,6 +1046,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.isConnected = true
                 self.isReconnecting = true
                 self.canRejoin = false
+                self.onCallTransportInterrupted?(Date())
                 self.lastError = nil
                 self.lastTechnicalError = nil
                 self.connectionStateLabel = "Reconnecting"

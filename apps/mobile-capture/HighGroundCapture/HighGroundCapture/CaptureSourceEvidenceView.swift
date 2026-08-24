@@ -321,7 +321,7 @@ struct CaptureSourceEvidenceView: View {
                             playEvent(
                                 recording,
                                 startSeconds: event.startSeconds,
-                                endSeconds: event.startSeconds + 1
+                                endSeconds: event.endSeconds
                             )
                         } label: {
                             VStack(alignment: .leading, spacing: 3) {
@@ -1725,14 +1725,27 @@ struct CaptureSourceEvidenceView: View {
             cumulativeActiveSeconds += max(segment.durationSeconds ?? 0, 0)
             guard let reason = segment.stopReason,
                   reason != .userStop else { return nil }
+            let startedAt = ISO8601DateFormatter().date(from: segment.startedAt)
             let stoppedAt = segment.stoppedAt.flatMap {
                 ISO8601DateFormatter().date(from: $0)
             }
-            let offset = preservesWallClock
-                ? stoppedAt.map {
+            let offset: Double
+            if reason == .callTransportGap {
+                offset = startedAt.map {
                     max(0, $0.timeIntervalSince(recording.startedAt))
                 } ?? cumulativeActiveSeconds
-                : cumulativeActiveSeconds
+            } else if preservesWallClock {
+                offset = stoppedAt.map {
+                    max(0, $0.timeIntervalSince(recording.startedAt))
+                } ?? cumulativeActiveSeconds
+            } else {
+                offset = cumulativeActiveSeconds
+            }
+            let endOffset = reason == .callTransportGap
+                ? stoppedAt.map {
+                    max(offset, $0.timeIntervalSince(recording.startedAt))
+                } ?? offset
+                : offset + 1
             let route = [
                 segment.boundaryAudioRouteName,
                 segment.boundaryAudioRoutePortType,
@@ -1744,6 +1757,7 @@ struct CaptureSourceEvidenceView: View {
             return CaptureAudioTimelineEvent(
                 kind: reason.rawValue,
                 startSeconds: offset,
+                endSeconds: endOffset,
                 detail: nonempty(detail) ?? "Boundary preserved without route detail"
             )
         }
@@ -1842,6 +1856,7 @@ struct CaptureSourceEvidenceView: View {
 private struct CaptureAudioTimelineEvent {
     let kind: String
     let startSeconds: Double
+    let endSeconds: Double
     let detail: String
 }
 

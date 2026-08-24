@@ -198,6 +198,7 @@ enum RecordingStopReason: String, Codable {
     case interruption = "interruption"
     case userMark = "user-mark"
     case appBackgrounded = "app-backgrounded"
+    case callTransportGap = "call-transport-gap"
 }
 
 struct RecordingSegment: Codable {
