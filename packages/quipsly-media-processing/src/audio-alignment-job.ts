@@ -5,6 +5,7 @@ import {
 } from "./audio-alignment-evidence.js";
 
 export const AUDIO_ALIGNMENT_JOB_KIND = "quipsly-audio-alignment-job-v1" as const;
+export const SESSION_AUDIO_ALIGNMENT_JOB_KIND = "quipsly-session-audio-alignment-job-v1" as const;
 export const AUDIO_ALIGNMENT_RESULT_KIND = "quipsly-audio-alignment-result-v1" as const;
 export const AUDIO_ALIGNMENT_JOB_VERSION = 1 as const;
 export const AUDIO_ALIGNMENT_CLOUD_MANIFEST_KIND = "quipsly-audio-alignment-cloud-manifest-v1" as const;
@@ -45,6 +46,31 @@ export type AudioAlignmentJob = {
   };
 };
 
+/**
+ * Session-owned alignment work deliberately has its own scope envelope. The
+ * analyzer only needs immutable sources and a bounded proposal, but persistence
+ * and authorization must never invent an Episode or StudioMediaAsset identity
+ * for a coaching/call recording.
+ */
+export type SessionAudioAlignmentJob = {
+  kind: typeof SESSION_AUDIO_ALIGNMENT_JOB_KIND;
+  version: typeof AUDIO_ALIGNMENT_JOB_VERSION;
+  jobId: string;
+  roomId: string;
+  captureGroupId: string;
+  requestedByUserId: string;
+  requestedByEmail: string;
+  queuedAt: string;
+  spine: AudioMasterySourceBinding;
+  target: AudioMasterySourceBinding;
+  proposal: AudioAlignmentJob["proposal"];
+  boundaries: AudioAlignmentJob["boundaries"] & {
+    sessionScopePreserved: true;
+  };
+};
+
+export type AudioAlignmentWorkItem = AudioAlignmentJob | SessionAudioAlignmentJob;
+
 export type AudioAlignmentResult = {
   kind: typeof AUDIO_ALIGNMENT_RESULT_KIND;
   version: typeof AUDIO_ALIGNMENT_JOB_VERSION;
@@ -67,7 +93,7 @@ export type AudioAlignmentResult = {
 export type AudioAlignmentCloudManifest = {
   kind: typeof AUDIO_ALIGNMENT_CLOUD_MANIFEST_KIND;
   version: 1;
-  job: AudioAlignmentJob;
+  job: AudioAlignmentWorkItem;
   status: "queued" | "processing" | "completed" | "failed-terminal";
   queuedAt: string;
   updatedAt: string;
@@ -105,6 +131,22 @@ export function newAudioAlignmentJob(
       sourceBytesImmutable: true,
       outputIsEvidenceOnly: true,
       placementRequiresSeparateReview: true,
+    },
+  });
+}
+
+export function newSessionAudioAlignmentJob(
+  input: Omit<SessionAudioAlignmentJob, "kind" | "version" | "boundaries">,
+): SessionAudioAlignmentJob {
+  return parseSessionAudioAlignmentJob({
+    ...input,
+    kind: SESSION_AUDIO_ALIGNMENT_JOB_KIND,
+    version: AUDIO_ALIGNMENT_JOB_VERSION,
+    boundaries: {
+      sourceBytesImmutable: true,
+      outputIsEvidenceOnly: true,
+      placementRequiresSeparateReview: true,
+      sessionScopePreserved: true,
     },
   });
 }
@@ -158,6 +200,58 @@ export function parseAudioAlignmentJob(value: unknown, expectedJobId?: string): 
   return parsed;
 }
 
+export function parseSessionAudioAlignmentJob(
+  value: unknown,
+  expectedJobId?: string,
+): SessionAudioAlignmentJob {
+  const row = record(value);
+  const proposal = parseProposal(row.proposal);
+  const boundaries = record(row.boundaries);
+  const jobId = identifier(row.jobId, "jobId");
+  const spine = source(row.spine, "spine");
+  const target = source(row.target, "target");
+  const parsed: SessionAudioAlignmentJob = {
+    kind: row.kind as SessionAudioAlignmentJob["kind"],
+    version: Number(row.version) as 1,
+    jobId,
+    roomId: identifier(row.roomId, "roomId"),
+    captureGroupId: uuid(row.captureGroupId, "captureGroupId"),
+    requestedByUserId: identifier(row.requestedByUserId, "requestedByUserId"),
+    requestedByEmail: email(row.requestedByEmail),
+    queuedAt: isoDate(row.queuedAt, "queuedAt"),
+    spine,
+    target,
+    proposal,
+    boundaries: {
+      sourceBytesImmutable: true,
+      outputIsEvidenceOnly: true,
+      placementRequiresSeparateReview: true,
+      sessionScopePreserved: true,
+    },
+  };
+  if (
+    parsed.kind !== SESSION_AUDIO_ALIGNMENT_JOB_KIND
+    || parsed.version !== AUDIO_ALIGNMENT_JOB_VERSION
+    || (expectedJobId && expectedJobId !== jobId)
+    || parsed.spine.assetId === parsed.target.assetId
+    || parsed.proposal.laterTargetSeconds <= parsed.proposal.openingTargetSeconds
+    || boundaries.sourceBytesImmutable !== true
+    || boundaries.outputIsEvidenceOnly !== true
+    || boundaries.placementRequiresSeparateReview !== true
+    || boundaries.sessionScopePreserved !== true
+  ) throw new Error("Session audio alignment job contract is invalid.");
+  return parsed;
+}
+
+export function parseAudioAlignmentWorkItem(
+  value: unknown,
+  expectedJobId?: string,
+): AudioAlignmentWorkItem {
+  return record(value).kind === SESSION_AUDIO_ALIGNMENT_JOB_KIND
+    ? parseSessionAudioAlignmentJob(value, expectedJobId)
+    : parseAudioAlignmentJob(value, expectedJobId);
+}
+
 export function newAudioAlignmentResult(input: Omit<AudioAlignmentResult, "kind" | "version" | "boundaries">) {
   return parseAudioAlignmentResult({
     ...input,
@@ -171,11 +265,11 @@ export function newAudioAlignmentResult(input: Omit<AudioAlignmentResult, "kind"
   });
 }
 
-export function parseAudioAlignmentResult(value: unknown, expectedJob?: AudioAlignmentJob | unknown): AudioAlignmentResult {
+export function parseAudioAlignmentResult(value: unknown, expectedJob?: AudioAlignmentWorkItem | unknown): AudioAlignmentResult {
   const row = record(value);
   const worker = record(row.worker);
   const boundaries = record(row.boundaries);
-  const job = expectedJob ? parseAudioAlignmentJob(expectedJob) : null;
+  const job = expectedJob ? parseAudioAlignmentWorkItem(expectedJob) : null;
   const evidence = parseAudioAlignmentEvidence(row.evidence);
   const parsed: AudioAlignmentResult = {
     kind: row.kind as AudioAlignmentResult["kind"],
@@ -223,8 +317,8 @@ export function buildAudioAlignmentCloudDeadLetterObjectName(jobId: string) {
   return `${AUDIO_ALIGNMENT_CLOUD_DEAD_LETTER_PREFIX}/${identifier(jobId, "jobId")}.json`;
 }
 
-export function newAudioAlignmentCloudManifest(jobValue: AudioAlignmentJob | unknown): AudioAlignmentCloudManifest {
-  const job = parseAudioAlignmentJob(jobValue);
+export function newAudioAlignmentCloudManifest(jobValue: AudioAlignmentWorkItem | unknown): AudioAlignmentCloudManifest {
+  const job = parseAudioAlignmentWorkItem(jobValue);
   if (job.spine.provider !== "gcs" || job.target.provider !== "gcs") throw new Error("Cloud alignment requires two GCS sources.");
   return parseAudioAlignmentCloudManifest({
     kind: AUDIO_ALIGNMENT_CLOUD_MANIFEST_KIND,
@@ -261,7 +355,7 @@ export function parseAudioAlignmentCloudQueueReceipt(value: unknown): AudioAlign
 
 export function parseAudioAlignmentCloudManifest(value: unknown, expectedJobId?: string): AudioAlignmentCloudManifest {
   const row = record(value);
-  const job = parseAudioAlignmentJob(row.job, expectedJobId);
+  const job = parseAudioAlignmentWorkItem(row.job, expectedJobId);
   const status = requiredText(row.status, "status") as AudioAlignmentCloudManifest["status"];
   const lease = row.lease == null ? null : parseCloudLease(row.lease);
   const failure = row.failure == null ? null : parseCloudFailure(row.failure);
@@ -426,6 +520,20 @@ function source(value: unknown, label: string): AudioMasterySourceBinding {
   };
 }
 
+function parseProposal(value: unknown): AudioAlignmentJob["proposal"] {
+  const proposal = record(value);
+  return {
+    initialOffsetSeconds: bounded(proposal.initialOffsetSeconds, -86_400, 86_400, "initialOffsetSeconds"),
+    openingTargetSeconds: bounded(proposal.openingTargetSeconds, 0, 86_400, "openingTargetSeconds"),
+    laterTargetSeconds: bounded(proposal.laterTargetSeconds, 0, 86_400, "laterTargetSeconds"),
+    windowSeconds: bounded(proposal.windowSeconds, 1, 30, "windowSeconds"),
+    searchRadiusSeconds: bounded(proposal.searchRadiusSeconds, 0.05, 30, "searchRadiusSeconds"),
+    sampleRate: integer(proposal.sampleRate, 4_000, 48_000, "sampleRate"),
+    minimumCorrelation: bounded(proposal.minimumCorrelation, 0, 1, "minimumCorrelation"),
+    minimumPeakMargin: bounded(proposal.minimumPeakMargin, 0, 1, "minimumPeakMargin"),
+  };
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -437,6 +545,13 @@ function requiredText(value: unknown, label: string) {
 function identifier(value: unknown, label: string) {
   const text = requiredText(value, label);
   if (!SAFE_ID.test(text)) throw new Error(`Audio alignment ${label} is invalid.`);
+  return text;
+}
+function uuid(value: unknown, label: string) {
+  const text = requiredText(value, label).toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text)) {
+    throw new Error(`Audio alignment ${label} is invalid.`);
+  }
   return text;
 }
 function email(value: unknown) {

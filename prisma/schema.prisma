@@ -896,6 +896,7 @@ model User {
   transcriptEvaluationRunsRequested TranscriptEvaluationRun[]                   @relation("TranscriptEvaluationRunRequester")
   transcriptProviderPolicies        TranscriptProviderPolicyReceipt[]           @relation("TranscriptProviderPolicyCapturer")
   transcriptEvaluationCorrections   TranscriptEvaluationCorrectionObservation[] @relation("TranscriptEvaluationCorrectionReviewer")
+  sessionAudioAlignmentJobs         SessionAudioAlignmentJob[]                  @relation("SessionAudioAlignmentRequester")
   transcriptTerminologyTermsCreated StudioTranscriptTerminologyTerm[]           @relation("StudioTranscriptTerminologyTermCreator")
   transcriptTerminologyRevisions    StudioTranscriptTerminologyRevision[]       @relation("StudioTranscriptTerminologyRevisionActor")
   transcriptTerminologyCandidates   StudioTranscriptTerminologyCandidate[]      @relation("StudioTranscriptTerminologyCandidateCreator")
@@ -2029,6 +2030,7 @@ model CallRoom {
   providerRecordingCommands     ProviderRecordingCommand[]
   providerRecordingEvents       ProviderRecordingEventReceipt[]
   recordingAssets               RecordingAsset[]
+  sourceAlignmentJobs           SessionAudioAlignmentJob[]
   transcriptJobs                TranscriptJob[]
   transcriptCorrections         TranscriptCorrection[]
   transcriptVerifications       TranscriptSegmentVerification[]
@@ -2602,10 +2604,44 @@ model RecordingAsset {
   providerRecordingCommands     ProviderRecordingCommand[]
   providerRecordingEvents       ProviderRecordingEventReceipt[]
   sourceExpectation             CallExpectedSource?
+  alignmentJobsAsSpine          SessionAudioAlignmentJob[]      @relation("SessionAudioAlignmentSpine")
+  alignmentJobsAsTarget         SessionAudioAlignmentJob[]      @relation("SessionAudioAlignmentTarget")
 
   @@index([roomId, status])
   @@index([participantId, createdAt])
   @@index([kind, status, createdAt])
+}
+
+/// Exact-source waveform/drift evidence for two retained Session recordings.
+/// This is intentionally not a StudioAssetProcessingJob: a coaching Session
+/// must not invent an Episode or StudioMediaAsset identity merely to use the
+/// shared media analyzer. Results are proposals only and never move source
+/// timing without a separate reviewed placement decision.
+model SessionAudioAlignmentJob {
+  id                     String    @id
+  roomId                 String
+  spineRecordingAssetId  String
+  targetRecordingAssetId String
+  requestedByUserId      String
+  requestedByEmail       String
+  status                 String    @default("queued")
+  inputJson              Json
+  resultJson             Json?
+  error                  String?
+  startedAt              DateTime?
+  completedAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  room      CallRoom       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  spine     RecordingAsset @relation("SessionAudioAlignmentSpine", fields: [spineRecordingAssetId], references: [id], onDelete: Restrict)
+  target    RecordingAsset @relation("SessionAudioAlignmentTarget", fields: [targetRecordingAssetId], references: [id], onDelete: Restrict)
+  requester User           @relation("SessionAudioAlignmentRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([roomId, status, createdAt])
+  @@index([targetRecordingAssetId, createdAt])
+  @@index([spineRecordingAssetId, targetRecordingAssetId, createdAt])
+  @@index([status, createdAt])
 }
 
 /// The explicit recording plan for one Session. This is separate from

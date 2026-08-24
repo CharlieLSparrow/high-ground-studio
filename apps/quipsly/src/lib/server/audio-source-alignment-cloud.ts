@@ -9,6 +9,8 @@ import {
   parseAudioAlignmentCloudManifest,
   parseAudioAlignmentCloudQueueReceipt,
   parseAudioAlignmentJob,
+  parseAudioAlignmentWorkItem,
+  parseSessionAudioAlignmentJob,
   type AudioAlignmentCloudManifest,
   type AudioAlignmentCloudQueueReceipt,
 } from "@high-ground/quipsly-media-processing";
@@ -32,10 +34,43 @@ export type AudioAlignmentCloudQueueStatus = {
 
 export async function ensureAudioSourceAlignmentCloudQueued(input: { prisma: any; processingJob: any }): Promise<AudioAlignmentCloudQueueStatus> {
   const job = parseAudioAlignmentJob(input.processingJob.inputJson, input.processingJob.id);
-  if (job.spine.provider !== "gcs" || job.target.provider !== "gcs") throw new Error("Audio alignment cloud outbox requires two exact GCS sources.");
   if (input.processingJob.type !== "audio-alignment" || input.processingJob.projectId !== job.projectId || input.processingJob.assetId !== job.target.assetId) {
     throw new Error("Audio alignment cloud outbox no longer matches its processing job.");
   }
+  return ensureAudioAlignmentCloudQueued({
+    processingJob: input.processingJob,
+    update: (data) => input.prisma.studioAssetProcessingJob.update({
+      where: { id: job.jobId },
+      data,
+    }),
+  });
+}
+
+export async function ensureSessionAudioSourceAlignmentCloudQueued(input: {
+  prisma: any;
+  processingJob: any;
+}): Promise<AudioAlignmentCloudQueueStatus> {
+  const job = parseSessionAudioAlignmentJob(input.processingJob.inputJson, input.processingJob.id);
+  if (
+    input.processingJob.roomId !== job.roomId
+    || input.processingJob.spineRecordingAssetId !== job.spine.assetId
+    || input.processingJob.targetRecordingAssetId !== job.target.assetId
+  ) throw new Error("Session audio alignment outbox no longer matches its processing job.");
+  return ensureAudioAlignmentCloudQueued({
+    processingJob: input.processingJob,
+    update: (data) => input.prisma.sessionAudioAlignmentJob.update({
+      where: { id: job.jobId },
+      data,
+    }),
+  });
+}
+
+async function ensureAudioAlignmentCloudQueued(input: {
+  processingJob: any;
+  update: (data: Record<string, unknown>) => Promise<any>;
+}): Promise<AudioAlignmentCloudQueueStatus> {
+  const job = parseAudioAlignmentWorkItem(input.processingJob.inputJson, input.processingJob.id);
+  if (job.spine.provider !== "gcs" || job.target.provider !== "gcs") throw new Error("Audio alignment cloud outbox requires two exact GCS sources.");
   const spine = gcsLocation(job.spine.locator, job.spine.generation);
   const target = gcsLocation(job.target.locator, job.target.generation);
   if (spine.bucketName !== target.bucketName) throw new Error("Audio alignment cloud sources must use one processor control bucket.");
@@ -48,13 +83,10 @@ export async function ensureAudioSourceAlignmentCloudQueued(input: { prisma: any
   const manifest = parseAudioAlignmentCloudManifest(storedManifest.value, job.jobId);
   if (JSON.stringify(manifest.job) !== JSON.stringify(desired.job)) throw new Error("Existing alignment manifest has a different immutable job binding.");
   if (manifest.status === "failed-terminal") {
-    const failed = await input.prisma.studioAssetProcessingJob.update({
-      where: { id: job.jobId },
-      data: {
+    const failed = await input.update({
         status: "failed",
         error: `${manifest.failure?.code || "audio-alignment-worker-failed"}: ${manifest.failure?.message || "Cloud alignment failed terminal."}`.slice(0, 4_000),
         completedAt: new Date(manifest.failure?.failedAt || manifest.updatedAt),
-      },
     });
     return status("failed", failed.id, spine.bucketName, manifestObjectName, queueObjectName, resultObjectName, false);
   }
@@ -89,13 +121,10 @@ export async function ensureAudioSourceAlignmentCloudQueued(input: { prisma: any
     sourceBytesImmutable: true,
     outputIsEvidenceOnly: true,
   };
-  await input.prisma.studioAssetProcessingJob.update({
-    where: { id: job.jobId },
-    data: {
+  await input.update({
       status: manifest.status === "queued" ? "queued" : "processing",
       error: null,
       inputJson: { ...inputJson, processingControl },
-    },
   });
   if (manifest.status === "completed") return status("completed", job.jobId, spine.bucketName, manifestObjectName, queueObjectName, resultObjectName, false);
   if (!mediaProcessorEnabled()) return status("configuration-required", job.jobId, spine.bucketName, manifestObjectName, queueObjectName, resultObjectName, false);
@@ -104,10 +133,7 @@ export async function ensureAudioSourceAlignmentCloudQueued(input: { prisma: any
   }
   await requestMediaProcessorExecution();
   const executionRequestedAt = new Date().toISOString();
-  await input.prisma.studioAssetProcessingJob.update({
-    where: { id: job.jobId },
-    data: { inputJson: { ...inputJson, processingControl: { ...processingControl, executionRequestedAt } } },
-  });
+  await input.update({ inputJson: { ...inputJson, processingControl: { ...processingControl, executionRequestedAt } } });
   return status(manifest.status === "processing" ? "processing" : "queued", job.jobId, spine.bucketName, manifestObjectName, queueObjectName, resultObjectName, true);
 }
 

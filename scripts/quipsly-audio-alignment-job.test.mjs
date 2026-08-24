@@ -8,8 +8,11 @@ import test from "node:test";
 import {
   newAudioAlignmentJob,
   newAudioAlignmentResult,
+  newSessionAudioAlignmentJob,
   parseAudioAlignmentJob,
   parseAudioAlignmentResult,
+  parseAudioAlignmentWorkItem,
+  parseSessionAudioAlignmentJob,
 } from "../packages/quipsly-media-processing/src/audio-alignment-job.ts";
 import { parseAudioAlignmentEvidence } from "../packages/quipsly-media-processing/src/audio-alignment-evidence.ts";
 import { runOneLocalAudioAlignmentJob } from "../apps/quipsly-media-processor/src/local-audio-alignment-worker.ts";
@@ -117,6 +120,30 @@ test("job and result preserve two exact source bindings and evidence-only bounda
   reordered.evidence.target = Object.fromEntries(Object.entries(reordered.evidence.target).reverse());
   assert.equal(parseAudioAlignmentResult(reordered, job).evidence.target.sha256, job.target.sha256);
   assert.throws(() => parseAudioAlignmentResult({ ...result, evidence: { ...result.evidence, target: { ...result.evidence.target, sha256: "0".repeat(64) } } }, job));
+});
+
+test("Session jobs preserve room and take identity without fabricated Studio scope", () => {
+  const job = newSessionAudioAlignmentJob({
+    jobId: "session_alignment_12345678",
+    roomId: "room_session_12345678",
+    captureGroupId: "ddfbb57c-7b7e-4a38-83a7-46ab27b51d82",
+    requestedByUserId: "user_session_12345678",
+    requestedByEmail: "coach@example.test",
+    queuedAt: "2026-08-24T22:00:00.000Z",
+    spine: source("recording_spine_1234", "/tmp/spine.wav", "spine"),
+    target: source("recording_target_123", "/tmp/target.wav", "target"),
+    proposal,
+  });
+  const parsed = parseSessionAudioAlignmentJob(job, job.jobId);
+  assert.equal(parsed.roomId, "room_session_12345678");
+  assert.equal(parsed.captureGroupId, "ddfbb57c-7b7e-4a38-83a7-46ab27b51d82");
+  assert.equal(parsed.boundaries.sessionScopePreserved, true);
+  assert.equal("projectId" in parsed, false);
+  assert.equal(parseAudioAlignmentWorkItem(job).kind, "quipsly-session-audio-alignment-job-v1");
+  assert.throws(() => parseSessionAudioAlignmentJob({
+    ...job,
+    captureGroupId: "not-a-take",
+  }));
 });
 
 test("local worker leases, analyzes, and commits a resumable evidence receipt", async () => {

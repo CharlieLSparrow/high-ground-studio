@@ -3643,3 +3643,25 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   two-account download, listening, correction, and wrong-source refusal remain
   deferred evidence. Detailed decision record:
   `docs/coordination/2026-08-24-session-protected-transcript-playback.md`.
+
+### 2026-08-24 Session exact-source waveform alignment
+
+- Coaching/call Sessions now have a first-class `SessionAudioAlignmentJob`
+  instead of fabricating Studio or Episode identity to use media processing.
+- A new Session job envelope shares the existing generation-bound GCS queue,
+  FFT correlation analyzer, exact-byte verification, drift measurement, and
+  evidence receipt with Episode alignment while preserving room/take/source
+  scope.
+- Queueing requires two released, exact-byte-verified RecordingAssets from the
+  exact current capture group. Complete capture-clock proposals seed the search;
+  retained wall starts remain an explicit fallback. Insufficient shared duration
+  fails before worker execution.
+- The Recordings workspace exposes a cost-explicit Participant sync evidence
+  desk with source selection, polling, opening/later offsets, residual drift,
+  ppm, correlation, peak margin, and qualification. It cannot move either
+  source, render, share, or claim sample accuracy.
+- Ten focused Session contract/route/UI tests, seven shared analyzer/worker
+  tests, Prisma validation, three strict TypeScript builds, and both Capture
+  release static gates pass. Real two-device listening and a separately bound
+  placement approval remain deferred evidence. Detailed decision record:
+  `docs/coordination/2026-08-24-session-exact-source-waveform-alignment.md`.

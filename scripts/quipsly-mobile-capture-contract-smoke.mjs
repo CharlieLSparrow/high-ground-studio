@@ -1423,7 +1423,8 @@ function checkTranscriptCorrectionContractSources() {
   expect(
     nativeText.includes("CaptureTranscriptReviewView")
       && nativeText.includes("recording.recordingAssetId == expectedRecordingAssetID")
-      && nativeText.includes("confirmedPosition(for segment")
+      && nativeText.includes("func confirmedPosition(")
+      && nativeText.includes("for segment: CaptureTranscriptSegment")
       && nativeText.includes("sourcePlayback: CaptureTranscriptPlayback?")
       && nativeText.includes("protectedSource?.recordingAssetId == expectedRecordingAssetID")
       && nativeText.includes("recordingAssetID: expectedRecordingAssetID")

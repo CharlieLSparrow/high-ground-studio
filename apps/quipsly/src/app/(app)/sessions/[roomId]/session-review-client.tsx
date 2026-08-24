@@ -93,6 +93,7 @@ import {
   type SessionReadinessTopology,
 } from "./session-readiness-topology";
 import { SessionSourceClockAttentionCard } from "./session-source-clock-attention-card";
+import { SessionSourceAlignmentCard } from "./session-source-alignment-card";
 import type { SessionSourceClockAttention } from "./session-source-clock-attention";
 import { SessionVersionedOutputGraphCard } from "./session-versioned-output-graph-card";
 import { SessionConversationThread } from "./session-conversation-thread";
@@ -6306,6 +6307,11 @@ export function SessionReviewClient({
             roomId={roomId}
             topology={readinessTopology}
             sourceEvidence={sourceEvidence}
+          />
+          <SessionSourceAlignmentCard
+            roomId={roomId}
+            evidence={sourceEvidence}
+            canManage={Boolean(canManageSourcePlan)}
           />
           {sourceClockAttention ? (
             <SessionSourceClockAttentionCard
