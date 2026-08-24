@@ -299,12 +299,19 @@ export function BrowserSourceRecorder({
   const [myAudioConsent, setMyAudioConsent] = useState(false);
   const [myVideoConsent, setMyVideoConsent] = useState(false);
   const [transcriptionAllowed, setTranscriptionAllowed] = useState(true);
+  const [transcriptionChoiceDirty, setTranscriptionChoiceDirty] = useState(false);
   const transcriptionAllowedRef = useRef(true);
+  const transcriptionChoiceDirtyRef = useRef(false);
   const transcriptionChoiceInputRef = useRef<HTMLInputElement>(null);
   const setTranscriptionChoice = useCallback((allowed: boolean) => {
     transcriptionAllowedRef.current = allowed;
     setTranscriptionAllowed(allowed);
   }, []);
+  const chooseTranscriptionChoice = useCallback((allowed: boolean) => {
+    transcriptionChoiceDirtyRef.current = true;
+    setTranscriptionChoiceDirty(true);
+    setTranscriptionChoice(allowed);
+  }, [setTranscriptionChoice]);
   const chooseSourceType = useCallback(
     (next: BrowserSourceKind) => {
       setSourceType(next);
@@ -325,6 +332,9 @@ export function BrowserSourceRecorder({
   const [participantId, setParticipantId] = useState<string | null>(null);
   const [allPartyAudioReady, setAllPartyAudioReady] = useState(false);
   const [allPartyVideoReady, setAllPartyVideoReady] = useState(false);
+  const [allPartyTranscriptionReady, setAllPartyTranscriptionReady] = useState(false);
+  const [transcriptionConsentGrantedCount, setTranscriptionConsentGrantedCount] = useState(0);
+  const [consentRequiredCount, setConsentRequiredCount] = useState(0);
   const [roomStatus, setRoomStatus] = useState<string | null>(null);
   const [canControlRoom, setCanControlRoom] = useState(false);
   const [vaultAvailable, setVaultAvailable] = useState(false);
@@ -359,6 +369,10 @@ export function BrowserSourceRecorder({
     setHeadphonesAttested(preferences.headphonesAttested === true);
     setSourceType(preferredBrowserSourceType(sessionKind, preferences));
   }, [sessionKind]);
+  useEffect(() => {
+    transcriptionChoiceDirtyRef.current = false;
+    setTranscriptionChoiceDirty(false);
+  }, [callRoomId]);
   const protectedTransferActive =
     status === "uploading" ||
     recoveryRows.some((ledger) => ledger.state === "uploading");
@@ -527,11 +541,23 @@ export function BrowserSourceRecorder({
         setConsentId(session.recordingConsentId ?? null);
         setMyAudioConsent(session.recordingConsentCanRecordAudio === true);
         setMyVideoConsent(session.recordingConsentCanRecordVideo === true);
+        if (!transcriptionChoiceDirtyRef.current) {
+          setTranscriptionChoice(session.recordingConsentCanTranscribe === true);
+        }
         setAllPartyAudioReady(
           session.allRegisteredParticipantConsentGranted === true,
         );
         setAllPartyVideoReady(
           session.allRegisteredParticipantVideoConsentGranted === true,
+        );
+        setAllPartyTranscriptionReady(
+          session.allRegisteredParticipantTranscriptionConsentGranted === true,
+        );
+        setTranscriptionConsentGrantedCount(
+          Number(session.transcriptionConsentGrantedParticipantCount) || 0,
+        );
+        setConsentRequiredCount(
+          Number(session.consentRequiredParticipantCount) || 0,
         );
       } catch {
         // The explicit consent action and recording preflight remain
@@ -597,6 +623,16 @@ export function BrowserSourceRecorder({
         setAllPartyVideoReady(
           consentPacket?.session
             ?.allRegisteredParticipantVideoConsentGranted === true,
+        );
+        setAllPartyTranscriptionReady(
+          consentPacket?.session
+            ?.allRegisteredParticipantTranscriptionConsentGranted === true,
+        );
+        setTranscriptionConsentGrantedCount(
+          Number(consentPacket?.session?.transcriptionConsentGrantedParticipantCount) || 0,
+        );
+        setConsentRequiredCount(
+          Number(consentPacket?.session?.consentRequiredParticipantCount) || 0,
         );
         setRoomStatus(consentPacket?.session?.roomStatus ?? null);
         setCanControlRoom(consentPacket?.session?.canControlRoom === true);
@@ -754,12 +790,23 @@ export function BrowserSourceRecorder({
       setMyAudioConsent(session.recordingConsentCanRecordAudio === true);
       setMyVideoConsent(session.recordingConsentCanRecordVideo === true);
       setTranscriptionChoice(session.recordingConsentCanTranscribe === true);
+      transcriptionChoiceDirtyRef.current = false;
+      setTranscriptionChoiceDirty(false);
       setParticipantId(session.participantId ?? null);
       setAllPartyAudioReady(
         session.allRegisteredParticipantConsentGranted === true,
       );
       setAllPartyVideoReady(
         session.allRegisteredParticipantVideoConsentGranted === true,
+      );
+      setAllPartyTranscriptionReady(
+        session.allRegisteredParticipantTranscriptionConsentGranted === true,
+      );
+      setTranscriptionConsentGrantedCount(
+        Number(session.transcriptionConsentGrantedParticipantCount) || 0,
+      );
+      setConsentRequiredCount(
+        Number(session.consentRequiredParticipantCount) || 0,
       );
       setRoomStatus(session.roomStatus ?? roomStatus);
       setCanControlRoom(session.canControlRoom === true || canControlRoom);
@@ -2480,7 +2527,7 @@ export function BrowserSourceRecorder({
                   !policy || status === "checking" || status === "recording"
                 }
                 onChange={(event) =>
-                  setTranscriptionChoice(event.target.checked)
+                  chooseTranscriptionChoice(event.target.checked)
                 }
                 className="mt-1 accent-violet-800"
               />{" "}
@@ -2507,6 +2554,17 @@ export function BrowserSourceRecorder({
                   ? "Your choice is saved. Waiting for the other participant."
                   : "Not agreed yet."}
             </p>
+            {transcriptionAllowed ? (
+              <p className={`mt-1 text-[10px] font-bold leading-4 ${transcriptionChoiceDirty ? "text-amber-800" : allPartyTranscriptionReady ? "text-emerald-800" : "text-[#8a7354]"}`} data-testid="transcription-readiness-message">
+                {transcriptionChoiceDirty
+                  ? "Choose Update choices to save this transcript setting."
+                  : allPartyTranscriptionReady
+                    ? "Everyone enabled the transcript and suggested follow-up."
+                    : consentId
+                      ? `Transcript ${transcriptionConsentGrantedCount}/${consentRequiredCount || "—"}. Recording can proceed when its source consent is ready; transcription waits for everyone to enable it.`
+                      : "The transcript will be enabled when you allow recording."}
+              </p>
+            ) : null}
             <details className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
               <summary className="cursor-pointer">
                 Recording and privacy details

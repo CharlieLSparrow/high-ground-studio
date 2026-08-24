@@ -10,6 +10,7 @@ import {
 import {
   buildMobileCaptureConsentVersions,
   latestMobileCaptureConsentForParticipant,
+  mobileCaptureAllPartiesAllowTranscription,
   mobileCaptureAllPartiesReady,
   mobileCaptureConsentHasCurrentPolicyEvidence,
 } from "./mobile-capture-consent-readiness.js";
@@ -136,13 +137,24 @@ export function registeredParticipantConsentSummary(room: any) {
       !consent.revokedAt &&
       mobileCaptureConsentHasCurrentPolicyEvidence(consent),
   ).length;
+  const transcriptionGrantedCount = versions.filter(
+    (consent: any) =>
+      consent.status === "GRANTED" &&
+      consent.canTranscribe &&
+      Boolean(consent.consentedAt) &&
+      !consent.revokedAt &&
+      mobileCaptureConsentHasCurrentPolicyEvidence(consent),
+  ).length;
 
   return {
     requiredCount: participants.length,
     audioGrantedCount,
     videoGrantedCount,
+    transcriptionGrantedCount,
     allAudioGranted: mobileCaptureAllPartiesReady(versions, "audio"),
     allVideoGranted: mobileCaptureAllPartiesReady(versions, "video"),
+    allTranscriptionGranted:
+      mobileCaptureAllPartiesAllowTranscription(versions),
   };
 }
 
@@ -1349,6 +1361,10 @@ export function mapMobileCaptureSessionsForUser(input: {
       videoConsentGrantedParticipantCount: participantConsent.videoGrantedCount,
       allRegisteredParticipantVideoConsentGranted:
         participantConsent.allVideoGranted,
+      transcriptionConsentGrantedParticipantCount:
+        participantConsent.transcriptionGrantedCount,
+      allRegisteredParticipantTranscriptionConsentGranted:
+        participantConsent.allTranscriptionGranted,
       captureReadiness,
       videoCaptureReadiness,
       contentReadiness,

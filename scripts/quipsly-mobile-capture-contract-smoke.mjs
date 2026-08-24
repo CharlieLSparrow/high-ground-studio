@@ -1911,6 +1911,8 @@ function checkTranscriptCorrectionContractSources() {
       && nativeRecordingShareText.includes("sourceManifest")
       && nativeRecordingShareText.includes("restoreEditorFromCurrentOutput")
       && nativeRecordingShareText.includes("will not substitute another track")
+      && bridgeText.includes("transcriptionConsentGrantedParticipantCount")
+      && shellText.includes("the transcript waits for everyone to enable it")
       && nativeText.includes('Label("Edit recording here"')
       && nativeText.includes("transcriptJobID: transcriptJobID")
       && nativeText.includes("segmentID: segment.id")

@@ -12,6 +12,10 @@ describe("browser retained-source consent", () => {
       "const [transcriptionAllowed, setTranscriptionAllowed] = useState(true);",
     );
     expect(source).toContain("transcriptionAllowedRef.current = allowed;");
+    expect(source).toContain("transcriptionChoiceDirtyRef.current = true;");
+    expect(source).toContain("allRegisteredParticipantTranscriptionConsentGranted");
+    expect(source).toContain('data-testid="transcription-readiness-message"');
+    expect(source).toContain("Recording can proceed when its source consent is ready; transcription waits for everyone to enable it.");
     expect(source).toContain("transcriptionChoiceInputRef.current?.checked");
     expect(source).toContain("canTranscribe: submittedTranscriptionChoice");
     expect(source).toMatch(

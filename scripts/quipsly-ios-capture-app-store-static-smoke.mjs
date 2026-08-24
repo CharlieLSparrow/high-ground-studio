@@ -1008,6 +1008,8 @@ for (const needle of [
   "CaptureVideoSwitchCameraButton",
   "Podcast camera",
   "Review what this Session will record, then agree once.",
+  "transcriptionConsentGrantedParticipantCount",
+  "the transcript waits for everyone to enable it",
   "model.providerControlsLockedForLocalCapture",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "capture-first iPhone UX");

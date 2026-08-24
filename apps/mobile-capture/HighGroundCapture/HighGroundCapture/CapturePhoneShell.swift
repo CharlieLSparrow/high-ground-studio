@@ -10749,14 +10749,25 @@ private struct ConsentStrip: View {
         if let required = session.consentRequiredParticipantCount, required > 1 {
             let audioGranted = session.consentGrantedParticipantCount ?? 0
             let videoGranted = session.videoConsentGrantedParticipantCount ?? 0
+            let transcriptionGranted = session.transcriptionConsentGrantedParticipantCount
+                ?? (session.allRegisteredParticipantTranscriptionConsentGranted == true ? required : nil)
             let waitingOnAudio = session.recordingConsentCanRecordAudio == true && audioGranted < required
             let waitingOnVideo = session.recordingConsentCanRecordVideo == true && videoGranted < required
-            if waitingOnAudio || waitingOnVideo {
+            let waitingOnTranscription = session.recordingConsentCanTranscribe == true
+                && (transcriptionGranted.map { $0 < required } ?? false)
+            if waitingOnAudio || waitingOnVideo || waitingOnTranscription {
+                let transcriptionCount = session.recordingConsentCanTranscribe == true
+                    ? transcriptionGranted.map { "transcript \($0)/\(required)" }
+                    : nil
                 let counts = [
                     session.recordingConsentCanRecordAudio == true ? "audio \(audioGranted)/\(required)" : nil,
                     session.recordingConsentCanRecordVideo == true ? "video \(videoGranted)/\(required)" : nil,
+                    transcriptionCount,
                 ].compactMap { $0 }.joined(separator: " · ")
-                return "\(counts). Your choice is saved; waiting for the other participant."
+                if waitingOnAudio || waitingOnVideo {
+                    return "\(counts). Your choice is saved; waiting for the other participant before recording."
+                }
+                return "\(counts). Recording is ready; the transcript waits for everyone to enable it."
             }
         }
         guard session.hasCurrentRecordingConsent else {
@@ -10766,7 +10777,12 @@ private struct ConsentStrip: View {
             session.recordingConsentCanRecordAudio == true ? "audio" : nil,
             session.recordingConsentCanRecordVideo == true ? "video" : nil,
         ].compactMap { $0 }.joined(separator: " and ")
-        return "Your \(sources) choice is saved for this Session."
+        let transcriptState = session.recordingConsentCanTranscribe == true
+            ? session.allRegisteredParticipantTranscriptionConsentGranted == true
+                ? " Transcript is ready."
+                : " Transcript is enabled."
+            : " Transcript is off."
+        return "Your \(sources) choice is saved for this Session.\(transcriptState)"
     }
 }
 

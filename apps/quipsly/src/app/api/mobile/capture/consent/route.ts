@@ -121,6 +121,14 @@ export async function GET(request: Request) {
     participants: registeredParticipants,
     consents: room.recordingConsents,
   });
+  const transcriptionConsentGrantedParticipantCount = versions.filter(
+    (version) =>
+      version.status === "GRANTED" &&
+      version.canTranscribe &&
+      Boolean(version.consentedAt) &&
+      !version.revokedAt &&
+      mobileCaptureConsentHasCurrentPolicyEvidence(version),
+  ).length;
   const participant =
     registeredParticipants.find((item: any) => item.userId === userId) ?? null;
   const canControlRoom =
@@ -166,6 +174,7 @@ export async function GET(request: Request) {
           mobileCaptureAllPartiesReady(versions, "video"),
         allRegisteredParticipantTranscriptionConsentGranted:
           allParticipantsAllowTranscription(versions),
+        transcriptionConsentGrantedParticipantCount,
         consentRequiredParticipantCount: registeredParticipants.length,
       },
       effects: {

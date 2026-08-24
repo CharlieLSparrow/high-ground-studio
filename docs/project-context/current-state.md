@@ -2,6 +2,24 @@
 
 Date: 2026-08-24
 
+## Cross-device transcript-readiness checkpoint
+
+- Canonical Session consent projections now carry separate audio, video, and
+  transcription participant counts plus all-party readiness. Recording can be
+  ready without misleadingly claiming that transcription is ready.
+- Nest refreshes the signed-in participant's transcript choice and the room's
+  all-party transcript readiness while the call is open. A locally changed but
+  unsaved checkbox is protected from background refresh until the person saves
+  or changes Sessions.
+- Quipsly Capture decodes the same canonical fields after Session load, consent
+  save, and room-state updates. Its compact consent strip distinguishes
+  “waiting before recording” from “recording is ready; transcript is waiting,”
+  while keeping policy detail out of the primary call controls.
+- The focused consent/session suite passes 33 tests; Quipsly TypeScript, the
+  Capture contract, all 1,143 App Store static checks, and an unsigned generic
+  iOS Simulator build pass. A two-person physical cross-endpoint change and
+  readback remains human/device evidence for a later release train.
+
 ## Reviewed recording source-continuity checkpoint
 
 - Reopening a reviewed Session recording edit now restores its exact persisted

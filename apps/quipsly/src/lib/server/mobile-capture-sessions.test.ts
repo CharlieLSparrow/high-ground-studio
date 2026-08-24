@@ -321,7 +321,7 @@ describe("mobile Session source-specific consent projection", () => {
     },
   };
 
-  it("keeps audio and video readiness separate for every registered participant", () => {
+  it("keeps audio, video, and transcript readiness separate for every registered participant", () => {
     const summary = registeredParticipantConsentSummary({
       participants: [
         { id: "host", userId: "user-host", role: "HOST" },
@@ -337,7 +337,7 @@ describe("mobile Session source-specific consent projection", () => {
           policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
           canRecordAudio: true,
           canRecordVideo: true,
-          canTranscribe: false,
+          canTranscribe: true,
           consentedAt: new Date("2026-07-27T18:00:00Z"),
           revokedAt: null,
           updatedAt: new Date("2026-07-27T18:00:00Z"),
@@ -364,8 +364,10 @@ describe("mobile Session source-specific consent projection", () => {
       requiredCount: 2,
       audioGrantedCount: 2,
       videoGrantedCount: 1,
+      transcriptionGrantedCount: 1,
       allAudioGranted: true,
       allVideoGranted: false,
+      allTranscriptionGranted: false,
     });
   });
 
@@ -392,8 +394,10 @@ describe("mobile Session source-specific consent projection", () => {
     expect(summary).toMatchObject({
       audioGrantedCount: 0,
       videoGrantedCount: 0,
+      transcriptionGrantedCount: 0,
       allAudioGranted: false,
       allVideoGranted: false,
+      allTranscriptionGranted: false,
     });
   });
 });

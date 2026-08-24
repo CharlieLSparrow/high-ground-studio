@@ -95,6 +95,7 @@ describe("capture consent readback", () => {
       allRegisteredParticipantConsentGranted: true,
       allRegisteredParticipantVideoConsentGranted: true,
       allRegisteredParticipantTranscriptionConsentGranted: true,
+      transcriptionConsentGrantedParticipantCount: 1,
       consentRequiredParticipantCount: 1,
     });
   });
