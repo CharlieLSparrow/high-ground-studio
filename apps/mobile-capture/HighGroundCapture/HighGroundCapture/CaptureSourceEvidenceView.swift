@@ -406,6 +406,9 @@ struct CaptureSourceEvidenceView: View {
                                 }
                                 .pickerStyle(.segmented)
                                 .accessibilityIdentifier("CaptureAudioMasteryMonitorMode")
+                                .onChange(of: masteryMonitorMode) { _, _ in
+                                    mastery.setPreviewVolume(masteryPreviewVolume(status))
+                                }
                                 Text(masteryMonitorMode == .fair
                                     ? String(format: "Fair comparison lowers the improved preview by %.1f dB to match the original's measured integrated loudness.", max(improved.integratedLufs - source.integratedLufs, 0))
                                     : "Final volume plays the improved preview at its verified delivery level.")

@@ -23,6 +23,8 @@ the default and attenuates the improved preview by the measured integrated-
 loudness delta so louder does not automatically sound better. **Final volume**
 plays the verified preview at delivery level. The screen states the applied dB
 difference and keeps both choices reversible.
+Changing modes while the improved preview is playing updates the live monitor
+gain immediately, so the selected mode and audible output cannot diverge.
 
 This makes the automation explainable on the phone without turning technical
 evidence into required ceremony. The default copy stays simple; measurements

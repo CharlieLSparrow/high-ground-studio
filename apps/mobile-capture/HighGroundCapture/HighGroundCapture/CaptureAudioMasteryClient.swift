@@ -255,6 +255,10 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         audioSessionCoordinator.endLocalPlayback()
     }
 
+    func setPreviewVolume(_ requestedVolume: Float) {
+        player?.volume = Self.clampedVolume(requestedVolume)
+    }
+
     func reset() {
         clearPlayback()
         snapshot = nil
