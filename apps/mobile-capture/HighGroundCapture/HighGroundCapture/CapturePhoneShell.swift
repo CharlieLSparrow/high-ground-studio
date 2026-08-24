@@ -7087,16 +7087,48 @@ private struct CaptureRecorderView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if let session = model.selectedSession {
                 if model.providerRoom.isConnected {
-                    ProviderRoomDock(
-                        model: model,
-                        localRecordingActive: captureIsActive,
-                        isSafelyLeaving: isSafelyLeavingRoom,
-                        cameraPosition: cameraPosition,
-                        videoQualityIntent: videoQualityIntent,
-                        onLeave: {
-                            Task { await leaveRoomSafely(for: session) }
-                        }
-                    )
+                    VStack(spacing: 0) {
+                        CapturePersistentRecorderDock(
+                            session: session,
+                            mode: recordingMode,
+                            audioState: audioCapture.captureState,
+                            videoState: videoCapture.state,
+                            duration: max(
+                                audioCapture.currentDuration,
+                                videoCapture.durationSeconds
+                            ),
+                            isBusy:
+                                model.isChangingCapture
+                                || model.isCoordinatingPodcastCapture
+                                || recordingCoordinator.isSending,
+                            canStartRecording:
+                                session.canControlRecording == true
+                                || recordingCoordinator.joinConfirmationRequired,
+                            waitingForHost:
+                                session.canControlRecording != true
+                                && !recordingCoordinator.joinConfirmationRequired,
+                            onPrimaryAction: {
+                                Task {
+                                    if captureIsActive {
+                                        await requestCoordinatedStop(for: session)
+                                    } else {
+                                        await requestCoordinatedStart(for: session)
+                                    }
+                                }
+                            }
+                        )
+
+                        ProviderRoomDock(
+                            model: model,
+                            localRecordingActive: captureIsActive,
+                            isSafelyLeaving: isSafelyLeavingRoom,
+                            cameraPosition: cameraPosition,
+                            videoQualityIntent: videoQualityIntent,
+                            onLeave: {
+                                Task { await leaveRoomSafely(for: session) }
+                            }
+                        )
+                    }
                     .background(.bar)
                 } else if localRecordingWorkspaceIsOpen(for: session)
                     || hasSelectedSessionRecording
@@ -7114,6 +7146,8 @@ private struct CaptureRecorderView: View {
                             model.isChangingCapture
                             || model.isCoordinatingPodcastCapture
                             || recordingCoordinator.isSending,
+                        canStartRecording: true,
+                        waitingForHost: false,
                         onPrimaryAction: {
                             Task {
                                 if captureIsActive {
@@ -12579,6 +12613,8 @@ private struct CapturePersistentRecorderDock: View {
     let videoState: VideoCaptureState
     let duration: TimeInterval
     let isBusy: Bool
+    let canStartRecording: Bool
+    let waitingForHost: Bool
     let onPrimaryAction: () -> Void
 
     var body: some View {
@@ -12627,9 +12663,12 @@ private struct CapturePersistentRecorderDock: View {
 
     private var actionDisabled: Bool {
         if isBusy { return true }
+        if !captureIsActive && (!canStartRecording || waitingForHost) {
+            return true
+        }
         if mode == .audio {
             return !captureIsActive
-                && !(session.canRecordAudioNow ?? session.canRecordNow)
+                && !sourceIsReady
         }
         if [.preparing, .arming, .finalizing].contains(videoState) {
             return true
@@ -12648,13 +12687,40 @@ private struct CapturePersistentRecorderDock: View {
         if captureIsActive {
             return mode == .audio ? "Recording audio" : "Recording \(mode.title.lowercased())"
         }
+        if waitingForHost { return "Waiting for host" }
+        if !sourceIsReady {
+            return session.hasCurrentRecordingConsent
+                ? "Waiting for participant"
+                : "Allow recording"
+        }
         return mode == .audio ? "Ready to record" : "Ready for \(mode.title.lowercased())"
     }
 
     private var statusDetail: String {
-        captureIsActive
-            ? "\(duration.captureDurationLabel) · saved locally when stopped"
-            : "Primary control stays within reach"
+        if captureIsActive {
+            return "\(duration.captureDurationLabel) · saved locally when stopped"
+        }
+        if waitingForHost {
+            return "Recording starts when the coach or host presses Record"
+        }
+        if !sourceIsReady {
+            return session.hasCurrentRecordingConsent
+                ? "Your choice is saved"
+                : "Choose what to record once above"
+        }
+        return "Primary control stays within reach"
+    }
+
+    private var sourceIsReady: Bool {
+        if mode == .audio {
+            return session.canRecordAudioNow ?? session.canRecordNow
+        }
+        guard session.recordingConsentVideoGranted == true,
+              session.canRecordVideoNow == true else { return false }
+        if mode.requiresAudioConsent {
+            return session.canRecordAudioNow ?? session.canRecordNow
+        }
+        return true
     }
 
     private var actionTitle: String {

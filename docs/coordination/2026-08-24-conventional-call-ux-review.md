@@ -159,6 +159,14 @@ old "recording is off" instruction with either **Waiting for the other
 participant** or **Everyone is ready to record**. The call surface no longer
 contradicts the consent/Record card underneath it.
 
+The iPhone now preserves that same near-to-far hierarchy after Join. A compact
+Record row remains pinned immediately above the ordinary Mute, Camera, and
+Leave controls instead of disappearing behind the long Session workspace. It
+reuses the authoritative audio/video capture controllers and shows one honest
+state: ready, waiting for the other participant, waiting for the host, or the
+one Session recording choice still needed. The full recorder, meters, Mark,
+Pause, recovery, and production tools remain in the scrollable workspace.
+
 ## Evidence and limits
 
 - The 34-test focused web call-room, consent-transition, and speaker-test suite passes, including
@@ -174,6 +182,8 @@ contradicts the consent/Record card underneath it.
 - Strict Quipsly TypeScript passes.
 - A generic iOS Simulator build passes for both simulator architectures after
   compiling the native reconnect, CallKit, and source-protection path.
+- The native release static contract now fails if a connected-call layout
+  removes the persistent Record row or places it below Mute, Camera, and Leave.
 - Native and Nest evidence projections recognize a source-timed
   `call-transport-gap` span without adding its duration to media-segment totals;
   focused parser and audio-map tests preserve its beginning and ending.
@@ -184,7 +194,7 @@ contradicts the consent/Record card underneath it.
   ends rejoin without discarding or hiding a still-active local source.
 - The generic iOS Simulator build compiles the same room-scoped terminal
   boundary through the native decoder, controller, and closed-Session surface.
-- The 1,159-check Capture static gate, provider-room static smoke, and the full
+- The 1,164-check Capture static gate, provider-room static smoke, and the full
   release-source consistency gate pass. The release gate now protects the
   deliberate CallKit video path plus the separate Record action instead of
   enforcing the retired audio-only call assumption.

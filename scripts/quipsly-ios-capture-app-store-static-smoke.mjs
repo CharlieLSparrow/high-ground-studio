@@ -1664,6 +1664,38 @@ requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderSwitchC
 requireIncludes(captureExperienceModelText, "func switchRoomCamera(", "live camera switching reuses the authoritative capture controller");
 requireIncludes(captureExperienceModelText, "endpointRole: useCallAudio ? \"primary\" : \"companion\"", "native room token records primary versus companion endpoint intent");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderJoinRoomButton")', "shipping provider join action is addressable");
+const recorderBottomInsetStart = capturePhoneShellText.indexOf(
+  ".safeAreaInset(edge: .bottom, spacing: 0)",
+);
+const connectedRecorderDockStart = capturePhoneShellText.indexOf(
+  "if model.providerRoom.isConnected {",
+  recorderBottomInsetStart,
+);
+const localOnlyRecorderDockStart = capturePhoneShellText.indexOf(
+  "} else if localRecordingWorkspaceIsOpen",
+  connectedRecorderDockStart,
+);
+assert(
+  recorderBottomInsetStart >= 0
+    && connectedRecorderDockStart > recorderBottomInsetStart
+    && localOnlyRecorderDockStart > connectedRecorderDockStart,
+  "Shipping recorder must retain an inspectable connected-call bottom inset.",
+  { label: "shipping recorder owns a connected-call bottom dock boundary" },
+);
+const connectedRecorderDock = capturePhoneShellText.slice(
+  connectedRecorderDockStart,
+  localOnlyRecorderDockStart,
+);
+assert(
+  connectedRecorderDock.indexOf("CapturePersistentRecorderDock(") >= 0
+    && connectedRecorderDock.indexOf("ProviderRoomDock(")
+      > connectedRecorderDock.indexOf("CapturePersistentRecorderDock("),
+  "Record must remain immediately reachable above ordinary call controls after Join.",
+  { label: "connected iPhone call keeps persistent Record above Mute, Camera, and Leave" },
+);
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePersistentRecorderDock")', "persistent iPhone Record row has a stable automation identity");
+requireIncludes(capturePhoneShellText, "Waiting for participant", "persistent iPhone Record row explains participant readiness without extra administration");
+requireIncludes(capturePhoneShellText, "Waiting for host", "persistent iPhone Record row explains host-controlled recording without hiding the primary action");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderLeaveRoomButton"', "shipping persistent provider leave action is addressable");
 requireIncludes(capturePhoneShellText, "Finish or stop the current take first.", "shipping room controls cannot reconfigure active local capture");

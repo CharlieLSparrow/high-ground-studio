@@ -20,9 +20,13 @@ Date: 2026-08-24
   surface now appears directly after call controls for coaching and Episode
   Sessions. Optional device settings no longer interrupt the primary
   join-to-record progression.
+- After joining on iPhone, a compact participant-owned Record row remains
+  pinned above Mute, Camera, and Leave. It reports ready, participant-waiting,
+  host-waiting, or recording-choice-needed state while the detailed recorder
+  and production workspace can scroll independently.
 - Existing camera-failure fallback, second-device no-audio mode, live device
   recovery, and separate local/provider recording boundaries remain intact.
-- Thirty-three focused call/handoff tests and strict Quipsly TypeScript pass.
+- Thirty-four focused call/handoff tests and strict Quipsly TypeScript pass.
   The two-person browser/iPhone flight is retained as human/device evidence.
 
 ## Automatic post-call transcription checkpoint
@@ -3709,7 +3713,7 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   honest saved/waiting or everyone-ready state instead of leaving stale
   instructions above the Record control.
 - Thirty-four focused browser call/consent/speaker tests, strict Quipsly TypeScript,
-  the 1,159-check Capture static gate, provider-room static smoke, and the full
+  the 1,164-check Capture static gate, provider-room static smoke, and the full
   Capture release-source gate pass. The release gate now protects deliberate
   native video calling plus the separate retained Record action instead of the
   retired audio-only CallKit assumption. Physical browser/iPhone routing,
