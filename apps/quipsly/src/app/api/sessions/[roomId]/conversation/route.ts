@@ -129,7 +129,7 @@ export async function GET(
   const roomId = text((await context.params).roomId, 240);
   const access = await authority(request, roomId, false);
   if (!access.ok) return access.response;
-  const [latestMessages, cursor] = await Promise.all([
+  const [latestMessages, cursor, writableRoom] = await Promise.all([
     access.prisma.sessionConversationMessage.findMany({
       where: { roomId },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -139,6 +139,10 @@ export async function GET(
     access.prisma.sessionConversationReadCursor.findUnique({
       where: { roomId_userId: { roomId, userId: access.session.user.id } },
       select: { lastReadAt: true, lastReadMessageId: true },
+    }),
+    access.prisma.callRoom.findFirst({
+      where: sessionMutationAccessWhere(roomId, access.session.user),
+      select: { id: true },
     }),
   ]);
   const messages = latestMessages.reverse();
@@ -171,6 +175,10 @@ export async function GET(
       serialize(row, access.session.user.id),
     ),
     unreadCount,
+    capabilities: {
+      canWrite: Boolean(writableRoom),
+      canEditOwnMessages: Boolean(writableRoom),
+    },
     boundaries: {
       sessionAccessOnly: true,
       privateNotesExcluded: true,

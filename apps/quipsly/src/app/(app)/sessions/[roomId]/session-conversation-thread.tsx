@@ -47,6 +47,10 @@ type ConversationPayload = {
   messages?: ConversationMessage[];
   message?: ConversationMessage;
   unreadCount?: number;
+  capabilities?: {
+    canWrite: boolean;
+    canEditOwnMessages: boolean;
+  };
 };
 
 type PendingSend = {
@@ -84,6 +88,7 @@ async function payloadFor(response: Response) {
 export function SessionConversationThread({ roomId }: { roomId: string }) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [canWrite, setCanWrite] = useState(false);
   const [draft, setDraft] = useState("");
   const [replyTo, setReplyTo] = useState<ConversationMessage | null>(null);
   const [editing, setEditing] = useState<ConversationMessage | null>(null);
@@ -138,6 +143,7 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
         }
         setMessages(payload.messages);
         setUnreadCount(payload.unreadCount || 0);
+        setCanWrite(payload.capabilities?.canWrite === true);
         if (!silent) setNotice(null);
         const latest = payload.messages.at(-1);
         if ((payload.unreadCount || 0) > 0 && latest) {
@@ -191,7 +197,7 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
 
   async function sendMessage() {
     const body = draft.trim();
-    if (!body || busy) return;
+    if (!body || busy || !canWrite) return;
     const replyToId = replyTo?.id || null;
     const identity =
       pendingSend.current?.body === body &&
@@ -232,7 +238,7 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
   }
 
   async function saveEdit() {
-    if (!editing || !editDraft.trim() || busy) return;
+    if (!editing || !editDraft.trim() || busy || !canWrite) return;
     setBusy(editing.id);
     setNotice(null);
     try {
@@ -269,7 +275,7 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
   }
 
   async function removeMessage(message: ConversationMessage) {
-    if (busy) return;
+    if (busy || !canWrite) return;
     setBusy(message.id);
     setNotice(null);
     try {
@@ -460,7 +466,9 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
                     </div>
                   ) : null}
                 </div>
-                {!message.deletedAt && editing?.id !== message.id ? (
+                {!message.deletedAt &&
+                editing?.id !== message.id &&
+                canWrite ? (
                   <div
                     className={`mt-1 flex min-h-8 items-center gap-1 px-1 ${message.author.isCurrentActor ? "justify-end" : "justify-start"}`}
                   >
@@ -551,14 +559,23 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
             onKeyDown={composerKeyDown}
             rows={2}
             maxLength={6_000}
-            placeholder="Message everyone in this Session"
-            aria-label="Message everyone in this Session"
+            disabled={!canWrite}
+            placeholder={
+              canWrite
+                ? "Message everyone in this Session"
+                : "View-only conversation"
+            }
+            aria-label={
+              canWrite
+                ? "Message everyone in this Session"
+                : "View-only conversation"
+            }
             className="min-h-12 flex-1 resize-none rounded-2xl border border-[#d9c7a5] bg-[#fffdf8] px-3.5 py-3 text-sm font-semibold text-[#3d3122] outline-none ring-violet-300 placeholder:text-[#9b886f] focus:ring-2"
           />
           <button
             type="button"
             onClick={() => void sendMessage()}
-            disabled={!draft.trim() || busy !== null}
+            disabled={!canWrite || !draft.trim() || busy !== null}
             aria-label="Send message"
             className="grid min-h-12 min-w-12 place-items-center rounded-2xl bg-violet-700 text-white shadow-sm disabled:opacity-50"
           >
@@ -577,7 +594,9 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
             {notice ||
               (unreadCount > 0
                 ? `${unreadCount} new ${unreadCount === 1 ? "message" : "messages"}`
-                : "Enter to send · Shift+Enter for a new line")}
+                : canWrite
+                  ? "Enter to send · Shift+Enter for a new line"
+                  : "View-only conversation")}
           </p>
           <span>{draft.length}/6000</span>
         </div>

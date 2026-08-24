@@ -3498,11 +3498,19 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - The mobile-first thread retains a failed-send draft and request identity,
   polls while visible, refreshes on focus, and keeps Notes, Tasks, Goals,
   transcript, and external delivery separate.
+- Quipsly Capture now opens that same conversation for projectless coaching
+  Sessions instead of projecting the legacy Nest chat. Native reply, edit,
+  remove, retry, read continuity, and an account-bound protected offline cache
+  share the browser's canonical room records. LiveKit is only a refetch hint.
+- The API projects read/write capabilities so an authorized observer gets a
+  conventional read-only thread instead of a composer that later fails.
 - Read cursors bind to the exact last-read message ordering and advance
   monotonically, so a concurrent message is not swallowed and an older tab
   cannot move another device's position backward.
-- Sixty-nine focused API, thread, and Session workspace tests and strict Quipsly
-  TypeScript pass. The full 124-migration chain also applies on fresh
+- Seventy-one focused API, thread, and Session workspace tests and strict Quipsly
+  TypeScript pass. A signing-independent iOS simulator build and focused
+  iPhone 17 Pro/iOS 26.3.1 UI test also pass with the native conversation
+  client and interface. The full 124-migration chain applies on fresh
   PostgreSQL with all three tables, the typed operation enum, and seven foreign
   keys present. Two-account browser/iPhone comprehension, isolation, readback,
   and reconnect behavior remain in the deferred validation ledger. Detailed decision record:

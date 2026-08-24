@@ -420,11 +420,11 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(card)
         XCTAssertTrue(
             card.waitForExistence(timeout: 5),
-            "Every project-bound Capture Session should expose its exact-call thread beside the recorder."
+            "Every Capture Session should expose its room-bound conversation beside the recorder, even without a Nest project."
         )
         XCTAssertTrue(
             app.staticTexts["CaptureSessionChatLatestMessage"].label
-                .contains("Call audio is not the retained recording")
+                .contains("one clear next step")
         )
 
         let open = app.buttons["CaptureSessionChatOpenButton"]
@@ -436,16 +436,20 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForExistence(timeout: 5)
         )
         let boundary = app.descendants(matching: .any)["CaptureSessionChatBoundary"]
-        XCTAssertTrue(boundary.label.contains("Canonical take conversation"))
-        XCTAssertTrue(boundary.label.contains("exact call"))
-        XCTAssertTrue(boundary.label.contains("do not become notes, goals, or tasks"))
+        XCTAssertTrue(boundary.label.contains("Session conversation"))
+        XCTAssertTrue(boundary.label.contains("Messages stay with this Session"))
+        XCTAssertTrue(boundary.label.contains("Notes and Work"))
         XCTAssertFalse(
             app.buttons["CaptureSessionChatSendButton"].isEnabled,
             "Deterministic preview must expose the production composer without authoring canonical Session chat."
         )
         XCTAssertFalse(
-            app.buttons["Refresh session thread"].isEnabled,
+            app.buttons["Refresh session conversation"].isEnabled,
             "Deterministic preview must never imply it refreshed the canonical Session thread."
+        )
+        XCTAssertFalse(
+            app.buttons["Message actions"].exists,
+            "A read-only thread must not expose reply, edit, or remove controls that cannot succeed."
         )
         XCTAssertFalse(
             app.staticTexts["Recording audio"].exists,

@@ -301,6 +301,10 @@ Current boundaries:
 
 - Session access never follows a message into another room
 - project viewers do not inherit private Session conversation access
+- browser and iPhone clients consume the same persisted room API and projected
+  read/write capabilities
+- native offline state is account-bound, protected, and not a second source of
+  message authority
 - chat does not mutate notes, tasks, goals, transcript, or recording state
 - no email, push, SMS, or public delivery occurs from the conversation route
 

@@ -171,6 +171,7 @@ describe("Session conversation route", () => {
     ).toEqual(["older", "newer"]);
     expect(payload).toMatchObject({
       unreadCount: 2,
+      capabilities: { canWrite: true, canEditOwnMessages: true },
       boundaries: {
         sessionAccessOnly: true,
         privateNotesExcluded: true,
@@ -183,6 +184,23 @@ describe("Session conversation route", () => {
         take: 200,
       }),
     );
+  });
+
+  it("projects a conventional read-only thread when the actor cannot mutate the Session", async () => {
+    const prisma = prismaBase();
+    prisma.callRoom.findFirst
+      .mockResolvedValueOnce({ id: roomId, title: "Session" })
+      .mockResolvedValueOnce(null);
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+
+    const response = await GET(request("GET"), context());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.capabilities).toEqual({
+      canWrite: false,
+      canEditOwnMessages: false,
+    });
   });
 
   it("counts unread messages after the exact stable cursor boundary", async () => {

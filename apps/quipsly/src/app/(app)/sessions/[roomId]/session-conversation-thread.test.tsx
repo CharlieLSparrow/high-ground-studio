@@ -70,7 +70,12 @@ describe("SessionConversationThread", () => {
     const requests: Array<Record<string, unknown>> = [];
     global.fetch = jest.fn(async (_url, init) => {
       if (!init?.method) {
-        return response({ ok: true, messages: [first], unreadCount: 0 });
+        return response({
+          ok: true,
+          messages: [first],
+          unreadCount: 0,
+          capabilities: { canWrite: true, canEditOwnMessages: true },
+        });
       }
       requests.push(JSON.parse(String(init.body)));
       return response({ ok: true, message: sent }, 201);
@@ -110,7 +115,12 @@ describe("SessionConversationThread", () => {
     let attempt = 0;
     global.fetch = jest.fn(async (_url, init) => {
       if (!init?.method) {
-        return response({ ok: true, messages: [], unreadCount: 0 });
+        return response({
+          ok: true,
+          messages: [],
+          unreadCount: 0,
+          capabilities: { canWrite: true, canEditOwnMessages: true },
+        });
       }
       const body = JSON.parse(String(init.body));
       sends.push(body);
@@ -154,7 +164,12 @@ describe("SessionConversationThread", () => {
     const requests: Array<Record<string, unknown>> = [];
     global.fetch = jest.fn(async (_url, init) => {
       if (!init?.method) {
-        return response({ ok: true, messages: [own], unreadCount: 0 });
+        return response({
+          ok: true,
+          messages: [own],
+          unreadCount: 0,
+          capabilities: { canWrite: true, canEditOwnMessages: true },
+        });
       }
       requests.push(JSON.parse(String(init.body)));
       return response({ ok: true, message: edited });
@@ -177,5 +192,29 @@ describe("SessionConversationThread", () => {
     });
     expect(await screen.findByText(edited.body)).toBeInTheDocument();
     expect(screen.getByText("· Edited")).toBeInTheDocument();
+  });
+
+  it("does not expose mutation controls in a read-only conversation", async () => {
+    global.fetch = jest.fn(async (_url, _init) =>
+      response({
+        ok: true,
+        messages: [message()],
+        unreadCount: 0,
+        capabilities: { canWrite: false, canEditOwnMessages: false },
+      }),
+    ) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionConversationThread roomId={roomId} />);
+
+    expect(
+      await screen.findByText("What would make this Session useful?"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reply" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "View-only conversation" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   });
 });

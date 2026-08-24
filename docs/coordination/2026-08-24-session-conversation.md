@@ -47,7 +47,9 @@ Reads use the narrower Session conversation boundary: creator, registered
 participant, booked coach/client, staff, or active project owner/editor.
 Project viewers do not gain conversation access merely by seeing a Session
 shell. Sends and message mutations use the canonical Session mutation boundary
-and recheck it inside the write transaction.
+and recheck it inside the write transaction. The response projects those
+capabilities explicitly so browser and native clients can present an ordinary
+read-only thread without implying that a visible composer will succeed.
 
 The API never includes private notes and never sends email, push, SMS, or other
 external delivery. Those capabilities require separate, explicit delivery
@@ -63,6 +65,14 @@ join setup. The thread uses familiar message bubbles, one composer, Enter to
 send, Shift+Enter for a new line, replies, inline editing, explicit removal,
 read continuity, and draft-preserving retry.
 
+The iPhone app uses this same room-bound API for every Session, including a
+coaching Session with no Nest/project. It keeps a protected, account-bound
+offline read cache, preserves the request identity when a failed send is
+retried, and supports reply, correction, removal, and read continuity. LiveKit
+data is only a low-latency hint to refetch the authoritative persisted thread;
+it is never message authority. Account changes discard in-memory state and
+switch to a different cache identity.
+
 The empty state suggests sharing an agenda, link, or intended outcome. It does
 not show access-policy prose, delivery internals, or administrative setup.
 
@@ -72,7 +82,10 @@ Automated coverage proves signed-out and unauthorized denial, the narrow
 project collaborator boundary, latest-page ordering, retry-safe creation,
 cross-room reply rejection, read cursor updates, transactional access recheck,
 revisioned tombstones, conventional reply composition, draft-preserving retry,
-and exact-revision edits.
+exact-revision edits, strict web types, and a code-signed-independent iOS
+simulator build of the native client and thread. The focused iPhone UI test
+also passes on iPhone 17 Pro/iOS 26.3.1 and verifies that a projectless Capture
+Session exposes Conversation while keeping durable Notes and Work distinct.
 
 The full 124-migration chain also applies cleanly to fresh PostgreSQL through
 this migration. The resulting database contains all three conversation tables,

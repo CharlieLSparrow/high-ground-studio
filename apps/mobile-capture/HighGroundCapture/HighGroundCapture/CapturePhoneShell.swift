@@ -6421,7 +6421,7 @@ private struct CaptureRecorderView: View {
     @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
     @StateObject private var episodeWatch = MobileEpisodeWatchClient()
     @StateObject private var episodeChat = MobileEpisodeChatClient()
-    @StateObject private var sessionChat = MobileEpisodeChatClient(scope: .session)
+    @StateObject private var sessionConversation = MobileSessionConversationClient()
 
     var body: some View {
         ScrollView {
@@ -6965,42 +6965,40 @@ private struct CaptureRecorderView: View {
                     .captureCard()
                     .accessibilityHint("Opens the local-first session note, goals, tasks, and Nest revision controls.")
 
-                    if session.projectSlug?.nonempty != nil {
-                        MobileSessionChatCard(
-                            client: sessionChat,
-                            session: session,
-                            previewOnly: model.usesPreviewData
-                        )
-                        .task(
-                            id:
-                                "session-chat|\(session.id)|\(session.callRoomId)|\(session.projectSlug ?? "")|active=\(visibleTab == .record)"
-                        ) {
-                            guard visibleTab == .record else {
-                                sessionChat.stopPolling()
-                                return
-                            }
-                            if model.usesPreviewData {
-                                sessionChat.loadPreview(session: session)
-                            } else {
-                                await sessionChat.load(session: session)
-                                sessionChat.startPolling(session: session)
-                            }
+                    MobileSessionConversationCard(
+                        client: sessionConversation,
+                        session: session,
+                        previewOnly: model.usesPreviewData
+                    )
+                    .task(
+                        id:
+                            "session-conversation|\(session.id)|\(session.callRoomId)|active=\(visibleTab == .record)"
+                    ) {
+                        guard visibleTab == .record else {
+                            sessionConversation.stopPolling()
+                            return
                         }
-                        .onDisappear { sessionChat.stopPolling() }
-                        .onChange(of: sessionChat.outboundLiveHint) { _, hint in
-                            guard let hint else { return }
-                            Task {
-                                await model.providerRoom.publishChatPersistedHint(hint)
-                            }
+                        if model.usesPreviewData {
+                            sessionConversation.loadPreview(session: session)
+                        } else {
+                            await sessionConversation.load(session: session)
+                            sessionConversation.startPolling(session: session)
                         }
-                        .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
-                            guard let hint else { return }
-                            Task {
-                                await sessionChat.receiveLiveHint(
-                                    hint,
-                                    session: session
-                                )
-                            }
+                    }
+                    .onDisappear { sessionConversation.stopPolling() }
+                    .onChange(of: sessionConversation.outboundLiveHint) { _, hint in
+                        guard let hint else { return }
+                        Task {
+                            await model.providerRoom.publishChatPersistedHint(hint)
+                        }
+                    }
+                    .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
+                        guard let hint else { return }
+                        Task {
+                            await sessionConversation.receiveLiveHint(
+                                hint,
+                                session: session
+                            )
                         }
                     }
 

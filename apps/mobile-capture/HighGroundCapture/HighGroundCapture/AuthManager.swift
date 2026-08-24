@@ -1152,6 +1152,7 @@ final class AuthManager: ObservableObject {
         MobileEpisodeManuscriptClient.clearProtectedCache()
         MobileEpisodeWatchClient.clearProtectedCache()
         MobileEpisodeChatClient.clearProtectedCache()
+        MobileSessionConversationClient.clearProtectedCache()
         setSignedOutState()
         userName = nil
         userEmail = nil
