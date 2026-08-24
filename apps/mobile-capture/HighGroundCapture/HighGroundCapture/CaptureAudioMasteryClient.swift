@@ -156,7 +156,11 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         }
     }
 
-    func togglePreview(recording: LocalRecording, from requestedSeconds: TimeInterval = 0) async {
+    func togglePreview(
+        recording: LocalRecording,
+        from requestedSeconds: TimeInterval = 0,
+        volume requestedVolume: Float = 1
+    ) async {
         if let player, player.isPlaying {
             player.pause()
             isPlaying = false
@@ -166,6 +170,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         if let player {
             do {
                 player.currentTime = Self.clampedPlaybackTime(requestedSeconds, duration: player.duration)
+                player.volume = Self.clampedVolume(requestedVolume)
                 try audioSessionCoordinator.beginLocalPlayback()
                 guard player.play() else { throw ClientError.message("The improved copy could not begin playback.") }
                 isPlaying = true
@@ -228,6 +233,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
             let player = try AVAudioPlayer(contentsOf: destination)
             player.delegate = self
             player.currentTime = Self.clampedPlaybackTime(requestedSeconds, duration: player.duration)
+            player.volume = Self.clampedVolume(requestedVolume)
             guard player.prepareToPlay(), player.play() else {
                 throw ClientError.message("The improved copy could not begin playback.")
             }
@@ -434,6 +440,10 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         duration: TimeInterval
     ) -> TimeInterval {
         min(max(requestedSeconds.isFinite ? requestedSeconds : 0, 0), max(duration - 0.05, 0))
+    }
+
+    private nonisolated static func clampedVolume(_ requestedVolume: Float) -> Float {
+        min(max(requestedVolume.isFinite ? requestedVolume : 1, 0), 1)
     }
 
     private nonisolated static func nonempty(_ value: String?) -> String? {

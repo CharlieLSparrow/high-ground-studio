@@ -12,6 +12,9 @@ Date: 2026-08-24
   stop one another, making the comparison useful without mixing two players.
   The improved file still requires account-bound download plus exact SHA-256
   and byte-count verification.
+- Fair comparison is the default and attenuates only the improved player's
+  monitoring level by the measured LUFS delta; Final volume restores the
+  verified delivery level. Neither mode changes media bytes.
 - The original remains source truth. Opening, measuring, or playing the card
   does not approve, promote, replace, publish, or delete media, and measured
   levels do not claim a person listened or preferred the result.

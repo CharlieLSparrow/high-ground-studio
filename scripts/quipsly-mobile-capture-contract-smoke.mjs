@@ -2028,12 +2028,16 @@ function checkTranscriptCorrectionContractSources() {
     captureAudioMasteryClientText.includes("let sourceMeasurement: Measurement?")
       && captureAudioMasteryClientText.includes("let measured: Measurement?")
       && captureAudioMasteryClientText.includes("clampedPlaybackTime")
+      && captureAudioMasteryClientText.includes("clampedVolume")
       && captureSourceEvidenceText.includes("CaptureAudioMasteryMeasurements")
       && captureSourceEvidenceText.includes("CaptureAudioMasteryTarget")
       && captureSourceEvidenceText.includes("CaptureAudioMasteryPlayOriginal")
+      && captureSourceEvidenceText.includes("CaptureAudioMasteryMonitorMode")
+      && captureSourceEvidenceText.includes("masteryPreviewVolume(status)")
       && captureSourceEvidenceText.includes("from: selectedAudioSeconds")
       && captureUITestText.includes("CaptureAudioMasteryMeasurements")
-      && captureUITestText.includes("CaptureAudioMasteryPlayOriginal"),
+      && captureUITestText.includes("CaptureAudioMasteryPlayOriginal")
+      && captureUITestText.includes("CaptureAudioMasteryMonitorMode"),
     "nativeAudioMasteryEvidenceComparison",
     "iPhone recording quality decodes complete source and verified preview loudness evidence, shows the delivery target, and compares original versus improved audio from the same selected source time without replacing the original.",
   );

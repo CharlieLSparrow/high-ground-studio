@@ -18,6 +18,12 @@ For a completed mastering preview, Capture shows:
 - coordinated Original and Improved playback beginning at the same selected
   source time.
 
+The comparison has two conventional listening modes. **Fair comparison** is
+the default and attenuates the improved preview by the measured integrated-
+loudness delta so louder does not automatically sound better. **Final volume**
+plays the verified preview at delivery level. The screen states the applied dB
+difference and keeps both choices reversible.
+
 This makes the automation explainable on the phone without turning technical
 evidence into required ceremony. The default copy stays simple; measurements
 sit directly beside the comparison for people who want to understand the
@@ -31,6 +37,8 @@ result.
 - The temporary preview remains protected and is removed when authorization,
   account, recording identity, or derivative identity changes.
 - Starting Original stops Improved; starting Improved stops Original.
+- Fair comparison changes only the protected preview player's monitoring
+  volume. It does not render, rewrite, or normalize either source file.
 - Improved playback clamps the requested source time to the verified file's
   duration.
 - The original local recording remains source truth. No media is promoted,
@@ -42,7 +50,8 @@ result.
 ## Evidence
 
 - The Capture mobile source contract passes with the measurement, delivery
-  target, same-time comparison, and preview UI assertions.
+  target, same-time comparison, fair/final monitoring, and preview UI
+  assertions.
 - Swift parsing passes for the changed client and evidence view.
 - The complete unsigned generic iOS Simulator `build-for-testing` succeeds for
   arm64 and x86_64, including the deterministic UI assertions.

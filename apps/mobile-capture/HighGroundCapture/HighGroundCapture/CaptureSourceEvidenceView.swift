@@ -1,6 +1,14 @@
 import SwiftUI
 
 struct CaptureSourceEvidenceView: View {
+    private enum MasteryMonitorMode: String, CaseIterable, Identifiable {
+        case fair
+        case delivery
+
+        var id: String { rawValue }
+        var label: String { self == .fair ? "Fair comparison" : "Final volume" }
+    }
+
     let recordingID: UUID
 
     @StateObject private var library = LocalRecordingLibrary.shared
@@ -14,6 +22,7 @@ struct CaptureSourceEvidenceView: View {
     @State private var comparisonError: String?
     @State private var comparisonTask: Task<Void, Never>?
     @State private var selectedAudioSeconds = 0.0
+    @State private var masteryMonitorMode = MasteryMonitorMode.fair
     @State private var showsTechnicalAudioDetails = false
     @State private var showsTechnicalSoundDetails = false
     @State private var showsRecordingDetails = false
@@ -390,6 +399,20 @@ struct CaptureSourceEvidenceView: View {
                                 Text("Comparison starts at \(durationLabel(selectedAudioSeconds)). These are complete-decode measurements; listening remains the approval step.")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
+                                Picker("Comparison volume", selection: $masteryMonitorMode) {
+                                    ForEach(MasteryMonitorMode.allCases) { mode in
+                                        Text(mode.label).tag(mode)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .accessibilityIdentifier("CaptureAudioMasteryMonitorMode")
+                                Text(masteryMonitorMode == .fair
+                                    ? String(format: "Fair comparison lowers the improved preview by %.1f dB to match the original's measured integrated loudness.", max(improved.integratedLufs - source.integratedLufs, 0))
+                                    : "Final volume plays the improved preview at its verified delivery level.")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("CaptureAudioMasteryMonitorExplanation")
                             }
                             .accessibilityIdentifier("CaptureAudioMasteryMeasurements")
                         }
@@ -420,7 +443,8 @@ struct CaptureSourceEvidenceView: View {
                                 Task {
                                     await mastery.togglePreview(
                                         recording: recording,
-                                        from: selectedAudioSeconds
+                                        from: selectedAudioSeconds,
+                                        volume: masteryPreviewVolume(status)
                                     )
                                 }
                             } label: {
@@ -1116,6 +1140,14 @@ struct CaptureSourceEvidenceView: View {
         ].joined(separator: "|")
     }
 
+    private func masteryPreviewVolume(_ status: CaptureAudioMasterySnapshot) -> Float {
+        guard masteryMonitorMode == .fair,
+              let source = status.sourceMeasurement,
+              let improved = status.derivative?.measured else { return 1 }
+        let decibelDelta = min(source.integratedLufs - improved.integratedLufs, 0)
+        return Float(pow(10, decibelDelta / 20))
+    }
+
     private func nonempty(_ value: String?) -> String? {
         let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized?.isEmpty == false ? normalized : nil
@@ -1250,6 +1282,17 @@ struct CaptureSourceEvidencePreviewView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CaptureAudioMasteryTarget")
+                    Picker("Comparison volume", selection: .constant("fair")) {
+                        Text("Fair comparison").tag("fair")
+                        Text("Final volume").tag("delivery")
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(true)
+                    .accessibilityIdentifier("CaptureAudioMasteryMonitorMode")
+                    Text("Fair comparison lowers the improved preview by 5.7 dB to match the original's measured integrated loudness.")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureAudioMasteryMonitorExplanation")
                     HStack(spacing: 10) {
                         Button("Play original") {}
                             .buttonStyle(.bordered)
