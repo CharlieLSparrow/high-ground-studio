@@ -207,6 +207,12 @@ export type BrowserSourcePostStopReceipt = {
   safeToClose: boolean;
 };
 
+export type BrowserSourceReceiptExitStatus = {
+  canClosePage: boolean;
+  label: "Safe to close" | "Keep open";
+  detail: string | null;
+};
+
 export function browserSourcePostStopReceipt(
   status: BrowserRetainedSourceStatus,
   ledger: BrowserSourceCaptureLedger,
@@ -272,6 +278,21 @@ export function browserSourceReviewHref(
     source: recordingAssetId,
   });
   return `/sessions/${encodeURIComponent(room)}?${query.toString()}`;
+}
+
+export function browserSourceReceiptExitStatus(
+  receipt: BrowserSourcePostStopReceipt,
+  exitSafety: BrowserSourceExitSafety,
+): BrowserSourceReceiptExitStatus {
+  const canClosePage = receipt.safeToClose && exitSafety.canClosePage;
+  return {
+    canClosePage,
+    label: canClosePage ? "Safe to close" : "Keep open",
+    detail:
+      receipt.safeToClose && !exitSafety.canClosePage
+        ? "This recording is verified, but another saved recording still needs this page open."
+        : null,
+  };
 }
 
 export function browserSourceManualUploadRetryAvailable(

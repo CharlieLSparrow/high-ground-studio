@@ -3,6 +3,7 @@ import {
   browserSourceInterruptedRecoveryCandidate,
   browserSourcePostStopReceipt,
   browserSourceReviewHref,
+  browserSourceReceiptExitStatus,
   browserSourceSafetyLabel,
   browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
@@ -233,6 +234,34 @@ describe("browser source upload recovery", () => {
       ),
     ).toBeNull();
     expect(browserSourceReviewHref("room-1", ledger("verified"))).toBeNull();
+  });
+
+  it("never calls the page safe while another local recording still needs it", () => {
+    const receipt = browserSourcePostStopReceipt("ready", ledger("verified"));
+    expect(
+      browserSourceReceiptExitStatus(
+        receipt,
+        browserSourceExitSafety("ready", [ledger("verified")]),
+      ),
+    ).toEqual({
+      canClosePage: true,
+      label: "Safe to close",
+      detail: null,
+    });
+    expect(
+      browserSourceReceiptExitStatus(
+        receipt,
+        browserSourceExitSafety("ready", [
+          ledger("verified", { captureId: "latest" }),
+          ledger("uploading", { captureId: "older-upload" }),
+        ]),
+      ),
+    ).toEqual({
+      canClosePage: false,
+      label: "Keep open",
+      detail:
+        "This recording is verified, but another saved recording still needs this page open.",
+    });
   });
 
   it("resumes each eligible source once without looping on a repeated held row", async () => {

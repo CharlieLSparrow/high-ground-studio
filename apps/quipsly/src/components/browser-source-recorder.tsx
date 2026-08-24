@@ -78,6 +78,7 @@ import {
   browserSourceManualUploadRetryAvailable,
   browserSourcePostStopReceipt,
   browserSourceReviewHref,
+  browserSourceReceiptExitStatus,
   browserSourceRecoverySummary,
   browserSourceSafetyLabel,
   browserSourceUploadRetryDelayMs,
@@ -2441,6 +2442,9 @@ export function BrowserSourceRecorder({
   const latestRecordingReviewHref = activeLedger
     ? browserSourceReviewHref(callRoomId, activeLedger)
     : null;
+  const latestRecordingExit = latestRecordingReceipt
+    ? browserSourceReceiptExitStatus(latestRecordingReceipt, exitSafety)
+    : null;
 
   return (
     <section
@@ -2935,12 +2939,15 @@ export function BrowserSourceRecorder({
                 <p className="mt-1 truncate font-mono text-[10px] font-bold opacity-75">
                   {activeLedger.fileName} · {formatBytes(activeLedger.sizeBytes)}
                 </p>
+                {latestRecordingExit?.detail ? (
+                  <p className="mt-1 text-[10px] font-bold leading-4">
+                    {latestRecordingExit.detail}
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-white/80 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide">
-                  {latestRecordingReceipt.safeToClose
-                    ? "Safe to close"
-                    : "Keep open"}
+                  {latestRecordingExit?.label ?? "Keep open"}
                 </span>
                 {latestRecordingReviewHref ? (
                   <a

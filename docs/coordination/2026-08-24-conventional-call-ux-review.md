@@ -178,6 +178,10 @@ As soon as the verified receipt has its canonical recording identity, it also
 shows **Review recording** and opens that exact source in the in-app Session
 recording workspace. It does not wait for every other device or the Studio
 assembly handoff before making the verified source inspectable.
+The close boundary still considers every protected browser source, not only
+the latest take. A verified latest recording may say **Saved and ready** while
+the page continues to say **Keep open** if an older local upload still needs
+the browser.
 
 The iPhone already has the stronger native equivalent: coordinated Stop waits
 for the local recorder to reach a terminal state, opens Library, and places the
@@ -202,7 +206,8 @@ runtime new-source assertion.
   compiling the native reconnect, CallKit, and source-protection path.
 - The native release static contract now fails if a connected-call layout
   removes the persistent Record row or places it below Mute, Camera, and Leave.
-- The 44-test live-room, stop receipt, exact review-route, consent, and upload-recovery regression
+- The 45-test live-room, stop receipt, exact review-route, multi-source exit,
+  consent, and upload-recovery regression
   passes. Strict Quipsly TypeScript also passes.
 - Native and Nest evidence projections recognize a source-timed
   `call-transport-gap` span without adding its duration to media-segment totals;

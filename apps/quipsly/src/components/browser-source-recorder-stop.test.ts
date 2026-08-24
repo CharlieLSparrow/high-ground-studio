@@ -13,7 +13,10 @@ describe("browser source stop confidence", () => {
     );
     expect(source).toContain('aria-label="Latest recording receipt"');
     expect(source).toContain('data-testid="latest-recording-receipt"');
-    expect(source).toContain("latestRecordingReceipt.safeToClose");
+    expect(source).toContain(
+      "browserSourceReceiptExitStatus(latestRecordingReceipt, exitSafety)",
+    );
+    expect(source).toContain("latestRecordingExit?.label");
     expect(source).toContain("activeLedger.fileName");
     expect(source).toContain("formatBytes(activeLedger.sizeBytes)");
     expect(source).toContain(
