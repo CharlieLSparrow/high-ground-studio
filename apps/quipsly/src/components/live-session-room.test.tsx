@@ -90,6 +90,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     projectSlug,
     conversationConnected,
     conversationEnded,
+    callTransportInterrupted,
     stopRequestVersion,
     onSourceLockChange,
     onPreparationStateChange,
@@ -98,6 +99,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     projectSlug?: string | null;
     conversationConnected?: boolean;
     conversationEnded?: boolean;
+    callTransportInterrupted?: boolean;
     stopRequestVersion?: number;
     onSourceLockChange?: (locked: boolean) => void;
     onPreparationStateChange?: (state: { participantReady: boolean; everyoneReady: boolean }) => void;
@@ -110,6 +112,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
       <span data-testid="browser-source-project">{projectSlug || "unbound"}</span>
       <span data-testid="browser-source-conversation">{conversationConnected ? "connected" : "lobby"}</span>
       <span data-testid="browser-source-ended">{conversationEnded ? "ended" : "active"}</span>
+      <span data-testid="browser-source-call-transport">{callTransportInterrupted ? "interrupted" : "available"}</span>
       <button type="button" onClick={() => onSourceLockChange?.(true)}>Simulate retained source start</button>
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
       <button type="button" onClick={() => onPreparationStateChange?.({ participantReady: true, everyoneReady: false })}>Simulate recording choice ready</button>
@@ -797,6 +800,7 @@ describe("LiveSessionRoom", () => {
     });
     expect(screen.getByText("Reconnecting", { selector: "span" })).toBeInTheDocument();
     expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("active");
+    expect(screen.getByTestId("browser-source-call-transport")).toHaveTextContent("interrupted");
 
     await act(async () => {
       mockLiveKitRoom.__emit(livekit.RoomEvent.Disconnected);
@@ -807,12 +811,14 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(/local recording is still protected/i);
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
     expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("active");
+    expect(screen.getByTestId("browser-source-call-transport")).toHaveTextContent("interrupted");
 
     fireEvent.click(screen.getByRole("button", { name: "Rejoin call" }));
     expect(await screen.findByRole("button", { name: "Stop recording & leave" })).toBeInTheDocument();
     expect(joinRequests).toBe(2);
     expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("active");
+    expect(screen.getByTestId("browser-source-call-transport")).toHaveTextContent("available");
   });
 
   it("keeps camera permission independent from an audio-only coaching join", async () => {

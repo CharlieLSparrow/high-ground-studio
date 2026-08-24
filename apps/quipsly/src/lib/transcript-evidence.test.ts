@@ -329,14 +329,19 @@ describe("audio and transcript evidence", () => {
     const evidence = buildAudioTranscriptEvidence({
       recordingStartedAt: "2026-08-24T18:00:00.000Z",
       sourceProfile: { pauseTimelinePolicy: "silence-preserves-wall-clock" },
-      recordingSegments: [{
-        status: "timeline-gap",
-        startedAt: "2026-08-24T18:00:12.250Z",
-        stoppedAt: "2026-08-24T18:00:19.750Z",
-        durationSeconds: 0,
-        stopReason: "call-transport-gap",
-        boundaryDetail: "Call transport unavailable for 7.50 seconds. Listen to verify the local microphone source.",
-      }],
+      recordingSegments: {
+        version: 1,
+        clock: "browser-media-recorder-timecode",
+        chunks: [],
+        timelineEvents: [{
+          status: "timeline-gap",
+          startedAt: "2026-08-24T18:00:12.250Z",
+          stoppedAt: "2026-08-24T18:00:19.750Z",
+          durationSeconds: 0,
+          stopReason: "call-transport-gap",
+          boundaryDetail: "Call transport unavailable for 7.50 seconds. Listen to verify the local microphone source.",
+        }],
+      },
     });
 
     expect(evidence.audio.timelineEvents).toEqual([expect.objectContaining({

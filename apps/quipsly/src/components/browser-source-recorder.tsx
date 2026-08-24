@@ -263,6 +263,7 @@ export function BrowserSourceRecorder({
   cameraLabel,
   conversationConnected = true,
   conversationEnded = false,
+  callTransportInterrupted = false,
   stopRequestVersion = 0,
   onSourceLockChange,
   onGuardianEvidenceChange,
@@ -280,6 +281,7 @@ export function BrowserSourceRecorder({
   cameraLabel: string;
   conversationConnected?: boolean;
   conversationEnded?: boolean;
+  callTransportInterrupted?: boolean;
   stopRequestVersion?: number;
   onSourceLockChange?: (locked: boolean) => void;
   onGuardianEvidenceChange?: (
@@ -406,6 +408,13 @@ export function BrowserSourceRecorder({
   const directiveBaselineEstablishedRef = useRef(false);
   const recordingDirectiveRef = useRef<BrowserRecordingDirective | null>(null);
   const handledStopRequestVersionRef = useRef(0);
+  const callTransportGapStartedAtRef = useRef<string | null>(null);
+  const callTransportGapWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const callTransportGapsRef = useRef<Array<{
+    startedAt: string;
+    stoppedAt: string;
+    detail: string;
+  }>>([]);
 
   const flushPendingMedia = useCallback(() => {
     const recorder = recorderRef.current;
@@ -870,6 +879,52 @@ export function BrowserSourceRecorder({
     },
     [reconcileEndpointQueue],
   );
+
+  const closeCallTransportGap = useCallback(
+    (stoppedAt: string, resolution: string) => {
+      const startedAt = callTransportGapStartedAtRef.current;
+      callTransportGapStartedAtRef.current = null;
+      const current = ledgerRef.current;
+      if (!startedAt || !current) return Promise.resolve();
+      const durationSeconds = Math.max(
+        0,
+        (Date.parse(stoppedAt) - Date.parse(startedAt)) / 1_000,
+      );
+      const gap = {
+        startedAt,
+        stoppedAt,
+        detail: `Call transport unavailable for ${durationSeconds.toFixed(2)} seconds. ${resolution}`,
+      };
+      callTransportGapsRef.current = [
+        ...callTransportGapsRef.current,
+        gap,
+      ];
+      const next = {
+        ...current,
+        callTransportGaps: callTransportGapsRef.current,
+        updatedAt: stoppedAt,
+      } satisfies BrowserSourceCaptureLedger;
+      const write = updateLedger(next);
+      const guardedWrite = write.catch(() => undefined);
+      callTransportGapWriteRef.current = guardedWrite;
+      return guardedWrite;
+    },
+    [updateLedger],
+  );
+
+  useEffect(() => {
+    const captureActive = status === "starting" || status === "recording";
+    if (callTransportInterrupted && captureActive) {
+      callTransportGapStartedAtRef.current ??= new Date().toISOString();
+      return;
+    }
+    if (!callTransportInterrupted && callTransportGapStartedAtRef.current) {
+      void closeCallTransportGap(
+        new Date().toISOString(),
+        "The call transport returned. Listen across this interval to verify what the retained browser source captured.",
+      );
+    }
+  }, [callTransportInterrupted, closeCallTransportGap, status]);
 
   const startRetainedSourceMeter = useCallback(
     async (stream: MediaStream, startedAt: string) => {
@@ -1471,6 +1526,10 @@ export function BrowserSourceRecorder({
         callRoomId,
         captureGroupId,
       });
+      void closeCallTransportGap(
+        new Date().toISOString(),
+        "The browser recording ended before the call transport returned.",
+      );
       setStatus("stopping");
       setMessage(
         reason ||
@@ -1478,7 +1537,7 @@ export function BrowserSourceRecorder({
       );
       recorder.stop();
     },
-    [callRoomId, captureGroupId],
+    [callRoomId, captureGroupId, closeCallTransportGap],
   );
 
   useEffect(() => {
@@ -1779,6 +1838,11 @@ export function BrowserSourceRecorder({
       durableWriterRef.current =
         await createBrowserSourceDurableWriter(opfsFileName);
       const startedAt = new Date().toISOString();
+      callTransportGapStartedAtRef.current = callTransportInterrupted
+        ? startedAt
+        : null;
+      callTransportGapWriteRef.current = Promise.resolve();
+      callTransportGapsRef.current = [];
       const monotonicStartedNanoseconds = browserMonotonicNanoseconds(
         performance.now(),
       );
@@ -1920,6 +1984,7 @@ export function BrowserSourceRecorder({
           if (timerRef.current) window.clearInterval(timerRef.current);
           timerRef.current = null;
           clearGuardianMonitoring();
+          await callTransportGapWriteRef.current;
           await writeQueueRef.current;
           await durableWriterRef.current?.close();
           durableWriterRef.current = null;
@@ -1941,6 +2006,7 @@ export function BrowserSourceRecorder({
             ...current,
             state: "stopped",
             stoppedAt,
+            callTransportGaps: callTransportGapsRef.current,
             sizeBytes: hash.sizeBytes,
             sha256: hash.sha256,
             sourceProfile: captureMeter
@@ -2104,6 +2170,7 @@ export function BrowserSourceRecorder({
     callRoomId,
     cameraId,
     cameraLabel,
+    callTransportInterrupted,
     captureGroupId,
     clearGuardianMonitoring,
     consentId,

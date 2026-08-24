@@ -95,6 +95,10 @@ same capture lease and the audio coordinator preserves the selected route.
 Quipsly records the exact call-transport outage as a source-clock span. It does
 not call that span silence or lost local audio: the participant-owned input can
 continue independently, so the review surface requires listening across it.
+Browser retained sources now keep the same contract in their durable IndexedDB
+ledger. An open gap survives until rejoin or recorder stop, is merged into the
+final exact-byte manifest beside MediaRecorder chunk timing, and projects into
+the same Nest audio-evidence span as an iPhone source.
 
 ## Evidence and limits
 
@@ -109,6 +113,9 @@ continue independently, so the review surface requires listening across it.
 - Native and Nest evidence projections recognize a source-timed
   `call-transport-gap` span without adding its duration to media-segment totals;
   focused parser and audio-map tests preserve its beginning and ending.
+- Focused tests cover browser ledger projection and call-room propagation. The
+  stop path closes any still-open outage into that ledger before final
+  exact-byte manifest construction without changing captured media bytes.
 
 This does not claim a minimally instructed two-person browser/iPhone flight.
 That flight must still observe first grant, remembered re-entry, denial

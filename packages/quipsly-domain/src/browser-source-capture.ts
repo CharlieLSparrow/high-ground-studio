@@ -148,6 +148,11 @@ export type BrowserSourceCaptureLedger = {
   readonly uploadedBytes: number;
   readonly sha256: string | null;
   readonly chunks: readonly BrowserSourceCaptureChunk[];
+  readonly callTransportGaps?: readonly {
+    readonly startedAt: string;
+    readonly stoppedAt: string;
+    readonly detail: string;
+  }[];
   readonly startReceiptId: string;
   readonly stopReceiptId: string;
   readonly startReceiptPersisted: boolean;
@@ -284,6 +289,14 @@ export function browserSourceRecordingSegments(
       sizeBytes: chunk.sizeBytes,
       recorderTimecodeMs: chunk.recorderTimecodeMs,
       receivedAt: chunk.receivedAt,
+    })),
+    timelineEvents: (ledger.callTransportGaps ?? []).map((gap) => ({
+      status: "timeline-gap",
+      startedAt: gap.startedAt,
+      stoppedAt: gap.stoppedAt,
+      durationSeconds: 0,
+      stopReason: "call-transport-gap",
+      boundaryDetail: gap.detail,
     })),
   };
 }

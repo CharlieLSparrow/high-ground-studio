@@ -1239,7 +1239,7 @@ export function LiveSessionRoom({
     }
     setStatus("joining");
     setMessage("Joining…");
-    setCallRecoveryAvailable(false);
+    if (!recoveringCall) setCallRecoveryAvailable(false);
     setCallEndedByPerson(false);
     intentionalDisconnectRef.current = false;
     try {
@@ -1386,6 +1386,7 @@ export function LiveSessionRoom({
         });
       });
       updateRoster(room);
+      setCallRecoveryAvailable(false);
       setStatus("connected");
       setTechnicalMessage(joinTechnicalMessages.length ? joinTechnicalMessages.join(" ") : null);
       setMessage(joinRecoveryMessages.length
@@ -1708,6 +1709,7 @@ export function LiveSessionRoom({
       cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
       conversationConnected={connected || callRecoveryAvailable || sourceLocked}
       conversationEnded={callEndedByPerson}
+      callTransportInterrupted={status === "reconnecting" || callRecoveryAvailable}
       onSourceLockChange={setSourceLocked}
       stopRequestVersion={sourceStopRequestVersion}
       onGuardianEvidenceChange={setRetainedGuardianEvidence}

@@ -659,12 +659,17 @@ function captureTimelineEvents(input: {
   recordingStartedAt: unknown;
   pauseTimelinePolicy: string | null;
 }): AudioTranscriptEvidence["audio"]["timelineEvents"] {
-  if (!Array.isArray(input.value)) return [];
+  const rows = Array.isArray(input.value)
+    ? input.value
+    : Array.isArray(object(input.value).timelineEvents)
+      ? object(input.value).timelineEvents as unknown[]
+      : [];
+  if (!rows.length) return [];
   const recordingStartedAt = typeof input.recordingStartedAt === "string" || input.recordingStartedAt instanceof Date
     ? new Date(input.recordingStartedAt).getTime()
     : Number.NaN;
   let cumulativeActiveSeconds = 0;
-  return input.value.slice(0, 2_000).flatMap((entry) => {
+  return rows.slice(0, 2_000).flatMap((entry) => {
     const row = object(entry);
     const durationSeconds = finite(row.durationSeconds) ?? 0;
     cumulativeActiveSeconds += durationSeconds;

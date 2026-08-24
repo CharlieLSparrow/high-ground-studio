@@ -3415,11 +3415,17 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   surface preserve its beginning and ending. It deliberately requires
   listening: network loss alone does not prove that the independent local input
   became silent or lost bytes.
+- Browser retained sources now append the same outage span to their durable
+  local ledger. Rejoin closes it; stopping while still disconnected closes it
+  at the recording boundary. Finalization merges those spans with the latest
+  chunk journal before upload, and Nest projects both the native array and the
+  browser manifest envelope through one audio-evidence contract.
 - The 29-test focused web call-room suite and strict web TypeScript pass. A
   generic iOS Simulator build succeeds for arm64 and x86_64 after compiling the
   native recovery path. Rendered browser operation was unavailable because both
   browser-control surfaces could not attach; physical iPhone interruption,
   exact-byte upload/readback, and genuine CallKit operation remain in the
   deferred validation ledger rather than being inferred from compilation.
-- Focused transcript-evidence and audio-map tests also pass, proving the gap is
-  presented as a warning span and is not summed as another media duration.
+- Focused transcript-evidence, browser-ledger, call-room, and audio-map tests
+  also pass, proving the gap is presented as a warning span and is not summed as
+  another media duration.
