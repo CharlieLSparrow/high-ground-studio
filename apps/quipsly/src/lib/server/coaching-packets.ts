@@ -839,6 +839,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
   const existing = await args.prisma.coachingNote.findFirst({
     where: {
       roomId: job.roomId,
+      authorUserId: args.authorUserId || null,
       kind: "SUMMARY",
       title: packetTitle,
     },

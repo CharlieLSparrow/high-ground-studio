@@ -10,6 +10,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere, coachingEngagementActorAccessWhere } from "@/lib/server/coaching-engagement";
 import { reconcileCaptureProxyResults } from "@/lib/server/capture-proxy-reconciliation";
 import { reconcileInterruptionRepairResults } from "@/lib/server/capture-interruption-repair-reconciliation";
+import { reconcileCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through";
 import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import {
   MobileSessionScheduleError,
@@ -278,6 +279,33 @@ export async function GET(request: Request) {
     ...activeRoomRefs.map((room: { id: string }) => room.id),
     ...recentRoomRefs.map((room: { id: string }) => room.id),
   ])];
+
+  if (roomIds.length > 0) {
+    const transcriptCandidates = await prisma.transcriptJob.findMany({
+      where: {
+        roomId: { in: roomIds },
+        status: { in: ["QUEUED", "RUNNING", "HELD", "COMPLETED"] },
+      },
+      distinct: ["roomId"],
+      orderBy: { updatedAt: "desc" },
+      take: 6,
+      select: { id: true },
+    });
+    const reconciliations = await Promise.allSettled(
+      transcriptCandidates.map((job: { id: string }) =>
+        reconcileCaptureTranscriptFollowThrough({
+          prisma,
+          transcriptJobId: job.id,
+        })),
+    );
+    reconciliations.forEach((result, index) => {
+      if (result.status === "fulfilled") return;
+      console.error("[Capture Follow-through] Session-list reconciliation remains retryable", {
+        transcriptJobId: transcriptCandidates[index]?.id,
+        reason: result.reason instanceof Error ? result.reason.message : "unknown",
+      });
+    });
+  }
 
   const rooms = roomIds.length === 0 ? [] : await prisma.callRoom.findMany({
     where: { id: { in: roomIds } },

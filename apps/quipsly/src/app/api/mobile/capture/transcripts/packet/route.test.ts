@@ -10,7 +10,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
-import { buildPacketGoalCandidates, buildPacketNoteCandidates, GET } from "./route-implementation";
+import { buildPacketGoalCandidates, buildPacketNoteCandidates, GET, packetNoteVisibilityWhere } from "./route-implementation";
 
 const packetBuildId = "packet-build-1";
 const summary = {
@@ -33,6 +33,40 @@ const latestTranscriptJob = {
   status: "COMPLETED",
   segments: [{ id: "segment-1", speakerLabel: "Homer", startSeconds: 12.4, endSeconds: 17.8, text: "My goal is to build a repeatable coaching review habit." }],
 };
+
+describe("packet note privacy", () => {
+  it("never widens another author's private packet just because the Session is shared", () => {
+    expect(packetNoteVisibilityWhere({
+      id: "client-user",
+      primaryEmail: " Client@Example.Test ",
+      isStaff: false,
+    } as any, "room-1")).toEqual({
+      AND: [
+        { roomId: "room-1" },
+        {
+          OR: [
+            { authorUserId: "client-user" },
+            { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
+            {
+              visibility: "PROJECT_TEAM",
+              room: {
+                project: {
+                  accessGrants: {
+                    some: {
+                      email: "client@example.test",
+                      status: "ACTIVE",
+                      role: { in: ["OWNER", "EDITOR"] },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
+});
 
 describe("packet goal candidates", () => {
   it("binds a candidate to current provider evidence without creating work", () => {

@@ -26,7 +26,9 @@ import {
 import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
 import { buildSessionTranscriptConfidence } from "@/lib/session-transcript-confidence";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import { reconcileCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { mobileSessionNoteVisibilityWhere } from "@/lib/server/session-note-access";
 import { readGovernedActionSourceReference } from "@/lib/server/governed-action-runtime";
 import {
   sessionAccessWhere,
@@ -57,6 +59,19 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+export function packetNoteVisibilityWhere(actor: SessionAccessActor, roomId: string) {
+  return {
+    AND: [
+      { roomId },
+      mobileSessionNoteVisibilityWhere({
+        actorUserId: actor.id,
+        actorEmail: text(actor.primaryEmail).toLowerCase(),
+        isStaff: actor.isStaff === true,
+      }),
+    ],
+  };
 }
 
 function sourceJson(value: unknown): Record<string, unknown> {
@@ -608,6 +623,27 @@ export async function GET(request: Request) {
     );
   }
 
+  const currentTranscript = await prisma.transcriptJob.findFirst({
+    where: { roomId },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (currentTranscript?.id) {
+    try {
+      await reconcileCaptureTranscriptFollowThrough({
+        prisma,
+        transcriptJobId: currentTranscript.id,
+        refreshExistingPacket: true,
+      });
+    } catch (error) {
+      console.error("[Capture Follow-through] Session packet refresh remains retryable", {
+        roomId,
+        transcriptJobId: currentTranscript.id,
+        reason: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  }
+
   const [room, notes, actionItems, selectedRecordingAsset, latestTranscriptJob] = await Promise.all([
     prisma.callRoom.findUnique({
       where: { id: roomId },
@@ -645,7 +681,7 @@ export async function GET(request: Request) {
       },
     }),
     prisma.coachingNote.findMany({
-      where: { roomId },
+      where: packetNoteVisibilityWhere(actor, roomId),
       orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
       select: {
         id: true,

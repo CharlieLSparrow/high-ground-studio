@@ -84,6 +84,14 @@ describe("transcript coaching packet action review boundary", () => {
 
     expect(result.ok).toBe(true);
     expect(actionItemCreate).not.toHaveBeenCalled();
+    expect(prisma.coachingNote.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        roomId: "room-1",
+        authorUserId: "coach-1",
+        kind: "SUMMARY",
+        title: "Transcript packet: transcript-1",
+      }),
+    }));
 
     const summaryWrite = coachingNoteCreate.mock.calls.find(
       ([call]) => call.data.kind === "SUMMARY",

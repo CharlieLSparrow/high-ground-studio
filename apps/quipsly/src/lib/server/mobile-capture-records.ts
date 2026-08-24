@@ -466,6 +466,7 @@ async function findOrQueueTranscriptJob(
         data: {
           roomId,
           assetId: recordingAssetId,
+          requestedBy: existing.requestedBy || input.actorUserId,
           status: shouldPreserveCompleted ? existing.status : "HELD",
           provider: shouldPreserveCompleted
             ? existing.provider
@@ -483,6 +484,7 @@ async function findOrQueueTranscriptJob(
       data: {
         roomId,
         assetId: recordingAssetId,
+        requestedBy: input.actorUserId,
         status: "HELD",
         provider: processingHold ? "processing-hold" : "consent-required",
         errorMessage: heldMessage,
@@ -498,6 +500,7 @@ async function findOrQueueTranscriptJob(
       data: {
         roomId,
         assetId: recordingAssetId,
+        requestedBy: existing.requestedBy || input.actorUserId,
         status: shouldRequeue ? "QUEUED" : existing.status,
         provider: shouldRequeue ? "pending" : existing.provider,
         errorMessage: shouldRequeue ? null : existing.errorMessage,
@@ -514,6 +517,7 @@ async function findOrQueueTranscriptJob(
     data: {
       roomId,
       assetId: recordingAssetId,
+      requestedBy: input.actorUserId,
       status: "QUEUED",
       provider: "pending",
       resultJson,

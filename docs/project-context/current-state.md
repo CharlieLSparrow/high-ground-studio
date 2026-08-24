@@ -46,6 +46,26 @@ Date: 2026-08-24
   shared media-processing TypeScript pass. Live worker execution and real
   source-timed readback remain deferred flight evidence.
 
+## Automatic private follow-through checkpoint
+
+- Server Session reads now reconcile durable transcript completion and prepare
+  or reuse the deterministic source-bound review packet. This no longer depends
+  on a particular browser tab remaining open or a person finding Build packet.
+- New transcript jobs retain the recording actor as requester. Packet authorship
+  resolves from that requester, the canonical booking coach, then the room
+  creator for legacy evidence—never from the account that happened to poll.
+- Automatic output remains author-private and candidate-only. Canonical tasks,
+  goals, shared notes, client deliveries, messages, calendar events, edits, and
+  publications still require an explicit reviewed action.
+- The packet route now applies Session-note visibility policy before loading
+  packet notes. A client with Session access cannot read another author's
+  private review packet; project-team visibility still requires an active
+  owner/editor grant.
+- Exact Session reads reconcile their latest transcript, while the Capture
+  Session list performs a capped latest-job-per-room sweep. Fifty-seven focused
+  tests and strict TypeScript pass; live two-account negative visibility and
+  automatic worker-to-packet readback remain deferred evidence.
+
 ## Native audio mastery evidence-comparison checkpoint
 
 - Capture Recording Quality now decodes complete source and verified preview
