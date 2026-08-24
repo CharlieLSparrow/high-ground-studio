@@ -555,6 +555,7 @@ struct CapturePacketActionCandidate: Codable, Identifiable, Equatable {
     var sourceSpan: MobileCaptureTranscriptSourceSpan? = nil
     var transcriptReviewStatus: String? = nil
     let speakerLabel: String?
+    var speakerAuthority: String? = nil
     let startSeconds: TimeInterval
     let endSeconds: TimeInterval
     let reviewStatus: String
@@ -573,6 +574,7 @@ struct CapturePacketActionCandidate: Codable, Identifiable, Equatable {
             packetBuildId: "preview-build",
             segmentId: "preview-segment",
             speakerLabel: "Speaker",
+            speakerAuthority: "source-binding",
             startSeconds: 3.66,
             endSeconds: 4.84,
             reviewStatus: "READY_FOR_HUMAN_REVIEW",
@@ -592,6 +594,7 @@ struct CapturePacketGoalCandidate: Codable, Identifiable, Equatable {
     let segmentId: String
     var segmentIds: [String]? = nil
     let speakerLabel: String?
+    var speakerAuthority: String? = nil
     let startSeconds: TimeInterval
     let endSeconds: TimeInterval
     let sourceText: String
@@ -618,6 +621,7 @@ struct CapturePacketGoalCandidate: Codable, Identifiable, Equatable {
             packetBuildId: "preview-build",
             segmentId: "preview-segment",
             speakerLabel: "Speaker",
+            speakerAuthority: "source-binding",
             startSeconds: 3.66,
             endSeconds: 4.84,
             sourceText: "My goal is to publish a thoughtful first episode, and I will review the final cut this week.",
@@ -695,6 +699,7 @@ struct CapturePacketNoteCandidate: Codable, Identifiable, Equatable {
     let segmentId: String
     var segmentIds: [String]? = nil
     let speakerLabel: String?
+    var speakerAuthority: String? = nil
     let startSeconds: TimeInterval
     let endSeconds: TimeInterval
     let sourceText: String
@@ -736,6 +741,7 @@ struct CapturePacketNoteCandidate: Codable, Identifiable, Equatable {
             laneStatus: "READY_FOR_HUMAN_REVIEW",
             segmentId: "preview-segment",
             speakerLabel: "Speaker",
+            speakerAuthority: "source-binding",
             startSeconds: 3.66,
             endSeconds: 4.84,
             sourceText: "My goal is to publish a thoughtful first episode, and I will review the final cut this week.",
@@ -4127,6 +4133,42 @@ struct CapturePacketNoteReviewPreviewView: View {
     }
 }
 
+private struct CapturePacketSpeakerEvidenceBadge: View {
+    let authority: String?
+
+    private var evidence: (label: String, detail: String, icon: String)? {
+        switch authority {
+        case "correction":
+            ("Name reviewed", "A person reviewed this speaker name.", "checkmark.circle")
+        case "attribution":
+            ("Speaker reviewed", "A person matched this voice to a Session participant.", "person.crop.circle")
+        case "source-binding":
+            ("Participant recording", "This speaker comes from that participant's isolated recording.", "waveform")
+        case "provider":
+            ("Automatic speaker label", "This speaker name still comes from transcription processing.", "sparkles")
+        case "unresolved":
+            ("Speaker needs review", "Quipsly has not identified this speaker yet.", "questionmark.circle")
+        default:
+            nil
+        }
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if let evidence {
+            Label(evidence.label, systemImage: evidence.icon)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.blue)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(Color.blue.opacity(0.09), in: Capsule())
+                .accessibilityLabel("Speaker evidence: \(evidence.label)")
+                .accessibilityHint(evidence.detail)
+                .accessibilityIdentifier("CapturePacketSpeakerEvidence_\(authority ?? "unknown")")
+        }
+    }
+}
+
 private struct CapturePacketNoteCandidateCard: View {
     private enum ReviewMode {
         case accept
@@ -4242,6 +4284,7 @@ private struct CapturePacketNoteCandidateCard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("CapturePacketNoteSourceText_\(candidate.accessibilityKey)")
+            CapturePacketSpeakerEvidenceBadge(authority: candidate.speakerAuthority)
             if (candidate.segmentIds?.count ?? 1) > 1 {
                 Label("This moment spans \(candidate.segmentIds?.count ?? 1) transcript passages", systemImage: "link")
                     .font(.caption2.weight(.semibold))
@@ -4580,6 +4623,7 @@ private struct CapturePacketTaskCandidateCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            CapturePacketSpeakerEvidenceBadge(authority: candidate.speakerAuthority)
             if (candidate.segmentIds?.count ?? 1) > 1 {
                 Label("This moment spans \(candidate.segmentIds?.count ?? 1) transcript passages", systemImage: "link")
                     .font(.caption2.weight(.semibold))
@@ -4912,6 +4956,7 @@ private struct CapturePacketGoalCandidateCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            CapturePacketSpeakerEvidenceBadge(authority: candidate.speakerAuthority)
             if (candidate.segmentIds?.count ?? 1) > 1 {
                 Label("This moment spans \(candidate.segmentIds?.count ?? 1) transcript passages", systemImage: "link")
                     .font(.caption2.weight(.semibold))

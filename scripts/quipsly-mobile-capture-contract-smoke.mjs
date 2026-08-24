@@ -1977,9 +1977,14 @@ function checkTranscriptCorrectionContractSources() {
       && sessionReviewText.includes("SpeakerEvidenceBadge")
       && sessionReviewText.includes("Participant recording")
       && sessionReviewText.includes("Automatic speaker label")
-      && sessionReviewText.includes("Speaker needs review"),
+      && sessionReviewText.includes("Speaker needs review")
+      && nativeText.includes("speakerAuthority")
+      && nativeText.includes("CapturePacketSpeakerEvidenceBadge")
+      && nativeText.includes("Participant recording")
+      && nativeText.includes("Automatic speaker label")
+      && nativeText.includes("Speaker needs review"),
     "packetSpeakerIdentityEvidenceVisible",
-    "Session follow-through explains whether a speaker name was reviewed, bound to an isolated participant recording, supplied automatically, or remains unresolved without conflating that identity with word review.",
+    "Nest and iPhone Session follow-through explain whether a speaker name was reviewed, bound to an isolated participant recording, supplied automatically, or remains unresolved without conflating that identity with word review.",
   );
   expect(
     packetRouteText.includes("buildPacketGoalCandidates")

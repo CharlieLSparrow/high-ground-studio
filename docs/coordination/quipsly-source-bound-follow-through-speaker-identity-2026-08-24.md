@@ -38,12 +38,12 @@ person explicitly corrects or confirms it. A corrected display label also does
 not erase the stable source-bound participant ID retained in the packet
 snapshot.
 
-The Nest Session follow-through cards expose that distinction in plain
-language. A compact badge says whether the name was reviewed, matched to a
-participant voice, inherited from the participant's isolated recording,
-supplied automatically, or remains unresolved. The separate prompt to play and
-check provider words remains visible even when the participant recording makes
-speaker ownership exact.
+The Nest and Quipsly Capture Session follow-through cards expose that
+distinction in plain language. A compact badge says whether the name was
+reviewed, matched to a participant voice, inherited from the participant's
+isolated recording, supplied automatically, or remains unresolved. The
+separate prompt to play and check provider words remains visible even when the
+participant recording makes speaker ownership exact.
 
 ## Version and stale-packet behavior
 
@@ -76,6 +76,9 @@ message a client, share a follow-up, publish content, or alter recording media.
   pass, including 132 packet and Session-review tests.
 - The mobile Capture source-contract smoke passes, including the new v2
   source-bound speaker provenance assertion.
+- A complete unsigned generic iOS Simulator build and all 1,143 App Store
+  static checks pass with the iPhone speaker-evidence badges decoded and
+  reachable from note, goal, and task candidates.
 
 This checkpoint is local source and automated evidence only. It does not claim
 a live deployment, TestFlight release, physical-device readback, or a two-person

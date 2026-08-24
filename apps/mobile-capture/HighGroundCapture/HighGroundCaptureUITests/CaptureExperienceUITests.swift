@@ -1682,6 +1682,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let candidateKey = String(source.identifier.dropFirst(sourcePrefix.count))
         XCTAssertFalse(candidateKey.isEmpty)
         XCTAssertTrue(app.buttons["CapturePacketNoteSourceButton_\(candidateKey)"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketSpeakerEvidence_source-binding"].exists)
         let packetNoteReview = app.buttons["CapturePacketReviewNoteButton_\(candidateKey)"]
         XCTAssertTrue(packetNoteReview.isEnabled, "Preview may inspect note purpose and audience while the final write stays disabled.")
         let packetNoteEdit = app.buttons["CapturePacketNoteEditButton_\(candidateKey)"]
@@ -1981,6 +1982,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let packetTaskAccept = app.buttons["CapturePacketTaskAcceptButton"]
         reveal(packetTaskAccept)
         XCTAssertTrue(app.buttons["CapturePacketTaskSource_preview-segment"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketSpeakerEvidence_source-binding"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketTaskSourceReviewRequired"].exists)
         XCTAssertFalse(packetTaskAccept.isEnabled, "Provider-only preview evidence must not open canonical task creation.")
         XCTAssertFalse(app.buttons["CapturePacketTaskDeferButton"].isEnabled)
