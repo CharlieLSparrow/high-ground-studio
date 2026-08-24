@@ -325,6 +325,19 @@ removes the retained server original.
 Detailed decision record:
 `docs/coordination/2026-08-24-native-session-protected-playback.md`.
 
+## Session Camera Audio Audition
+
+`SessionAudioAuditionJob` owns one immutable, source-bound audio navigation
+derivative for a released Session camera recording. It is intentionally not a
+Studio processing job: coaching transcript review must not invent a Project,
+Episode, or Studio asset to avoid downloading a 4K master. Its worker manifest
+and result bind the exact RecordingAsset generation, byte count, SHA-256, and
+finalization upload. The resulting AAC never replaces the original and cannot
+authorize a transcript, edit, release, or publication decision by itself.
+
+Detailed decision record:
+`docs/coordination/2026-08-25-session-camera-audio-audition.md`.
+
 ## Coaching Feature Access
 
 Coaching tools are modeled separately from subscription tiers. This lets Homer

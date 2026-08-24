@@ -159,7 +159,7 @@ struct CaptureTranscriptPlayback: Codable, Equatable {
         guard let protectedSource,
               protectedSource.schema == "quipsly-session-protected-playback-v1",
               protectedSource.byteSize > 0,
-              kind == "audio",
+              (kind == "audio" || kind == "video"),
               protectedSource.sha256.range(
                 of: #"^[0-9a-f]{64}$"#,
                 options: .regularExpression

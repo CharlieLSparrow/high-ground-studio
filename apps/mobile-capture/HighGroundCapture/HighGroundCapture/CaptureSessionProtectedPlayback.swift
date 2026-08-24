@@ -17,6 +17,27 @@ private struct CaptureSessionPlaybackReceipt: Codable {
     let downloadedAt: Date
 }
 
+private struct CaptureSessionAudioAuditionResponse: Decodable {
+    struct Derivative: Decodable {
+        let schema: String
+        let profile: String
+        let recordingAssetId: String
+        let sourceSha256: String
+        let sourceGeneration: String
+        let url: String
+        let sha256: String
+        let byteSize: Int64
+        let durationSeconds: TimeInterval
+        let contentType: String
+    }
+
+    let ok: Bool
+    let state: String?
+    let error: String?
+    let reason: String?
+    let derivative: Derivative?
+}
+
 @MainActor
 final class CaptureSessionProtectedPlaybackController: ObservableObject {
     @Published private(set) var preparedSourceID: String?
@@ -71,10 +92,17 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
     func restoreIfAvailable(source: MobileCaptureSourceSummary) {
         guard !isPreparing,
               let binding = binding(for: source),
-              let owner = AuthManager.shared.stableOwnerSnapshot(),
-              let locations = cacheLocations(binding: binding, owner: owner) else {
+              restoreIfAvailable(binding: binding) else {
             clearPreparedState()
             return
+        }
+    }
+
+    @discardableResult
+    private func restoreIfAvailable(binding: SourceBinding) -> Bool {
+        guard let owner = AuthManager.shared.stableOwnerSnapshot(),
+              let locations = cacheLocations(binding: binding, owner: owner) else {
+            return false
         }
         guard let receiptData = try? Data(contentsOf: locations.receipt),
               let receipt = try? Self.receiptDecoder.decode(
@@ -98,25 +126,116 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
               Date().timeIntervalSince(receipt.downloadedAt) <= 30 * 24 * 60 * 60,
               AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
             try? FileManager.default.removeItem(at: locations.directory)
-            clearPreparedState()
-            return
+            return false
         }
         configurePlayer(fileURL: locations.media, binding: binding)
         statusMessage = "Protected copy ready on this iPhone"
         errorMessage = nil
+        return true
     }
 
     func prepare(source: MobileCaptureSourceSummary) async {
+        guard let binding = binding(for: source) else {
+            errorMessage = "This verified Session source is not ready for protected iPhone playback."
+            return
+        }
+        await prepare(binding: binding)
+    }
+
+    /// Prepares an audio-only, exact-source-bound derivative when the retained
+    /// source is video. This keeps transcript and edit audition small without
+    /// treating the derivative as the original or weakening byte verification.
+    func prepareTranscriptAudition(source: MobileCaptureSourceSummary) async {
+        guard source.isVideoSource else {
+            await prepare(source: source)
+            return
+        }
         guard !isPreparing,
-              let binding = binding(for: source),
+              let original = binding(for: source),
+              let owner = AuthManager.shared.stableOwnerSnapshot(),
+              let endpoint = auditionEndpoint(binding: original) else {
+            errorMessage = "This exact camera source cannot prepare compact transcript audio."
+            return
+        }
+        guard AuthManager.shared.networkActionsAllowed else {
+            errorMessage = "Connect to Nest once to prepare compact transcript audio."
+            return
+        }
+        isPreparing = true
+        errorMessage = nil
+        statusMessage = "Preparing compact audio from the exact camera source…"
+        defer { isPreparing = false }
+        do {
+            var method = "POST"
+            var derivative: CaptureSessionAudioAuditionResponse.Derivative?
+            for attempt in 0 ..< 60 {
+                var request = URLRequest(url: endpoint)
+                request.httpMethod = method
+                request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+                let payload = try JSONDecoder().decode(CaptureSessionAudioAuditionResponse.self, from: data)
+                guard response.statusCode < 400, payload.ok else {
+                    throw Self.error(payload.error ?? "Compact transcript audio could not be prepared.", code: response.statusCode)
+                }
+                if payload.state == "READY", let ready = payload.derivative {
+                    derivative = ready
+                    break
+                }
+                if payload.state == "FAILED" || payload.state == "HELD" {
+                    throw Self.error(payload.error ?? payload.reason ?? "Compact transcript audio is currently held.", code: 409)
+                }
+                guard attempt < 59 else {
+                    throw Self.error("Compact transcript audio is still processing. Try Play again shortly.", code: 202)
+                }
+                method = "GET"
+                try await Task.sleep(for: .seconds(1.5))
+            }
+            guard let derivative,
+                  derivative.schema == "quipsly-session-audio-audition-v1",
+                  derivative.recordingAssetId == original.recordingAssetID,
+                  derivative.sourceSha256 == original.sha256,
+                  derivative.sourceGeneration.range(of: #"^[1-9][0-9]*$"#, options: .regularExpression) != nil,
+                  derivative.contentType == "audio/mp4",
+                  derivative.sha256.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil,
+                  derivative.byteSize > 0,
+                  derivative.durationSeconds > 0,
+                  derivative.url.hasSuffix("/recordings/\(original.recordingAssetID)/audition/media") else {
+                throw Self.error("Compact transcript audio did not match the exact retained source.", code: 409)
+            }
+            guard AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
+                throw Self.error("The Quipsly account changed while transcript audio was prepared.", code: 401)
+            }
+            let audition = SourceBinding(
+                recordingAssetID: original.recordingAssetID,
+                sourceID: "audition:\(original.recordingAssetID):\(derivative.sourceGeneration):\(derivative.profile)",
+                playbackPath: derivative.url,
+                sha256: derivative.sha256,
+                byteCount: derivative.byteSize,
+                fileName: "transcript-audition.m4a",
+                isVideo: false
+            )
+            isPreparing = false
+            await prepare(binding: audition)
+            if preparedSourceID == original.recordingAssetID {
+                statusMessage = "Exact-source transcript audio ready · \(Self.fileSize(derivative.byteSize))"
+            }
+        } catch {
+            clearPreparedState()
+            errorMessage = error.localizedDescription
+            statusMessage = nil
+        }
+    }
+
+    private func prepare(binding: SourceBinding) async {
+        guard !isPreparing,
               let owner = AuthManager.shared.stableOwnerSnapshot(),
               let playbackURL = playbackURL(binding: binding),
               let locations = cacheLocations(binding: binding, owner: owner) else {
             errorMessage = "This verified Session source is not ready for protected iPhone playback."
             return
         }
-        restoreIfAvailable(source: source)
-        if preparedSourceID == binding.recordingAssetID { return }
+        if restoreIfAvailable(binding: binding), preparedSourceID == binding.recordingAssetID { return }
         guard AuthManager.shared.networkActionsAllowed else {
             errorMessage = "Connect to Nest once to prepare this recording on the iPhone."
             return
@@ -125,7 +244,6 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
             errorMessage = "This iPhone needs more free space before it can protect the exact recording."
             return
         }
-
         isPreparing = true
         errorMessage = nil
         statusMessage = "Preparing the exact verified source…"
@@ -135,39 +253,16 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
             request.httpMethod = "GET"
             request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
             request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
-            let (temporaryURL, response) = try await AuthManager.shared
-                .authenticatedDownload(
-                    for: request,
-                    expectedOwnerAccountID: owner.ownerAccountID
-                )
+            let (temporaryURL, response) = try await AuthManager.shared.authenticatedDownload(for: request, expectedOwnerAccountID: owner.ownerAccountID)
             defer { try? FileManager.default.removeItem(at: temporaryURL) }
             try validateResponse(response, binding: binding)
-            guard AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
-                throw Self.error(
-                    "The Quipsly account changed before playback preparation finished.",
-                    code: 401
-                )
-            }
+            guard AuthManager.shared.matchesStableOwnerSnapshot(owner) else { throw Self.error("The Quipsly account changed before playback preparation finished.", code: 401) }
             let verification = try Self.hashAndByteCount(at: temporaryURL)
-            guard verification.byteCount == binding.byteCount,
-                  verification.sha256 == binding.sha256 else {
-                throw Self.error(
-                    "The downloaded recording did not match its exact server receipt and was removed.",
-                    code: 409
-                )
-            }
-            try preserve(
-                temporaryURL: temporaryURL,
-                locations: locations,
-                binding: binding,
-                owner: owner
-            )
+            guard verification.byteCount == binding.byteCount, verification.sha256 == binding.sha256 else { throw Self.error("The downloaded recording did not match its exact server receipt and was removed.", code: 409) }
+            try preserve(temporaryURL: temporaryURL, locations: locations, binding: binding, owner: owner)
             guard AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
                 try? FileManager.default.removeItem(at: locations.directory)
-                throw Self.error(
-                    "The Quipsly account changed before the protected copy could be opened.",
-                    code: 401
-                )
+                throw Self.error("The Quipsly account changed before the protected copy could be opened.", code: 401)
             }
             configurePlayer(fileURL: locations.media, binding: binding)
             statusMessage = "Exact source ready · \(Self.fileSize(binding.byteCount))"
@@ -184,9 +279,9 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
     func prepareTranscriptReviewFile(
         source: MobileCaptureSourceSummary
     ) async -> URL? {
-        await prepare(source: source)
+        await prepareTranscriptAudition(source: source)
         guard preparedSourceID == source.recordingAssetId,
-              let binding = binding(for: source),
+              let binding = boundSource,
               let owner = AuthManager.shared.stableOwnerSnapshot(),
               let locations = cacheLocations(binding: binding, owner: owner),
               FileManager.default.fileExists(atPath: locations.media.path),
@@ -409,6 +504,16 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
         return url
     }
 
+    private func auditionEndpoint(binding: SourceBinding) -> URL? {
+        let suffix = "/recordings/\(binding.recordingAssetID)/media"
+        guard binding.playbackPath.hasSuffix(suffix) else { return nil }
+        let path = String(binding.playbackPath.dropLast("/media".count)) + "/audition"
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL,
+              sameOrigin(url, baseURL), url.path == path,
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { return nil }
+        return url
+    }
+
     private func validateResponse(
         _ response: HTTPURLResponse,
         binding: SourceBinding
@@ -495,7 +600,7 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
         guard let root = Self.protectedCacheRoot else { return nil }
         let directory = root
             .appendingPathComponent(Self.digest(owner.ownerAccountID), isDirectory: true)
-            .appendingPathComponent(Self.digest(binding.recordingAssetID), isDirectory: true)
+            .appendingPathComponent(Self.digest("\(binding.recordingAssetID)|\(binding.sourceID)"), isDirectory: true)
         let fileExtension = Self.safeExtension(
             fileName: binding.fileName,
             isVideo: binding.isVideo

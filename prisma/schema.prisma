@@ -898,6 +898,7 @@ model User {
   transcriptEvaluationCorrections   TranscriptEvaluationCorrectionObservation[] @relation("TranscriptEvaluationCorrectionReviewer")
   sessionAudioAlignmentJobs         SessionAudioAlignmentJob[]                  @relation("SessionAudioAlignmentRequester")
   sessionAudioAlignmentDecisions    SessionAudioAlignmentDecisionReceipt[]      @relation("SessionAudioAlignmentDecisionActor")
+  sessionAudioAuditionJobs          SessionAudioAuditionJob[]                    @relation("SessionAudioAuditionRequester")
   transcriptTerminologyTermsCreated StudioTranscriptTerminologyTerm[]           @relation("StudioTranscriptTerminologyTermCreator")
   transcriptTerminologyRevisions    StudioTranscriptTerminologyRevision[]       @relation("StudioTranscriptTerminologyRevisionActor")
   transcriptTerminologyCandidates   StudioTranscriptTerminologyCandidate[]      @relation("StudioTranscriptTerminologyCandidateCreator")
@@ -2033,6 +2034,7 @@ model CallRoom {
   recordingAssets               RecordingAsset[]
   sourceAlignmentJobs           SessionAudioAlignmentJob[]
   sourceAlignmentDecisions      SessionAudioAlignmentDecisionReceipt[]
+  audioAuditionJobs             SessionAudioAuditionJob[]
   transcriptJobs                TranscriptJob[]
   transcriptCorrections         TranscriptCorrection[]
   transcriptVerifications       TranscriptSegmentVerification[]
@@ -2608,6 +2610,7 @@ model RecordingAsset {
   sourceExpectation             CallExpectedSource?
   alignmentJobsAsSpine          SessionAudioAlignmentJob[]      @relation("SessionAudioAlignmentSpine")
   alignmentJobsAsTarget         SessionAudioAlignmentJob[]      @relation("SessionAudioAlignmentTarget")
+  audioAuditionJobs             SessionAudioAuditionJob[]
 
   @@index([roomId, status])
   @@index([participantId, createdAt])
@@ -2644,6 +2647,34 @@ model SessionAudioAlignmentJob {
   @@index([roomId, status, createdAt])
   @@index([targetRecordingAssetId, createdAt])
   @@index([spineRecordingAssetId, targetRecordingAssetId, createdAt])
+  @@index([status, createdAt])
+}
+
+/// A compact, immutable audio-only review derivative for one exact released
+/// Session source. It exists so transcript review never needs to download a
+/// multi-gigabyte camera master. The retained RecordingAsset remains source
+/// truth and every worker result is re-bound to its generation and SHA-256.
+model SessionAudioAuditionJob {
+  id                     String    @id
+  roomId                 String
+  recordingAssetId       String
+  requestedByUserId      String
+  requestedByEmail       String
+  status                 String    @default("queued")
+  inputJson              Json
+  resultJson             Json?
+  error                  String?
+  startedAt              DateTime?
+  completedAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  room           CallRoom       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  recordingAsset RecordingAsset @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict)
+  requester      User           @relation("SessionAudioAuditionRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([roomId, status, createdAt])
+  @@index([recordingAssetId, createdAt])
   @@index([status, createdAt])
 }
 

@@ -3665,12 +3665,36 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - One hundred focused tests, strict Quipsly TypeScript, both release static
   gates, and a signing-independent iOS Simulator build pass. Capture now reuses
   its verified protected Session cache for a non-local passage and keys the
-  listened-through position to that passage's expected RecordingAsset. Automatic
-  transcript preparation is audio-only so one Play tap cannot fetch a 4K master.
+  listened-through position to that passage's expected RecordingAsset. A
+  camera-only source now prepares one compact, immutable, source-bound AAC
+  derivative on demand, so one Play tap cannot fetch a 4K master and also no
+  longer leaves the iPhone transcript unplayable.
   Real
   two-account download, listening, correction, and wrong-source refusal remain
   deferred evidence. Detailed decision record:
   `docs/coordination/2026-08-24-session-protected-transcript-playback.md`.
+
+### 2026-08-25 Session camera audio audition
+
+- Camera-only Session transcripts and text-based recording edits now prepare a
+  compact AAC review derivative instead of downloading the retained 4K master
+  or disabling iPhone playback.
+- A first-class `SessionAudioAuditionJob` commits before its create-once GCS
+  outbox. The worker re-hashes the exact source generation, encodes 48 kHz
+  AAC-LC, decodes through EOF, and emits an immutable result with its own
+  generation, byte count, SHA-256, CRC32C, technical evidence, and worker
+  identity. The original remains source truth.
+- Nest re-resolves Session access and current finalization evidence before
+  registration and on every protected playback request. Capture downloads and
+  completely verifies only the small derivative, caches it separately under
+  account/file protection, and keeps listening receipts bound to the original
+  RecordingAsset and source clock.
+- Five contract/worker tests, eleven focused service/API tests, Prisma
+  validation and generation, three strict TypeScript builds, the full Capture
+  release-source gate, and the complete dual-architecture Capture preflight
+  pass. Live worker execution and physical iPhone listening remain deferred
+  evidence. Detailed decision record:
+  `docs/coordination/2026-08-25-session-camera-audio-audition.md`.
 
 ### 2026-08-24 Session exact-source waveform alignment
 

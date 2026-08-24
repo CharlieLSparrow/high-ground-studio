@@ -1185,7 +1185,7 @@ struct CaptureRecordingShareEditor: View {
         client.stopPreviewPlayback()
         auditionSegmentID = segment.id
         auditionNotice = "Preparing \(source.participantLabel)'s exact retained source…"
-        await sourcePlayback.prepare(source: source.mobileProtectedSource)
+        await sourcePlayback.prepareTranscriptAudition(source: source.mobileProtectedSource)
         guard sourcePlayback.preparedSourceID == source.id else {
             auditionNotice = sourcePlayback.errorMessage
                 ?? "The exact retained participant source could not be prepared on this iPhone."
