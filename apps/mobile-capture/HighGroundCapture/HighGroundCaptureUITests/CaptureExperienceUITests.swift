@@ -2253,6 +2253,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioMasteryMonitorExplanation"].exists)
         XCTAssertTrue(app.buttons["CaptureAudioMasteryPlayOriginal"].exists)
         XCTAssertTrue(app.buttons["CaptureAudioMasteryPlay"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioMasteryReview"].exists)
+        XCTAssertTrue(app.textFields["CaptureAudioMasteryReviewNote"].exists)
+        XCTAssertTrue(app.buttons["CaptureAudioMasteryReject"].exists)
+        XCTAssertTrue(app.buttons["CaptureAudioMasteryApprove"].exists)
         let masteryBoundary = app.descendants(matching: .any)["CaptureAudioMasteryPreviewBoundary"]
         XCTAssertTrue(masteryBoundary.exists)
         XCTAssertTrue(masteryBoundary.label.contains("no audio downloaded"))

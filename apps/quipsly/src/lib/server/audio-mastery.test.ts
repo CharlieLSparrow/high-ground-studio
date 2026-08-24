@@ -154,6 +154,9 @@ describe("public audio mastery status", () => {
       sha256: derivativeSha256,
       sizeBytes: derivativeSource.sizeBytes,
     });
+    expect(status.reviewPlan?.requiredMoments).toEqual([
+      expect.objectContaining({ id: "loudest-source", timeSeconds: 1 }),
+    ]);
     const serialized = JSON.stringify(status);
     expect(serialized).not.toContain(source.locator);
     expect(serialized).not.toContain(source.sha256);

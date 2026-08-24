@@ -6,10 +6,12 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
     @Published private(set) var playingRecordingID: UUID?
     @Published private(set) var videoPlayer: AVPlayer?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var currentTime: TimeInterval = 0
 
     private var audioPlayer: AVAudioPlayer?
     private var videoCompletionObserver: NSObjectProtocol?
     private var boundedStopTask: Task<Void, Never>?
+    private var progressTimer: Timer?
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
     private var accountCancellable: AnyCancellable?
 
@@ -35,7 +37,8 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
         recording: LocalRecording,
         library: LocalRecordingLibrary,
         from startSeconds: TimeInterval,
-        until endSeconds: TimeInterval? = nil
+        until endSeconds: TimeInterval? = nil,
+        volume: Float = 1
     ) {
         stop()
         guard recording.status.isPlaybackEligible else {
@@ -61,12 +64,14 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
             ? beginVideoPlayback(
                 recordingID: recording.id,
                 fileURL: fileURL,
-                startSeconds: startSeconds
+                startSeconds: startSeconds,
+                volume: volume
             )
             : beginAudioPlayback(
                 recordingID: recording.id,
                 fileURL: fileURL,
-                startSeconds: startSeconds
+                startSeconds: startSeconds,
+                volume: volume
             )
         scheduleBoundedStop(
             recordingID: recording.id,
@@ -78,6 +83,7 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
     func stop() {
         boundedStopTask?.cancel()
         boundedStopTask = nil
+        stopProgressTimer()
         audioPlayer?.stop()
         audioPlayer = nil
         videoPlayer?.pause()
@@ -87,7 +93,14 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
             self.videoCompletionObserver = nil
         }
         playingRecordingID = nil
+        currentTime = 0
         audioSessionCoordinator.endLocalPlayback()
+    }
+
+    func setVolume(_ requestedVolume: Float) {
+        let volume = min(max(requestedVolume.isFinite ? requestedVolume : 1, 0), 1)
+        audioPlayer?.volume = volume
+        videoPlayer?.volume = volume
     }
 
     private func scheduleBoundedStop(
@@ -113,7 +126,8 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
     private func beginAudioPlayback(
         recordingID: UUID,
         fileURL: URL,
-        startSeconds: TimeInterval
+        startSeconds: TimeInterval,
+        volume: Float
     ) {
         do {
             try audioSessionCoordinator.beginLocalPlayback()
@@ -127,6 +141,7 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
                 )
             }
             player.currentTime = min(max(startSeconds, 0), player.duration)
+            player.volume = min(max(volume.isFinite ? volume : 1, 0), 1)
             guard player.play() else {
                 throw NSError(
                     domain: "LocalRecordingPlayback",
@@ -136,6 +151,8 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
             }
             audioPlayer = player
             playingRecordingID = recordingID
+            currentTime = player.currentTime
+            startProgressTimer(recordingID: recordingID)
             errorMessage = nil
         } catch {
             audioSessionCoordinator.endLocalPlayback()
@@ -148,12 +165,14 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
     private func beginVideoPlayback(
         recordingID: UUID,
         fileURL: URL,
-        startSeconds: TimeInterval
+        startSeconds: TimeInterval,
+        volume: Float
     ) {
         do {
             try audioSessionCoordinator.beginLocalPlayback()
             let item = AVPlayerItem(url: fileURL)
             let player = AVPlayer(playerItem: item)
+            player.volume = min(max(volume.isFinite ? volume : 1, 0), 1)
             videoCompletionObserver = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
                 object: item,
@@ -165,6 +184,7 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
             }
             videoPlayer = player
             playingRecordingID = recordingID
+            currentTime = max(startSeconds, 0)
             errorMessage = nil
             player.seek(
                 to: CMTime(seconds: max(startSeconds, 0), preferredTimescale: 600),
@@ -172,12 +192,36 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
                 toleranceAfter: .zero
             )
             player.play()
+            startProgressTimer(recordingID: recordingID)
         } catch {
             audioSessionCoordinator.endLocalPlayback()
             videoPlayer = nil
             playingRecordingID = nil
             errorMessage = error.localizedDescription
         }
+    }
+
+
+    private func startProgressTimer(recordingID: UUID) {
+        stopProgressTimer()
+        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.playingRecordingID == recordingID else { return }
+                if let audioPlayer = self.audioPlayer {
+                    self.currentTime = audioPlayer.currentTime
+                } else if let videoPlayer = self.videoPlayer {
+                    let seconds = videoPlayer.currentTime().seconds
+                    if seconds.isFinite { self.currentTime = max(seconds, 0) }
+                }
+            }
+        }
+        progressTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopProgressTimer() {
+        progressTimer?.invalidate()
+        progressTimer = nil
     }
 }
 
@@ -186,6 +230,7 @@ extension LocalRecordingPlaybackController: AVAudioPlayerDelegate {
         Task { @MainActor in
             self.audioPlayer = nil
             self.playingRecordingID = nil
+            self.stopProgressTimer()
             self.audioSessionCoordinator.endLocalPlayback()
             if !flag {
                 self.errorMessage = "Playback ended before iOS could finish the local take."
@@ -197,6 +242,7 @@ extension LocalRecordingPlaybackController: AVAudioPlayerDelegate {
         Task { @MainActor in
             self.audioPlayer = nil
             self.playingRecordingID = nil
+            self.stopProgressTimer()
             self.audioSessionCoordinator.endLocalPlayback()
             self.errorMessage = error?.localizedDescription ?? "The local take could not be decoded."
         }

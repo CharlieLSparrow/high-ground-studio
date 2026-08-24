@@ -19,10 +19,10 @@ For a completed mastering preview, Capture shows:
   source time.
 
 The comparison has two conventional listening modes. **Fair comparison** is
-the default and attenuates the improved preview by the measured integrated-
-loudness delta so louder does not automatically sound better. **Final volume**
-plays the verified preview at delivery level. The screen states the applied dB
-difference and keeps both choices reversible.
+the default and attenuates whichever version is measurably louder by the
+integrated-loudness delta so louder does not automatically sound better.
+**Final volume** plays both versions at their verified levels. The screen
+states the applied dB difference and keeps both choices reversible.
 Changing modes while the improved preview is playing updates the live monitor
 gain immediately, so the selected mode and audible output cannot diverge.
 
@@ -30,6 +30,28 @@ This makes the automation explainable on the phone without turning technical
 evidence into required ceremony. The default copy stays simple; measurements
 sit directly beside the comparison for people who want to understand the
 result.
+
+## Native listening decision
+
+Capture now consumes the same server-derived review plan as Nest instead of
+reimplementing mastering heuristics on the phone. Each verified preview can
+carry the loudest source moment, quietest sustained passage, and largest
+processing shift selected from complete-decode measurements.
+
+The phone guides the reviewer through approximately three seconds around every
+available moment in both the local original and the SHA-verified preview. It
+tracks bounded second bins only while a player is actually advancing, and it
+records whether playback occurred under matched-loudness and delivery-level
+monitoring. Approval remains unavailable until the shared coverage contract is
+complete. Rejection requires preview playback plus a note.
+
+Submitting either decision uses the existing authenticated Nest route and its
+append-only receipt contract. The request is account-bound and includes exact
+project, asset, source, mastery job, playback evidence, and a stable client
+request ID for idempotent retry. The server independently rechecks permissions,
+source and preview hashes, evidence bounds, and decision requirements. Capture
+then displays the returned latest decision without treating review as
+promotion, delivery, or publication.
 
 ## Integrity and playback boundary
 
@@ -39,8 +61,8 @@ result.
 - The temporary preview remains protected and is removed when authorization,
   account, recording identity, or derivative identity changes.
 - Starting Original stops Improved; starting Improved stops Original.
-- Fair comparison changes only the protected preview player's monitoring
-  volume. It does not render, rewrite, or normalize either source file.
+- Fair comparison changes only the two players' monitoring volume. It does not
+  render, rewrite, or normalize either source file.
 - Improved playback clamps the requested source time to the verified file's
   duration.
 - The original local recording remains source truth. No media is promoted,
@@ -58,9 +80,16 @@ result.
 - The complete unsigned generic iOS Simulator `build-for-testing` succeeds for
   arm64 and x86_64, including the deterministic UI assertions.
 - The deterministic Recording Quality preview exposes the measurement, target,
-  and A/B controls while explicitly stating that it downloaded no audio and
-  created no evidence receipt.
+  A/B controls, and review decision surface while explicitly stating that it
+  downloaded no audio and created no evidence receipt.
 
 This checkpoint is local source and automated compile evidence. It does not
 claim physical-device listening, authenticated live derivative download, or a
 human approval decision.
+
+The focused UI-test execution was attempted against the booted iOS 26.3
+simulator. The simulator service denied launching the compiled XCTest runner
+with `FBSOpenApplicationServiceErrorDomain` and process exit 64 before app code
+or assertions ran. That environment-bound run remains in the deferred
+validation ledger; it is neither reported as a passing UI run nor treated as
+an app assertion failure.

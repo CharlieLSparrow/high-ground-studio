@@ -7,6 +7,7 @@ struct CaptureSourceEvidenceView: View {
 
         var id: String { rawValue }
         var label: String { self == .fair ? "Fair comparison" : "Final volume" }
+        var evidenceValue: String { self == .fair ? "matched" : "delivery" }
     }
 
     let recordingID: UUID
@@ -23,6 +24,7 @@ struct CaptureSourceEvidenceView: View {
     @State private var comparisonTask: Task<Void, Never>?
     @State private var selectedAudioSeconds = 0.0
     @State private var masteryMonitorMode = MasteryMonitorMode.fair
+    @State private var masteryReviewNote = ""
     @State private var showsTechnicalAudioDetails = false
     @State private var showsTechnicalSoundDetails = false
     @State private var showsRecordingDetails = false
@@ -69,6 +71,15 @@ struct CaptureSourceEvidenceView: View {
         .navigationTitle("Recording quality")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CaptureSourceEvidenceView")
+        .onReceive(playback.$currentTime) { seconds in
+            guard playback.playingRecordingID == recordingID,
+                  let recording = library.recording(id: recordingID) else { return }
+            mastery.observeSourcePlayback(
+                recording: recording,
+                at: seconds,
+                monitorMode: masteryMonitorMode.evidenceValue
+            )
+        }
         .onDisappear {
             playback.stop()
             mastery.stop()
@@ -407,11 +418,13 @@ struct CaptureSourceEvidenceView: View {
                                 .pickerStyle(.segmented)
                                 .accessibilityIdentifier("CaptureAudioMasteryMonitorMode")
                                 .onChange(of: masteryMonitorMode) { _, _ in
-                                    mastery.setPreviewVolume(masteryPreviewVolume(status))
+                                    mastery.setPreviewVolume(
+                                        masteryPreviewVolume(status),
+                                        monitorMode: masteryMonitorMode.evidenceValue
+                                    )
+                                    playback.setVolume(masterySourceVolume(status))
                                 }
-                                Text(masteryMonitorMode == .fair
-                                    ? String(format: "Fair comparison lowers the improved preview by %.1f dB to match the original's measured integrated loudness.", max(improved.integratedLufs - source.integratedLufs, 0))
-                                    : "Final volume plays the improved preview at its verified delivery level.")
+                                Text(masteryMonitorExplanation(source: source, improved: improved))
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -428,7 +441,8 @@ struct CaptureSourceEvidenceView: View {
                                     playback.play(
                                         recording: recording,
                                         library: library,
-                                        from: selectedAudioSeconds
+                                        from: selectedAudioSeconds,
+                                        volume: masterySourceVolume(status)
                                     )
                                 }
                             } label: {
@@ -447,7 +461,8 @@ struct CaptureSourceEvidenceView: View {
                                     await mastery.togglePreview(
                                         recording: recording,
                                         from: selectedAudioSeconds,
-                                        volume: masteryPreviewVolume(status)
+                                        volume: masteryPreviewVolume(status),
+                                        monitorMode: masteryMonitorMode.evidenceValue
                                     )
                                 }
                             } label: {
@@ -464,6 +479,7 @@ struct CaptureSourceEvidenceView: View {
                             .disabled(mastery.isLoading)
                             .accessibilityIdentifier("CaptureAudioMasteryPlay")
                         }
+                        masteryReviewSection(recording: recording, status: status)
                     case "completed":
                         Label("This recording is already balanced", systemImage: "checkmark.circle.fill")
                             .font(.subheadline.weight(.bold))
@@ -497,6 +513,147 @@ struct CaptureSourceEvidenceView: View {
                 }
             }
             .accessibilityIdentifier("CaptureAudioMasteryCard")
+        }
+    }
+
+    @ViewBuilder
+    private func masteryReviewSection(
+        recording: LocalRecording,
+        status: CaptureAudioMasterySnapshot
+    ) -> some View {
+        if let moments = status.reviewPlan?.requiredMoments, !moments.isEmpty {
+            let coverage = mastery.reviewCoverage(for: status)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Choose the version you trust")
+                            .font(.subheadline.weight(.bold))
+                        Text("Hear each suggested moment in both versions. Compare once fairly and once at final volume before approving.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Text(coverage.approvalReady ? "Ready" : "Listening")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(coverage.approvalReady ? .green : .orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(.thinMaterial, in: Capsule())
+                }
+
+                ForEach(moments) { moment in
+                    let sourceDone = coverage.sourceCompletedMomentIDs.contains(moment.id)
+                    let previewDone = coverage.previewCompletedMomentIDs.contains(moment.id)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(moment.label)
+                                    .font(.caption.weight(.bold))
+                                Text("\(durationLabel(moment.timeSeconds)) · \(moment.detail)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: sourceDone && previewDone ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(sourceDone && previewDone ? .green : .secondary)
+                        }
+                        HStack(spacing: 8) {
+                            Button {
+                                mastery.stop()
+                                playback.play(
+                                    recording: recording,
+                                    library: library,
+                                    from: max(moment.timeSeconds - 1, 0),
+                                    volume: masterySourceVolume(status)
+                                )
+                            } label: {
+                                Label(sourceDone ? "Original heard" : "Hear original", systemImage: sourceDone ? "checkmark" : "play.fill")
+                                    .frame(maxWidth: .infinity, minHeight: 38)
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button {
+                                playback.stop()
+                                Task {
+                                    await mastery.togglePreview(
+                                        recording: recording,
+                                        from: max(moment.timeSeconds - 1, 0),
+                                        volume: masteryPreviewVolume(status),
+                                        monitorMode: masteryMonitorMode.evidenceValue,
+                                        restartIfPlaying: true
+                                    )
+                                }
+                            } label: {
+                                Label(previewDone ? "Improved heard" : "Hear improved", systemImage: previewDone ? "checkmark" : "play.fill")
+                                    .frame(maxWidth: .infinity, minHeight: 38)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(mastery.isLoading)
+                        }
+                    }
+                    .padding(10)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                }
+
+                HStack(spacing: 8) {
+                    reviewEvidenceBadge("Fair comparison", complete: coverage.matchedMonitorObserved)
+                    reviewEvidenceBadge("Final volume", complete: coverage.deliveryMonitorObserved)
+                }
+
+                if let latest = status.review?.latest {
+                    Label(
+                        "Latest decision: \(latest.decision.capitalized) · \(latest.actorEmail)",
+                        systemImage: latest.decision == "approved" ? "checkmark.seal.fill" : "arrow.uturn.backward.circle.fill"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(latest.decision == "approved" ? .green : .orange)
+                    .accessibilityIdentifier("CaptureAudioMasteryLatestDecision")
+                }
+
+                TextField("Optional approval note; required when rejecting", text: $masteryReviewNote, axis: .vertical)
+                    .lineLimit(2...5)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("CaptureAudioMasteryReviewNote")
+
+                HStack(spacing: 10) {
+                    Button("Reject improved") {
+                        Task {
+                            await mastery.saveReview(
+                                recording: recording,
+                                decision: "rejected",
+                                note: masteryReviewNote
+                            )
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(
+                        mastery.isReviewing
+                            || mastery.previewListenedSecondBins.isEmpty
+                            || masteryReviewNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                    .accessibilityIdentifier("CaptureAudioMasteryReject")
+
+                    Button("Approve improved") {
+                        Task {
+                            await mastery.saveReview(
+                                recording: recording,
+                                decision: "approved",
+                                note: masteryReviewNote
+                            )
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(mastery.isReviewing || !coverage.approvalReady)
+                    .accessibilityIdentifier("CaptureAudioMasteryApprove")
+                }
+
+                Text("Quipsly records player progress to support your choice; it cannot prove attention or audibility. Approval creates a review receipt only—it never replaces the original or publishes anything.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 8)
+            .accessibilityIdentifier("CaptureAudioMasteryReview")
         }
     }
 
@@ -1151,6 +1308,40 @@ struct CaptureSourceEvidenceView: View {
         return Float(pow(10, decibelDelta / 20))
     }
 
+    private func masterySourceVolume(_ status: CaptureAudioMasterySnapshot) -> Float {
+        guard masteryMonitorMode == .fair,
+              let source = status.sourceMeasurement,
+              let improved = status.derivative?.measured else { return 1 }
+        let decibelDelta = min(improved.integratedLufs - source.integratedLufs, 0)
+        return Float(pow(10, decibelDelta / 20))
+    }
+
+    private func masteryMonitorExplanation(
+        source: CaptureAudioMasterySnapshot.Measurement,
+        improved: CaptureAudioMasterySnapshot.Measurement
+    ) -> String {
+        guard masteryMonitorMode == .fair else {
+            return "Final volume plays both versions at their verified levels."
+        }
+        let delta = improved.integratedLufs - source.integratedLufs
+        if abs(delta) < 0.05 {
+            return "Fair comparison uses the same monitor level because both versions have the same measured integrated loudness."
+        }
+        return String(
+            format: "Fair comparison lowers the %@ version by %.1f dB. Only listening volume changes; neither file is modified.",
+            delta > 0 ? "improved" : "original",
+            abs(delta)
+        )
+    }
+
+    private func reviewEvidenceBadge(_ label: String, complete: Bool) -> some View {
+        Label(label, systemImage: complete ? "checkmark.circle.fill" : "circle")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(complete ? .green : .secondary)
+            .frame(maxWidth: .infinity, minHeight: 34)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+    }
+
     private func nonempty(_ value: String?) -> String? {
         let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized?.isEmpty == false ? normalized : nil
@@ -1306,6 +1497,31 @@ struct CaptureSourceEvidencePreviewView: View {
                             .disabled(true)
                             .accessibilityIdentifier("CaptureAudioMasteryPlay")
                     }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Choose the version you trust")
+                            .font(.subheadline.weight(.bold))
+                        Text("A real review guides you through server-selected moments in both versions and requires fair-comparison plus final-volume listening before approval.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("Optional approval note; required when rejecting", text: .constant(""))
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(true)
+                            .accessibilityIdentifier("CaptureAudioMasteryReviewNote")
+                        HStack {
+                            Button("Reject improved") {}
+                                .buttonStyle(.bordered)
+                                .disabled(true)
+                                .accessibilityIdentifier("CaptureAudioMasteryReject")
+                            Button("Approve improved") {}
+                                .buttonStyle(.borderedProminent)
+                                .disabled(true)
+                                .accessibilityIdentifier("CaptureAudioMasteryApprove")
+                        }
+                        Text("Preview only · no listening receipt created")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityIdentifier("CaptureAudioMasteryReview")
                     Label("Preview only · no audio downloaded", systemImage: "eye")
                         .font(.caption.weight(.semibold))
                         .accessibilityIdentifier("CaptureAudioMasteryPreviewBoundary")

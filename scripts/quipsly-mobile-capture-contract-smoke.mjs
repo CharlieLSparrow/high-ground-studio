@@ -1271,6 +1271,7 @@ function checkTranscriptCorrectionContractSources() {
   const studioTranscriptSpeakerAuthorityText = sourceText("apps/quipsly/src/lib/server/studio-transcript-speaker-authority.ts");
   const captureSourceEvidenceText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureSourceEvidenceView.swift");
   const captureAudioMasteryClientText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureAudioMasteryClient.swift");
+  const localRecordingPlaybackText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/LocalRecordingPlaybackController.swift");
   const mobileComponentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const nestDashboardText = sourceText("apps/quipsly/src/app/(app)/nests/[slug]/page.tsx");
   const nestFollowThroughText = sourceText("apps/quipsly/src/lib/server/nest-project-follow-through.ts");
@@ -2042,6 +2043,22 @@ function checkTranscriptCorrectionContractSources() {
       && captureUITestText.includes("CaptureAudioMasteryMonitorMode"),
     "nativeAudioMasteryEvidenceComparison",
     "iPhone recording quality decodes complete source and verified preview loudness evidence, shows the delivery target, and compares original versus improved audio from the same selected source time without replacing the original.",
+  );
+  expect(
+    captureAudioMasteryClientText.includes("quipsly-audio-mastery-playback-review-v1")
+      && captureAudioMasteryClientText.includes("reviewRequestIDs")
+      && captureAudioMasteryClientText.includes("sourceListenedSecondBins")
+      && captureAudioMasteryClientText.includes("previewListenedSecondBins")
+      && captureAudioMasteryClientText.includes("requiredMomentIDs")
+      && captureAudioMasteryClientText.includes("api/media-vault/audio-mastery/review")
+      && localRecordingPlaybackText.includes("@Published private(set) var currentTime")
+      && localRecordingPlaybackText.includes("func setVolume")
+      && captureSourceEvidenceText.includes("CaptureAudioMasteryReview")
+      && captureSourceEvidenceText.includes("CaptureAudioMasteryApprove")
+      && captureSourceEvidenceText.includes("CaptureAudioMasteryReject")
+      && captureUITestText.includes("CaptureAudioMasteryReview"),
+    "nativeAudioMasteryListeningDecision",
+    "iPhone tracks bounded original and verified-preview playback against server-selected moments, applies fair or delivery monitoring to both versions, and submits the existing append-only authenticated mastery-review contract without promoting or replacing source media.",
   );
   expect(
     durableWorkText.includes("TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority}")

@@ -29,12 +29,40 @@ struct CaptureAudioMasterySnapshot: Decodable, Equatable {
         let profile: Profile?
     }
 
+    struct ReviewSummary: Decodable, Equatable {
+        struct Receipt: Decodable, Equatable {
+            let id: String
+            let jobId: String
+            let decision: String
+            let note: String?
+            let reviewedAt: String
+            let actorEmail: String
+        }
+
+        let latest: Receipt?
+        let approvalCount: Int
+        let rejectionCount: Int
+    }
+
+    struct ReviewPlan: Decodable, Equatable {
+        struct Moment: Decodable, Equatable, Identifiable {
+            let id: String
+            let timeSeconds: TimeInterval
+            let label: String
+            let detail: String
+        }
+
+        let requiredMoments: [Moment]
+    }
+
     let ok: Bool
     let jobId: String?
     let status: String
     let sourceMeasurement: Measurement?
     let proposal: Proposal?
     let derivative: Derivative?
+    var review: ReviewSummary?
+    let reviewPlan: ReviewPlan?
     let error: String?
 
     var isWorking: Bool {
@@ -42,7 +70,29 @@ struct CaptureAudioMasterySnapshot: Decodable, Equatable {
     }
 }
 
+struct CaptureAudioMasteryReviewCoverage: Equatable {
+    let requiredMomentIDs: Set<String>
+    let sourceCompletedMomentIDs: Set<String>
+    let previewCompletedMomentIDs: Set<String>
+    let matchedMonitorObserved: Bool
+    let deliveryMonitorObserved: Bool
+
+    var approvalReady: Bool {
+        !requiredMomentIDs.isEmpty
+            && sourceCompletedMomentIDs == requiredMomentIDs
+            && previewCompletedMomentIDs == requiredMomentIDs
+            && matchedMonitorObserved
+            && deliveryMonitorObserved
+    }
+}
+
 private struct CaptureAudioMasteryErrorEnvelope: Decodable {
+    let error: String?
+}
+
+private struct CaptureAudioMasteryReviewResponse: Decodable {
+    let ok: Bool
+    let review: CaptureAudioMasterySnapshot.ReviewSummary?
     let error: String?
 }
 
@@ -53,7 +103,11 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
     @Published private(set) var snapshot: CaptureAudioMasterySnapshot?
     @Published private(set) var isLoading = false
     @Published private(set) var isPlaying = false
+    @Published private(set) var isReviewing = false
     @Published private(set) var notice: String?
+    @Published private(set) var sourceListenedSecondBins: Set<Int> = []
+    @Published private(set) var previewListenedSecondBins: Set<Int> = []
+    @Published private(set) var observedMonitorModes: Set<String> = []
 
     private struct RecordingBinding: Equatable, Sendable {
         let recordingID: UUID
@@ -80,6 +134,10 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
     private var playbackBinding: RecordingBinding?
     private var playbackSHA256: String?
     private var accountCancellable: AnyCancellable?
+    private var playbackTimer: Timer?
+    private var activePreviewMonitorMode: String?
+    private var evidenceJobID: String?
+    private var reviewRequestIDs: [String: String] = [:]
 
     override init() {
         super.init()
@@ -93,6 +151,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
     }
 
     deinit {
+        playbackTimer?.invalidate()
         if let protectedPreviewURL {
             try? FileManager.default.removeItem(at: protectedPreviewURL)
         }
@@ -102,6 +161,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         guard let binding = binding(for: recording) else {
             snapshot = nil
             notice = nil
+            resetReviewEvidence()
             return
         }
         if playbackBinding != nil && playbackBinding != binding {
@@ -115,7 +175,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
             if current.status == "not-queued" {
                 current = try await operate("queue", binding: binding)
             }
-            snapshot = current
+            acceptSnapshot(current)
             reconcilePlaybackAuthorization(with: current, binding: binding)
             notice = nil
             current = try await reconcileUntilSettled(current, binding: binding)
@@ -140,7 +200,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         defer { isLoading = false }
         do {
             let queued = try await operate("queue", binding: binding)
-            snapshot = queued
+            acceptSnapshot(queued)
             reconcilePlaybackAuthorization(with: queued, binding: binding)
             notice = nil
             let current = try await reconcileUntilSettled(queued, binding: binding)
@@ -159,11 +219,21 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
     func togglePreview(
         recording: LocalRecording,
         from requestedSeconds: TimeInterval = 0,
-        volume requestedVolume: Float = 1
+        volume requestedVolume: Float = 1,
+        monitorMode: String,
+        restartIfPlaying: Bool = false
     ) async {
         if let player, player.isPlaying {
+            if restartIfPlaying {
+                player.currentTime = Self.clampedPlaybackTime(requestedSeconds, duration: player.duration)
+                player.volume = Self.clampedVolume(requestedVolume)
+                activePreviewMonitorMode = Self.supportedMonitorMode(monitorMode)
+                notice = nil
+                return
+            }
             player.pause()
             isPlaying = false
+            stopPlaybackTimer()
             audioSessionCoordinator.endLocalPlayback()
             return
         }
@@ -171,8 +241,10 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
             do {
                 player.currentTime = Self.clampedPlaybackTime(requestedSeconds, duration: player.duration)
                 player.volume = Self.clampedVolume(requestedVolume)
+                activePreviewMonitorMode = Self.supportedMonitorMode(monitorMode)
                 try audioSessionCoordinator.beginLocalPlayback()
                 guard player.play() else { throw ClientError.message("The improved copy could not begin playback.") }
+                startPlaybackTimer()
                 isPlaying = true
                 notice = nil
             } catch {
@@ -241,7 +313,9 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
             playbackBinding = binding
             playbackSHA256 = expectedSHA256
             self.player = player
+            activePreviewMonitorMode = Self.supportedMonitorMode(monitorMode)
             isPlaying = true
+            startPlaybackTimer()
             notice = nil
         } catch {
             audioSessionCoordinator.endLocalPlayback()
@@ -252,11 +326,144 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
     func stop() {
         player?.stop()
         isPlaying = false
+        stopPlaybackTimer()
         audioSessionCoordinator.endLocalPlayback()
     }
 
-    func setPreviewVolume(_ requestedVolume: Float) {
+    func setPreviewVolume(_ requestedVolume: Float, monitorMode: String) {
         player?.volume = Self.clampedVolume(requestedVolume)
+        activePreviewMonitorMode = Self.supportedMonitorMode(monitorMode)
+    }
+
+    func observeSourcePlayback(
+        recording: LocalRecording,
+        at seconds: TimeInterval,
+        monitorMode: String
+    ) {
+        guard binding(for: recording) != nil,
+              snapshot?.jobId == evidenceJobID,
+              let durationSeconds = snapshot?.sourceMeasurement?.durationSeconds,
+              seconds.isFinite,
+              seconds >= 0 else { return }
+        sourceListenedSecondBins.insert(
+            Self.boundedSecondBin(seconds, durationSeconds: durationSeconds)
+        )
+        if let mode = Self.supportedMonitorMode(monitorMode) {
+            observedMonitorModes.insert(mode)
+        }
+    }
+
+    func reviewCoverage(for status: CaptureAudioMasterySnapshot) -> CaptureAudioMasteryReviewCoverage {
+        let moments = status.reviewPlan?.requiredMoments ?? []
+        let sourceDuration = status.sourceMeasurement?.durationSeconds ?? 0
+        let previewDuration = status.derivative?.measured?.durationSeconds ?? 0
+        let requiredMomentIDs = Set(moments.map(\.id))
+        let sourceCompleted = Set(moments.compactMap { moment in
+            Self.requiredBins(for: moment, durationSeconds: sourceDuration)
+                .isSubset(of: sourceListenedSecondBins) ? moment.id : nil
+        })
+        let previewCompleted = Set(moments.compactMap { moment in
+            Self.requiredBins(for: moment, durationSeconds: previewDuration)
+                .isSubset(of: previewListenedSecondBins) ? moment.id : nil
+        })
+        return CaptureAudioMasteryReviewCoverage(
+            requiredMomentIDs: requiredMomentIDs,
+            sourceCompletedMomentIDs: sourceCompleted,
+            previewCompletedMomentIDs: previewCompleted,
+            matchedMonitorObserved: observedMonitorModes.contains("matched"),
+            deliveryMonitorObserved: observedMonitorModes.contains("delivery")
+        )
+    }
+
+    func saveReview(
+        recording: LocalRecording,
+        decision: String,
+        note rawNote: String?
+    ) async {
+        guard let binding = binding(for: recording),
+              let status = snapshot,
+              let jobID = status.jobId,
+              jobID == evidenceJobID,
+              status.derivative != nil,
+              decision == "approved" || decision == "rejected" else {
+            notice = "The exact improved copy is no longer available for review."
+            return
+        }
+        let note = rawNote?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let coverage = reviewCoverage(for: status)
+        if decision == "approved" && !coverage.approvalReady {
+            notice = "Hear every suggested moment in both versions at fair comparison and final volume before approving."
+            return
+        }
+        if decision == "rejected" && (previewListenedSecondBins.isEmpty || note?.isEmpty != false) {
+            notice = "Hear the improved copy and add a note before rejecting it."
+            return
+        }
+        guard AuthManager.shared.networkActionsAllowed else {
+            notice = "Reconnect to Nest to save this listening decision."
+            return
+        }
+
+        let sourceBins = sourceListenedSecondBins.sorted()
+        let previewBins = previewListenedSecondBins.sorted()
+        let monitorModes = observedMonitorModes.sorted()
+        let fingerprint = [
+            jobID,
+            decision,
+            sourceBins.map(String.init).joined(separator: ","),
+            previewBins.map(String.init).joined(separator: ","),
+            monitorModes.joined(separator: ","),
+            note ?? "",
+        ].joined(separator: "|")
+        let clientRequestID = reviewRequestIDs[fingerprint] ?? UUID().uuidString.lowercased()
+        reviewRequestIDs[fingerprint] = clientRequestID
+
+        isReviewing = true
+        defer { isReviewing = false }
+        do {
+            let url = baseURL.appendingPathComponent("api/media-vault/audio-mastery/review")
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let reviewBody: [String: Any] = [
+                "projectSlug": binding.projectSlug,
+                "assetId": binding.assetID,
+                "sourceId": binding.sourceID,
+                "jobId": jobID,
+                "clientRequestId": clientRequestID,
+                "decision": decision,
+                "playbackEvidence": [
+                    "schema": "quipsly-audio-mastery-playback-review-v1",
+                    "sourceListenedSecondBins": sourceBins,
+                    "masteredListenedSecondBins": previewBins,
+                    "monitorModes": monitorModes,
+                    "completedAt": ISO8601DateFormatter().string(from: Date()),
+                ],
+                "note": note.map { $0 as Any } ?? NSNull(),
+            ]
+            request.httpBody = try JSONSerialization.data(withJSONObject: reviewBody)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: binding.ownerAccountID
+            )
+            guard response.statusCode < 400, Self.sameOrigin(response.url, baseURL) else {
+                let envelope = try? JSONDecoder().decode(CaptureAudioMasteryErrorEnvelope.self, from: data)
+                throw ClientError.message(envelope?.error ?? "Quipsly could not save this listening decision.")
+            }
+            let result = try JSONDecoder().decode(CaptureAudioMasteryReviewResponse.self, from: data)
+            guard result.ok, let review = result.review else {
+                throw ClientError.message(result.error ?? "Quipsly did not return the saved listening receipt.")
+            }
+            try validate(binding)
+            snapshot?.review = review
+            notice = decision == "approved"
+                ? "Approved as heard. The improved copy is still separate from your original."
+                : "Rejected as heard. Both versions remain unchanged."
+        } catch is CancellationError {
+            return
+        } catch {
+            notice = error.localizedDescription
+        }
     }
 
     func reset() {
@@ -264,11 +471,14 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         snapshot = nil
         notice = nil
         isLoading = false
+        isReviewing = false
+        resetReviewEvidence()
     }
 
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
             self.isPlaying = false
+            self.stopPlaybackTimer()
             self.audioSessionCoordinator.endLocalPlayback()
             if !flag { self.notice = "Playback ended before iOS could finish the improved copy." }
         }
@@ -343,11 +553,54 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
             try await Task.sleep(for: .seconds(2.5))
             try Task.checkCancellation()
             current = try await operate("reconcile", binding: binding)
-            snapshot = current
+            acceptSnapshot(current)
             reconcilePlaybackAuthorization(with: current, binding: binding)
             attempts += 1
         }
         return current
+    }
+
+    private func acceptSnapshot(_ current: CaptureAudioMasterySnapshot) {
+        if evidenceJobID != current.jobId {
+            resetReviewEvidence()
+            evidenceJobID = current.jobId
+        }
+        snapshot = current
+    }
+
+    private func startPlaybackTimer() {
+        stopPlaybackTimer()
+        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let player = self.player,
+                      player.isPlaying,
+                      self.snapshot?.jobId == self.evidenceJobID,
+                      let durationSeconds = self.snapshot?.derivative?.measured?.durationSeconds else { return }
+                self.previewListenedSecondBins.insert(
+                    Self.boundedSecondBin(player.currentTime, durationSeconds: durationSeconds)
+                )
+                if let mode = self.activePreviewMonitorMode {
+                    self.observedMonitorModes.insert(mode)
+                }
+            }
+        }
+        playbackTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopPlaybackTimer() {
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+    }
+
+    private func resetReviewEvidence() {
+        sourceListenedSecondBins = []
+        previewListenedSecondBins = []
+        observedMonitorModes = []
+        evidenceJobID = nil
+        activePreviewMonitorMode = nil
+        reviewRequestIDs = [:]
     }
 
     private func binding(for recording: LocalRecording) -> RecordingBinding? {
@@ -399,11 +652,34 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         player?.stop()
         player = nil
         isPlaying = false
+        stopPlaybackTimer()
         audioSessionCoordinator.endLocalPlayback()
         if let protectedPreviewURL { try? FileManager.default.removeItem(at: protectedPreviewURL) }
         protectedPreviewURL = nil
         playbackBinding = nil
         playbackSHA256 = nil
+    }
+
+    private static func requiredBins(
+        for moment: CaptureAudioMasterySnapshot.ReviewPlan.Moment,
+        durationSeconds: TimeInterval
+    ) -> Set<Int> {
+        guard durationSeconds.isFinite, durationSeconds > 0 else { return [] }
+        let finalBin = max(0, Int(ceil(durationSeconds)) - 1)
+        let center = min(max(Int(floor(moment.timeSeconds)), 0), finalBin)
+        return Set([center - 1, center, center + 1].map { min(max($0, 0), finalBin) })
+    }
+
+    private static func boundedSecondBin(
+        _ seconds: TimeInterval,
+        durationSeconds: TimeInterval
+    ) -> Int {
+        let finalBin = max(0, Int(ceil(max(durationSeconds, 0))) - 1)
+        return min(max(Int(floor(max(seconds, 0))), 0), finalBin)
+    }
+
+    private static func supportedMonitorMode(_ rawValue: String) -> String? {
+        rawValue == "matched" || rawValue == "delivery" ? rawValue : nil
     }
 
     private nonisolated static func computeFileDigest(at url: URL) throws -> FileDigest {

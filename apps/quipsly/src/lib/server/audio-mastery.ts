@@ -7,6 +7,7 @@ import path from "node:path";
 
 import type { Prisma } from "@prisma/client";
 import {
+  audioMasteryReviewMoments,
   buildAudioMasteryTargetLocator,
   buildAudioMasteryCloudManifestObjectName,
   buildAudioMasteryCloudResultObjectName,
@@ -66,6 +67,14 @@ export type PublicAudioMasteryStatus = {
     latest: null | { id: string; jobId: string; decision: "approved" | "rejected"; note: string | null; reviewedAt: string; actorEmail: string };
     approvalCount: number;
     rejectionCount: number;
+  };
+  reviewPlan: null | {
+    requiredMoments: Array<{
+      id: "loudest-source" | "quietest-sustained" | "largest-shift";
+      timeSeconds: number;
+      label: string;
+      detail: string;
+    }>;
   };
   promotion: PublicAudioMasterPromotionSummary;
   delivery: PublicAudioDeliveryStatus;
@@ -463,6 +472,12 @@ export function toPublicAudioMasteryStatus(job: any): PublicAudioMasteryStatus {
       measured: publicMeasurement(result.derivative.verificationMeasurement),
     } : null,
     review: { latest: null, approvalCount: 0, rejectionCount: 0 },
+    reviewPlan: result?.derivative ? {
+      requiredMoments: audioMasteryReviewMoments(
+        result.sourceMeasurement,
+        result.derivative.verificationMeasurement,
+      ),
+    } : null,
     promotion: emptyAudioMasterPromotionSummary(),
     delivery: emptyAudioDeliveryStatus(),
     error: integrityFailure
@@ -532,6 +547,7 @@ function emptyStatus(): PublicAudioMasteryStatus {
     proposal: null,
     derivative: null,
     review: { latest: null, approvalCount: 0, rejectionCount: 0 },
+    reviewPlan: null,
     promotion: emptyAudioMasterPromotionSummary(),
     delivery: emptyAudioDeliveryStatus(),
     error: null,
