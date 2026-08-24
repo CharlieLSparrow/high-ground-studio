@@ -897,6 +897,7 @@ model User {
   transcriptProviderPolicies        TranscriptProviderPolicyReceipt[]           @relation("TranscriptProviderPolicyCapturer")
   transcriptEvaluationCorrections   TranscriptEvaluationCorrectionObservation[] @relation("TranscriptEvaluationCorrectionReviewer")
   sessionAudioAlignmentJobs         SessionAudioAlignmentJob[]                  @relation("SessionAudioAlignmentRequester")
+  sessionAudioAlignmentDecisions    SessionAudioAlignmentDecisionReceipt[]      @relation("SessionAudioAlignmentDecisionActor")
   transcriptTerminologyTermsCreated StudioTranscriptTerminologyTerm[]           @relation("StudioTranscriptTerminologyTermCreator")
   transcriptTerminologyRevisions    StudioTranscriptTerminologyRevision[]       @relation("StudioTranscriptTerminologyRevisionActor")
   transcriptTerminologyCandidates   StudioTranscriptTerminologyCandidate[]      @relation("StudioTranscriptTerminologyCandidateCreator")
@@ -2009,11 +2010,11 @@ model CallRoom {
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
-  booking                       CoachingBooking?                      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  createdByUser                 User?                                 @relation("CallRoomCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  project                       StudioProject?                        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  episodeProduction             StudioEpisodeProduction?              @relation(fields: [episodeProductionId], references: [id], onDelete: SetNull)
-  coachingEngagement            CoachingEngagement?                   @relation(fields: [coachingEngagementId], references: [id], onDelete: SetNull)
+  booking                       CoachingBooking?                       @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  createdByUser                 User?                                  @relation("CallRoomCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  project                       StudioProject?                         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  episodeProduction             StudioEpisodeProduction?               @relation(fields: [episodeProductionId], references: [id], onDelete: SetNull)
+  coachingEngagement            CoachingEngagement?                    @relation(fields: [coachingEngagementId], references: [id], onDelete: SetNull)
   participants                  CallParticipant[]
   participantAccessReceipts     CallParticipantAccessReceipt[]
   participantProviderGrants     CallParticipantProviderGrantReceipt[]
@@ -2031,6 +2032,7 @@ model CallRoom {
   providerRecordingEvents       ProviderRecordingEventReceipt[]
   recordingAssets               RecordingAsset[]
   sourceAlignmentJobs           SessionAudioAlignmentJob[]
+  sourceAlignmentDecisions      SessionAudioAlignmentDecisionReceipt[]
   transcriptJobs                TranscriptJob[]
   transcriptCorrections         TranscriptCorrection[]
   transcriptVerifications       TranscriptSegmentVerification[]
@@ -2633,15 +2635,48 @@ model SessionAudioAlignmentJob {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  room      CallRoom       @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  spine     RecordingAsset @relation("SessionAudioAlignmentSpine", fields: [spineRecordingAssetId], references: [id], onDelete: Restrict)
-  target    RecordingAsset @relation("SessionAudioAlignmentTarget", fields: [targetRecordingAssetId], references: [id], onDelete: Restrict)
-  requester User           @relation("SessionAudioAlignmentRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  room      CallRoom                               @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  spine     RecordingAsset                         @relation("SessionAudioAlignmentSpine", fields: [spineRecordingAssetId], references: [id], onDelete: Restrict)
+  target    RecordingAsset                         @relation("SessionAudioAlignmentTarget", fields: [targetRecordingAssetId], references: [id], onDelete: Restrict)
+  requester User                                   @relation("SessionAudioAlignmentRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  decisions SessionAudioAlignmentDecisionReceipt[]
 
   @@index([roomId, status, createdAt])
   @@index([targetRecordingAssetId, createdAt])
   @@index([spineRecordingAssetId, targetRecordingAssetId, createdAt])
   @@index([status, createdAt])
+}
+
+enum SessionAudioAlignmentDecisionOperation {
+  APPROVE
+  REVOKE
+}
+
+/// Append-only placement decisions over one immutable Session alignment result.
+/// Approval records a reversible editorial offset; revocation never deletes the
+/// original evidence or the decision it supersedes.
+model SessionAudioAlignmentDecisionReceipt {
+  id               String                                 @id @default(cuid())
+  requestId        String                                 @unique @db.Uuid
+  roomId           String
+  alignmentJobId   String
+  actorUserId      String
+  operation        SessionAudioAlignmentDecisionOperation
+  revision         Int
+  expectedRevision Int
+  requestSha256    String
+  resultSha256     String
+  placementJson    Json
+  reason           String?
+  createdAt        DateTime                               @default(now())
+
+  room         CallRoom                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  alignmentJob SessionAudioAlignmentJob @relation(fields: [alignmentJobId], references: [id], onDelete: Restrict)
+  actor        User                     @relation("SessionAudioAlignmentDecisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([alignmentJobId, revision])
+  @@index([roomId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 /// The explicit recording plan for one Session. This is separate from

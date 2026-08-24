@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import {
   buildAudioAlignmentCloudManifestObjectName,
@@ -14,14 +14,23 @@ import {
 } from "@high-ground/quipsly-media-processing";
 
 import { getMediaBucket } from "@/lib/server/gcs";
-import { sessionMutationActorAccessWhere, sessionActorAccessWhere } from "@/lib/server/session-access";
+import {
+  sessionMutationActorAccessWhere,
+  sessionActorAccessWhere,
+} from "@/lib/server/session-access";
 import { ensureSessionAudioSourceAlignmentCloudQueued } from "@/lib/server/audio-source-alignment-cloud";
 import {
   sessionProtectedPlaybackBinding,
   type SessionProtectedPlaybackBinding,
 } from "@/lib/server/session-protected-playback";
 
-const STATUS = ["queued", "processing", "output-ready", "completed", "failed"] as const;
+const STATUS = [
+  "queued",
+  "processing",
+  "output-ready",
+  "completed",
+  "failed",
+] as const;
 
 export class SessionSourceAlignmentError extends Error {
   constructor(
@@ -53,19 +62,37 @@ export type SessionSourceAlignmentPlan = {
 
 export type PublicSessionSourceAlignment = {
   jobId: string;
-  status: "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
+  status:
+    | "queued"
+    | "processing"
+    | "output-ready"
+    | "completed"
+    | "blocked"
+    | "failed";
   spineRecordingAssetId: string;
   targetRecordingAssetId: string;
   clockAuthority: SessionSourceAlignmentPlan["clockAuthority"] | null;
   evidence: AudioAlignmentEvidence | null;
   error: string | null;
   updatedAt: string | null;
+  decision: null | {
+    revision: number;
+    status: "approved" | "revoked";
+    signedOffsetSeconds: number;
+    targetTimelineStartSeconds: number;
+    targetSourceTrimSeconds: number;
+    residualDriftMilliseconds: number;
+    resultSha256: string;
+    reason: string | null;
+    decidedAt: string;
+  };
   boundaries: {
     exactSourceBytesBound: true;
     sourceBytesImmutable: true;
     sourceTimesMutated: false;
-    placementApplied: false;
-    placementRequiresSeparateReview: true;
+    analyzerPlacementApplied: false;
+    reviewedPlacementActive: boolean;
+    placementRequiresSeparateReview: boolean;
     sampleAccurateClaimed: false;
   };
 };
@@ -92,50 +119,89 @@ export function buildSessionSourceAlignmentPlan(input: {
   target: Candidate;
 }): SessionSourceAlignmentPlan {
   if (input.spine.id === input.target.id) {
-    throw new SessionSourceAlignmentError(400, "ALIGNMENT_SOURCES_IDENTICAL", "Choose two different participant recordings.");
+    throw new SessionSourceAlignmentError(
+      400,
+      "ALIGNMENT_SOURCES_IDENTICAL",
+      "Choose two different participant recordings.",
+    );
   }
   if (input.spine.roomId !== input.target.roomId) {
-    throw new SessionSourceAlignmentError(409, "ALIGNMENT_ROOM_MISMATCH", "Both recordings must belong to the same private Session.");
+    throw new SessionSourceAlignmentError(
+      409,
+      "ALIGNMENT_ROOM_MISMATCH",
+      "Both recordings must belong to the same private Session.",
+    );
   }
   const spineDuration = positive(input.spine.durationSeconds);
   const targetDuration = positive(input.target.durationSeconds);
   if (spineDuration === null || targetDuration === null) {
-    throw new SessionSourceAlignmentError(409, "ALIGNMENT_DURATION_REQUIRED", "Both verified recordings need measured duration before waveform alignment.");
+    throw new SessionSourceAlignmentError(
+      409,
+      "ALIGNMENT_DURATION_REQUIRED",
+      "Both verified recordings need measured duration before waveform alignment.",
+    );
   }
-  const spineClock = captureClock(input.spine.localManifestJson, input.captureGroupId);
-  const targetClock = captureClock(input.target.localManifestJson, input.captureGroupId);
+  const spineClock = captureClock(
+    input.spine.localManifestJson,
+    input.captureGroupId,
+  );
+  const targetClock = captureClock(
+    input.target.localManifestJson,
+    input.captureGroupId,
+  );
   const spineWall = dateMilliseconds(input.spine.recordedStartedAt);
   const targetWall = dateMilliseconds(input.target.recordedStartedAt);
-  const clockAuthority = spineClock !== null && targetClock !== null
-    ? "capture-clock-proposal" as const
-    : "reported-wall-clock-fallback" as const;
+  const clockAuthority =
+    spineClock !== null && targetClock !== null
+      ? ("capture-clock-proposal" as const)
+      : ("reported-wall-clock-fallback" as const);
   const spineStart = spineClock?.startedAtMilliseconds ?? spineWall;
   const targetStart = targetClock?.startedAtMilliseconds ?? targetWall;
   if (spineStart === null || targetStart === null) {
-    throw new SessionSourceAlignmentError(409, "ALIGNMENT_CLOCK_REQUIRED", "The Session needs a capture-clock proposal or retained source start times before correlation.");
+    throw new SessionSourceAlignmentError(
+      409,
+      "ALIGNMENT_CLOCK_REQUIRED",
+      "The Session needs a capture-clock proposal or retained source start times before correlation.",
+    );
   }
 
   // For a target window at t, the matching spine window is expected at
   // t + initialOffset. A positive value means the target began later.
   const initialOffsetSeconds = rounded((targetStart - spineStart) / 1_000);
-  const windowSeconds = Math.min(6, Math.max(2, Math.floor(Math.min(spineDuration, targetDuration) / 6)));
+  const windowSeconds = Math.min(
+    6,
+    Math.max(2, Math.floor(Math.min(spineDuration, targetDuration) / 6)),
+  );
   const uncertaintyMilliseconds = Math.max(
     spineClock?.uncertaintyMilliseconds ?? 1_000,
     targetClock?.uncertaintyMilliseconds ?? 1_000,
   );
-  const searchRadiusSeconds = rounded(Math.min(30, Math.max(1, uncertaintyMilliseconds / 1_000 + 0.75)));
+  const searchRadiusSeconds = rounded(
+    Math.min(30, Math.max(1, uncertaintyMilliseconds / 1_000 + 0.75)),
+  );
   const overlapStartSeconds = Math.max(0, -initialOffsetSeconds);
-  const overlapEndSeconds = Math.min(targetDuration, spineDuration - initialOffsetSeconds);
-  const usableStart = overlapStartSeconds + Math.min(1, Math.max(0, (overlapEndSeconds - overlapStartSeconds) / 20));
+  const overlapEndSeconds = Math.min(
+    targetDuration,
+    spineDuration - initialOffsetSeconds,
+  );
+  const usableStart =
+    overlapStartSeconds +
+    Math.min(1, Math.max(0, (overlapEndSeconds - overlapStartSeconds) / 20));
   const usableEnd = overlapEndSeconds - windowSeconds;
   if (usableEnd - usableStart < Math.max(2, windowSeconds / 2)) {
-    throw new SessionSourceAlignmentError(409, "ALIGNMENT_OVERLAP_TOO_SHORT", "The retained sources do not share enough verified duration for two separated waveform checks.");
+    throw new SessionSourceAlignmentError(
+      409,
+      "ALIGNMENT_OVERLAP_TOO_SHORT",
+      "The retained sources do not share enough verified duration for two separated waveform checks.",
+    );
   }
   const openingTargetSeconds = rounded(usableStart);
-  const laterTargetSeconds = rounded(Math.max(
-    openingTargetSeconds + Math.max(2, windowSeconds / 2),
-    usableEnd - Math.min(1, Math.max(0, (usableEnd - usableStart) / 20)),
-  ));
+  const laterTargetSeconds = rounded(
+    Math.max(
+      openingTargetSeconds + Math.max(2, windowSeconds / 2),
+      usableEnd - Math.min(1, Math.max(0, (usableEnd - usableStart) / 20)),
+    ),
+  );
   return {
     captureGroupId: input.captureGroupId,
     spineRecordingAssetId: input.spine.id,
@@ -172,17 +238,248 @@ export async function readSessionSourceAlignments(input: {
     where: { id: input.roomId, ...sessionActorAccessWhere(input.actor) },
     select: { id: true, captureGroupId: true },
   });
-  if (!room) throw new SessionSourceAlignmentError(404, "SESSION_NOT_FOUND", "This private Session is unavailable to this account.");
+  if (!room)
+    throw new SessionSourceAlignmentError(
+      404,
+      "SESSION_NOT_FOUND",
+      "This private Session is unavailable to this account.",
+    );
   const rows = await input.prisma.sessionAudioAlignmentJob.findMany({
     where: { roomId: room.id },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 50,
+    include: {
+      decisions: {
+        orderBy: [{ revision: "desc" }, { createdAt: "desc" }],
+        take: 1,
+      },
+    },
   });
   return {
     captureGroupId: room.captureGroupId,
     alignments: rows.map(publicStatus),
     boundaries: readBoundaries(),
   };
+}
+
+export async function decideSessionSourceAlignment(input: {
+  prisma: any;
+  roomId: string;
+  jobId: string;
+  requestId: string;
+  expectedRevision: number;
+  operation: "APPROVE" | "REVOKE";
+  reason?: string | null;
+  actor: Actor;
+}) {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      input.requestId,
+    )
+  ) {
+    throw new SessionSourceAlignmentError(
+      400,
+      "ALIGNMENT_REQUEST_ID_REQUIRED",
+      "A stable request identity is required for this placement decision.",
+    );
+  }
+  if (
+    !Number.isSafeInteger(input.expectedRevision) ||
+    input.expectedRevision < 0
+  ) {
+    throw new SessionSourceAlignmentError(
+      400,
+      "ALIGNMENT_REVISION_REQUIRED",
+      "Refresh the current placement decision before changing it.",
+    );
+  }
+  const reason = text(input.reason).slice(0, 2_000) || null;
+  if (input.operation === "REVOKE" && !reason) {
+    throw new SessionSourceAlignmentError(
+      400,
+      "ALIGNMENT_REVOKE_REASON_REQUIRED",
+      "Briefly say why this placement should no longer be used.",
+    );
+  }
+  const requestSha256 = hashJson({
+    roomId: input.roomId,
+    alignmentJobId: input.jobId,
+    actorUserId: input.actor.id,
+    operation: input.operation,
+    expectedRevision: input.expectedRevision,
+    reason,
+  });
+  try {
+    return await input.prisma.$transaction(
+      async (transaction: any) => {
+        const room = await transaction.callRoom.findFirst({
+          where: {
+            id: input.roomId,
+            ...sessionMutationActorAccessWhere(input.actor),
+          },
+          select: { id: true },
+        });
+        if (!room)
+          throw new SessionSourceAlignmentError(
+            404,
+            "SESSION_NOT_FOUND",
+            "This private Session is unavailable to this account.",
+          );
+        const jobRow = await transaction.sessionAudioAlignmentJob.findFirst({
+          where: { id: input.jobId, roomId: room.id },
+          include: {
+            decisions: {
+              orderBy: [{ revision: "desc" }, { createdAt: "desc" }],
+              take: 1,
+            },
+          },
+        });
+        if (!jobRow)
+          throw new SessionSourceAlignmentError(
+            404,
+            "ALIGNMENT_NOT_FOUND",
+            "That Session alignment job is unavailable.",
+          );
+        const existingRequest =
+          await transaction.sessionAudioAlignmentDecisionReceipt.findUnique({
+            where: { requestId: input.requestId },
+          });
+        if (existingRequest) {
+          if (existingRequest.requestSha256 !== requestSha256) {
+            throw new SessionSourceAlignmentError(
+              409,
+              "ALIGNMENT_REQUEST_CONFLICT",
+              "That request identity already belongs to a different placement decision.",
+            );
+          }
+          const replay = await transaction.sessionAudioAlignmentJob.findUnique({
+            where: { id: jobRow.id },
+            include: {
+              decisions: {
+                orderBy: [{ revision: "desc" }, { createdAt: "desc" }],
+                take: 1,
+              },
+            },
+          });
+          return publicStatus(replay ?? jobRow);
+        }
+        const current = jobRow.decisions[0] ?? null;
+        const currentRevision = current?.revision ?? 0;
+        if (currentRevision !== input.expectedRevision) {
+          throw new SessionSourceAlignmentError(
+            409,
+            "ALIGNMENT_DECISION_STALE",
+            "The placement decision changed. Refresh before trying again.",
+          );
+        }
+        let job: SessionAudioAlignmentJob;
+        let result: ReturnType<typeof parseAudioAlignmentResult>;
+        try {
+          job = parseSessionAudioAlignmentJob(jobRow.inputJson, jobRow.id);
+          result = parseAudioAlignmentResult(
+            object(jobRow.resultJson).receipt,
+            job,
+          );
+        } catch {
+          throw new SessionSourceAlignmentError(
+            409,
+            "ALIGNMENT_EVIDENCE_INVALID",
+            "This alignment result failed integrity validation and cannot become the Session clock.",
+          );
+        }
+        const resultSha256 = createHash("sha256")
+          .update(JSON.stringify(result))
+          .digest("hex");
+        const placement = buildSessionReviewedPlacement(job, result);
+        if (input.operation === "APPROVE") {
+          if (current?.operation === "APPROVE") {
+            throw new SessionSourceAlignmentError(
+              409,
+              "ALIGNMENT_ALREADY_APPROVED",
+              "This exact placement is already active.",
+            );
+          }
+          if (
+            !result.evidence.qualification.qualifiedForAuthorizedAgentReview
+          ) {
+            throw new SessionSourceAlignmentError(
+              409,
+              "ALIGNMENT_EVIDENCE_AMBIGUOUS",
+              "The waveform peaks are not distinct enough to use as a placement. Keep the clock estimate and collect stronger evidence.",
+            );
+          }
+          const context = await loadContext({
+            prisma: transaction,
+            roomId: room.id,
+            spineRecordingAssetId: job.spine.assetId,
+            targetRecordingAssetId: job.target.assetId,
+            actor: input.actor,
+          });
+          if (
+            !sameBinding(job.spine, sourceBinding(context.spine.playback)) ||
+            !sameBinding(job.target, sourceBinding(context.target.playback))
+          ) {
+            throw new SessionSourceAlignmentError(
+              409,
+              "ALIGNMENT_SOURCE_CHANGED",
+              "A retained source changed before placement approval.",
+            );
+          }
+        } else {
+          if (current?.operation !== "APPROVE") {
+            throw new SessionSourceAlignmentError(
+              409,
+              "ALIGNMENT_NOT_APPROVED",
+              "There is no active measured placement to revoke.",
+            );
+          }
+          if (current.resultSha256 !== resultSha256) {
+            throw new SessionSourceAlignmentError(
+              409,
+              "ALIGNMENT_RESULT_CHANGED",
+              "The active decision no longer matches this result. Nothing was revoked.",
+            );
+          }
+        }
+        await transaction.sessionAudioAlignmentDecisionReceipt.create({
+          data: {
+            requestId: input.requestId.toLowerCase(),
+            roomId: room.id,
+            alignmentJobId: jobRow.id,
+            actorUserId: input.actor.id,
+            operation: input.operation,
+            revision: currentRevision + 1,
+            expectedRevision: currentRevision,
+            requestSha256,
+            resultSha256,
+            placementJson: json(placement),
+            reason,
+          },
+        });
+        const updated = await transaction.sessionAudioAlignmentJob.findUnique({
+          where: { id: jobRow.id },
+          include: {
+            decisions: {
+              orderBy: [{ revision: "desc" }, { createdAt: "desc" }],
+              take: 1,
+            },
+          },
+        });
+        return publicStatus(updated ?? jobRow);
+      },
+      { isolationLevel: "Serializable" },
+    );
+  } catch (error) {
+    const code = text(object(error).code);
+    if (code === "P2002" || code === "P2034") {
+      throw new SessionSourceAlignmentError(
+        409,
+        "ALIGNMENT_DECISION_STALE",
+        "The placement decision changed concurrently. Refresh before trying again.",
+      );
+    }
+    throw error;
+  }
 }
 
 export async function queueSessionSourceAlignment(input: {
@@ -221,8 +518,12 @@ export async function queueSessionSourceAlignment(input: {
   });
   if (recent) {
     try {
-      const existing = parseSessionAudioAlignmentJob(recent.inputJson, recent.id);
-      if (sameRequest(existing, job)) return queueCloud(input.prisma, recent, plan.clockAuthority);
+      const existing = parseSessionAudioAlignmentJob(
+        recent.inputJson,
+        recent.id,
+      );
+      if (sameRequest(existing, job))
+        return queueCloud(input.prisma, recent, plan.clockAuthority);
     } catch {
       // A malformed or differently bound row cannot own this exact request.
     }
@@ -249,29 +550,67 @@ export async function reconcileSessionSourceAlignment(input: {
   actor: Actor;
 }) {
   const room = await input.prisma.callRoom.findFirst({
-    where: { id: input.roomId, ...sessionMutationActorAccessWhere(input.actor) },
+    where: {
+      id: input.roomId,
+      ...sessionMutationActorAccessWhere(input.actor),
+    },
     select: { id: true },
   });
-  if (!room) throw new SessionSourceAlignmentError(404, "SESSION_NOT_FOUND", "This private Session is unavailable to this account.");
-  const row = await input.prisma.sessionAudioAlignmentJob.findFirst({ where: { id: input.jobId, roomId: room.id } });
-  if (!row) throw new SessionSourceAlignmentError(404, "ALIGNMENT_NOT_FOUND", "That Session alignment job is unavailable.");
+  if (!room)
+    throw new SessionSourceAlignmentError(
+      404,
+      "SESSION_NOT_FOUND",
+      "This private Session is unavailable to this account.",
+    );
+  const row = await input.prisma.sessionAudioAlignmentJob.findFirst({
+    where: { id: input.jobId, roomId: room.id },
+  });
+  if (!row)
+    throw new SessionSourceAlignmentError(
+      404,
+      "ALIGNMENT_NOT_FOUND",
+      "That Session alignment job is unavailable.",
+    );
   const job = parseSessionAudioAlignmentJob(row.inputJson, row.id);
-  const cloud = await ensureSessionAudioSourceAlignmentCloudQueued({ prisma: input.prisma, processingJob: row });
-  const refreshed = await input.prisma.sessionAudioAlignmentJob.findUnique({ where: { id: row.id } }) ?? row;
-  if (cloud.status === "configuration-required" || cloud.status === "failed") return publicStatus(refreshed, cloud.status === "configuration-required");
+  const cloud = await ensureSessionAudioSourceAlignmentCloudQueued({
+    prisma: input.prisma,
+    processingJob: row,
+  });
+  const refreshed =
+    (await input.prisma.sessionAudioAlignmentJob.findUnique({
+      where: { id: row.id },
+    })) ?? row;
+  if (cloud.status === "configuration-required" || cloud.status === "failed")
+    return publicStatus(refreshed, cloud.status === "configuration-required");
   const bucket = getMediaBucket(cloud.bucketName);
-  const storedManifest = await loadGcsJson(bucket, buildAudioAlignmentCloudManifestObjectName(job.jobId));
+  const storedManifest = await loadGcsJson(
+    bucket,
+    buildAudioAlignmentCloudManifestObjectName(job.jobId),
+  );
   if (!storedManifest) return publicStatus(refreshed);
-  const manifest = parseAudioAlignmentCloudManifest(storedManifest.value, job.jobId);
+  const manifest = parseAudioAlignmentCloudManifest(
+    storedManifest.value,
+    job.jobId,
+  );
   if (manifest.status === "failed-terminal") {
     const failed = await input.prisma.sessionAudioAlignmentJob.update({
       where: { id: job.jobId },
-      data: { status: "failed", error: `${manifest.failure?.code}: ${manifest.failure?.message}`.slice(0, 4_000), completedAt: new Date(manifest.failure?.failedAt || manifest.updatedAt) },
+      data: {
+        status: "failed",
+        error: `${manifest.failure?.code}: ${manifest.failure?.message}`.slice(
+          0,
+          4_000,
+        ),
+        completedAt: new Date(manifest.failure?.failedAt || manifest.updatedAt),
+      },
     });
     return publicStatus(failed);
   }
   if (manifest.status !== "completed") return publicStatus(refreshed);
-  const storedResult = await loadGcsJson(bucket, buildAudioAlignmentCloudResultObjectName(job.jobId));
+  const storedResult = await loadGcsJson(
+    bucket,
+    buildAudioAlignmentCloudResultObjectName(job.jobId),
+  );
   if (!storedResult) return publicStatus(refreshed);
   const result = parseAudioAlignmentResult(storedResult.value, job);
   const context = await loadContext({
@@ -281,8 +620,15 @@ export async function reconcileSessionSourceAlignment(input: {
     targetRecordingAssetId: job.target.assetId,
     actor: input.actor,
   });
-  if (!sameBinding(job.spine, sourceBinding(context.spine.playback)) || !sameBinding(job.target, sourceBinding(context.target.playback))) {
-    throw new SessionSourceAlignmentError(409, "ALIGNMENT_SOURCE_CHANGED", "A retained Session source changed before alignment evidence registration.");
+  if (
+    !sameBinding(job.spine, sourceBinding(context.spine.playback)) ||
+    !sameBinding(job.target, sourceBinding(context.target.playback))
+  ) {
+    throw new SessionSourceAlignmentError(
+      409,
+      "ALIGNMENT_SOURCE_CHANGED",
+      "A retained Session source changed before alignment evidence registration.",
+    );
   }
   const completed = await input.prisma.sessionAudioAlignmentJob.update({
     where: { id: job.jobId },
@@ -315,39 +661,79 @@ async function loadContext(input: {
   actor: Actor;
 }) {
   const room = await input.prisma.callRoom.findFirst({
-    where: { id: input.roomId, ...sessionMutationActorAccessWhere(input.actor) },
+    where: {
+      id: input.roomId,
+      ...sessionMutationActorAccessWhere(input.actor),
+    },
     select: { id: true, captureGroupId: true },
   });
-  if (!room) throw new SessionSourceAlignmentError(404, "SESSION_NOT_FOUND", "This private Session is unavailable to this account.");
-  const assetIds = [...new Set([input.spineRecordingAssetId, input.targetRecordingAssetId])];
+  if (!room)
+    throw new SessionSourceAlignmentError(
+      404,
+      "SESSION_NOT_FOUND",
+      "This private Session is unavailable to this account.",
+    );
+  const assetIds = [
+    ...new Set([input.spineRecordingAssetId, input.targetRecordingAssetId]),
+  ];
   if (assetIds.length !== 2 || assetIds.some((id) => !text(id))) {
-    throw new SessionSourceAlignmentError(400, "ALIGNMENT_SOURCES_REQUIRED", "Choose two different verified Session sources.");
+    throw new SessionSourceAlignmentError(
+      400,
+      "ALIGNMENT_SOURCES_REQUIRED",
+      "Choose two different verified Session sources.",
+    );
   }
   const [assets, receipts] = await Promise.all([
     input.prisma.recordingAsset.findMany({
       where: { id: { in: assetIds }, roomId: room.id },
       select: {
-        id: true, roomId: true, durationSeconds: true, recordedStartedAt: true,
-        localManifestJson: true, status: true, contentType: true, byteSize: true,
-        checksum: true, storageBucket: true, storageObjectPath: true, verifiedAt: true,
+        id: true,
+        roomId: true,
+        durationSeconds: true,
+        recordedStartedAt: true,
+        localManifestJson: true,
+        status: true,
+        contentType: true,
+        byteSize: true,
+        checksum: true,
+        storageBucket: true,
+        storageObjectPath: true,
+        verifiedAt: true,
       },
     }),
     input.prisma.mobileCaptureFinalizationReceipt.findMany({
-      where: { recordingAssetId: { in: assetIds }, processingDisposition: "RELEASED" },
+      where: {
+        recordingAssetId: { in: assetIds },
+        processingDisposition: "RELEASED",
+      },
       orderBy: [{ releasedAt: "desc" }, { createdAt: "desc" }],
     }),
   ]);
   const candidate = (assetId: string): Candidate => {
     const asset = assets.find((row: any) => row.id === assetId);
-    const receipt = receipts.find((row: any) => row.recordingAssetId === assetId);
-    const playback = asset ? sessionProtectedPlaybackBinding({ roomId: room.id, asset, receipt }) : null;
+    const receipt = receipts.find(
+      (row: any) => row.recordingAssetId === assetId,
+    );
+    const playback = asset
+      ? sessionProtectedPlaybackBinding({ roomId: room.id, asset, receipt })
+      : null;
     if (!asset || !playback) {
-      throw new SessionSourceAlignmentError(409, "ALIGNMENT_SOURCE_UNVERIFIED", "Waveform alignment requires two released, exact-byte-verified Session recordings.");
+      throw new SessionSourceAlignmentError(
+        409,
+        "ALIGNMENT_SOURCE_UNVERIFIED",
+        "Waveform alignment requires two released, exact-byte-verified Session recordings.",
+      );
     }
     const manifest = object(asset.localManifestJson);
-    const sourceCaptureGroupId = text(manifest.captureGroupId) || text(object(manifest.alignment).captureGroupId);
+    const sourceCaptureGroupId =
+      text(manifest.captureGroupId) ||
+      text(object(manifest.alignment).captureGroupId);
     if (sourceCaptureGroupId !== room.captureGroupId) {
-      throw new SessionSourceAlignmentError(409, "ALIGNMENT_TAKE_MISMATCH", "Both recordings must belong to this exact Session take before waveform alignment.");
+      throw new SessionSourceAlignmentError(
+        409,
+        "ALIGNMENT_TAKE_MISMATCH",
+        "Both recordings must belong to this exact Session take before waveform alignment.",
+      );
     }
     return { ...asset, playback };
   };
@@ -358,27 +744,63 @@ async function loadContext(input: {
   };
 }
 
-async function queueCloud(prisma: any, row: any, clockAuthority: SessionSourceAlignmentPlan["clockAuthority"]) {
-  const cloud = await ensureSessionAudioSourceAlignmentCloudQueued({ prisma, processingJob: row });
-  const refreshed = await prisma.sessionAudioAlignmentJob.findUnique({ where: { id: row.id } }) ?? row;
-  const value = publicStatus(refreshed, cloud.status === "configuration-required");
+async function queueCloud(
+  prisma: any,
+  row: any,
+  clockAuthority: SessionSourceAlignmentPlan["clockAuthority"],
+) {
+  const cloud = await ensureSessionAudioSourceAlignmentCloudQueued({
+    prisma,
+    processingJob: row,
+  });
+  const refreshed =
+    (await prisma.sessionAudioAlignmentJob.findUnique({
+      where: { id: row.id },
+    })) ?? row;
+  const value = publicStatus(
+    refreshed,
+    cloud.status === "configuration-required",
+  );
   return { ...value, clockAuthority };
 }
 
 function publicStatus(row: any, blocked = false): PublicSessionSourceAlignment {
   let job: SessionAudioAlignmentJob | null = null;
   let result: ReturnType<typeof parseAudioAlignmentResult> | null = null;
-  try { job = parseSessionAudioAlignmentJob(row.inputJson, row.id); } catch { /* fail closed */ }
-  try { if (job) result = parseAudioAlignmentResult(object(row.resultJson).receipt, job); } catch { /* fail closed */ }
+  try {
+    job = parseSessionAudioAlignmentJob(row.inputJson, row.id);
+  } catch {
+    /* fail closed */
+  }
+  try {
+    if (job)
+      result = parseAudioAlignmentResult(object(row.resultJson).receipt, job);
+  } catch {
+    /* fail closed */
+  }
   const declared = STATUS.includes(row.status) ? row.status : "failed";
-  const integrityFailure = !job || ((declared === "output-ready" || declared === "completed") && !result);
+  const integrityFailure =
+    !job ||
+    ((declared === "output-ready" || declared === "completed") && !result);
   const plan = object(object(row.inputJson).sessionPlan);
+  const latestDecision = Array.isArray(row.decisions)
+    ? (row.decisions[0] ?? null)
+    : null;
+  const placement = object(latestDecision?.placementJson);
+  const decisionActive =
+    latestDecision?.operation === "APPROVE" && validPublicPlacement(placement);
   return {
     jobId: text(row.id),
     status: integrityFailure ? "failed" : blocked ? "blocked" : declared,
-    spineRecordingAssetId: job?.spine.assetId ?? text(row.spineRecordingAssetId),
-    targetRecordingAssetId: job?.target.assetId ?? text(row.targetRecordingAssetId),
-    clockAuthority: plan.clockAuthority === "capture-clock-proposal" || plan.clockAuthority === "reported-wall-clock-fallback" ? plan.clockAuthority : null,
+    spineRecordingAssetId:
+      job?.spine.assetId ?? text(row.spineRecordingAssetId),
+    targetRecordingAssetId:
+      job?.target.assetId ?? text(row.targetRecordingAssetId),
+    clockAuthority:
+      plan.clockAuthority === "capture-clock-proposal" ||
+      plan.clockAuthority === "reported-wall-clock-fallback"
+        ? plan.clockAuthority
+        : null,
     evidence: result?.evidence ?? null,
     error: integrityFailure
       ? "Session audio alignment evidence failed integrity validation."
@@ -386,7 +808,57 @@ function publicStatus(row: any, blocked = false): PublicSessionSourceAlignment {
         ? "Exact-source alignment is retained, but the media processor execution control is not configured."
         : text(row.error) || null,
     updatedAt: row.updatedAt?.toISOString?.() ?? null,
-    boundaries: readBoundaries(),
+    decision:
+      latestDecision && validPublicPlacement(placement)
+        ? {
+            revision: Number(latestDecision.revision),
+            status:
+              latestDecision.operation === "APPROVE" ? "approved" : "revoked",
+            signedOffsetSeconds: Number(placement.signedOffsetSeconds),
+            targetTimelineStartSeconds: Number(
+              placement.targetTimelineStartSeconds,
+            ),
+            targetSourceTrimSeconds: Number(placement.targetSourceTrimSeconds),
+            residualDriftMilliseconds: Number(
+              placement.residualDriftMilliseconds,
+            ),
+            resultSha256: text(latestDecision.resultSha256),
+            reason: text(latestDecision.reason) || null,
+            decidedAt: latestDecision.createdAt?.toISOString?.() ?? "",
+          }
+        : null,
+    boundaries: readBoundaries(decisionActive),
+  };
+}
+
+export function buildSessionReviewedPlacement(
+  job: SessionAudioAlignmentJob,
+  result: ReturnType<typeof parseAudioAlignmentResult>,
+) {
+  const signedOffsetSeconds = rounded(
+    result.evidence.opening.measuredOffsetSeconds,
+  );
+  return {
+    schema: "quipsly-session-reviewed-source-placement-v1",
+    alignmentJobId: job.jobId,
+    roomId: job.roomId,
+    captureGroupId: job.captureGroupId,
+    spineRecordingAssetId: job.spine.assetId,
+    targetRecordingAssetId: job.target.assetId,
+    signedOffsetSeconds,
+    targetTimelineStartSeconds: rounded(Math.max(0, signedOffsetSeconds)),
+    targetSourceTrimSeconds: rounded(Math.max(0, -signedOffsetSeconds)),
+    laterMeasuredOffsetSeconds: rounded(
+      result.evidence.later.measuredOffsetSeconds,
+    ),
+    observationIntervalSeconds:
+      result.evidence.drift.observationIntervalSeconds,
+    residualDriftMilliseconds: result.evidence.drift.residualDriftMilliseconds,
+    observedPartsPerMillion: result.evidence.drift.observedPartsPerMillion,
+    correctionApplied: false as const,
+    sourceBytesMutated: false as const,
+    timelineDecisionReversible: true as const,
+    sampleAccurateClaimed: false as const,
   };
 }
 
@@ -404,37 +876,69 @@ function sourceBinding(binding: SessionProtectedPlaybackBinding) {
 
 function captureClock(value: unknown, captureGroupId: string) {
   const alignment = object(object(value).alignment);
-  const startedAtMilliseconds = dateMilliseconds(alignment.estimatedServerStartedAt);
-  const uncertaintyMilliseconds = finiteNonnegative(alignment.uncertaintyMilliseconds);
+  const startedAtMilliseconds = dateMilliseconds(
+    alignment.estimatedServerStartedAt,
+  );
+  const uncertaintyMilliseconds = finiteNonnegative(
+    alignment.uncertaintyMilliseconds,
+  );
   if (
-    alignment.schema !== "quipsly-capture-alignment-proposal-v1"
-    || alignment.status !== "proposal-ready"
-    || text(alignment.captureGroupId) !== captureGroupId
-    || startedAtMilliseconds === null
-    || uncertaintyMilliseconds === null
-    || alignment.sampleAccurateClaimed !== false
-    || alignment.reviewRequired !== true
-  ) return null;
+    alignment.schema !== "quipsly-capture-alignment-proposal-v1" ||
+    alignment.status !== "proposal-ready" ||
+    text(alignment.captureGroupId) !== captureGroupId ||
+    startedAtMilliseconds === null ||
+    uncertaintyMilliseconds === null ||
+    alignment.sampleAccurateClaimed !== false ||
+    alignment.reviewRequired !== true
+  )
+    return null;
   return { startedAtMilliseconds, uncertaintyMilliseconds };
 }
 
-function sameRequest(left: SessionAudioAlignmentJob, right: SessionAudioAlignmentJob) {
-  return JSON.stringify({ spine: left.spine, target: left.target, proposal: left.proposal })
-    === JSON.stringify({ spine: right.spine, target: right.target, proposal: right.proposal });
+function sameRequest(
+  left: SessionAudioAlignmentJob,
+  right: SessionAudioAlignmentJob,
+) {
+  return (
+    JSON.stringify({
+      spine: left.spine,
+      target: left.target,
+      proposal: left.proposal,
+    }) ===
+    JSON.stringify({
+      spine: right.spine,
+      target: right.target,
+      proposal: right.proposal,
+    })
+  );
 }
 
-function sameBinding(left: SessionAudioAlignmentJob["spine"], right: SessionAudioAlignmentJob["spine"]) {
-  return left.assetId === right.assetId && left.provider === right.provider && left.locator === right.locator
-    && left.generation === right.generation && left.sha256 === right.sha256
-    && left.sizeBytes === right.sizeBytes && left.contentType === right.contentType;
+function sameBinding(
+  left: SessionAudioAlignmentJob["spine"],
+  right: SessionAudioAlignmentJob["spine"],
+) {
+  return (
+    left.assetId === right.assetId &&
+    left.provider === right.provider &&
+    left.locator === right.locator &&
+    left.generation === right.generation &&
+    left.sha256 === right.sha256 &&
+    left.sizeBytes === right.sizeBytes &&
+    left.contentType === right.contentType
+  );
 }
 
 async function loadGcsJson(bucket: any, objectName: string) {
   try {
     const [metadata] = await bucket.file(objectName).getMetadata();
     const generation = text(metadata.generation);
-    if (!/^[1-9][0-9]*$/.test(generation)) throw new Error("Session alignment cloud object lacks an immutable generation.");
-    const [raw] = await bucket.file(objectName, { generation }).download({ validation: "crc32c" });
+    if (!/^[1-9][0-9]*$/.test(generation))
+      throw new Error(
+        "Session alignment cloud object lacks an immutable generation.",
+      );
+    const [raw] = await bucket
+      .file(objectName, { generation })
+      .download({ validation: "crc32c" });
     return { value: JSON.parse(raw.toString("utf8")) as unknown, generation };
   } catch (error) {
     if (Number((error as { code?: unknown }).code) === 404) return null;
@@ -442,13 +946,14 @@ async function loadGcsJson(bucket: any, objectName: string) {
   }
 }
 
-function readBoundaries() {
+function readBoundaries(reviewedPlacementActive = false) {
   return {
     exactSourceBytesBound: true as const,
     sourceBytesImmutable: true as const,
     sourceTimesMutated: false as const,
-    placementApplied: false as const,
-    placementRequiresSeparateReview: true as const,
+    analyzerPlacementApplied: false as const,
+    reviewedPlacementActive,
+    placementRequiresSeparateReview: !reviewedPlacementActive,
     sampleAccurateClaimed: false as const,
   };
 }
@@ -456,17 +961,58 @@ function readBoundaries() {
 function actorEmail(actor: Actor) {
   const value = text(actor.primaryEmail || actor.email).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-    throw new SessionSourceAlignmentError(409, "ACTOR_EMAIL_REQUIRED", "This account needs a verified email before requesting private media processing.");
+    throw new SessionSourceAlignmentError(
+      409,
+      "ACTOR_EMAIL_REQUIRED",
+      "This account needs a verified email before requesting private media processing.",
+    );
   }
   return value;
 }
 
 function object(value: unknown): Record<string, any> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, any>)
+    : {};
 }
-function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
-function positive(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) && parsed > 0 ? parsed : null; }
-function finiteNonnegative(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) && parsed >= 0 ? parsed : null; }
-function dateMilliseconds(value: unknown) { const parsed = value instanceof Date ? value.getTime() : Date.parse(text(value)); return Number.isFinite(parsed) ? parsed : null; }
-function rounded(value: number) { return Math.round(value * 1_000_000) / 1_000_000; }
-function json(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }
+function text(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function positive(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+function finiteNonnegative(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+function dateMilliseconds(value: unknown) {
+  const parsed =
+    value instanceof Date ? value.getTime() : Date.parse(text(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function rounded(value: number) {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+function json(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+function hashJson(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+function validPublicPlacement(value: Record<string, any>) {
+  return (
+    value.schema === "quipsly-session-reviewed-source-placement-v1" &&
+    finite(value.signedOffsetSeconds) !== null &&
+    finiteNonnegative(value.targetTimelineStartSeconds) !== null &&
+    finiteNonnegative(value.targetSourceTrimSeconds) !== null &&
+    finite(value.residualDriftMilliseconds) !== null &&
+    value.correctionApplied === false &&
+    value.sourceBytesMutated === false &&
+    value.sampleAccurateClaimed === false
+  );
+}
+function finite(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}

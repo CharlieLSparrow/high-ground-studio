@@ -9,6 +9,10 @@ import {
   SessionTranscriptAssemblyError,
 } from "./session-transcript-assembly";
 import {
+  readSessionReviewedSourcePlacements,
+  SessionReviewedSourcePlacementError,
+} from "./session-reviewed-source-placement";
+import {
   selectSessionTranscriptSources,
   transcriptSourceCaptureGroupId,
   type SessionTranscriptSourceCandidate,
@@ -28,13 +32,15 @@ function text(value: unknown) {
 
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 
 function isParticipantIsolatedDesk(desk: any) {
-  return desk?.processing?.routing?.sourceTopology === "participant-isolated"
-    && desk.processing.routing.speakerAuthority === "source-binding";
+  return (
+    desk?.processing?.routing?.sourceTopology === "participant-isolated" &&
+    desk.processing.routing.speakerAuthority === "source-binding"
+  );
 }
 
 function sourceSummary(desk: any, source: Candidate, timing?: any) {
@@ -48,11 +54,13 @@ function sourceSummary(desk: any, source: Candidate, timing?: any) {
     gate: desk.gate,
     processing: desk.processing,
     evidence: desk.evidence,
-    captureGroupId: timing?.captureGroupId
-      ?? (transcriptSourceCaptureGroupId(source.localManifestJson) || null),
+    captureGroupId:
+      timing?.captureGroupId ??
+      (transcriptSourceCaptureGroupId(source.localManifestJson) || null),
     programOffsetSeconds: timing?.programOffsetSeconds ?? 0,
     timingAuthority: timing?.timingAuthority ?? "single-source-origin",
-    timingUncertaintyMilliseconds: timing?.timingUncertaintyMilliseconds ?? null,
+    timingUncertaintyMilliseconds:
+      timing?.timingUncertaintyMilliseconds ?? null,
     timingReviewRequired: timing?.timingReviewRequired ?? false,
     sampleAccurateClaimed: false as const,
   };
@@ -70,11 +78,15 @@ export async function readSessionTranscriptCorrectionDesk(input: {
   recordingAssetId?: string | null;
 }) {
   const anchor = await readTranscriptCorrectionDesk(input);
-  if (input.recordingAssetId || !isParticipantIsolatedDesk(anchor) || !anchor.recording?.id) {
+  if (
+    input.recordingAssetId ||
+    !isParticipantIsolatedDesk(anchor) ||
+    !anchor.recording?.id
+  ) {
     return anchor;
   }
 
-  const rows = await input.prisma.recordingAsset.findMany({
+  const rows = (await input.prisma.recordingAsset.findMany({
     where: {
       roomId: input.roomId,
       status: "VERIFIED",
@@ -99,7 +111,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
         select: { id: true, createdAt: true },
       },
     },
-  }) as Candidate[];
+  })) as Candidate[];
   const selected = selectSessionTranscriptSources({
     rows,
     anchorRecordingAssetId: anchor.recording.id,
@@ -110,7 +122,8 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
         status: "single-source" as const,
-        reason: "Only one participant-owned transcript source is ready in this Session take.",
+        reason:
+          "Only one participant-owned transcript source is ready in this Session take.",
         sourceCount: anchor.transcriptJobId ? 1 : 0,
         programClock: null,
         sources: [],
@@ -118,64 +131,90 @@ export async function readSessionTranscriptCorrectionDesk(input: {
     };
   }
 
-  const desks = await Promise.all(selected.map((source) => readTranscriptCorrectionDesk({
-    ...input,
-    recordingAssetId: source.id,
-  })));
-  const invalidIndex = desks.findIndex((desk, index) => (
-    !desk.gate?.allowed
-    || !isParticipantIsolatedDesk(desk)
-    || desk.transcriptJobId !== selected[index]!.transcriptJobs[0]!.id
-    || desk.recording?.participantId !== selected[index]!.participantId
-    || text(desk.sourceSha256).toLowerCase() !== text(selected[index]!.checksum).toLowerCase()
-  ));
+  const desks = await Promise.all(
+    selected.map((source) =>
+      readTranscriptCorrectionDesk({
+        ...input,
+        recordingAssetId: source.id,
+      }),
+    ),
+  );
+  const invalidIndex = desks.findIndex(
+    (desk, index) =>
+      !desk.gate?.allowed ||
+      !isParticipantIsolatedDesk(desk) ||
+      desk.transcriptJobId !== selected[index]!.transcriptJobs[0]!.id ||
+      desk.recording?.participantId !== selected[index]!.participantId ||
+      text(desk.sourceSha256).toLowerCase() !==
+        text(selected[index]!.checksum).toLowerCase(),
+  );
   if (invalidIndex >= 0) {
     return {
       ...anchor,
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
         status: "incomplete" as const,
-        reason: "Another participant source is still held or changed identity. The exact current source remains reviewable.",
+        reason:
+          "Another participant source is still held or changed identity. The exact current source remains reviewable.",
         sourceCount: desks.filter((desk) => desk.gate?.allowed).length,
         programClock: null,
-        sources: desks.map((desk, index) => sourceSummary(desk, selected[index]!)),
+        sources: desks.map((desk, index) =>
+          sourceSummary(desk, selected[index]!),
+        ),
       },
     };
   }
 
   try {
-    const programClock = assembleSessionTranscriptProgramClock(selected.map((source) => {
-      const manifest = object(source.localManifestJson);
-      return {
-        recordingAssetId: source.id,
-        transcriptJobId: source.transcriptJobs[0]!.id,
-        captureGroupId: text(manifest.captureGroupId) || null,
-        recordedStartedAt: source.recordedStartedAt,
-        alignment: manifest.alignment,
-      };
-    }));
-    const timingByRecordingId = new Map(programClock.sources.map((source) => [source.recordingAssetId, source]));
-    const sources = desks.map((desk, index) => sourceSummary(
-      desk,
-      selected[index]!,
-      timingByRecordingId.get(selected[index]!.id),
-    ));
-    const segments = desks.flatMap((desk, index) => {
-      const source = sources[index]!;
-      return desk.segments.map((segment: any) => ({
-        ...segment,
-        transcriptJobId: source.transcriptJobId,
-        recordingAssetId: source.recordingAssetId,
-        sourceStartSeconds: Number(segment.startSeconds),
-        sourceEndSeconds: Number(segment.endSeconds),
-        programStartSeconds: source.programOffsetSeconds + Number(segment.startSeconds),
-        programEndSeconds: source.programOffsetSeconds + Number(segment.endSeconds),
-        sourcePlayback: source.playback,
-      }));
-    }).sort((left, right) => (
-      left.programStartSeconds - right.programStartSeconds
-      || left.id.localeCompare(right.id)
-    ));
+    const reviewedPlacements = await readSessionReviewedSourcePlacements({
+      prisma: input.prisma,
+      roomId: input.roomId,
+      recordingAssetIds: selected.map((source) => source.id),
+    });
+    const programClock = assembleSessionTranscriptProgramClock(
+      selected.map((source) => {
+        const manifest = object(source.localManifestJson);
+        return {
+          recordingAssetId: source.id,
+          transcriptJobId: source.transcriptJobs[0]!.id,
+          captureGroupId: text(manifest.captureGroupId) || null,
+          recordedStartedAt: source.recordedStartedAt,
+          alignment: manifest.alignment,
+        };
+      }),
+      { reviewedPlacements },
+    );
+    const timingByRecordingId = new Map(
+      programClock.sources.map((source) => [source.recordingAssetId, source]),
+    );
+    const sources = desks.map((desk, index) =>
+      sourceSummary(
+        desk,
+        selected[index]!,
+        timingByRecordingId.get(selected[index]!.id),
+      ),
+    );
+    const segments = desks
+      .flatMap((desk, index) => {
+        const source = sources[index]!;
+        return desk.segments.map((segment: any) => ({
+          ...segment,
+          transcriptJobId: source.transcriptJobId,
+          recordingAssetId: source.recordingAssetId,
+          sourceStartSeconds: Number(segment.startSeconds),
+          sourceEndSeconds: Number(segment.endSeconds),
+          programStartSeconds:
+            source.programOffsetSeconds + Number(segment.startSeconds),
+          programEndSeconds:
+            source.programOffsetSeconds + Number(segment.endSeconds),
+          sourcePlayback: source.playback,
+        }));
+      })
+      .sort(
+        (left, right) =>
+          left.programStartSeconds - right.programStartSeconds ||
+          left.id.localeCompare(right.id),
+      );
 
     return {
       ...anchor,
@@ -190,7 +229,11 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       },
     };
   } catch (error) {
-    if (!(error instanceof SessionTranscriptAssemblyError)) throw error;
+    if (
+      !(error instanceof SessionTranscriptAssemblyError) &&
+      !(error instanceof SessionReviewedSourcePlacementError)
+    )
+      throw error;
     return {
       ...anchor,
       sessionTranscript: {
@@ -199,7 +242,9 @@ export async function readSessionTranscriptCorrectionDesk(input: {
         reason: error.message,
         sourceCount: desks.length,
         programClock: null,
-        sources: desks.map((desk, index) => sourceSummary(desk, selected[index]!)),
+        sources: desks.map((desk, index) =>
+          sourceSummary(desk, selected[index]!),
+        ),
       },
     };
   }

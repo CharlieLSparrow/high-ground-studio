@@ -17,6 +17,10 @@ import {
   SessionTranscriptAssemblyError,
 } from "@/lib/server/session-transcript-assembly";
 import {
+  readSessionReviewedSourcePlacements,
+  SessionReviewedSourcePlacementError,
+} from "@/lib/server/session-reviewed-source-placement";
+import {
   selectSessionTranscriptSources,
   type SessionTranscriptSourceCandidate,
 } from "@/lib/server/session-transcript-source-selection";
@@ -39,7 +43,9 @@ function privateJson(body: unknown, status = 200) {
 }
 
 function contentDisposition(filename: string) {
-  const ascii = filename.replace(/[^a-z0-9 ._-]+/gi, "").trim() || "Coaching Transcript.docx";
+  const ascii =
+    filename.replace(/[^a-z0-9 ._-]+/gi, "").trim() ||
+    "Coaching Transcript.docx";
   return `attachment; filename="${ascii.replaceAll('"', "")}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
@@ -55,13 +61,15 @@ type TranscriptSourceCandidate = SessionTranscriptSourceCandidate & {
 
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 
 function isParticipantIsolatedDesk(desk: any) {
-  return desk?.processing?.routing?.sourceTopology === "participant-isolated"
-    && desk.processing.routing.speakerAuthority === "source-binding";
+  return (
+    desk?.processing?.routing?.sourceTopology === "participant-isolated" &&
+    desk.processing.routing.speakerAuthority === "source-binding"
+  );
 }
 
 async function readCompleteCoachingTranscript(input: {
@@ -76,15 +84,20 @@ async function readCompleteCoachingTranscript(input: {
     transcriptJobId: anchor.transcriptJobId,
     recordingAssetId: anchor.recording.id,
     sourceSha256: anchor.sourceSha256,
-    participantId: isParticipantIsolatedDesk(anchor) ? anchor.recording.participantId ?? null : null,
+    participantId: isParticipantIsolatedDesk(anchor)
+      ? (anchor.recording.participantId ?? null)
+      : null,
     programOffsetSeconds: 0,
   };
   if (!isParticipantIsolatedDesk(anchor)) {
-    const programClock = assembleSessionTranscriptProgramClock([{
-      recordingAssetId: anchor.recording.id,
-      transcriptJobId: anchor.transcriptJobId,
-      recordedStartedAt: anchor.recording.recordedStartedAt ?? anchor.createdAt ?? new Date(0),
-    }]);
+    const programClock = assembleSessionTranscriptProgramClock([
+      {
+        recordingAssetId: anchor.recording.id,
+        transcriptJobId: anchor.transcriptJobId,
+        recordedStartedAt:
+          anchor.recording.recordedStartedAt ?? anchor.createdAt ?? new Date(0),
+      },
+    ]);
     return {
       desks: [anchor],
       sources: [{ ...anchorSource, ...programClock.sources[0] }],
@@ -93,10 +106,18 @@ async function readCompleteCoachingTranscript(input: {
     };
   }
 
-  const reportParticipants = anchor.participants.filter((participant: any) => ["COACH", "HOST", "CLIENT"].includes(text(participant.role).toUpperCase()));
-  const coach = reportParticipants.filter((participant: any) => text(participant.role).toUpperCase() === "COACH");
-  const hosts = reportParticipants.filter((participant: any) => text(participant.role).toUpperCase() === "HOST");
-  const clients = reportParticipants.filter((participant: any) => text(participant.role).toUpperCase() === "CLIENT");
+  const reportParticipants = anchor.participants.filter((participant: any) =>
+    ["COACH", "HOST", "CLIENT"].includes(text(participant.role).toUpperCase()),
+  );
+  const coach = reportParticipants.filter(
+    (participant: any) => text(participant.role).toUpperCase() === "COACH",
+  );
+  const hosts = reportParticipants.filter(
+    (participant: any) => text(participant.role).toUpperCase() === "HOST",
+  );
+  const clients = reportParticipants.filter(
+    (participant: any) => text(participant.role).toUpperCase() === "CLIENT",
+  );
   const coachCandidates = coach.length ? coach : hosts;
   if (coachCandidates.length !== 1 || clients.length !== 1) {
     throw new CoachingTranscriptReportError(
@@ -106,7 +127,7 @@ async function readCompleteCoachingTranscript(input: {
     );
   }
   const participantIds = [coachCandidates[0].id, clients[0].id];
-  const rows = await input.prisma.recordingAsset.findMany({
+  const rows = (await input.prisma.recordingAsset.findMany({
     where: {
       roomId: input.roomId,
       status: "VERIFIED",
@@ -131,7 +152,7 @@ async function readCompleteCoachingTranscript(input: {
         select: { id: true, createdAt: true },
       },
     },
-  }) as TranscriptSourceCandidate[];
+  })) as TranscriptSourceCandidate[];
   const selected = selectSessionTranscriptSources({
     rows,
     participantIds,
@@ -145,34 +166,49 @@ async function readCompleteCoachingTranscript(input: {
     );
   }
   const completeSources = selected as TranscriptSourceCandidate[];
-  const desks = await Promise.all(completeSources.map((source) => readTranscriptCorrectionDesk({
+  const desks = await Promise.all(
+    completeSources.map((source) =>
+      readTranscriptCorrectionDesk({
+        prisma: input.prisma,
+        roomId: input.roomId,
+        actor: input.actor,
+        recordingAssetId: source.id,
+      }),
+    ),
+  );
+  const reviewedPlacements = await readSessionReviewedSourcePlacements({
     prisma: input.prisma,
     roomId: input.roomId,
-    actor: input.actor,
-    recordingAssetId: source.id,
-  })));
-  const programClock = assembleSessionTranscriptProgramClock(completeSources.map((source) => {
-    const manifest = object(source.localManifestJson);
-    return {
-      recordingAssetId: source.id,
-      transcriptJobId: source.transcriptJobs[0].id,
-      captureGroupId: text(manifest.captureGroupId) || null,
-      recordedStartedAt: source.recordedStartedAt,
-      alignment: manifest.alignment,
-    };
-  }));
-  const timingByRecordingId = new Map(programClock.sources.map((source) => [source.recordingAssetId, source]));
+    recordingAssetIds: completeSources.map((source) => source.id),
+  });
+  const programClock = assembleSessionTranscriptProgramClock(
+    completeSources.map((source) => {
+      const manifest = object(source.localManifestJson);
+      return {
+        recordingAssetId: source.id,
+        transcriptJobId: source.transcriptJobs[0].id,
+        captureGroupId: text(manifest.captureGroupId) || null,
+        recordedStartedAt: source.recordedStartedAt,
+        alignment: manifest.alignment,
+      };
+    }),
+    { reviewedPlacements },
+  );
+  const timingByRecordingId = new Map(
+    programClock.sources.map((source) => [source.recordingAssetId, source]),
+  );
   const sources = desks.map((desk, index) => {
     const selectedSource = completeSources[index];
     const timing = timingByRecordingId.get(selectedSource.id);
     if (
-      !desk.gate.allowed
-      || !desk.transcriptJobId
-      || desk.transcriptJobId !== selectedSource.transcriptJobs[0].id
-      || desk.recording?.participantId !== selectedSource.participantId
-      || !isParticipantIsolatedDesk(desk)
-      || text(desk.sourceSha256).toLowerCase() !== text(selectedSource.checksum).toLowerCase()
-      || !timing
+      !desk.gate.allowed ||
+      !desk.transcriptJobId ||
+      desk.transcriptJobId !== selectedSource.transcriptJobs[0].id ||
+      desk.recording?.participantId !== selectedSource.participantId ||
+      !isParticipantIsolatedDesk(desk) ||
+      text(desk.sourceSha256).toLowerCase() !==
+        text(selectedSource.checksum).toLowerCase() ||
+      !timing
     ) {
       throw new CoachingTranscriptReportError(
         "One participant transcript no longer matches its verified source recording. Refresh the Session before exporting.",
@@ -192,24 +228,41 @@ async function readCompleteCoachingTranscript(input: {
       sampleAccurateClaimed: timing.sampleAccurateClaimed,
     };
   });
-  const segments = desks.flatMap((desk, index) => desk.segments.map((segment: any) => ({
-    ...segment,
-    transcriptJobId: sources[index].transcriptJobId,
-    recordingAssetId: sources[index].recordingAssetId,
-    speakerAttribution: { participantId: sources[index].participantId },
-  })));
+  const segments = desks.flatMap((desk, index) =>
+    desk.segments.map((segment: any) => ({
+      ...segment,
+      transcriptJobId: sources[index].transcriptJobId,
+      recordingAssetId: sources[index].recordingAssetId,
+      speakerAttribution: { participantId: sources[index].participantId },
+    })),
+  );
   return { desks, sources, segments, programClock };
 }
 
-export async function GET(request: Request, context: { params: Promise<{ roomId: string }> }) {
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ roomId: string }> },
+) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user?.id) {
-    return privateJson({ ok: false, code: "AUTH_REQUIRED", error: "Sign in before downloading a private coaching transcript." }, 401);
+    return privateJson(
+      {
+        ok: false,
+        code: "AUTH_REQUIRED",
+        error: "Sign in before downloading a private coaching transcript.",
+      },
+      401,
+    );
   }
   const { roomId: rawRoomId } = await context.params;
   const roomId = text(rawRoomId);
-  const recordingAssetId = text(new URL(request.url).searchParams.get("recordingAssetId")) || null;
-  if (!roomId) return privateJson({ ok: false, code: "ROOM_REQUIRED", error: "A Session is required." }, 400);
+  const recordingAssetId =
+    text(new URL(request.url).searchParams.get("recordingAssetId")) || null;
+  if (!roomId)
+    return privateJson(
+      { ok: false, code: "ROOM_REQUIRED", error: "A Session is required." },
+      400,
+    );
 
   try {
     const prisma = getPrismaClient() as any;
@@ -233,7 +286,8 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
     }
     if (!desk.gate.allowed || !desk.transcriptJobId || !desk.recording?.id) {
       throw new CoachingTranscriptReportError(
-        desk.gate.error || "A verified, consented recording transcript is required before export.",
+        desk.gate.error ||
+          "A verified, consented recording transcript is required before export.",
         409,
         "REPORT_TRANSCRIPT_NOT_READY",
       );
@@ -261,27 +315,47 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
       status: 200,
       headers: {
         ...PRIVATE_HEADERS,
-        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": contentDisposition(filename),
         "Content-Length": String(document.byteLength),
         "X-Quipsly-Transcript-Schema": report.schema,
         "X-Quipsly-Transcript-Source-Count": String(report.sources.length),
         "X-Quipsly-Transcript-Timing": complete.programClock.authority,
-        "X-Quipsly-Transcript-Waveform-Review": complete.programClock.waveformReviewRequired ? "required" : "not-required",
+        "X-Quipsly-Transcript-Waveform-Review": complete.programClock
+          .waveformReviewRequired
+          ? "required"
+          : "not-required",
       },
     });
   } catch (error) {
-    if (error instanceof SessionTranscriptAssemblyError) {
-      return privateJson({ ok: false, code: error.code, error: error.message }, 409);
+    if (
+      error instanceof SessionTranscriptAssemblyError ||
+      error instanceof SessionReviewedSourcePlacementError
+    ) {
+      return privateJson(
+        { ok: false, code: error.code, error: error.message },
+        409,
+      );
     }
-    if (error instanceof CoachingTranscriptReportError || error instanceof TranscriptCorrectionError) {
-      return privateJson({ ok: false, code: error.code, error: error.message }, error.status);
+    if (
+      error instanceof CoachingTranscriptReportError ||
+      error instanceof TranscriptCorrectionError
+    ) {
+      return privateJson(
+        { ok: false, code: error.code, error: error.message },
+        error.status,
+      );
     }
     console.error("[coaching-transcript-report] export failed", error);
-    return privateJson({
-      ok: false,
-      code: "REPORT_UNAVAILABLE",
-      error: "Quipsly could not prepare the private coaching transcript. Nothing was shared or changed.",
-    }, 503);
+    return privateJson(
+      {
+        ok: false,
+        code: "REPORT_UNAVAILABLE",
+        error:
+          "Quipsly could not prepare the private coaching transcript. Nothing was shared or changed.",
+      },
+      503,
+    );
   }
 }

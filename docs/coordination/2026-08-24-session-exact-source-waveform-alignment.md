@@ -43,16 +43,17 @@ It:
 4. polls the retained job rather than asking the user to understand the worker;
 5. presents opening/later offset, residual drift, ppm, correlations, peak
    margins, and qualification in plain language; and
-6. repeatedly states the important boundary: originals remain truth, and no
-   timeline placement, edit, render, share, or sample-accurate claim was made.
+6. repeatedly states the important boundary: originals remain truth, and the
+   analyzer itself makes no edit, render, share, placement, or sample-accurate
+   claim.
 
 ## Deliberate boundary
 
-Qualified correlation is evidence for a reversible placement review. It is not
-an automatic timeline mutation. The next integration should bind an explicit
-placement decision to this job/result, the current Session program fingerprint,
-and protected A/B listening. Until then the provisional program clock stays
-provisional.
+Qualified correlation is evidence for a reversible placement review, not an
+automatic timeline mutation. The append-only approval/revocation and program
+clock consumer were completed in
+`docs/coordination/2026-08-25-session-reviewed-waveform-placement.md`.
+Protected A/B listening on real participant devices remains evidence to collect.
 
 ## Verification
 
@@ -67,4 +68,5 @@ provisional.
 
 Real two-device evidence remains in the deferred validation ledger. Automated
 correlation cannot substitute for hearing the opening and late-take match on
-the intended participants and approving a reversible editorial placement.
+the intended participants, but human availability does not stall continued
+product work.

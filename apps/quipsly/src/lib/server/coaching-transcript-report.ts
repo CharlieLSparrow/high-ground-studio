@@ -18,7 +18,8 @@ import {
   WidthType,
 } from "docx";
 
-export const COACHING_TRANSCRIPT_REPORT_SCHEMA = "quipsly-coaching-transcript-report-v2";
+export const COACHING_TRANSCRIPT_REPORT_SCHEMA =
+  "quipsly-coaching-transcript-report-v2";
 
 export const COACHING_COMPETENCIES = [
   "Demonstrates Ethical Practice",
@@ -68,7 +69,11 @@ export type CoachingTranscriptReportSource = {
   sourceSha256?: string | null;
   participantId?: string | null;
   programOffsetSeconds?: number;
-  timingAuthority?: "single-source-origin" | "capture-clock-proposal" | "reported-wall-clock-fallback";
+  timingAuthority?:
+    | "single-source-origin"
+    | "reviewed-waveform-placement"
+    | "capture-clock-proposal"
+    | "reported-wall-clock-fallback";
   timingUncertaintyMilliseconds?: number | null;
   timingReviewRequired?: boolean;
   sampleAccurateClaimed?: false;
@@ -117,7 +122,11 @@ export type CoachingTranscriptReport = {
     sourceSha256: string | null;
     participantId: string | null;
     programOffsetSeconds: number;
-    timingAuthority: "single-source-origin" | "capture-clock-proposal" | "reported-wall-clock-fallback";
+    timingAuthority:
+      | "single-source-origin"
+      | "reviewed-waveform-placement"
+      | "capture-clock-proposal"
+      | "reported-wall-clock-fallback";
     timingUncertaintyMilliseconds: number | null;
     timingReviewRequired: boolean;
     sampleAccurateClaimed: false;
@@ -131,7 +140,12 @@ export type CoachingTranscriptReport = {
     unreviewedTurns: number;
   };
   timelineTiming: {
-    authority: "single-source-origin" | "capture-clock-proposal" | "reported-wall-clock-fallback" | "mixed";
+    authority:
+      | "single-source-origin"
+      | "reviewed-waveform-placement"
+      | "capture-clock-proposal"
+      | "reported-wall-clock-fallback"
+      | "mixed";
     waveformReviewRequired: boolean;
     maximumUncertaintyMilliseconds: number | null;
     sampleAccurateClaimed: false;
@@ -143,7 +157,10 @@ function clean(value: unknown, max = 10_000) {
 }
 
 function normalized(value: unknown) {
-  return clean(value, 320).toLocaleLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return clean(value, 320)
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function iso(value: string | Date | null | undefined) {
@@ -162,9 +179,15 @@ export function transcriptTimestamp(seconds: number) {
 }
 
 function chooseParticipants(participants: ReportParticipant[]) {
-  const coaches = participants.filter((participant) => participant.role.toUpperCase() === "COACH");
-  const fallbackHosts = participants.filter((participant) => participant.role.toUpperCase() === "HOST");
-  const clients = participants.filter((participant) => participant.role.toUpperCase() === "CLIENT");
+  const coaches = participants.filter(
+    (participant) => participant.role.toUpperCase() === "COACH",
+  );
+  const fallbackHosts = participants.filter(
+    (participant) => participant.role.toUpperCase() === "HOST",
+  );
+  const clients = participants.filter(
+    (participant) => participant.role.toUpperCase() === "CLIENT",
+  );
   const coachCandidates = coaches.length ? coaches : fallbackHosts;
   if (coachCandidates.length !== 1 || clients.length !== 1) {
     throw new CoachingTranscriptReportError(
@@ -176,31 +199,47 @@ function chooseParticipants(participants: ReportParticipant[]) {
   return { coach: coachCandidates[0], client: clients[0] };
 }
 
-export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInput): CoachingTranscriptReport {
+export function buildCoachingTranscriptReport(
+  input: CoachingTranscriptReportInput,
+): CoachingTranscriptReport {
   const sources = input.sources.map((source) => ({
     transcriptJobId: clean(source.transcriptJobId, 240),
     recordingAssetId: clean(source.recordingAssetId, 240),
     sourceSha256: clean(source.sourceSha256, 64).toLowerCase() || null,
     participantId: clean(source.participantId, 240) || null,
-    programOffsetSeconds: Number.isFinite(source.programOffsetSeconds) ? Math.max(0, Number(source.programOffsetSeconds)) : 0,
-    timingAuthority: source.timingAuthority === "capture-clock-proposal"
-      || source.timingAuthority === "reported-wall-clock-fallback"
-      || source.timingAuthority === "single-source-origin"
-      ? source.timingAuthority
-      : input.sources.length === 1
-        ? "single-source-origin" as const
-        : "reported-wall-clock-fallback" as const,
-    timingUncertaintyMilliseconds: Number.isFinite(source.timingUncertaintyMilliseconds)
+    programOffsetSeconds: Number.isFinite(source.programOffsetSeconds)
+      ? Math.max(0, Number(source.programOffsetSeconds))
+      : 0,
+    timingAuthority:
+      source.timingAuthority === "reviewed-waveform-placement" ||
+      source.timingAuthority === "capture-clock-proposal" ||
+      source.timingAuthority === "reported-wall-clock-fallback" ||
+      source.timingAuthority === "single-source-origin"
+        ? source.timingAuthority
+        : input.sources.length === 1
+          ? ("single-source-origin" as const)
+          : ("reported-wall-clock-fallback" as const),
+    timingUncertaintyMilliseconds: Number.isFinite(
+      source.timingUncertaintyMilliseconds,
+    )
       ? Math.max(0, Number(source.timingUncertaintyMilliseconds))
       : null,
-    timingReviewRequired: input.sources.length > 1 || source.timingReviewRequired === true,
+    timingReviewRequired:
+      input.sources.length > 1 || source.timingReviewRequired === true,
     sampleAccurateClaimed: false as const,
   }));
   if (
-    !sources.length
-    || sources.some((source) => !source.transcriptJobId || !source.recordingAssetId || !/^[a-f0-9]{64}$/.test(source.sourceSha256 ?? ""))
-    || new Set(sources.map((source) => source.transcriptJobId)).size !== sources.length
-    || new Set(sources.map((source) => source.recordingAssetId)).size !== sources.length
+    !sources.length ||
+    sources.some(
+      (source) =>
+        !source.transcriptJobId ||
+        !source.recordingAssetId ||
+        !/^[a-f0-9]{64}$/.test(source.sourceSha256 ?? ""),
+    ) ||
+    new Set(sources.map((source) => source.transcriptJobId)).size !==
+      sources.length ||
+    new Set(sources.map((source) => source.recordingAssetId)).size !==
+      sources.length
   ) {
     throw new CoachingTranscriptReportError(
       "A source-bound transcript and recording are required before creating the mentor transcript.",
@@ -209,71 +248,101 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
     );
   }
   const { coach, client } = chooseParticipants(input.participants);
-  const sourcesByJobId = new Map(sources.map((source) => [source.transcriptJobId, source]));
-  const sourcesByRecordingId = new Map(sources.map((source) => [source.recordingAssetId, source]));
-  const participantsById = new Map(input.participants.map((participant) => [participant.id, participant]));
+  const sourcesByJobId = new Map(
+    sources.map((source) => [source.transcriptJobId, source]),
+  );
+  const sourcesByRecordingId = new Map(
+    sources.map((source) => [source.recordingAssetId, source]),
+  );
+  const participantsById = new Map(
+    input.participants.map((participant) => [participant.id, participant]),
+  );
   const participantsByLabel = new Map<string, ReportParticipant | null>();
   for (const participant of input.participants) {
     const key = normalized(participant.displayLabel);
     if (!key) continue;
-    participantsByLabel.set(key, participantsByLabel.has(key) ? null : participant);
+    participantsByLabel.set(
+      key,
+      participantsByLabel.has(key) ? null : participant,
+    );
   }
   const groupParticipantByLabel = new Map(
     (input.speakerGroups ?? [])
-      .filter((group) => clean(group.providerSpeakerLabel) && clean(group.attribution?.participantId))
-      .map((group) => [normalized(group.providerSpeakerLabel), clean(group.attribution?.participantId)]),
+      .filter(
+        (group) =>
+          clean(group.providerSpeakerLabel) &&
+          clean(group.attribution?.participantId),
+      )
+      .map((group) => [
+        normalized(group.providerSpeakerLabel),
+        clean(group.attribution?.participantId),
+      ]),
   );
 
   const unresolved: string[] = [];
-  const turns = input.segments.map((segment) => {
-    const source = sourcesByJobId.get(clean(segment.transcriptJobId, 240))
-      ?? sourcesByRecordingId.get(clean(segment.recordingAssetId, 240))
-      ?? (sources.length === 1 ? sources[0] : null);
-    if (!source) {
-      unresolved.push(`${transcriptTimestamp(segment.startSeconds)} source not bound`);
-      return null;
-    }
-    const attributedId = clean(segment.speakerAttribution?.participantId)
-      || clean(source.participantId)
-      || groupParticipantByLabel.get(normalized(segment.providerSpeakerLabel))
-      || groupParticipantByLabel.get(normalized(segment.speakerLabel))
-      || "";
-    const participant = (attributedId ? participantsById.get(attributedId) : null)
-      ?? participantsByLabel.get(normalized(segment.speakerLabel))
-      ?? null;
-    const participantRole = participant?.id === coach.id
-      ? "coach" as const
-      : participant?.id === client.id
-        ? "client" as const
-        : null;
-    if (!participant || !participantRole) {
-      unresolved.push(`${transcriptTimestamp(segment.startSeconds)} ${clean(segment.speakerLabel) || "unnamed speaker"}`);
-      return null;
-    }
-    const sourceStartSeconds = Number(segment.startSeconds);
-    const sourceEndSeconds = Number(segment.endSeconds);
-    const startSeconds = source.programOffsetSeconds + sourceStartSeconds;
-    const endSeconds = source.programOffsetSeconds + sourceEndSeconds;
-    return {
-      segmentId: segment.id,
-      speaker: participantRole,
-      speakerLabel: participant.displayLabel,
-      timestamp: transcriptTimestamp(startSeconds),
-      startSeconds,
-      endSeconds,
-      sourceStartSeconds,
-      sourceEndSeconds,
-      text: clean(segment.text, 20_000),
-      reviewState: segment.acceptedCorrection
-        ? "corrected" as const
-        : segment.acceptedVerification
-          ? "confirmed" as const
-          : "unreviewed" as const,
-      transcriptJobId: source.transcriptJobId,
-      recordingAssetId: source.recordingAssetId,
-    };
-  }).filter((turn): turn is CoachingTranscriptReportTurn => Boolean(turn?.text))
-    .sort((left, right) => left.startSeconds - right.startSeconds || left.segmentId.localeCompare(right.segmentId));
+  const turns = input.segments
+    .map((segment) => {
+      const source =
+        sourcesByJobId.get(clean(segment.transcriptJobId, 240)) ??
+        sourcesByRecordingId.get(clean(segment.recordingAssetId, 240)) ??
+        (sources.length === 1 ? sources[0] : null);
+      if (!source) {
+        unresolved.push(
+          `${transcriptTimestamp(segment.startSeconds)} source not bound`,
+        );
+        return null;
+      }
+      const attributedId =
+        clean(segment.speakerAttribution?.participantId) ||
+        clean(source.participantId) ||
+        groupParticipantByLabel.get(normalized(segment.providerSpeakerLabel)) ||
+        groupParticipantByLabel.get(normalized(segment.speakerLabel)) ||
+        "";
+      const participant =
+        (attributedId ? participantsById.get(attributedId) : null) ??
+        participantsByLabel.get(normalized(segment.speakerLabel)) ??
+        null;
+      const participantRole =
+        participant?.id === coach.id
+          ? ("coach" as const)
+          : participant?.id === client.id
+            ? ("client" as const)
+            : null;
+      if (!participant || !participantRole) {
+        unresolved.push(
+          `${transcriptTimestamp(segment.startSeconds)} ${clean(segment.speakerLabel) || "unnamed speaker"}`,
+        );
+        return null;
+      }
+      const sourceStartSeconds = Number(segment.startSeconds);
+      const sourceEndSeconds = Number(segment.endSeconds);
+      const startSeconds = source.programOffsetSeconds + sourceStartSeconds;
+      const endSeconds = source.programOffsetSeconds + sourceEndSeconds;
+      return {
+        segmentId: segment.id,
+        speaker: participantRole,
+        speakerLabel: participant.displayLabel,
+        timestamp: transcriptTimestamp(startSeconds),
+        startSeconds,
+        endSeconds,
+        sourceStartSeconds,
+        sourceEndSeconds,
+        text: clean(segment.text, 20_000),
+        reviewState: segment.acceptedCorrection
+          ? ("corrected" as const)
+          : segment.acceptedVerification
+            ? ("confirmed" as const)
+            : ("unreviewed" as const),
+        transcriptJobId: source.transcriptJobId,
+        recordingAssetId: source.recordingAssetId,
+      };
+    })
+    .filter((turn): turn is CoachingTranscriptReportTurn => Boolean(turn?.text))
+    .sort(
+      (left, right) =>
+        left.startSeconds - right.startSeconds ||
+        left.segmentId.localeCompare(right.segmentId),
+    );
 
   if (unresolved.length) {
     throw new CoachingTranscriptReportError(
@@ -289,7 +358,10 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
       "REPORT_TRANSCRIPT_EMPTY",
     );
   }
-  if (!turns.some((turn) => turn.speaker === "coach") || !turns.some((turn) => turn.speaker === "client")) {
+  if (
+    !turns.some((turn) => turn.speaker === "coach") ||
+    !turns.some((turn) => turn.speaker === "client")
+  ) {
     throw new CoachingTranscriptReportError(
       "The mentor transcript needs both the coach and client recording perspectives. Wait for the complete Session transcript before exporting.",
       409,
@@ -298,7 +370,9 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
   }
   const generatedAt = iso(input.generatedAt) ?? new Date(0).toISOString();
   const sessionDate = iso(input.scheduledStart) ?? generatedAt;
-  const timingAuthorities = [...new Set(sources.map((source) => source.timingAuthority))];
+  const timingAuthorities = [
+    ...new Set(sources.map((source) => source.timingAuthority)),
+  ];
   const uncertainties = sources
     .map((source) => source.timingUncertaintyMilliseconds)
     .filter((value): value is number => value !== null);
@@ -313,14 +387,22 @@ export function buildCoachingTranscriptReport(input: CoachingTranscriptReportInp
     client,
     turns,
     review: {
-      correctedTurns: turns.filter((turn) => turn.reviewState === "corrected").length,
-      confirmedTurns: turns.filter((turn) => turn.reviewState === "confirmed").length,
-      unreviewedTurns: turns.filter((turn) => turn.reviewState === "unreviewed").length,
+      correctedTurns: turns.filter((turn) => turn.reviewState === "corrected")
+        .length,
+      confirmedTurns: turns.filter((turn) => turn.reviewState === "confirmed")
+        .length,
+      unreviewedTurns: turns.filter((turn) => turn.reviewState === "unreviewed")
+        .length,
     },
     timelineTiming: {
-      authority: timingAuthorities.length === 1 ? timingAuthorities[0]! : "mixed",
-      waveformReviewRequired: sources.some((source) => source.timingReviewRequired),
-      maximumUncertaintyMilliseconds: uncertainties.length ? Math.max(...uncertainties) : null,
+      authority:
+        timingAuthorities.length === 1 ? timingAuthorities[0]! : "mixed",
+      waveformReviewRequired: sources.some(
+        (source) => source.timingReviewRequired,
+      ),
+      maximumUncertaintyMilliseconds: uncertainties.length
+        ? Math.max(...uncertainties)
+        : null,
       sampleAccurateClaimed: false,
     },
   };
@@ -349,10 +431,20 @@ function reportCell(children: Paragraph[], shaded = false) {
 
 function reportHeaderCell(label: string) {
   return new TableCell({
-    children: [new Paragraph({
-      alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: label, bold: true, color: "FFFFFF", size: 18, font: "Aptos" })],
-    })],
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({
+            text: label,
+            bold: true,
+            color: "FFFFFF",
+            size: 18,
+            font: "Aptos",
+          }),
+        ],
+      }),
+    ],
     verticalAlign: VerticalAlign.CENTER,
     shading: { fill: INK, type: ShadingType.CLEAR },
     borders: borders(INK),
@@ -364,49 +456,107 @@ function speakerTurnParagraph(turn: CoachingTranscriptReportTurn) {
   return new Paragraph({
     spacing: { after: 80 },
     children: [
-      new TextRun({ text: `${turn.timestamp}  `, bold: true, color: BRAND, size: 18, font: "Aptos" }),
+      new TextRun({
+        text: `${turn.timestamp}  `,
+        bold: true,
+        color: BRAND,
+        size: 18,
+        font: "Aptos",
+      }),
       new TextRun({ text: turn.text, color: INK, size: 21, font: "Aptos" }),
     ],
   });
 }
 
-export function coachingTranscriptReportFileName(report: CoachingTranscriptReport) {
+export function coachingTranscriptReportFileName(
+  report: CoachingTranscriptReport,
+) {
   const date = report.sessionDate.slice(0, 10).replaceAll("-", "");
-  const title = report.title.replace(/[^a-z0-9]+/gi, " ").trim().slice(0, 64) || "Coaching Session";
+  const title =
+    report.title
+      .replace(/[^a-z0-9]+/gi, " ")
+      .trim()
+      .slice(0, 64) || "Coaching Session";
   return `${date} ${title} Transcript.docx`;
 }
 
-export async function renderCoachingTranscriptReport(report: CoachingTranscriptReport) {
+export async function renderCoachingTranscriptReport(
+  report: CoachingTranscriptReport,
+) {
   const sessionDate = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
     timeZone: "UTC",
   }).format(new Date(report.sessionDate));
-  const reviewDescription = report.review.unreviewedTurns === 0
-    ? "Every turn in this export has been confirmed or corrected against the source recording."
-    : `${report.review.unreviewedTurns} of ${report.turns.length} turns have not yet been explicitly checked against playback.`;
-  const uncertaintyDescription = report.timelineTiming.maximumUncertaintyMilliseconds === null
-    ? ""
-    : ` (up to ${report.timelineTiming.maximumUncertaintyMilliseconds} ms estimated uncertainty)`;
-  const timingDescription = report.timelineTiming.authority === "capture-clock-proposal"
-    ? `Cross-device timestamps use preserved monotonic/server clock proposals${uncertaintyDescription}. Waveform and drift review are still required before sample-accurate editing.`
-    : report.timelineTiming.authority === "reported-wall-clock-fallback"
-      ? "Cross-device timestamps use reported recording starts because complete capture-clock evidence was unavailable. Treat them as estimates until waveform and drift review."
-      : "Timestamps use the recording's source-local clock; no cross-device synchronization is implied.";
-  const transcriptRows = report.turns.map((turn) => new TableRow({
-    cantSplit: true,
-    children: turn.speaker === "coach"
-      ? [reportCell([speakerTurnParagraph(turn)]), reportCell([new Paragraph("")])]
-      : [reportCell([new Paragraph("")]), reportCell([speakerTurnParagraph(turn)])],
-  }));
-  const competencyRows = COACHING_COMPETENCIES.map((competency, index) => new TableRow({
-    cantSplit: true,
-    children: [
-      reportCell([new Paragraph({ children: [new TextRun({ text: `${index + 1}. ${competency}`, bold: true, color: INK, size: 20, font: "Aptos" })] })], index % 2 === 0),
-      reportCell([new Paragraph({ children: [new TextRun({ text: "Mentor notes:", bold: true, color: MUTED, size: 17, font: "Aptos" })], spacing: { after: 360 } })]),
-    ],
-  }));
+  const reviewDescription =
+    report.review.unreviewedTurns === 0
+      ? "Every turn in this export has been confirmed or corrected against the source recording."
+      : `${report.review.unreviewedTurns} of ${report.turns.length} turns have not yet been explicitly checked against playback.`;
+  const uncertaintyDescription =
+    report.timelineTiming.maximumUncertaintyMilliseconds === null
+      ? ""
+      : ` (up to ${report.timelineTiming.maximumUncertaintyMilliseconds} ms estimated uncertainty)`;
+  const timingDescription =
+    report.timelineTiming.authority === "capture-clock-proposal"
+      ? `Cross-device timestamps use preserved monotonic/server clock proposals${uncertaintyDescription}. Waveform and drift review are still required before sample-accurate editing.`
+      : report.timelineTiming.authority === "reported-wall-clock-fallback"
+        ? "Cross-device timestamps use reported recording starts because complete capture-clock evidence was unavailable. Treat them as estimates until waveform and drift review."
+        : "Timestamps use the recording's source-local clock; no cross-device synchronization is implied.";
+  const transcriptRows = report.turns.map(
+    (turn) =>
+      new TableRow({
+        cantSplit: true,
+        children:
+          turn.speaker === "coach"
+            ? [
+                reportCell([speakerTurnParagraph(turn)]),
+                reportCell([new Paragraph("")]),
+              ]
+            : [
+                reportCell([new Paragraph("")]),
+                reportCell([speakerTurnParagraph(turn)]),
+              ],
+      }),
+  );
+  const competencyRows = COACHING_COMPETENCIES.map(
+    (competency, index) =>
+      new TableRow({
+        cantSplit: true,
+        children: [
+          reportCell(
+            [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `${index + 1}. ${competency}`,
+                    bold: true,
+                    color: INK,
+                    size: 20,
+                    font: "Aptos",
+                  }),
+                ],
+              }),
+            ],
+            index % 2 === 0,
+          ),
+          reportCell([
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: "Mentor notes:",
+                  bold: true,
+                  color: MUTED,
+                  size: 17,
+                  font: "Aptos",
+                }),
+              ],
+              spacing: { after: 360 },
+            }),
+          ]),
+        ],
+      }),
+  );
   const document = new Document({
     creator: "Quipsly",
     title: `${report.title} coaching transcript`,
@@ -415,83 +565,272 @@ export async function renderCoachingTranscriptReport(report: CoachingTranscriptR
     styles: {
       default: { document: { run: { font: "Aptos", color: INK, size: 21 } } },
     },
-    sections: [{
-      properties: {
-        page: {
-          margin: { top: 720, right: 720, bottom: 720, left: 720, header: 360, footer: 360 },
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: 720,
+              right: 720,
+              bottom: 720,
+              left: 720,
+              header: 360,
+              footer: 360,
+            },
+          },
         },
+        headers: {
+          default: new Header({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.RIGHT,
+                children: [
+                  new TextRun({
+                    text: "QUIPSLY  /  COACHING TRANSCRIPT",
+                    bold: true,
+                    color: BRAND,
+                    size: 16,
+                    font: "Aptos",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({
+                    text: "Source-bound report  •  Page ",
+                    color: MUTED,
+                    size: 16,
+                    font: "Aptos",
+                  }),
+                  new TextRun({
+                    children: [PageNumber.CURRENT],
+                    color: MUTED,
+                    size: 16,
+                    font: "Aptos",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        },
+        children: [
+          new Paragraph({
+            spacing: { after: 100 },
+            children: [
+              new TextRun({
+                text: "COACHING SESSION TRANSCRIPT",
+                bold: true,
+                color: BRAND,
+                size: 20,
+                font: "Aptos",
+              }),
+            ],
+          }),
+          new Paragraph({
+            spacing: { after: 180 },
+            children: [
+              new TextRun({
+                text: report.title,
+                bold: true,
+                color: INK,
+                size: 34,
+                font: "Aptos Display",
+              }),
+            ],
+          }),
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            layout: TableLayoutType.FIXED,
+            rows: [
+              new TableRow({
+                children: [
+                  reportCell(
+                    [
+                      new Paragraph({
+                        children: [
+                          new TextRun({
+                            text: "DATE",
+                            bold: true,
+                            color: MUTED,
+                            size: 16,
+                          }),
+                          new TextRun({
+                            break: 1,
+                            text: sessionDate,
+                            bold: true,
+                            color: INK,
+                            size: 21,
+                          }),
+                        ],
+                      }),
+                    ],
+                    true,
+                  ),
+                  reportCell(
+                    [
+                      new Paragraph({
+                        children: [
+                          new TextRun({
+                            text: "COACH",
+                            bold: true,
+                            color: MUTED,
+                            size: 16,
+                          }),
+                          new TextRun({
+                            break: 1,
+                            text: report.coach.displayLabel,
+                            bold: true,
+                            color: INK,
+                            size: 21,
+                          }),
+                        ],
+                      }),
+                    ],
+                    true,
+                  ),
+                  reportCell(
+                    [
+                      new Paragraph({
+                        children: [
+                          new TextRun({
+                            text: "CLIENT",
+                            bold: true,
+                            color: MUTED,
+                            size: 16,
+                          }),
+                          new TextRun({
+                            break: 1,
+                            text: report.client.displayLabel,
+                            bold: true,
+                            color: INK,
+                            size: 21,
+                          }),
+                        ],
+                      }),
+                    ],
+                    true,
+                  ),
+                ],
+              }),
+            ],
+          }),
+          new Paragraph({
+            spacing: { before: 180, after: 180 },
+            children: [
+              new TextRun({
+                text: reviewDescription,
+                bold: true,
+                color: report.review.unreviewedTurns ? "9A5B00" : "237A45",
+                size: 19,
+              }),
+              new TextRun({
+                break: 1,
+                text: "Timestamps stay linked to the protected source. Provider evidence remains unchanged underneath reviewed corrections.",
+                color: MUTED,
+                size: 18,
+              }),
+              new TextRun({
+                break: 1,
+                text: timingDescription,
+                color: report.timelineTiming.waveformReviewRequired
+                  ? "9A5B00"
+                  : MUTED,
+                size: 17,
+              }),
+            ],
+          }),
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            layout: TableLayoutType.FIXED,
+            rows: [
+              new TableRow({
+                tableHeader: true,
+                children: [
+                  reportHeaderCell(`COACH  /  ${report.coach.displayLabel}`),
+                  reportHeaderCell(`CLIENT  /  ${report.client.displayLabel}`),
+                ],
+              }),
+              ...transcriptRows,
+            ],
+          }),
+          new Paragraph({ children: [new PageBreak()] }),
+          new Paragraph({
+            spacing: { after: 80 },
+            children: [
+              new TextRun({
+                text: "RECAP OF THE COMPETENCIES",
+                bold: true,
+                color: INK,
+                size: 28,
+                font: "Aptos Display",
+              }),
+            ],
+          }),
+          new Paragraph({
+            spacing: { after: 180 },
+            children: [
+              new TextRun({
+                text: "Use the open column for mentor observations and assessment notes.",
+                color: MUTED,
+                size: 19,
+              }),
+            ],
+          }),
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            layout: TableLayoutType.FIXED,
+            rows: competencyRows,
+          }),
+          new Paragraph({
+            spacing: { before: 180 },
+            children: [
+              new TextRun({
+                text: "Assessment legend  ",
+                bold: true,
+                color: INK,
+                size: 18,
+              }),
+              new TextRun({
+                text: "ACC or AACC: approaching ACC  •  PCC or APCC: approaching PCC  •  MCC or AMCC: approaching MCC",
+                color: MUTED,
+                size: 18,
+              }),
+            ],
+          }),
+          new Paragraph({
+            spacing: { before: 180 },
+            children: [
+              new TextRun({
+                text: `Evidence: ${report.sources.length} independently source-bound participant recording${report.sources.length === 1 ? "" : "s"}`,
+                color: MUTED,
+                size: 15,
+              }),
+              ...report.sources.flatMap((source, index) => [
+                new TextRun({
+                  break: 1,
+                  text: `Source ${index + 1}: transcript ${source.transcriptJobId}  •  recording ${source.recordingAssetId}  •  program +${source.programOffsetSeconds.toFixed(3)}s  •  ${source.timingAuthority}${source.sourceSha256 ? `  •  SHA-256 ${source.sourceSha256}` : ""}`,
+                  color: MUTED,
+                  size: 15,
+                }),
+              ]),
+              new TextRun({
+                break: 1,
+                text: `Generated ${report.generatedAt}`,
+                color: MUTED,
+                size: 15,
+              }),
+            ],
+          }),
+        ],
       },
-      headers: {
-        default: new Header({ children: [new Paragraph({
-          alignment: AlignmentType.RIGHT,
-          children: [new TextRun({ text: "QUIPSLY  /  COACHING TRANSCRIPT", bold: true, color: BRAND, size: 16, font: "Aptos" })],
-        })] }),
-      },
-      footers: {
-        default: new Footer({ children: [new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [
-            new TextRun({ text: "Source-bound report  •  Page ", color: MUTED, size: 16, font: "Aptos" }),
-            new TextRun({ children: [PageNumber.CURRENT], color: MUTED, size: 16, font: "Aptos" }),
-          ],
-        })] }),
-      },
-      children: [
-        new Paragraph({
-          spacing: { after: 100 },
-          children: [new TextRun({ text: "COACHING SESSION TRANSCRIPT", bold: true, color: BRAND, size: 20, font: "Aptos" })],
-        }),
-        new Paragraph({
-          spacing: { after: 180 },
-          children: [new TextRun({ text: report.title, bold: true, color: INK, size: 34, font: "Aptos Display" })],
-        }),
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          layout: TableLayoutType.FIXED,
-          rows: [
-            new TableRow({ children: [
-              reportCell([new Paragraph({ children: [new TextRun({ text: "DATE", bold: true, color: MUTED, size: 16 }), new TextRun({ break: 1, text: sessionDate, bold: true, color: INK, size: 21 })] })], true),
-              reportCell([new Paragraph({ children: [new TextRun({ text: "COACH", bold: true, color: MUTED, size: 16 }), new TextRun({ break: 1, text: report.coach.displayLabel, bold: true, color: INK, size: 21 })] })], true),
-              reportCell([new Paragraph({ children: [new TextRun({ text: "CLIENT", bold: true, color: MUTED, size: 16 }), new TextRun({ break: 1, text: report.client.displayLabel, bold: true, color: INK, size: 21 })] })], true),
-            ] }),
-          ],
-        }),
-        new Paragraph({ spacing: { before: 180, after: 180 }, children: [
-          new TextRun({ text: reviewDescription, bold: true, color: report.review.unreviewedTurns ? "9A5B00" : "237A45", size: 19 }),
-          new TextRun({ break: 1, text: "Timestamps stay linked to the protected source. Provider evidence remains unchanged underneath reviewed corrections.", color: MUTED, size: 18 }),
-          new TextRun({ break: 1, text: timingDescription, color: report.timelineTiming.waveformReviewRequired ? "9A5B00" : MUTED, size: 17 }),
-        ] }),
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          layout: TableLayoutType.FIXED,
-          rows: [
-            new TableRow({ tableHeader: true, children: [
-              reportHeaderCell(`COACH  /  ${report.coach.displayLabel}`),
-              reportHeaderCell(`CLIENT  /  ${report.client.displayLabel}`),
-            ] }),
-            ...transcriptRows,
-          ],
-        }),
-        new Paragraph({ children: [new PageBreak()] }),
-        new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "RECAP OF THE COMPETENCIES", bold: true, color: INK, size: 28, font: "Aptos Display" })] }),
-        new Paragraph({ spacing: { after: 180 }, children: [new TextRun({ text: "Use the open column for mentor observations and assessment notes.", color: MUTED, size: 19 })] }),
-        new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, layout: TableLayoutType.FIXED, rows: competencyRows }),
-        new Paragraph({ spacing: { before: 180 }, children: [
-          new TextRun({ text: "Assessment legend  ", bold: true, color: INK, size: 18 }),
-          new TextRun({ text: "ACC or AACC: approaching ACC  •  PCC or APCC: approaching PCC  •  MCC or AMCC: approaching MCC", color: MUTED, size: 18 }),
-        ] }),
-        new Paragraph({ spacing: { before: 180 }, children: [
-          new TextRun({ text: `Evidence: ${report.sources.length} independently source-bound participant recording${report.sources.length === 1 ? "" : "s"}`, color: MUTED, size: 15 }),
-          ...report.sources.flatMap((source, index) => [new TextRun({
-            break: 1,
-            text: `Source ${index + 1}: transcript ${source.transcriptJobId}  •  recording ${source.recordingAssetId}  •  program +${source.programOffsetSeconds.toFixed(3)}s  •  ${source.timingAuthority}${source.sourceSha256 ? `  •  SHA-256 ${source.sourceSha256}` : ""}`,
-            color: MUTED,
-            size: 15,
-          })]),
-          new TextRun({ break: 1, text: `Generated ${report.generatedAt}`, color: MUTED, size: 15 }),
-        ] }),
-      ],
-    }],
+    ],
   });
   return Packer.toBuffer(document);
 }

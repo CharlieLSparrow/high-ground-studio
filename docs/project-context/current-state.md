@@ -3665,3 +3665,23 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   release static gates pass. Real two-device listening and a separately bound
   placement approval remain deferred evidence. Detailed decision record:
   `docs/coordination/2026-08-24-session-exact-source-waveform-alignment.md`.
+
+### 2026-08-25 Session reviewed waveform placement
+
+- Qualified Session waveform evidence now has an append-only, optimistic,
+  replay-safe approval/revocation receipt bound to the immutable worker-result
+  SHA-256 and both current released source generations.
+- An active approval is revalidated at read time. A stale hash, normalized
+  placement, take, locator, SHA-256, byte count, or generation holds assembly
+  instead of silently presenting an estimated clock as the approved result.
+- The Session clock solver supports a graph of participant/device sources,
+  preserves negative offsets without deleting early media, and rejects partial
+  or inconsistent measured placement sets.
+- Browser transcript correction, exact-source passage playback, and coaching
+  transcript reports now consume `reviewed-waveform-placement`; revocation
+  returns them to the visible provisional clock without changing originals.
+- Focused placement, clock, correction, report, route, and alignment tests,
+  strict Quipsly TypeScript, Prisma validation, and both Capture release static
+  gates pass. Real two-device listening/readback remains deferred evidence.
+  Detailed decision record:
+  `docs/coordination/2026-08-25-session-reviewed-waveform-placement.md`.

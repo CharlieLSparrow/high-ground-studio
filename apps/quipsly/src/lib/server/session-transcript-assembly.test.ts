@@ -5,7 +5,11 @@ import {
   SessionTranscriptAssemblyError,
 } from "./session-transcript-assembly";
 
-function alignment(start: string, group = "take-1", uncertaintyMilliseconds = 42) {
+function alignment(
+  start: string,
+  group = "take-1",
+  uncertaintyMilliseconds = 42,
+) {
   return {
     schema: "quipsly-capture-alignment-proposal-v1",
     status: "proposal-ready",
@@ -22,7 +26,150 @@ function alignment(start: string, group = "take-1", uncertaintyMilliseconds = 42
   };
 }
 
+function reviewedPlacement(input: {
+  spine: string;
+  target: string;
+  offset: number;
+  group?: string;
+}) {
+  return {
+    alignmentJobId: `alignment-${input.spine}-${input.target}`,
+    captureGroupId: input.group ?? "take-1",
+    spineRecordingAssetId: input.spine,
+    targetRecordingAssetId: input.target,
+    signedOffsetSeconds: input.offset,
+    residualDriftMilliseconds: 1.4,
+    correctionApplied: false as const,
+    sourceBytesMutated: false as const,
+    sampleAccurateClaimed: false as const,
+  };
+}
+
 describe("Session transcript program clock", () => {
+  it("uses an approved measured placement as the Session clock authority", () => {
+    const clock = assembleSessionTranscriptProgramClock(
+      [
+        {
+          recordingAssetId: "recording-coach",
+          transcriptJobId: "transcript-coach",
+          captureGroupId: "take-1",
+          recordedStartedAt: "2026-08-24T15:00:00.000Z",
+        },
+        {
+          recordingAssetId: "recording-client",
+          transcriptJobId: "transcript-client",
+          captureGroupId: "take-1",
+          recordedStartedAt: "2026-08-24T15:00:09.000Z",
+        },
+      ],
+      {
+        reviewedPlacements: [
+          reviewedPlacement({
+            spine: "recording-coach",
+            target: "recording-client",
+            offset: 0.35,
+          }),
+        ],
+      },
+    );
+
+    expect(clock).toMatchObject({
+      authority: "reviewed-waveform-placement",
+      baselineRecordingAssetId: "recording-coach",
+      waveformReviewRequired: false,
+      sampleAccurateClaimed: false,
+      sources: [
+        {
+          recordingAssetId: "recording-coach",
+          programOffsetSeconds: 0,
+          timingReviewRequired: false,
+        },
+        {
+          recordingAssetId: "recording-client",
+          programOffsetSeconds: 0.35,
+          timingReviewRequired: false,
+        },
+      ],
+    });
+  });
+
+  it("preserves a negative measured offset by moving the spine after program zero", () => {
+    const clock = assembleSessionTranscriptProgramClock(
+      [
+        {
+          recordingAssetId: "recording-spine",
+          transcriptJobId: "transcript-spine",
+          captureGroupId: "take-1",
+          recordedStartedAt: "2026-08-24T15:00:00.000Z",
+        },
+        {
+          recordingAssetId: "recording-target",
+          transcriptJobId: "transcript-target",
+          captureGroupId: "take-1",
+          recordedStartedAt: "2026-08-24T15:00:00.000Z",
+        },
+      ],
+      {
+        reviewedPlacements: [
+          reviewedPlacement({
+            spine: "recording-spine",
+            target: "recording-target",
+            offset: -0.35,
+          }),
+        ],
+      },
+    );
+
+    expect(clock.baselineRecordingAssetId).toBe("recording-target");
+    expect(
+      clock.sources.map((source) => [
+        source.recordingAssetId,
+        source.programOffsetSeconds,
+      ]),
+    ).toEqual([
+      ["recording-spine", 0.35],
+      ["recording-target", 0],
+    ]);
+  });
+
+  it("holds conflicting reviewed placement cycles instead of choosing one", () => {
+    expect(() =>
+      assembleSessionTranscriptProgramClock(
+        [
+          {
+            recordingAssetId: "a",
+            transcriptJobId: "ta",
+            captureGroupId: "take-1",
+            recordedStartedAt: "2026-08-24T15:00:00.000Z",
+          },
+          {
+            recordingAssetId: "b",
+            transcriptJobId: "tb",
+            captureGroupId: "take-1",
+            recordedStartedAt: "2026-08-24T15:00:00.000Z",
+          },
+          {
+            recordingAssetId: "c",
+            transcriptJobId: "tc",
+            captureGroupId: "take-1",
+            recordedStartedAt: "2026-08-24T15:00:00.000Z",
+          },
+        ],
+        {
+          reviewedPlacements: [
+            reviewedPlacement({ spine: "a", target: "b", offset: 0.1 }),
+            reviewedPlacement({ spine: "b", target: "c", offset: 0.1 }),
+            reviewedPlacement({ spine: "a", target: "c", offset: 0.3 }),
+          ],
+        },
+      ),
+    ).toThrow(
+      expect.objectContaining<Partial<SessionTranscriptAssemblyError>>({
+        code: "TRANSCRIPT_REVIEWED_PLACEMENT_CONFLICT",
+      }),
+    );
+  });
+
   it("prefers validated monotonic/server clock proposals over skewed wall starts", () => {
     const clock = assembleSessionTranscriptProgramClock([
       {
@@ -48,11 +195,13 @@ describe("Session transcript program clock", () => {
       waveformReviewRequired: true,
       sampleAccurateClaimed: false,
     });
-    expect(clock.sources.map((source) => [
-      source.recordingAssetId,
-      source.programOffsetSeconds,
-      source.timingUncertaintyMilliseconds,
-    ])).toEqual([
+    expect(
+      clock.sources.map((source) => [
+        source.recordingAssetId,
+        source.programOffsetSeconds,
+        source.timingUncertaintyMilliseconds,
+      ]),
+    ).toEqual([
       ["recording-coach", 0, 35],
       ["recording-client", 0.625, 48],
     ]);
@@ -60,8 +209,18 @@ describe("Session transcript program clock", () => {
 
   it("labels reported wall starts as fallback instead of exact sync", () => {
     const clock = assembleSessionTranscriptProgramClock([
-      { recordingAssetId: "recording-a", transcriptJobId: "transcript-a", captureGroupId: "take-1", recordedStartedAt: "2026-08-24T15:00:00.000Z" },
-      { recordingAssetId: "recording-b", transcriptJobId: "transcript-b", captureGroupId: "take-1", recordedStartedAt: "2026-08-24T15:00:01.250Z" },
+      {
+        recordingAssetId: "recording-a",
+        transcriptJobId: "transcript-a",
+        captureGroupId: "take-1",
+        recordedStartedAt: "2026-08-24T15:00:00.000Z",
+      },
+      {
+        recordingAssetId: "recording-b",
+        transcriptJobId: "transcript-b",
+        captureGroupId: "take-1",
+        recordedStartedAt: "2026-08-24T15:00:01.250Z",
+      },
     ]);
 
     expect(clock.authority).toBe("reported-wall-clock-fallback");
@@ -74,33 +233,55 @@ describe("Session transcript program clock", () => {
   });
 
   it("does not merge sources from different capture takes", () => {
-    expect(() => assembleSessionTranscriptProgramClock([
-      { recordingAssetId: "recording-a", transcriptJobId: "transcript-a", captureGroupId: "take-a", recordedStartedAt: "2026-08-24T15:00:00.000Z" },
-      { recordingAssetId: "recording-b", transcriptJobId: "transcript-b", captureGroupId: "take-b", recordedStartedAt: "2026-08-24T15:00:01.000Z" },
-    ])).toThrow(expect.objectContaining<Partial<SessionTranscriptAssemblyError>>({
-      code: "TRANSCRIPT_SOURCE_TAKE_MISMATCH",
-    }));
+    expect(() =>
+      assembleSessionTranscriptProgramClock([
+        {
+          recordingAssetId: "recording-a",
+          transcriptJobId: "transcript-a",
+          captureGroupId: "take-a",
+          recordedStartedAt: "2026-08-24T15:00:00.000Z",
+        },
+        {
+          recordingAssetId: "recording-b",
+          transcriptJobId: "transcript-b",
+          captureGroupId: "take-b",
+          recordedStartedAt: "2026-08-24T15:00:01.000Z",
+        },
+      ]),
+    ).toThrow(
+      expect.objectContaining<Partial<SessionTranscriptAssemblyError>>({
+        code: "TRANSCRIPT_SOURCE_TAKE_MISMATCH",
+      }),
+    );
   });
 
   it("refuses a manifest take that conflicts with preserved clock evidence", () => {
-    expect(() => assembleSessionTranscriptProgramClock([{
-      recordingAssetId: "recording-a",
-      transcriptJobId: "transcript-a",
-      captureGroupId: "declared-take",
-      recordedStartedAt: "2026-08-24T15:00:00.000Z",
-      alignment: alignment("2026-08-24T15:00:00.000Z", "evidence-take"),
-    }])).toThrow(expect.objectContaining<Partial<SessionTranscriptAssemblyError>>({
-      code: "TRANSCRIPT_SOURCE_TAKE_MISMATCH",
-    }));
+    expect(() =>
+      assembleSessionTranscriptProgramClock([
+        {
+          recordingAssetId: "recording-a",
+          transcriptJobId: "transcript-a",
+          captureGroupId: "declared-take",
+          recordedStartedAt: "2026-08-24T15:00:00.000Z",
+          alignment: alignment("2026-08-24T15:00:00.000Z", "evidence-take"),
+        },
+      ]),
+    ).toThrow(
+      expect.objectContaining<Partial<SessionTranscriptAssemblyError>>({
+        code: "TRANSCRIPT_SOURCE_TAKE_MISMATCH",
+      }),
+    );
   });
 
   it("keeps one source on its own clock without implying cross-device sync", () => {
-    const clock = assembleSessionTranscriptProgramClock([{
-      recordingAssetId: "recording-a",
-      transcriptJobId: "transcript-a",
-      recordedStartedAt: "2026-08-24T15:00:00.000Z",
-      alignment: alignment("2026-08-24T15:00:00.200Z"),
-    }]);
+    const clock = assembleSessionTranscriptProgramClock([
+      {
+        recordingAssetId: "recording-a",
+        transcriptJobId: "transcript-a",
+        recordedStartedAt: "2026-08-24T15:00:00.000Z",
+        alignment: alignment("2026-08-24T15:00:00.200Z"),
+      },
+    ]);
     expect(clock).toMatchObject({
       authority: "single-source-origin",
       waveformReviewRequired: false,
