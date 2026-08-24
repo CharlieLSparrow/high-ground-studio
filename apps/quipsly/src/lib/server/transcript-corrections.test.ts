@@ -35,16 +35,44 @@ function recordingAsset(promoted = true) {
     roomId: "room-1",
     kind: "SERVER_MIX",
     status: "VERIFIED",
+    verifiedAt: new Date("2026-08-24T12:00:00.000Z"),
     fileName: "session.m4a",
+    contentType: "audio/mp4",
     durationSeconds: 120,
+    byteSize: BigInt(4096),
+    checksum: "a".repeat(64),
+    storageBucket: "quipsly-private-media",
     storageObjectPath: "recordings/session.m4a",
-    localManifestJson: promoted ? {
-      promotion: {
-        sourceId: "source-1",
-        playbackUrl: "/api/ingest/media/source-1",
-        mediaKind: "audio",
+    localManifestJson: {
+      exactBytesVerified: true,
+      storageGeneration: "1742",
+      ...(promoted ? {
+        promotion: {
+          sourceId: "source-1",
+          playbackUrl: "/api/ingest/media/source-1",
+          mediaKind: "audio",
+        },
+      } : {}),
+    },
+  };
+}
+
+function protectedPlaybackReceipt() {
+  return {
+    roomId: "room-1",
+    recordingAssetId: "asset-1",
+    uploadSessionId: "upload-1",
+    processingDisposition: "RELEASED",
+    metadataJson: {
+      immutableUploadBinding: {
+        roomId: "room-1",
+        sha256: "a".repeat(64),
+        sizeBytes: 4096,
+        bucketName: "quipsly-private-media",
+        objectName: "recordings/session.m4a",
+        generation: "1742",
       },
-    } : {},
+    },
   };
 }
 
@@ -925,6 +953,32 @@ describe("transcript correction desk", () => {
       id: "asset-1",
       status: "VERIFIED",
       eligibleForProtectedPlaybackPreparation: true,
+    });
+  });
+
+  it("plays an exact released Session source without requiring Studio promotion", async () => {
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => accessibleRoom({ promoted: false })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: {
+        findMany: jest.fn(async () => [protectedPlaybackReceipt()]),
+      },
+    };
+
+    const result = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor });
+
+    expect(result.playback).toMatchObject({
+      sourceId: "asset-1",
+      recordingAssetId: "asset-1",
+      url: "/api/sessions/room-1/recordings/asset-1/media",
+      kind: "audio",
+      protectedSource: {
+        schema: "quipsly-session-protected-playback-v1",
+        sha256: "a".repeat(64),
+        byteSize: 4096,
+      },
     });
   });
 

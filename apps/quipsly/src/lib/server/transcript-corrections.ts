@@ -13,6 +13,10 @@ import {
   buildTranscriptCorrectionImpact,
   type TranscriptImpactArtifact,
 } from "@/lib/transcript-correction-impact";
+import {
+  sessionProtectedPlaybackBinding,
+  type SessionProtectedPlaybackBinding,
+} from "./session-protected-playback";
 
 export const TRANSCRIPT_CORRECTION_SCHEMA = "quipsly-transcript-correction-v1";
 export const TRANSCRIPT_SEGMENT_VERIFICATION_SCHEMA = "quipsly-transcript-segment-verification-v1";
@@ -165,7 +169,25 @@ function accessibleRoomWhere(roomId: string, actor: TranscriptCorrectionActor) {
   };
 }
 
-function playbackFromAsset(asset: any) {
+function playbackFromAsset(
+  asset: any,
+  protectedBinding?: SessionProtectedPlaybackBinding | null,
+) {
+  if (protectedBinding) {
+    return {
+      sourceId: protectedBinding.recordingAssetId,
+      url: protectedBinding.url,
+      kind: protectedBinding.kind,
+      recordingAssetId: protectedBinding.recordingAssetId,
+      durationSeconds: typeof asset.durationSeconds === "number" ? asset.durationSeconds : null,
+      label: text(asset.fileName) || "Session recording",
+      protectedSource: {
+        schema: protectedBinding.schema,
+        sha256: protectedBinding.sha256,
+        byteSize: protectedBinding.byteSize,
+      },
+    };
+  }
   const promotion = object(object(asset?.localManifestJson).promotion);
   const sourceId = text(promotion.sourceId);
   const playbackUrl = text(promotion.playbackUrl);
@@ -233,6 +255,10 @@ function recordingForPlaybackPreparation(asset: any, gateAllowed: boolean) {
 }
 
 async function transcriptProcessingGate(prisma: any, recordingAsset: any) {
+  return (await transcriptProcessingEvidence(prisma, recordingAsset)).gate;
+}
+
+async function transcriptProcessingEvidence(prisma: any, recordingAsset: any) {
   const [receipts, room] = await Promise.all([
     prisma.mobileCaptureFinalizationReceipt.findMany({
       where: { recordingAssetId: recordingAsset.id },
@@ -243,12 +269,32 @@ async function transcriptProcessingGate(prisma: any, recordingAsset: any) {
       include: { participants: true, recordingConsents: true },
     }),
   ]);
-  return mobileCaptureProcessingGateFromEvidence({
-    recordingAsset,
+  return {
     receipts,
-    room,
-    transcript: true,
-  });
+    gate: mobileCaptureProcessingGateFromEvidence({
+      recordingAsset,
+      receipts,
+      room,
+      transcript: true,
+    }),
+  };
+}
+
+function exactProtectedPlaybackBinding(
+  roomId: string,
+  recordingAsset: any,
+  receipts: any[],
+) {
+  const candidates = (Array.isArray(receipts) ? receipts : [])
+    .filter((receipt) => text(receipt?.recordingAssetId) === text(recordingAsset?.id))
+    .slice()
+    .sort((left, right) => String(right?.updatedAt ?? right?.createdAt ?? "")
+      .localeCompare(String(left?.updatedAt ?? left?.createdAt ?? "")));
+  for (const receipt of candidates) {
+    const binding = sessionProtectedPlaybackBinding({ roomId, asset: recordingAsset, receipt });
+    if (binding) return binding;
+  }
+  return null;
 }
 
 function correctionSnapshot(correction: any) {
@@ -494,7 +540,9 @@ async function loadAccessibleRoom(
               participantId: true,
               kind: true,
               status: true,
+              verifiedAt: true,
               fileName: true,
+              contentType: true,
               durationSeconds: true,
               byteSize: true,
               checksum: true,
@@ -627,7 +675,8 @@ export async function readTranscriptCorrectionDesk(input: {
     };
   }
 
-  const gate = await transcriptProcessingGate(input.prisma, job.asset);
+  const processingEvidence = await transcriptProcessingEvidence(input.prisma, job.asset);
+  const gate = processingEvidence.gate;
   if (!gate.allowed) {
     return {
       ok: true,
@@ -661,7 +710,10 @@ export async function readTranscriptCorrectionDesk(input: {
     ? text(job.asset?.participantId) || null
     : null;
   const projectedSpeakerGroups = speakerGroups(job);
-  const playback = playbackFromAsset(job.asset);
+  const playback = playbackFromAsset(
+    job.asset,
+    exactProtectedPlaybackBinding(room.id, job.asset, processingEvidence.receipts),
+  );
   const spectralContext = await spectralContextForPlayback(
     input.prisma,
     playback,
@@ -1380,7 +1432,7 @@ function assertPlaybackConfirmation(input: {
 }) {
   if (!input.playback) {
     throw new TranscriptCorrectionError(
-      "Promote the verified recording to protected Quipsly media before accepting a correction against playback.",
+      "Prepare the exact verified Session recording before accepting a correction against playback.",
       409,
       "PLAYBACK_UNAVAILABLE",
     );
@@ -1416,7 +1468,9 @@ async function loadMutationEvidence(prisma: any, input: {
               roomId: true,
               kind: true,
               status: true,
+              verifiedAt: true,
               fileName: true,
+              contentType: true,
               durationSeconds: true,
               byteSize: true,
               checksum: true,
@@ -1439,11 +1493,20 @@ async function loadMutationEvidence(prisma: any, input: {
   if (!room || !job?.asset || !segment) {
     throw new TranscriptCorrectionError("The current transcript segment was not found in this session.", 404, "SEGMENT_NOT_FOUND");
   }
-  const gate = await transcriptProcessingGate(prisma, job.asset);
+  const processingEvidence = await transcriptProcessingEvidence(prisma, job.asset);
+  const gate = processingEvidence.gate;
   if (!gate.allowed) {
     throw new TranscriptCorrectionError(gate.error || "Transcript correction is held by its release gate.", 409, "TRANSCRIPT_HELD");
   }
-  return { room, job, segment, playback: playbackFromAsset(job.asset) };
+  return {
+    room,
+    job,
+    segment,
+    playback: playbackFromAsset(
+      job.asset,
+      exactProtectedPlaybackBinding(room.id, job.asset, processingEvidence.receipts),
+    ),
+  };
 }
 
 async function loadSpeakerAttributionEvidence(prisma: any, input: {
@@ -1478,7 +1541,9 @@ async function loadSpeakerAttributionEvidence(prisma: any, input: {
               roomId: true,
               kind: true,
               status: true,
+              verifiedAt: true,
               fileName: true,
+              contentType: true,
               durationSeconds: true,
               byteSize: true,
               checksum: true,
@@ -1509,11 +1574,15 @@ async function loadSpeakerAttributionEvidence(prisma: any, input: {
   if (!job?.asset) {
     throw new TranscriptCorrectionError("The current recording-backed transcript was not found.", 404, "TRANSCRIPT_NOT_FOUND");
   }
-  const gate = await transcriptProcessingGate(prisma, job.asset);
+  const processingEvidence = await transcriptProcessingEvidence(prisma, job.asset);
+  const gate = processingEvidence.gate;
   if (!gate.allowed) {
     throw new TranscriptCorrectionError(gate.error || "Speaker attribution is held by its release gate.", 409, "TRANSCRIPT_HELD");
   }
-  const playback = playbackFromAsset(job.asset);
+  const playback = playbackFromAsset(
+    job.asset,
+    exactProtectedPlaybackBinding(room.id, job.asset, processingEvidence.receipts),
+  );
   if (!playback) {
     throw new TranscriptCorrectionError(
       "Prepare protected playback before identifying a diarized speaker.",

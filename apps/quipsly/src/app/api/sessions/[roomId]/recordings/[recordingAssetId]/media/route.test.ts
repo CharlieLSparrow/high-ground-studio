@@ -72,6 +72,7 @@ function releasedReceipt() {
   return {
     roomId,
     recordingAssetId,
+    uploadSessionId: "upload-1",
     processingDisposition: "RELEASED",
     metadataJson: {
       immutableUploadBinding: {

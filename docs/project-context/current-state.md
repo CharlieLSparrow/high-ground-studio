@@ -3623,3 +3623,19 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   two-source playback, correction/readback, and wrong-source iPhone rejection
   remain in the deferred validation ledger. Detailed decision record:
   `docs/coordination/2026-08-24-session-transcript-correction-assembly.md`.
+
+### 2026-08-24 exact Session transcript playback binding
+
+- Session inventory, transcript correction, and the private range-serving route
+  now share one exact playback binding. Verified/released labels alone are
+  insufficient without a matching room/source/upload receipt, SHA-256, byte
+  size, vault object, and storage generation.
+- Browser transcript review can play each released participant-owned source
+  directly from its authenticated Session route without waiting for Studio
+  promotion. Correction and speaker-attribution mutations reconstruct the same
+  server authority before accepting playback evidence.
+- One hundred focused tests, strict Quipsly TypeScript, and both release static
+  gates pass. Capture remains fail-closed for another participant's
+  playback-backed transcript review until its protected downloader is connected
+  to transcript listened-position receipts. Detailed decision record:
+  `docs/coordination/2026-08-24-session-protected-transcript-playback.md`.

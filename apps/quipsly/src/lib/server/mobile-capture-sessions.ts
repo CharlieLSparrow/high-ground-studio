@@ -21,6 +21,7 @@ import {
   buildCaptureSourceAlignmentProposal,
 } from "./capture-source-alignment";
 import { mobileSessionScheduledTimezone } from "./mobile-capture-session-schedule";
+import { sessionProtectedPlaybackBinding } from "./session-protected-playback";
 
 const MOBILE_CAPTURE_ACTION_PACKET_KIND = "quipsly-capture-action-packet-v1";
 const DELIBERATE_SESSION_NOTE_KINDS = new Set([
@@ -286,11 +287,6 @@ function positiveByteSize(value: unknown) {
   return /^[1-9][0-9]*$/.test(normalized) ? normalized : null;
 }
 
-function storageGeneration(value: unknown) {
-  const normalized = label(value)?.trim() || "";
-  return /^[1-9][0-9]*$/.test(normalized) ? normalized : null;
-}
-
 export function captureSourceSummaries(
   room: any,
   receipts: any[],
@@ -349,17 +345,6 @@ export function captureSourceSummaries(
       const exactBytesVerified =
         manifest.exactBytesVerified === true &&
         Boolean(receipt?.uploadSessionId);
-      const receiptMetadata = sourceJson(receipt?.metadataJson);
-      const immutableBinding = sourceJson(
-        receiptMetadata.immutableUploadBinding,
-      );
-      const durableRecoveryReplica = sourceJson(
-        sourceJson(receiptMetadata.recoveryAuthority)
-          .durableCaptureReplica,
-      );
-      const durableRecoveryStorage = sourceJson(
-        sourceJson(manifest.captureSourceRecovery).durableStorage,
-      );
       const canonicalSha256 = exactBytesVerified
         ? sha256(asset.checksum)
         : null;
@@ -369,29 +354,11 @@ export function captureSourceSummaries(
         label(receipt?.processingDisposition) ||
         label(manifest.processingDisposition) ||
         "HELD";
-      const bindingGeneration =
-        storageGeneration(immutableBinding.generation) ||
-        storageGeneration(durableRecoveryReplica.generation);
-      const manifestGeneration =
-        storageGeneration(manifest.storageGeneration) ||
-        storageGeneration(durableRecoveryStorage.generation);
-      const immutablePlaybackBindingMatches =
-        label(receipt?.roomId) === label(room?.id) &&
-        label(receipt?.recordingAssetId) === label(asset.id) &&
-        label(immutableBinding.roomId) === label(room?.id) &&
-        sha256(immutableBinding.sha256) === canonicalSha256 &&
-        positiveByteSize(immutableBinding.sizeBytes) === canonicalByteSize &&
-        label(immutableBinding.bucketName) === label(asset.storageBucket) &&
-        label(immutableBinding.objectName) === label(asset.storageObjectPath) &&
-        bindingGeneration !== null &&
-        bindingGeneration === manifestGeneration;
-      const sessionPlaybackReady =
-        exactBytesVerified &&
-        recordingStatus === "VERIFIED" &&
-        processingDisposition === "RELEASED" &&
-        canonicalSha256 !== null &&
-        canonicalByteSize !== null &&
-        immutablePlaybackBindingMatches;
+      const protectedPlayback = sessionProtectedPlaybackBinding({
+        roomId: label(room?.id) || "",
+        asset,
+        receipt,
+      });
       const captureGroupId =
         label(manifest.captureGroupId) || label(receipt?.captureId);
       const startReceiptId = label(receipt?.startReceiptId);
@@ -437,9 +404,7 @@ export function captureSourceSummaries(
         sourceId: label(receipt?.sourceId) || label(promotion.sourceId),
         mediaAssetId,
         playbackUrl: label(media?.url) || label(promotion.playbackUrl),
-        sessionPlaybackUrl: sessionPlaybackReady
-          ? `/api/sessions/${encodeURIComponent(room.id)}/recordings/${encodeURIComponent(asset.id)}/media`
-          : null,
+        sessionPlaybackUrl: protectedPlayback?.url ?? null,
         sourceProfile,
         interruptionRepairRequired,
         interruptionRepair:

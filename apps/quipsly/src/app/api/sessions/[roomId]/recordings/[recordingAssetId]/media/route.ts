@@ -4,6 +4,10 @@ import { getPrismaClient } from "@/lib/prisma";
 import { getMediaBucket, requireMediaBucketName } from "@/lib/server/gcs";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionAccessWhere } from "@/lib/server/session-access";
+import {
+  sessionProtectedPlaybackBinding,
+  sessionProtectedPlaybackReceiptReleased,
+} from "@/lib/server/session-protected-playback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,34 +34,9 @@ function cleanIdentifier(value: unknown) {
   return clean.length > 0 && clean.length <= 240 ? clean : "";
 }
 
-function object(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function text(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
 function positiveSafeInteger(value: unknown) {
   const parsed = typeof value === "bigint" ? Number(value) : Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function exactSha256(value: unknown) {
-  const normalized = text(value).toLowerCase();
-  return /^[0-9a-f]{64}$/.test(normalized) ? normalized : null;
-}
-
-function exactGeneration(value: unknown) {
-  const normalized = text(value);
-  return /^[1-9][0-9]*$/.test(normalized) ? normalized : null;
-}
-
-function mediaContentType(value: unknown) {
-  const normalized = text(value).toLowerCase();
-  return /^(audio|video)\/[a-z0-9.+-]+$/.test(normalized) ? normalized : null;
 }
 
 function byteRange(
@@ -167,16 +146,16 @@ async function protectedSessionMediaResponse(
       select: {
         roomId: true,
         recordingAssetId: true,
+        uploadSessionId: true,
         processingDisposition: true,
         metadataJson: true,
       },
     });
-    if (
-      !receipt ||
-      receipt.roomId !== room.id ||
-      receipt.recordingAssetId !== asset.id ||
-      receipt.processingDisposition !== "RELEASED"
-    ) {
+    if (!sessionProtectedPlaybackReceiptReleased({
+      roomId: room.id,
+      recordingAssetId: asset.id,
+      receipt,
+    })) {
       return privateJson(
         409,
         "SOURCE_NOT_RELEASED",
@@ -184,46 +163,12 @@ async function protectedSessionMediaResponse(
       );
     }
 
-    const manifest = object(asset.localManifestJson);
-    const receiptMetadata = object(receipt.metadataJson);
-    const immutableBinding = object(receiptMetadata.immutableUploadBinding);
-    const durableRecoveryReplica = object(
-      object(receiptMetadata.recoveryAuthority).durableCaptureReplica,
-    );
-    const durableRecoveryStorage = object(
-      object(manifest.captureSourceRecovery).durableStorage,
-    );
-    const size = positiveSafeInteger(asset.byteSize);
-    const bindingSize = positiveSafeInteger(immutableBinding.sizeBytes);
-    const sha256 = exactSha256(asset.checksum);
-    const bindingSha256 = exactSha256(immutableBinding.sha256);
-    const bucketName = text(asset.storageBucket);
-    const objectName = text(asset.storageObjectPath);
-    const bindingBucketName = text(immutableBinding.bucketName);
-    const bindingObjectName = text(immutableBinding.objectName);
-    const generation =
-      exactGeneration(immutableBinding.generation) ??
-      exactGeneration(durableRecoveryReplica.generation);
-    const manifestGeneration =
-      exactGeneration(manifest.storageGeneration) ??
-      exactGeneration(durableRecoveryStorage.generation);
-    const contentType = mediaContentType(asset.contentType);
-    const exactBinding =
-      asset.status === "VERIFIED" &&
-      Boolean(asset.verifiedAt) &&
-      manifest.exactBytesVerified === true &&
-      size !== null &&
-      size === bindingSize &&
-      sha256 !== null &&
-      sha256 === bindingSha256 &&
-      bucketName.length > 0 &&
-      bucketName === bindingBucketName &&
-      objectName.length > 0 &&
-      objectName === bindingObjectName &&
-      generation !== null &&
-      generation === manifestGeneration &&
-      contentType !== null;
-    if (!exactBinding) {
+    const binding = sessionProtectedPlaybackBinding({
+      roomId: room.id,
+      asset,
+      receipt,
+    });
+    if (!binding) {
       return privateJson(
         409,
         "SOURCE_EVIDENCE_MISMATCH",
@@ -232,7 +177,7 @@ async function protectedSessionMediaResponse(
     }
 
     const configuredBucket = requireMediaBucketName();
-    if (bucketName !== configuredBucket) {
+    if (binding.bucketName !== configuredBucket) {
       return privateJson(
         409,
         "SOURCE_VAULT_MISMATCH",
@@ -240,14 +185,14 @@ async function protectedSessionMediaResponse(
       );
     }
 
-    const file = getMediaBucket(configuredBucket).file(objectName, {
-      generation: generation as any,
+    const file = getMediaBucket(configuredBucket).file(binding.objectName, {
+      generation: binding.generation as any,
     });
     const [metadata] = await file.getMetadata();
     const retainedSize = positiveSafeInteger(metadata.size);
     if (
-      retainedSize !== size ||
-      exactGeneration(metadata.generation) !== generation
+      retainedSize !== binding.byteSize ||
+      String(metadata.generation) !== binding.generation
     ) {
       return privateJson(
         409,
@@ -256,15 +201,19 @@ async function protectedSessionMediaResponse(
       );
     }
 
-    const headers = mediaHeaders({ contentType, sha256, size });
-    const range = byteRange(request.headers.get("range"), size);
+    const headers = mediaHeaders({
+      contentType: binding.contentType,
+      sha256: binding.sha256,
+      size: binding.byteSize,
+    });
+    const range = byteRange(request.headers.get("range"), binding.byteSize);
     if (range === "invalid") {
-      headers.set("Content-Range", `bytes */${size}`);
+      headers.set("Content-Range", `bytes */${binding.byteSize}`);
       return new Response(null, { status: 416, headers });
     }
     if (range) {
       headers.set("Content-Length", String(range.end - range.start + 1));
-      headers.set("Content-Range", `bytes ${range.start}-${range.end}/${size}`);
+      headers.set("Content-Range", `bytes ${range.start}-${range.end}/${binding.byteSize}`);
       const body = headOnly
         ? null
         : (Readable.toWeb(
@@ -272,7 +221,7 @@ async function protectedSessionMediaResponse(
           ) as ReadableStream);
       return new Response(body, { status: 206, headers });
     }
-    headers.set("Content-Length", String(size));
+    headers.set("Content-Length", String(binding.byteSize));
     const body = headOnly
       ? null
       : (Readable.toWeb(file.createReadStream() as Readable) as ReadableStream);

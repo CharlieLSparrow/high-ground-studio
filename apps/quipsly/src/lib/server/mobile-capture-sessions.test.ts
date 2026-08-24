@@ -566,6 +566,7 @@ describe("mobile Session canonical capture sources", () => {
         recordingAssets: [
           {
             id: "recording-1",
+            roomId: "room-1",
             fileName: "homer-iphone.mov",
             kind: "LOCAL_VIDEO",
             contentType: "video/quicktime",
@@ -575,6 +576,7 @@ describe("mobile Session canonical capture sources", () => {
             storageObjectPath: "mobile/room-1/homer-iphone.mov",
             durationSeconds: 1_800,
             status: "VERIFIED",
+            verifiedAt: new Date("2026-07-27T18:31:00Z"),
             recordedStartedAt: new Date("2026-07-27T18:00:00Z"),
             recordedStoppedAt: new Date("2026-07-27T18:30:00Z"),
             localManifestJson: {
@@ -720,6 +722,7 @@ describe("mobile Session canonical capture sources", () => {
       id: "room-1",
       recordingAssets: [{
         id: "recording-1",
+        roomId: "room-1",
         kind: "LOCAL_AUDIO",
         contentType: "audio/mp4",
         byteSize: BigInt(1024),
@@ -727,6 +730,7 @@ describe("mobile Session canonical capture sources", () => {
         storageBucket: "quipsly-private-media",
         storageObjectPath: "mobile/room-1/audio.m4a",
         status: "VERIFIED",
+        verifiedAt: new Date("2026-08-02T18:00:00Z"),
         localManifestJson: {
           exactBytesVerified: true,
           storageGeneration: "1742",
