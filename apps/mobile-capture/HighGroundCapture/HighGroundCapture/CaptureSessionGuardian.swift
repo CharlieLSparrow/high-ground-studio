@@ -381,64 +381,77 @@ struct CaptureSessionGuardianCard: View {
         return value.isEmpty ? nil : value
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: iconName)
-                    .font(.headline)
-                    .foregroundStyle(tint)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(projection.eyebrow)
-                        .font(.caption2.weight(.black))
-                        .textCase(.uppercase)
-                        .tracking(1.1)
-                    Text(projection.title)
+    @ViewBuilder var body: some View {
+        if shouldPresent {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: iconName)
                         .font(.headline)
-                    Text(projection.detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Text("Next: \(projection.action)")
-                .font(.caption.weight(.bold))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 12))
-
-            DisclosureGroup("Why Quipsly says this", isExpanded: $showsEvidence) {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(projection.evidence) { row in
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(row.lane)
-                                .font(.caption2.weight(.black))
-                                .frame(width: 92, alignment: .leading)
-                            Text(row.value)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
+                        .foregroundStyle(tint)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(projection.eyebrow)
+                            .font(.caption2.weight(.black))
+                            .textCase(.uppercase)
+                            .tracking(1.1)
+                        Text(projection.title)
+                            .font(.headline)
+                        Text(projection.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text("Call audio is for conversation. This iPhone's saved recording is the high-quality copy.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                 }
-                .padding(.top, 8)
+
+                Text("Next: \(projection.action)")
+                    .font(.caption.weight(.bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 12))
+
+                DisclosureGroup("Details", isExpanded: $showsEvidence) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(projection.evidence) { row in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(row.lane)
+                                    .font(.caption2.weight(.black))
+                                    .frame(width: 92, alignment: .leading)
+                                Text(row.value)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        Text("Call audio is for conversation. This iPhone's saved recording is the high-quality copy.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 8)
+                }
+                .font(.caption.weight(.bold))
+                .accessibilityIdentifier("CaptureSessionGuardianEvidence")
             }
-            .font(.caption.weight(.bold))
-            .accessibilityIdentifier("CaptureSessionGuardianEvidence")
+            .padding(14)
+            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(tint.opacity(0.35), lineWidth: 1)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("CaptureSessionGuardian")
         }
-        .padding(14)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(tint.opacity(0.35), lineWidth: 1)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("CaptureSessionGuardian")
+    }
+
+    /// Routine lobby and ready-to-record states already have obvious controls.
+    /// The Guardian earns space only for an actionable problem or while it is
+    /// actively protecting a recording transition.
+    private var shouldPresent: Bool {
+        projection.level == .intervene
+            || [.preparing, .recording, .paused, .finalizing].contains(audioCapture.captureState)
+            || [.preparing, .arming, .recording, .paused, .finalizing].contains(videoCapture.state)
+            || providerConnecting
+            || providerError?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 
     private var tint: Color {

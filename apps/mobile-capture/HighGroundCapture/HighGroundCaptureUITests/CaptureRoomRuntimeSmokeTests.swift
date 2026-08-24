@@ -4246,9 +4246,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.otherElements["CaptureRecorderHero"].firstMatch.waitForExistence(timeout: 8),
             "The local recorder should be the dominant Record-tab action."
         )
-        XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureSessionGuardian"].firstMatch.waitForExistence(timeout: 8),
-            "Record should rank the most important Session, call, source, signal, and recovery intervention before a take."
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureSessionGuardian"].firstMatch.exists,
+            "A routine idle local recorder should stay quiet until an actual intervention or active-take protection is needed."
         )
         XCTAssertTrue(
             app.buttons["CaptureStartButton"].firstMatch.exists,
@@ -4427,14 +4427,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 swipeAttempts: 4
             )
         )
-        XCTAssertTrue(
-            waitForRuntimeElement(
-                app.descendants(matching: .any)["CaptureSessionGuardian"].firstMatch,
-                in: app,
-                timeout: 8,
-                swipeAttempts: 4
-            ),
-            "The retained Session should expose one calm operational Guardian before recording."
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureSessionGuardian"].firstMatch.exists,
+            "The retained Session should not manufacture a warning before recording."
         )
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists)
 

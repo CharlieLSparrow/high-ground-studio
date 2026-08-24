@@ -199,14 +199,24 @@ final class CaptureExperienceUITests: XCTestCase {
         let route = app.descendants(matching: .any)["CaptureCallInputRoute"]
         let consent = app.descendants(matching: .any)["CaptureConsentStrip"]
         let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"]
-        let nextStep = app.descendants(matching: .any)["CaptureOuterRoomNextStep"]
 
         XCTAssertTrue(call.waitForExistence(timeout: 5))
         XCTAssertTrue(join.exists, "The green room should expose one obvious Join call action.")
         XCTAssertTrue(useCallAudio.exists, "The familiar pre-join surface should make second-device audio routing obvious.")
         XCTAssertTrue(route.exists, "The current microphone route should be visible before joining.")
         XCTAssertTrue(localOnly.exists, "Local-only recording should remain one secondary escape hatch.")
-        XCTAssertTrue(nextStep.exists)
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureOuterRoomNextStep"].exists,
+            "Obvious call actions should not be followed by another paragraph of lobby instructions."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureSessionGuardian"].exists,
+            "A routine disconnected lobby is not an error and should remain quiet."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureCallAudioDeviceGuidance"].exists,
+            "The standard this-iPhone audio choice should not explain itself."
+        )
         XCTAssertFalse(consent.exists, "Consent and recorder controls should not turn the outer room into a vertical checklist.")
 
         localOnly.tap()
@@ -455,7 +465,7 @@ final class CaptureExperienceUITests: XCTestCase {
             card.waitForExistence(timeout: 5),
             "The selected Session should expose one consolidated pre-record checklist."
         )
-        XCTAssertTrue(app.staticTexts["Physical proof needed"].exists)
+        XCTAssertTrue(app.staticTexts["Preview only"].exists)
         let disclosure = app.descendants(matching: .any)[
             "CaptureRehearsalReadinessDisclosure"
         ]
@@ -475,13 +485,20 @@ final class CaptureExperienceUITests: XCTestCase {
         let manuscript = app.descendants(matching: .any)[
             "CaptureRehearsalCheck_manuscript"
         ]
-        XCTAssertTrue(manuscript.exists)
+        reveal(manuscript)
+        XCTAssertTrue(manuscript.waitForExistence(timeout: 3))
+        expectation(
+            for: NSPredicate(format: "label CONTAINS %@", "The Swear Jar"),
+            evaluatedWith: manuscript
+        )
+        waitForExpectations(timeout: 3)
         XCTAssertTrue(manuscript.label.contains("The Swear Jar"))
         XCTAssertTrue(manuscript.label.contains("34 protected blocks"))
 
         let watch = app.descendants(matching: .any)[
             "CaptureRehearsalCheck_watch"
         ]
+        reveal(watch)
         XCTAssertTrue(watch.exists)
         XCTAssertTrue(watch.label.contains("Ted Lasso · Be Curious"))
         XCTAssertTrue(
@@ -491,6 +508,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let soundCheck = app.descendants(matching: .any)[
             "CaptureRehearsalCheck_sound-check"
         ]
+        reveal(soundCheck)
         XCTAssertTrue(soundCheck.exists)
         XCTAssertTrue(soundCheck.label.contains("Optional sound check"))
         XCTAssertTrue(soundCheck.label.contains("Record and replay a private sample"))
@@ -503,6 +521,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let soundCheckControls = app.descendants(matching: .any)[
             "CaptureSoundCheckControls"
         ]
+        reveal(soundCheckControls)
         XCTAssertTrue(soundCheckControls.exists)
         let soundCheckStart = app.buttons["CaptureSoundCheckStart"]
         XCTAssertTrue(soundCheckStart.exists)
@@ -520,6 +539,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(soundCheckBoundary.label.contains("deleted automatically"))
 
         let runCheck = app.buttons["CaptureRehearsalRunCheck"]
+        reveal(runCheck)
         XCTAssertTrue(runCheck.exists)
         XCTAssertFalse(
             runCheck.isEnabled,
@@ -3241,7 +3261,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             "The App Store Record draft must show the familiar green-room join action."
         )
         XCTAssertTrue(app.buttons["CaptureRecordWithoutJoiningButton"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureOuterRoomNextStep"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureOuterRoomNextStep"].exists)
         XCTAssertFalse(app.buttons["CaptureConfirmConsentButton"].exists)
         Thread.sleep(forTimeInterval: 0.8)
         keepScreenshot("02-record.png")

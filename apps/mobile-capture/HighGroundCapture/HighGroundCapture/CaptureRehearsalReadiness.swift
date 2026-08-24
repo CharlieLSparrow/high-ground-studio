@@ -60,7 +60,7 @@ struct CaptureRehearsalReadinessCard: View {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Label("Before you record", systemImage: summarySystemImage)
+                            Label("Device & sound check", systemImage: summarySystemImage)
                                 .font(.headline)
                                 .foregroundStyle(summaryTint)
                             Spacer(minLength: 8)
@@ -75,7 +75,7 @@ struct CaptureRehearsalReadinessCard: View {
                     .contentShape(Rectangle())
                 } else {
                     HStack(alignment: .center, spacing: 10) {
-                        Label("Before you record", systemImage: summarySystemImage)
+                        Label("Device & sound check", systemImage: summarySystemImage)
                             .font(.headline)
                             .foregroundStyle(summaryTint)
                         Spacer(minLength: 8)
@@ -90,7 +90,7 @@ struct CaptureRehearsalReadinessCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                "Before you record, \(summaryLabel)"
+                "Device and sound check, \(summaryLabel)"
             )
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             .accessibilityHint(
@@ -537,14 +537,14 @@ struct CaptureRehearsalReadinessCard: View {
     }
 
     private var summaryLabel: String {
-        if previewOnly { return "Physical proof needed" }
+        if previewOnly { return "Preview only" }
         if remainingRequiredCount == 0 && optionalWarningCount == 0 {
-            return "Ready to record"
+            return "Optional"
         }
         if remainingRequiredCount == 0 {
-            return "Ready · optional check needs attention"
+            return "Optional check needs attention"
         }
-        return "\(remainingRequiredCount) \(remainingRequiredCount == 1 ? "check" : "checks") left"
+        return "Action needed"
     }
 
     private var summarySystemImage: String {

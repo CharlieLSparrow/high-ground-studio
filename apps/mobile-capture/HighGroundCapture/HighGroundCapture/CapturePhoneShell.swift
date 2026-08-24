@@ -6713,17 +6713,15 @@ private struct CaptureRecorderView: View {
                             }
                         }
                     )
+                    .task(id: "rehearsal-preview|\(session.id)") {
+                        // Preview/reviewer evidence must not depend on a later
+                        // lazy card entering the viewport. Production sources
+                        // remain explicitly prepared by the device check.
+                        guard model.usesPreviewData else { return }
+                        episodeManuscript.loadPreview(session: session)
+                        episodeWatch.loadPreview(session: session)
+                    }
                         }
-                    } else {
-                        Label(
-                            "Join the call, or choose Record without joining. Recording setup appears next.",
-                            systemImage: "arrow.up.circle.fill"
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 4)
-                        .accessibilityIdentifier("CaptureOuterRoomNextStep")
                     }
 
                     CaptureSessionTranscriptReviewCard(
@@ -12306,15 +12304,13 @@ private struct ProviderRoomControls: View {
                 .disabled(providerControlsLocked || model.isChangingRoom)
                 .accessibilityIdentifier("CaptureUseCallAudioToggle")
 
-                Text(
-                    callAudioOnAnotherDevice
-                        ? "Quipsly keeps call audio off on this iPhone to prevent echo. You can still use the Session and record a separate local camera source here."
-                        : "This iPhone will handle the conversation audio."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("CaptureCallAudioDeviceGuidance")
+                if callAudioOnAnotherDevice {
+                    Text("Call audio stays off here to prevent echo. Local camera recording still works.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("CaptureCallAudioDeviceGuidance")
+                }
 
                 Button {
                     Task {
