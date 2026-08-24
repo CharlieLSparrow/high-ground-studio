@@ -1250,6 +1250,11 @@ function checkTranscriptCorrectionContractSources() {
   const schedulePageText = sourceText("apps/quipsly/src/app/(app)/schedule/page.tsx");
   const schedulePlannerText = sourceText("apps/quipsly/src/app/(app)/schedule/schedule-planner.tsx");
   const sessionReviewText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-review-client.tsx");
+  const transcriptSpeakerEvidenceBadgeText = sourceText("apps/quipsly/src/components/transcript-speaker-evidence-badge.tsx");
+  const durableWorkText = sourceText("apps/quipsly/src/app/(app)/work/work-client.tsx");
+  const durableNotesText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-notes-workspace.tsx");
+  const durableScheduleText = sourceText("apps/quipsly/src/app/(app)/schedule/schedule-planner.tsx");
+  const durableSchedulePageText = sourceText("apps/quipsly/src/app/(app)/schedule/page.tsx");
   const sessionNotesWorkspaceText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-notes-workspace.tsx");
   const sessionReviewModelText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-review-model.ts");
   const clientFollowUpServiceText = sourceText("apps/quipsly/src/lib/server/session-client-follow-up.ts");
@@ -1513,7 +1518,7 @@ function checkTranscriptCorrectionContractSources() {
       && workModelText.includes("readTranscriptDerivedTaskSource")
       && schedulePageText.includes("readTranscriptDerivedTaskSource")
       && schedulePageText.includes("Reviewed transcript timestamp")
-      && schedulePlannerText.includes("Focus source · reviewed transcript")
+      && schedulePlannerText.includes("Focus source · transcript")
       && todayRouteText.includes("readTranscriptDerivedTaskSource")
       && todayRouteText.includes("Reviewed transcript follow-through")
       && todayRouteText.includes("tasksRankedForToday: true")
@@ -1548,9 +1553,9 @@ function checkTranscriptCorrectionContractSources() {
       && webText.includes("Make this my goal")
       && webText.includes("It creates no task, target date, reminder, calendar event, message, or publication.")
       && workModelText.includes("readTranscriptDerivedGoalSource")
-      && workClientText.includes("Reviewed transcript goal source")
+      && workClientText.includes("Transcript goal source")
       && schedulePageText.includes("readTranscriptDerivedGoalSource")
-      && schedulePlannerText.includes("Focus source · reviewed transcript")
+      && schedulePlannerText.includes("Focus source · transcript")
       && todayRouteText.includes("readTranscriptDerivedGoalSource")
       && shellText.includes("CaptureTodayGoalSourceLink_")
       && shellText.includes("exact transcript segment and retained recording source behind this goal"),
@@ -1993,10 +1998,10 @@ function checkTranscriptCorrectionContractSources() {
       && coachingPacketText.includes('"source-binding"')
       && packetRouteText.includes("speakerAuthority: segment.speakerAuthority")
       && sessionReviewModelText.includes('speakerAuthority?: "correction" | "attribution" | "source-binding" | "provider" | "unresolved"')
-      && sessionReviewText.includes("SpeakerEvidenceBadge")
-      && sessionReviewText.includes("Participant recording")
-      && sessionReviewText.includes("Automatic speaker label")
-      && sessionReviewText.includes("Speaker needs review")
+      && sessionReviewText.includes("TranscriptSpeakerEvidenceBadge")
+      && transcriptSpeakerEvidenceBadgeText.includes("Participant recording")
+      && transcriptSpeakerEvidenceBadgeText.includes("Automatic speaker label")
+      && transcriptSpeakerEvidenceBadgeText.includes("Speaker needs review")
       && nativeText.includes("speakerAuthority")
       && nativeText.includes("CapturePacketSpeakerEvidenceBadge")
       && nativeText.includes("Participant recording")
@@ -2004,6 +2009,17 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("Speaker needs review"),
     "packetSpeakerIdentityEvidenceVisible",
     "Nest and iPhone Session follow-through explain whether a speaker name was reviewed, bound to an isolated participant recording, supplied automatically, or remains unresolved without conflating that identity with word review.",
+  );
+  expect(
+    durableWorkText.includes("TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority}")
+      && durableWorkText.includes("TranscriptSpeakerEvidenceBadge authority={goal.sourceAnchor.speakerAuthority}")
+      && durableWorkText.includes("lastMergedTranscriptEvidence.sourceAnchor.speakerAuthority")
+      && durableNotesText.includes("TranscriptSpeakerEvidenceBadge authority={note.sourceAnchor.speakerAuthority}")
+      && durableNotesText.includes("lastMergedSource.sourceAnchor.speakerAuthority")
+      && durableScheduleText.includes("TranscriptSpeakerEvidenceBadge authority={block.sourceAnchor.speakerAuthority}")
+      && durableSchedulePageText.includes("TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority}"),
+    "durableFollowThroughSpeakerEvidenceVisible",
+    "Saved transcript-backed notes, tasks, goals, and focus plans show the same plain-language speaker-authority evidence after users leave the Session review surface.",
   );
   expect(
     packetRouteText.includes("buildPacketGoalCandidates")

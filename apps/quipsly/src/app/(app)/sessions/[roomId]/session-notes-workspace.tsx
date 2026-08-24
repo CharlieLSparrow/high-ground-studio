@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
+import { TranscriptSpeakerEvidenceBadge } from "@/components/transcript-speaker-evidence-badge";
 
 import type { SessionTaxonomy } from "./session-review-client";
 import {
@@ -318,8 +319,9 @@ export function SessionNotesWorkspace({
               <p className="mt-4 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#5f4d37]">{note.body}</p>
               {note.sourceAnchor ? (
                 <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
-                  <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Reviewed transcript source</p>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Transcript source</p>
                   <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-sky-950">{note.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${note.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{note.sourceAnchor.effectiveTextSnapshot}</p>
+                  <TranscriptSpeakerEvidenceBadge authority={note.sourceAnchor.speakerAuthority} />
                   <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(note.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline">
                     <Play size={14} aria-hidden="true" />Return to {timestampForSeconds(note.sourceAnchor.startSeconds)}–{timestampForSeconds(note.sourceAnchor.endSeconds)}
                   </Link>
@@ -329,6 +331,7 @@ export function SessionNotesWorkspace({
                 <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/70 p-3">
                   <p className="text-[10px] font-black uppercase tracking-wide text-violet-800">Latest merged transcript source</p>
                   <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-violet-950">{note.lastMergedSource.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${note.lastMergedSource.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{note.lastMergedSource.sourceAnchor.effectiveTextSnapshot}</p>
+                  <TranscriptSpeakerEvidenceBadge authority={note.lastMergedSource.sourceAnchor.speakerAuthority} />
                   <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(note.lastMergedSource.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-3 py-2 text-xs font-black text-violet-900 hover:underline">
                     <Play size={14} aria-hidden="true" />Return to merged source at {timestampForSeconds(note.lastMergedSource.sourceAnchor.startSeconds)}–{timestampForSeconds(note.lastMergedSource.sourceAnchor.endSeconds)}
                   </Link>

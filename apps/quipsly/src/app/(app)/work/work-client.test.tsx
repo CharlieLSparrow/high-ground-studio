@@ -40,7 +40,7 @@ const snapshot: WorkSnapshot = {
     createdAt: "2026-07-18T18:00:00.000Z", updatedAt: "2026-07-18T18:00:00.000Z", isOverdue: false, assigneeLabel: null,
     provenance: "Reviewed transcript timestamp", attentionReason: "Reviewed transcript follow-through", roomId: "room-1", sessionTitle: "Episode review", sessionStatus: "ENDED", workspaceSlug: null, bookingStart: null,
     project: null, tags: [], canEdit: true, canManageTags: true, canManageReminder: true,
-    sourceAnchor: { schema: "quipsly-transcript-derived-task-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", acceptedCorrectionId: "correction-1", recordingAssetId: "asset-1", playbackSourceId: "source-1" },
+    sourceAnchor: { schema: "quipsly-transcript-derived-task-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", speakerAuthority: "source-binding", sourceBoundParticipantId: "participant-charlie", acceptedCorrectionId: "correction-1", recordingAssetId: "asset-1", playbackSourceId: "source-1" },
     lastMergedTranscriptEvidence: null,
   }],
   goals: [], commitments: [], weeklyReviews: [],
@@ -105,6 +105,7 @@ describe("Work Queue interactions", () => {
     const link = screen.getByRole("link", { name: "Return to 0:03–0:04" });
     expect(link).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
     expect(screen.getByText(/Charlie: Welcome, everybody/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toBeInTheDocument();
     expect(screen.getByText((_, element) => (
       element?.tagName === "SPAN"
       && element.textContent?.startsWith("Reminder ") === true

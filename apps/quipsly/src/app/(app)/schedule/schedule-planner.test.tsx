@@ -48,6 +48,8 @@ describe("SchedulePlanner", () => {
         providerSpeakerLabel: "Speaker",
         effectiveTextSnapshot: "Keep one clear next move.",
         effectiveSpeakerLabelSnapshot: "Homer",
+        speakerAuthority: "source-binding",
+        sourceBoundParticipantId: "participant-homer",
         acceptedCorrectionId: "correction-1",
         recordingAssetId: "asset-1",
         playbackSourceId: "playback-1",
@@ -57,6 +59,7 @@ describe("SchedulePlanner", () => {
     expect(link).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
     expect(screen.getByRole("link", { name: "Use the client commitment" })).toHaveAttribute("href", "/work?task=task-1");
     expect(screen.getByText("Homer: Keep one clear next move.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toBeInTheDocument();
     expect(screen.getByLabelText("Tags: Coaching follow-up")).toHaveTextContent("#Coaching follow-up");
     expect(screen.getByRole("link", { name: "Find all accessible work tagged Coaching follow-up" })).toHaveAttribute("href", "/find?tag=tag-1");
   });
@@ -88,6 +91,7 @@ describe("SchedulePlanner", () => {
         providerSpeakerLabel: "Speaker",
         effectiveTextSnapshot: "Build a repeatable coaching review habit.",
         effectiveSpeakerLabelSnapshot: "Homer",
+        speakerAuthority: "provider",
         acceptedCorrectionId: "correction-2",
         recordingAssetId: "asset-2",
         playbackSourceId: "playback-2",
@@ -99,6 +103,7 @@ describe("SchedulePlanner", () => {
     );
     expect(screen.getByRole("link", { name: "Build the coaching review habit" })).toHaveAttribute("href", "/work?goal=goal-1");
     expect(screen.getByText("Homer: Build a repeatable coaching review habit.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Automatic speaker label\. This speaker name still comes from transcription processing\./i)).toBeInTheDocument();
   });
 
   it("submits the start shown in the datetime field instead of stale component state", async () => {

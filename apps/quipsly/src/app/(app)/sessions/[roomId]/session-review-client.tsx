@@ -41,6 +41,7 @@ import {
   useLiveSessionDock,
 } from "@/components/live-session-dock";
 import { SessionInvitations } from "@/components/session-invitations";
+import { TranscriptSpeakerEvidenceBadge } from "@/components/transcript-speaker-evidence-badge";
 import {
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT,
@@ -3181,31 +3182,6 @@ function TranscriptSpanProvenance({ segmentIds }: { segmentIds?: string[] }) {
   );
 }
 
-function SpeakerEvidenceBadge({ authority }: {
-  authority?: "correction" | "attribution" | "source-binding" | "provider" | "unresolved";
-}) {
-  const copy = authority === "correction"
-    ? { label: "Name reviewed", detail: "A person reviewed this speaker name." }
-    : authority === "attribution"
-      ? { label: "Speaker reviewed", detail: "A person matched this voice to a Session participant." }
-      : authority === "source-binding"
-        ? { label: "Participant recording", detail: "This speaker comes from that participant's isolated recording." }
-        : authority === "provider"
-          ? { label: "Automatic speaker label", detail: "This speaker name still comes from transcription processing." }
-          : authority === "unresolved"
-            ? { label: "Speaker needs review", detail: "Quipsly has not identified this speaker yet." }
-            : null;
-  if (!copy) return null;
-  return (
-    <p
-      title={copy.detail}
-      className="mt-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-sky-900"
-    >
-      {copy.label}
-    </p>
-  );
-}
-
 function GoalCandidateCard({
   candidate,
   busy,
@@ -3304,7 +3280,7 @@ function GoalCandidateCard({
         {candidate.sourceText}
       </p>
       <TranscriptSpanProvenance segmentIds={candidate.segmentIds} />
-      <SpeakerEvidenceBadge authority={candidate.speakerAuthority} />
+      <TranscriptSpeakerEvidenceBadge authority={candidate.speakerAuthority} />
       <a
         href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`}
         className="mt-3 inline-flex min-h-11 items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900 hover:underline"
@@ -3784,7 +3760,7 @@ function PacketNoteCandidateCard({
         {candidate.sourceText}
       </p>
       <TranscriptSpanProvenance segmentIds={candidate.segmentIds} />
-      <SpeakerEvidenceBadge authority={candidate.speakerAuthority} />
+      <TranscriptSpeakerEvidenceBadge authority={candidate.speakerAuthority} />
       <a
         href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`}
         className="mt-3 inline-flex min-h-11 items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-black text-orange-950 hover:underline"
@@ -4158,7 +4134,7 @@ function CandidateCard({
         {candidate.detail}
       </p>
       <TranscriptSpanProvenance segmentIds={candidate.segmentIds} />
-      <SpeakerEvidenceBadge authority={candidate.speakerAuthority} />
+      <TranscriptSpeakerEvidenceBadge authority={candidate.speakerAuthority} />
       <a
         href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`}
         className="mt-3 inline-flex min-h-11 items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900 hover:underline"

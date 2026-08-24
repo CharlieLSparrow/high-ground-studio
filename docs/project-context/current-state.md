@@ -24,7 +24,11 @@ Date: 2026-08-24
   receipts retain the same speaker authority and isolated-source participant
   identity in their immutable transcript anchor. Legacy anchors remain
   readable; a new source-binding claim without its participant ID fails closed.
-- Quipsly TypeScript, 132 focused packet/review tests, the mobile Capture
+- Saved Notes, Work tasks and goals, and Calendar focus plans now expose that
+  same evidence in plain language. They no longer call every saved transcript
+  source "reviewed," and they never expose the internal participant ID.
+- Quipsly TypeScript, 132 focused packet/review tests, 101 focused durable UI
+  tests, the mobile Capture
   source-contract smoke, a complete unsigned generic iOS Simulator build, and
   all 1,143 App Store static checks pass. This is local automated evidence; live
   deployment, physical-device readback, and minimally instructed human

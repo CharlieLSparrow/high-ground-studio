@@ -12,6 +12,7 @@ import {
 import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
+import { TranscriptSpeakerEvidenceBadge } from "@/components/transcript-speaker-evidence-badge";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   loadCalendarOverviewForActor,
@@ -737,8 +738,9 @@ export default async function SchedulePage() {
                       <CalendarTags tags={task.tags} />
                       {task.sourceAnchor && task.roomId ? (
                         <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
-                          <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Reviewed transcript source</p>
+                          <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Transcript source</p>
                           <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-sky-950">{task.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${task.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{task.sourceAnchor.effectiveTextSnapshot}</p>
+                          <TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority} />
                           <Link href={`/sessions/${encodeURIComponent(task.roomId)}#transcript-segment-${encodeURIComponent(task.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline">
                             <Play size={14} aria-hidden="true" />Return to {formatScheduleMediaTime(task.sourceAnchor.startSeconds)}–{formatScheduleMediaTime(task.sourceAnchor.endSeconds)}
                           </Link>

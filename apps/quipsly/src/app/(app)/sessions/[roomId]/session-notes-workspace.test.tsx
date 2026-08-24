@@ -109,6 +109,7 @@ describe("Session Notes workspace", () => {
           providerSpeakerLabel: "Speaker",
           effectiveTextSnapshot: "Welcome, everybody.",
           effectiveSpeakerLabelSnapshot: "Charlie",
+          speakerAuthority: "attribution",
           acceptedCorrectionId: "correction-1",
           recordingAssetId: "asset-1",
           playbackSourceId: "source-1",
@@ -116,8 +117,9 @@ describe("Session Notes workspace", () => {
       })]}
     />);
 
-    expect(screen.getByText("Reviewed transcript source")).toBeInTheDocument();
+    expect(screen.getByText("Transcript source")).toBeInTheDocument();
     expect(screen.getByText("Charlie: Welcome, everybody.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Speaker reviewed\. A person matched this voice to a Session participant\./i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /return to 00:03–00:04/i })).toHaveAttribute(
       "href",
       "/sessions/room-1?mode=transcript#transcript-segment-segment-1",

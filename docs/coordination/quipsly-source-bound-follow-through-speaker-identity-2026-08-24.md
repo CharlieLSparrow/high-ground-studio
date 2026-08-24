@@ -73,6 +73,15 @@ Legacy source anchors without these additive fields remain readable. A new
 anchor that claims `source-binding` but omits the participant ID fails closed
 instead of presenting a display label as physical-source proof.
 
+The same evidence is now visible after a person leaves the Session review
+surface. Saved Notes, Work tasks and goals, and Calendar focus plans share one
+plain-language badge component. They distinguish a reviewed name, a
+playback-reviewed voice match, participant-owned isolated recording,
+automatic transcription label, and unresolved speaker. The stable participant
+ID remains available for integrity checks but is intentionally not exposed as
+user-facing copy. Legacy records that predate the additive authority field stay
+calm and readable rather than inventing a provenance claim.
+
 ## Mutation boundary
 
 Packet outputs remain candidates that require explicit human review. This
@@ -86,8 +95,10 @@ message a client, share a follow-up, publish content, or alter recording media.
   pass, including 132 packet and Session-review tests.
 - An additional 90 transcript correction, source-anchor, materialization, and
   packet mutation tests pass for durable follow-through provenance.
+- Another 101 focused web component and interaction tests pass across Session
+  review, Notes, Work, Calendar planning, and the shared speaker-evidence badge.
 - The mobile Capture source-contract smoke passes, including the new v2
-  source-bound speaker provenance assertion.
+  source-bound speaker provenance assertion and a durable-work UI contract.
 - A complete unsigned generic iOS Simulator build and all 1,143 App Store
   static checks pass with the iPhone speaker-evidence badges decoded and
   reachable from note, goal, and task candidates.
