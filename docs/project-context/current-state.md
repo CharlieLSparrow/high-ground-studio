@@ -3482,3 +3482,28 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   reversible-edit tests pass, as does strict Quipsly TypeScript. Human word-sync
   and speaker review remain in the deferred validation ledger. Detailed decision record:
   `docs/coordination/2026-08-24-session-transcript-readiness.md`.
+
+### 2026-08-24 Session conversation
+
+- Session workspaces now have a first-class Conversation destination across
+  coaching, podcast, research-interview, and internal-meeting language. The
+  live lobby links to it without adding another vertically stacked setup step.
+- A dedicated room-bound model supports retry-safe sends, same-room replies,
+  author edits with optimistic revision checks, visible removal tombstones,
+  append-only revision evidence, and per-actor read cursors. It does not depend
+  on a Session having a Nest/project.
+- Conversation reads use a narrower participant/collaborator boundary than the
+  general Session shell; project viewers do not inherit the thread. Writes
+  recheck canonical authority inside the transaction.
+- The mobile-first thread retains a failed-send draft and request identity,
+  polls while visible, refreshes on focus, and keeps Notes, Tasks, Goals,
+  transcript, and external delivery separate.
+- Read cursors bind to the exact last-read message ordering and advance
+  monotonically, so a concurrent message is not swallowed and an older tab
+  cannot move another device's position backward.
+- Sixty-nine focused API, thread, and Session workspace tests and strict Quipsly
+  TypeScript pass. The full 124-migration chain also applies on fresh
+  PostgreSQL with all three tables, the typed operation enum, and seven foreign
+  keys present. Two-account browser/iPhone comprehension, isolation, readback,
+  and reconnect behavior remain in the deferred validation ledger. Detailed decision record:
+  `docs/coordination/2026-08-24-session-conversation.md`.

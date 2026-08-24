@@ -95,6 +95,7 @@ import {
 import { SessionSourceClockAttentionCard } from "./session-source-clock-attention-card";
 import type { SessionSourceClockAttention } from "./session-source-clock-attention";
 import { SessionVersionedOutputGraphCard } from "./session-versioned-output-graph-card";
+import { SessionConversationThread } from "./session-conversation-thread";
 import type { SessionVersionedOutputGraph } from "./session-versioned-output-graph";
 import { SessionNotesWorkspace } from "./session-notes-workspace";
 import type {
@@ -4879,10 +4880,12 @@ function WorkspaceModeIcon({ mode }: { mode: SessionWorkspaceMode }) {
   if (mode === "prepare")
     return <ClipboardList className="h-4 w-4" aria-hidden="true" />;
   if (mode === "live") return <Radio className="h-4 w-4" aria-hidden="true" />;
+  if (mode === "conversation")
+    return <MessageSquareText className="h-4 w-4" aria-hidden="true" />;
   if (mode === "recordings")
     return <Mic2 className="h-4 w-4" aria-hidden="true" />;
   if (mode === "transcript")
-    return <MessageSquareText className="h-4 w-4" aria-hidden="true" />;
+    return <FileAudio className="h-4 w-4" aria-hidden="true" />;
   if (mode === "notes")
     return <NotebookPen className="h-4 w-4" aria-hidden="true" />;
   if (mode === "work")
@@ -4906,7 +4909,7 @@ function SessionWorkspaceNavigation({
   return (
     <section className="rounded-2xl border border-[#e5d5b7] bg-[#fffdf8]/90 p-3 shadow-sm">
       <nav aria-label="Session workspace modes">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-9">
           {modes.map((definition) => {
             const selected = definition.id === mode;
             return (
@@ -6120,12 +6123,20 @@ export function SessionReviewClient({
                 Nothing joins or records until you confirm it.
               </p>
             </div>
-            <Link
-              href={sessionWorkspaceHref(roomId, "overview")}
-              className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-[#d9c7a5] bg-white px-4 text-xs font-black text-[#5b472f]"
-            >
-              Leave lobby
-            </Link>
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+              <Link
+                href={sessionWorkspaceHref(roomId, "conversation")}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black text-violet-900"
+              >
+                Conversation
+              </Link>
+              <Link
+                href={sessionWorkspaceHref(roomId, "overview")}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#d9c7a5] bg-white px-4 text-xs font-black text-[#5b472f]"
+              >
+                Leave lobby
+              </Link>
+            </div>
           </header>
 
           <CaptureAppHandoff
@@ -6318,6 +6329,10 @@ export function SessionReviewClient({
           taxonomy={sessionTaxonomy}
           canUseProjectTeamNotes={canUseProjectTeamNotes}
         />
+      ) : null}
+
+      {mode === "conversation" ? (
+        <SessionConversationThread roomId={roomId} />
       ) : null}
 
       {mode === "work" ? (

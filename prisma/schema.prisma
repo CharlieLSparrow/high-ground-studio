@@ -338,6 +338,12 @@ enum CallParticipantProviderStatus {
   FAILED
 }
 
+enum SessionConversationRevisionOperation {
+  CREATED
+  EDITED
+  DELETED
+}
+
 enum CallRoomInvitationStatus {
   PENDING
   ACCEPTED
@@ -867,6 +873,9 @@ model User {
   actionItemTagsCreated             ActionItemTagLink[]                         @relation("ActionItemTagCreatedBy")
   goalTagsCreated                   GoalTagLink[]                               @relation("GoalTagCreatedBy")
   callRoomTagsCreated               CallRoomTagLink[]                           @relation("CallRoomTagCreatedBy")
+  sessionConversationMessages       SessionConversationMessage[]                @relation("SessionConversationMessageAuthor")
+  sessionConversationRevisions      SessionConversationMessageRevision[]        @relation("SessionConversationRevisionActor")
+  sessionConversationReadCursors    SessionConversationReadCursor[]             @relation("SessionConversationReadCursorUser")
   workPlanBlocks                    WorkPlanBlock[]                             @relation("WorkPlanBlockOwner")
   taskRecurrenceSeries              TaskRecurrenceSeries[]                      @relation("TaskRecurrenceOwner")
   episodeMilestonesAssigned         StudioEpisodeMilestone[]                    @relation("StudioEpisodeMilestoneAssignee")
@@ -2034,6 +2043,8 @@ model CallRoom {
   calendarLinks                 CalendarEventLink[]
   tagLinks                      CallRoomTagLink[]
   governedActionRuns            GovernedActionRun[]
+  conversationMessages          SessionConversationMessage[]
+  conversationReadCursors       SessionConversationReadCursor[]
 
   @@index([purpose, status, scheduledStart])
   @@index([createdByUserId, createdAt])
@@ -2042,6 +2053,64 @@ model CallRoom {
   @@index([coachingEngagementId, status, scheduledStart])
   @@index([nestSlug, createdAt])
   @@index([projectSlug, createdAt])
+}
+
+// A Session conversation is invitation-bound collaboration, not project chat.
+// It remains available when a coaching Session has no Nest/project and never
+// grants access beyond the canonical CallRoom participant boundary.
+model SessionConversationMessage {
+  id              String    @id
+  roomId          String
+  authorUserId    String
+  clientRequestId String
+  replyToId       String?
+  body            String    @db.Text
+  revision        Int       @default(1)
+  editedAt        DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  room      CallRoom                             @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  author    User                                 @relation("SessionConversationMessageAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  replyTo   SessionConversationMessage?          @relation("SessionConversationReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   SessionConversationMessage[]         @relation("SessionConversationReply")
+  revisions SessionConversationMessageRevision[]
+
+  @@unique([authorUserId, clientRequestId])
+  @@index([roomId, createdAt, id])
+  @@index([replyToId, createdAt])
+}
+
+model SessionConversationMessageRevision {
+  id          String                               @id @default(cuid())
+  messageId   String
+  revision    Int
+  operation   SessionConversationRevisionOperation
+  actorUserId String
+  bodyBefore  String?                              @db.Text
+  bodyAfter   String?                              @db.Text
+  createdAt   DateTime                             @default(now())
+
+  message SessionConversationMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  actor   User                       @relation("SessionConversationRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([messageId, revision])
+  @@index([actorUserId, createdAt])
+}
+
+model SessionConversationReadCursor {
+  roomId            String
+  userId            String
+  lastReadMessageId String?
+  lastReadAt        DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  room CallRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation("SessionConversationReadCursorUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, userId])
+  @@index([userId, updatedAt])
 }
 
 model CallRoomEpisodeBindingReceipt {

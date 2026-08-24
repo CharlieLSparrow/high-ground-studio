@@ -276,6 +276,37 @@ Current reality:
 - this is not real-time collaboration or a canonical manuscript document model
 - SMS/Twilio notification sending is not wired into the current request flow
 
+## Session Conversation
+
+Session coordination is room-bound and independent of Nest/project chat.
+
+### `SessionConversationMessage`
+
+The current message record for one `CallRoom`. It stores a deterministic
+client-request identity, author, optional same-room reply target, current body,
+revision number, and edit/remove timestamps.
+
+### `SessionConversationMessageRevision`
+
+Append-only `CREATED`, `EDITED`, and `DELETED` evidence. Updates use optimistic
+revision checks; ordinary removal leaves a tombstone instead of silently
+rewriting history.
+
+### `SessionConversationReadCursor`
+
+Per-room, per-user read continuity. This is not proof that a person noticed,
+understood, or acted on a message.
+
+Current boundaries:
+
+- Session access never follows a message into another room
+- project viewers do not inherit private Session conversation access
+- chat does not mutate notes, tasks, goals, transcript, or recording state
+- no email, push, SMS, or public delivery occurs from the conversation route
+
+Detailed decision record:
+`docs/coordination/2026-08-24-session-conversation.md`.
+
 ## Coaching Feature Access
 
 Coaching tools are modeled separately from subscription tiers. This lets Homer
