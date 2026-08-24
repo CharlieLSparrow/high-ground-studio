@@ -167,6 +167,20 @@ state: ready, waiting for the other participant, waiting for the host, or the
 one Session recording choice still needed. The full recorder, meters, Mark,
 Pause, recovery, and production tools remain in the scrollable workspace.
 
+Stop now has the same confidence hierarchy in the browser. The latest source
+gets one compact live receipt in the primary recording flow: **Saving
+recording**, **Saved on this device**, or **Saved and ready**. It names the
+file and byte size, says **Keep open** until exact-byte verification finishes,
+and says **Safe to close** only after Quipsly verifies the source. It does not
+promise a transcript unless the Session permits transcription. Detailed
+recovery and multi-device processing remain available under disclosures.
+
+The iPhone already has the stronger native equivalent: coordinated Stop waits
+for the local recorder to reach a terminal state, opens Library, and places the
+new immutable source in the ordinary saved-source list before upload is called
+complete. The release contract now protects both that navigation and its
+runtime new-source assertion.
+
 ## Evidence and limits
 
 - The 34-test focused web call-room, consent-transition, and speaker-test suite passes, including
@@ -184,6 +198,8 @@ Pause, recovery, and production tools remain in the scrollable workspace.
   compiling the native reconnect, CallKit, and source-protection path.
 - The native release static contract now fails if a connected-call layout
   removes the persistent Record row or places it below Mute, Camera, and Leave.
+- The 43-test live-room, stop receipt, consent, and upload-recovery regression
+  passes. Strict Quipsly TypeScript also passes.
 - Native and Nest evidence projections recognize a source-timed
   `call-transport-gap` span without adding its duration to media-segment totals;
   focused parser and audio-map tests preserve its beginning and ending.
@@ -194,7 +210,7 @@ Pause, recovery, and production tools remain in the scrollable workspace.
   ends rejoin without discarding or hiding a still-active local source.
 - The generic iOS Simulator build compiles the same room-scoped terminal
   boundary through the native decoder, controller, and closed-Session surface.
-- The 1,164-check Capture static gate, provider-room static smoke, and the full
+- The 1,167-check Capture static gate, provider-room static smoke, and the full
   release-source consistency gate pass. The release gate now protects the
   deliberate CallKit video path plus the separate Record action instead of
   enforcing the retired audio-only call assumption.

@@ -76,6 +76,7 @@ import {
   browserSourceInterruptedRecoveryCandidate,
   browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
+  browserSourcePostStopReceipt,
   browserSourceRecoverySummary,
   browserSourceSafetyLabel,
   browserSourceUploadRetryDelayMs,
@@ -2433,6 +2434,9 @@ export function BrowserSourceRecorder({
 
   const recoverySummary = browserSourceRecoverySummary(recoveryRows);
   const exitSafety = browserSourceExitSafety(status, recoveryRows);
+  const latestRecordingReceipt = activeLedger
+    ? browserSourcePostStopReceipt(status, activeLedger)
+    : null;
 
   return (
     <section
@@ -2889,6 +2893,53 @@ export function BrowserSourceRecorder({
         >
           {message}
         </p>
+
+        {latestRecordingReceipt &&
+        activeLedger &&
+        !["checking", "starting", "recording"].includes(status) ? (
+          <section
+            aria-label="Latest recording receipt"
+            aria-live="polite"
+            data-testid="latest-recording-receipt"
+            className={`mt-3 rounded-xl border p-3 ${
+              latestRecordingReceipt.tone === "ready"
+                ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+                : latestRecordingReceipt.tone === "attention"
+                  ? "border-amber-300 bg-amber-50 text-amber-950"
+                  : "border-violet-200 bg-violet-50 text-violet-950"
+            }`}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm font-black">
+                  {latestRecordingReceipt.tone === "ready" ? (
+                    <CheckCircle2 size={18} aria-hidden="true" />
+                  ) : latestRecordingReceipt.tone === "attention" ? (
+                    <AlertTriangle size={18} aria-hidden="true" />
+                  ) : (
+                    <LoaderCircle
+                      size={18}
+                      className="animate-spin"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {latestRecordingReceipt.title}
+                </p>
+                <p className="mt-1 text-xs font-semibold leading-5">
+                  {latestRecordingReceipt.detail}
+                </p>
+                <p className="mt-1 truncate font-mono text-[10px] font-bold opacity-75">
+                  {activeLedger.fileName} · {formatBytes(activeLedger.sizeBytes)}
+                </p>
+              </div>
+              <span className="rounded-full bg-white/80 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide">
+                {latestRecordingReceipt.safeToClose
+                  ? "Safe to close"
+                  : "Keep open"}
+              </span>
+            </div>
+          </section>
+        ) : null}
 
         {activeLedger?.sourceProfile.captureMeter ? (
           <section

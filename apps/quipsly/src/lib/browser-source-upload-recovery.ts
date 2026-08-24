@@ -200,6 +200,66 @@ export function browserSourceSafetyLabel(ledger: BrowserSourceCaptureLedger) {
   return "Needs attention";
 }
 
+export type BrowserSourcePostStopReceipt = {
+  tone: "working" | "ready" | "attention";
+  title: string;
+  detail: string;
+  safeToClose: boolean;
+};
+
+export function browserSourcePostStopReceipt(
+  status: BrowserRetainedSourceStatus,
+  ledger: BrowserSourceCaptureLedger,
+): BrowserSourcePostStopReceipt {
+  if (status === "stopping") {
+    return {
+      tone: "working",
+      title: "Saving recording",
+      detail:
+        "Quipsly is finishing the local file and its exact-byte checksum. Keep this page open.",
+      safeToClose: false,
+    };
+  }
+  if (ledger.state === "verified") {
+    return {
+      tone: "ready",
+      title: "Saved and ready",
+      detail:
+        "Exact bytes are verified in Quipsly. This source is ready for the Session's permitted processing and editing.",
+      safeToClose: true,
+    };
+  }
+  if (
+    status === "uploading" ||
+    ["stopped", "uploading", "verifying"].includes(ledger.state)
+  ) {
+    return {
+      tone: "working",
+      title: "Saved on this device",
+      detail:
+        "Quipsly is uploading and verifying the exact bytes. Keep this page open; the local original remains available.",
+      safeToClose: false,
+    };
+  }
+  if (ledger.state === "held") {
+    return {
+      tone: ledger.failureReason ? "attention" : "working",
+      title: "Saved on this device",
+      detail: ledger.failureReason
+        ? "The local original is protected, but upload needs attention. Retry or download it below."
+        : "The local original is protected and waiting to upload. Keep this page open.",
+      safeToClose: false,
+    };
+  }
+  return {
+    tone: "attention",
+    title: "Recording needs attention",
+    detail:
+      "Quipsly has not verified a complete source. Keep this page open and use the recovery action below.",
+    safeToClose: false,
+  };
+}
+
 export function browserSourceManualUploadRetryAvailable(
   ledger: BrowserSourceCaptureLedger,
 ) {

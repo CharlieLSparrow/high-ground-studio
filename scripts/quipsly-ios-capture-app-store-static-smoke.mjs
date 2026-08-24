@@ -1618,6 +1618,9 @@ requireIncludes(bridgeText, "Research interview", "native research interview mod
 requireIncludes(capturePhoneShellText, "CaptureRecordingModePicker(", "shipping recorder exposes explicit audio and video modes");
 requireIncludes(capturePhoneShellText, "VideoRecorderHero(", "shipping recorder reaches local video capture");
 requireIncludes(capturePhoneShellText, "onSwitchCamera:", "shipping video recorder exposes deliberate camera switching");
+requireIncludes(capturePhoneShellText, "private func revealSavedSourceIfStopped()", "shipping recorder owns an explicit stop-to-source transition");
+requireIncludes(capturePhoneShellText, "visibleTab = .library", "completed native capture reveals the protected local source library");
+requireIncludes(runtimeUISmokeTestsText, "The completed take should appear as a new immutable local source.", "runtime iPhone flight proves Stop reaches a new immutable local source row");
 requireIncludes(capturePhoneShellText, "CaptureRehearsalReadinessCard(", "shipping recorder exposes a preflight check");
 requireIncludes(capturePhoneShellText, "CaptureSessionGuardianCard(", "shipping recorder reaches one ranked operational Guardian");
 requireIncludes(captureSessionGuardianText, 'accessibilityIdentifier("CaptureSessionGuardian")', "shipping Guardian has a stable automation identity");

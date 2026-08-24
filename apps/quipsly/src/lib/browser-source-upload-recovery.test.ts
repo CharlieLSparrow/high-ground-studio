@@ -1,6 +1,7 @@
 import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
 import {
   browserSourceInterruptedRecoveryCandidate,
+  browserSourcePostStopReceipt,
   browserSourceSafetyLabel,
   browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
@@ -178,6 +179,41 @@ describe("browser source upload recovery", () => {
     expect(browserSourceSafetyLabel(ledger("recording"))).toBe(
       "Recording interrupted",
     );
+  });
+
+  it("gives the latest stopped source one visible, honest confidence receipt", () => {
+    expect(
+      browserSourcePostStopReceipt("stopping", ledger("recording")),
+    ).toEqual({
+      tone: "working",
+      title: "Saving recording",
+      detail: expect.stringContaining("exact-byte checksum"),
+      safeToClose: false,
+    });
+    expect(
+      browserSourcePostStopReceipt("uploading", ledger("uploading")),
+    ).toEqual({
+      tone: "working",
+      title: "Saved on this device",
+      detail: expect.stringContaining("local original remains available"),
+      safeToClose: false,
+    });
+    expect(browserSourcePostStopReceipt("ready", ledger("verified"))).toEqual({
+      tone: "ready",
+      title: "Saved and ready",
+      detail: expect.stringContaining("permitted processing and editing"),
+      safeToClose: true,
+    });
+    expect(
+      browserSourcePostStopReceipt(
+        "held",
+        ledger("held", { failureReason: "Upload allowance exceeded" }),
+      ),
+    ).toMatchObject({
+      tone: "attention",
+      title: "Saved on this device",
+      safeToClose: false,
+    });
   });
 
   it("resumes each eligible source once without looping on a repeated held row", async () => {

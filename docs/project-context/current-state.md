@@ -26,7 +26,14 @@ Date: 2026-08-24
   and production workspace can scroll independently.
 - Existing camera-failure fallback, second-device no-audio mode, live device
   recovery, and separate local/provider recording boundaries remain intact.
-- Thirty-four focused call/handoff tests and strict Quipsly TypeScript pass.
+- Browser Stop now presents one visible latest-source receipt from local save
+  through upload and exact-byte verification, including an honest Keep open or
+  Safe to close boundary. Detailed recovery remains secondary.
+- Native Stop already waits for terminal local save and opens Library on the
+  new immutable source; the release gate now protects that transition and its
+  runtime assertion.
+- Forty-three focused call/handoff/stop tests and strict Quipsly TypeScript
+  pass.
   The two-person browser/iPhone flight is retained as human/device evidence.
 
 ## Automatic post-call transcription checkpoint
@@ -3713,7 +3720,7 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   honest saved/waiting or everyone-ready state instead of leaving stale
   instructions above the Record control.
 - Thirty-four focused browser call/consent/speaker tests, strict Quipsly TypeScript,
-  the 1,164-check Capture static gate, provider-room static smoke, and the full
+  the 1,167-check Capture static gate, provider-room static smoke, and the full
   Capture release-source gate pass. The release gate now protects deliberate
   native video calling plus the separate retained Record action instead of the
   retired audio-only CallKit assumption. Physical browser/iPhone routing,
