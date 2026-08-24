@@ -32,6 +32,7 @@ export type PublicAudioMasterPromotionReceipt = {
 
 export type PublicAudioMasterPromotionSummary = {
   active: boolean;
+  holdReason: "latest-review-no-longer-approves-candidate" | null;
   latest: PublicAudioMasterPromotionReceipt | null;
   activePromotion: PublicAudioMasterPromotionReceipt | null;
   promoteCount: number;
@@ -97,6 +98,7 @@ function publicReceipt(receipt: any): PublicAudioMasterPromotionReceipt {
 export function emptyAudioMasterPromotionSummary(): PublicAudioMasterPromotionSummary {
   return {
     active: false,
+    holdReason: null,
     latest: null,
     activePromotion: null,
     promoteCount: 0,
@@ -131,9 +133,23 @@ export async function readAudioMasterPromotionSummary(input: {
     }),
   ]);
   const publicLatest = latest ? publicReceipt(latest) : null;
-  const active = publicLatest?.operation === "promote";
+  const latestReview = publicLatest?.operation === "promote" && publicLatest.reviewReceiptId
+    ? await input.prisma.studioAudioMasterReviewReceipt.findFirst({
+      where: { masteryJobId: publicLatest.jobId },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+    })
+    : null;
+  const approvalStillCurrent = Boolean(
+    latestReview
+      && latestReview.id === publicLatest?.reviewReceiptId
+      && latestReview.decision === "APPROVED",
+  );
+  const active = publicLatest?.operation === "promote" && approvalStillCurrent;
   return {
     active,
+    holdReason: publicLatest?.operation === "promote" && !approvalStillCurrent
+      ? "latest-review-no-longer-approves-candidate"
+      : null,
     latest: publicLatest,
     activePromotion: active ? publicLatest : null,
     promoteCount: promotes,
@@ -338,7 +354,7 @@ export async function appendAudioMasterPromotion(input: Coordinates & {
           "AUDIO_MASTER_PROMOTION_APPROVAL_STALE",
         );
       }
-      if (latestPromotion?.operation === "PROMOTE") {
+      if (latestPromotion?.operation === "PROMOTE" && latestPromotion.reviewReceiptId === latestReview.id) {
         throw new AudioMasteryPromotionError(
           "A mastering preview is already the active delivery candidate. Withdraw it before promoting another pass.",
           409,

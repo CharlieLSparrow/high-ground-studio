@@ -55,6 +55,25 @@ struct CaptureAudioMasterySnapshot: Decodable, Equatable {
         let requiredMoments: [Moment]
     }
 
+    struct PromotionSummary: Decodable, Equatable {
+        struct Receipt: Decodable, Equatable {
+            let id: String
+            let jobId: String
+            let reviewReceiptId: String?
+            let operation: String
+            let reason: String?
+            let occurredAt: String
+            let actorEmail: String
+        }
+
+        let active: Bool
+        let holdReason: String?
+        let latest: Receipt?
+        let activePromotion: Receipt?
+        let promoteCount: Int
+        let withdrawalCount: Int
+    }
+
     let ok: Bool
     let jobId: String?
     let status: String
@@ -63,6 +82,7 @@ struct CaptureAudioMasterySnapshot: Decodable, Equatable {
     let derivative: Derivative?
     var review: ReviewSummary?
     let reviewPlan: ReviewPlan?
+    var promotion: PromotionSummary?
     let error: String?
 
     var isWorking: Bool {
@@ -96,6 +116,12 @@ private struct CaptureAudioMasteryReviewResponse: Decodable {
     let error: String?
 }
 
+private struct CaptureAudioMasteryPromotionResponse: Decodable {
+    let ok: Bool
+    let promotion: CaptureAudioMasterySnapshot.PromotionSummary?
+    let error: String?
+}
+
 /// Authenticated, account-bound access to the verified cloud listening copy.
 /// The client never promotes, overwrites, or deletes the immutable original.
 @MainActor
@@ -104,6 +130,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
     @Published private(set) var isLoading = false
     @Published private(set) var isPlaying = false
     @Published private(set) var isReviewing = false
+    @Published private(set) var isPromoting = false
     @Published private(set) var notice: String?
     @Published private(set) var sourceListenedSecondBins: Set<Int> = []
     @Published private(set) var previewListenedSecondBins: Set<Int> = []
@@ -138,6 +165,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
     private var activePreviewMonitorMode: String?
     private var evidenceJobID: String?
     private var reviewRequestIDs: [String: String] = [:]
+    private var promotionRequestIDs: [String: String] = [:]
 
     override init() {
         super.init()
@@ -466,12 +494,110 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         }
     }
 
+    func changePromotion(
+        recording: LocalRecording,
+        operation: String,
+        reason rawReason: String?
+    ) async {
+        guard let binding = binding(for: recording),
+              let status = snapshot,
+              let currentJobID = status.jobId,
+              operation == "promote" || operation == "withdraw" else {
+            notice = "Refresh this improved copy before changing its delivery status."
+            return
+        }
+
+        let reviewReceiptID: String?
+        let targetJobID: String
+        let reason = rawReason?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if operation == "promote" {
+            guard let latest = status.review?.latest,
+                  latest.decision == "approved",
+                  latest.jobId == currentJobID else {
+                notice = "Approve this exact improved copy before using it for delivery."
+                return
+            }
+            guard status.promotion?.active != true else {
+                notice = "Withdraw the active delivery candidate before selecting another version."
+                return
+            }
+            reviewReceiptID = latest.id
+            targetJobID = currentJobID
+        } else {
+            guard let active = status.promotion?.activePromotion else {
+                notice = "There is no active improved delivery candidate to withdraw."
+                return
+            }
+            guard let reason, reason.count >= 3 else {
+                notice = "Add a short reason before withdrawing the delivery candidate."
+                return
+            }
+            reviewReceiptID = nil
+            targetJobID = active.jobId
+        }
+        guard AuthManager.shared.networkActionsAllowed else {
+            notice = "Reconnect to Nest to change this delivery candidate."
+            return
+        }
+
+        let fingerprint = [
+            targetJobID,
+            operation,
+            reviewReceiptID ?? "",
+            reason ?? "",
+        ].joined(separator: "|")
+        let clientRequestID = promotionRequestIDs[fingerprint] ?? UUID().uuidString.lowercased()
+        promotionRequestIDs[fingerprint] = clientRequestID
+
+        isPromoting = true
+        defer { isPromoting = false }
+        do {
+            let url = baseURL.appendingPathComponent("api/media-vault/audio-mastery/promotion")
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let promotionBody: [String: Any] = [
+                "projectSlug": binding.projectSlug,
+                "assetId": binding.assetID,
+                "sourceId": binding.sourceID,
+                "jobId": targetJobID,
+                "clientRequestId": clientRequestID,
+                "operation": operation,
+                "reviewReceiptId": reviewReceiptID.map { $0 as Any } ?? NSNull(),
+                "reason": reason.map { $0 as Any } ?? NSNull(),
+            ]
+            request.httpBody = try JSONSerialization.data(withJSONObject: promotionBody)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: binding.ownerAccountID
+            )
+            guard response.statusCode < 400, Self.sameOrigin(response.url, baseURL) else {
+                let envelope = try? JSONDecoder().decode(CaptureAudioMasteryErrorEnvelope.self, from: data)
+                throw ClientError.message(envelope?.error ?? "Quipsly could not change this delivery candidate.")
+            }
+            let result = try JSONDecoder().decode(CaptureAudioMasteryPromotionResponse.self, from: data)
+            guard result.ok, let promotion = result.promotion else {
+                throw ClientError.message(result.error ?? "Quipsly did not return the saved delivery-candidate receipt.")
+            }
+            try validate(binding)
+            snapshot?.promotion = promotion
+            notice = operation == "promote"
+                ? "Improved audio selected for delivery. Encoding, sharing, and publishing have not started."
+                : "Delivery candidate withdrawn. The original, improved copy, and decision history remain available."
+        } catch is CancellationError {
+            return
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
     func reset() {
         clearPlayback()
         snapshot = nil
         notice = nil
         isLoading = false
         isReviewing = false
+        isPromoting = false
         resetReviewEvidence()
     }
 
@@ -601,6 +727,7 @@ final class CaptureAudioMasteryClient: NSObject, ObservableObject, AVAudioPlayer
         evidenceJobID = nil
         activePreviewMonitorMode = nil
         reviewRequestIDs = [:]
+        promotionRequestIDs = [:]
     }
 
     private func binding(for recording: LocalRecording) -> RecordingBinding? {

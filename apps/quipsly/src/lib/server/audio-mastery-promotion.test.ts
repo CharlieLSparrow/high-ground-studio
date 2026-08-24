@@ -126,6 +126,9 @@ function prismaFor(input: {
     studioAssetVariant: { upsert: jest.fn().mockResolvedValue({ id: "candidate-variant" }) },
   };
   const prisma = {
+    studioAudioMasterReviewReceipt: {
+      findFirst: jest.fn().mockResolvedValue(input.latestReview ?? null),
+    },
     studioAudioMasterPromotionReceipt: {
       findUnique: jest.fn().mockResolvedValue(null),
       findFirst: jest.fn().mockImplementation(async () => createdPromotion ?? input.latestPromotion ?? null),
@@ -283,6 +286,9 @@ describe("audio master promotion ledger", () => {
       reason: "Recheck the ending.",
     });
     const prisma = {
+      studioAudioMasterReviewReceipt: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       studioAudioMasterPromotionReceipt: {
         findFirst: jest.fn().mockResolvedValue(latest),
         count: jest.fn().mockResolvedValueOnce(2).mockResolvedValueOnce(1),
@@ -295,6 +301,26 @@ describe("audio master promotion ledger", () => {
         activePromotion: null,
         promoteCount: 2,
         withdrawalCount: 1,
+      });
+  });
+
+  it("holds a promoted candidate when a later review no longer approves it", async () => {
+    const latest = promotion({ id: "promotion-1", operation: "PROMOTE", reviewReceiptId: "review-1" });
+    const prisma = {
+      studioAudioMasterPromotionReceipt: {
+        findFirst: jest.fn().mockResolvedValue(latest),
+        count: jest.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(0),
+      },
+      studioAudioMasterReviewReceipt: {
+        findFirst: jest.fn().mockResolvedValue(review({ id: "review-2", decision: "REJECTED" })),
+      },
+    };
+    await expect(readAudioMasterPromotionSummary({ prisma, jobId: "job-1" }))
+      .resolves.toMatchObject({
+        active: false,
+        holdReason: "latest-review-no-longer-approves-candidate",
+        activePromotion: null,
+        latest: { operation: "promote" },
       });
   });
 });

@@ -25,6 +25,7 @@ struct CaptureSourceEvidenceView: View {
     @State private var selectedAudioSeconds = 0.0
     @State private var masteryMonitorMode = MasteryMonitorMode.fair
     @State private var masteryReviewNote = ""
+    @State private var masteryWithdrawalReason = ""
     @State private var showsTechnicalAudioDetails = false
     @State private var showsTechnicalSoundDetails = false
     @State private var showsRecordingDetails = false
@@ -651,10 +652,119 @@ struct CaptureSourceEvidenceView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                masteryPromotionSection(recording: recording, status: status)
             }
             .padding(.top, 8)
             .accessibilityIdentifier("CaptureAudioMasteryReview")
         }
+    }
+
+    @ViewBuilder
+    private func masteryPromotionSection(
+        recording: LocalRecording,
+        status: CaptureAudioMasterySnapshot
+    ) -> some View {
+        let activePromotion = status.promotion?.activePromotion
+        let thisPreviewIsActive = activePromotion?.jobId == status.jobId
+        let promotionIsHeld = status.promotion?.holdReason != nil
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Delivery version")
+                        .font(.subheadline.weight(.bold))
+                    Text("Selecting a version records which approved audio should be used later. It does not encode, share, or publish anything.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Text(promotionIsHeld ? "Held after review" : activePromotion == nil ? "Not selected" : thisPreviewIsActive ? "Improved selected" : "Earlier pass selected")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(promotionIsHeld ? Color.orange : activePromotion == nil ? Color.gray : thisPreviewIsActive ? Color.green : Color.orange)
+            }
+
+            if promotionIsHeld {
+                Label(
+                    "The prior delivery selection is held because the latest listening decision no longer approves it.",
+                    systemImage: "exclamationmark.shield.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+                .accessibilityIdentifier("CaptureAudioMasteryPromotionHeld")
+                if let latest = status.review?.latest,
+                   latest.decision == "approved",
+                   latest.jobId == status.jobId {
+                    Button("Use newly approved version for delivery") {
+                        Task {
+                            await mastery.changePromotion(
+                                recording: recording,
+                                operation: "promote",
+                                reason: nil
+                            )
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(mastery.isPromoting)
+                    .accessibilityIdentifier("CaptureAudioMasteryPromote")
+                }
+            } else if let activePromotion {
+                Label(
+                    thisPreviewIsActive
+                        ? "This improved copy is the active delivery candidate."
+                        : "An earlier approved improvement is still the active delivery candidate.",
+                    systemImage: "checkmark.seal.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(thisPreviewIsActive ? .green : .orange)
+                .accessibilityIdentifier("CaptureAudioMasteryActivePromotion")
+
+                TextField("Why are you changing back?", text: $masteryWithdrawalReason, axis: .vertical)
+                    .lineLimit(2...4)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("CaptureAudioMasteryWithdrawalReason")
+
+                Button(thisPreviewIsActive ? "Stop using improved for delivery" : "Withdraw earlier delivery version") {
+                    Task {
+                        await mastery.changePromotion(
+                            recording: recording,
+                            operation: "withdraw",
+                            reason: masteryWithdrawalReason
+                        )
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(
+                    mastery.isPromoting
+                        || masteryWithdrawalReason.trimmingCharacters(in: .whitespacesAndNewlines).count < 3
+                )
+                .accessibilityIdentifier("CaptureAudioMasteryWithdraw")
+            } else if let latest = status.review?.latest,
+                      latest.decision == "approved",
+                      latest.jobId == status.jobId {
+                Button("Use improved for delivery") {
+                    Task {
+                        await mastery.changePromotion(
+                            recording: recording,
+                            operation: "promote",
+                            reason: nil
+                        )
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(mastery.isPromoting)
+                .accessibilityIdentifier("CaptureAudioMasteryPromote")
+            } else {
+                Text("Approve this exact improved copy before selecting it for delivery.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Your original remains source truth. Candidate selection is append-only and reversible, and every change is retained with the responsible account.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityIdentifier("CaptureAudioMasteryPromotion")
     }
 
     @ViewBuilder
@@ -1522,6 +1632,21 @@ struct CaptureSourceEvidencePreviewView: View {
                             .foregroundStyle(.secondary)
                     }
                     .accessibilityIdentifier("CaptureAudioMasteryReview")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Delivery version")
+                            .font(.subheadline.weight(.bold))
+                        Text("A real approved copy can be deliberately selected for later delivery without encoding, sharing, publishing, or replacing the original.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Use improved for delivery") {}
+                            .buttonStyle(.borderedProminent)
+                            .disabled(true)
+                            .accessibilityIdentifier("CaptureAudioMasteryPromote")
+                        Text("Preview only · no promotion receipt created")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityIdentifier("CaptureAudioMasteryPromotion")
                     Label("Preview only · no audio downloaded", systemImage: "eye")
                         .font(.caption.weight(.semibold))
                         .accessibilityIdentifier("CaptureAudioMasteryPreviewBoundary")

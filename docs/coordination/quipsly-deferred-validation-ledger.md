@@ -21,6 +21,7 @@ never be substituted for the evidence requested here.
 | --- | --- | --- |
 | Pending | On a physical iPhone, an authorized user downloads a real verified preview, hears every server-selected moment in original and improved versions, changes Fair comparison and Final volume during playback, and confirms the audible gain follows the selected mode without discontinuity. | Build/device identity, exact mastery job and derivative SHA-256, screen/audio observation notes, and no playback/download integrity error. |
 | Pending | The same user completes one approval and one rejection against disposable mastery candidates and sees the append-only decisions read back in Capture and Nest without source replacement or implicit promotion. | Review receipt IDs, actor identity, exact source/preview hashes, cross-client readback, unchanged source bytes, and separate promotion state. |
+| Pending | After approving a disposable preview on iPhone, the user selects it for delivery, confirms the same active candidate in Nest, withdraws it with a reason, and confirms the append-only history while no delivery encoding or publication is created. | Approval and promotion receipt IDs, exact active job/preview identity, cross-client readback before and after withdrawal, unchanged source bytes, and absent delivery/publication side effects. |
 | Environment retry | The deterministic `testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt` UI test bundle compiled, but the iOS 26.3 simulator service denied launching the XCTest runner with `FBSOpenApplicationServiceErrorDomain` / process exit 64 on 2026-08-24. | A later simulator run reaches the app and passes the named test. This is not currently evidence of an app assertion failure. |
 
 ## Release evidence
@@ -28,4 +29,3 @@ never be substituted for the evidence requested here.
 | State | Validation still required | Evidence that closes it |
 | --- | --- | --- |
 | Pending | A deliberately batched Nest deployment and matching TestFlight build expose the same compatible mastery review plan and receipt contract. | Deployed commit/build IDs, authenticated live smoke, TestFlight processing status, and rollback coordinates. |
-

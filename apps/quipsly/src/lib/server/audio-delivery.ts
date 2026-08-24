@@ -299,9 +299,13 @@ async function loadPromotedCandidate(input: Coordinates) {
   let context: Awaited<ReturnType<typeof loadAudioMasteryReviewContext>>;
   try { context = await loadAudioMasteryReviewContext({ ...input, jobId: input.masteryJobId }); }
   catch (error) { if (error instanceof AudioMasteryReviewError) throw new AudioDeliveryError(error.message, error.status, error.code); throw error; }
-  const promotion = await input.prisma.studioAudioMasterPromotionReceipt.findFirst({ where: { projectId: context.project.id, assetId: context.asset.id }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] });
+  const [promotion, latestMasterReview] = await Promise.all([
+    input.prisma.studioAudioMasterPromotionReceipt.findFirst({ where: { projectId: context.project.id, assetId: context.asset.id }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] }),
+    input.prisma.studioAudioMasterReviewReceipt.findFirst({ where: { masteryJobId: context.job.jobId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] }),
+  ]);
   const derivative = context.result.derivative!;
   if (!promotion || promotion.operation !== "PROMOTE" || promotion.masteryJobId !== context.job.jobId || promotion.reviewReceiptId == null || promotion.previewSha256 !== derivative.sha256) throw new AudioDeliveryError("Delivery encoding requires the current exact promoted mastering candidate.", 409, "AUDIO_DELIVERY_ACTIVE_PROMOTION_REQUIRED");
+  if (!latestMasterReview || latestMasterReview.id !== promotion.reviewReceiptId || latestMasterReview.decision !== "APPROVED" || latestMasterReview.previewSha256 !== derivative.sha256) throw new AudioDeliveryError("The promoted candidate is held because its approval is no longer the latest listening decision.", 409, "AUDIO_DELIVERY_PROMOTION_APPROVAL_STALE");
   const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
   const previewPath = await resolveAllowedLocalStudioMediaPath(path.resolve(root, derivative.locator));
   if (!previewPath) throw new AudioDeliveryError("The promoted candidate has no authorized byte location.", 409, "AUDIO_DELIVERY_CANDIDATE_UNAVAILABLE");

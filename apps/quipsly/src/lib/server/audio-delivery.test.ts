@@ -52,6 +52,11 @@ function prisma(latestPromotion: any = activePromotion) {
   let created: any = null;
   return {
     studioAudioMasterPromotionReceipt: { findFirst: jest.fn().mockResolvedValue(latestPromotion) },
+    studioAudioMasterReviewReceipt: { findFirst: jest.fn().mockResolvedValue({
+      id: "review-master-delivery-1",
+      decision: "APPROVED",
+      previewSha256: derivative.sha256,
+    }) },
     studioAssetProcessingJob: {
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockImplementation(async ({ data }) => { created = { ...data, updatedAt: new Date("2026-08-05T20:00:00.000Z") }; return created; }),
@@ -92,6 +97,17 @@ describe("audio delivery queue", () => {
     jest.mocked(inspectImmutableStudioMediaSource).mockResolvedValueOnce({ provider: "local", locator: "/tmp/quipsly-media-ingest/promoted-master.wav", generation: `sha256:${"c".repeat(64)}`, sha256: "c".repeat(64), sizeBytes: derivative.sizeBytes, contentType: "audio/wav" });
     const database = prisma();
     await expect(queueAudioDelivery({ prisma: database, projectSlug: "qa-audio-delivery", assetId: "asset-delivery-1", sourceId: "source-delivery-1", masteryJobId: "audio_mastery_delivery_1", actorEmail: "qa@example.test" })).rejects.toBeInstanceOf(AudioDeliveryError);
+    expect(database.studioAssetProcessingJob.create).not.toHaveBeenCalled();
+  });
+
+  it("holds encoding when a later listening decision rejects the promoted preview", async () => {
+    const database = prisma();
+    database.studioAudioMasterReviewReceipt.findFirst.mockResolvedValue({
+      id: "review-master-delivery-2",
+      decision: "REJECTED",
+      previewSha256: derivative.sha256,
+    });
+    await expect(queueAudioDelivery({ prisma: database, projectSlug: "qa-audio-delivery", assetId: "asset-delivery-1", sourceId: "source-delivery-1", masteryJobId: "audio_mastery_delivery_1", actorEmail: "qa@example.test" })).rejects.toMatchObject({ code: "AUDIO_DELIVERY_PROMOTION_APPROVAL_STALE", status: 409 });
     expect(database.studioAssetProcessingJob.create).not.toHaveBeenCalled();
   });
 });

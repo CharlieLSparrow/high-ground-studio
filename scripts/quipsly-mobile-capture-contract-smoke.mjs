@@ -2061,6 +2061,19 @@ function checkTranscriptCorrectionContractSources() {
     "iPhone tracks bounded original and verified-preview playback against server-selected moments, applies fair or delivery monitoring to both versions, and submits the existing append-only authenticated mastery-review contract without promoting or replacing source media.",
   );
   expect(
+    captureAudioMasteryClientText.includes("CaptureAudioMasteryPromotionResponse")
+      && captureAudioMasteryClientText.includes("promotionRequestIDs")
+      && captureAudioMasteryClientText.includes("api/media-vault/audio-mastery/promotion")
+      && captureAudioMasteryClientText.includes("latest.jobId == currentJobID")
+      && captureAudioMasteryClientText.includes("active.jobId")
+      && captureSourceEvidenceText.includes("CaptureAudioMasteryPromotion")
+      && captureSourceEvidenceText.includes("CaptureAudioMasteryPromote")
+      && captureSourceEvidenceText.includes("CaptureAudioMasteryWithdraw")
+      && captureUITestText.includes("CaptureAudioMasteryPromotion"),
+    "nativeAudioMasteryPromotionAuthority",
+    "iPhone can select only the latest exact approved mastery preview as a reversible delivery candidate, can withdraw an active current or earlier pass only with a reason, and keeps encoding, sharing, publication, and original source truth separate.",
+  );
+  expect(
     durableWorkText.includes("TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority}")
       && durableWorkText.includes("TranscriptSpeakerEvidenceBadge authority={goal.sourceAnchor.speakerAuthority}")
       && durableWorkText.includes("lastMergedTranscriptEvidence.sourceAnchor.speakerAuthority")

@@ -53,6 +53,24 @@ source and preview hashes, evidence bounds, and decision requirements. Capture
 then displays the returned latest decision without treating review as
 promotion, delivery, or publication.
 
+After the latest exact decision is an approval, Capture can deliberately mark
+that preview as the active delivery candidate. It uses the existing promotion
+service, which rechecks the latest mastery job, exact approval receipt, source
+generation and SHA-256, preview SHA-256, permissions, and active-candidate
+ledger inside a serializable transaction. A stable request identity makes a
+lost-response retry idempotent.
+
+Capture also shows when the current preview or an earlier pass is active. An
+authorized user can withdraw either active candidate only after supplying a
+reason. Withdrawal appends history instead of deleting the candidate or its
+review. Selection still creates no encoded artifact, share, upload,
+publication, timeline change, or source replacement.
+
+A later rejection now holds an earlier promotion immediately in both Nest and
+Capture, and delivery encoding independently rechecks that the promotion's
+exact approval is still the latest listening decision. A subsequent new
+approval can be deliberately promoted again without erasing the held history.
+
 ## Integrity and playback boundary
 
 - The improved file still downloads through authenticated, account-bound
