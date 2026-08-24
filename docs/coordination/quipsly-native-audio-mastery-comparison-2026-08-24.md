@@ -148,3 +148,48 @@ with `FBSOpenApplicationServiceErrorDomain` and process exit 64 before app code
 or assertions ran. That environment-bound run remains in the deferred
 validation ledger; it is neither reported as a passing UI run nor treated as
 an app assertion failure.
+
+## Crash-safe encoded-audio decisions
+
+An encoded-file approval or rejection is now committed to an account-partitioned
+iPhone outbox before Capture sends it to Nest. The protected entry retains the
+exact project, asset, source, delivery job, output SHA-256 and byte count,
+decision, normalized listening bins, note, completion time, and stable request
+UUID. A response lost to suspension, process death, or a network transition can
+therefore replay the identical server request instead of constructing a second
+receipt.
+
+The outbox uses atomic complete-until-first-authentication writes and a separate
+last-known-good ledger. It fails read-only after corruption, never exposes one
+account's entries to another signed-in account, and removes a decision only
+after Nest returns the append-only idempotent receipt. Retryable transport and
+server failures remain queued. Authorization, origin, or exact-media-lineage
+conflicts become a visible held state with an explicit retry control rather
+than an automatic last-write-wins guess.
+
+Nest now returns the stable client request ID in both the direct receipt and
+the latest review projection. On refresh, Capture can therefore close a saved
+entry from cross-client server readback without transmitting it again; older
+servers remain decodable during a staggered deployment.
+
+The UI disables a second approval or rejection while an exact saved decision
+exists and explains whether the phone is safely retrying or needs review. A
+held retry still revalidates account, recording, source, delivery job, SHA-256,
+byte count, and active promotion before transmission.
+
+A deterministic native harness proves protected write-before-publish,
+normalized immutable payload, stable retry identity across relaunch, duplicate
+decision refusal, attempt evidence, held conflicts, two-account isolation,
+exact acknowledgement, and last-known-good recovery from a corrupted primary
+ledger. The harness also uncovered and repaired a sub-second date drift:
+Foundation's default ISO-8601 ledger encoding can omit fractional seconds, so
+Capture now normalizes the completion timestamp before the first write and
+first send. The app compiles for both Simulator architectures; the mobile
+source and App Store static gates pass; and the focused delivery server suite
+passes 12/12.
+
+This is crash/retry and compile evidence, not a physical-device interruption
+claim. A later release train must still approve or reject real downloaded AAC
+on a physical iPhone, terminate or disconnect after submission, relaunch under
+the same account, observe one Nest receipt, and separately prove that another
+account cannot see or replay the saved decision.

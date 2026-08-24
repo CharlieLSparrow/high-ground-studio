@@ -30,7 +30,7 @@ type Coordinates = { prisma: any; projectSlug: string; assetId: string; sourceId
 type Actor = { id: string; email: string };
 
 export type PublicAudioDeliveryReviewSummary = {
-  latest: null | { id: string; jobId: string; decision: "approved" | "rejected"; note: string | null; reviewedAt: string; actorEmail: string };
+  latest: null | { id: string; jobId: string; clientRequestId: string; decision: "approved" | "rejected"; note: string | null; reviewedAt: string; actorEmail: string };
   approvalCount: number;
   rejectionCount: number;
 };
@@ -378,7 +378,7 @@ function toPublicStatus(job: any): PublicAudioDeliveryStatus {
 export function emptyAudioDeliveryStatus(): PublicAudioDeliveryStatus { return { jobId: null, status: "not-queued", masteryJobId: null, promotionReceiptId: null, profileId: null, output: null, review: { latest: null, approvalCount: 0, rejectionCount: 0 }, promotionStillActive: false, error: null, updatedAt: null, boundaries: boundaries() }; }
 function boundaries() { return { originalRemainsSourceTruth: true as const, outputIsUnapprovedDeliveryArtifact: true as const, proofListenRequiredBeforeOutputPacket: true as const, uploadNotStarted: true as const, publicationNotStarted: true as const }; }
 function registrationMetadata(result: ReturnType<typeof parseAudioDeliveryResult>, sourceId: string, outputPath: string) { return { schema: "quipsly-audio-delivery-registration-v1", sourceId, providerSourceId: outputPath, source: result.source, profile: result.profile, output: result.output, worker: result.worker, ...boundaries() }; }
-function publicReview(receipt: any) { return { id: String(receipt.id), jobId: String(receipt.deliveryJobId), decision: receipt.decision === "APPROVED" ? "approved" as const : "rejected" as const, note: text(receipt.note) || null, reviewedAt: receipt.occurredAt?.toISOString?.() ?? String(receipt.occurredAt), actorEmail: String(receipt.actorEmail) }; }
+function publicReview(receipt: any) { return { id: String(receipt.id), jobId: String(receipt.deliveryJobId), clientRequestId: String(receipt.clientRequestId), decision: receipt.decision === "APPROVED" ? "approved" as const : "rejected" as const, note: text(receipt.note) || null, reviewedAt: receipt.occurredAt?.toISOString?.() ?? String(receipt.occurredAt), actorEmail: String(receipt.actorEmail) }; }
 function digest(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 function text(value: unknown, maximum = Number.POSITIVE_INFINITY) { return typeof value === "string" ? value.trim().slice(0, maximum) : ""; }
 function object(value: unknown): Record<string, any> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {}; }

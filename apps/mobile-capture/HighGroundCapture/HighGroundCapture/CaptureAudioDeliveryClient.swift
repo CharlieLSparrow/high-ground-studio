@@ -24,6 +24,7 @@ struct CaptureAudioDeliverySnapshot: Decodable, Equatable {
         struct Receipt: Decodable, Equatable {
             let id: String
             let jobId: String
+            let clientRequestId: String?
             let decision: String
             let note: String?
             let reviewedAt: String
@@ -60,13 +61,32 @@ struct CaptureAudioDeliveryCoverage: Equatable {
 }
 
 private struct CaptureAudioDeliveryErrorEnvelope: Decodable {
+    let code: String?
     let error: String?
 }
 
 private struct CaptureAudioDeliveryReviewResponse: Decodable {
     let ok: Bool
+    let receipt: CaptureAudioDeliverySnapshot.ReviewSummary.Receipt?
     let review: CaptureAudioDeliverySnapshot.ReviewSummary?
     let error: String?
+}
+
+private struct CaptureAudioDeliveryReviewRequest: Encodable {
+    struct PlaybackEvidence: Encodable {
+        let schema: String
+        let listenedSecondBins: [Int]
+        let completedAt: Date
+    }
+
+    let projectSlug: String
+    let assetId: String
+    let sourceId: String
+    let deliveryJobId: String
+    let clientRequestId: String
+    let decision: String
+    let playbackEvidence: PlaybackEvidence
+    let note: String?
 }
 
 /// Owns the encoded AAC artifact lifecycle only. It never promotes a master,
@@ -79,6 +99,7 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
     @Published private(set) var isReviewing = false
     @Published private(set) var notice: String?
     @Published private(set) var listenedSecondBins: Set<Int> = []
+    @Published private(set) var savedDecision: PendingCaptureAudioDeliveryReview?
 
     private struct RecordingBinding: Equatable, Sendable {
         let recordingID: UUID
@@ -100,15 +121,17 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
         )
     )!
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
+    private let decisionOutbox = CaptureAudioDecisionOutbox.shared
     private var player: AVAudioPlayer?
     private var protectedArtifactURL: URL?
     private var playbackTimer: Timer?
+    private var currentBinding: RecordingBinding?
     private var playbackBinding: RecordingBinding?
     private var playbackSHA256: String?
     private var playbackSizeBytes: Int64?
     private var evidenceJobID: String?
-    private var reviewRequestIDs: [String: String] = [:]
     private var accountCancellable: AnyCancellable?
+    private var outboxCancellable: AnyCancellable?
 
     override init() {
         super.init()
@@ -116,6 +139,9 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
             for: .quipslyCaptureAccountIdentityDidChange
         ).sink { [weak self] _ in
             Task { @MainActor in self?.reset() }
+        }
+        outboxCancellable = decisionOutbox.$entries.sink { [weak self] _ in
+            Task { @MainActor in self?.refreshSavedDecision() }
         }
     }
 
@@ -129,11 +155,20 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
             reset()
             return
         }
+        currentBinding = binding
         isLoading = true
         defer { isLoading = false }
         do {
-            acceptSnapshot(try await requestStatus(binding: binding))
-            notice = nil
+            let current = try await requestStatus(binding: binding)
+            acceptSnapshot(current)
+            refreshSavedDecision(binding: binding)
+            if let savedDecision, savedDecision.disposition == .pending {
+                await sendPersistedReview(savedDecision, binding: binding)
+            } else if savedDecision?.disposition == .held {
+                notice = savedDecision?.lastErrorMessage ?? "A saved encoded-audio decision needs review before retrying."
+            } else {
+                notice = nil
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -264,7 +299,15 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
     }
 
     func saveReview(recording: LocalRecording, decision: String, note rawNote: String?) async {
-        guard let binding = binding(for: recording), let status = snapshot, let jobID = status.jobId, jobID == evidenceJobID, status.output != nil, status.promotionStillActive, decision == "approved" || decision == "rejected" else {
+        guard let binding = binding(for: recording),
+              let status = snapshot,
+              let jobID = status.jobId,
+              jobID == evidenceJobID,
+              let output = status.output,
+              let sha256 = Self.normalizedSHA256(output.sha256),
+              output.sizeBytes > 0,
+              status.promotionStillActive,
+              let typedDecision = PendingCaptureAudioDeliveryReview.Decision(rawValue: decision) else {
             notice = "The exact encoded artifact is no longer available for review."
             return
         }
@@ -277,42 +320,36 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
             notice = "Hear the encoded audio and add a note before rejecting it."
             return
         }
-        guard AuthManager.shared.networkActionsAllowed else {
-            notice = "Reconnect to Nest to save this encoded-audio decision."
-            return
-        }
         let bins = listenedSecondBins.sorted()
-        let fingerprint = [jobID, decision, bins.map(String.init).joined(separator: ","), note ?? ""].joined(separator: "|")
-        let requestID = reviewRequestIDs[fingerprint] ?? UUID().uuidString.lowercased()
-        reviewRequestIDs[fingerprint] = requestID
-        isReviewing = true
-        defer { isReviewing = false }
         do {
-            var request = URLRequest(url: baseURL.appendingPathComponent("api/media-vault/audio-delivery/review"))
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let body: [String: Any] = [
-                "projectSlug": binding.projectSlug, "assetId": binding.assetID, "sourceId": binding.sourceID,
-                "deliveryJobId": jobID, "clientRequestId": requestID, "decision": decision,
-                "playbackEvidence": ["schema": "quipsly-audio-delivery-playback-review-v1", "listenedSecondBins": bins, "completedAt": ISO8601DateFormatter().string(from: Date())],
-                "note": note.map { $0 as Any } ?? NSNull(),
-            ]
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request, expectedOwnerAccountID: binding.ownerAccountID)
-            guard response.statusCode < 400, Self.sameOrigin(response.url, baseURL) else {
-                let envelope = try? JSONDecoder().decode(CaptureAudioDeliveryErrorEnvelope.self, from: data)
-                throw ClientError.message(envelope?.error ?? "Quipsly could not save this encoded-audio decision.")
+            let entry = try decisionOutbox.enqueueDeliveryReview(
+                projectSlug: binding.projectSlug,
+                assetID: binding.assetID,
+                sourceID: binding.sourceID,
+                deliveryJobID: jobID,
+                deliverySHA256: sha256,
+                deliverySizeBytes: output.sizeBytes,
+                decision: typedDecision,
+                listenedSecondBins: bins,
+                note: note
+            )
+            savedDecision = entry
+            if AuthManager.shared.networkActionsAllowed {
+                await sendPersistedReview(entry, binding: binding)
+            } else {
+                notice = "Decision saved securely on this iPhone. Quipsly will retry when Nest is reachable."
             }
-            let result = try JSONDecoder().decode(CaptureAudioDeliveryReviewResponse.self, from: data)
-            guard result.ok, let review = result.review else { throw ClientError.message(result.error ?? "Quipsly did not return the saved proof-listen receipt.") }
-            try validate(binding)
-            snapshot?.review = review
-            notice = decision == "approved" ? "Encoded audio approved as heard. Sharing and publishing have not started." : "Encoded audio rejected as heard. The artifact and history remain available."
-        } catch is CancellationError {
-            return
         } catch {
             notice = error.localizedDescription
         }
+    }
+
+    func retrySavedReview(recording: LocalRecording) async {
+        guard let binding = binding(for: recording), let entry = savedDecision else { return }
+        decisionOutbox.releaseForRetry(entry.id)
+        refreshSavedDecision(binding: binding)
+        guard let pending = savedDecision else { return }
+        await sendPersistedReview(pending, binding: binding)
     }
 
     func stop() {
@@ -330,7 +367,8 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
         notice = nil
         listenedSecondBins = []
         evidenceJobID = nil
-        reviewRequestIDs = [:]
+        savedDecision = nil
+        currentBinding = nil
     }
 
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
@@ -346,6 +384,155 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
         Task { @MainActor in
             self.clearPlayback()
             self.notice = error?.localizedDescription ?? "The encoded artifact could not be decoded."
+        }
+    }
+
+    private func refreshSavedDecision(binding: RecordingBinding? = nil) {
+        let resolved = binding ?? currentBinding
+        guard let resolved else {
+            savedDecision = nil
+            return
+        }
+        savedDecision = decisionOutbox.decision(
+            projectSlug: resolved.projectSlug,
+            assetID: resolved.assetID
+        )
+    }
+
+    private func sendPersistedReview(
+        _ entry: PendingCaptureAudioDeliveryReview,
+        binding: RecordingBinding
+    ) async {
+        guard !isReviewing else { return }
+        guard entry.ownerAccountID == binding.ownerAccountID,
+              entry.projectSlug == binding.projectSlug,
+              entry.assetID == binding.assetID,
+              entry.sourceID == binding.sourceID,
+              let status = snapshot,
+              status.jobId == entry.deliveryJobID,
+              status.promotionStillActive,
+              let output = status.output,
+              Self.normalizedSHA256(output.sha256) == entry.deliverySHA256,
+              output.sizeBytes == entry.deliverySizeBytes else {
+            decisionOutbox.markHeld(
+                entry.id,
+                code: "audio-delivery-review-lineage-changed",
+                message: "The encoded file changed after this phone decision was saved. Review the current file before retrying."
+            )
+            refreshSavedDecision(binding: binding)
+            notice = savedDecision?.lastErrorMessage
+            return
+        }
+        if status.review.latest?.clientRequestId == entry.clientRequestID {
+            let acknowledged = decisionOutbox.markAcknowledged(entry.id)
+            refreshSavedDecision(binding: binding)
+            notice = acknowledged
+                ? "Nest already has this exact encoded-audio decision."
+                : "Nest already has this decision. This iPhone will confirm its protected outbox on the next refresh."
+            return
+        }
+        guard AuthManager.shared.networkActionsAllowed else {
+            decisionOutbox.markRetryable(entry.id, message: "Nest is not reachable yet.")
+            refreshSavedDecision(binding: binding)
+            notice = "Decision saved securely on this iPhone. Quipsly will retry when Nest is reachable."
+            return
+        }
+
+        isReviewing = true
+        decisionOutbox.markAttempting(entry.id)
+        refreshSavedDecision(binding: binding)
+        defer { isReviewing = false }
+        do {
+            var request = URLRequest(url: baseURL.appendingPathComponent("api/media-vault/audio-delivery/review"))
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let body = CaptureAudioDeliveryReviewRequest(
+                projectSlug: entry.projectSlug,
+                assetId: entry.assetID,
+                sourceId: entry.sourceID,
+                deliveryJobId: entry.deliveryJobID,
+                clientRequestId: entry.clientRequestID,
+                decision: entry.decision.rawValue,
+                playbackEvidence: .init(
+                    schema: "quipsly-audio-delivery-playback-review-v1",
+                    listenedSecondBins: entry.listenedSecondBins,
+                    completedAt: entry.completedAt
+                ),
+                note: entry.note
+            )
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            request.httpBody = try encoder.encode(body)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: binding.ownerAccountID
+            )
+            guard Self.sameOrigin(response.url, baseURL) else {
+                throw ReviewFailure(
+                    retryable: false,
+                    code: "audio-delivery-review-origin-mismatch",
+                    message: "Nest returned the audio decision from an unexpected origin."
+                )
+            }
+            guard response.statusCode < 400 else {
+                let envelope = try? JSONDecoder().decode(CaptureAudioDeliveryErrorEnvelope.self, from: data)
+                throw ReviewFailure(
+                    retryable: Self.isRetryableStatus(response.statusCode),
+                    code: envelope?.code ?? "http-\(response.statusCode)",
+                    message: envelope?.error ?? "Quipsly could not save this encoded-audio decision."
+                )
+            }
+            let result = try JSONDecoder().decode(CaptureAudioDeliveryReviewResponse.self, from: data)
+            guard result.ok, let review = result.review else {
+                throw ReviewFailure(
+                    retryable: true,
+                    code: "audio-delivery-review-receipt-missing",
+                    message: result.error ?? "Nest did not return the saved proof-listen receipt."
+                )
+            }
+            if let returnedRequestID = result.receipt?.clientRequestId,
+               returnedRequestID != entry.clientRequestID {
+                throw ReviewFailure(
+                    retryable: false,
+                    code: "audio-delivery-review-receipt-mismatch",
+                    message: "Nest returned a receipt for a different encoded-audio decision."
+                )
+            }
+            do {
+                try validate(binding)
+            } catch {
+                throw ReviewFailure(
+                    retryable: false,
+                    code: "audio-delivery-review-local-lineage-changed",
+                    message: "Nest saved the decision, but the active recording changed before this iPhone could confirm it."
+                )
+            }
+            snapshot?.review = review
+            let acknowledged = decisionOutbox.markAcknowledged(entry.id)
+            refreshSavedDecision(binding: binding)
+            if acknowledged {
+                notice = entry.decision == .approved
+                    ? "Encoded audio approved as heard. Sharing and publishing have not started."
+                    : "Encoded audio rejected as heard. The artifact and history remain available."
+            } else {
+                notice = "Nest saved the decision. This iPhone will confirm its protected outbox on the next refresh."
+            }
+        } catch is CancellationError {
+            refreshSavedDecision(binding: binding)
+            notice = "Decision saved securely on this iPhone. Quipsly will retry after this screen reopens."
+        } catch let failure as ReviewFailure {
+            if failure.retryable {
+                decisionOutbox.markRetryable(entry.id, message: failure.message)
+                notice = "Decision saved securely on this iPhone. \(failure.message)"
+            } else {
+                decisionOutbox.markHeld(entry.id, code: failure.code, message: failure.message)
+                notice = failure.message
+            }
+            refreshSavedDecision(binding: binding)
+        } catch {
+            decisionOutbox.markRetryable(entry.id, message: error.localizedDescription)
+            refreshSavedDecision(binding: binding)
+            notice = "Decision saved securely on this iPhone. \(error.localizedDescription)"
         }
     }
 
@@ -397,7 +584,6 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
         if evidenceJobID != current.jobId {
             clearPlayback()
             listenedSecondBins = []
-            reviewRequestIDs = [:]
             evidenceJobID = current.jobId
         }
         snapshot = current
@@ -467,6 +653,7 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
 
     private static func clampedTime(_ requested: TimeInterval, duration: TimeInterval) -> TimeInterval { min(max(requested.isFinite ? requested : 0, 0), max(duration - 0.01, 0)) }
     private static func normalizedSHA256(_ value: String) -> String? { let value = value.lowercased(); return value.range(of: "^[0-9a-f]{64}$", options: .regularExpression) == nil ? nil : value }
+    private static func isRetryableStatus(_ status: Int) -> Bool { status == 408 || status == 425 || status == 429 || status >= 500 }
     private static func nonempty(_ value: String?) -> String? { let value = value?.trimmingCharacters(in: .whitespacesAndNewlines); return value?.isEmpty == false ? value : nil }
     private static func sameOrigin(_ url: URL?, _ expected: URL) -> Bool { guard let url, let left = URLComponents(url: url, resolvingAgainstBaseURL: false), let right = URLComponents(url: expected, resolvingAgainstBaseURL: false) else { return false }; return left.scheme?.lowercased() == right.scheme?.lowercased() && left.host?.lowercased() == right.host?.lowercased() && (left.port ?? Self.defaultPort(left.scheme)) == (right.port ?? Self.defaultPort(right.scheme)) }
     private static func defaultPort(_ scheme: String?) -> Int? { scheme?.lowercased() == "https" ? 443 : scheme?.lowercased() == "http" ? 80 : nil }
@@ -477,5 +664,13 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
         var errorDescription: String? {
             switch self { case .message(let message): message }
         }
+    }
+
+    private struct ReviewFailure: LocalizedError {
+        let retryable: Bool
+        let code: String
+        let message: String
+
+        var errorDescription: String? { message }
     }
 }

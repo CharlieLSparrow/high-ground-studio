@@ -1002,6 +1002,41 @@ struct CaptureSourceEvidenceView: View {
                 .foregroundStyle(latest.decision == "approved" ? .green : .orange)
             }
 
+            if let saved = delivery.savedDecision {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(
+                        saved.disposition == .pending
+                            ? "Decision saved on this iPhone"
+                            : "Saved decision needs review",
+                        systemImage: saved.disposition == .pending
+                            ? "arrow.triangle.2.circlepath.icloud.fill"
+                            : "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(saved.disposition == .pending ? .blue : .orange)
+
+                    Text(
+                        saved.disposition == .pending
+                            ? "Quipsly will resend the identical decision and listening evidence. It will not create a second receipt."
+                            : (saved.lastErrorMessage ?? "The encoded file or access changed after this decision was saved.")
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                    if saved.disposition == .held {
+                        Button("Retry saved decision") {
+                            Task { await delivery.retrySavedReview(recording: recording) }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(delivery.isReviewing)
+                        .accessibilityIdentifier("CaptureAudioDeliveryRetrySavedReview")
+                    }
+                }
+                .padding(10)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityIdentifier("CaptureAudioDeliverySavedDecision")
+            }
+
             TextField(
                 "Optional approval note; required when rejecting",
                 text: $deliveryReviewNote,
@@ -1024,6 +1059,7 @@ struct CaptureSourceEvidenceView: View {
                 .buttonStyle(.bordered)
                 .disabled(
                     delivery.isReviewing
+                        || delivery.savedDecision != nil
                         || delivery.listenedSecondBins.isEmpty
                         || deliveryReviewNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 )
@@ -1039,7 +1075,7 @@ struct CaptureSourceEvidenceView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(delivery.isReviewing || !coverage.approvalReady)
+                .disabled(delivery.isReviewing || delivery.savedDecision != nil || !coverage.approvalReady)
                 .accessibilityIdentifier("CaptureAudioDeliveryApprove")
             }
 

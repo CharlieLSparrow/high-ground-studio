@@ -1272,6 +1272,8 @@ function checkTranscriptCorrectionContractSources() {
   const captureSourceEvidenceText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureSourceEvidenceView.swift");
   const captureAudioMasteryClientText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureAudioMasteryClient.swift");
   const captureAudioDeliveryClientText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureAudioDeliveryClient.swift");
+  const captureAudioDecisionOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureAudioDecisionOutbox.swift");
+  const audioDeliveryServiceText = sourceText("apps/quipsly/src/lib/server/audio-delivery.ts");
   const localRecordingPlaybackText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/LocalRecordingPlaybackController.swift");
   const mobileComponentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const nestDashboardText = sourceText("apps/quipsly/src/app/(app)/nests/[slug]/page.tsx");
@@ -2082,7 +2084,17 @@ function checkTranscriptCorrectionContractSources() {
       && captureAudioDeliveryClientText.includes("computeDigest")
       && captureAudioDeliveryClientText.includes("FileProtectionType.complete")
       && captureAudioDeliveryClientText.includes("quipsly-audio-delivery-playback-review-v1")
-      && captureAudioDeliveryClientText.includes("reviewRequestIDs")
+      && captureAudioDeliveryClientText.includes("sendPersistedReview")
+      && captureAudioDeliveryClientText.includes("CaptureAudioDecisionOutbox.shared")
+      && captureAudioDeliveryClientText.includes("status.review.latest?.clientRequestId == entry.clientRequestID")
+      && audioDeliveryServiceText.includes("clientRequestId: String(receipt.clientRequestId)")
+      && captureAudioDecisionOutboxText.includes("completeFileProtectionUntilFirstUserAuthentication")
+      && captureAudioDecisionOutboxText.includes("last-known-good")
+      && captureAudioDecisionOutboxText.includes("ownerAccountID")
+      && captureAudioDecisionOutboxText.includes("clientRequestID")
+      && captureAudioDecisionOutboxText.includes("markAcknowledged")
+      && captureAudioDecisionOutboxText.includes("markRetryable")
+      && captureAudioDecisionOutboxText.includes("markHeld")
       && captureAudioDeliveryClientText.includes("requiredSecondBins")
       && captureAudioDeliveryClientText.includes("playbackIsStillAuthorized")
       && captureAudioDeliveryClientText.includes("promotionStillActive")
@@ -2092,9 +2104,11 @@ function checkTranscriptCorrectionContractSources() {
       && captureSourceEvidenceText.includes("CaptureAudioDeliveryReview")
       && captureSourceEvidenceText.includes("CaptureAudioDeliveryApprove")
       && captureSourceEvidenceText.includes("CaptureAudioDeliveryReject")
+      && captureSourceEvidenceText.includes("CaptureAudioDeliverySavedDecision")
+      && captureSourceEvidenceText.includes("CaptureAudioDeliveryRetrySavedReview")
       && captureUITestText.includes("CaptureAudioDeliveryPreviewBoundary"),
     "nativeAudioDeliveryArtifactReview",
-    "iPhone deliberately encodes the selected approved improvement, downloads and verifies the exact authenticated AAC bytes, requires beginning-middle-ending proof listening, and records an append-only approval or rejection without sharing, publishing, or replacing the source.",
+    "iPhone deliberately encodes the selected approved improvement, downloads and verifies the exact authenticated AAC bytes, requires beginning-middle-ending proof listening, and crash-safely replays the identical account-bound approval or rejection without sharing, publishing, or replacing the source.",
   );
   expect(
     durableWorkText.includes("TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority}")

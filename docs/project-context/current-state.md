@@ -71,6 +71,15 @@ Date: 2026-08-24
   automated evidence; live
   deployment, physical-device readback, and minimally instructed human
   acceptance remain future release evidence.
+- Capture's encoded AAC approval/rejection path now journals the exact account,
+  media lineage, listening evidence, timestamp, note, and stable idempotency ID
+  under iOS file protection before transmission. Relaunch retries the identical
+  request; retryable failures stay queued; semantic or lineage conflicts are
+  visibly held. A deterministic harness covers relaunch, account isolation,
+  exact acknowledgement, and corrupted-ledger recovery. The focused delivery
+  server suite passes 12/12, both Capture static gates pass, and the app builds
+  for arm64 and x86_64 Simulator. Physical-iPhone interruption and cross-account
+  readback remain explicitly deferred release evidence.
 
 ## Cross-device transcript-readiness checkpoint
 

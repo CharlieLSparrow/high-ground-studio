@@ -2112,3 +2112,29 @@ recovery, protected offline readback, reconnection, and durable Studio handoff.
 Its simulator, pre-granted microphone permission, natural-speech, human
 listening, novice comprehension, TestFlight, and production-scale boundaries
 remain unchanged and explicit.
+
+## Deferred physical flight: crash-safe encoded-audio review — 2026-08-24
+
+Local source now protects an encoded AAC approval or rejection before network
+delivery and replays only the identical account- and artifact-bound request.
+Automated proof covers relaunch persistence, stable request identity and
+timestamp, retryable delivery, held conflicts, two-account ledger isolation,
+exact acknowledgement, corrupted-primary last-known-good recovery, dual-
+architecture compilation, 12 focused server tests, and both Capture static
+contracts.
+
+Before a TestFlight train claims this behavior on device, use a real retained
+recording and authenticated encoded artifact to:
+
+1. proof-listen beginning, middle, and ending on a physical iPhone;
+2. approve or reject, interrupt connectivity or terminate the app during the
+   response boundary, and relaunch;
+3. confirm the screen recovers or acknowledges the saved decision without
+   offering a second competing decision;
+4. confirm Nest contains exactly one receipt with the same decision and
+   listening evidence; and
+5. switch to a second account and confirm it cannot see or transmit the first
+   account's protected entry.
+
+No physical-device, human-audibility, TestFlight-networking, or production
+deployment claim is made by the local checkpoint.

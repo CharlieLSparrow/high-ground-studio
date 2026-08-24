@@ -153,7 +153,7 @@ describe("encoded-byte review ledger", () => {
     jest.mocked(inspectImmutableStudioMediaSource).mockResolvedValue({ provider: "local", locator: outputPath, generation: `sha256:${outputSha}`, sha256: outputSha, sizeBytes: outputBytes.length, contentType: "audio/mp4" });
     const { prisma, tx } = reviewPrisma();
     const result = await appendAudioDeliveryReview({ prisma, projectSlug: "qa-delivery", assetId: "asset_delivery_review_001", deliveryJobId: "audio_delivery_review_001", actor: { id: "actor_delivery_review_001", email: "qa@example.test" }, clientRequestId: "request_delivery_review_001", decision: "approved", playbackEvidence: { schema: "quipsly-audio-delivery-playback-review-v1", listenedSecondBins: [0, 1, 4, 5, 6, 8, 9], completedAt: new Date().toISOString() } });
-    expect(result).toMatchObject({ ok: true, receipt: { decision: "approved" }, review: { latest: { decision: "approved" }, approvalCount: 1 } });
+    expect(result).toMatchObject({ ok: true, receipt: { clientRequestId: "request_delivery_review_001", decision: "approved" }, review: { latest: { clientRequestId: "request_delivery_review_001", decision: "approved" }, approvalCount: 1 } });
     expect(tx.studioAudioDeliveryReviewReceipt.create).toHaveBeenCalledWith({ data: expect.objectContaining({ evidenceJson: expect.objectContaining({ outputPacketNotCreated: true, uploadNotStarted: true, publicationNotStarted: true }) }) });
     expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledWith(tx, "audio-delivery-review:audio_delivery_review_001:qa@example.test");
   });

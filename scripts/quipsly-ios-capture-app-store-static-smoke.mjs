@@ -71,6 +71,7 @@ const files = {
   captureRecordingShare: path.join(sourceRoot, "CaptureRecordingShare.swift"),
   transcriptReview: path.join(sourceRoot, "TranscriptCorrectionReview.swift"),
   transcriptReviewDecisionOutbox: path.join(sourceRoot, "TranscriptReviewDecisionOutbox.swift"),
+  captureAudioDecisionOutbox: path.join(sourceRoot, "CaptureAudioDecisionOutbox.swift"),
   onDeviceTranscriptManager: path.join(sourceRoot, "OnDeviceTranscriptManager.swift"),
   localRecordingLibrary: path.join(sourceRoot, "LocalRecordingLibrary.swift"),
   localRecordingPlayback: path.join(sourceRoot, "LocalRecordingPlaybackController.swift"),
@@ -223,6 +224,7 @@ const captureSupportSnapshotText = read(files.captureSupportSnapshot);
 const captureRecordingShareText = read(files.captureRecordingShare);
 const transcriptReviewText = read(files.transcriptReview);
 const transcriptReviewDecisionOutboxText = read(files.transcriptReviewDecisionOutbox);
+const captureAudioDecisionOutboxText = read(files.captureAudioDecisionOutbox);
 const onDeviceTranscriptManagerText = read(files.onDeviceTranscriptManager);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
@@ -1767,6 +1769,26 @@ requireIncludes(
   transcriptReviewDecisionOutboxText,
   'case confirmSegmentAsIs = "confirm-segment-as-is"',
   "native transcript review records an explicit confirmed-as-is operation",
+);
+requireIncludes(
+  captureAudioDecisionOutboxText,
+  "completeFileProtectionUntilFirstUserAuthentication",
+  "encoded-audio decisions are durably protected before transmission",
+);
+requireIncludes(
+  captureAudioDecisionOutboxText,
+  "activeOwnerAccountID",
+  "encoded-audio decision recovery remains account partitioned",
+);
+requireIncludes(
+  captureAudioDecisionOutboxText,
+  "last-known-good",
+  "encoded-audio decision recovery retains a last-known-good ledger",
+);
+requireIncludes(
+  captureAudioDecisionOutboxText,
+  "markHeld",
+  "stale encoded-audio decisions stop for visible review",
 );
 requireIncludes(
   transcriptReviewText,
