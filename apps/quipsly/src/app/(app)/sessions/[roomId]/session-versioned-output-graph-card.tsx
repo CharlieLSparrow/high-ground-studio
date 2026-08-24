@@ -23,6 +23,50 @@ function stateTone(value: string) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
+function localDateTime(value: string | null) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "";
+  const local = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function EpisodePacketMetadataReview({
+  packet,
+  disabled,
+  onSave,
+}: {
+  packet: NonNullable<SessionVersionedOutputGraph["currentPacket"]>;
+  disabled: boolean;
+  onSave: (metadata: Record<string, unknown>) => void;
+}) {
+  const [title, setTitle] = useState(packet.title);
+  const [description, setDescription] = useState(packet.description ?? "");
+  const [episodeType, setEpisodeType] = useState(packet.episodeType ?? "full");
+  const [episodeNumber, setEpisodeNumber] = useState(packet.episodeNumber?.toString() ?? "");
+  const [seasonNumber, setSeasonNumber] = useState(packet.seasonNumber?.toString() ?? "");
+  const [publishAt, setPublishAt] = useState(localDateTime(packet.publishAt));
+  const changed = title.trim() !== packet.title
+    || description.trim() !== (packet.description ?? "")
+    || episodeType !== (packet.episodeType ?? "full")
+    || episodeNumber !== (packet.episodeNumber?.toString() ?? "")
+    || seasonNumber !== (packet.seasonNumber?.toString() ?? "")
+    || publishAt !== localDateTime(packet.publishAt);
+  const canSave = changed && title.trim().length > 0 && description.trim().length > 0;
+  return <div className="mt-4 rounded-xl border border-emerald-300 bg-white/85 p-4">
+    <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-xs font-black">Episode details</p><p className="mt-1 text-[10px] font-bold leading-4 text-emerald-900">Saving creates a new, traceable packet version. It does not upload, host, or publish anything.</p></div><span className="rounded-full border border-emerald-200 px-2 py-1 text-[9px] font-black uppercase">{packet.metadataComplete ? "Reviewed" : "Review needed"}</span></div>
+    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <label className="grid gap-1 text-[10px] font-black uppercase">Episode title<input value={title} onChange={(event) => setTitle(event.target.value)} className="min-h-11 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+      <label className="grid gap-1 text-[10px] font-black uppercase">Episode type<select value={episodeType} onChange={(event) => setEpisodeType(event.target.value as "full" | "bonus" | "trailer")} className="min-h-11 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case outline-none focus:ring-2 focus:ring-emerald-500"><option value="full">Full episode</option><option value="bonus">Bonus</option><option value="trailer">Trailer</option></select></label>
+      <label className="grid gap-1 text-[10px] font-black uppercase sm:col-span-2">Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+      <label className="grid gap-1 text-[10px] font-black uppercase">Season number <span className="sr-only">optional</span><input type="number" min="0" step="1" value={seasonNumber} onChange={(event) => setSeasonNumber(event.target.value)} placeholder="Optional" className="min-h-11 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+      <label className="grid gap-1 text-[10px] font-black uppercase">Episode number <span className="sr-only">optional</span><input type="number" min="0" step="1" value={episodeNumber} onChange={(event) => setEpisodeNumber(event.target.value)} placeholder="Optional" className="min-h-11 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+      <label className="grid gap-1 text-[10px] font-black uppercase sm:col-span-2">Intended release time <span className="sr-only">optional</span><input type="datetime-local" value={publishAt} onChange={(event) => setPublishAt(event.target.value)} className="min-h-11 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+    </div>
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] font-bold text-emerald-900">Title and description are required. Numbering and release timing are optional.</p><button type="button" disabled={disabled || !canSave} onClick={() => onSave({ title: title.trim(), description: description.trim(), episodeType, episodeNumber: episodeNumber === "" ? null : Number(episodeNumber), seasonNumber: seasonNumber === "" ? null : Number(seasonNumber), publishAt: publishAt ? new Date(publishAt).toISOString() : null })} className="min-h-11 rounded-xl bg-emerald-800 px-5 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">Save reviewed details</button></div>
+  </div>;
+}
+
 export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersionedOutputGraph }) {
   const router = useRouter();
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
@@ -32,7 +76,7 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
   const [programReviewNote, setProgramReviewNote] = useState("");
   const [journal] = useState(() => new SessionOutputRequestJournal());
 
-  async function operate(body: Record<string, unknown>, busyKey: string) {
+  async function operate(body: Record<string, unknown>, busyKey: string, successMessage?: string) {
     const requestKey = `podcast-output:${JSON.stringify(body)}`;
     const savedRequest = journal.preserve(requestKey, () => body);
     setBusyAssetId(busyKey);
@@ -43,11 +87,11 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...savedRequest.body, clientRequestId: savedRequest.clientRequestId }),
       });
-      const packet = await response.json().catch(() => null) as { ok?: boolean; error?: string; selection?: { operation?: string } } | null;
+      const packet = await response.json().catch(() => null) as { ok?: boolean; unchanged?: boolean; error?: string; selection?: { operation?: string } } | null;
       if (!response.ok || packet?.ok !== true) throw new Error(packet?.error || "The Episode package decision could not be saved.");
-      setMessage(packet.selection?.operation === "withdrawn"
+      setMessage(packet.unchanged === true ? "No Episode details changed, so Quipsly kept the current packet without adding empty history." : successMessage ?? (packet.selection?.operation === "withdrawn"
         ? "The Episode package selection was withdrawn. Every packet and artifact remains preserved."
-        : "The proof-listened audio version is now the selected Episode package candidate. Metadata, hosting, upload, and publication remain open.");
+        : "The proof-listened audio version is now the selected Episode package candidate. Metadata, hosting, upload, and publication remain open."));
       setWithdrawReason("");
       journal.acknowledge(requestKey);
       router.refresh();
@@ -136,6 +180,7 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
         <span className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-[9px] font-black uppercase">{human(graph.currentPacket.status)}</span>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-3 text-xs font-bold"><p>Metadata: {graph.currentPacket.metadataComplete ? "complete" : "review needed"}</p><p>Public enclosure: {graph.currentPacket.enclosurePublic ? "ready" : "not hosted"}</p><p>Publication: {graph.currentPacket.publicationEligible ? "eligible" : "not authorized"}</p></div>
+      <EpisodePacketMetadataReview key={graph.currentPacket.id} packet={graph.currentPacket} disabled={busyAssetId !== null} onSave={(metadata) => void operate({ action: "metadata", projectSlug: graph.episode!.projectSlug, episodeProductionId: graph.episode!.id, baseSelectionId: graph.currentPacket!.selectionId, metadata }, "metadata-current", "Reviewed Episode details were saved as a new packet version. Audio bytes are unchanged; hosting and publication remain open.")} />
       <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><input value={withdrawReason} onChange={(event) => setWithdrawReason(event.target.value)} placeholder="Reason to hold or replace this packet" aria-label="Episode packet withdrawal reason" className="min-h-11 rounded-xl border border-emerald-300 bg-white px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500" /><button type="button" disabled={busyAssetId !== null || withdrawReason.trim().length < 3} onClick={() => void operate({ action: "withdraw", projectSlug: graph.episode!.projectSlug, episodeProductionId: graph.episode!.id, reason: withdrawReason.trim() }, "withdraw-current")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-700 bg-white px-4 text-xs font-black disabled:cursor-not-allowed disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Withdraw selection</button></div>
     </section> : null}
 

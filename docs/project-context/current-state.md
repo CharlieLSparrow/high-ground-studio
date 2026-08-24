@@ -89,6 +89,15 @@ Date: 2026-08-24
   until acknowledgement. Seventeen focused tests and strict Quipsly TypeScript
   pass; authenticated two-Episode and lost-response browser flight evidence is
   deferred without blocking independent work.
+- Session producers can now complete the packet's conventional Episode details
+  in place: title, description, type, and optional numbering/release intent.
+  Saving creates and selects a new immutable packet version rather than
+  mutating the selected packet. It retains the predecessor and exact approved
+  audio SHA, fails a stale-tab write, and leaves hosting, upload, RSS, and
+  publication explicitly false. Five additional focused service/route/graph
+  tests plus an unchanged-metadata no-op regression pass with strict Quipsly
+  TypeScript; authenticated browser review and
+  lost-response readback remain in the deferred validation ledger.
 
 ## Cross-device transcript-readiness checkpoint
 

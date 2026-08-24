@@ -23,6 +23,28 @@ The audited implementation already provides:
 - explicit incomplete metadata and public-enclosure facts; and
 - no upload, RSS mutation, or publication side effect from selection.
 
+The same Session surface now completes the next editorial step without opening
+a legacy podcast admin screen. A producer reviews the conventional Episode
+title, description, type, optional season/episode numbers, and optional intended
+release time. Saving creates a second immutable output packet and appends a new
+selection receipt. It preserves the approved audio artifact SHA-256 and the
+prior packet; it does not mutate either one.
+
+Only title and description are required. Quipsly does not invent numbering or
+a release time just to make a form look complete. A stale browser tab cannot
+replace a newer selection: metadata review names the exact current selection
+receipt and fails closed if it changed. The browser request journal also keeps
+one metadata intent's exact body and UUID until acknowledgement, so retrying an
+ambiguous response is idempotent.
+
+An unchanged form is disabled in the Session. The server independently treats
+an identical metadata payload as a no-op, preserving the current packet and
+selection without manufacturing an empty history entry.
+
+Reviewed metadata changes `metadataComplete` and removes the metadata-review
+hold in the new packet. Public enclosure hosting, upload, RSS mutation, and
+publication remain separately false and visibly open.
+
 ## Episode lineage repair
 
 Packet selection previously proved that an asset was attached to the Nest but
@@ -63,15 +85,19 @@ browser storage.
 
 ## Evidence and limits
 
-- 17 focused packet service, route, graph, and request-journal tests pass.
+- 23 focused packet service, route, graph, and request-journal tests pass.
 - The request-journal test proves identical UUID and timestamped body reuse,
   distinct intent isolation, and post-acknowledgement replacement.
 - The service test proves another Episode's asset is rejected before reading
   approved delivery evidence or writing packet/selection records.
+- Metadata tests prove predecessor retention, exact audio-SHA continuity,
+  idempotent replay, stale-selection rejection, and reviewed metadata
+  projection without hosting or publication side effects.
 - Strict Quipsly TypeScript passes.
 
 This is local service and component evidence. An authenticated two-Episode
 browser flight should later create approved artifacts in one Nest, attempt the
 wrong Episode coordinates, select the correct program, simulate a lost
-response, refresh, and verify one current packet plus append-only history. No
-deployment, upload, hosting, RSS change, or publication was performed here.
+response, review metadata, refresh, and verify one current packet plus
+append-only packet and selection history. No deployment, upload, hosting, RSS
+change, or publication was performed here.

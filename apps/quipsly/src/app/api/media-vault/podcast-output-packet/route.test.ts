@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
-import { selectPodcastOutputPacket, withdrawPodcastOutputPacket } from "@/lib/server/podcast-output-packet";
+import { revisePodcastOutputPacketMetadata, selectPodcastOutputPacket, withdrawPodcastOutputPacket } from "@/lib/server/podcast-output-packet";
 
 import { POST } from "./route";
 
@@ -12,6 +12,7 @@ jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/episode-production-access", () => ({ resolveEpisodeProductionAccess: jest.fn() }));
 jest.mock("@/lib/server/podcast-output-packet", () => ({
   PodcastOutputPacketError: class PodcastOutputPacketError extends Error { constructor(message: string, readonly status: number, readonly code: string) { super(message); } },
+  revisePodcastOutputPacketMetadata: jest.fn(),
   selectPodcastOutputPacket: jest.fn(),
   withdrawPodcastOutputPacket: jest.fn(),
 }));
@@ -50,5 +51,20 @@ describe("podcast Episode output packet route", () => {
     const response = await POST(request({ action: "withdraw", projectSlug: base.projectSlug, episodeProductionId: base.episodeProductionId, clientRequestId: "withdraw-1", reason: "Replace the mix", outputPacketId: "attacker-controlled" }));
     expect(response.status).toBe(200);
     expect(withdrawPodcastOutputPacket).toHaveBeenCalledWith({ prisma: {}, actor: { id: actor.id, email: actor.email }, projectSlug: base.projectSlug, episodeProductionId: base.episodeProductionId, clientRequestId: "withdraw-1", reason: "Replace the mix" });
+  });
+
+  it("creates a reviewed metadata packet version against the exact current selection", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({ allowed: true, actor, access: { allowed: true, projectId: "project-1", role: "EDITOR" } } as never);
+    jest.mocked(revisePodcastOutputPacketMetadata).mockResolvedValue({ ok: true, idempotentReplay: false, packet: { id: "packet-2" }, selection: { operation: "selected" } } as never);
+    const response = await POST(request({ action: "metadata", projectSlug: base.projectSlug, episodeProductionId: base.episodeProductionId, baseSelectionId: "selection-1", clientRequestId: "metadata-1", metadata: { title: "Episode 9", description: "Reviewed description", episodeType: "full", seasonNumber: 2, episodeNumber: 9, publishAt: "2026-08-25T15:00:00.000Z" } }));
+
+    expect(response.status).toBe(201);
+    expect(revisePodcastOutputPacketMetadata).toHaveBeenCalledWith({ prisma: {}, actor: { id: actor.id, email: actor.email }, projectSlug: base.projectSlug, episodeProductionId: base.episodeProductionId, baseSelectionId: "selection-1", clientRequestId: "metadata-1", metadata: { title: "Episode 9", description: "Reviewed description", episodeType: "full", seasonNumber: 2, episodeNumber: 9, publishAt: "2026-08-25T15:00:00.000Z" } });
+  });
+
+  it("rejects metadata without the current selection before authorization", async () => {
+    const response = await POST(request({ action: "metadata", projectSlug: base.projectSlug, episodeProductionId: base.episodeProductionId, clientRequestId: "metadata-1", metadata: {} }));
+    expect(response.status).toBe(400);
+    expect(resolveEpisodeProductionAccess).not.toHaveBeenCalled();
   });
 });

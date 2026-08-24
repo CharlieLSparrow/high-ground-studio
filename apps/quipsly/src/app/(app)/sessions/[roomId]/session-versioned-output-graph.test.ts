@@ -63,7 +63,7 @@ describe("versioned Episode output graph", () => {
   });
 
   it("projects the latest append-only selection without calling it publication", () => {
-    const packetJson = { audio: { assetId: "asset-1" }, readiness: { metadataComplete: false, enclosurePublic: false, publicationEligible: false } };
+    const packetJson = { audio: { assetId: "asset-1" }, episode: { title: "Curiosity and coaching", description: "Reviewed Episode notes.", episodeType: "full", seasonNumber: 2, episodeNumber: 9, publishAt: "2026-08-25T15:00:00.000Z" }, readiness: { metadataComplete: true, enclosurePublic: false, publicationEligible: false } };
     const graph = buildSessionVersionedOutputGraph({
       episode,
       assets: [asset({
@@ -74,7 +74,7 @@ describe("versioned Episode output graph", () => {
     });
 
     expect(graph.assets[0]).toMatchObject({ deliveryState: "APPROVED", packetState: "SELECTED" });
-    expect(graph.currentPacket).toMatchObject({ id: "packet-1", metadataComplete: false, enclosurePublic: false, publicationEligible: false });
+    expect(graph.currentPacket).toMatchObject({ id: "packet-1", title: "Curiosity and coaching", description: "Reviewed Episode notes.", episodeType: "full", seasonNumber: 2, episodeNumber: 9, publishAt: "2026-08-25T15:00:00.000Z", metadataComplete: true, enclosurePublic: false, publicationEligible: false });
     expect(graph.counts.selectedPackets).toBe(1);
   });
 

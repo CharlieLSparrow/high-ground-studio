@@ -129,6 +129,11 @@ export type SessionVersionedOutputGraph = {
     packetDigestSha256: string;
     artifactSha256: string;
     audioAssetId: string | null;
+    description: string | null;
+    episodeType: "full" | "bonus" | "trailer" | null;
+    episodeNumber: number | null;
+    seasonNumber: number | null;
+    publishAt: string | null;
     metadataComplete: boolean;
     enclosurePublic: boolean;
     publicationEligible: boolean;
@@ -203,6 +208,7 @@ export function buildSessionVersionedOutputGraph(input: {
   const currentSelection = latestSelection?.operation === "SELECT" ? latestSelection : null;
   const currentPacketJson = object(currentSelection?.packet.packetJson);
   const currentAudio = object(currentPacketJson.audio);
+  const currentEpisode = object(currentPacketJson.episode);
   const currentReadiness = object(currentPacketJson.readiness);
   const selectedAssetId = text(currentAudio.assetId) || null;
   const programMixIntegrity = input.programMix?.integrity;
@@ -313,13 +319,20 @@ export function buildSessionVersionedOutputGraph(input: {
     currentPacket: currentSelection ? {
       id: currentSelection.packet.id,
       slug: currentSelection.packet.slug,
-      title: currentSelection.packet.title,
+      title: text(currentEpisode.title) || currentSelection.packet.title,
       status: currentSelection.packet.status,
       selectionId: currentSelection.id,
       selectedAt: currentSelection.occurredAt,
       packetDigestSha256: currentSelection.packetDigestSha256,
       artifactSha256: currentSelection.artifactSha256,
       audioAssetId: selectedAssetId,
+      description: text(currentEpisode.description) || null,
+      episodeType: ["full", "bonus", "trailer"].includes(text(currentEpisode.episodeType))
+        ? text(currentEpisode.episodeType) as "full" | "bonus" | "trailer"
+        : null,
+      episodeNumber: Number.isInteger(currentEpisode.episodeNumber) ? Number(currentEpisode.episodeNumber) : null,
+      seasonNumber: Number.isInteger(currentEpisode.seasonNumber) ? Number(currentEpisode.seasonNumber) : null,
+      publishAt: text(currentEpisode.publishAt) || null,
       metadataComplete: currentReadiness.metadataComplete === true,
       enclosurePublic: currentReadiness.enclosurePublic === true,
       publicationEligible: currentReadiness.publicationEligible === true,

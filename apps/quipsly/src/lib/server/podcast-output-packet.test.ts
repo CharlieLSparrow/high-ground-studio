@@ -4,7 +4,7 @@ import { loadApprovedAudioDeliveryPacketEvidence } from "@/lib/server/audio-deli
 import { loadApprovedEpisodeProgramDeliveryPacketEvidence } from "@/lib/server/episode-program-delivery";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
-import { selectPodcastOutputPacket, withdrawPodcastOutputPacket } from "./podcast-output-packet";
+import { revisePodcastOutputPacketMetadata, selectPodcastOutputPacket, withdrawPodcastOutputPacket } from "./podcast-output-packet";
 
 jest.mock("@/lib/server/audio-delivery", () => ({
   AudioDeliveryError: class AudioDeliveryError extends Error { constructor(message: string, readonly status: number, readonly code: string) { super(message); } },
@@ -50,6 +50,7 @@ function approvedProgram() {
 
 function database(jobType = "audio-delivery") {
   let packet: any = null;
+  const packetsBySlug = new Map<string, any>();
   let latestSelection: any = null;
   const requests = new Map<string, any>();
   const project = { id: "project-1", slug: "high-ground-odyssey", name: "High Ground Odyssey" };
@@ -77,9 +78,10 @@ function database(jobType = "audio-delivery") {
     studioEpisodeAudioMixPromotionReceipt: { findFirst: jest.fn().mockResolvedValue({ id: "mix-promotion-1", operation: "PROMOTE" }) },
     studioEpisodeProgramDeliveryReviewReceipt: { findFirst: jest.fn().mockResolvedValue({ id: "program-delivery-review-1", decision: "APPROVED" }) },
     studioOutputPacket: {
-      findUnique: jest.fn(async () => packet),
+      findUnique: jest.fn(async ({ where }: any) => packetsBySlug.get(where.projectId_slug.slug) ?? null),
       create: jest.fn(async ({ data }: any) => {
         packet = { id: `packet-${++packetSequence}`, ...data, createdAt: new Date(), updatedAt: new Date() };
+        packetsBySlug.set(packet.slug, packet);
         return packet;
       }),
     },
@@ -94,7 +96,7 @@ function database(jobType = "audio-delivery") {
     studioEpisodeOutputSelectionReceipt: { findUnique: findRequest, findFirst: findLatest },
     $transaction: jest.fn(async (callback: any) => callback(tx)),
   };
-  return { prisma, tx, state: { get packet() { return packet; }, get latestSelection() { return latestSelection; } } };
+  return { prisma, tx, state: { get packet() { return packet; }, get latestSelection() { return latestSelection; }, get packets() { return [...packetsBySlug.values()]; } } };
 }
 
 describe("canonical podcast Episode packet selection", () => {
@@ -202,5 +204,60 @@ describe("canonical podcast Episode packet selection", () => {
     expect(state.packet.id).toBe("packet-1");
     expect(tx.studioOutputPacket.create).toHaveBeenCalledTimes(1);
     expect(tx.studioEpisodeOutputSelectionReceipt.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("reviews metadata by selecting a new immutable packet while preserving the exact audio", async () => {
+    const { prisma, tx, state } = database();
+    const selected = await selectPodcastOutputPacket({ prisma, ...selectInput });
+    const result = await revisePodcastOutputPacketMetadata({
+      prisma,
+      actor,
+      projectSlug: selectInput.projectSlug,
+      episodeProductionId: selectInput.episodeProductionId,
+      baseSelectionId: selected.selection.id,
+      clientRequestId: "metadata-request-1",
+      metadata: { title: "The curious episode", description: "A complete, reviewed description.", episodeType: "full", seasonNumber: 2, episodeNumber: 9, publishAt: "2026-08-25T15:00:00.000Z" },
+    });
+
+    expect(result).toMatchObject({ ok: true, idempotentReplay: false, packet: { id: "packet-2", title: "The curious episode · podcast RSS package", description: "A complete, reviewed description.", episodeType: "full", seasonNumber: 2, episodeNumber: 9, publishAt: "2026-08-25T15:00:00.000Z", artifactSha256: "b".repeat(64), metadataComplete: true, enclosurePublic: false, publicationEligible: false }, selection: { operation: "selected", reason: "Episode metadata reviewed" } });
+    expect(state.packets).toHaveLength(2);
+    expect(state.packets[0].status).toBe("needs-review");
+    expect(state.packets[1].packetJson).toMatchObject({ version: 2, episode: { title: "The curious episode", description: "A complete, reviewed description." }, readiness: { metadataComplete: true, publicationEligible: false }, boundaries: { humanMetadataReviewRequired: false, uploadNotStarted: true, rssNotChanged: true, publicationNotStarted: true } });
+    expect(state.packets[0].packetJson.readiness.metadataComplete).toBe(false);
+    expect(tx.studioOutputPacket.create).toHaveBeenCalledTimes(2);
+    expect(tx.studioEpisodeOutputSelectionReceipt.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("replays the same metadata request without creating another packet", async () => {
+    const { prisma, tx, state } = database();
+    const selected = await selectPodcastOutputPacket({ prisma, ...selectInput });
+    const input = { prisma, actor, projectSlug: selectInput.projectSlug, episodeProductionId: selectInput.episodeProductionId, baseSelectionId: selected.selection.id, clientRequestId: "metadata-request-1", metadata: { title: "Episode 9", description: "Reviewed once.", episodeType: "bonus", seasonNumber: null, episodeNumber: 9, publishAt: null } };
+    await revisePodcastOutputPacketMetadata(input);
+    const replay = await revisePodcastOutputPacketMetadata(input);
+
+    expect(replay).toMatchObject({ ok: true, idempotentReplay: true, packet: { id: "packet-2" } });
+    expect(state.packets).toHaveLength(2);
+    expect(tx.studioEpisodeOutputSelectionReceipt.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not create empty history when reviewed metadata is unchanged", async () => {
+    const { prisma, tx, state } = database();
+    const selected = await selectPodcastOutputPacket({ prisma, ...selectInput });
+    const metadata = { title: "Episode 9", description: "Reviewed details.", episodeType: "full", seasonNumber: null, episodeNumber: null, publishAt: null };
+    const reviewed = await revisePodcastOutputPacketMetadata({ prisma, actor, projectSlug: selectInput.projectSlug, episodeProductionId: selectInput.episodeProductionId, baseSelectionId: selected.selection.id, clientRequestId: "metadata-first", metadata });
+    const result = await revisePodcastOutputPacketMetadata({ prisma, actor, projectSlug: selectInput.projectSlug, episodeProductionId: selectInput.episodeProductionId, baseSelectionId: reviewed.selection.id, clientRequestId: "metadata-noop", metadata });
+
+    expect(result).toMatchObject({ ok: true, idempotentReplay: true, unchanged: true, packet: { id: "packet-2" }, selection: { id: "selection-2" } });
+    expect(state.packets).toHaveLength(2);
+    expect(tx.studioEpisodeOutputSelectionReceipt.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects metadata written against a stale packet selection", async () => {
+    const { prisma, tx } = database();
+    await selectPodcastOutputPacket({ prisma, ...selectInput });
+
+    await expect(revisePodcastOutputPacketMetadata({ prisma, actor, projectSlug: selectInput.projectSlug, episodeProductionId: selectInput.episodeProductionId, baseSelectionId: "older-selection", clientRequestId: "metadata-request-stale", metadata: { title: "Episode 9", description: "Reviewed details.", episodeType: "full", seasonNumber: null, episodeNumber: null, publishAt: null } })).rejects.toMatchObject({ code: "PODCAST_PACKET_SELECTION_CHANGED", status: 409 });
+    expect(tx.studioOutputPacket.create).toHaveBeenCalledTimes(1);
+    expect(tx.studioEpisodeOutputSelectionReceipt.create).toHaveBeenCalledTimes(1);
   });
 });

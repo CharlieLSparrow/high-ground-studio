@@ -59,6 +59,10 @@ function packetSlug(episodeSlug: string, deliverySha256: string, deliveryReviewR
   return `podcast-rss-${safeEpisode}-${deliverySha256.slice(0, 16)}-${reviewVersion}`;
 }
 
+function metadataPacketSlug(baseSlug: string, digest: string) {
+  return `${baseSlug.replace(/-metadata-[a-f0-9]{12}$/i, "")}-metadata-${digest.slice(0, 12)}`;
+}
+
 function publicSelection(receipt: any) {
   return {
     id: String(receipt.id),
@@ -75,6 +79,7 @@ function publicSelection(receipt: any) {
 function publicPacket(packet: any) {
   const packetJson = object(packet.packetJson);
   const audio = object(packetJson.audio);
+  const episode = object(packetJson.episode);
   const readiness = object(packetJson.readiness);
   return {
     id: String(packet.id),
@@ -86,6 +91,11 @@ function publicPacket(packet: any) {
     deliveryJobId: text(audio.deliveryJobId) || null,
     artifactSha256: text(audio.sha256) || null,
     playbackUrl: text(audio.playbackUrl) || null,
+    description: text(episode.description, 20_000) || null,
+    episodeType: text(episode.episodeType, 20) || null,
+    episodeNumber: Number.isInteger(episode.episodeNumber) ? Number(episode.episodeNumber) : null,
+    seasonNumber: Number.isInteger(episode.seasonNumber) ? Number(episode.seasonNumber) : null,
+    publishAt: text(episode.publishAt, 80) || null,
     metadataComplete: readiness.metadataComplete === true,
     enclosurePublic: readiness.enclosurePublic === true,
     publicationEligible: readiness.publicationEligible === true,
@@ -407,6 +417,160 @@ export async function selectPodcastOutputPacket(input: {
         packetDigestSha256,
         artifactSha256: audio.deliverySha256,
         requestSha256,
+        occurredAt: new Date(),
+      },
+    });
+    return { ok: true, idempotentReplay: false, packet: publicPacket(packet), selection: publicSelection(selection) };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function revisePodcastOutputPacketMetadata(input: {
+  prisma: any;
+  actor: Actor;
+  projectSlug: string;
+  episodeProductionId: string;
+  baseSelectionId: string;
+  clientRequestId: string;
+  metadata: {
+    title: string;
+    description: string;
+    episodeType: string;
+    episodeNumber: number | null;
+    seasonNumber: number | null;
+    publishAt: string | null;
+  };
+}) {
+  const clientRequestId = text(input.clientRequestId, 160);
+  const baseSelectionId = text(input.baseSelectionId, 240);
+  const title = text(input.metadata.title, 255);
+  const description = text(input.metadata.description, 20_000);
+  const episodeType = text(input.metadata.episodeType, 20).toLowerCase();
+  const episodeNumber = input.metadata.episodeNumber;
+  const seasonNumber = input.metadata.seasonNumber;
+  const publishAt = input.metadata.publishAt ? new Date(input.metadata.publishAt) : null;
+  if (!clientRequestId || !baseSelectionId) throw new PodcastOutputPacketError("Current packet selection and stable request identity are required.", 400, "PODCAST_PACKET_METADATA_REQUEST_REQUIRED");
+  if (!title || !description || !["full", "bonus", "trailer"].includes(episodeType)
+      || (episodeNumber !== null && (!Number.isInteger(episodeNumber) || episodeNumber < 0))
+      || (seasonNumber !== null && (!Number.isInteger(seasonNumber) || seasonNumber < 0))
+      || (publishAt && !Number.isFinite(publishAt.getTime()))) {
+    throw new PodcastOutputPacketError("Add a title and description, then use supported Episode metadata values.", 409, "PODCAST_PACKET_METADATA_INVALID");
+  }
+  const actorEmail = text(input.actor.email, 320).toLowerCase();
+  if (!actorEmail || !text(input.actor.id, 240)) throw new PodcastOutputPacketError("A signed-in actor identity is required.", 401, "PODCAST_PACKET_ACTOR_REQUIRED");
+  const context = await loadEpisodeContext(input);
+  const normalizedMetadata = { title, description, episodeType, episodeNumber, seasonNumber, publishAt: publishAt?.toISOString() ?? null };
+  const request = {
+    schema: "quipsly-podcast-output-metadata-request-v1",
+    action: "METADATA",
+    projectId: context.project.id,
+    episodeProductionId: context.episode.id,
+    baseSelectionId,
+    metadata: normalizedMetadata,
+    actorUserId: input.actor.id,
+    actorEmail,
+    clientRequestId,
+  };
+  const requestSha256 = sha256(request);
+  const existingRequest = await input.prisma.studioEpisodeOutputSelectionReceipt.findUnique({
+    where: { projectId_actorEmail_clientRequestId: { projectId: context.project.id, actorEmail, clientRequestId } },
+    include: { outputPacket: true },
+  });
+  if (existingRequest) {
+    if (existingRequest.operation !== "SELECT"
+        || existingRequest.episodeProductionId !== context.episode.id
+        || existingRequest.requestSha256 !== requestSha256) {
+      throw new PodcastOutputPacketError("That request id belongs to a different Episode package decision.", 409, "PODCAST_PACKET_IDEMPOTENCY_CONFLICT");
+    }
+    return { ok: true, idempotentReplay: true, packet: publicPacket(existingRequest.outputPacket), selection: publicSelection(existingRequest) };
+  }
+  const current = await input.prisma.studioEpisodeOutputSelectionReceipt.findFirst({
+    where: { episodeProductionId: context.episode.id, outputKind: PODCAST_OUTPUT_PACKET_KIND },
+    orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+    include: { outputPacket: true },
+  });
+  if (!current || current.operation !== "SELECT" || current.id !== baseSelectionId) {
+    throw new PodcastOutputPacketError("The selected Episode packet changed before metadata review.", 409, "PODCAST_PACKET_SELECTION_CHANGED");
+  }
+  const currentJson = object(current.outputPacket.packetJson);
+  const currentEpisode = object(currentJson.episode);
+  const currentMetadata = {
+    title: text(currentEpisode.title, 255),
+    description: text(currentEpisode.description, 20_000),
+    episodeType: text(currentEpisode.episodeType, 20).toLowerCase(),
+    episodeNumber: Number.isInteger(currentEpisode.episodeNumber) ? Number(currentEpisode.episodeNumber) : null,
+    seasonNumber: Number.isInteger(currentEpisode.seasonNumber) ? Number(currentEpisode.seasonNumber) : null,
+    publishAt: text(currentEpisode.publishAt, 80) || null,
+  };
+  if (stableJson(currentMetadata) === stableJson(normalizedMetadata)) {
+    return { ok: true, idempotentReplay: true, unchanged: true, packet: publicPacket(current.outputPacket), selection: publicSelection(current) };
+  }
+  const currentReadiness = object(currentJson.readiness);
+  const withoutIntegrity = {
+    ...currentJson,
+    version: Math.max(1, Number(currentJson.version) || 1) + 1,
+    revisedAt: new Date().toISOString(),
+    episode: { ...currentEpisode, ...normalizedMetadata },
+    readiness: { ...currentReadiness, metadataComplete: true, publicationEligible: false },
+    boundaries: { ...object(currentJson.boundaries), humanMetadataReviewRequired: false, uploadNotStarted: true, rssNotChanged: true, publicationNotStarted: true },
+  };
+  delete (withoutIntegrity as Record<string, unknown>).integrity;
+  const packetDigestSha256 = sha256(withoutIntegrity);
+  const packetJson = { ...withoutIntegrity, integrity: { algorithm: "sha256", digest: packetDigestSha256 } };
+  const slug = metadataPacketSlug(current.outputPacket.slug, packetDigestSha256);
+  return input.prisma.$transaction(async (tx: any) => {
+    await acquirePrismaAdvisoryTransactionLock(tx, `podcast-output:${context.episode.id}:${PODCAST_OUTPUT_PACKET_KIND}`);
+    const replay = await tx.studioEpisodeOutputSelectionReceipt.findUnique({
+      where: { projectId_actorEmail_clientRequestId: { projectId: context.project.id, actorEmail, clientRequestId } },
+      include: { outputPacket: true },
+    });
+    if (replay) {
+      if (replay.requestSha256 !== requestSha256) throw new PodcastOutputPacketError("That request id won a race with different Episode metadata.", 409, "PODCAST_PACKET_IDEMPOTENCY_CONFLICT");
+      return { ok: true, idempotentReplay: true, packet: publicPacket(replay.outputPacket), selection: publicSelection(replay) };
+    }
+    const latest = await tx.studioEpisodeOutputSelectionReceipt.findFirst({
+      where: { episodeProductionId: context.episode.id, outputKind: PODCAST_OUTPUT_PACKET_KIND },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+    });
+    if (!latest || latest.id !== current.id || latest.operation !== "SELECT") throw new PodcastOutputPacketError("The selected Episode packet changed before metadata commit.", 409, "PODCAST_PACKET_SELECTION_CHANGED");
+    let packet = await tx.studioOutputPacket.findUnique({ where: { projectId_slug: { projectId: context.project.id, slug } } });
+    if (!packet) {
+      packet = await tx.studioOutputPacket.create({
+        data: {
+          projectId: context.project.id,
+          documentId: context.episode.documentId,
+          episodeProductionId: context.episode.id,
+          slug,
+          kind: PODCAST_OUTPUT_PACKET_KIND,
+          title: `${title} · podcast RSS package`,
+          status: "metadata-ready",
+          packetJson: json(packetJson),
+          lineageJson: current.outputPacket.lineageJson,
+          createdByEmail: actorEmail,
+          publishAt,
+        },
+      });
+    } else {
+      const integrity = object(object(packet.packetJson).integrity);
+      if (text(integrity.digest) !== packetDigestSha256
+          || packet.episodeProductionId !== context.episode.id
+          || packet.kind !== PODCAST_OUTPUT_PACKET_KIND) {
+        throw new PodcastOutputPacketError("That metadata packet identity is occupied by different content.", 409, "PODCAST_PACKET_IDENTITY_CONFLICT");
+      }
+    }
+    const selection = await tx.studioEpisodeOutputSelectionReceipt.create({
+      data: {
+        projectId: context.project.id,
+        episodeProductionId: context.episode.id,
+        outputPacketId: packet.id,
+        actorUserId: input.actor.id,
+        actorEmail,
+        clientRequestId,
+        operation: "SELECT",
+        outputKind: PODCAST_OUTPUT_PACKET_KIND,
+        packetDigestSha256,
+        artifactSha256: current.artifactSha256,
+        requestSha256,
+        reason: "Episode metadata reviewed",
         occurredAt: new Date(),
       },
     });

@@ -31,3 +31,10 @@ never be substituted for the evidence requested here.
 | State | Validation still required | Evidence that closes it |
 | --- | --- | --- |
 | Pending | A deliberately batched Nest deployment and matching TestFlight build expose the same compatible mastery review plan and receipt contract. | Deployed commit/build IDs, authenticated live smoke, TestFlight processing status, and rollback coordinates. |
+
+## Episode package review
+
+| State | Validation still required | Evidence that closes it |
+| --- | --- | --- |
+| Pending | In an authenticated Session, select an approved Episode program, review its title/description/type/optional numbering and release intent, simulate one ambiguous response, refresh, and confirm exactly one new current packet while the predecessor and exact audio SHA remain visible in history. | Two packet IDs, two selection receipt IDs, identical artifact SHA-256, reviewed metadata readback, retained predecessor, stable request replay, and observed Session UX. |
+| Pending | Attempt to select an approved artifact from a second Episode in the same Nest and attempt metadata save from a stale Session tab. | Both requests return their explicit 409 boundaries, no packet or receipt is written, and the legitimate current selection remains unchanged. |
