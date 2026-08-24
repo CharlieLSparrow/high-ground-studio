@@ -190,6 +190,12 @@ queued or running. If transcription was not created, the same slot remains
 **Review recording**. Capture exposes no provider job ID and does not ask the
 person to start a job that Quipsly already started automatically.
 
+The transcript workspace no longer presents a Recording permission card on
+the normal fully allowed path. It leads with the transcript desk, Transcript,
+and Follow-up. A compact **Recording choice** card appears only when processing
+is actually waiting or held, shows the actionable reason, and keeps participant
+counts under a collapsed **Details** disclosure.
+
 The iPhone already has the stronger native equivalent: coordinated Stop waits
 for the local recorder to reach a terminal state, opens Library, and places the
 new immutable source in the ordinary saved-source list before upload is called
@@ -217,7 +223,7 @@ runtime new-source assertion.
   consent, and upload-recovery regression
   passes. Strict Quipsly TypeScript also passes.
 - The combined live-room, Capture handoff, and Session review regression passes
-  95/95. The Session parent test isolates source alignment, whose asynchronous
+  96/96. The Session parent test isolates source alignment, whose asynchronous
   behavior remains covered by its own focused component suite.
 - Native and Nest evidence projections recognize a source-timed
   `call-transport-gap` span without adding its duration to media-segment totals;

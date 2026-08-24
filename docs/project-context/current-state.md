@@ -37,12 +37,15 @@ Date: 2026-08-24
   next action to Review transcript and opens the exact source in the polling
   Session transcript workspace. Without a transcript job, it keeps Review
   recording. No manual start or provider job identifier enters the happy path.
+- The normal fully allowed transcript workspace omits permission administration
+  and leads with Transcript and Follow-up. Recording choice appears only for a
+  real waiting/held state, with its reason visible and counts collapsed.
 - Native Stop already waits for terminal local save and opens Library on the
   new immutable source; the release gate now protects that transition and its
   runtime assertion.
 - Forty-five focused call/handoff/stop tests and strict Quipsly TypeScript
   pass.
-- The combined call, Capture, and Session review regression passes 95/95; the
+- The combined call, Capture, and Session review regression passes 96/96; the
   parent workspace test now isolates independently tested source-alignment
   background work instead of counting unrelated fetches.
   The two-person browser/iPhone flight is retained as human/device evidence.

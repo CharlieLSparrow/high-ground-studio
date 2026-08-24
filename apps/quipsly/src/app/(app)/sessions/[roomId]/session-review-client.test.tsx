@@ -573,6 +573,40 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("0/1 speakers identified")).toBeInTheDocument();
     expect(screen.getByText("0/1 segments reviewed")).toBeInTheDocument();
     expect(screen.getByText("How Quipsly decides")).toBeInTheDocument();
+    expect(screen.queryByText("Recording permission")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recording choice")).not.toBeInTheDocument();
+  });
+
+  it("shows the familiar recording choice only when transcript processing is actually held", async () => {
+    const waiting = packet();
+    waiting.transcriptProcessingGate = {
+      allowed: false,
+      error: "The transcript is waiting for the client to allow transcription.",
+    };
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(jsonResponse(waiting)) as typeof fetch;
+
+    render(
+      <SessionReviewClient
+        roomId="room-1"
+        sessionTitle="Coaching review"
+        mode="transcript"
+        consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 1 }}
+      />,
+    );
+
+    expect(await screen.findByText("Recording choice")).toBeInTheDocument();
+    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The transcript is waiting for the client to allow transcription.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Details").closest("details"),
+    ).not.toHaveAttribute("open");
+    expect(screen.queryByText("Permission details")).not.toBeInTheDocument();
   });
 
   it("updates a running transcript to completed without a manual refresh", async () => {

@@ -6498,38 +6498,38 @@ export function SessionReviewClient({
                 : null}
             />
             <section
-              className="grid gap-4 lg:grid-cols-3"
+              className={`grid gap-4 ${transcriptPermissionReady ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}
               aria-label="Session evidence status"
             >
-              <div id="transcript-status" className="rounded-2xl border border-[#e5d5b7] bg-white p-5 scroll-mt-24">
-                <ShieldCheck className="text-sky-700" aria-hidden="true" />
-                <p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">
-                  Recording permission
-                </p>
-                <p
-                  className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(held ? "HELD" : packet.transcriptProcessingGate?.allowed ? "RELEASED" : "NOT_READY")}`}
+              {!transcriptPermissionReady ? (
+                <div
+                  id="transcript-status"
+                  className="scroll-mt-24 rounded-2xl border border-amber-200 bg-amber-50 p-5"
                 >
-                  {held
-                    ? "Needs attention"
-                    : transcriptPermissionReady
-                      ? "Ready"
-                      : "Waiting"}
-                </p>
-                <p className="mt-3 text-sm font-semibold leading-relaxed text-[#765f40]">
-                  {held
-                    ? packet.transcriptProcessingGate?.error
-                    : transcriptPermissionReady
-                      ? "Quipsly has the permission needed to use this recording for the transcript."
-                      : "Quipsly is waiting for the required participant permission."}
-                </p>
-                <details className="mt-3 text-xs text-[#765f40]">
-                  <summary className="cursor-pointer font-black">Permission details</summary>
-                  <p className="mt-2 font-semibold leading-5">
-                    {consentSnapshot.granted}/{consentSnapshot.total} signed-in participant permission record(s) granted ·{" "}
-                    {consentSnapshot.transcriptionPermitted} allow transcription
+                  <ShieldCheck className="text-amber-700" aria-hidden="true" />
+                  <p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">
+                    Recording choice
                   </p>
-                </details>
-              </div>
+                  <p
+                    className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(held ? "HELD" : "NOT_READY")}`}
+                  >
+                    {held ? "Needs attention" : "Waiting"}
+                  </p>
+                  <p className="mt-3 text-sm font-semibold leading-relaxed text-[#765f40]">
+                    {packet.transcriptProcessingGate?.error ||
+                      "Quipsly will start the transcript after everyone being recorded allows it."}
+                  </p>
+                  <details className="mt-3 text-xs text-[#765f40]">
+                    <summary className="cursor-pointer font-black">
+                      Details
+                    </summary>
+                    <p className="mt-2 font-semibold leading-5">
+                      {consentSnapshot.granted}/{consentSnapshot.total} participants allowed recording ·{" "}
+                      {consentSnapshot.transcriptionPermitted} allow transcription
+                    </p>
+                  </details>
+                </div>
+              ) : null}
               <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5">
                 <FileAudio className="text-violet-700" aria-hidden="true" />
                 <p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">
