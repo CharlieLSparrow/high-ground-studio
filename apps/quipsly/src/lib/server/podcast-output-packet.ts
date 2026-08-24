@@ -113,9 +113,35 @@ async function loadEpisodeContext(input: {
   if (input.assetId) {
     const attachment = await input.prisma.studioAssetAttachment.findUnique({
       where: { projectId_assetId: { projectId: project.id, assetId: input.assetId } },
-      select: { id: true, role: true, source: true },
+      select: { id: true, role: true, source: true, metadataJson: true },
     });
     if (!attachment) throw new PodcastOutputPacketError("The approved audio artifact is not attached to this Nest.", 409, "PODCAST_PACKET_ASSET_NOT_ATTACHED");
+    const metadata = object(attachment.metadataJson);
+    const metadataEpisodeId = text(metadata.episodeProductionId);
+    const callRoomId = text(metadata.callRoomId);
+    const recordingAssetId = text(metadata.recordingAssetId);
+    const callRoom = !metadataEpisodeId && callRoomId
+      ? await input.prisma.callRoom.findFirst({
+          where: { id: callRoomId, projectId: project.id, episodeProductionId: episode.id },
+          select: { id: true },
+        })
+      : null;
+    const recordingAsset = !metadataEpisodeId && !callRoom && recordingAssetId
+      ? await input.prisma.recordingAsset.findFirst({
+          where: {
+            id: recordingAssetId,
+            room: { projectId: project.id, episodeProductionId: episode.id },
+          },
+          select: { id: true },
+        })
+      : null;
+    if (metadataEpisodeId !== episode.id && !callRoom && !recordingAsset) {
+      throw new PodcastOutputPacketError(
+        "The approved audio is attached to this Nest but not to this canonical Episode.",
+        409,
+        "PODCAST_PACKET_ASSET_EPISODE_MISMATCH",
+      );
+    }
     return { project, episode, attachment };
   }
   return { project, episode, attachment: null };

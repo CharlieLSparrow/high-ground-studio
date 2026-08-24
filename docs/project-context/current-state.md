@@ -80,6 +80,15 @@ Date: 2026-08-24
   server suite passes 12/12, both Capture static gates pass, and the app builds
   for arm64 and x86_64 Simulator. Physical-iPhone interruption and cross-account
   readback remain explicitly deferred release evidence.
+- The Session-owned versioned Episode output graph remains the canonical
+  packaging surface; Recording Quality stays reusable and asset-scoped. Packet
+  selection now rejects approved audio that belongs to another Episode in the
+  same Nest, proving either exact derivative Episode metadata or a matching
+  canonical Call Room binding before reading approval evidence. Browser packet,
+  withdrawal, and encoded-program review retries reuse one exact UUID and body
+  until acknowledgement. Seventeen focused tests and strict Quipsly TypeScript
+  pass; authenticated two-Episode and lost-response browser flight evidence is
+  deferred without blocking independent work.
 
 ## Cross-device transcript-readiness checkpoint
 

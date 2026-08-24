@@ -2138,3 +2138,24 @@ recording and authenticated encoded artifact to:
 
 No physical-device, human-audibility, TestFlight-networking, or production
 deployment claim is made by the local checkpoint.
+
+## Deferred authenticated flight: Session Episode package isolation — 2026-08-24
+
+Local service and component proof now binds packet selection to the canonical
+Episode, not merely any approved audio attached to the same Nest. It also
+retains one exact browser request UUID and timestamped body through an
+ambiguous-response retry. Before release evidence claims the behavior live:
+
+1. create or use two canonical Episodes in one disposable Nest;
+2. prepare distinct approved delivery audio for both;
+3. verify direct wrong-Episode packet coordinates fail without a packet or
+   selection receipt;
+4. select the correct multitrack program or single-source branch from its
+   Session output graph;
+5. interrupt one selection response, retry or refresh, and verify exactly one
+   active selection with coherent append-only history; and
+6. verify selection still performs no upload, public hosting, RSS mutation, or
+   publication.
+
+The local 17-test and strict-TypeScript checkpoint is not a production deploy
+or authenticated cross-Episode runtime claim.

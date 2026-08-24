@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import type { SessionVersionedOutputGraph } from "./session-versioned-output-graph";
+import { SessionOutputRequestJournal } from "./session-output-request-journal";
 
 function human(value: string) {
   return value.toLowerCase().replaceAll("_", " ").replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -29,15 +30,18 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
   const [withdrawReason, setWithdrawReason] = useState("");
   const [programListenedBins, setProgramListenedBins] = useState<number[]>([]);
   const [programReviewNote, setProgramReviewNote] = useState("");
+  const [journal] = useState(() => new SessionOutputRequestJournal());
 
   async function operate(body: Record<string, unknown>, busyKey: string) {
+    const requestKey = `podcast-output:${JSON.stringify(body)}`;
+    const savedRequest = journal.preserve(requestKey, () => body);
     setBusyAssetId(busyKey);
     setMessage(null);
     try {
       const response = await fetch("/api/media-vault/podcast-output-packet", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...savedRequest.body, clientRequestId: savedRequest.clientRequestId }),
       });
       const packet = await response.json().catch(() => null) as { ok?: boolean; error?: string; selection?: { operation?: string } } | null;
       if (!response.ok || packet?.ok !== true) throw new Error(packet?.error || "The Episode package decision could not be saved.");
@@ -45,6 +49,7 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
         ? "The Episode package selection was withdrawn. Every packet and artifact remains preserved."
         : "The proof-listened audio version is now the selected Episode package candidate. Metadata, hosting, upload, and publication remain open.");
       setWithdrawReason("");
+      journal.acknowledge(requestKey);
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The Episode package operation failed.");
@@ -76,26 +81,31 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
 
   async function reviewProgramDelivery(decision: "approved" | "rejected") {
     if (!graph.programMix?.deliveryJobId) return;
+    const deliveryJobId = graph.programMix.deliveryJobId;
+    const reviewNote = programReviewNote.trim();
     setBusyAssetId("program-review");
     setMessage(null);
+    const intentKey = `program-delivery-review:${JSON.stringify({ deliveryJobId, decision, listenedSecondBins: programListenedBins, note: reviewNote })}`;
+    const savedRequest = journal.preserve(intentKey, () => ({
+      projectSlug: graph.episode!.projectSlug,
+      episodeProductionId: graph.episode!.id,
+      deliveryJobId,
+      decision,
+      playbackEvidence: { schema: "quipsly-audio-delivery-playback-review-v1", listenedSecondBins: programListenedBins, completedAt: new Date().toISOString() },
+      note: reviewNote,
+    }));
+    const requestKey = intentKey;
     try {
       const response = await fetch("/api/media-vault/episode-audio-program/delivery/review", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          projectSlug: graph.episode!.projectSlug,
-          episodeProductionId: graph.episode!.id,
-          deliveryJobId: graph.programMix.deliveryJobId,
-          clientRequestId: crypto.randomUUID(),
-          decision,
-          playbackEvidence: { schema: "quipsly-audio-delivery-playback-review-v1", listenedSecondBins: programListenedBins, completedAt: new Date().toISOString() },
-          note: programReviewNote,
-        }),
+        body: JSON.stringify({ ...savedRequest.body, clientRequestId: savedRequest.clientRequestId }),
       });
       const result = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
       if (!response.ok || result?.ok !== true) throw new Error(result?.error || "The encoded-program listening decision could not be saved.");
       setMessage(decision === "approved" ? "The exact encoded Episode bytes are proof-listened and packet-eligible. Nothing was uploaded or published." : "The encoded bytes were rejected and preserved as version history.");
       setProgramReviewNote("");
+      journal.acknowledge(requestKey);
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The encoded-program listening decision failed.");
@@ -126,7 +136,7 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
         <span className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-[9px] font-black uppercase">{human(graph.currentPacket.status)}</span>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-3 text-xs font-bold"><p>Metadata: {graph.currentPacket.metadataComplete ? "complete" : "review needed"}</p><p>Public enclosure: {graph.currentPacket.enclosurePublic ? "ready" : "not hosted"}</p><p>Publication: {graph.currentPacket.publicationEligible ? "eligible" : "not authorized"}</p></div>
-      <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><input value={withdrawReason} onChange={(event) => setWithdrawReason(event.target.value)} placeholder="Reason to hold or replace this packet" aria-label="Episode packet withdrawal reason" className="min-h-11 rounded-xl border border-emerald-300 bg-white px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500" /><button type="button" disabled={busyAssetId !== null || withdrawReason.trim().length < 3} onClick={() => void operate({ action: "withdraw", projectSlug: graph.episode!.projectSlug, episodeProductionId: graph.episode!.id, clientRequestId: crypto.randomUUID(), reason: withdrawReason }, "withdraw-current")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-700 bg-white px-4 text-xs font-black disabled:cursor-not-allowed disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Withdraw selection</button></div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><input value={withdrawReason} onChange={(event) => setWithdrawReason(event.target.value)} placeholder="Reason to hold or replace this packet" aria-label="Episode packet withdrawal reason" className="min-h-11 rounded-xl border border-emerald-300 bg-white px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500" /><button type="button" disabled={busyAssetId !== null || withdrawReason.trim().length < 3} onClick={() => void operate({ action: "withdraw", projectSlug: graph.episode!.projectSlug, episodeProductionId: graph.episode!.id, reason: withdrawReason.trim() }, "withdraw-current")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-700 bg-white px-4 text-xs font-black disabled:cursor-not-allowed disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Withdraw selection</button></div>
     </section> : null}
 
     {message ? <p role="status" className="mt-4 rounded-xl border border-violet-200 bg-white p-3 text-sm font-black text-violet-950">{message}</p> : null}
@@ -155,7 +165,7 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
         {graph.programMix.deliveryState !== "APPROVED" ? <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"><input value={programReviewNote} onChange={(event) => setProgramReviewNote(event.target.value)} placeholder="Optional approval note; required to reject" aria-label="Encoded Episode program review note" className="min-h-11 rounded-xl border border-cyan-300 bg-white px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-cyan-500" /><button type="button" disabled={busyAssetId !== null || !programCoverageReady(programListenedBins, graph.programMix.deliveryDurationSeconds)} onClick={() => void reviewProgramDelivery("approved")} className="min-h-11 rounded-xl bg-cyan-800 px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">Approve exact bytes</button><button type="button" disabled={busyAssetId !== null || programListenedBins.length === 0 || programReviewNote.trim().length < 3} onClick={() => void reviewProgramDelivery("rejected")} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 text-xs font-black text-rose-900 disabled:cursor-not-allowed disabled:opacity-50">Reject bytes</button></div> : <p className="mt-3 flex items-center gap-2 text-xs font-black text-emerald-800"><CheckCircle2 size={15} aria-hidden="true" />Current encoded bytes have an approved proof-listen receipt.</p>}
       </div> : null}
       {graph.programMix.state === "HELD" ? <div className="mt-4 flex gap-2 rounded-xl border border-rose-300 bg-white p-3 text-xs font-bold"><CircleAlert className="mt-0.5 shrink-0" size={16} aria-hidden="true" /><p>Quipsly found a promotion receipt but could not prove the completed job, registered asset, program fingerprint, and preview hash as one exact lineage. The candidate remains preserved and cannot advance.</p></div> : null}
-      <div className="mt-4 flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black">Next: {graph.programMix.nextAction}</p><p className="mt-1 break-all font-mono text-[9px] font-bold">program {shortHash(graph.programMix.programFingerprintSha256)} · preview {shortHash(graph.programMix.previewSha256)} · AAC {shortHash(graph.programMix.deliveryArtifactSha256)}</p></div><div className="flex flex-wrap gap-2">{graph.programMix.state === "ACTIVE" && ["NOT_OBSERVED", "FAILED", "STALE"].includes(graph.programMix.deliveryState) ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operateProgramDelivery("queue")} className="min-h-11 rounded-full bg-cyan-800 px-4 text-xs font-black text-white disabled:bg-slate-400">Encode promoted program</button> : null}{graph.programMix.state === "ACTIVE" && graph.programMix.deliveryState === "PROCESSING" ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operateProgramDelivery("reconcile")} className="min-h-11 rounded-full bg-cyan-800 px-4 text-xs font-black text-white disabled:bg-slate-400">Check encoded output</button> : null}{graph.programMix.packetEligible && graph.programMix.assetId && graph.programMix.packetState !== "SELECTED" ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operate({ action: "select", projectSlug: graph.episode!.projectSlug, episodeProductionId: graph.episode!.id, assetId: graph.programMix!.assetId!, deliveryJobId: graph.programMix!.deliveryJobId, clientRequestId: crypto.randomUUID(), exactEncodedBytesProofListened: true, selectAsEpisodeEnclosureCandidate: true, metadataStillRequiresReview: true }, "program-packet")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black text-white disabled:bg-slate-400"><ShieldCheck size={15} aria-hidden="true" />Select program package</button> : null}<span className="rounded-full border border-current bg-white px-3 py-1.5 text-[9px] font-black uppercase">{graph.programMix.historicalEventCount} promotion receipt{graph.programMix.historicalEventCount === 1 ? "" : "s"}</span></div></div>
+      <div className="mt-4 flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black">Next: {graph.programMix.nextAction}</p><p className="mt-1 break-all font-mono text-[9px] font-bold">program {shortHash(graph.programMix.programFingerprintSha256)} · preview {shortHash(graph.programMix.previewSha256)} · AAC {shortHash(graph.programMix.deliveryArtifactSha256)}</p></div><div className="flex flex-wrap gap-2">{graph.programMix.state === "ACTIVE" && ["NOT_OBSERVED", "FAILED", "STALE"].includes(graph.programMix.deliveryState) ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operateProgramDelivery("queue")} className="min-h-11 rounded-full bg-cyan-800 px-4 text-xs font-black text-white disabled:bg-slate-400">Encode promoted program</button> : null}{graph.programMix.state === "ACTIVE" && graph.programMix.deliveryState === "PROCESSING" ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operateProgramDelivery("reconcile")} className="min-h-11 rounded-full bg-cyan-800 px-4 text-xs font-black text-white disabled:bg-slate-400">Check encoded output</button> : null}{graph.programMix.packetEligible && graph.programMix.assetId && graph.programMix.packetState !== "SELECTED" ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operate({ action: "select", projectSlug: graph.episode!.projectSlug, episodeProductionId: graph.episode!.id, assetId: graph.programMix!.assetId!, deliveryJobId: graph.programMix!.deliveryJobId, exactEncodedBytesProofListened: true, selectAsEpisodeEnclosureCandidate: true, metadataStillRequiresReview: true }, "program-packet")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black text-white disabled:bg-slate-400"><ShieldCheck size={15} aria-hidden="true" />Select program package</button> : null}<span className="rounded-full border border-current bg-white px-3 py-1.5 text-[9px] font-black uppercase">{graph.programMix.historicalEventCount} promotion receipt{graph.programMix.historicalEventCount === 1 ? "" : "s"}</span></div></div>
     </section> : null}
 
     <ol className="mt-5 space-y-4" aria-label="Versioned audio output branches">{graph.assets.map((asset) => <li key={asset.mediaAssetId} className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -168,7 +178,7 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
         ["Episode packet", asset.packetState],
       ].map(([label, state], index) => <li key={label} className={`relative rounded-xl border p-3 ${stateTone(state)}`}><p className="text-[9px] font-black uppercase tracking-wide">{index + 1}. {label}</p><p className="mt-2 text-xs font-black">{human(state)}</p>{index < 4 ? <ArrowRight size={13} className="absolute -right-3 top-1/2 hidden -translate-y-1/2 text-slate-400 lg:block" aria-hidden="true" /> : null}</li>)}</ol>
       {asset.deliveryPlaybackUrl ? <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/50 p-3"><audio controls preload="metadata" src={asset.deliveryPlaybackUrl} className="w-full" aria-label={`Encoded Episode artifact for ${asset.label}`} /><p className="mt-2 text-[10px] font-bold leading-4 text-cyan-950">This player is for inspection. Playback here does not create or replace the explicit encoded-byte proof-listen receipt.</p></div> : null}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div className="max-w-3xl"><p className="text-xs font-black text-[#3d3122]">Next: {asset.nextAction}</p><p className="mt-1 font-mono text-[9px] font-bold text-[#8a7354]">delivery {asset.deliveryJobId || "not created"} · {shortHash(asset.deliveryArtifactSha256)}</p></div>{asset.packetEligible && !asset.alternateToActiveProgramMix && asset.packetState !== "SELECTED" ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operate({ action: "select", projectSlug: graph.episode!.projectSlug, episodeProductionId: graph.episode!.id, assetId: asset.mediaAssetId, deliveryJobId: asset.deliveryJobId, clientRequestId: crypto.randomUUID(), exactEncodedBytesProofListened: true, selectAsEpisodeEnclosureCandidate: true, metadataStillRequiresReview: true }, asset.mediaAssetId)} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black text-white disabled:cursor-wait disabled:bg-slate-400"><ShieldCheck size={15} aria-hidden="true" />{asset.packetState === "OTHER_ASSET_SELECTED" ? "Select this version instead" : "Select proof-listened version"}</button> : <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase text-slate-500">{asset.packetState === "SELECTED" ? <CheckCircle2 size={15} aria-hidden="true" /> : <CircleDashed size={15} aria-hidden="true" />}{asset.packetState === "SELECTED" ? "Current packet" : asset.alternateToActiveProgramMix ? "Program mix preferred" : "Not packet-ready"}</span>}</div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div className="max-w-3xl"><p className="text-xs font-black text-[#3d3122]">Next: {asset.nextAction}</p><p className="mt-1 font-mono text-[9px] font-bold text-[#8a7354]">delivery {asset.deliveryJobId || "not created"} · {shortHash(asset.deliveryArtifactSha256)}</p></div>{asset.packetEligible && !asset.alternateToActiveProgramMix && asset.packetState !== "SELECTED" ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operate({ action: "select", projectSlug: graph.episode!.projectSlug, episodeProductionId: graph.episode!.id, assetId: asset.mediaAssetId, deliveryJobId: asset.deliveryJobId, exactEncodedBytesProofListened: true, selectAsEpisodeEnclosureCandidate: true, metadataStillRequiresReview: true }, asset.mediaAssetId)} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black text-white disabled:cursor-wait disabled:bg-slate-400"><ShieldCheck size={15} aria-hidden="true" />{asset.packetState === "OTHER_ASSET_SELECTED" ? "Select this version instead" : "Select proof-listened version"}</button> : <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase text-slate-500">{asset.packetState === "SELECTED" ? <CheckCircle2 size={15} aria-hidden="true" /> : <CircleDashed size={15} aria-hidden="true" />}{asset.packetState === "SELECTED" ? "Current packet" : asset.alternateToActiveProgramMix ? "Program mix preferred" : "Not packet-ready"}</span>}</div>
     </li>)}</ol>
 
     {!graph.assets.length ? <p className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 text-sm font-bold text-slate-700">No canonically attached Episode source is available for the versioned output chain yet.</p> : null}

@@ -54,7 +54,9 @@ function database(jobType = "audio-delivery") {
   const requests = new Map<string, any>();
   const project = { id: "project-1", slug: "high-ground-odyssey", name: "High Ground Odyssey" };
   const episode = { id: "episode-9", projectId: project.id, documentId: "document-1", slug: "episode-9", title: "Episode 9", status: "recorded" };
-  const attachment = { id: "attachment-1", role: "primary-audio", source: "session" };
+  const attachment = jobType === "episode-program-delivery"
+    ? { id: "attachment-1", role: "episode-mix-preview", source: "episode-audio-mix-registration", metadataJson: { episodeProductionId: episode.id } }
+    : { id: "attachment-1", role: "primary-audio", source: "session", metadataJson: { callRoomId: "room-episode-9" } };
   let packetSequence = 0;
   let selectionSequence = 0;
   const findRequest = jest.fn(async ({ where }: any) => requests.get(where.projectId_actorEmail_clientRequestId.clientRequestId) ?? null);
@@ -86,6 +88,8 @@ function database(jobType = "audio-delivery") {
     studioProject: { findFirst: jest.fn().mockResolvedValue(project) },
     studioEpisodeProduction: { findFirst: jest.fn().mockResolvedValue(episode) },
     studioAssetAttachment: { findUnique: jest.fn().mockResolvedValue(attachment) },
+    callRoom: { findFirst: jest.fn().mockResolvedValue({ id: "room-episode-9" }) },
+    recordingAsset: { findFirst: jest.fn().mockResolvedValue({ id: "recording-episode-9" }) },
     studioAssetProcessingJob: { findFirst: jest.fn().mockResolvedValue({ type: jobType }) },
     studioEpisodeOutputSelectionReceipt: { findUnique: findRequest, findFirst: findLatest },
     $transaction: jest.fn(async (callback: any) => callback(tx)),
@@ -153,6 +157,38 @@ describe("canonical podcast Episode packet selection", () => {
     expect(tx.studioEpisodeAudioMixPromotionReceipt.findFirst).toHaveBeenCalled();
     expect(tx.studioEpisodeProgramDeliveryReviewReceipt.findFirst).toHaveBeenCalled();
     expect(tx.studioAudioMasterPromotionReceipt.findFirst).not.toHaveBeenCalled();
+    expect(prisma.callRoom.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects proof-listened audio that belongs to another Episode in the same Nest", async () => {
+    const { prisma, tx } = database();
+    prisma.callRoom.findFirst.mockResolvedValue(null);
+
+    await expect(selectPodcastOutputPacket({ prisma, ...selectInput })).rejects.toMatchObject({
+      code: "PODCAST_PACKET_ASSET_EPISODE_MISMATCH",
+      status: 409,
+    });
+    expect(loadApprovedAudioDeliveryPacketEvidence).not.toHaveBeenCalled();
+    expect(tx.studioOutputPacket.create).not.toHaveBeenCalled();
+    expect(tx.studioEpisodeOutputSelectionReceipt.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts an older retained attachment through its canonical recording-to-room relation", async () => {
+    const { prisma } = database();
+    prisma.studioAssetAttachment.findUnique.mockResolvedValue({
+      id: "attachment-legacy",
+      role: "primary-audio",
+      source: "mobile-capture-finalization",
+      metadataJson: { recordingAssetId: "recording-episode-9" },
+    });
+
+    const result = await selectPodcastOutputPacket({ prisma, ...selectInput });
+
+    expect(result).toMatchObject({ ok: true, packet: { episodeProductionId: "episode-9" } });
+    expect(prisma.recordingAsset.findFirst).toHaveBeenCalledWith({
+      where: { id: "recording-episode-9", room: { projectId: "project-1", episodeProductionId: "episode-9" } },
+      select: { id: true },
+    });
   });
 
   it("appends a withdrawal, preserves the packet, and replays the withdrawal after state changes", async () => {
