@@ -825,6 +825,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(canonical.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Ask what would make this session genuinely useful."].exists)
         XCTAssertTrue(app.staticTexts["#Coaching"].exists)
+        let speakerEvidence = app.descendants(matching: .any)["CaptureSessionNoteSpeakerEvidence_preview-session-note"].firstMatch
+        reveal(speakerEvidence)
+        XCTAssertTrue(speakerEvidence.exists)
+        XCTAssertEqual(speakerEvidence.label, "Speaker evidence: Participant recording")
 
         let edit = app.buttons["CaptureSessionNoteEdit_preview-session-note"].firstMatch
         reveal(edit)
@@ -1323,6 +1327,10 @@ final class CaptureExperienceUITests: XCTestCase {
         let sourceLink = app.buttons["Task source: Return to 00:03–00:04"]
         reveal(sourceLink)
         XCTAssertTrue(sourceLink.isHittable, "A transcript-derived task should retain a one-action route back to its exact segment.")
+        let speakerEvidence = app.descendants(matching: .any)["CaptureTodayTaskSpeakerEvidence_preview-task"].firstMatch
+        reveal(speakerEvidence)
+        XCTAssertTrue(speakerEvidence.exists)
+        XCTAssertEqual(speakerEvidence.label, "Speaker evidence: Participant recording")
         XCTAssertTrue(app.staticTexts["Proof-listen the coaching recap"].exists)
         XCTAssertTrue(app.staticTexts["Leave the client with one clear next move"].exists)
         let taskTags = app.descendants(matching: .any)["CaptureTodayTaskTags_preview-task"]

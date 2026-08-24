@@ -494,6 +494,10 @@ private struct MobileClientFollowUpSnapshot: View {
         recordLabel: String
     ) -> some View {
         if let anchor, anchor.roomId == session.callRoomId {
+            CaptureTranscriptSpeakerEvidenceBadge(
+                authority: anchor.speakerAuthority,
+                identifier: "CaptureClientFollowUpSpeakerEvidence_\(recordID)"
+            )
             NavigationLink {
                 CaptureTranscriptReviewView(
                     roomID: anchor.roomId,

@@ -4133,8 +4133,9 @@ struct CapturePacketNoteReviewPreviewView: View {
     }
 }
 
-private struct CapturePacketSpeakerEvidenceBadge: View {
+struct CaptureTranscriptSpeakerEvidenceBadge: View {
     let authority: String?
+    var identifier: String? = nil
 
     private var evidence: (label: String, detail: String, icon: String)? {
         switch authority {
@@ -4164,7 +4165,7 @@ private struct CapturePacketSpeakerEvidenceBadge: View {
                 .background(Color.blue.opacity(0.09), in: Capsule())
                 .accessibilityLabel("Speaker evidence: \(evidence.label)")
                 .accessibilityHint(evidence.detail)
-                .accessibilityIdentifier("CapturePacketSpeakerEvidence_\(authority ?? "unknown")")
+                .accessibilityIdentifier(identifier ?? "CapturePacketSpeakerEvidence_\(authority ?? "unknown")")
         }
     }
 }
@@ -4284,7 +4285,7 @@ private struct CapturePacketNoteCandidateCard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("CapturePacketNoteSourceText_\(candidate.accessibilityKey)")
-            CapturePacketSpeakerEvidenceBadge(authority: candidate.speakerAuthority)
+            CaptureTranscriptSpeakerEvidenceBadge(authority: candidate.speakerAuthority)
             if (candidate.segmentIds?.count ?? 1) > 1 {
                 Label("This moment spans \(candidate.segmentIds?.count ?? 1) transcript passages", systemImage: "link")
                     .font(.caption2.weight(.semibold))
@@ -4623,7 +4624,7 @@ private struct CapturePacketTaskCandidateCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            CapturePacketSpeakerEvidenceBadge(authority: candidate.speakerAuthority)
+            CaptureTranscriptSpeakerEvidenceBadge(authority: candidate.speakerAuthority)
             if (candidate.segmentIds?.count ?? 1) > 1 {
                 Label("This moment spans \(candidate.segmentIds?.count ?? 1) transcript passages", systemImage: "link")
                     .font(.caption2.weight(.semibold))
@@ -4956,7 +4957,7 @@ private struct CapturePacketGoalCandidateCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            CapturePacketSpeakerEvidenceBadge(authority: candidate.speakerAuthority)
+            CaptureTranscriptSpeakerEvidenceBadge(authority: candidate.speakerAuthority)
             if (candidate.segmentIds?.count ?? 1) > 1 {
                 Label("This moment spans \(candidate.segmentIds?.count ?? 1) transcript passages", systemImage: "link")
                     .font(.caption2.weight(.semibold))

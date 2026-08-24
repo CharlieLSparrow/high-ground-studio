@@ -2003,7 +2003,7 @@ function checkTranscriptCorrectionContractSources() {
       && transcriptSpeakerEvidenceBadgeText.includes("Automatic speaker label")
       && transcriptSpeakerEvidenceBadgeText.includes("Speaker needs review")
       && nativeText.includes("speakerAuthority")
-      && nativeText.includes("CapturePacketSpeakerEvidenceBadge")
+      && nativeText.includes("CaptureTranscriptSpeakerEvidenceBadge")
       && nativeText.includes("Participant recording")
       && nativeText.includes("Automatic speaker label")
       && nativeText.includes("Speaker needs review"),
@@ -2017,9 +2017,15 @@ function checkTranscriptCorrectionContractSources() {
       && durableNotesText.includes("TranscriptSpeakerEvidenceBadge authority={note.sourceAnchor.speakerAuthority}")
       && durableNotesText.includes("lastMergedSource.sourceAnchor.speakerAuthority")
       && durableScheduleText.includes("TranscriptSpeakerEvidenceBadge authority={block.sourceAnchor.speakerAuthority}")
-      && durableSchedulePageText.includes("TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority}"),
+      && durableSchedulePageText.includes("TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority}")
+      && bridgeText.includes("var speakerAuthority: String? = nil")
+      && bridgeText.includes("var sourceBoundParticipantId: String? = nil")
+      && shellText.includes("CaptureTodayTaskSpeakerEvidence_")
+      && shellText.includes("CaptureTodayGoalSpeakerEvidence_")
+      && shellText.includes("CaptureSessionNoteSpeakerEvidence_")
+      && mobileComponentsText.includes("CaptureClientFollowUpSpeakerEvidence_"),
     "durableFollowThroughSpeakerEvidenceVisible",
-    "Saved transcript-backed notes, tasks, goals, and focus plans show the same plain-language speaker-authority evidence after users leave the Session review surface.",
+    "Saved transcript-backed notes, tasks, goals, focus plans, and released follow-up sources show the same plain-language speaker-authority evidence across Nest and iPhone after users leave Session review.",
   );
   expect(
     packetRouteText.includes("buildPacketGoalCandidates")

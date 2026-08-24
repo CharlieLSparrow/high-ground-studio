@@ -1510,6 +1510,8 @@ struct MobileCaptureTodayTranscriptSourceAnchor: Codable, Hashable, Identifiable
     let providerSpeakerLabel: String?
     let effectiveTextSnapshot: String
     let effectiveSpeakerLabelSnapshot: String?
+    var speakerAuthority: String? = nil
+    var sourceBoundParticipantId: String? = nil
     let acceptedCorrectionId: String?
     let recordingAssetId: String
     let playbackSourceId: String
@@ -4352,6 +4354,8 @@ final class CaptureTodayClient: ObservableObject {
                     providerSpeakerLabel: "Speaker",
                     effectiveTextSnapshot: "Welcome, everybody.",
                     effectiveSpeakerLabelSnapshot: "Charlie",
+                    speakerAuthority: "source-binding",
+                    sourceBoundParticipantId: "preview-participant-charlie",
                     acceptedCorrectionId: nil,
                     recordingAssetId: "preview-recording-asset",
                     playbackSourceId: "preview-playback-source"
@@ -4371,6 +4375,7 @@ final class CaptureTodayClient: ObservableObject {
                         providerSpeakerLabel: "Speaker",
                         effectiveTextSnapshot: "The client confirmed the proof-listen action in their own words.",
                         effectiveSpeakerLabelSnapshot: "Coach",
+                        speakerAuthority: "attribution",
                         acceptedCorrectionId: nil,
                         recordingAssetId: "preview-recording-asset",
                         playbackSourceId: "preview-playback-source"

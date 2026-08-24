@@ -27,10 +27,14 @@ Date: 2026-08-24
 - Saved Notes, Work tasks and goals, and Calendar focus plans now expose that
   same evidence in plain language. They no longer call every saved transcript
   source "reviewed," and they never expose the internal participant ID.
+- Capture decodes the same additive authority fields and reuses the same native
+  badge on Today tasks/goals, Session notes, merged evidence, and released
+  follow-up sources. Preview UI coverage reaches participant-recording badges.
 - Quipsly TypeScript, 132 focused packet/review tests, 101 focused durable UI
   tests, the mobile Capture
-  source-contract smoke, a complete unsigned generic iOS Simulator build, and
-  all 1,143 App Store static checks pass. This is local automated evidence; live
+  source-contract smoke, a complete unsigned generic iOS Simulator build and
+  UI-test build, and all 1,143 App Store static checks pass. This is local
+  automated evidence; live
   deployment, physical-device readback, and minimally instructed human
   acceptance remain future release evidence.
 

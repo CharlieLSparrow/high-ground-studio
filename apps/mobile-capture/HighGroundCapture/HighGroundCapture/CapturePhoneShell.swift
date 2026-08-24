@@ -981,6 +981,10 @@ private struct CaptureGoalMergedEvidenceCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
+            CaptureTranscriptSpeakerEvidenceBadge(
+                authority: evidence.sourceAnchor.speakerAuthority,
+                identifier: "CaptureTodayGoalMergedSpeakerEvidence_\(goalID)"
+            )
             if let governance = evidence.governance {
                 Text("Governed action receipt · \(governance.shortActionID)")
                     .font(.caption2.monospaced().weight(.semibold))
@@ -3057,6 +3061,10 @@ struct TodayFollowThroughCard: View {
                                 .accessibilityHint("Preserves this overdue occurrence as skipped and continues the canonical series without sending or scheduling anything elsewhere.")
                             }
                             if let source = task.sourceAnchor, source.roomId == task.roomId {
+                                CaptureTranscriptSpeakerEvidenceBadge(
+                                    authority: source.speakerAuthority,
+                                    identifier: "CaptureTodayTaskSpeakerEvidence_\(task.id)"
+                                )
                                 NavigationLink(value: CaptureTranscriptSourceDestination(
                                     roomID: source.roomId,
                                     sessionTitle: task.sessionTitle ?? "Capture session",
@@ -3083,6 +3091,10 @@ struct TodayFollowThroughCard: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(3)
+                                    CaptureTranscriptSpeakerEvidenceBadge(
+                                        authority: evidence.sourceAnchor.speakerAuthority,
+                                        identifier: "CaptureTodayTaskMergedSpeakerEvidence_\(task.id)"
+                                    )
                                     if let governance = evidence.governance {
                                         Text("Governed action receipt · \(governance.shortActionID)")
                                             .font(.caption2.monospaced().weight(.semibold))
@@ -3283,6 +3295,10 @@ struct TodayFollowThroughCard: View {
                                 decisionsDisabled: decisionsDisabled
                             )
                             if let source = goal.sourceAnchor, source.roomId == goal.roomId {
+                                CaptureTranscriptSpeakerEvidenceBadge(
+                                    authority: source.speakerAuthority,
+                                    identifier: "CaptureTodayGoalSpeakerEvidence_\(goal.id)"
+                                )
                                 NavigationLink(value: CaptureTranscriptSourceDestination(
                                     roomID: source.roomId,
                                     sessionTitle: goal.sessionTitle ?? "Capture session",
@@ -8864,13 +8880,17 @@ private struct CaptureSessionNotesSheetContent: View {
                         if let source = note.sourceAnchor,
                            source.roomId == session.callRoomId {
                             VStack(alignment: .leading, spacing: 6) {
-                                Label("Reviewed transcript source", systemImage: "waveform.and.magnifyingglass")
+                                Label("Transcript source", systemImage: "waveform.and.magnifyingglass")
                                     .font(.caption2.weight(.bold))
                                     .foregroundStyle(.blue)
                                 Text("\(source.effectiveSpeakerLabelSnapshot?.nonempty.map { "\($0): " } ?? "")\(source.effectiveTextSnapshot)")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(3)
+                                CaptureTranscriptSpeakerEvidenceBadge(
+                                    authority: source.speakerAuthority,
+                                    identifier: "CaptureSessionNoteSpeakerEvidence_\(note.id)"
+                                )
                                 NavigationLink {
                                     CaptureTranscriptReviewView(
                                         roomID: source.roomId,
@@ -8906,6 +8926,10 @@ private struct CaptureSessionNotesSheetContent: View {
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(3)
+                                CaptureTranscriptSpeakerEvidenceBadge(
+                                    authority: source.speakerAuthority,
+                                    identifier: "CaptureSessionNoteMergedSpeakerEvidence_\(note.id)"
+                                )
                                 NavigationLink {
                                     CaptureTranscriptReviewView(
                                         roomID: source.roomId,

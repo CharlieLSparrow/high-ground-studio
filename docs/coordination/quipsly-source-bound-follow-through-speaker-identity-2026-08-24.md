@@ -82,6 +82,13 @@ ID remains available for integrity checks but is intentionally not exposed as
 user-facing copy. Legacy records that predate the additive authority field stay
 calm and readable rather than inventing a provenance claim.
 
+Quipsly Capture now decodes those additive authority and source-owner fields
+on its canonical saved-work anchor as well. The shared native badge appears on
+Today tasks and goals, Session notes, merged evidence, and released client
+follow-up source links. The protected source-bound participant ID remains
+decoded for integrity and future diagnostics but is not displayed to the
+coach or client.
+
 ## Mutation boundary
 
 Packet outputs remain candidates that require explicit human review. This
@@ -101,7 +108,11 @@ message a client, share a follow-up, publish content, or alter recording media.
   source-bound speaker provenance assertion and a durable-work UI contract.
 - A complete unsigned generic iOS Simulator build and all 1,143 App Store
   static checks pass with the iPhone speaker-evidence badges decoded and
-  reachable from note, goal, and task candidates.
+  reachable from note, goal, and task candidates plus saved native
+  follow-through.
+- The unsigned Simulator `build-for-testing` also succeeds, compiling the UI
+  assertions that reach participant-recording evidence on preview Today work
+  and Session notes.
 
 This checkpoint is local source and automated evidence only. It does not claim
 a live deployment, TestFlight release, physical-device readback, or a two-person

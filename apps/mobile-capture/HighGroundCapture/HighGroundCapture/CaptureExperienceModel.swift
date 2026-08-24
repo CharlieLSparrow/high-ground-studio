@@ -3299,6 +3299,8 @@ extension MobileCaptureSession {
                         providerSpeakerLabel: "Speaker",
                         effectiveTextSnapshot: "Ask what would make this session genuinely useful.",
                         effectiveSpeakerLabelSnapshot: "Charlie",
+                        speakerAuthority: "source-binding",
+                        sourceBoundParticipantId: "preview-participant-charlie",
                         acceptedCorrectionId: nil,
                         recordingAssetId: "preview-recording-asset",
                         playbackSourceId: "preview-playback-source"
@@ -3384,6 +3386,8 @@ extension MobileCaptureSession {
             providerSpeakerLabel: "Speaker",
             effectiveTextSnapshot: "Ask what would make this session genuinely useful.",
             effectiveSpeakerLabelSnapshot: "Charlie",
+            speakerAuthority: "source-binding",
+            sourceBoundParticipantId: "preview-participant-charlie",
             acceptedCorrectionId: nil,
             recordingAssetId: "preview-recording-asset",
             playbackSourceId: "preview-playback-source"
