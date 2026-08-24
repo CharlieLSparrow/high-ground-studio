@@ -3425,6 +3425,10 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   no further Join button, while source stop/save/upload/recovery stays visible.
   Authentication, access, payment, and transient transport failures retain
   distinct messages instead of collapsing into a misleading network error.
+- Capture now decodes that same failure code. `ROOM_NOT_OPEN` is retained only
+  against the exact closed call-room ID, removes the iPhone Rejoin/device setup
+  loop, and keeps local recording/recovery available. Selecting another Session
+  does not inherit the closed state.
 - The 29-test focused web call-room suite and strict web TypeScript pass. A
   generic iOS Simulator build succeeds for arm64 and x86_64 after compiling the
   native recovery path. Rendered browser operation was unavailable because both

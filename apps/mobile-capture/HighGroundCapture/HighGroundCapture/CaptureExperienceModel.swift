@@ -2228,10 +2228,14 @@ final class CaptureExperienceModel: ObservableObject {
 
     func joinRoom(useCallAudio: Bool = true) async {
         guard let session = selectedSession, !isChangingRoom else { return }
+        guard !providerRoom.isPermanentlyClosed(callRoomID: session.callRoomId) else {
+            errorMessage = "This call has ended. Your local recording remains available to stop, save, upload, or recover."
+            return
+        }
         // An exhausted provider reconnect is the one safe exception to the
         // ordinary route-change lock. The coordinator preserves the active
-        // local-capture lease, while LiveKit's attached PCM renderer represents
-        // the gap as timeline silence until the same call input resumes.
+        // local-capture lease while source evidence records the call-transport
+        // span without guessing what the independent local microphone retained.
         if !providerRoom.canRejoin {
             guard providerControlsAreAvailable() else { return }
         }
@@ -2270,6 +2274,12 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         guard let join = preparedJoin else {
+            if providerRoom.canRejoin,
+               sessionClient.roomJoinFailureCode == "ROOM_NOT_OPEN" {
+                providerRoom.markCallPermanentlyClosed(
+                    callRoomID: session.callRoomId
+                )
+            }
             activeRoomSession = nil
             errorMessage = sessionClient.errorMessage ?? "The room could not be prepared. Local recording remains available."
             return

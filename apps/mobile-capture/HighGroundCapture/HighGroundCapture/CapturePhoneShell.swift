@@ -12226,7 +12226,9 @@ private struct ProviderRoomControls: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Label(
-                    model.providerRoom.isReconnecting
+                    callPermanentlyClosed
+                        ? "Call ended"
+                        : model.providerRoom.isReconnecting
                         ? "Reconnecting"
                         : model.providerRoom.isConnected
                             ? "Call in progress"
@@ -12332,52 +12334,62 @@ private struct ProviderRoomControls: View {
                         .accessibilityIdentifier("CaptureProviderRoomReconnecting")
                 }
             } else {
-                Toggle(isOn: Binding(
-                    get: { !callAudioOnAnotherDevice },
-                    set: { callAudioOnAnotherDevice = !$0 }
-                )) {
+                if callPermanentlyClosed {
                     Label(
-                        "Use this iPhone for call audio",
-                        systemImage: callAudioOnAnotherDevice ? "mic.slash.fill" : "iphone.radiowaves.left.and.right"
+                        "This Session is closed. Your local recording remains available below.",
+                        systemImage: "phone.down.fill"
                     )
-                        .font(.subheadline)
-                }
-                .toggleStyle(.switch)
-                .disabled(providerControlsLocked || model.isChangingRoom)
-                .accessibilityIdentifier("CaptureUseCallAudioToggle")
-
-                if callAudioOnAnotherDevice {
-                    Text("Call audio stays off here to prevent echo. Local camera recording still works.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("CaptureCallAudioDeviceGuidance")
-                }
-
-                Button {
-                    Task {
-                        await model.joinRoom(useCallAudio: !callAudioOnAnotherDevice)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureCallClosedStatus")
+                } else {
+                    Toggle(isOn: Binding(
+                        get: { !callAudioOnAnotherDevice },
+                        set: { callAudioOnAnotherDevice = !$0 }
+                    )) {
+                        Label(
+                            "Use this iPhone for call audio",
+                            systemImage: callAudioOnAnotherDevice ? "mic.slash.fill" : "iphone.radiowaves.left.and.right"
+                        )
+                            .font(.subheadline)
                     }
-                } label: {
-                    HStack {
-                        Spacer()
-                        if model.isChangingRoom {
-                            ProgressView()
-                        } else {
-                            Label(
-                                model.providerRoom.canRejoin ? "Rejoin call" : "Join call",
-                                systemImage: "phone.fill"
-                            )
+                    .toggleStyle(.switch)
+                    .disabled(providerControlsLocked || model.isChangingRoom)
+                    .accessibilityIdentifier("CaptureUseCallAudioToggle")
+
+                    if callAudioOnAnotherDevice {
+                        Text("Call audio stays off here to prevent echo. Local camera recording still works.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("CaptureCallAudioDeviceGuidance")
+                    }
+
+                    Button {
+                        Task {
+                            await model.joinRoom(useCallAudio: !callAudioOnAnotherDevice)
                         }
-                        Spacer()
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if model.isChangingRoom {
+                                ProgressView()
+                            } else {
+                                Label(
+                                    model.providerRoom.canRejoin ? "Rejoin call" : "Join call",
+                                    systemImage: "phone.fill"
+                                )
+                            }
+                            Spacer()
+                        }
+                        .frame(minHeight: 28)
                     }
-                    .frame(minHeight: 28)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled((providerControlsLocked && !model.providerRoom.canRejoin) || model.isChangingRoom || session.providerCanJoin != true)
+                    .accessibilityHint(providerControlHint)
+                    .accessibilityIdentifier("ProviderJoinRoomButton")
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled((providerControlsLocked && !model.providerRoom.canRejoin) || model.isChangingRoom || session.providerCanJoin != true)
-                .accessibilityHint(providerControlHint)
-                .accessibilityIdentifier("ProviderJoinRoomButton")
 
                 Button(action: onToggleLocalRecordingWorkspace) {
                     Text(
@@ -12421,6 +12433,10 @@ private struct ProviderRoomControls: View {
         model.providerControlsLockedForLocalCapture
     }
 
+    private var callPermanentlyClosed: Bool {
+        model.providerRoom.isPermanentlyClosed(callRoomID: session.callRoomId)
+    }
+
     private var usesCallAudioForPresentation: Bool {
         model.providerRoom.isConnected ? model.providerRoom.usesCallAudio : !callAudioOnAnotherDevice
     }
@@ -12443,7 +12459,9 @@ private struct ProviderRoomControls: View {
     }
 
     private var providerControlHint: String {
-        model.providerRoom.canRejoin
+        callPermanentlyClosed
+            ? "The call is closed. Local source controls remain available."
+            : model.providerRoom.canRejoin
             ? "Reconnects the conversation with the saved call-audio choice. Your local recording remains separate."
             : providerControlsLocked
             ? "Finish or stop the current take first."

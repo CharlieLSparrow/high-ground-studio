@@ -3492,6 +3492,7 @@ struct MobileCaptureRoomJoinResponse: Codable {
     }
 
     let ok: Bool
+    let code: String?
     let error: String?
     let canJoin: Bool?
     let provider: String?
@@ -6884,6 +6885,7 @@ final class CaptureSessionClient: ObservableObject {
     @Published var coachingEngagements: [MobileCaptureCoachingEngagement] = []
     @Published var status = "Not loaded"
     @Published var errorMessage: String?
+    @Published private(set) var roomJoinFailureCode: String?
     @Published private(set) var isUsingCachedSessions = false
     @Published private(set) var cachedSessionsSavedAt: Date?
     @Published var latestRoomStateResponse: MobileCaptureRoomStateResponse?
@@ -7647,6 +7649,7 @@ final class CaptureSessionClient: ObservableObject {
 
         status = "Preparing room"
         errorMessage = nil
+        roomJoinFailureCode = nil
 
         do {
             var request = URLRequest(url: url)
@@ -7669,6 +7672,7 @@ final class CaptureSessionClient: ObservableObject {
             let payload = try JSONDecoder().decode(MobileCaptureRoomJoinResponse.self, from: data)
 
             guard response.statusCode < 400, payload.ok else {
+                roomJoinFailureCode = payload.code
                 throw NSError(
                     domain: "CaptureSessions",
                     code: 3,

@@ -106,6 +106,10 @@ If a rejoin discovers that the call genuinely ended, the browser stops offering
 an endless retry loop and shows one closed Session state while leaving the
 retained source controls available. Transient provider/network failures keep
 the ordinary one-action retry.
+Capture decodes the same stable failure code and scopes the closed state to the
+exact call room. The iPhone removes Rejoin and device setup for that closed
+Session while retaining **Record without joining** and local source recovery;
+another Session is not disabled by the old room's state.
 
 ## Evidence and limits
 
@@ -125,6 +129,8 @@ the ordinary one-action retry.
   exact-byte manifest construction without changing captured media bytes.
 - Route and call-room regressions prove that a server-confirmed closed call
   ends rejoin without discarding or hiding a still-active local source.
+- The generic iOS Simulator build compiles the same room-scoped terminal
+  boundary through the native decoder, controller, and closed-Session surface.
 
 This does not claim a minimally instructed two-person browser/iPhone flight.
 That flight must still observe first grant, remembered re-entry, denial

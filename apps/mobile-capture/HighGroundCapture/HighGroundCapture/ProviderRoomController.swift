@@ -50,6 +50,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var isConnected = false
     @Published var isReconnecting = false
     @Published private(set) var canRejoin = false
+    @Published private(set) var permanentlyClosedCallRoomID: String?
     @Published var isMuted = true
     @Published private(set) var usesCallAudio = false
     @Published var isNativeCallPresentationActive = false
@@ -82,6 +83,17 @@ final class ProviderRoomController: NSObject, ObservableObject {
     var protectLocalSourceBeforeNativeCallEnd: (() async -> Bool)?
     var onCallTransportInterrupted: ((Date) -> Void)?
     var onCallTransportRestored: ((Date) -> Void)?
+
+    func isPermanentlyClosed(callRoomID: String) -> Bool {
+        permanentlyClosedCallRoomID == callRoomID
+    }
+
+    func markCallPermanentlyClosed(callRoomID: String) {
+        canRejoin = false
+        permanentlyClosedCallRoomID = callRoomID
+        connectionStateLabel = "Call ended"
+        statusText = "This Session is closed. Your local recording remains separate and protected."
+    }
 
     private let callKitProvider: CXProvider
     private let callController = CXCallController()
@@ -228,6 +240,9 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isReconnecting = false
         canRejoin = false
         intentionalProviderDisconnect = false
+        if permanentlyClosedCallRoomID != session.callRoomId {
+            permanentlyClosedCallRoomID = nil
+        }
         lastError = nil
         lastTechnicalError = nil
         statusText = "Connecting to \(join.provider ?? session.providerLabel)..."
@@ -1034,6 +1049,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.isConnected = true
                 self.isReconnecting = false
                 self.canRejoin = false
+                self.permanentlyClosedCallRoomID = nil
                 self.onCallTransportRestored?(Date())
                 self.lastError = nil
                 self.lastTechnicalError = nil
