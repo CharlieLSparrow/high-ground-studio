@@ -1,6 +1,7 @@
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import type { SessionEpisodeAssemblyEvidence } from "./session-episode-assembly-evidence";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
+import type { SessionTranscriptReadiness } from "./session-transcript-readiness";
 
 export type SessionFinishingEvidence = {
   transcriptJobs: Array<{
@@ -8,6 +9,8 @@ export type SessionFinishingEvidence = {
     recordingAssetId: string | null;
     status: string;
     segmentCount: number;
+    wordCount?: number;
+    readiness?: SessionTranscriptReadiness;
     updatedAt: string;
   }>;
   outputs: Array<{
@@ -149,8 +152,13 @@ export function buildSessionFinishingCockpit(input: {
     if (!latestJobByAsset.has(key)) latestJobByAsset.set(key, job);
   }
   const transcriptJobs = [...latestJobByAsset.values()];
-  const completedTranscripts = transcriptJobs.filter((job) => job.status === "COMPLETED" && job.segmentCount > 0);
-  const transcriptHolds = transcriptJobs.filter((job) => job.status === "FAILED" || job.status === "HELD");
+  const completedTranscripts = transcriptJobs.filter((job) => job.readiness
+    ? job.readiness.state === "READY"
+    : job.status === "COMPLETED" && job.segmentCount > 0);
+  const transcriptReviewRequired = transcriptJobs.filter((job) => job.readiness?.state === "REVIEW_REQUIRED");
+  const transcriptHolds = transcriptJobs.filter((job) =>
+    job.status === "FAILED" || job.status === "HELD" || job.readiness?.state === "HELD",
+  );
   if (transcriptHolds.length) attention.push({
     id: "transcript-held",
     severity: "HIGH",
@@ -158,6 +166,14 @@ export function buildSessionFinishingCockpit(input: {
     title: `${transcriptHolds.length} latest transcript attempt${transcriptHolds.length === 1 ? " is" : "s are"} held or failed`,
     detail: "Provider text remains an attempt; source media and any prior corrections are unchanged.",
     consequence: "Search, notes, tasks, chapters, and explainable edit proposals cannot rely on complete transcript evidence.",
+  });
+  if (transcriptReviewRequired.length) attention.push({
+    id: "transcript-integrity-review",
+    severity: "REVIEW",
+    lane: "transcript",
+    title: `${transcriptReviewRequired.length} transcript${transcriptReviewRequired.length === 1 ? " needs" : "s need"} source, timing, or speaker review`,
+    detail: transcriptReviewRequired[0]!.readiness!.detail,
+    consequence: "Quipsly will keep provider text inspectable without treating it as a fully source-bound, speaker-ready editing surface.",
   });
   if (!completedTranscripts.length && topology.exitReadiness.safeForServerObservedSources) attention.push({
     id: "transcript-missing",

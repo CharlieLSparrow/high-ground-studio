@@ -3458,3 +3458,22 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   Physical-device and two-participant playback remain in the deferred
   validation ledger. Detailed decision record:
   `docs/coordination/2026-08-24-post-call-playback-readiness.md`.
+
+### 2026-08-24 Session transcript readiness
+
+- Session post-call surfaces no longer reduce transcript completion to provider
+  job status plus segment count. The production query now carries exact source
+  SHA/generation, manifest/result/provider/worker receipts, immutable word
+  counts, routing topology, timing granularity, and speaker authority into one
+  read-only readiness projection.
+- A source mismatch is held. Missing receipt, word, timing, or routing evidence
+  stays review-required. Mixed-room speaker labels remain provider candidates;
+  participant-isolated source binding can establish the physical speaker owner
+  without claiming the words are accurate.
+- The source journey, finishing cockpit, transcript-ready count, and coaching
+  four-step path share the same contract. A completed-but-unready transcript no
+  longer advances client follow-through.
+- Thirty focused transcript, journey, cockpit, UI, and coaching-path tests pass,
+  as does strict Quipsly TypeScript. Human word-sync and speaker review remain
+  in the deferred validation ledger. Detailed decision record:
+  `docs/coordination/2026-08-24-session-transcript-readiness.md`.

@@ -35,7 +35,10 @@ export function buildCoachingQuickPath(input: {
   const participantReady = (input.preparation?.participants.length ?? 0) >= 2;
   const recordingReady = input.contentReadiness?.status === "substantial";
   const transcriptEvidenceReady = input.finishingEvidence.transcriptJobs.some(
-    (job) => job.status === "COMPLETED" && job.segmentCount > 0,
+    (job) => job.readiness ? job.readiness.state === "READY" : job.status === "COMPLETED" && job.segmentCount > 0,
+  );
+  const transcriptNeedsReview = input.finishingEvidence.transcriptJobs.some(
+    (job) => job.readiness?.state === "REVIEW_REQUIRED" || job.readiness?.state === "HELD",
   );
   const transcriptReady = recordingReady && transcriptEvidenceReady;
   const followUpEvidenceReleased = input.finishingEvidence.outputs.some(
@@ -87,6 +90,8 @@ export function buildCoachingQuickPath(input: {
         ? "Source-backed transcript text is ready for review."
         : transcriptEvidenceReady
           ? "Earlier transcript evidence exists, but this path is held until the retained recording is production-ready."
+          : transcriptNeedsReview
+            ? "Provider text is available, but source, timing, or speaker evidence needs review before follow-through."
           : "Generate the transcript, correct speakers and wording, then approve useful notes or commitments.",
       href: sessionWorkspaceHref(input.roomId, "transcript"),
       action: transcriptReady ? "Open transcript" : "Create transcript",

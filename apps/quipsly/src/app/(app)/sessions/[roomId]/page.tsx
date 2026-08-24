@@ -29,6 +29,7 @@ import {
 } from "./session-notes-model";
 import { buildSessionPreparationState } from "./session-preparation-model";
 import { buildSessionSourceEvidence } from "./session-source-evidence-model";
+import { buildSessionTranscriptReadiness } from "./session-transcript-readiness";
 import { buildSessionReadinessTopology } from "./session-readiness-topology";
 import { loadSessionEpisodeAssemblyEvidence } from "./session-episode-assembly-evidence-loader";
 import { loadSessionSourceClockAttention } from "./session-source-clock-attention-loader";
@@ -203,8 +204,16 @@ export default async function SessionReviewPage({
             id: true,
             assetId: true,
             status: true,
+            sourceGeneration: true,
+            sourceSha256: true,
+            processingManifestObject: true,
+            processingResultObject: true,
+            providerRequestId: true,
+            providerResponseObject: true,
+            workerBuildId: true,
+            resultJson: true,
             updatedAt: true,
-            _count: { select: { segments: true } },
+            _count: { select: { segments: true, words: true, speakerAttributions: true } },
           },
         },
         outputs: {
@@ -755,14 +764,37 @@ export default async function SessionReviewPage({
         isStaff: session.user.isStaff === true,
       },
     }) : null;
+    const sourceEvidenceByAsset = new Map(sourceEvidence.sources.map((source) => [source.recordingAssetId, source]));
     const finishingEvidence = {
-      transcriptJobs: room.transcriptJobs.map((job: any) => ({
-        id: job.id,
-        recordingAssetId: job.assetId,
-        status: String(job.status),
-        segmentCount: job._count?.segments ?? 0,
-        updatedAt: job.updatedAt.toISOString(),
-      })),
+      transcriptJobs: room.transcriptJobs.map((job: any) => {
+        const source = sourceEvidenceByAsset.get(job.assetId) ?? null;
+        return {
+          id: job.id,
+          recordingAssetId: job.assetId,
+          status: String(job.status),
+          segmentCount: job._count?.segments ?? 0,
+          wordCount: job._count?.words ?? 0,
+          readiness: buildSessionTranscriptReadiness({
+            status: String(job.status),
+            segmentCount: job._count?.segments ?? 0,
+            wordCount: job._count?.words ?? 0,
+            reviewedAttributionCount: job._count?.speakerAttributions ?? 0,
+            sourceSha256: cleanText(job.sourceSha256),
+            sourceGeneration: cleanText(job.sourceGeneration),
+            processingManifestObject: cleanText(job.processingManifestObject),
+            processingResultObject: cleanText(job.processingResultObject),
+            providerRequestId: cleanText(job.providerRequestId),
+            providerResponseObject: cleanText(job.providerResponseObject),
+            workerBuildId: cleanText(job.workerBuildId),
+            resultJson: job.resultJson,
+          }, source ? {
+            status: source.status,
+            sha256: source.cloud.sha256,
+            generation: source.cloud.generation,
+          } : null),
+          updatedAt: job.updatedAt.toISOString(),
+        };
+      }),
       outputs: room.outputs.map((output: any) => ({
         id: output.id,
         kind: String(output.kind),

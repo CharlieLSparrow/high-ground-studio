@@ -69,7 +69,7 @@ export function SessionFinishingCockpitCard(props: Props) {
   const sourceJourney = buildSessionSourceJourneyProjection(props);
   const protectedSourceCount = props.sourceEvidence.counts.VERIFIED_MATCH;
   const completedTranscriptCount = props.finishingEvidence.transcriptJobs.filter(
-    (job) => job.status === "COMPLETED" && job.segmentCount > 0,
+    (job) => job.readiness ? job.readiness.state === "READY" : job.status === "COMPLETED" && job.segmentCount > 0,
   ).length;
   const playbackReadyCount = sourceJourney.journeys.filter((journey) =>
     journey.checkpoints.some((checkpoint) => checkpoint.id === "playback" && checkpoint.state === "COMPLETE"),

@@ -6,6 +6,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { SessionFinishingCockpitCard } from "./session-finishing-cockpit-card";
 import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessTopology } from "./session-readiness-topology";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import { buildSessionTranscriptReadiness } from "./session-transcript-readiness";
 
 const topology: SessionReadinessTopology = {
   ...EMPTY_SESSION_READINESS_TOPOLOGY,
@@ -132,7 +133,28 @@ describe("Session finishing cockpit card", () => {
       contentReadiness={{ status: "substantial", captureAssetCount: 1, substantialRecordingCount: 1 }}
       studioHandoff={{ recordings: [{ status: "ATTACHED" }] }}
       finishingEvidence={{
-        transcriptJobs: [{ id: "transcript-mv7i", recordingAssetId: "asset-mv7i", status: "COMPLETED", segmentCount: 340, updatedAt: "2026-08-06T02:20:00.000Z" }],
+        transcriptJobs: [{
+          id: "transcript-mv7i",
+          recordingAssetId: "asset-mv7i",
+          status: "COMPLETED",
+          segmentCount: 340,
+          wordCount: 3_400,
+          readiness: buildSessionTranscriptReadiness({
+            status: "COMPLETED",
+            segmentCount: 340,
+            wordCount: 3_400,
+            reviewedAttributionCount: 0,
+            sourceSha256: "a".repeat(64),
+            sourceGeneration: "9",
+            processingManifestObject: "transcripts/jobs/transcript-mv7i/manifest.json",
+            processingResultObject: "transcripts/jobs/transcript-mv7i/result.json",
+            providerRequestId: "provider-request-mv7i",
+            providerResponseObject: "transcripts/jobs/transcript-mv7i/provider.json",
+            workerBuildId: "worker-build-1",
+            resultJson: { processingControl: { routing: { schema: "quipsly-transcript-routing-summary-v1", sourceTopology: "participant-isolated", participantLabel: "Charlie Sparrow", speakerAuthority: "source-binding", timingGranularity: "word", manifestBacked: true } } },
+          }, { status: "VERIFIED_MATCH", sha256: "a".repeat(64), generation: "9" }),
+          updatedAt: "2026-08-06T02:20:00.000Z",
+        }],
         outputs: [],
         analyzedSourceCount: 1,
         assembly: {

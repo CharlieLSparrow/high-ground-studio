@@ -336,6 +336,27 @@ function transcriptCheckpoint(
       : "Transcription waits for released exact source bytes.",
     at: source.serverRetention.updatedAt,
   };
+  if (job.readiness?.state === "HELD") return {
+    id: "transcript",
+    label: "Transcript",
+    state: "HELD",
+    detail: job.readiness.detail,
+    at: job.updatedAt,
+  };
+  if (job.readiness?.state === "PROCESSING" || job.readiness?.state === "REVIEW_REQUIRED") return {
+    id: "transcript",
+    label: "Transcript",
+    state: "CURRENT",
+    detail: job.readiness.detail,
+    at: job.updatedAt,
+  };
+  if (job.readiness?.state === "READY") return {
+    id: "transcript",
+    label: "Transcript",
+    state: "COMPLETE",
+    detail: job.readiness.detail,
+    at: job.updatedAt,
+  };
   if (job.status === "COMPLETED" && job.segmentCount > 0) return {
     id: "transcript",
     label: "Transcript",

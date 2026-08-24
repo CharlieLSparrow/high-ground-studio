@@ -122,4 +122,29 @@ describe("SessionCoachingQuickPath", () => {
     expect(steps[2].detail).toMatch(/held until the retained recording/i);
     expect(steps[3].detail).toMatch(/waits for production-ready recording/i);
   });
+
+  it("does not advance to follow-up when completed provider text still needs speaker review", () => {
+    const steps = buildCoachingQuickPath({
+      roomId: "room-1",
+      preparation,
+      contentReadiness: { status: "substantial" },
+      finishingEvidence: {
+        ...emptyFinishing,
+        transcriptJobs: [{
+          id: "transcript-1",
+          recordingAssetId: "asset-1",
+          status: "COMPLETED",
+          segmentCount: 12,
+          readiness: {
+            state: "REVIEW_REQUIRED",
+            detail: "Mixed-room speaker labels remain candidates.",
+          } as any,
+          updatedAt: "2026-08-19T22:00:00.000Z",
+        }],
+      },
+    });
+
+    expect(steps.map((step) => step.state)).toEqual(["DONE", "DONE", "NEXT", "LATER"]);
+    expect(steps[2].detail).toMatch(/speaker evidence needs review/i);
+  });
 });

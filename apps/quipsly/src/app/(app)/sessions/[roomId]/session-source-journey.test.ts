@@ -2,6 +2,7 @@ import { buildSessionSourceJourneyProjection } from "./session-source-journey";
 import type { SessionFinishingEvidence } from "./session-finishing-cockpit";
 import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessSource, type SessionReadinessTopology } from "./session-readiness-topology";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import { buildSessionTranscriptReadiness } from "./session-transcript-readiness";
 
 function retainedSource(): SessionReadinessSource {
   return {
@@ -116,7 +117,28 @@ function sourceEvidence(overrides: Partial<SessionSourceEvidence["sources"][numb
 
 function finishingEvidence(overrides: Partial<SessionFinishingEvidence> = {}): SessionFinishingEvidence {
   return {
-    transcriptJobs: [{ id: "transcript-1", recordingAssetId: "asset-1", status: "COMPLETED", segmentCount: 340, updatedAt: "2026-08-06T02:20:00.000Z" }],
+    transcriptJobs: [{
+      id: "transcript-1",
+      recordingAssetId: "asset-1",
+      status: "COMPLETED",
+      segmentCount: 340,
+      wordCount: 3_400,
+      readiness: buildSessionTranscriptReadiness({
+        status: "COMPLETED",
+        segmentCount: 340,
+        wordCount: 3_400,
+        reviewedAttributionCount: 0,
+        sourceSha256: "a".repeat(64),
+        sourceGeneration: "9",
+        processingManifestObject: "transcripts/jobs/transcript-1/manifest.json",
+        processingResultObject: "transcripts/jobs/transcript-1/result.json",
+        providerRequestId: "provider-request-1",
+        providerResponseObject: "transcripts/jobs/transcript-1/provider.json",
+        workerBuildId: "worker-build-1",
+        resultJson: { processingControl: { routing: { schema: "quipsly-transcript-routing-summary-v1", sourceTopology: "participant-isolated", participantLabel: "Charlie", speakerAuthority: "source-binding", timingGranularity: "word", manifestBacked: true } } },
+      }, { status: "VERIFIED_MATCH", sha256: "a".repeat(64), generation: "9" }),
+      updatedAt: "2026-08-06T02:20:00.000Z",
+    }],
     outputs: [],
     analyzedSourceCount: 1,
     assembly: {

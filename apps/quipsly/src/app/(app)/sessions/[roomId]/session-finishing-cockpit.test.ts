@@ -138,6 +138,62 @@ describe("Session finishing cockpit", () => {
     });
   });
 
+  it("holds a completed transcript when its exact retained-source binding disagrees", () => {
+    const cockpit = buildSessionFinishingCockpit({
+      topology: topology(),
+      sourceEvidence: sourceEvidence(),
+      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
+      finishingEvidence: {
+        ...finishingEvidence,
+        analyzedSourceCount: 2,
+        transcriptJobs: [{
+          ...finishingEvidence.transcriptJobs[0]!,
+          readiness: {
+            state: "HELD",
+            detail: "Transcript source SHA or generation disagrees.",
+          } as any,
+        }],
+      },
+    });
+
+    expect(cockpit.attention).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "transcript-held", severity: "HIGH" }),
+    ]));
+    expect(cockpit.stages.find((stage) => stage.id === "understand")).toMatchObject({
+      state: "NOT_OBSERVED",
+      summary: "No completed source-bound transcript is observed.",
+    });
+  });
+
+  it("keeps mixed-room provider text in the transcript review lane", () => {
+    const cockpit = buildSessionFinishingCockpit({
+      topology: topology(),
+      sourceEvidence: sourceEvidence(),
+      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
+      finishingEvidence: {
+        ...finishingEvidence,
+        analyzedSourceCount: 2,
+        transcriptJobs: [{
+          ...finishingEvidence.transcriptJobs[0]!,
+          readiness: {
+            state: "REVIEW_REQUIRED",
+            detail: "Mixed-room speaker labels remain candidates until a person reviews attribution.",
+          } as any,
+        }],
+      },
+    });
+
+    expect(cockpit.attention).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "transcript-integrity-review",
+        severity: "REVIEW",
+        title: "1 transcript needs source, timing, or speaker review",
+      }),
+    ]));
+  });
+
   it("projects podcast package depth separately from coaching or Session delivery", () => {
     const cockpit = buildSessionFinishingCockpit({
       topology: topology(),
