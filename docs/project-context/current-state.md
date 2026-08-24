@@ -16,7 +16,11 @@ Date: 2026-08-24
 - Transcript packet snapshots are version two and bind speaker authority plus
   stable source participant identity. Version-one packets become visibly stale
   and rebuildable instead of being silently reused with incomplete provenance.
-- Quipsly TypeScript, 73 focused packet/follow-through tests, and the mobile
+- Nest follow-through cards now explain speaker-name evidence with compact
+  conventional badges: reviewed name, reviewed voice attribution, participant
+  recording, automatic label, or needs review. Speaker identity and transcript
+  word review remain separate decisions.
+- Quipsly TypeScript, 132 focused packet/review tests, and the mobile
   Capture source-contract smoke pass. This is local automated evidence; live
   deployment, physical-device readback, and minimally instructed human
   acceptance remain future release evidence.

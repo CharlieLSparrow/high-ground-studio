@@ -35,6 +35,7 @@ export type SessionReviewCandidate = {
   sourceTextSha256?: string;
   transcriptReviewStatus?: "provider" | "human-reviewed";
   speakerLabel: string | null;
+  speakerAuthority?: "correction" | "attribution" | "source-binding" | "provider" | "unresolved";
   startSeconds: number;
   endSeconds: number;
   reviewStatus: string;
@@ -53,6 +54,7 @@ export type SessionReviewGoalCandidate = {
   segmentId: string;
   segmentIds?: string[];
   speakerLabel: string | null;
+  speakerAuthority?: "correction" | "attribution" | "source-binding" | "provider" | "unresolved";
   startSeconds: number;
   endSeconds: number;
   sourceText: string;
@@ -105,6 +107,7 @@ export type SessionReviewNoteCandidate = {
   segmentId: string;
   segmentIds?: string[];
   speakerLabel: string | null;
+  speakerAuthority?: "correction" | "attribution" | "source-binding" | "provider" | "unresolved";
   startSeconds: number;
   endSeconds: number;
   sourceText: string;

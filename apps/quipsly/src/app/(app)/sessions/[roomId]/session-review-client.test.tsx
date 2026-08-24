@@ -982,6 +982,34 @@ describe("Session review goal candidates", () => {
     expect(screen.getAllByText(/Edit it now, or play this moment if anything looks off/)).toHaveLength(3);
   });
 
+  it("explains isolated-source speaker identity without claiming the words were reviewed", async () => {
+    const sourceBoundPacket = packet({
+      ...candidate,
+      transcriptReviewStatus: "provider",
+      speakerAuthority: "source-binding",
+    });
+    sourceBoundPacket.packet = {
+      ...sourceBoundPacket.packet!,
+      noteCandidates: [{
+        ...noteCandidate,
+        transcriptReviewStatus: "provider",
+        speakerAuthority: "source-binding",
+      }],
+      actionCandidates: [{
+        ...actionCandidate,
+        transcriptReviewStatus: "provider",
+        speakerAuthority: "source-binding",
+      }],
+    };
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(sourceBoundPacket)) as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    expect(await screen.findAllByText("Participant recording")).toHaveLength(3);
+    expect(screen.getAllByText(/Edit it now, or play this moment if anything looks off/)).toHaveLength(3);
+    expect(screen.queryByText("Name reviewed")).not.toBeInTheDocument();
+  });
+
   it("accepts only through the packet review ledger and preserves its success readback", async () => {
     const accepted: SessionReviewGoalCandidate = { ...candidate, reviewStatus: "ACCEPTED_AS_GOAL", humanApprovalRequired: false, committedGoalId: "goal-1" };
     const fetchMock = jest.fn()

@@ -108,11 +108,22 @@ export interface TranscriptActionCandidate {
   /** Human-review state for the complete evidence span, not only its primary segment. */
   transcriptReviewStatus?: "provider" | "human-reviewed";
   speakerLabel: string | null;
+  /** Why Quipsly currently believes this speaker label, separate from word review. */
+  speakerAuthority?: TranscriptSpeakerAuthority;
   startSeconds: number;
   endSeconds: number;
   humanApprovalRequired: boolean;
   committedActionItemId: string | null;
 }
+
+export const TRANSCRIPT_SPEAKER_AUTHORITIES = [
+  "correction",
+  "attribution",
+  "source-binding",
+  "provider",
+  "unresolved",
+] as const;
+export type TranscriptSpeakerAuthority = (typeof TRANSCRIPT_SPEAKER_AUTHORITIES)[number];
 
 export type TranscriptPacketBriefSegment = {
   id: string;
@@ -219,6 +230,7 @@ export function createTranscriptActionCandidate(input: {
   sourceSpan?: TranscriptSourceSpanEvidence | null;
   transcriptReviewStatus: "provider" | "human-reviewed";
   speakerLabel: string | null;
+  speakerAuthority?: TranscriptSpeakerAuthority;
   startSeconds: number;
   endSeconds: number;
 }): TranscriptActionCandidate {
@@ -336,6 +348,8 @@ export function isTranscriptActionCandidate(
       || candidate.transcriptReviewStatus === "provider"
       || candidate.transcriptReviewStatus === "human-reviewed")
     && (candidate.speakerLabel === null || typeof candidate.speakerLabel === "string")
+    && (candidate.speakerAuthority === undefined
+      || TRANSCRIPT_SPEAKER_AUTHORITIES.some((authority) => authority === candidate.speakerAuthority))
     && typeof candidate.startSeconds === "number"
     && Number.isFinite(candidate.startSeconds)
     && typeof candidate.endSeconds === "number"
@@ -435,6 +449,7 @@ export function readTranscriptActionCandidates(value: unknown): TranscriptAction
       packetBuildId: packetText(legacy.packetBuildId) || packetText(source.packetBuildId),
       segmentId: packetText(legacy.segmentId),
       speakerLabel: packetText(legacy.speakerLabel) || null,
+      speakerAuthority: TRANSCRIPT_SPEAKER_AUTHORITIES.find((authority) => authority === legacy.speakerAuthority),
       startSeconds: typeof legacy.startSeconds === "number" ? legacy.startSeconds : 0,
       endSeconds: typeof legacy.endSeconds === "number" ? legacy.endSeconds : 0,
       humanApprovalRequired: typeof legacy.humanApprovalRequired === "boolean"
@@ -470,6 +485,7 @@ function legacyTranscriptActionCandidate(item: LegacyTranscriptActionItem): Tran
     packetBuildId: packetText(source.packetBuildId),
     segmentId,
     speakerLabel: packetText(source.speakerLabel) || null,
+    speakerAuthority: TRANSCRIPT_SPEAKER_AUTHORITIES.find((authority) => authority === source.speakerAuthority),
     startSeconds: typeof source.startSeconds === "number" ? source.startSeconds : 0,
     endSeconds: typeof source.endSeconds === "number" ? source.endSeconds : 0,
     humanApprovalRequired: true,

@@ -165,6 +165,7 @@ describe("transcript coaching packet action review boundary", () => {
     expect(summaryWrite.sourceJson.actionCandidates[0]).toMatchObject({
       segmentId: "segment-action",
       speakerLabel: "Scott Sparrow",
+      speakerAuthority: "source-binding",
     });
     expect(summaryWrite.sourceJson.transcriptSnapshot.segmentReviews[0]).toMatchObject({
       resolvedSpeakerLabel: "Scott Sparrow",

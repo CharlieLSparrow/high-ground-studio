@@ -38,6 +38,13 @@ person explicitly corrects or confirms it. A corrected display label also does
 not erase the stable source-bound participant ID retained in the packet
 snapshot.
 
+The Nest Session follow-through cards expose that distinction in plain
+language. A compact badge says whether the name was reviewed, matched to a
+participant voice, inherited from the participant's isolated recording,
+supplied automatically, or remains unresolved. The separate prompt to play and
+check provider words remains visible even when the participant recording makes
+speaker ownership exact.
+
 ## Version and stale-packet behavior
 
 The transcript packet snapshot is now
@@ -65,7 +72,8 @@ message a client, share a follow-up, publish content, or alter recording media.
 ## Evidence
 
 - Quipsly TypeScript typecheck passes.
-- The focused packet, note, task, and goal route suite passes 73 tests.
+- The focused packet, note, task, goal, review-model, and review-surface suites
+  pass, including 132 packet and Session-review tests.
 - The mobile Capture source-contract smoke passes, including the new v2
   source-bound speaker provenance assertion.
 

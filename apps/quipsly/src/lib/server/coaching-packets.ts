@@ -567,6 +567,7 @@ function transcriptActionCandidate(input: {
     sourceSpan: sourceAnchor?.sourceSpan ?? null,
     transcriptReviewStatus: input.segment.reviewStatus === "human-reviewed" ? "human-reviewed" : "provider",
     speakerLabel: cleanText(input.segment.speakerLabel) || null,
+    speakerAuthority: input.segment.speakerAuthority,
     startSeconds: Number(input.segment.startSeconds) || 0,
     endSeconds: Number(input.segment.endSeconds) || 0,
   });
@@ -612,6 +613,9 @@ export function packetActionCandidatesFromSource(value: unknown): TranscriptActi
       sourceSpan: null,
       transcriptReviewStatus: record.transcriptReviewStatus === "human-reviewed" ? "human-reviewed" : "provider",
       speakerLabel: cleanText(record.speakerLabel) || null,
+      speakerAuthority: ["correction", "attribution", "source-binding", "provider", "unresolved"].includes(cleanText(record.speakerAuthority))
+        ? cleanText(record.speakerAuthority) as TranscriptActionCandidate["speakerAuthority"]
+        : undefined,
       startSeconds: typeof record.startSeconds === "number" ? record.startSeconds : 0,
       endSeconds: typeof record.endSeconds === "number" ? record.endSeconds : 0,
       humanApprovalRequired: typeof record.humanApprovalRequired === "boolean"

@@ -1970,6 +1970,18 @@ function checkTranscriptCorrectionContractSources() {
     "iPhone and Nest attach every required protected master from the newest podcast take as one exact source-set snapshot, preserve every original, optionally include only reconciled provider media as a non-blocking sync and recovery witness, expose partial retry truth, and open the same capture group in the existing waveform, drift, and human-approval editor without applying sync.",
   );
   expect(
+    coachingPacketText.includes("speakerAuthority")
+      && coachingPacketText.includes('"source-binding"')
+      && packetRouteText.includes("speakerAuthority: segment.speakerAuthority")
+      && sessionReviewModelText.includes('speakerAuthority?: "correction" | "attribution" | "source-binding" | "provider" | "unresolved"')
+      && sessionReviewText.includes("SpeakerEvidenceBadge")
+      && sessionReviewText.includes("Participant recording")
+      && sessionReviewText.includes("Automatic speaker label")
+      && sessionReviewText.includes("Speaker needs review"),
+    "packetSpeakerIdentityEvidenceVisible",
+    "Session follow-through explains whether a speaker name was reviewed, bound to an isolated participant recording, supplied automatically, or remains unresolved without conflating that identity with word review.",
+  );
+  expect(
     packetRouteText.includes("buildPacketGoalCandidates")
       && packetRouteText.includes('brief.kind !== "quipsly-transcript-packet-brief-v1"')
       && packetRouteText.includes("brief.candidateOnly !== true")
