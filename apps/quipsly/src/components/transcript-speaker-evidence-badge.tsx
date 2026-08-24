@@ -25,12 +25,12 @@ export function TranscriptSpeakerEvidenceBadge({ authority }: {
   const copy = transcriptSpeakerEvidenceCopy(authority);
   if (!copy) return null;
   return (
-    <p
+    <span
       title={copy.detail}
       aria-label={`${copy.label}. ${copy.detail}`}
       className="mt-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-sky-900"
     >
       {copy.label}
-    </p>
+    </span>
   );
 }

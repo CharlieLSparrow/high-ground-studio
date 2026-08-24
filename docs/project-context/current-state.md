@@ -30,6 +30,9 @@ Date: 2026-08-24
 - Capture decodes the same additive authority fields and reuses the same native
   badge on Today tasks/goals, Session notes, merged evidence, and released
   follow-up sources. Preview UI coverage reaches participant-recording badges.
+- The client-facing web follow-up shows the evidence during coach selection and
+  after release, and retains the plain-language authority in its deterministic
+  Markdown download without exposing internal participant IDs.
 - Quipsly TypeScript, 132 focused packet/review tests, 101 focused durable UI
   tests, the mobile Capture
   source-contract smoke, a complete unsigned generic iOS Simulator build and

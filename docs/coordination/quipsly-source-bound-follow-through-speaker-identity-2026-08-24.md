@@ -89,6 +89,13 @@ follow-up source links. The protected source-bound participant ID remains
 decoded for integrity and future diagnostics but is not displayed to the
 coach or client.
 
+The web client-follow-up artifact now carries the same explanation on every
+source-backed note, goal, and commitment visible to the client. Coaches see it
+while selecting the eligible records, clients see it after release, and the
+deterministic Markdown download records the plain-language authority label.
+Older released revisions without the additive field remain readable and do not
+receive an invented claim.
+
 ## Mutation boundary
 
 Packet outputs remain candidates that require explicit human review. This
@@ -104,6 +111,8 @@ message a client, share a follow-up, publish content, or alter recording media.
   packet mutation tests pass for durable follow-through provenance.
 - Another 101 focused web component and interaction tests pass across Session
   review, Notes, Work, Calendar planning, and the shared speaker-evidence badge.
+- An additional 54 focused follow-up and reusable-surface tests pass after
+  carrying the evidence into released client artifacts and Markdown exports.
 - The mobile Capture source-contract smoke passes, including the new v2
   source-bound speaker provenance assertion and a durable-work UI contract.
 - A complete unsigned generic iOS Simulator build and all 1,143 App Store

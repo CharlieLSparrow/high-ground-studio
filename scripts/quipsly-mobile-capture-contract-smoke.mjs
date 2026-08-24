@@ -2023,7 +2023,9 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("CaptureTodayTaskSpeakerEvidence_")
       && shellText.includes("CaptureTodayGoalSpeakerEvidence_")
       && shellText.includes("CaptureSessionNoteSpeakerEvidence_")
-      && mobileComponentsText.includes("CaptureClientFollowUpSpeakerEvidence_"),
+      && mobileComponentsText.includes("CaptureClientFollowUpSpeakerEvidence_")
+      && clientFollowUpWebText.includes("TranscriptSpeakerEvidenceBadge authority={anchor.speakerAuthority}")
+      && clientFollowUpWebText.includes("Speaker evidence: ${evidence.label}"),
     "durableFollowThroughSpeakerEvidenceVisible",
     "Saved transcript-backed notes, tasks, goals, focus plans, and released follow-up sources show the same plain-language speaker-authority evidence across Nest and iPhone after users leave Session review.",
   );

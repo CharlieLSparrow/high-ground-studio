@@ -35,6 +35,8 @@ const sourceAnchor = (schema: string, segmentId: string) => ({
   providerSpeakerLabel: "Speaker 2",
   effectiveTextSnapshot: "I will rehearse the boundary once and bring the evidence back.",
   effectiveSpeakerLabelSnapshot: "Client Test",
+  speakerAuthority: "source-binding",
+  sourceBoundParticipantId: "participant-client-test",
   acceptedCorrectionId: "correction-1",
   recordingAssetId: "asset-1",
   playbackSourceId: "playback-1",
@@ -169,6 +171,7 @@ describe("SessionClientFollowUpCard", () => {
     expect(markdown).toContain("## Goals");
     expect(markdown).toContain("## Commitments");
     expect(markdown).toContain("Source: 01:03-01:08");
+    expect(markdown).toContain("Speaker evidence: Participant recording");
     expect(markdown).toContain(`Content SHA-256: ${"a".repeat(64)}`);
     expect(markdown).toContain("Private notes and unreviewed transcript candidates are excluded.");
     expect(markdown).not.toContain("coach-private");
@@ -300,6 +303,7 @@ describe("SessionClientFollowUpCard", () => {
       "href",
       "/sessions/room-1?mode=transcript#transcript-segment-goal-segment",
     );
+    expect(screen.getAllByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toHaveLength(3);
     expect(
       screen.queryByRole("button", { name: /create private draft/i }),
     ).not.toBeInTheDocument();

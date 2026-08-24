@@ -14,6 +14,12 @@ import {
   ShieldCheck,
   Target,
 } from "lucide-react";
+import type { TranscriptSourceSpeakerAuthority } from "@high-ground/quipsly-domain/transcript-derived-task";
+
+import {
+  transcriptSpeakerEvidenceCopy,
+  TranscriptSpeakerEvidenceBadge,
+} from "@/components/transcript-speaker-evidence-badge";
 
 type FollowUpSourceAnchor = {
   schema: string;
@@ -26,6 +32,8 @@ type FollowUpSourceAnchor = {
   providerSpeakerLabel: string | null;
   effectiveTextSnapshot: string;
   effectiveSpeakerLabelSnapshot: string | null;
+  speakerAuthority?: TranscriptSourceSpeakerAuthority | null;
+  sourceBoundParticipantId?: string | null;
   acceptedCorrectionId: string | null;
   recordingAssetId: string;
   playbackSourceId: string;
@@ -232,7 +240,7 @@ export function clientFollowUpMarkdown(output: FollowUpOutput) {
     lines.push("", "## Notes");
     for (const note of notes) {
       lines.push("", `### ${markdownText(note.title) || "Session note"}`, "", markdownText(note.body));
-      if (note.sourceAnchor) lines.push(`Source: ${formatMediaTime(note.sourceAnchor.startSeconds)}-${formatMediaTime(note.sourceAnchor.endSeconds)}`);
+      if (note.sourceAnchor) lines.push(`Source: ${formatMediaTime(note.sourceAnchor.startSeconds)}-${formatMediaTime(note.sourceAnchor.endSeconds)}${speakerEvidenceMarkdown(note.sourceAnchor)}`);
     }
   }
   if (goals.length) {
@@ -240,7 +248,7 @@ export function clientFollowUpMarkdown(output: FollowUpOutput) {
     for (const goal of goals) {
       lines.push("", `- [${goal.status === "ACHIEVED" ? "x" : " "}] ${markdownText(goal.title)}${goal.targetAt ? ` (target ${goal.targetAt})` : ""}`);
       if (markdownText(goal.description)) lines.push(`  ${markdownText(goal.description)}`);
-      if (goal.sourceAnchor) lines.push(`  Source: ${formatMediaTime(goal.sourceAnchor.startSeconds)}-${formatMediaTime(goal.sourceAnchor.endSeconds)}`);
+      if (goal.sourceAnchor) lines.push(`  Source: ${formatMediaTime(goal.sourceAnchor.startSeconds)}-${formatMediaTime(goal.sourceAnchor.endSeconds)}${speakerEvidenceMarkdown(goal.sourceAnchor)}`);
     }
   }
   if (tasks.length) {
@@ -248,7 +256,7 @@ export function clientFollowUpMarkdown(output: FollowUpOutput) {
     for (const task of tasks) {
       lines.push("", `- [${task.status === "DONE" ? "x" : " "}] ${markdownText(task.title)}${task.dueAt ? ` (due ${task.dueAt})` : ""}`);
       if (markdownText(task.detail)) lines.push(`  ${markdownText(task.detail)}`);
-      if (task.sourceAnchor) lines.push(`  Source: ${formatMediaTime(task.sourceAnchor.startSeconds)}-${formatMediaTime(task.sourceAnchor.endSeconds)}`);
+      if (task.sourceAnchor) lines.push(`  Source: ${formatMediaTime(task.sourceAnchor.startSeconds)}-${formatMediaTime(task.sourceAnchor.endSeconds)}${speakerEvidenceMarkdown(task.sourceAnchor)}`);
     }
   }
   if (markdownText(output.nextSessionFocus)) {
@@ -256,6 +264,11 @@ export function clientFollowUpMarkdown(output: FollowUpOutput) {
   }
   lines.push("", "---", "Prepared from a reviewed Quipsly client-safe snapshot. Private notes and unreviewed transcript candidates are excluded.", "");
   return lines.join("\n");
+}
+
+function speakerEvidenceMarkdown(anchor: FollowUpSourceAnchor) {
+  const evidence = transcriptSpeakerEvidenceCopy(anchor.speakerAuthority);
+  return evidence ? ` · Speaker evidence: ${evidence.label}` : "";
 }
 
 function selectionMatches(
@@ -268,14 +281,17 @@ function selectionMatches(
 
 function FollowUpSourceLink({ anchor, recordLabel }: { anchor: FollowUpSourceAnchor | null | undefined; recordLabel: string }) {
   if (!anchor) return null;
-  return <a
-    href={`/sessions/${encodeURIComponent(anchor.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(anchor.segmentId)}`}
-    className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
-    aria-label={`Return to exact source for ${recordLabel} at ${formatMediaTime(anchor.startSeconds)}`}
-  >
-    <Play size={14} aria-hidden="true" />
-    Exact source · {formatMediaTime(anchor.startSeconds)}–{formatMediaTime(anchor.endSeconds)}
-  </a>;
+  return <div className="mt-2">
+    <TranscriptSpeakerEvidenceBadge authority={anchor.speakerAuthority} />
+    <a
+      href={`/sessions/${encodeURIComponent(anchor.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(anchor.segmentId)}`}
+      className="mt-2 flex min-h-11 w-fit items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
+      aria-label={`Return to exact source for ${recordLabel} at ${formatMediaTime(anchor.startSeconds)}`}
+    >
+      <Play size={14} aria-hidden="true" />
+      Exact source · {formatMediaTime(anchor.startSeconds)}–{formatMediaTime(anchor.endSeconds)}
+    </a>
+  </div>;
 }
 
 function FollowUpArtifact({ output }: { output: FollowUpOutput }) {
@@ -889,8 +905,9 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
                             {note.body}
                           </span>
                           {note.sourceAnchor ? (
-                            <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-sky-800">
-                              Includes exact source {formatMediaTime(note.sourceAnchor.startSeconds)}–{formatMediaTime(note.sourceAnchor.endSeconds)}
+                            <span className="mt-1 block">
+                              <span className="block text-[10px] font-black uppercase tracking-wide text-sky-800">Includes exact source {formatMediaTime(note.sourceAnchor.startSeconds)}–{formatMediaTime(note.sourceAnchor.endSeconds)}</span>
+                              <TranscriptSpeakerEvidenceBadge authority={note.sourceAnchor.speakerAuthority} />
                             </span>
                           ) : null}
                         </span>
@@ -934,8 +951,9 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
                               : ""}
                           </span>
                           {goal.sourceAnchor ? (
-                            <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-sky-800">
-                              Includes exact source {formatMediaTime(goal.sourceAnchor.startSeconds)}–{formatMediaTime(goal.sourceAnchor.endSeconds)}
+                            <span className="mt-1 block">
+                              <span className="block text-[10px] font-black uppercase tracking-wide text-sky-800">Includes exact source {formatMediaTime(goal.sourceAnchor.startSeconds)}–{formatMediaTime(goal.sourceAnchor.endSeconds)}</span>
+                              <TranscriptSpeakerEvidenceBadge authority={goal.sourceAnchor.speakerAuthority} />
                             </span>
                           ) : null}
                         </span>
@@ -979,8 +997,9 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
                               : ""}
                           </span>
                           {task.sourceAnchor ? (
-                            <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-sky-800">
-                              Includes exact source {formatMediaTime(task.sourceAnchor.startSeconds)}–{formatMediaTime(task.sourceAnchor.endSeconds)}
+                            <span className="mt-1 block">
+                              <span className="block text-[10px] font-black uppercase tracking-wide text-sky-800">Includes exact source {formatMediaTime(task.sourceAnchor.startSeconds)}–{formatMediaTime(task.sourceAnchor.endSeconds)}</span>
+                              <TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority} />
                             </span>
                           ) : null}
                         </span>
