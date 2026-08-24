@@ -2,6 +2,24 @@
 
 Date: 2026-08-24
 
+## Conventional call progression checkpoint
+
+- Quipsly's call-entry contract now matches familiar Meet, Teams, Zoom, and
+  Riverside patterns: one green room, mic/camera state, one Join action,
+  optional collapsed settings and sound check, and remembered browser/iOS
+  device authorization.
+- Device permission remains contextual and OS-owned. Recording consent remains
+  a separate Session-scoped decision; neither is presented as recurring Quipsly
+  administration.
+- After joining on the web, the participant-owned recording consent/Record
+  surface now appears directly after call controls for coaching and Episode
+  Sessions. Optional device settings no longer interrupt the primary
+  join-to-record progression.
+- Existing camera-failure fallback, second-device no-audio mode, live device
+  recovery, and separate local/provider recording boundaries remain intact.
+- Thirty-three focused call/handoff tests and strict Quipsly TypeScript pass.
+  The two-person browser/iPhone flight is retained as human/device evidence.
+
 ## Native audio mastery evidence-comparison checkpoint
 
 - Capture Recording Quality now decodes complete source and verified preview

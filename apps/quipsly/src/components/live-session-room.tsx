@@ -1795,6 +1795,8 @@ export function LiveSessionRoom({
             </div>
           ) : null}
 
+          {connected && showRetainedSourceControls ? retainedSourceControls : null}
+
           <details data-testid="call-device-settings" className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Audio and video settings</summary>
           <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="Where to use call audio">
@@ -1888,7 +1890,6 @@ export function LiveSessionRoom({
           </details>
           </details>
 
-          {experience.captureProfile === "coaching" && showRetainedSourceControls ? retainedSourceControls : null}
           {showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status) ? (
             <p data-testid="call-status-message" role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
           ) : null}
@@ -1955,7 +1956,7 @@ export function LiveSessionRoom({
         </aside>
       </div>
       <div className="mt-5 space-y-4">
-        {experience.captureProfile === "episode" && showRetainedSourceControls ? retainedSourceControls : null}
+        {!connected && showRetainedSourceControls ? retainedSourceControls : null}
         <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
             Recording safety details

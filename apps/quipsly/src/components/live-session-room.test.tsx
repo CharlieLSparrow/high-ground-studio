@@ -697,6 +697,11 @@ describe("LiveSessionRoom", () => {
     await waitFor(() => expect(screen.getByTestId("live-microphone-status")).toHaveTextContent("Checking microphone"));
     expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent("55555555-5555-4555-8555-555555555545");
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
+    const recorder = screen.getByTestId("browser-source-capture-group").parentElement;
+    const optionalSettings = screen.getByTestId("call-device-settings");
+    expect(recorder).not.toBeNull();
+    expect(recorder!.compareDocumentPosition(optionalSettings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(optionalSettings).not.toHaveAttribute("open");
   });
 
   it("keeps browser call recovery ordinary while retaining the technical cause", async () => {

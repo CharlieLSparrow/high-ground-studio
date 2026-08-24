@@ -14,6 +14,7 @@ never be substituted for the evidence requested here.
 | Pending | A minimally instructed coach and client complete scheduling, invitation, lobby, permissions, consent, join, conversation, participant-owned recording, leave, upload, and playable Session return without developer intervention. | Timestamped two-account flight record, both participant perspectives, retained recording/source IDs, post-call playback, and observed friction. |
 | Pending | The current Capture release runs the recording and recovery path on physical iPhones across interruption, background/foreground, temporary network loss, and reconnect. | Device/build identities, runtime receipts, upload reconciliation, exact-byte verification, and playable readback. |
 | Pending | Fresh coach/client identities see only Home plus explicitly shared Nests, Sessions, notes, tasks, goals, transcripts, and media. | Two-account positive/negative UI checks plus direct authenticated route probes. |
+| Pending | A first-time and returning participant traverse the conventional outer room on browser and iPhone: contextual device grant, one Join, Session recording choice, Record, leave, and return; repeat with permission denied, camera unavailable, and an iPhone companion join. | Screen recordings from both endpoints, observed prompt count, remembered re-entry with no new prompt, ordinary Settings recovery, audio call survival after camera failure, no companion echo, recording receipt IDs, and playable retained sources. |
 
 ## Native audio mastery review
 
