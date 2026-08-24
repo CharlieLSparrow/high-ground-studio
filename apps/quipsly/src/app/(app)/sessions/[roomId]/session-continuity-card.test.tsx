@@ -20,6 +20,8 @@ const mergedTaskEvidence = {
     providerSpeakerLabel: "Speaker",
     effectiveTextSnapshot: "I will run the protected rehearsal before we meet again.",
     effectiveSpeakerLabelSnapshot: "Client",
+    speakerAuthority: "source-binding" as const,
+    sourceBoundParticipantId: "participant-client",
     acceptedCorrectionId: "correction-1",
     recordingAssetId: "asset-1",
     playbackSourceId: "source-1",
@@ -130,6 +132,7 @@ describe("SessionContinuityCard", () => {
       link.getAttribute("href") === "/sessions/room-1?mode=transcript#transcript-segment-segment-1"
     ))).toBe(true);
     expect(screen.getByText(/evidence was appended without changing task definition/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /build a coaching habit/i })).toHaveAttribute("href", "/work?goal=goal-1");
     expect(screen.getByRole("link", { name: /bring forward/i })).toHaveAttribute("href", "/sessions/room-1?mode=notes#session-note-note-1");
     expect(screen.getByRole("link", { name: "Open Calendar" })).toHaveAttribute("href", "/schedule");
@@ -200,6 +203,7 @@ describe("SessionContinuityCard", () => {
     expect(screen.getByRole("heading", { name: "Previous coaching rehearsal" })).toBeInTheDocument();
     expect(screen.getByText("Carry the exact protected rehearsal forward.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Return to what was actually said" })).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toHaveLength(2);
     expect(screen.getAllByRole("link", { name: "Return to 1:03–1:11" }).some((link) => (
       link.getAttribute("href") === "/sessions/room-1?mode=transcript#transcript-segment-segment-1"
     ))).toBe(true);

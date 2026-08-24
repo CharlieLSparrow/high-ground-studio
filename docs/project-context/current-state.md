@@ -33,8 +33,11 @@ Date: 2026-08-24
 - The client-facing web follow-up shows the evidence during coach selection and
   after release, and retains the plain-language authority in its deterministic
   Markdown download without exposing internal participant IDs.
+- Next-Session continuity shows the same evidence on both the current task's
+  latest transcript support and an intentionally saved prior private brief,
+  alongside exact transcript returns rather than copied or inferred history.
 - Quipsly TypeScript, 132 focused packet/review tests, 101 focused durable UI
-  tests, the mobile Capture
+  tests, 17 focused continuity/follow-up tests, the mobile Capture
   source-contract smoke, a complete unsigned generic iOS Simulator build and
   UI-test build, and all 1,143 App Store static checks pass. This is local
   automated evidence; live

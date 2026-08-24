@@ -14,6 +14,8 @@ import {
   TriangleAlert,
 } from "lucide-react";
 
+import { TranscriptSpeakerEvidenceBadge } from "@/components/transcript-speaker-evidence-badge";
+
 import type {
   PriorSessionContinuity,
   PriorSessionFollowThrough,
@@ -168,6 +170,7 @@ export function PriorSessionContinuityCard({
               <li key={`${taskId}-${evidence.receiptId}`} className="rounded-lg border border-sky-100 bg-sky-50/45 p-3">
                 <p className="text-xs font-black text-[#3d3122]">{taskTitle}</p>
                 <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-sky-950">{evidence.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${evidence.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{evidence.sourceAnchor.effectiveTextSnapshot}</p>
+                <TranscriptSpeakerEvidenceBadge authority={evidence.sourceAnchor.speakerAuthority} />
                 <Link href={`/sessions/${encodeURIComponent(evidence.sourceAnchor.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(evidence.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">
                   <Play size={14} aria-hidden="true" />Return to {formatMediaTime(evidence.sourceAnchor.startSeconds)}–{formatMediaTime(evidence.sourceAnchor.endSeconds)}
                 </Link>
@@ -355,6 +358,7 @@ export function SessionContinuityCard({
                     <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50/60 p-3">
                       <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Latest reviewed evidence added</p>
                       <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-sky-950">{task.lastMergedTranscriptEvidence.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${task.lastMergedTranscriptEvidence.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{task.lastMergedTranscriptEvidence.sourceAnchor.effectiveTextSnapshot}</p>
+                      <TranscriptSpeakerEvidenceBadge authority={task.lastMergedTranscriptEvidence.sourceAnchor.speakerAuthority} />
                       <Link href={`/sessions/${encodeURIComponent(task.lastMergedTranscriptEvidence.sourceAnchor.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(task.lastMergedTranscriptEvidence.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">
                         <Play size={14} aria-hidden="true" />Return to {formatMediaTime(task.lastMergedTranscriptEvidence.sourceAnchor.startSeconds)}–{formatMediaTime(task.lastMergedTranscriptEvidence.sourceAnchor.endSeconds)}
                       </Link>

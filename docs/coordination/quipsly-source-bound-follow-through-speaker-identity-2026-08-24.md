@@ -96,6 +96,13 @@ deterministic Markdown download records the plain-language authority label.
 Older released revisions without the additive field remain readable and do not
 receive an invented claim.
 
+Next-Session continuity now preserves the same distinction. The current
+Session's latest carried-forward task evidence and an explicitly saved private
+brief from the prior Session each show their own speaker-evidence badge beside
+the exact transcript return. Continuity therefore does not flatten a
+participant-owned recording into a generic quotation or imply that an
+automatic label was human reviewed.
+
 ## Mutation boundary
 
 Packet outputs remain candidates that require explicit human review. This
@@ -113,6 +120,8 @@ message a client, share a follow-up, publish content, or alter recording media.
   review, Notes, Work, Calendar planning, and the shared speaker-evidence badge.
 - An additional 54 focused follow-up and reusable-surface tests pass after
   carrying the evidence into released client artifacts and Markdown exports.
+- Seventeen focused continuity, client-follow-up, and shared-badge tests pass
+  after carrying the evidence into both current and prior Session continuity.
 - The mobile Capture source-contract smoke passes, including the new v2
   source-bound speaker provenance assertion and a durable-work UI contract.
 - A complete unsigned generic iOS Simulator build and all 1,143 App Store
