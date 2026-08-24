@@ -2,9 +2,9 @@
 
 Quipsly Capture / `HighGroundCapture` is being prepared as an explicit-consent coaching, podcast, interview, and field-note capture app.
 
-## Canonical 2026-07-18 candidate
+## Capture architecture baseline (established 2026-07-18)
 
-The release candidate is now the iPhone-only, iOS 17 capture-first shell documented in [`apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md`](../../apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md). Its customer navigation is **Today**, **Record**, **Work**, **Library**, and **Account**. Older editor, manuscript, iPad, reviewer-report, and 360 surfaces described later in this file are supporting history or separate Studio work; they are not evidence that those features ship in Quipsly Capture.
+The product baseline is the iPhone-only, iOS 17 capture-first shell documented in [`apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md`](../../apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md). Its customer navigation is **Today**, **Record**, **Work**, **Library**, and **Account**. Older editor, manuscript, iPad, reviewer-report, and 360 surfaces described later in this file are supporting history or separate Studio work; they are not evidence that those features ship in Quipsly Capture.
 
 The candidate uses protected owner-partitioned source, upload-job, and room-receipt ledgers; crash-safe Start/Stop receipts; durable database room-receipt and upload-reservation ledgers; separate LiveKit media and CallKit presentation/audio-activation roles; and direct private-GCS resumable v2 uploads with exact server verification. New uploads do not stream media through Cloud Run. Unsafe legacy multipart/chunk ingress returns `410` before reading request bytes. The local recording UUID binds the device source, room `captureId`, upload idempotency key, GCS control manifest, quota reservation, and final server evidence.
 
@@ -477,16 +477,34 @@ journey, and fail-closed blocker ledger now live in
 `pnpm quipsly:capture:app-store-metadata`; the stricter `--submission` mode must
 remain red until approved screenshots and every delivery-layer proof exist.
 
-## Remaining blockers before App Store submission
+## Current blockers before App Store submission
 
-The canonical TestFlight distribution target is now **Quipsly Capture 1.0
-(28)**, provider build `ed68117d-5604-45c3-b9f7-239e7cd2af4f`. Apple reports
-the build identity and the editable App Store 1.0 version now has that exact
-Build 28 ID assigned. Build 28 is the public TestFlight rehearsal target;
-physical-iPhone acceptance remains open. The unreleased source build number is
-29 so post-Build-28 work cannot be archived or pictured under an already-used
-provider identity. Build 6/8/9 sections below are historical evidence, not
-current installation instructions.
+The canonical public TestFlight distribution target is **Quipsly Capture 1.0
+(33)**, provider build `9a7944d0-55d7-46da-9755-694384fbe9fd`, through the
+public link `https://testflight.apple.com/join/XwRRcYUm`. Quipsly Capture 1.0
+(35) is a separately sealed and signed candidate from exact source
+`8d019469d251b564ce25c31dccef27ab406dcb1c`; it passed all 72 selected UI
+journeys and archive/signature/privacy inspection but was deliberately not
+uploaded. Current development after Build 35 is likewise unreleased. Do not
+describe a source revision as installed, in TestFlight, or App Store-ready
+unless a new deliberate release receipt and Apple readback bind that exact
+revision to a new provider build.
+
+The current operational handoff and open human/device gates are maintained in
+[`coaching-cohort-release-handoff.md`](./coaching-cohort-release-handoff.md).
+The detailed Build 35 qualification is retained in
+[`coaching-cohort-release-acceptance.md`](./coaching-cohort-release-acceptance.md#build-35-exact-commit-candidate--2026-08-23).
+The App Store submission remains blocked by the account-level EU DSA trader
+determination, published App Privacy answers, approved exact-candidate
+screenshots, physical-iPhone capture/call/recovery evidence, one controlled
+production account-deletion completion, and final archive/listing/legal
+reconciliation. These external gates do not stop independent product work.
+
+### Historical Build 28 provider-audit context
+
+The following provider audit and screenshot evidence was recorded against
+Build 28 in early August. It remains useful historical evidence but is not the
+current installation target or a substitute for a fresh exact-build audit.
 
 The credentialed read-only submission audit is:
 
@@ -549,7 +567,7 @@ and unscoped because Apple supports the JWT `scope` claim only for GET requests;
 the operator, exact target confirmation, and Team Admin key role provide the
 write boundary.
 
-The remaining release gates are therefore:
+At that Build 28 checkpoint, the then-open release gates were:
 
 1. Complete and verify the account-level EU DSA trader determination in App
    Store Connect.
@@ -557,15 +575,15 @@ The remaining release gates are therefore:
    Quipsly and integrated third parties across every platform; the public API
    does not expose a trustworthy publication readback for this gate.
 3. Capture, visually approve, and upload all five planned largest-iPhone
-   screenshots from the exact Build 28 experience with synthetic/private-safe
+   screenshots from that exact candidate experience with synthetic/private-safe
    content. Draft simulator compositions remain layout evidence only.
-4. Install Build 28 from TestFlight on a physical iPhone and prove the Episode
-   9 workspace opens without the prior crash, then prove microphone
+4. Install the exact candidate from TestFlight on a physical iPhone and prove
+   the Episode 9 workspace opens without the prior crash, then prove microphone
    and camera permission/fidelity, front/back switching, pause/resume,
    interruptions, route loss, force-quit and offline recovery, direct upload,
    assembled playback, timeline alignment, and same-ID Nest/Studio readback.
    If USB/CoreDevice is unavailable, the fresh privacy-bounded Account support
-   snapshot can independently prove only exact Build 28 installation and
+   snapshot can independently prove only exact candidate installation and
    authenticated production mode; run
    `pnpm quipsly:capture:physical-install-readback`. The remaining physical
    capture assertions still require operating the app.
