@@ -2086,3 +2086,29 @@ simulator microphone permission, so it does not claim first-run system-prompt
 UX, physical microphone or camera behavior, natural speech, human listening,
 novice comprehension, TestFlight networking, or production scale. Those remain
 physical/human release checks rather than hidden assumptions in this evidence.
+
+## Conventional call setup with durable recovery — 2026-08-24
+
+The simplified call setup and the complete native recovery flight passed from
+exact pushed source `eba326388aad1bb256e53f0c2cf440f54874ea81` with a clean
+tracked worktree at start. The routine lobby now leads with the selected
+Session, microphone route, the standard this-iPhone call-audio choice, one
+primary **Join call** action, and one secondary **Record without joining**
+action. It no longer follows those obvious controls with another instruction
+paragraph or presents an idle disconnected call as a warning. The less-common
+second-device choice retains concise echo guidance. Device and sound check
+evidence stays available in one optional disclosure, while real recording,
+signal, storage, call-recovery, and source-integrity interventions remain
+visible when they become actionable.
+
+The focused lobby and rehearsal UI tests pass, including accurate preview
+manuscript and shared-clip evidence without depending on a later lazy card.
+The App Store/static contract passes 1,138/1,138. The fresh end-to-end receipt
+at `artifacts/coaching-acceptance/54f0fef8/native-capture-recovery-receipt.json`
+again proves invited-client reauthorization without auto-join, ordinary
+in-product client and coach consent, real local recording and playback,
+server byte/checksum verification, another-take reachability, process-death
+recovery, protected offline readback, reconnection, and durable Studio handoff.
+Its simulator, pre-granted microphone permission, natural-speech, human
+listening, novice comprehension, TestFlight, and production-scale boundaries
+remain unchanged and explicit.
