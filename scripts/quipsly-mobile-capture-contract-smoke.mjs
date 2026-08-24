@@ -1908,6 +1908,9 @@ function checkTranscriptCorrectionContractSources() {
       && nativeRecordingShareText.includes('action: "REVOKE"')
       && nativeRecordingShareText.includes("Original recordings never change")
       && nativeRecordingShareText.includes("providerTextSha256")
+      && nativeRecordingShareText.includes("sourceManifest")
+      && nativeRecordingShareText.includes("restoreEditorFromCurrentOutput")
+      && nativeRecordingShareText.includes("will not substitute another track")
       && nativeText.includes('Label("Edit recording here"')
       && nativeText.includes("transcriptJobID: transcriptJobID")
       && nativeText.includes("segmentID: segment.id")
@@ -1918,7 +1921,7 @@ function checkTranscriptCorrectionContractSources() {
       && nativeRecordingShareText.includes("does not have qualified source timing")
       && nativeRecordingShareText.includes("it is not an edit decision"),
     "nativePrivateRecordingEditAndShare",
-    "Capture exposes source-bound private trim, exact receipt-verified playback, explicit release and revocation, direct in-app reachability, and an exact transcript-passage handoff that never mutates masters or silently widens source and time selections.",
+    "Capture exposes source-bound private trim, exact receipt-verified playback, explicit release and revocation, direct in-app reachability, and an exact transcript-passage handoff that preserves the reviewed source manifest and prior text cuts without mutating masters or silently substituting tracks.",
   );
   expect(
     recordingPromotionText.includes("resolveCaptureGroupPromotionPlan")

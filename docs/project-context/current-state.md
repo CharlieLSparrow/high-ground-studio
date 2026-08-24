@@ -1,6 +1,26 @@
 # Current State
 
-Date: 2026-08-08
+Date: 2026-08-24
+
+## Reviewed recording source-continuity checkpoint
+
+- Reopening a reviewed Session recording edit now restores its exact persisted
+  source manifest on both Nest and Quipsly Capture. It no longer silently
+  returns to today's default participant tracks when the prior edit deliberately
+  used a camera track or another verified source.
+- Native `Make another private edit`, web edit/cancel, and transcript-focus
+  entry points also restore the retained transcript exclusions, trim range, and
+  title. A new preview therefore starts from the reviewed revision instead of
+  quietly resurrecting text-based cuts.
+- If a retained source is no longer present in the verified Session take, both
+  surfaces keep the remaining exact selection empty or partial, show a warning,
+  and require deliberate recovery. Neither surface substitutes a different
+  recording merely because it belongs to the same participant.
+- The focused web recording/share/consent suite passes 20 tests; Quipsly
+  TypeScript, both Capture static contracts, and a complete unsigned generic
+  iOS Simulator build pass. Physical iPhone playback, TestFlight readback, and
+  two-account Session acceptance remain release evidence, not claims from this
+  local checkpoint.
 
 ## Native device-folder executor-custody checkpoint
 

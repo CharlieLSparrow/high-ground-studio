@@ -26,10 +26,6 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function isSupportedConsentPresentationSurface(value: unknown) {
-  return isSupportedMobileCaptureConsentPresentationSurface(value);
-}
-
 function consentActionFromBody(body: Record<string, unknown>) {
   const explicit = text(body.consentAction).toUpperCase();
 
@@ -234,7 +230,7 @@ export async function POST(request: Request) {
     const presentedAt = new Date(text(presentationEvidence.presentedAt));
     const presentationValid =
       presentationEvidence.version === 1 &&
-      isSupportedConsentPresentationSurface(presentationEvidence.surface) &&
+      isSupportedMobileCaptureConsentPresentationSurface(presentationEvidence.surface) &&
       presentationEvidence.recordingChoicePresented === true &&
       presentationEvidence.transcriptionChoicePresented === true &&
       presentationEvidence.audibleParticipantAttestationPresented === true &&

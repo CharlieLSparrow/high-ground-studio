@@ -5,9 +5,10 @@ import {
   MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+  isSupportedMobileCaptureConsentPresentationSurface,
 } from "@/lib/server/mobile-capture-consent-readiness.js";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { GET, isSupportedConsentPresentationSurface } from "./route";
+import { GET } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -27,10 +28,10 @@ describe("capture consent readback", () => {
   });
 
   test("accepts only the explicit native and Session workspace consent surfaces", () => {
-    expect(isSupportedConsentPresentationSurface("quipsly-capture-consent-v2")).toBe(true);
-    expect(isSupportedConsentPresentationSurface("quipsly-session-workspace-consent-v1")).toBe(true);
-    expect(isSupportedConsentPresentationSurface("quipsly-admin-consent")).toBe(false);
-    expect(isSupportedConsentPresentationSurface("")).toBe(false);
+    expect(isSupportedMobileCaptureConsentPresentationSurface("quipsly-capture-consent-v2")).toBe(true);
+    expect(isSupportedMobileCaptureConsentPresentationSurface("quipsly-session-workspace-consent-v1")).toBe(true);
+    expect(isSupportedMobileCaptureConsentPresentationSurface("quipsly-admin-consent")).toBe(false);
+    expect(isSupportedMobileCaptureConsentPresentationSurface("")).toBe(false);
   });
 
   test("returns policy without touching a private room", async () => {

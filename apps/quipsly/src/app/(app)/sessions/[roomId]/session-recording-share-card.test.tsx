@@ -208,4 +208,64 @@ describe("SessionRecordingShareCard", () => {
     const restored = screen.getByText(transcriptSegment.text).closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
     expect(restored).not.toBeChecked();
   });
+
+  it("reopens from the exact reviewed source manifest instead of substituting the current default track", async () => {
+    const cameraSegment = {
+      ...transcriptSegment,
+      segmentId: "transcript_segment_camera_0001",
+      sourceRecordingAssetId: "recording_asset_camera_0001",
+      text: "Keep the reviewed camera-master wording decision.",
+    };
+    const cameraSource = {
+      ...snapshot.available.sources[0],
+      id: "recording_asset_camera_0001",
+      kind: "LOCAL_VIDEO",
+      fileName: "coach-camera.mov",
+    };
+    const output = {
+      id: "session_output_exact_sources_0001",
+      status: "DRAFT",
+      title: "Reviewed camera-master edit",
+      revision: 3,
+      contentSha256: "d".repeat(64),
+      recipient: { id: "client_user_0001", label: "Client" },
+      render: { status: "VERIFIED", durationSeconds: 26, sizeBytes: 4_000, sha256: "e".repeat(64) },
+      mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_exact_sources_0001",
+      body: { edit: { startSeconds: 2, endSeconds: 28, transcriptExclusions: [cameraSegment] } },
+      sourceManifest: { sources: [{ recordingAssetId: cameraSource.id }] },
+    };
+    const exactSnapshot = {
+      ...snapshot,
+      available: {
+        ...snapshot.available,
+        sources: [...snapshot.available.sources, cameraSource],
+        transcriptSegments: [transcriptSegment, cameraSegment],
+      },
+      output,
+    };
+    const requests: Array<Record<string, unknown>> = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(exactSnapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Edit private preview" }));
+    await userEvent.click(screen.getByText(/name and recording sources/i));
+
+    const localAudio = screen.getByText(/local audio master/i).closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
+    const cameraAudio = screen.getByText(/camera master audio/i).closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(localAudio).not.toBeChecked();
+    expect(cameraAudio).toBeChecked();
+    const passage = screen.getByText(cameraSegment.text).closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(passage).not.toBeChecked();
+
+    await userEvent.click(screen.getByRole("button", { name: "Create private preview" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({
+      action: "PREPARE",
+      sourceIds: [cameraSource.id],
+      excludedTranscriptSegments: [expect.objectContaining({ segmentId: cameraSegment.segmentId })],
+    }));
+  });
 });

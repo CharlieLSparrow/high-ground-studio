@@ -58,6 +58,14 @@ struct CaptureRecordingShareOutput: Codable, Identifiable, Equatable {
         let edit: Edit?
     }
 
+    struct SourceManifest: Codable, Equatable {
+        struct Source: Codable, Equatable {
+            let recordingAssetId: String?
+        }
+
+        let sources: [Source]?
+    }
+
     let id: String
     let status: String
     let title: String
@@ -67,6 +75,7 @@ struct CaptureRecordingShareOutput: Codable, Identifiable, Equatable {
     let render: Render
     let mediaUrl: String?
     let body: Body
+    let sourceManifest: SourceManifest?
 }
 
 struct CaptureRecordingShareSnapshot: Codable, Equatable {
@@ -533,6 +542,21 @@ struct CaptureRecordingShareEditor: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.orange)
             } else {
+                if let output = snapshot.output,
+                   editing,
+                   missingOutputSourceCount(output, available: sources) > 0 {
+                    let missingCount = missingOutputSourceCount(output, available: sources)
+                    Label(
+                        "\(missingCount) source\(missingCount == 1 ? " is" : "s are") no longer in the verified Session take. Quipsly kept the remaining exact source selection and will not substitute another track. Restore or deliberately replace the missing source before creating a new preview.",
+                        systemImage: "waveform.badge.exclamationmark"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(12)
+                    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                    .accessibilityIdentifier("CaptureRecordingShareMissingSources")
+                }
+
                 VStack(alignment: .leading, spacing: 12) {
                     Text("1 · Trim the beginning and end")
                         .font(.subheadline.weight(.bold))
@@ -681,8 +705,7 @@ struct CaptureRecordingShareEditor: View {
             }
         } else if snapshot.output != nil {
             Button("Make another private edit") {
-                excludedSegmentIDs.removeAll()
-                editing = true
+                restoreEditorFromCurrentOutput(snapshot)
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("CaptureRecordingShareEditAgain")
@@ -912,14 +935,7 @@ struct CaptureRecordingShareEditor: View {
         guard !initializedSnapshot,
               let snapshot = client.snapshot,
               let available = snapshot.available else { return }
-        var preferred: [String: CaptureRecordingShareSource] = [:]
-        for source in available.sources {
-            let current = preferred[source.participantLabel]
-            if current == nil || (source.kind == "LOCAL_AUDIO" && current?.kind != "LOCAL_AUDIO") {
-                preferred[source.participantLabel] = source
-            }
-        }
-        selectedSourceIDs = Set(preferred.values.map(\.id))
+        selectedSourceIDs = sourceIDsForEditing(snapshot.output, available: available.sources)
         startSeconds = snapshot.output?.body.edit?.startSeconds ?? 0
         endSeconds = snapshot.output?.body.edit?.endSeconds ?? available.programDurationSeconds
         title = snapshot.output?.title ?? "\(snapshot.room?.title ?? "Coaching Session") recording"
@@ -931,6 +947,50 @@ struct CaptureRecordingShareEditor: View {
             editing = true
         }
         initializedSnapshot = true
+    }
+
+    private func restoreEditorFromCurrentOutput(_ snapshot: CaptureRecordingShareSnapshot) {
+        guard let output = snapshot.output else { return }
+        let sources = snapshot.available?.sources ?? []
+        selectedSourceIDs = sourceIDsForEditing(output, available: sources)
+        startSeconds = output.body.edit?.startSeconds ?? 0
+        endSeconds = output.body.edit?.endSeconds ?? snapshot.available?.programDurationSeconds ?? 0
+        title = output.title
+        excludedSegmentIDs = Set(output.body.edit?.transcriptExclusions?.map(\.id) ?? [])
+        editing = true
+    }
+
+    private func sourceIDsForEditing(
+        _ output: CaptureRecordingShareOutput?,
+        available: [CaptureRecordingShareSource]
+    ) -> Set<String> {
+        let availableIDs = Set(available.map(\.id))
+        let requestedIDs = output?.sourceManifest?.sources?
+            .compactMap(\.recordingAssetId)
+            .filter { !$0.isEmpty }
+        if let requestedIDs, !requestedIDs.isEmpty {
+            return Set(requestedIDs.filter { availableIDs.contains($0) })
+        }
+
+        var preferred: [String: CaptureRecordingShareSource] = [:]
+        for source in available {
+            let current = preferred[source.participantLabel]
+            if current == nil || (source.kind == "LOCAL_AUDIO" && current?.kind != "LOCAL_AUDIO") {
+                preferred[source.participantLabel] = source
+            }
+        }
+        return Set(preferred.values.map(\.id))
+    }
+
+    private func missingOutputSourceCount(
+        _ output: CaptureRecordingShareOutput,
+        available: [CaptureRecordingShareSource]
+    ) -> Int {
+        let availableIDs = Set(available.map(\.id))
+        return output.sourceManifest?.sources?
+            .compactMap(\.recordingAssetId)
+            .filter { !$0.isEmpty && !availableIDs.contains($0) }
+            .count ?? 0
     }
 
     private func outputStatus(_ output: CaptureRecordingShareOutput) -> String {
