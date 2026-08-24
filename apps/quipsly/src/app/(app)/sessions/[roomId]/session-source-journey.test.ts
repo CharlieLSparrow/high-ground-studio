@@ -85,7 +85,25 @@ function sourceEvidence(overrides: Partial<SessionSourceEvidence["sources"][numb
       stopBoundary: { receiptId: "stop-1", occurredAt: "2026-08-06T01:42:00.000Z" },
       sourceOrigin: "CAPTURE",
       cloud: { sha256: "a".repeat(64), byteSize: "200000000", generation: "9", bucket: "quipsly", objectPath: "capture.wav", verifiedAt: "2026-08-06T01:59:00.000Z" },
+      protectedPlayback: { sourceId: "source-asset-1", url: "/api/ingest/media/source-asset-1", kind: "audio", durationSeconds: 2520 },
       captureRuntime: { appVersion: "1.0", appBuild: "28", deviceModel: "Mac", operatingSystem: "macOS", audioRoute: "MV7i", audioFormat: undefined },
+      analysis: {
+        jobId: "analysis-1",
+        mediaAssetId: "source-asset-1",
+        status: "completed",
+        exactSourceBound: true,
+        completeDecode: true,
+        completedAt: "2026-08-06T02:10:00.000Z",
+        updatedAt: "2026-08-06T02:10:00.000Z",
+        media: { container: "wav", codec: "pcm_s24le", sampleRateHz: 48000, channelCount: 1, durationSeconds: 2520 },
+        signal: null,
+        error: null,
+        boundaries: {
+          derivedEvidenceDoesNotMutateCaptureManifest: true,
+          exactBytesBoundByAssetHashAndSize: true,
+          sourceReplicaGenerationRemainsSeparate: true,
+        },
+      },
       processingDisposition: "RELEASED",
       transcriptDisposition: "RELEASED",
       releaseAudit: { releasedAt: "2026-08-06T02:00:00.000Z", reason: "Exact source release verified by retained operation.", transcriptReleasedAt: "2026-08-06T02:00:00.000Z", transcriptReason: "Consent and bytes verified." },
@@ -156,6 +174,7 @@ describe("Session source journey projection", () => {
         { id: "plan", state: "COMPLETE" },
         { id: "capture", state: "COMPLETE" },
         { id: "retention", state: "COMPLETE" },
+        { id: "playback", state: "COMPLETE" },
         { id: "transcript", state: "COMPLETE" },
         { id: "assembly", state: "COMPLETE" },
       ],
@@ -164,7 +183,53 @@ describe("Session source journey projection", () => {
       projectionCreatesNoSourceState: true,
       livePresenceIsNotHistoricalEvidence: true,
       transcriptAttemptIsNotReferenceTruth: true,
+      protectedRouteIsNotObservedPlayback: true,
+      completeDecodeIsNotHumanListening: true,
     }));
+  });
+
+  it("does not call released bytes complete before protected playback materializes", () => {
+    const projection = buildSessionSourceJourneyProjection({
+      topology: topology(),
+      sourceEvidence: sourceEvidence({ protectedPlayback: null, analysis: null }),
+      finishingEvidence: finishingEvidence(),
+    });
+
+    expect(projection.counts).toEqual({ complete: 0, inProgress: 1, attention: 0 });
+    expect(projection.journeys[0]).toMatchObject({
+      state: "IN_PROGRESS",
+      summary: expect.stringContaining("Playback is next"),
+    });
+    expect(projection.journeys[0]!.checkpoints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "retention", state: "COMPLETE" }),
+      expect.objectContaining({ id: "playback", state: "CURRENT", detail: expect.stringContaining("has not materialized") }),
+      expect.objectContaining({ id: "transcript", state: "COMPLETE" }),
+      expect.objectContaining({ id: "assembly", state: "COMPLETE" }),
+    ]));
+  });
+
+  it("holds playback when exact-source complete decode fails without changing the original", () => {
+    const evidence = sourceEvidence();
+    evidence.sources[0]!.analysis = {
+      ...evidence.sources[0]!.analysis!,
+      status: "failed",
+      completeDecode: false,
+      completedAt: null,
+      media: null,
+      error: "Decoder reached an invalid packet at 00:04:12.",
+    };
+
+    const projection = buildSessionSourceJourneyProjection({
+      topology: topology(),
+      sourceEvidence: evidence,
+      finishingEvidence: finishingEvidence(),
+    });
+
+    expect(projection.journeys[0]).toMatchObject({ state: "ATTENTION" });
+    expect(projection.journeys[0]!.checkpoints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "retention", state: "COMPLETE" }),
+      expect.objectContaining({ id: "playback", state: "HELD", detail: expect.stringContaining("invalid packet") }),
+    ]));
   });
 
   it("accepts a verified observed source without requiring advance device-plan paperwork", () => {

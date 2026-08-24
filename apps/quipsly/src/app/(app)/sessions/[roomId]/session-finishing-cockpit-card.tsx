@@ -52,6 +52,10 @@ function checkpointAction(input: {
   if (input.checkpoint.id === "plan") return { label: "Open source plan", href: `/sessions/${room}?mode=recordings#session-recording-plan-heading` };
   if (input.checkpoint.id === "capture") return { label: "Inspect capture receipts", href: `/sessions/${room}?mode=recordings#capture-receipt-heading` };
   if (input.checkpoint.id === "retention") return { label: "Inspect retained bytes", href: `/sessions/${room}?mode=recordings#source-evidence-heading` };
+  if (input.checkpoint.id === "playback" && input.journey.protectedPlayback) return {
+    label: "Open recording",
+    href: input.journey.protectedPlayback.url,
+  };
   if (input.checkpoint.id === "transcript" && input.journey.recordingAssetId) return {
     label: input.checkpoint.state === "HELD" ? "Repair this transcript" : "Open this transcript",
     href: `/sessions/${room}?mode=transcript&source=${encodeURIComponent(input.journey.recordingAssetId)}`,
@@ -67,6 +71,9 @@ export function SessionFinishingCockpitCard(props: Props) {
   const completedTranscriptCount = props.finishingEvidence.transcriptJobs.filter(
     (job) => job.status === "COMPLETED" && job.segmentCount > 0,
   ).length;
+  const playbackReadyCount = sourceJourney.journeys.filter((journey) =>
+    journey.checkpoints.some((checkpoint) => checkpoint.id === "playback" && checkpoint.state === "COMPLETE"),
+  ).length;
   const firstAttention = cockpit.attention[0] ?? null;
   const recordingHeadline = sourceJourney.counts.attention > 0
     ? `${sourceJourney.counts.attention} recording ${sourceJourney.counts.attention === 1 ? "item needs" : "items need"} attention`
@@ -80,7 +87,7 @@ export function SessionFinishingCockpitCard(props: Props) {
     : sourceJourney.counts.inProgress > 0
       ? "You can leave this page. Quipsly will keep checking the recordings and prepare the transcript automatically."
       : protectedSourceCount > 0
-        ? `${protectedSourceCount} participant-owned ${protectedSourceCount === 1 ? "source is" : "sources are"} verified and ready to play. Originals remain unchanged.`
+        ? `${playbackReadyCount} of ${protectedSourceCount} participant-owned ${protectedSourceCount === 1 ? "source is" : "sources are"} verified, decoded, and ready in the protected player. Originals remain unchanged.`
         : "Record this Session when everyone is ready. Missing expected participants remain visible.";
   const primaryHref = firstAttention?.href ??
     (completedTranscriptCount > 0
@@ -157,7 +164,14 @@ export function SessionFinishingCockpitCard(props: Props) {
             <span className={`rounded-full border px-3 py-1 text-[9px] font-black uppercase tracking-wide ${journey.state === "COMPLETE" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : journey.state === "ATTENTION" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-sky-200 bg-sky-50 text-sky-900"}`}>{journey.state.replaceAll("_", " ")}</span>
           </div>
           <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold leading-5 text-slate-700">{journey.summary}</p>
-          <ol className="mt-3 grid gap-2 md:grid-cols-5" aria-label={`${journey.label} source checkpoints`}>
+          {journey.protectedPlayback ? <div className="mt-3 rounded-2xl border border-sky-200 bg-white p-3">
+            <p className="mb-2 text-[9px] font-black uppercase tracking-wide text-sky-800">Protected source player</p>
+            {journey.protectedPlayback.kind === "video"
+              ? <video controls preload="metadata" className="max-h-80 w-full rounded-xl bg-black" src={journey.protectedPlayback.url}>Your browser cannot play this recording.</video>
+              : <audio controls preload="metadata" className="w-full" src={journey.protectedPlayback.url}>Your browser cannot play this recording.</audio>}
+            <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-600">This authenticated route is bound to the retained source. Playing it here is the runtime listening or viewing check; the original remains unchanged.</p>
+          </div> : null}
+          <ol className="mt-3 grid gap-2 md:grid-cols-6" aria-label={`${journey.label} source checkpoints`}>
             {journey.checkpoints.map((checkpoint) => {
               const action = checkpointAction({ roomId: props.roomId, journey, checkpoint, editorHref: props.finishingEvidence.assembly?.editorHref ?? null });
               return <li key={checkpoint.id} className={`rounded-xl border p-3 ${checkpointTone(checkpoint.state)}`}>

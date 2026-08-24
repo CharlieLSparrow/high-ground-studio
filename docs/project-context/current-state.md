@@ -3438,3 +3438,23 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - Focused transcript-evidence, browser-ledger, call-room, and audio-map tests
   also pass, proving the gap is presented as a warning span and is not summed as
   another media duration.
+
+### 2026-08-24 post-call playback readiness
+
+- The Session source journey no longer calls exact retained bytes, a transcript,
+  and an editor take a complete source journey while protected playback is
+  absent. Playback is now a separate checkpoint between retention and
+  transcription.
+- Released audio is playback-ready only with an authenticated source route and
+  an exact-source complete decode with positive duration. Released video also
+  requires a positive protected duration and a retained recorded-video track
+  with positive encoded dimensions. Failed or blocked decode evidence becomes
+  visible attention while the original remains unchanged.
+- Expanded recording details place an ordinary protected audio/video player
+  beside the source journey. The projection explicitly preserves the boundary
+  that a route and complete decode are not proof that a human listened,
+  watched, or accepted sync.
+- Eleven focused projection/UI tests and strict Quipsly TypeScript pass.
+  Physical-device and two-participant playback remain in the deferred
+  validation ledger. Detailed decision record:
+  `docs/coordination/2026-08-24-post-call-playback-readiness.md`.

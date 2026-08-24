@@ -96,7 +96,25 @@ const sourceEvidence: SessionSourceEvidence = {
     stopBoundary: { receiptId: "stop-mv7i", occurredAt: "2026-08-06T01:42:00.000Z" },
     sourceOrigin: "CAPTURE",
     cloud: { sha256: "a".repeat(64), byteSize: "200000000", generation: "9", bucket: "quipsly", objectPath: "capture.wav", verifiedAt: "2026-08-06T01:59:00.000Z" },
+    protectedPlayback: { sourceId: "source-mv7i", url: "/api/ingest/media/source-mv7i", kind: "audio", durationSeconds: 2520 },
     captureRuntime: { appVersion: "1.0", appBuild: "28", deviceModel: "Mac", operatingSystem: "macOS", audioRoute: "Shure MV7i" },
+    analysis: {
+      jobId: "analysis-mv7i",
+      mediaAssetId: "source-mv7i",
+      status: "completed",
+      exactSourceBound: true,
+      completeDecode: true,
+      completedAt: "2026-08-06T02:10:00.000Z",
+      updatedAt: "2026-08-06T02:10:00.000Z",
+      media: { container: "wav", codec: "pcm_s24le", sampleRateHz: 48000, channelCount: 1, durationSeconds: 2520 },
+      signal: null,
+      error: null,
+      boundaries: {
+        derivedEvidenceDoesNotMutateCaptureManifest: true,
+        exactBytesBoundByAssetHashAndSize: true,
+        sourceReplicaGenerationRemainsSeparate: true,
+      },
+    },
     processingDisposition: "RELEASED",
     transcriptDisposition: "RELEASED",
     releaseAudit: { releasedAt: "2026-08-06T02:00:00.000Z", reason: "Exact source release verified by retained operation.", transcriptReleasedAt: "2026-08-06T02:00:00.000Z", transcriptReason: "Consent and bytes verified." },
@@ -172,6 +190,9 @@ describe("Session finishing cockpit card", () => {
     expect(within(journey).getByText("capture-mv7i")).toBeInTheDocument();
     expect(within(journey).getByText("asset-mv7i")).toBeInTheDocument();
     expect(within(journey).getByRole("list", { name: "Charlie clean microphone master source checkpoints" })).toBeInTheDocument();
+    expect(within(journey).getByText("Protected source player")).toBeInTheDocument();
+    expect(within(journey).getByText(/Playing it here is the runtime listening or viewing check/i)).toBeInTheDocument();
+    expect(within(journey).getByText(/Human listening remains separate acceptance evidence/i)).toBeInTheDocument();
   });
 
   it("routes an incomplete transcript checkpoint to its exact RecordingAsset", () => {

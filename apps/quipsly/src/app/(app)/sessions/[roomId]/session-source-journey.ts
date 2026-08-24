@@ -3,7 +3,7 @@ import type { SessionReadinessExpectedSource, SessionReadinessSource, SessionRea
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 
 export type SessionSourceJourneyCheckpoint = {
-  id: "plan" | "capture" | "retention" | "transcript" | "assembly";
+  id: "plan" | "capture" | "retention" | "playback" | "transcript" | "assembly";
   label: string;
   state: "COMPLETE" | "CURRENT" | "HELD" | "MISSING" | "NOT_APPLICABLE";
   detail: string;
@@ -20,6 +20,7 @@ export type SessionSourceJourney = {
   sourceKind: string;
   retentionRole: string;
   deviceLabel: string;
+  protectedPlayback: EvidenceSource["protectedPlayback"];
   state: "COMPLETE" | "IN_PROGRESS" | "ATTENTION";
   summary: string;
   checkpoints: SessionSourceJourneyCheckpoint[];
@@ -32,6 +33,8 @@ export type SessionSourceJourneyProjection = {
     projectionCreatesNoSourceState: true;
     livePresenceIsNotHistoricalEvidence: true;
     serverBytesDoNotProveEndpointDrain: true;
+    protectedRouteIsNotObservedPlayback: true;
+    completeDecodeIsNotHumanListening: true;
     transcriptAttemptIsNotReferenceTruth: true;
     editorMaterializationIsNotPublication: true;
     sourcePlanIsOptionalForVerifiedObservedMedia: true;
@@ -214,6 +217,105 @@ function retentionCheckpoint(source: SessionReadinessSource | null, evidence: Ev
   };
 }
 
+function playbackCheckpoint(
+  source: SessionReadinessSource | null,
+  evidence: EvidenceSource | null,
+): SessionSourceJourneyCheckpoint {
+  if (source?.serverRetention.state === "CAPTURE_PLAN_RESOLVED") return {
+    id: "playback",
+    label: "Playback",
+    state: "NOT_APPLICABLE",
+    detail: "This interrupted capture was resolved without retained media, so no playable source is claimed.",
+    at: source.serverRetention.updatedAt,
+  };
+  if (!source || source.evidenceKind !== "recording-asset" || !evidence) return {
+    id: "playback",
+    label: "Playback",
+    state: "MISSING",
+    detail: "Playback waits for a retained RecordingAsset and its exact-byte evidence.",
+    at: null,
+  };
+  if (
+    source.serverRetention.state === "SERVER_COPY_VERIFIED_HELD"
+    || evidence.status === "HELD"
+    || evidence.status === "DRIFT"
+  ) return {
+    id: "playback",
+    label: "Playback",
+    state: "HELD",
+    detail: evidence.issues[0] ?? "Playback is held because immutable source evidence needs attention.",
+    at: source.serverRetention.updatedAt ?? evidence.cloud.verifiedAt,
+  };
+  if (
+    source.serverRetention.state !== "SERVER_COPY_VERIFIED_RELEASED"
+    || evidence.status !== "VERIFIED_MATCH"
+  ) return {
+    id: "playback",
+    label: "Playback",
+    state: "CURRENT",
+    detail: "Protected playback waits for verification and release of the exact retained bytes.",
+    at: source.serverRetention.updatedAt ?? evidence.cloud.verifiedAt,
+  };
+  if (!evidence.protectedPlayback) return {
+    id: "playback",
+    label: "Playback",
+    state: "CURRENT",
+    detail: "Exact bytes are released, but the authenticated playback source has not materialized yet.",
+    at: evidence.releaseAudit?.releasedAt ?? evidence.cloud.verifiedAt,
+  };
+
+  if (evidence.protectedPlayback.kind === "audio") {
+    if (evidence.analysis?.status === "failed" || evidence.analysis?.status === "blocked") return {
+      id: "playback",
+      label: "Playback",
+      state: "HELD",
+      detail: evidence.analysis.error
+        ? `The exact-source decode check failed: ${evidence.analysis.error}`
+        : "The exact-source decode check is blocked or failed; the retained original remains unchanged.",
+      at: evidence.analysis.updatedAt,
+    };
+    if (
+      evidence.analysis?.exactSourceBound
+      && evidence.analysis.completeDecode
+      && (evidence.analysis.media?.durationSeconds ?? 0) > 0
+    ) return {
+      id: "playback",
+      label: "Playback",
+      state: "COMPLETE",
+      detail: "An authenticated player is bound to the retained source and an exact-source complete decode has a positive duration. Human listening remains separate acceptance evidence.",
+      at: evidence.analysis.completedAt ?? evidence.analysis.updatedAt,
+    };
+    return {
+      id: "playback",
+      label: "Playback",
+      state: "CURRENT",
+      detail: "The authenticated audio source exists; complete exact-source decode evidence is still preparing.",
+      at: evidence.analysis?.updatedAt ?? evidence.releaseAudit?.releasedAt ?? evidence.cloud.verifiedAt,
+    };
+  }
+
+  const recordedVideo = evidence.captureRuntime.videoFormat?.recorded;
+  if (
+    (evidence.protectedPlayback.durationSeconds ?? 0) > 0
+    && (recordedVideo?.videoTrackCount ?? 0) > 0
+    && (recordedVideo?.encodedWidthPixels ?? 0) > 0
+    && (recordedVideo?.encodedHeightPixels ?? 0) > 0
+  ) return {
+    id: "playback",
+    label: "Playback",
+    state: "COMPLETE",
+    detail: "An authenticated player is bound to the retained source and the recorded video track has a positive duration and encoded dimensions. Human viewing remains separate acceptance evidence.",
+    at: evidence.releaseAudit?.releasedAt ?? evidence.cloud.verifiedAt,
+  };
+  return {
+    id: "playback",
+    label: "Playback",
+    state: "CURRENT",
+    detail: "The authenticated video source exists; its recorded track profile and duration are still being validated.",
+    at: evidence.releaseAudit?.releasedAt ?? evidence.cloud.verifiedAt,
+  };
+}
+
 function transcriptCheckpoint(
   source: SessionReadinessSource | null,
   job: TranscriptJob | null,
@@ -346,6 +448,7 @@ export function buildSessionSourceJourneyProjection(input: {
       planCheckpoint(expectation),
       captureCheckpoint(source, evidence),
       retentionCheckpoint(source, evidence),
+      playbackCheckpoint(source, evidence),
       transcriptCheckpoint(source, transcript),
       assemblyCheckpoint(evidence, input.finishingEvidence.assembly),
     ];
@@ -360,6 +463,7 @@ export function buildSessionSourceJourneyProjection(input: {
       sourceKind: expectation?.sourceKind ?? source?.sourceKind ?? "unknown",
       retentionRole: expectation?.retentionRole ?? "unplanned",
       deviceLabel: source?.deviceLabel ?? expectation?.expectedDeviceLabel ?? expectation?.expectedClientKind ?? "Device not observed",
+      protectedPlayback: evidence?.protectedPlayback ?? null,
       state,
       summary: journeySummary(checkpoints),
       checkpoints,
@@ -389,6 +493,8 @@ export function buildSessionSourceJourneyProjection(input: {
       projectionCreatesNoSourceState: true,
       livePresenceIsNotHistoricalEvidence: true,
       serverBytesDoNotProveEndpointDrain: true,
+      protectedRouteIsNotObservedPlayback: true,
+      completeDecodeIsNotHumanListening: true,
       transcriptAttemptIsNotReferenceTruth: true,
       editorMaterializationIsNotPublication: true,
       sourcePlanIsOptionalForVerifiedObservedMedia: true,
