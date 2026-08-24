@@ -3,11 +3,13 @@
 jest.mock("server-only", () => ({}));
 
 import {
+  applyRecordingShareTranscriptReadiness,
   buildSessionRecordingShareEdit,
   classifyRecordingShareTranscriptCutSafety,
   newestCoherentRecordingTake,
   stableJson,
 } from "./session-recording-share";
+import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
 
 describe("Session recording share take selection", () => {
   it("keeps repeated calls in one room out of the newest take", () => {
@@ -35,6 +37,22 @@ describe("Session recording share take selection", () => {
 });
 
 describe("Session recording share text edits", () => {
+  const sourceSha256 = "f".repeat(64);
+  const transcriptReadiness = (overrides: Record<string, unknown> = {}) => buildSessionTranscriptReadiness({
+    status: "COMPLETED",
+    segmentCount: 1,
+    wordCount: 8,
+    reviewedAttributionCount: 0,
+    sourceSha256,
+    sourceGeneration: "9",
+    processingManifestObject: "transcripts/jobs/job-1/manifest.json",
+    processingResultObject: "transcripts/jobs/job-1/result.json",
+    providerRequestId: "provider-request-1",
+    providerResponseObject: "transcripts/jobs/job-1/provider.json",
+    workerBuildId: "worker-build-1",
+    resultJson: { processingControl: { routing: { schema: "quipsly-transcript-routing-summary-v1", sourceTopology: "participant-isolated", participantLabel: "Coach", speakerAuthority: "source-binding", timingGranularity: "word", manifestBacked: true } } },
+    ...overrides,
+  }, { status: "VERIFIED_MATCH", sha256: sourceSha256, generation: "9" });
   const transcriptSegment = {
     transcriptJobId: "transcript_job_0001",
     segmentId: "transcript_segment_0001",
@@ -77,6 +95,33 @@ describe("Session recording share text edits", () => {
       cutSafety: "safe",
     })]);
     expect(edit.joinCrossfadeSeconds).toBe(0.01);
+  });
+
+  it("keeps a safe word-timed passage removable only when the shared readiness contract is ready", () => {
+    expect(applyRecordingShareTranscriptReadiness(transcriptSegment, transcriptReadiness())).toEqual(transcriptSegment);
+  });
+
+  it("keeps a passage included when mixed-room speaker authority still needs review", () => {
+    const readiness = transcriptReadiness({
+      resultJson: { processingControl: { routing: { schema: "quipsly-transcript-routing-summary-v1", sourceTopology: "mixed-room", speakerAuthority: "provider-candidate", timingGranularity: "word", manifestBacked: true } } },
+    });
+    const guarded = applyRecordingShareTranscriptReadiness(transcriptSegment, readiness);
+
+    expect(guarded).toMatchObject({
+      cutSafety: "timing-unavailable",
+      cutSafetyReason: expect.stringContaining("speaker labels remain candidates"),
+    });
+    expect(() => buildSessionRecordingShareEdit({
+      startSeconds: 2,
+      endSeconds: 20,
+      transcriptSegments: [guarded],
+      excludedTranscriptSegments: [{
+        transcriptJobId: guarded.transcriptJobId,
+        segmentId: guarded.segmentId,
+        providerTextSha256: guarded.providerTextSha256,
+        timingFingerprint: guarded.timingFingerprint,
+      }],
+    })).toThrow(/speaker labels remain candidates/i);
   });
 
   it("fails closed when a transcript selection no longer matches provider truth", () => {

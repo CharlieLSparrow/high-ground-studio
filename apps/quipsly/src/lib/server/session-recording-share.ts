@@ -13,6 +13,7 @@ import {
   sessionInvitationAccessWhere,
   type SessionAccessActor,
 } from "./session-access";
+import { buildSessionTranscriptReadiness, type SessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
 
 export const SESSION_RECORDING_SHARE_SCHEMA = "quipsly-session-recording-share-v2";
 export const SESSION_RECORDING_SHARE_MANIFEST_SCHEMA = "quipsly-session-recording-share-manifest-v1";
@@ -278,6 +279,18 @@ export function classifyRecordingShareTranscriptCutSafety(
   });
 }
 
+export function applyRecordingShareTranscriptReadiness(
+  segment: RecordingShareTranscriptSegment,
+  readiness: SessionTranscriptReadiness,
+): RecordingShareTranscriptSegment {
+  if (readiness.state === "READY") return { ...segment };
+  return {
+    ...segment,
+    cutSafety: "timing-unavailable",
+    cutSafetyReason: readiness.detail,
+  };
+}
+
 async function loadTranscriptEditSegments(client: RestoreClient, roomId: string, sources: any[]): Promise<RecordingShareTranscriptSegment[]> {
   if (!sources.length) return [];
   const sourceById = new Map(sources.map((source: any, index: number) => [source.id, { source, label: participantLabel(source, index) }]));
@@ -289,6 +302,14 @@ async function loadTranscriptEditSegments(client: RestoreClient, roomId: string,
       id: true,
       assetId: true,
       sourceSha256: true,
+      sourceGeneration: true,
+      processingManifestObject: true,
+      processingResultObject: true,
+      providerRequestId: true,
+      providerResponseObject: true,
+      workerBuildId: true,
+      resultJson: true,
+      speakerAttributions: { select: { id: true } },
       segments: {
         orderBy: [{ startSeconds: "asc" }, { id: "asc" }],
         select: {
@@ -323,7 +344,28 @@ async function loadTranscriptEditSegments(client: RestoreClient, roomId: string,
   const projected: RecordingShareTranscriptSegment[] = [];
   for (const job of jobs) {
     const binding = job.assetId ? sourceById.get(job.assetId) : null;
-    if (!binding || chosenAssets.has(job.assetId) || clean(job.sourceSha256, 64).toLowerCase() !== clean(binding.source.checksum, 64).toLowerCase()) continue;
+    if (!binding || chosenAssets.has(job.assetId)) continue;
+    const words = job.segments.flatMap((segment: any) => segment.words || []);
+    const manifest = object(binding.source.localManifestJson);
+    const readiness = buildSessionTranscriptReadiness({
+      status: "COMPLETED",
+      segmentCount: job.segments.length,
+      wordCount: words.length,
+      reviewedAttributionCount: job.speakerAttributions.length,
+      sourceSha256: clean(job.sourceSha256, 64) || null,
+      sourceGeneration: clean(job.sourceGeneration, 240) || null,
+      processingManifestObject: clean(job.processingManifestObject, 1_000) || null,
+      processingResultObject: clean(job.processingResultObject, 1_000) || null,
+      providerRequestId: clean(job.providerRequestId, 500) || null,
+      providerResponseObject: clean(job.providerResponseObject, 1_000) || null,
+      workerBuildId: clean(job.workerBuildId, 500) || null,
+      resultJson: job.resultJson,
+    }, {
+      status: "VERIFIED_MATCH",
+      sha256: clean(binding.source.checksum, 64).toLowerCase() || null,
+      generation: clean(manifest.storageGeneration, 240) || null,
+    });
+    if (!readiness.sourceBinding.exactSourceBound || readiness.state === "HELD") continue;
     chosenAssets.add(job.assetId);
     const offsetSeconds = (binding.source.recordedStartedAt.getTime() - originMs) / 1_000;
     for (const segment of job.segments) {
@@ -366,7 +408,7 @@ async function loadTranscriptEditSegments(client: RestoreClient, roomId: string,
           confidence: word.confidence,
         })),
       });
-      projected.push({
+      projected.push(applyRecordingShareTranscriptReadiness({
         transcriptJobId: job.id,
         segmentId: segment.id,
         sourceRecordingAssetId: job.assetId,
@@ -383,7 +425,7 @@ async function loadTranscriptEditSegments(client: RestoreClient, roomId: string,
         cutSafetyReason: hasExactWordTiming
           ? "Word timing is bound to this exact source recording."
           : "Precise word timing is unavailable, so Quipsly will not ripple-delete this passage.",
-      });
+      }, readiness));
     }
   }
   return classifyRecordingShareTranscriptCutSafety(projected)

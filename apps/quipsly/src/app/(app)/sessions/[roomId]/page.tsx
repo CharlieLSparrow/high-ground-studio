@@ -29,7 +29,7 @@ import {
 } from "./session-notes-model";
 import { buildSessionPreparationState } from "./session-preparation-model";
 import { buildSessionSourceEvidence } from "./session-source-evidence-model";
-import { buildSessionTranscriptReadiness } from "./session-transcript-readiness";
+import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
 import { buildSessionReadinessTopology } from "./session-readiness-topology";
 import { loadSessionEpisodeAssemblyEvidence } from "./session-episode-assembly-evidence-loader";
 import { loadSessionSourceClockAttention } from "./session-source-clock-attention-loader";

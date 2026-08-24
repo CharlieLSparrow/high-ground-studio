@@ -3473,7 +3473,12 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - The source journey, finishing cockpit, transcript-ready count, and coaching
   four-step path share the same contract. A completed-but-unready transcript no
   longer advances client follow-through.
-- Thirty focused transcript, journey, cockpit, UI, and coaching-path tests pass,
-  as does strict Quipsly TypeScript. Human word-sync and speaker review remain
-  in the deferred validation ledger. Detailed decision record:
+- The Session's built-in text-based recording editor now shares the contract.
+  Exact-source word-timed passages remain reversibly removable; source-bound
+  passages with unresolved timing or speaker evidence stay visible, included,
+  and disabled with a reason. Source mismatches are never paired with the
+  selected recording.
+- Forty-one focused transcript, journey, cockpit, UI, coaching-path, and
+  reversible-edit tests pass, as does strict Quipsly TypeScript. Human word-sync
+  and speaker review remain in the deferred validation ledger. Detailed decision record:
   `docs/coordination/2026-08-24-session-transcript-readiness.md`.

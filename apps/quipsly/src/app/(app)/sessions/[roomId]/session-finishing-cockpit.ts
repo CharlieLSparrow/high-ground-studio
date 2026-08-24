@@ -1,7 +1,7 @@
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import type { SessionEpisodeAssemblyEvidence } from "./session-episode-assembly-evidence";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
-import type { SessionTranscriptReadiness } from "./session-transcript-readiness";
+import type { SessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
 
 export type SessionFinishingEvidence = {
   transcriptJobs: Array<{

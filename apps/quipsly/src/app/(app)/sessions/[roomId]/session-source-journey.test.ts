@@ -2,7 +2,7 @@ import { buildSessionSourceJourneyProjection } from "./session-source-journey";
 import type { SessionFinishingEvidence } from "./session-finishing-cockpit";
 import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessSource, type SessionReadinessTopology } from "./session-readiness-topology";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
-import { buildSessionTranscriptReadiness } from "./session-transcript-readiness";
+import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
 
 function retainedSource(): SessionReadinessSource {
   return {

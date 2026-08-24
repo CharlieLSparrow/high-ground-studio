@@ -1,4 +1,4 @@
-import { buildSessionTranscriptReadiness } from "./session-transcript-readiness";
+import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
 
 const A = "a".repeat(64);
 
@@ -109,4 +109,3 @@ describe("Session transcript readiness", () => {
     });
   });
 });
-

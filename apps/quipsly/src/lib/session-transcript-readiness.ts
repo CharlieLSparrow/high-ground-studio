@@ -1,3 +1,4 @@
+// Shared by Session projections and server-side transcript editing gates.
 export type SessionTranscriptReadiness = {
   state: "READY" | "REVIEW_REQUIRED" | "PROCESSING" | "HELD";
   detail: string;
@@ -189,4 +190,3 @@ export function buildSessionTranscriptReadiness(
     ...common,
   });
 }
-

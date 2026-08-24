@@ -45,6 +45,15 @@ four-step path consume this projection. A completed-but-unready transcript no
 longer advances follow-through. Instead it presents a transcript review action
 and explains whether source, timing, receipt, or speaker evidence is open.
 
+The same projection now gates the in-Session text-based recording editor. The
+server offers a passage as removable only when the transcript is exactly bound
+to the selected participant master and the readiness contract is ready. A
+source mismatch is omitted rather than associated with the wrong recording. A
+source-bound passage whose timing or speaker evidence still needs review stays
+visible and included; its removal control is disabled with the exact reason.
+Ready word-timed passages continue to produce immutable timing fingerprints,
+reversible kept ranges, and a separately verified private render.
+
 ## Qualification
 
 - Five transcript-readiness tests cover exact ready evidence, source hash
@@ -52,7 +61,8 @@ and explains whether source, timing, receipt, or speaker evidence is open.
   editing precision.
 - Source journey, finishing cockpit, cockpit UI, and coaching quick-path tests
   exercise the integrated contract.
-- 30 focused Jest tests pass.
+- 41 focused Jest tests pass across readiness, Session workflow, and reversible
+  recording-share editing.
 - Strict Quipsly TypeScript passes after Next route type generation.
 
 ## Acceptance still required
@@ -61,4 +71,3 @@ Automated evidence does not prove word accuracy, perceptual synchronization,
 or correct human speaker identification. A real coach/client recording still
 needs beginning/middle/ending playback against highlighted words, corrections,
 speaker review, refresh/cross-device readback, and transcript-based trim review.
-

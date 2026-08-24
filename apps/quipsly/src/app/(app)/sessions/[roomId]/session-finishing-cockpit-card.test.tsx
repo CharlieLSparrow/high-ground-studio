@@ -6,7 +6,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { SessionFinishingCockpitCard } from "./session-finishing-cockpit-card";
 import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessTopology } from "./session-readiness-topology";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
-import { buildSessionTranscriptReadiness } from "./session-transcript-readiness";
+import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
 
 const topology: SessionReadinessTopology = {
   ...EMPTY_SESSION_READINESS_TOPOLOGY,
