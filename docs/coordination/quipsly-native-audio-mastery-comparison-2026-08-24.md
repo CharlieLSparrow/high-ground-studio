@@ -67,9 +67,10 @@ review. Selection still creates no encoded artifact, share, upload,
 publication, timeline change, or source replacement.
 
 A later rejection now holds an earlier promotion immediately in both Nest and
-Capture, and delivery encoding independently rechecks that the promotion's
-exact approval is still the latest listening decision. A subsequent new
-approval can be deliberately promoted again without erasing the held history.
+Capture. Delivery status, encoding, encoded-byte review, and output-packet
+evidence independently recheck that the promotion's exact approval is still
+the latest listening decision. A subsequent new approval can be deliberately
+promoted again without erasing the held history.
 
 ## Integrity and playback boundary
 

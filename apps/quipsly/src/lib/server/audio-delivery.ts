@@ -20,6 +20,7 @@ import {
 
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 import { AudioMasteryReviewError, loadAudioMasteryReviewContext } from "@/lib/server/audio-mastery-review";
+import { readAudioMasterPromotionSummary } from "@/lib/server/audio-mastery-promotion";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
 
@@ -132,8 +133,8 @@ export async function readAudioDeliveryStatus(input: { prisma: any; projectSlug:
   if (!job) return emptyAudioDeliveryStatus();
   let promotionId: string | null = null;
   try { promotionId = parseAudioDeliveryJob(job.inputJson, job.id).source.promotionReceiptId; } catch { /* public status exposes integrity failure */ }
-  const latestPromotion = await input.prisma.studioAudioMasterPromotionReceipt.findFirst({ where: { projectId: project.id, assetId: input.assetId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], select: { id: true, operation: true } });
-  return withDynamicState(input.prisma, job, Boolean(promotionId && latestPromotion?.id === promotionId && latestPromotion.operation === "PROMOTE"));
+  const promotion = await readAudioMasterPromotionSummary({ prisma: input.prisma, projectId: project.id, assetId: input.assetId });
+  return withDynamicState(input.prisma, job, Boolean(promotionId && promotion.activePromotion?.id === promotionId));
 }
 
 export async function reconcileAudioDelivery(input: Coordinates) {
@@ -189,8 +190,12 @@ export async function appendAudioDeliveryReview(input: {
     await acquirePrismaAdvisoryTransactionLock(tx, `audio-delivery-review:${context.job.jobId}:${actorEmail}`);
     const replay = await tx.studioAudioDeliveryReviewReceipt.findUnique({ where: { projectId_actorEmail_clientRequestId: { projectId: context.projectId, actorEmail, clientRequestId } } });
     if (replay) { if (replay.requestSha256 !== requestSha256) throw new AudioDeliveryError("That request id won a race with different evidence.", 409, "AUDIO_DELIVERY_REVIEW_IDEMPOTENCY_CONFLICT"); return replay; }
-    const latestPromotion = await tx.studioAudioMasterPromotionReceipt.findFirst({ where: { projectId: context.projectId, assetId: input.assetId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] });
+    const [latestPromotion, latestMasterReview] = await Promise.all([
+      tx.studioAudioMasterPromotionReceipt.findFirst({ where: { projectId: context.projectId, assetId: input.assetId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] }),
+      tx.studioAudioMasterReviewReceipt.findFirst({ where: { masteryJobId: context.job.source.masteryJobId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] }),
+    ]);
     if (!latestPromotion || latestPromotion.id !== context.job.source.promotionReceiptId || latestPromotion.operation !== "PROMOTE") throw new AudioDeliveryError("The mastering candidate was withdrawn or replaced before this delivery decision.", 409, "AUDIO_DELIVERY_PROMOTION_STALE");
+    if (!latestMasterReview || latestMasterReview.id !== latestPromotion.reviewReceiptId || latestMasterReview.decision !== "APPROVED") throw new AudioDeliveryError("The mastering candidate approval changed before this delivery decision.", 409, "AUDIO_DELIVERY_PROMOTION_APPROVAL_STALE");
     return tx.studioAudioDeliveryReviewReceipt.create({ data: { projectId: context.projectId, assetId: input.assetId, deliveryJobId: context.job.jobId, promotionReceiptId: context.job.source.promotionReceiptId, actorUserId: input.actor.id, actorEmail, clientRequestId, decision: input.decision === "approved" ? "APPROVED" : "REJECTED", deliveryProfileId: context.job.profileId, candidateSha256: context.job.source.sha256, deliverySha256: context.result.output.sha256, requestSha256, evidenceJson: json({ ...evidence, coverage, clientTrackedPlaybackIsNotProofOfAudibility: true, outputPacketNotCreated: true, uploadNotStarted: true, publicationNotStarted: true }), note, occurredAt: new Date() } });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   return { ok: true, idempotentReplay: false, receipt: publicReview(receipt), review: await readAudioDeliveryReviewSummary({ prisma: input.prisma, jobId: context.job.jobId }) };
@@ -213,9 +218,13 @@ export async function loadApprovedAudioDeliveryPacketEvidence(input: {
   deliveryJobId: string;
 }) {
   const context = await loadDeliveryReviewContext(input);
-  const [latestPromotion, latestReview] = await Promise.all([
+  const [latestPromotion, latestMasterReview, latestReview] = await Promise.all([
     input.prisma.studioAudioMasterPromotionReceipt.findFirst({
       where: { projectId: context.projectId, assetId: input.assetId },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+    }),
+    input.prisma.studioAudioMasterReviewReceipt.findFirst({
+      where: { masteryJobId: context.job.source.masteryJobId },
       orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
     }),
     input.prisma.studioAudioDeliveryReviewReceipt.findFirst({
@@ -230,6 +239,15 @@ export async function loadApprovedAudioDeliveryPacketEvidence(input: {
       "The mastered audio selected for this encoded artifact is no longer active.",
       409,
       "PODCAST_PACKET_AUDIO_PROMOTION_STALE",
+    );
+  }
+  if (!latestMasterReview
+      || latestMasterReview.id !== latestPromotion.reviewReceiptId
+      || latestMasterReview.decision !== "APPROVED") {
+    throw new AudioDeliveryError(
+      "The mastering approval behind this encoded artifact is no longer current.",
+      409,
+      "PODCAST_PACKET_AUDIO_PROMOTION_APPROVAL_STALE",
     );
   }
   if (!latestReview

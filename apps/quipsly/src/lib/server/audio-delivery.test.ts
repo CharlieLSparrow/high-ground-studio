@@ -132,7 +132,8 @@ describe("encoded-byte review ledger", () => {
     let created: any = null;
     const tx = {
       studioAudioDeliveryReviewReceipt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockImplementation(async ({ data }) => { created = { id: "delivery_review_created_001", ...data }; return created; }) },
-      studioAudioMasterPromotionReceipt: { findFirst: jest.fn().mockResolvedValue({ id: job.source.promotionReceiptId, operation: "PROMOTE" }) },
+      studioAudioMasterPromotionReceipt: { findFirst: jest.fn().mockResolvedValue({ id: job.source.promotionReceiptId, operation: "PROMOTE", reviewReceiptId: job.source.masterReviewReceiptId }) },
+      studioAudioMasterReviewReceipt: { findFirst: jest.fn().mockResolvedValue({ id: job.source.masterReviewReceiptId, decision: "APPROVED" }) },
     };
     const prisma = {
       studioProject: { findFirst: jest.fn().mockResolvedValue({ id: job.projectId }) },
@@ -162,6 +163,15 @@ describe("encoded-byte review ledger", () => {
     jest.mocked(inspectImmutableStudioMediaSource).mockResolvedValue({ provider: "local", locator: outputPath, generation: `sha256:${outputSha}`, sha256: outputSha, sizeBytes: outputBytes.length, contentType: "audio/mp4" });
     const { prisma, tx } = reviewPrisma();
     await expect(appendAudioDeliveryReview({ prisma, projectSlug: "qa-delivery", assetId: "asset_delivery_review_001", deliveryJobId: "audio_delivery_review_001", actor: { id: "actor_delivery_review_001", email: "qa@example.test" }, clientRequestId: "request_delivery_review_002", decision: "approved", playbackEvidence: { schema: "quipsly-audio-delivery-playback-review-v1", listenedSecondBins: [0, 1], completedAt: new Date().toISOString() } })).rejects.toMatchObject({ code: "AUDIO_DELIVERY_REVIEW_INCOMPLETE", status: 409 });
+    expect(tx.studioAudioDeliveryReviewReceipt.create).not.toHaveBeenCalled();
+  });
+
+  it("holds encoded-byte review when the promoted master's approval became stale", async () => {
+    await writeFile(outputPath, outputBytes);
+    jest.mocked(inspectImmutableStudioMediaSource).mockResolvedValue({ provider: "local", locator: outputPath, generation: `sha256:${outputSha}`, sha256: outputSha, sizeBytes: outputBytes.length, contentType: "audio/mp4" });
+    const { prisma, tx } = reviewPrisma();
+    tx.studioAudioMasterReviewReceipt.findFirst.mockResolvedValue({ id: "master_review_rejected_later", decision: "REJECTED" });
+    await expect(appendAudioDeliveryReview({ prisma, projectSlug: "qa-delivery", assetId: "asset_delivery_review_001", deliveryJobId: "audio_delivery_review_001", actor: { id: "actor_delivery_review_001", email: "qa@example.test" }, clientRequestId: "request_delivery_review_stale_001", decision: "rejected", playbackEvidence: { schema: "quipsly-audio-delivery-playback-review-v1", listenedSecondBins: [0], completedAt: new Date().toISOString() }, note: "Master approval changed." })).rejects.toMatchObject({ code: "AUDIO_DELIVERY_PROMOTION_APPROVAL_STALE", status: 409 });
     expect(tx.studioAudioDeliveryReviewReceipt.create).not.toHaveBeenCalled();
   });
 });
