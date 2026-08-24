@@ -3685,3 +3685,30 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   gates pass. Real two-device listening/readback remains deferred evidence.
   Detailed decision record:
   `docs/coordination/2026-08-25-session-reviewed-waveform-placement.md`.
+
+### 2026-08-24 conventional call confidence checks
+
+- The browser outer room now shows a compact live microphone activity meter
+  after the selected preview is open. Its ordinary state describes level only;
+  it does not infer room quality or retained-source mastery from a call-path
+  meter.
+- Audio/video settings expose a one-click **Test speakers** action that creates
+  a short local tone and routes it to the selected browser output when
+  supported. It never opens a microphone, records, uploads, or changes Session
+  consent.
+- The existing private ten-second microphone listen-back remains optional for
+  mouth noise, plosives, room sound, and routing checks. Technical RMS/peak
+  evidence remains collapsed.
+- The native permission audit confirms that hardware access is requested only
+  from Join, Preview, Sound Check, or Record when iOS still reports an
+  undetermined decision. Remembered grants proceed immediately; denials expose
+  one Settings recovery action. Session recording consent is separate and
+  remains saved for that person's exact Session/source choices.
+- Thirty-three focused browser call/speaker tests, strict Quipsly TypeScript,
+  the 1,159-check Capture static gate, provider-room static smoke, and the full
+  Capture release-source gate pass. The release gate now protects deliberate
+  native video calling plus the separate retained Record action instead of the
+  retired audio-only CallKit assumption. Physical browser/iPhone routing,
+  remembered re-entry, and retained-source listening remain in the deferred
+  validation ledger. Detailed decision record:
+  `docs/coordination/2026-08-24-conventional-call-ux-review.md`.

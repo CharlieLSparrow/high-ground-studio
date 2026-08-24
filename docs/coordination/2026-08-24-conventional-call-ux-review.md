@@ -55,6 +55,17 @@ The cross-platform contract is therefore:
   person's system decision. Apps should check authorization before capture and
   request it at an appropriate user action.
   <https://developer.apple.com/documentation/AVFoundation/requesting-authorization-to-capture-and-save-media>
+- Riverside's lobby exposes the selected microphone, camera, output, and
+  headphone choice before Join without making a test recording mandatory.
+  <https://support.riverside.com/hc/en-us/articles/5803232647965-Select-mic-and-camera-inputs-in-lobby>
+- Browser output routing is an optional secure-context capability. Quipsly uses
+  `setSinkId` only after a person chooses or tests an output and falls back to
+  the operating-system output when the browser does not support routing.
+  <https://developer.mozilla.org/en-US/docs/Web/API/Audio_Output_Devices_API>
+- iOS record permission is a remembered system decision: an already granted or
+  denied request resolves without presenting another prompt. Quipsly therefore
+  must not add a recurring app-owned hardware-permission confirmation.
+  <https://developer.apple.com/documentation/avfaudio/avaudiosession/requestrecordpermission%28_%3A%29>
 
 ## Quipsly implementation audit
 
@@ -121,12 +132,37 @@ exact call room. The iPhone removes Rejoin and device setup for that closed
 Session while retaining **Record without joining** and local source recovery;
 another Session is not disabled by the old room's state.
 
+The second audit closed the remaining confidence gap without creating another
+required setup step. Once a browser preview is open, the green room now shows a
+compact live microphone activity meter and an honest level state. It says
+**Microphone level looks good**, not that a meter proved the room, mouth noise,
+or retained-source quality. Full RMS/peak evidence and the private listen-back
+check remain optional details.
+
+Audio/video settings now include one conventional **Test speakers** action. It
+plays a short locally synthesized two-note tone, routes it through the selected
+output with `setSinkId` when supported, and otherwise uses the system output. It
+does not open a microphone, retain bytes, call Nest, or affect recording
+consent. The longer private microphone sample remains available for people who
+want to hear mouth clicks, plosives, room sound, or routing delay.
+
+The native audit confirmed that no new ceremony is needed. Join, camera
+preview, sound check, and Record ask iOS only when their required hardware
+permission is undetermined; a remembered grant proceeds immediately. A denial
+gets one Settings recovery action. Session recording consent remains a
+separate, once-per-person choice for the exact audio/video/transcript scope and
+does not recur merely because the app reopened.
+
 ## Evidence and limits
 
-- The 30-test focused web call-room suite passes, including preview-first lobby
-  order, contextual first-grant behavior, exhausted reconnect
+- The 33-test focused web call-room and speaker-test suite passes, including
+  preview-first lobby order, contextual first-grant behavior, exhausted reconnect
   while a retained participant source remains active and deliberate leave while
   that source is protected.
+- The speaker regression proves selected-output routing without a
+  `getUserMedia` call; the lobby regression proves the compact activity meter
+  appears only after the person has opened or automatically resumed a permitted
+  preview.
 - The regression explicitly proves that the connected recording surface
   precedes optional device settings and that those settings remain collapsed.
 - Strict Quipsly TypeScript passes.
@@ -142,6 +178,10 @@ another Session is not disabled by the old room's state.
   ends rejoin without discarding or hiding a still-active local source.
 - The generic iOS Simulator build compiles the same room-scoped terminal
   boundary through the native decoder, controller, and closed-Session surface.
+- The 1,159-check Capture static gate, provider-room static smoke, and the full
+  release-source consistency gate pass. The release gate now protects the
+  deliberate CallKit video path plus the separate Record action instead of
+  enforcing the retired audio-only call assumption.
 
 This does not claim a minimally instructed two-person browser/iPhone flight.
 That flight must still observe first grant, remembered re-entry, denial

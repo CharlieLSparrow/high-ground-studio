@@ -37,6 +37,7 @@ import {
   type StudioSoundCheckDecision,
   type StudioSoundCheckDecisionResult,
 } from "@/components/studio-sound-check";
+import { StudioSpeakerTest } from "@/components/studio-speaker-test";
 import {
   decodeEpisodeWatchLiveHint,
   dispatchEpisodeWatchIncoming,
@@ -318,7 +319,7 @@ export function liveMicrophoneStatusPresentation({
             : state === "clipping-risk"
               ? { label: "Microphone may clip", style: "border-rose-300 bg-rose-50 text-rose-950", dot: "bg-rose-600" }
               : state === "ready"
-                ? { label: "Microphone sounds healthy", style: "border-emerald-300 bg-emerald-50 text-emerald-950", dot: "bg-emerald-600" }
+                ? { label: "Microphone level looks good", style: "border-emerald-300 bg-emerald-50 text-emerald-950", dot: "bg-emerald-600" }
                 : { label: "Checking microphone", style: "border-violet-200 bg-violet-50 text-violet-950", dot: "bg-violet-500" };
 }
 
@@ -342,6 +343,64 @@ function LiveMicrophoneStatus({
       <span className={`h-2.5 w-2.5 rounded-full ${presentation.dot}`} aria-hidden="true" />
       {presentation.label}
     </span>
+  );
+}
+
+function PreJoinMicrophoneActivity({
+  evidence,
+  muted,
+}: {
+  evidence: StudioAudioMeterEvidence | null;
+  muted: boolean;
+}) {
+  const presentation = liveMicrophoneStatusPresentation({
+    evidence,
+    muted,
+    recoveryHeld: false,
+  });
+  const level = muted
+    ? 0
+    : studioAudioDbfsPercent(
+        evidence?.rmsDbfs ?? STUDIO_AUDIO_DISPLAY_FLOOR_DBFS,
+      );
+
+  return (
+    <div
+      className={`mt-3 rounded-xl border bg-white/85 p-3 ${presentation.style}`}
+      aria-label={`Pre-join microphone status: ${presentation.label}`}
+      data-testid="prejoin-microphone-activity"
+    >
+      <div className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wide">
+        <span className="flex items-center gap-2">
+          <span
+            className={`h-2.5 w-2.5 rounded-full ${presentation.dot}`}
+            aria-hidden="true"
+          />
+          {presentation.label}
+        </span>
+        <span>{muted ? "Muted" : "Speak normally"}</span>
+      </div>
+      <div
+        className="mt-2 h-2 overflow-hidden rounded-full bg-black/10"
+        role="meter"
+        aria-label="Microphone activity"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(level)}
+      >
+        <div
+          className={`h-full rounded-full transition-[width] duration-100 ${
+            evidence?.state === "clipping-risk" ||
+            evidence?.state === "no-signal"
+              ? "bg-rose-600"
+              : evidence?.state === "hot" || evidence?.state === "low"
+                ? "bg-amber-500"
+                : "bg-emerald-600"
+          }`}
+          style={{ width: `${level}%` }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -1847,6 +1906,12 @@ export function LiveSessionRoom({
                   {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} {callRecoveryAvailable ? "Rejoin call" : "Join call"}
                 </button>
               </div>
+              {callAudioMode === "this-device" && previewTested ? (
+                <PreJoinMicrophoneActivity
+                  evidence={meterEvidence}
+                  muted={joinMuted}
+                />
+              ) : null}
               <p className="mt-3 text-[11px] font-bold leading-5 text-violet-900">
                 {callAudioMode === "other-device"
                   ? "Quipsly keeps this device’s call microphone and speakers off to prevent echo."
@@ -1916,13 +1981,20 @@ export function LiveSessionRoom({
                 <option value="">Choose a camera</option>{cameras.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
               </select>
             </label>
-            {callAudioMode === "this-device" ? <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Headphones / output
-              <select value={outputId} disabled={!supportsOutputSelection} onChange={(event) => chooseOutput(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:opacity-50">
-                <option value="">System default</option>{outputs.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
-              </select>
+            {callAudioMode === "this-device" ? <div className="text-xs font-black uppercase tracking-wide text-[#5b472f]">
+              <label>Headphones / output
+                <select value={outputId} disabled={!supportsOutputSelection} onChange={(event) => chooseOutput(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:opacity-50">
+                  <option value="">System default</option>{outputs.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
+                </select>
+              </label>
               {!supportsOutputSelection ? <span className="mt-1 block text-[10px] font-bold normal-case tracking-normal text-[#8a7354]">This browser uses the macOS or system output. Choose the MV7i headphones there.</span> : null}
               {supportsOutputPrompt ? <button type="button" onClick={() => void chooseAudioOutput()} className="mt-2 min-h-9 rounded-full border border-sky-300 bg-sky-50 px-3 text-[10px] font-black normal-case tracking-normal text-sky-950">Choose headphone output…</button> : null}
-            </label> : null}
+              <StudioSpeakerTest
+                outputId={outputId}
+                outputLabel={outputs.find((device) => device.deviceId === outputId)?.label || "the system output"}
+                disabled={status === "checking" || status === "joining"}
+              />
+            </div> : null}
             {!connected ? <div className="flex min-h-12 items-center rounded-xl border border-[#d8c7a7] bg-[#fffaf0] px-3 text-xs font-bold leading-5 text-[#765f40]">
               Your choices above are remembered on this browser. If a device is unplugged, Quipsly safely falls back to an available one.
             </div> : <div className={`flex min-h-12 items-center rounded-xl border px-3 text-xs font-black leading-5 ${sourceLocked ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>

@@ -148,7 +148,7 @@ describe("LiveSessionRoom", () => {
 
   it.each([
     [null, false, false, "Checking microphone"],
-    ["ready", false, false, "Microphone sounds healthy"],
+    ["ready", false, false, "Microphone level looks good"],
     ["low", false, false, "Microphone is low"],
     ["hot", false, false, "Microphone is loud"],
     ["clipping-risk", false, false, "Microphone may clip"],
@@ -312,6 +312,45 @@ describe("LiveSessionRoom", () => {
     await waitFor(() => expect(query).toHaveBeenCalledWith({ name: "microphone" }));
     expect(getUserMedia).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Join call" })).toBeEnabled();
+  });
+
+  it("shows ordinary microphone activity in the lobby after a person opens the preview", async () => {
+    const audioTrack = {
+      label: "Coach microphone",
+      readyState: "live",
+      stop: jest.fn(),
+      getSettings: () => ({ channelCount: 1 }),
+    };
+    const getUserMedia = jest.fn().mockResolvedValue({
+      getTracks: () => [audioTrack],
+      getAudioTracks: () => [audioTrack],
+      getVideoTracks: () => [],
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+        ]),
+        getUserMedia,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-lobby-meter" captureGroupId="55555555-5555-4555-8555-555555555538" sessionTitle="Lobby meter" kind="coaching" />);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test selected setup" }));
+    expect(await screen.findByTestId("prejoin-microphone-activity")).toHaveTextContent(
+      /Checking microphone/i,
+    );
+    expect(screen.getByRole("meter", { name: "Microphone activity" })).toBeInTheDocument();
+    expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({
+      audio: expect.objectContaining({ deviceId: { exact: "coach-mic" } }),
+      video: false,
+    }));
   });
 
   it("joins as a remembered second device without asking for call-audio permission", async () => {
@@ -557,6 +596,7 @@ describe("LiveSessionRoom", () => {
         & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(join).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Test speakers" })).toBeEnabled();
     expect(screen.queryByTestId("browser-source-conversation")).not.toBeInTheDocument();
     expect(preview?.parentElement).toHaveClass("h-28");
   });
