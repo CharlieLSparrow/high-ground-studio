@@ -1229,6 +1229,7 @@ function checkTranscriptCorrectionContractSources() {
   const noteMaterializationRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/transcripts/notes/route.ts");
   const taskDomainText = sourceText("packages/quipsly-domain/src/transcript-derived-task.ts");
   const serviceText = sourceText("apps/quipsly/src/lib/server/transcript-corrections.ts");
+  const transcriptSourceSpanText = sourceText("apps/quipsly/src/lib/server/transcript-source-span.ts");
   const coachingPacketText = sourceText("apps/quipsly/src/lib/server/coaching-packets.ts");
   const nativeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptCorrectionReview.swift");
   const nativeAudioAttentionText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureTranscriptAudioAttention.swift");
@@ -1968,6 +1969,24 @@ function checkTranscriptCorrectionContractSources() {
       && captureUITestText.includes('expectedStatus: "2 masters in Studio"'),
     "completeCaptureGroupStudioHandoff",
     "iPhone and Nest attach every required protected master from the newest podcast take as one exact source-set snapshot, preserve every original, optionally include only reconciled provider media as a non-blocking sync and recovery witness, expose partial retry truth, and open the same capture group in the existing waveform, drift, and human-approval editor without applying sync.",
+  );
+  expect(
+    serviceText.includes("resolvedSpeakerAuthority")
+      && serviceText.includes("sourceBoundParticipantId")
+      && transcriptSourceSpanText.includes('field: "speakerAuthority" | "sourceBoundParticipantId"')
+      && transcriptSourceSpanText.includes('speakerAuthority: sharedText(segments, "speakerAuthority")')
+      && transcriptSourceSpanText.includes('sourceBoundParticipantId: sharedText(segments, "sourceBoundParticipantId")')
+      && taskDomainText.includes("TRANSCRIPT_SOURCE_SPEAKER_AUTHORITIES")
+      && taskDomainText.includes("speakerProvenance")
+      && taskDomainText.includes('speakerAuthority === "source-binding" && !sourceBoundParticipantId')
+      && taskRouteText.includes("speakerAuthority: segment.speakerAuthority")
+      && taskRouteText.includes("sourceBoundParticipantId: segment.sourceBoundParticipantId")
+      && draftRouteText.includes("speakerAuthority: segment.speakerAuthority")
+      && draftRouteText.includes("sourceBoundParticipantId: segment.sourceBoundParticipantId")
+      && goalRouteText.includes("...sourceAnchor")
+      && noteMaterializationRouteText.includes("...sourceAnchor"),
+    "materializedFollowThroughRetainsSpeakerProvenance",
+    "Saved transcript-backed notes, tasks, goals, and writing drafts retain speaker-name authority and exact isolated-source participant ownership instead of keeping only a display label.",
   );
   expect(
     coachingPacketText.includes("speakerAuthority")

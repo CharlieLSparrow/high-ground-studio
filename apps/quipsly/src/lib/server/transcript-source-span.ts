@@ -93,6 +93,11 @@ function sharedSpeaker(segments: any[], field: "speakerLabel" | "providerSpeaker
   return values.length === 1 ? values[0] : null;
 }
 
+function sharedText(segments: any[], field: "speakerAuthority" | "sourceBoundParticipantId") {
+  const values = [...new Set(segments.map((segment) => nullableText(segment?.[field])))];
+  return values.length === 1 ? values[0] : null;
+}
+
 export function buildTranscriptSourceAnchorFields(segments: any[]) {
   if (!segments.length) return null;
   const first = segments[0];
@@ -138,6 +143,8 @@ export function buildTranscriptSourceAnchorFields(segments: any[]) {
     providerSpeakerLabel: sharedSpeaker(segments, "providerSpeakerLabel"),
     effectiveTextSnapshot,
     effectiveSpeakerLabelSnapshot: sharedSpeaker(segments, "speakerLabel"),
+    speakerAuthority: sharedText(segments, "speakerAuthority"),
+    sourceBoundParticipantId: sharedText(segments, "sourceBoundParticipantId"),
     acceptedCorrectionId: acceptedCorrectionId(first),
     ...(sourceSpan ? { sourceSpan } : {}),
   };

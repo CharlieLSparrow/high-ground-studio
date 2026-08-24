@@ -1,8 +1,12 @@
 /** @jest-environment node */
 
 import {
+  readTranscriptDerivedGoalSource,
+  readTranscriptDerivedNoteSource,
   readTranscriptDerivedTaskSource,
   readTranscriptSourceSpan,
+  TRANSCRIPT_DERIVED_GOAL_SCHEMA,
+  TRANSCRIPT_DERIVED_NOTE_SCHEMA,
   TRANSCRIPT_DERIVED_TASK_SCHEMA,
 } from "@high-ground/quipsly-domain/transcript-derived-task";
 
@@ -86,5 +90,52 @@ describe("versioned transcript source spans", () => {
       ...segment,
       reviewStatus: "human-reviewed",
     })))).toBe("human-reviewed");
+  });
+
+  it("retains physical speaker ownership separately from transcript word review", () => {
+    const isolated = projectTranscriptSegmentsForPacket([
+      { id: "segment-isolated", speakerLabel: null, startSeconds: 3, endSeconds: 8, text: "I will bring the reflection next time.", corrections: [], verifications: [] },
+    ], [], "Scott Sparrow", "participant-scott");
+    const anchor = buildTranscriptSourceAnchorFields(isolated)!;
+    expect(anchor).toMatchObject({
+      effectiveSpeakerLabelSnapshot: "Scott Sparrow",
+      speakerAuthority: "source-binding",
+      sourceBoundParticipantId: "participant-scott",
+    });
+    const source = {
+      schema: TRANSCRIPT_DERIVED_TASK_SCHEMA,
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      playbackSourceId: "playback-1",
+      ...anchor,
+    };
+    expect(readTranscriptDerivedTaskSource(source)).toMatchObject({
+      speakerAuthority: "source-binding",
+      sourceBoundParticipantId: "participant-scott",
+      effectiveSpeakerLabelSnapshot: "Scott Sparrow",
+    });
+    expect(readTranscriptDerivedGoalSource({
+      ...source,
+      schema: TRANSCRIPT_DERIVED_GOAL_SCHEMA,
+    })).toMatchObject({
+      speakerAuthority: "source-binding",
+      sourceBoundParticipantId: "participant-scott",
+    });
+    expect(readTranscriptDerivedNoteSource({
+      ...source,
+      schema: TRANSCRIPT_DERIVED_NOTE_SCHEMA,
+    })).toMatchObject({
+      speakerAuthority: "source-binding",
+      sourceBoundParticipantId: "participant-scott",
+    });
+    expect(readTranscriptDerivedTaskSource({
+      ...source,
+      sourceBoundParticipantId: null,
+    })).toBeNull();
+    expect(readTranscriptDerivedTaskSource({
+      ...source,
+      speakerAuthority: "guessed-by-magic",
+    })).toBeNull();
   });
 });

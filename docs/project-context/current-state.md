@@ -20,6 +20,10 @@ Date: 2026-08-24
   evidence with compact conventional badges: reviewed name, reviewed voice
   attribution, participant recording, automatic label, or needs review.
   Speaker identity and transcript word review remain separate decisions.
+- Deliberately materialized notes, tasks, goals, writing drafts, and merge
+  receipts retain the same speaker authority and isolated-source participant
+  identity in their immutable transcript anchor. Legacy anchors remain
+  readable; a new source-binding claim without its participant ID fails closed.
 - Quipsly TypeScript, 132 focused packet/review tests, the mobile Capture
   source-contract smoke, a complete unsigned generic iOS Simulator build, and
   all 1,143 App Store static checks pass. This is local automated evidence; live

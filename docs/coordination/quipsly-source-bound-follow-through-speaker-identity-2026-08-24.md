@@ -63,6 +63,16 @@ reusing an older packet whose speaker provenance was incomplete. Existing
 accepted tasks, goals, and notes remain canonical records; this change does not
 rewrite them or create external side effects.
 
+## Durable follow-through
+
+When a person deliberately saves a transcript-backed note, task, goal, or
+writing draft, the immutable source anchor now retains both the speaker-label
+authority and the isolated source participant ID. The same fields survive when
+reviewed packet evidence is appended to an existing note, task, or goal.
+Legacy source anchors without these additive fields remain readable. A new
+anchor that claims `source-binding` but omits the participant ID fails closed
+instead of presenting a display label as physical-source proof.
+
 ## Mutation boundary
 
 Packet outputs remain candidates that require explicit human review. This
@@ -74,6 +84,8 @@ message a client, share a follow-up, publish content, or alter recording media.
 - Quipsly TypeScript typecheck passes.
 - The focused packet, note, task, goal, review-model, and review-surface suites
   pass, including 132 packet and Session-review tests.
+- An additional 90 transcript correction, source-anchor, materialization, and
+  packet mutation tests pass for durable follow-through provenance.
 - The mobile Capture source-contract smoke passes, including the new v2
   source-bound speaker provenance assertion.
 - A complete unsigned generic iOS Simulator build and all 1,143 App Store

@@ -5,6 +5,15 @@ export const TRANSCRIPT_SOURCE_SPAN_SCHEMA = "quipsly-transcript-source-span-v1"
 export const TRANSCRIPT_GOAL_EVIDENCE_MERGE_SCHEMA = "quipsly-transcript-goal-evidence-merge-v1" as const;
 export const TRANSCRIPT_TASK_EVIDENCE_MERGE_SCHEMA = "quipsly-transcript-task-evidence-merge-v1" as const;
 
+export const TRANSCRIPT_SOURCE_SPEAKER_AUTHORITIES = [
+  "correction",
+  "attribution",
+  "source-binding",
+  "provider",
+  "unresolved",
+] as const;
+export type TranscriptSourceSpeakerAuthority = (typeof TRANSCRIPT_SOURCE_SPEAKER_AUTHORITIES)[number];
+
 export type TranscriptSourceSpanSegmentEvidence = {
   segmentId: string;
   startSeconds: number;
@@ -44,6 +53,8 @@ export type TranscriptDerivedTaskSourceAnchor = {
   providerSpeakerLabel: string | null;
   effectiveTextSnapshot: string;
   effectiveSpeakerLabelSnapshot: string | null;
+  speakerAuthority?: TranscriptSourceSpeakerAuthority | null;
+  sourceBoundParticipantId?: string | null;
   acceptedCorrectionId: string | null;
   recordingAssetId: string;
   playbackSourceId: string;
@@ -100,6 +111,25 @@ function finiteSeconds(value: unknown) {
 
 function hasOwn(value: Record<string, unknown>, key: string) {
   return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function speakerProvenance(source: Record<string, unknown>) {
+  const speakerAuthority = TRANSCRIPT_SOURCE_SPEAKER_AUTHORITIES.find(
+    (authority) => authority === source.speakerAuthority,
+  ) ?? null;
+  const sourceBoundParticipantId = nullableText(source.sourceBoundParticipantId, 200);
+  const invalidAuthority = hasOwn(source, "speakerAuthority")
+    && source.speakerAuthority !== null
+    && source.speakerAuthority !== undefined
+    && !speakerAuthority;
+  const invalidParticipantId = hasOwn(source, "sourceBoundParticipantId")
+    && source.sourceBoundParticipantId !== null
+    && source.sourceBoundParticipantId !== undefined
+    && !sourceBoundParticipantId;
+  return invalidAuthority || invalidParticipantId
+    || (speakerAuthority === "source-binding" && !sourceBoundParticipantId)
+    ? null
+    : { speakerAuthority, sourceBoundParticipantId };
 }
 
 export function readTranscriptSourceSpan(value: unknown): TranscriptSourceSpanEvidence | null {
@@ -204,6 +234,8 @@ export function readTranscriptDerivedTaskSource(value: unknown): TranscriptDeriv
   }
   const span = optionalSourceSpan(source, { segmentId, startSeconds, endSeconds, providerTextSha256, effectiveTextSnapshot });
   if (!span.valid) return null;
+  const provenance = speakerProvenance(source);
+  if (!provenance) return null;
   return {
     schema: TRANSCRIPT_DERIVED_TASK_SCHEMA,
     roomId,
@@ -215,6 +247,7 @@ export function readTranscriptDerivedTaskSource(value: unknown): TranscriptDeriv
     providerSpeakerLabel: nullableText(source.providerSpeakerLabel, 160),
     effectiveTextSnapshot,
     effectiveSpeakerLabelSnapshot: nullableText(source.effectiveSpeakerLabelSnapshot, 160),
+    ...provenance,
     acceptedCorrectionId: nullableText(source.acceptedCorrectionId, 200),
     recordingAssetId,
     playbackSourceId,
@@ -240,6 +273,8 @@ export function readTranscriptDerivedGoalSource(value: unknown): TranscriptDeriv
       || !effectiveTextSnapshot || !recordingAssetId || !playbackSourceId) return null;
   const span = optionalSourceSpan(source, { segmentId, startSeconds, endSeconds, providerTextSha256, effectiveTextSnapshot });
   if (!span.valid) return null;
+  const provenance = speakerProvenance(source);
+  if (!provenance) return null;
   return {
     schema: TRANSCRIPT_DERIVED_GOAL_SCHEMA,
     roomId,
@@ -251,6 +286,7 @@ export function readTranscriptDerivedGoalSource(value: unknown): TranscriptDeriv
     providerSpeakerLabel: nullableText(source.providerSpeakerLabel, 160),
     effectiveTextSnapshot,
     effectiveSpeakerLabelSnapshot: nullableText(source.effectiveSpeakerLabelSnapshot, 160),
+    ...provenance,
     acceptedCorrectionId: nullableText(source.acceptedCorrectionId, 200),
     recordingAssetId,
     playbackSourceId,
@@ -276,6 +312,8 @@ export function readTranscriptDerivedNoteSource(value: unknown): TranscriptDeriv
       || !effectiveTextSnapshot || !recordingAssetId || !playbackSourceId) return null;
   const span = optionalSourceSpan(source, { segmentId, startSeconds, endSeconds, providerTextSha256, effectiveTextSnapshot });
   if (!span.valid) return null;
+  const provenance = speakerProvenance(source);
+  if (!provenance) return null;
   return {
     schema: TRANSCRIPT_DERIVED_NOTE_SCHEMA,
     roomId,
@@ -287,6 +325,7 @@ export function readTranscriptDerivedNoteSource(value: unknown): TranscriptDeriv
     providerSpeakerLabel: nullableText(source.providerSpeakerLabel, 160),
     effectiveTextSnapshot,
     effectiveSpeakerLabelSnapshot: nullableText(source.effectiveSpeakerLabelSnapshot, 160),
+    ...provenance,
     acceptedCorrectionId: nullableText(source.acceptedCorrectionId, 200),
     recordingAssetId,
     playbackSourceId,

@@ -456,6 +456,7 @@ describe("transcript correction desk", () => {
       },
     };
     room.transcriptJobs[0]._count = { words: 1 };
+    room.transcriptJobs[0].asset.participantId = "participant-scott";
     room.transcriptJobs[0].segments = [{
       ...segment(),
       speakerLabel: null,
@@ -479,6 +480,8 @@ describe("transcript correction desk", () => {
     expect(result.segments[0]).toMatchObject({
       speakerLabel: "Scott Sparrow",
       providerSpeakerLabel: null,
+      speakerAuthority: "source-binding",
+      sourceBoundParticipantId: "participant-scott",
     });
     expect(result.processing?.routing).toMatchObject({
       sourceTopology: "participant-isolated",

@@ -657,6 +657,9 @@ export async function readTranscriptCorrectionDesk(input: {
     processing.routing.speakerAuthority === "source-binding"
       ? text(processing.routing.participantLabel) || null
       : null;
+  const sourceBoundParticipantId = sourceParticipantLabel
+    ? text(job.asset?.participantId) || null
+    : null;
   const projectedSpeakerGroups = speakerGroups(job);
   const playback = playbackFromAsset(job.asset);
   const spectralContext = await spectralContextForPlayback(
@@ -673,6 +676,15 @@ export async function readTranscriptCorrectionDesk(input: {
       ? segment.verifications[0]
       : null;
     const proposals = visibleTranscriptProposals(segment.corrections);
+    const resolvedSpeakerAuthority = accepted?.correctedSpeakerLabel
+      ? "correction"
+      : attribution?.participantDisplaySnapshot
+        ? "attribution"
+        : sourceParticipantLabel
+          ? "source-binding"
+          : segment.speakerLabel
+            ? "provider"
+            : "unresolved";
     return {
       id: segment.id,
       speakerLabel: accepted?.correctedSpeakerLabel
@@ -681,6 +693,8 @@ export async function readTranscriptCorrectionDesk(input: {
         ?? segment.speakerLabel
         ?? null,
       providerSpeakerLabel: segment.speakerLabel ?? null,
+      speakerAuthority: resolvedSpeakerAuthority,
+      sourceBoundParticipantId,
       speakerAttribution: attribution ? publicSpeakerAttribution(attribution) : null,
       startSeconds: segment.startSeconds,
       endSeconds: segment.endSeconds,

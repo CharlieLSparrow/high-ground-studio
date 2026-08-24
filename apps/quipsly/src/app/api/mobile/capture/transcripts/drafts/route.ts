@@ -186,6 +186,8 @@ export async function POST(request: Request) {
             providerSpeakerLabel: segment.providerSpeakerLabel,
             effectiveTextSnapshot: segment.text,
             effectiveSpeakerLabelSnapshot: segment.speakerLabel,
+            speakerAuthority: segment.speakerAuthority,
+            sourceBoundParticipantId: segment.sourceBoundParticipantId,
             acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
             recordingAssetId: desk.playback.recordingAssetId,
             playbackSourceId: desk.playback.sourceId,
