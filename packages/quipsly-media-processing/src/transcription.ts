@@ -29,7 +29,11 @@ export const CAPTURE_TRANSCRIPT_DEAD_LETTER_PREFIX =
 
 const SAFE_ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SAFE_BUCKET = /^[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]$/;
-const SAFE_SOURCE_OBJECT = /^media-vault\/recordings\/[A-Za-z0-9/_\-.]+$/;
+// Transcript inputs may be either canonical recording originals or exact
+// repair derivatives produced by Quipsly's interruption-repair worker. Keep
+// this allowlist narrow: arbitrary media-vault derivatives are not transcript
+// authority.
+const SAFE_SOURCE_OBJECT = /^media-vault\/(?:recordings|repair)\/[A-Za-z0-9/_\-.]+$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const GENERATION = /^[1-9][0-9]*$/;
 const LANGUAGE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;

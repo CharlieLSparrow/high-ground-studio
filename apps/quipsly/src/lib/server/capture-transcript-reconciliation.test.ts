@@ -37,12 +37,12 @@ const source = {
 };
 const queuedAt = "2026-07-30T18:00:00.000Z";
 
-function completedReceipts() {
+function completedReceipts(receiptSource = source) {
   const queued = newCaptureTranscriptManifest({
     jobId,
     actorUserId: "user-0001",
     actorEmail: "producer@example.com",
-    source,
+    source: receiptSource,
     provider: {
       name: "deepgram",
       model: "nova-3",
@@ -71,7 +71,7 @@ function completedReceipts() {
     jobId,
     manifestObjectName:
       buildCaptureTranscriptManifestObjectName(jobId),
-    source,
+    source: receiptSource,
     provider: {
       name: "deepgram",
       model: "nova-3",
@@ -80,7 +80,7 @@ function completedReceipts() {
       channels: 1,
     },
     rawProviderResponse: {
-      bucketName: source.bucketName,
+      bucketName: receiptSource.bucketName,
       objectName: buildCaptureTranscriptRawObjectName(jobId),
       generation: "1730000000000002",
       sizeBytes: 1024,
@@ -213,6 +213,72 @@ describe("capture transcript reconciliation", () => {
           }),
         }),
       }),
+    }));
+  });
+
+  it("reconciles a verified interruption-repair derivative against original RecordingAsset lineage", async () => {
+    const repairedSource = {
+      ...source,
+      bucketName: "quipsly-repair-bucket",
+      objectName: "media-vault/repair/repaired.webm",
+      generation: "1730000000000052",
+      sizeBytes: 4_128,
+      sha256: "b".repeat(64),
+      contentType: "video/webm",
+    };
+    const { manifest, result } = completedReceipts(repairedSource);
+    installBucketObjects({
+      [buildCaptureTranscriptManifestObjectName(jobId)]: manifest,
+      [buildCaptureTranscriptResultObjectName(jobId)]: result,
+    });
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({
+      allowed: false,
+      error: "Recording consent was revoked after processing.",
+      errorCode: "TRANSCRIPT_CONSENT_REVOKED",
+    } as any);
+    const original = {
+      bucketName: source.bucketName,
+      objectName: source.objectName,
+      generation: source.generation,
+      sizeBytes: source.sizeBytes,
+      sha256: source.sha256,
+    };
+    const job = {
+      ...canonicalJob(),
+      sourceGeneration: repairedSource.generation,
+      sourceSha256: repairedSource.sha256,
+      asset: {
+        ...canonicalJob().asset,
+        byteSize: BigInt(source.sizeBytes),
+        checksum: source.sha256,
+        contentType: "video/webm",
+        localManifestJson: {
+          storageGeneration: source.generation,
+          interruptionRepair: {
+            status: "verified",
+            originalRemainsSourceTruth: true,
+            original,
+            derivative: repairedSource,
+          },
+        },
+      },
+    };
+    const update = jest.fn().mockResolvedValue({});
+    const prisma = {
+      transcriptJob: {
+        findUnique: jest.fn().mockResolvedValue(job),
+        update,
+      },
+      $transaction: jest.fn(),
+    };
+
+    await expect(reconcileCaptureTranscriptJob({
+      prisma,
+      transcriptJobId: jobId,
+    })).resolves.toMatchObject({ status: "held", transcriptJobId: jobId });
+    expect(getMediaBucket).toHaveBeenCalledWith("quipsly-repair-bucket");
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "HELD" }),
     }));
   });
 

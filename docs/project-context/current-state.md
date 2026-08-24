@@ -25,6 +25,27 @@ Date: 2026-08-24
 - Thirty-three focused call/handoff tests and strict Quipsly TypeScript pass.
   The two-person browser/iPhone flight is retained as human/device evidence.
 
+## Automatic post-call transcription checkpoint
+
+- A consented, exact-byte verified Capture upload now starts the durable
+  transcript worker outbox automatically after canonical finalization. The
+  coach no longer has to discover and press Run transcription on the happy
+  path; that action remains available for explicit retry and version repair.
+- Recording release and all-party transcription release remain separate gates.
+  Held consent, missing/non-queueable jobs, and provider configuration failures
+  cannot leak transcript text or undo the retained recording.
+- Interrupted browser containers wait for independently verified repair. Once
+  verified, the transcript provider reads the exact repair derivative while
+  the job remains bound to the original RecordingAsset, participant, room, and
+  consent authority. Original media bytes remain unchanged.
+- The shared transcript contract permits only canonical recording objects and
+  the dedicated repair namespace. Queue-time and reconciliation-time checks
+  bind derivative/original generation, size, type, SHA-256, and repair-worker
+  lineage metadata.
+- Thirty-three focused transcript/finalization tests plus strict Quipsly and
+  shared media-processing TypeScript pass. Live worker execution and real
+  source-timed readback remain deferred flight evidence.
+
 ## Native audio mastery evidence-comparison checkpoint
 
 - Capture Recording Quality now decodes complete source and verified preview

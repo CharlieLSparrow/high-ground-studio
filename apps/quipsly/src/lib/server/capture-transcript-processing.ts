@@ -126,16 +126,11 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
       "Recording asset is not uploaded or verified yet.",
     );
   }
-  if (!job.asset.storageBucket || !job.asset.storageObjectPath) {
-    throw new CaptureTranscriptOutboxError(
-      "TRANSCRIPT_SOURCE_NOT_DURABLE",
-      "Recording asset does not have a durable storage object path.",
-    );
-  }
+  const processingSource = captureTranscriptProcessingSource(job.asset);
 
   const evidence = await getMobileCaptureObjectEvidence(
-    job.asset.storageBucket,
-    job.asset.storageObjectPath,
+    processingSource.bucketName,
+    processingSource.objectName,
   );
   if (!evidence) {
     throw new CaptureTranscriptOutboxError(
@@ -143,16 +138,21 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
       "The immutable recording object could not be found.",
     );
   }
-  const sizeBytes = bigintAsPositiveNumber(job.asset.byteSize);
-  const sha256 = requiredSha256(job.asset.checksum);
-  const contentType = requiredMediaType(
-    job.asset.contentType || evidence.contentType,
-  );
+  const sizeBytes = processingSource.sizeBytes;
+  const sha256 = processingSource.sha256;
+  const contentType = processingSource.contentType || requiredMediaType(evidence.contentType);
+  const metadataMatches = processingSource.role === "verified-interruption-repair"
+    ? evidence.customMetadata.outputSha256 === sha256
+      && evidence.customMetadata.sourceSha256 === processingSource.originalSha256
+      && evidence.customMetadata.sourceGeneration === processingSource.originalGeneration
+      && evidence.customMetadata.originalRemainsSourceTruth === "true"
+    : evidence.customMetadata.quipslyExpectedSizeBytes === String(sizeBytes)
+      && evidence.customMetadata.quipslyExpectedSha256 === sha256;
   if (
     evidence.sizeBytes !== sizeBytes
     || evidence.contentType !== contentType
-    || evidence.customMetadata.quipslyExpectedSizeBytes !== String(sizeBytes)
-    || evidence.customMetadata.quipslyExpectedSha256 !== sha256
+    || (processingSource.generation !== null && evidence.generation !== processingSource.generation)
+    || !metadataMatches
     || !/^[1-9][0-9]*$/.test(evidence.generation)
   ) {
     throw new CaptureTranscriptOutboxError(
@@ -174,6 +174,8 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
             version: 1,
             sourceGeneration: evidence.generation,
             sourceSha256: sha256,
+            sourceRole: processingSource.role,
+            originalSourceSha256: processingSource.originalSha256,
             consentGateCheckedAt: new Date().toISOString(),
             reconciliationRequiresFreshConsentGate: true,
             routing: localCaptureTranscriptRoutingSummary(job.asset),
@@ -440,6 +442,85 @@ export function captureTranscriptSourceTopology(asset: any) {
     return { kind: "mixed-room" as const, expectedSpeakerCount: null };
   }
   return { kind: "unknown" as const };
+}
+
+export type CaptureTranscriptProcessingSource = {
+  role: "recording-original" | "verified-interruption-repair";
+  bucketName: string;
+  objectName: string;
+  generation: string | null;
+  sizeBytes: number;
+  sha256: string;
+  contentType: string | null;
+  originalSha256: string;
+  originalGeneration: string | null;
+};
+
+export function captureTranscriptHasVerifiedInterruptionRepair(asset: any) {
+  const repair = jsonObject(jsonObject(asset?.localManifestJson).interruptionRepair);
+  return text(repair.status).toLowerCase() === "verified";
+}
+
+/**
+ * Selects the exact immutable bytes a transcript provider may read while the
+ * TranscriptJob remains bound to the canonical RecordingAsset. An interrupted
+ * container may use only a verified repair derivative whose recorded original
+ * lineage still matches that RecordingAsset; any partial or conflicting repair
+ * state fails closed instead of silently falling back.
+ */
+export function captureTranscriptProcessingSource(asset: any): CaptureTranscriptProcessingSource {
+  const bucketName = requiredText(asset?.storageBucket, "recording storage bucket");
+  const objectName = requiredText(asset?.storageObjectPath, "recording storage object");
+  const sizeBytes = bigintAsPositiveNumber(asset?.byteSize);
+  const sha256 = requiredSha256(asset?.checksum);
+  const contentType = asset?.contentType ? requiredMediaType(asset.contentType) : null;
+  const localManifest = jsonObject(asset?.localManifestJson);
+  const manifestGeneration = text(localManifest.storageGeneration);
+  const originalGeneration = /^[1-9][0-9]*$/.test(manifestGeneration)
+    ? manifestGeneration
+    : null;
+  const repair = jsonObject(localManifest.interruptionRepair);
+  if (!captureTranscriptHasVerifiedInterruptionRepair(asset)) {
+    return {
+      role: "recording-original",
+      bucketName,
+      objectName,
+      generation: originalGeneration,
+      sizeBytes,
+      sha256,
+      contentType,
+      originalSha256: sha256,
+      originalGeneration,
+    };
+  }
+
+  const original = jsonObject(repair.original);
+  const derivative = jsonObject(repair.derivative);
+  const repairedOriginalGeneration = originalGeneration || requiredGeneration(original.generation);
+  const originalMatches = text(original.bucketName) === bucketName
+    && text(original.objectName) === objectName
+    && text(original.generation) === repairedOriginalGeneration
+    && bigintAsPositiveNumber(original.sizeBytes) === sizeBytes
+    && requiredSha256(original.sha256) === sha256
+    && repair.originalRemainsSourceTruth === true;
+  if (!originalMatches) {
+    throw new CaptureTranscriptOutboxError(
+      "TRANSCRIPT_REPAIR_LINEAGE_INVALID",
+      "Verified repair lineage no longer matches the canonical recording original.",
+    );
+  }
+
+  return {
+    role: "verified-interruption-repair",
+    bucketName: requiredText(derivative.bucketName, "repair storage bucket"),
+    objectName: requiredText(derivative.objectName, "repair storage object"),
+    generation: requiredGeneration(derivative.generation),
+    sizeBytes: bigintAsPositiveNumber(derivative.sizeBytes),
+    sha256: requiredSha256(derivative.sha256),
+    contentType: requiredMediaType(derivative.contentType),
+    originalSha256: sha256,
+    originalGeneration: repairedOriginalGeneration,
+  };
 }
 
 export function localCaptureTranscriptRoutingSummary(asset: any) {

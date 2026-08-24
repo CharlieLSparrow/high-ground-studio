@@ -10,6 +10,10 @@ import {
 
 import { getMediaBucket } from "@/lib/server/gcs";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import {
+  captureTranscriptHasVerifiedInterruptionRepair,
+  captureTranscriptProcessingSource,
+} from "@/lib/server/capture-transcript-processing";
 
 export type CaptureTranscriptReconciliation =
   | {
@@ -77,7 +81,19 @@ export async function reconcileCaptureTranscriptJob(input: {
     );
   }
 
-  const bucket = getMediaBucket(job.asset.storageBucket);
+  let processingSource = null;
+  if (captureTranscriptHasVerifiedInterruptionRepair(job.asset)) {
+    try {
+      processingSource = captureTranscriptProcessingSource(job.asset);
+    } catch (error) {
+      return failJob(
+        input.prisma,
+        job,
+        error instanceof Error ? error.message : "Transcript processing source failed integrity validation.",
+      );
+    }
+  }
+  const bucket = getMediaBucket(processingSource?.bucketName || job.asset.storageBucket);
   const storedManifest = await loadJsonOrNull(bucket, manifestObjectName);
   if (!storedManifest) {
     return {
@@ -99,8 +115,12 @@ export async function reconcileCaptureTranscriptJob(input: {
   if (
     manifest.source.recordingAssetId !== job.asset.id
     || manifest.source.roomId !== job.roomId
-    || manifest.source.bucketName !== job.asset.storageBucket
-    || manifest.source.objectName !== job.asset.storageObjectPath
+    || manifest.source.bucketName !== (processingSource?.bucketName || job.asset.storageBucket)
+    || manifest.source.objectName !== (processingSource?.objectName || job.asset.storageObjectPath)
+    || (processingSource?.generation !== null && processingSource?.generation !== undefined
+      && manifest.source.generation !== processingSource.generation)
+    || (processingSource !== null && manifest.source.sha256 !== processingSource.sha256)
+    || (processingSource !== null && manifest.source.sizeBytes !== processingSource.sizeBytes)
     || manifest.source.generation !== job.sourceGeneration
     || manifest.source.sha256 !== job.sourceSha256
   ) {

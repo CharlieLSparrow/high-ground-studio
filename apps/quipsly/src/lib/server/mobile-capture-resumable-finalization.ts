@@ -21,6 +21,7 @@ import {
   MOBILE_CAPTURE_INTERRUPTION_REPAIR_CONTRACT,
   mobileCaptureInterruptionRepairRequired,
 } from "@/lib/server/mobile-capture-interruption-repair";
+import { ensureMobileCaptureTranscriptAutoqueued } from "@/lib/server/mobile-capture-transcript-autoqueue";
 import { bindVerifiedMobileCaptureExpectation } from "@/lib/server/mobile-capture-source-expectation";
 import type {
   MobileCaptureObjectEvidence,
@@ -1210,6 +1211,22 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
     }
   }
   try {
+    await ensureMobileCaptureTranscriptAutoqueued({
+      prisma,
+      manifest,
+      finalization: evidence,
+    });
+  } catch (error) {
+    // The canonical TranscriptJob remains a durable retry handle. Finalizing
+    // verified participant-owned media must not fail because the provider
+    // outbox is temporarily unavailable.
+    console.error("[Capture Transcript] Unable to queue automatic transcription", {
+      uploadSessionId: manifest.uploadSessionId,
+      transcriptJobId: evidence.transcriptJobId,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+  }
+  try {
     await ensureCaptureAudioReadinessQueued({
       prisma,
       manifest,
@@ -1336,13 +1353,15 @@ export async function promoteRepairedMobileCaptureDatabaseEvidence(input: {
     storageBackend,
     localFilePath: input.repairedLocalFilePath || null,
   };
-  return serializableFinalizationTransaction(input.prisma, async (transaction) => {
+  const promoted = await serializableFinalizationTransaction(input.prisma, async (transaction) => {
     await lockUploadFinalization(transaction, repairedManifest.uploadSessionId);
     const currentJob = await transaction.studioWorkflowJob.findUnique({
       where: { id: input.workflow.id },
     });
     if (!currentJob) throw new Error("Interruption repair workflow disappeared.");
-    if (currentJob.status === "completed") return currentJob;
+    if (currentJob.status === "completed") {
+      return { workflow: currentJob, evidence: priorEvidence };
+    }
     const currentRecording = await transaction.recordingAsset.findUnique({
       where: { id: priorEvidence.recordingAssetId },
       select: { localManifestJson: true },
@@ -1437,7 +1456,7 @@ export async function promoteRepairedMobileCaptureDatabaseEvidence(input: {
         },
       },
     });
-    return transaction.studioWorkflowJob.update({
+    const workflow = await transaction.studioWorkflowJob.update({
       where: { id: input.workflow.id },
       data: {
         assetId: studioMedia.mediaAsset.id,
@@ -1455,5 +1474,21 @@ export async function promoteRepairedMobileCaptureDatabaseEvidence(input: {
         },
       },
     });
+    return { workflow, evidence };
   });
+  try {
+    await ensureMobileCaptureTranscriptAutoqueued({
+      prisma: input.prisma,
+      manifest: repairedManifest,
+      finalization: promoted.evidence,
+      interruptionRepairVerified: true,
+    });
+  } catch (error) {
+    console.error("[Capture Transcript] Unable to queue repaired-source transcription", {
+      uploadSessionId: repairedManifest.uploadSessionId,
+      transcriptJobId: promoted.evidence.transcriptJobId,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+  }
+  return promoted.workflow;
 }

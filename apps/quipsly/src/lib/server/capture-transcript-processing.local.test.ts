@@ -5,6 +5,7 @@ import {
   captureTranscriptSourceTopology,
   captureTranscriptProviderRequest,
   captureTranscriptRoutingSummary,
+  captureTranscriptProcessingSource,
   localCaptureTranscriptRoutingSummary,
   localCaptureTranscriptWorkerEnabled,
 } from "./capture-transcript-processing";
@@ -95,6 +96,75 @@ describe("local Capture transcript worker availability", () => {
     expect(captureTranscriptSourceTopology({ kind: "LOCAL_AUDIO" })).toEqual({
       kind: "unknown",
     });
+  });
+
+  it("uses only an exact verified interruption-repair derivative for provider input", () => {
+    const source = captureTranscriptProcessingSource({
+      storageBucket: "quipsly-media",
+      storageObjectPath: "mobile-recordings/original.webm",
+      byteSize: BigInt(4_000),
+      checksum: "a".repeat(64),
+      contentType: "video/webm",
+      localManifestJson: {
+        storageGeneration: "41",
+        interruptionRepair: {
+          status: "verified",
+          originalRemainsSourceTruth: true,
+          original: {
+            bucketName: "quipsly-media",
+            objectName: "mobile-recordings/original.webm",
+            generation: "41",
+            sizeBytes: 4_000,
+            sha256: "a".repeat(64),
+          },
+          derivative: {
+            bucketName: "quipsly-media",
+            objectName: "media-vault/repair/repaired.webm",
+            generation: "52",
+            sizeBytes: 4_128,
+            sha256: "b".repeat(64),
+            contentType: "video/webm",
+          },
+        },
+      },
+    });
+
+    expect(source).toEqual({
+      role: "verified-interruption-repair",
+      bucketName: "quipsly-media",
+      objectName: "media-vault/repair/repaired.webm",
+      generation: "52",
+      sizeBytes: 4_128,
+      sha256: "b".repeat(64),
+      contentType: "video/webm",
+      originalSha256: "a".repeat(64),
+      originalGeneration: "41",
+    });
+  });
+
+  it("fails closed when a verified repair no longer matches its recording original", () => {
+    expect(() => captureTranscriptProcessingSource({
+      storageBucket: "quipsly-media",
+      storageObjectPath: "mobile-recordings/original.webm",
+      byteSize: BigInt(4_000),
+      checksum: "a".repeat(64),
+      contentType: "video/webm",
+      localManifestJson: {
+        storageGeneration: "41",
+        interruptionRepair: {
+          status: "verified",
+          originalRemainsSourceTruth: true,
+          original: {
+            bucketName: "quipsly-media",
+            objectName: "mobile-recordings/different.webm",
+            generation: "41",
+            sizeBytes: 4_000,
+            sha256: "a".repeat(64),
+          },
+          derivative: {},
+        },
+      },
+    })).toThrow(/repair lineage no longer matches/i);
   });
 
   it("turns source topology into the exact provider policy", () => {
