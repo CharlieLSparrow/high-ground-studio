@@ -153,9 +153,15 @@ gets one Settings recovery action. Session recording consent remains a
 separate, once-per-person choice for the exact audio/video/transcript scope and
 does not recur merely because the app reopened.
 
+The post-Join status now follows the participant-owned recorder's canonical
+preparation projection. Saving the recording choice immediately replaces the
+old "recording is off" instruction with either **Waiting for the other
+participant** or **Everyone is ready to record**. The call surface no longer
+contradicts the consent/Record card underneath it.
+
 ## Evidence and limits
 
-- The 33-test focused web call-room and speaker-test suite passes, including
+- The 34-test focused web call-room, consent-transition, and speaker-test suite passes, including
   preview-first lobby order, contextual first-grant behavior, exhausted reconnect
   while a retained participant source remains active and deliberate leave while
   that source is protected.

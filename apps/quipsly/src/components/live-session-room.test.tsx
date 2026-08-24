@@ -116,6 +116,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
       <button type="button" onClick={() => onSourceLockChange?.(true)}>Simulate retained source start</button>
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
       <button type="button" onClick={() => onPreparationStateChange?.({ participantReady: true, everyoneReady: false })}>Simulate recording choice ready</button>
+      <button type="button" onClick={() => onPreparationStateChange?.({ participantReady: true, everyoneReady: true })}>Simulate everyone ready</button>
     </div>
   },
 }));
@@ -750,6 +751,11 @@ describe("LiveSessionRoom", () => {
     await waitFor(() => expect(screen.getByTestId("live-microphone-status")).toHaveTextContent("Checking microphone"));
     expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent("55555555-5555-4555-8555-555555555545");
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
+    expect(screen.getByTestId("call-status-message")).toHaveTextContent(/Recording is off until everyone chooses/i);
+    fireEvent.click(screen.getByRole("button", { name: "Simulate recording choice ready" }));
+    expect(screen.getByTestId("call-status-message")).toHaveTextContent(/Your recording choice is saved.*Waiting for the other participant/i);
+    fireEvent.click(screen.getByRole("button", { name: "Simulate everyone ready" }));
+    expect(screen.getByTestId("call-status-message")).toHaveTextContent(/Everyone is ready to record/i);
     const recorder = screen.getByTestId("browser-source-capture-group").parentElement;
     const optionalSettings = screen.getByTestId("call-device-settings");
     expect(recorder).not.toBeNull();

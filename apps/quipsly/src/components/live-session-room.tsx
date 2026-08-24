@@ -483,7 +483,6 @@ export function LiveSessionRoom({
   const [microphoneRecoveryHeld, setMicrophoneRecoveryHeld] = useState(false);
   const [cameraMuted, setCameraMuted] = useState(false);
   const [participants, setParticipants] = useState<Array<{ identity: string; name: string; speaking: boolean }>>([]);
-  const [recordingConsentGranted, setRecordingConsentGranted] = useState(false);
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
   const [cameraEvidence, setCameraEvidence] = useState<StudioCameraInputEvidence | null>(null);
   const [previewTested, setPreviewTested] = useState(false);
@@ -1329,7 +1328,6 @@ export function LiveSessionRoom({
         }),
       });
       const packet = await response.json().catch(() => ({})) as JoinPacket;
-      setRecordingConsentGranted(packet.recordingConsentGranted === true);
       if (!response.ok || !packet.ok || !packet.canJoin || !packet.serverUrl || !packet.participantToken) {
         throw new CallJoinFailure(
           packet.error || packet.nextAction || "This Session is not ready for a live room.",
@@ -1781,8 +1779,15 @@ export function LiveSessionRoom({
     participantReady: boolean;
     everyoneReady: boolean;
   }) => {
-    setRecordingConsentGranted(state.participantReady);
-  }, []);
+    if (!connected) return;
+    setMessage(
+      !state.participantReady
+        ? "You’re connected. Recording is off until you allow it."
+        : state.everyoneReady
+          ? "You’re connected. Everyone is ready to record."
+          : "You’re connected. Your recording choice is saved. Waiting for the other participant.",
+    );
+  }, [connected]);
 
   const retainedSourceControls = typeof captureGroupId === "string" && captureGroupId.trim() ? (
     <BrowserSourceRecorder

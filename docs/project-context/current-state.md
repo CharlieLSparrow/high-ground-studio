@@ -3704,7 +3704,11 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   undetermined decision. Remembered grants proceed immediately; denials expose
   one Settings recovery action. Session recording consent is separate and
   remains saved for that person's exact Session/source choices.
-- Thirty-three focused browser call/speaker tests, strict Quipsly TypeScript,
+- After Join, the main call status now follows the retained recorder's
+  preparation projection. It immediately changes from recording-off to the
+  honest saved/waiting or everyone-ready state instead of leaving stale
+  instructions above the Record control.
+- Thirty-four focused browser call/consent/speaker tests, strict Quipsly TypeScript,
   the 1,159-check Capture static gate, provider-room static smoke, and the full
   Capture release-source gate pass. The release gate now protects deliberate
   native video calling plus the separate retained Record action instead of the
