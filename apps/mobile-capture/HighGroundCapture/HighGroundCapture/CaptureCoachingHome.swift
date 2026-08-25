@@ -451,11 +451,46 @@ final class MobileCoachingRunwayClient: ObservableObject {
     @Published private(set) var status = "Coaching not loaded"
     @Published private(set) var errorMessage: String?
     @Published private(set) var invitationDeliveries: [String: MobileCoachingInvitationDelivery] = [:]
+    @Published private(set) var isUsingProtectedCache = false
+    @Published private(set) var cachedSnapshotSavedAt: Date?
 
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
             ?? "https://nest.quipsly.com"
     )
+    private var accountIdentityObserver: NSObjectProtocol?
+    private var observedOwnerAccountID: String?
+
+    private struct ProtectedCoachingRunwayCache: Codable {
+        let schemaVersion: Int
+        let ownerAccountID: String
+        let ownerEmail: String
+        let savedAt: Date
+        let response: MobileCoachingRunwayResponse
+    }
+
+    nonisolated private static let protectedCacheLifetime: TimeInterval = 30 * 24 * 60 * 60
+    nonisolated private static let protectedCacheDirectoryName = "ProtectedCoachingRunwayCache"
+    nonisolated private static let protectedCacheFileName = "mobile-coaching-runway-v1.json"
+
+    init() {
+        observedOwnerAccountID = Self.normalizedOwnerAccountID(AuthManager.currentStoredOwnerID())
+        accountIdentityObserver = NotificationCenter.default.addObserver(
+            forName: .quipslyCaptureAccountIdentityDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            MainActor.assumeIsolated { [weak self] in
+                self?.handleAccountIdentityChange(notification.object as? String)
+            }
+        }
+    }
+
+    deinit {
+        if let accountIdentityObserver {
+            NotificationCenter.default.removeObserver(accountIdentityObserver)
+        }
+    }
 
     var isCoach: Bool { response?.user?.isCoach == true }
     var invitationEmailAvailable: Bool {
@@ -486,6 +521,10 @@ final class MobileCoachingRunwayClient: ObservableObject {
         guard let userID = response?.user?.id else { return false }
         return allBookings.contains { $0.client?.id == userID }
             || activeBookingHolds.contains { $0.client?.id == userID }
+    }
+    var cachedSnapshotStatusLine: String? {
+        guard isUsingProtectedCache, let cachedSnapshotSavedAt else { return nil }
+        return "Offline snapshot saved \(cachedSnapshotSavedAt.formatted(date: .abbreviated, time: .shortened)). Scheduling actions are disabled until Nest reconnects."
     }
 
     func scheduleConflict(
@@ -556,6 +595,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
         )
         let coachRequestPreview = ProcessInfo.processInfo.arguments.contains(
             "--capture-coach-requests-preview"
+        )
+        let offlineSnapshotPreview = ProcessInfo.processInfo.arguments.contains(
+            "--capture-coaching-offline-preview"
         )
         let start = Date().addingTimeInterval((conflictPreview ? 55 : 35) * 60)
         let previewIsCoach = !clientRequestPreview
@@ -646,8 +688,10 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 ]
             )
         ] : []
-        status = "Coaching ready"
-        errorMessage = nil
+        isUsingProtectedCache = offlineSnapshotPreview
+        cachedSnapshotSavedAt = offlineSnapshotPreview ? Date().addingTimeInterval(-8 * 60) : nil
+        status = offlineSnapshotPreview ? "Offline · saved coaching" : "Coaching ready"
+        errorMessage = offlineSnapshotPreview ? cachedSnapshotStatusLine : nil
     }
 
     func load() async {
@@ -667,12 +711,33 @@ final class MobileCoachingRunwayClient: ObservableObject {
             request.httpMethod = "GET"
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue("application/json", forHTTPHeaderField: "Accept")
-            let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCoachingRunwayResponse.self, from: data)
-            guard httpResponse.statusCode < 400, payload.ok else {
-                throw coachingClientError(payload.error ?? "Quipsly coaching could not load.")
+            let (data, httpResponse) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                allowOfflineRecovery: true
+            )
+            let payload = try? JSONDecoder().decode(MobileCoachingRunwayResponse.self, from: data)
+
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                let message = payload?.error
+                    ?? "This Quipsly account is no longer allowed to use this coaching space."
+                clearAfterAuthorityFailure()
+                status = "Coaching access unavailable"
+                errorMessage = message
+                return
+            }
+
+            if Self.isTransportAmbiguousStatus(httpResponse.statusCode) {
+                let message = payload?.error
+                    ?? "Nest could not return current coaching scheduling (HTTP \(httpResponse.statusCode))."
+                useProtectedSnapshotIfAvailable(fallbackMessage: message)
+                return
+            }
+
+            guard httpResponse.statusCode < 400, let payload, payload.ok else {
+                throw coachingClientError(payload?.error ?? "Quipsly coaching could not load.")
             }
             response = payload
+            isUsingProtectedCache = false
             invitationDeliveries = Dictionary(
                 uniqueKeysWithValues: upcomingBookings.compactMap { booking in
                     guard let roomID = booking.callRoomId,
@@ -681,12 +746,20 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 }
             )
             await loadPublicOfferings()
+            persistProtectedSnapshot(payload)
             status = payload.user?.isCoach == true
                 ? "Coaching ready"
                 : payload.user?.isClient == true ? "Your coaching is ready" : "Coaching ready"
         } catch {
-            status = "Coaching needs attention"
-            errorMessage = error.localizedDescription
+            if Self.isTransportUnavailable(error) {
+                AuthManager.shared.suspendNetworkActionsForCachedFallback(
+                    reason: error.localizedDescription
+                )
+                useProtectedSnapshotIfAvailable(fallbackMessage: error.localizedDescription)
+            } else {
+                status = "Coaching needs attention"
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -696,6 +769,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
         slot: MobileCoachingBookableSlot
     ) async -> Bool {
         guard !isMutating else { return false }
+        guard allowAuthoritativeMutation() else { return false }
         guard let url = URL(string: "\(baseURL)/api/coaching/booking-requests") else {
             errorMessage = "The configured Nest URL is not valid."
             return false
@@ -730,6 +804,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
     @discardableResult
     func cancelBookingRequest(_ hold: MobileCoachingBookingHold) async -> Bool {
         guard !isMutating else { return false }
+        guard allowAuthoritativeMutation() else { return false }
         guard var components = URLComponents(string: "\(baseURL)/api/coaching/booking-requests") else {
             errorMessage = "The configured Nest URL is not valid."
             return false
@@ -788,6 +863,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
         completeStatus: String
     ) async -> Bool {
         guard !isMutating else { return false }
+        guard allowAuthoritativeMutation() else { return false }
         isMutating = true
         defer { isMutating = false }
         status = workingStatus
@@ -831,6 +907,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
     @discardableResult
     func setupCoach() async -> Bool {
         guard !isMutating else { return false }
+        guard allowAuthoritativeMutation() else { return false }
         let email = AuthManager.shared.userEmail?.nonemptyCoachingText
         let name = AuthManager.shared.userName?.nonemptyCoachingText ?? email
         guard let email else {
@@ -887,6 +964,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
             errorMessage = "That time is outside your weekly working hours. Choose a listed time or update Working hours."
             return nil
         }
+        guard allowAuthoritativeMutation() else { return nil }
 
         isMutating = true
         defer { isMutating = false }
@@ -949,6 +1027,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
             errorMessage = "That time is outside your weekly working hours. Choose a listed time or update Working hours."
             return false
         }
+        guard allowAuthoritativeMutation() else { return false }
 
         isMutating = true
         defer { isMutating = false }
@@ -988,6 +1067,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
             errorMessage = "Choose at least one weekday and an end time after the start time."
             return false
         }
+        guard allowAuthoritativeMutation() else { return false }
         isMutating = true
         defer { isMutating = false }
         status = "Saving working hours"
@@ -1020,6 +1100,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
     @discardableResult
     func cancelBooking(_ booking: MobileCoachingBooking) async -> Bool {
         guard !isMutating else { return false }
+        guard allowAuthoritativeMutation() else { return false }
         isMutating = true
         defer { isMutating = false }
         status = "Canceling Session"
@@ -1054,6 +1135,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
         recipientName: String?
     ) async -> Bool {
         guard !isMutating else { return false }
+        guard allowAuthoritativeMutation() else { return false }
         let normalizedEmail = recipientEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !roomID.isEmpty, normalizedEmail.contains("@") else {
             errorMessage = "This appointment does not have a verified client email to invite."
@@ -1148,6 +1230,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
     }
 
     private func performAction(_ body: [String: Any]) async throws -> MobileCoachingActionResponse {
+        guard !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
+            throw coachingClientError("Reconnect to Nest before changing coaching scheduling.")
+        }
         guard let url = URL(string: "\(baseURL)/api/coaching/runway") else {
             throw coachingClientError("The configured Nest URL is not valid.")
         }
@@ -1161,6 +1246,176 @@ final class MobileCoachingRunwayClient: ObservableObject {
             throw coachingClientError(payload.error ?? "Quipsly coaching returned HTTP \(httpResponse.statusCode).")
         }
         return payload
+    }
+
+    private func allowAuthoritativeMutation() -> Bool {
+        guard !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
+            errorMessage = "Reconnect to Nest before changing coaching scheduling."
+            return false
+        }
+        return true
+    }
+
+    private func useProtectedSnapshotIfAvailable(fallbackMessage: String) {
+        let restored = response != nil || restoreProtectedSnapshotIfAvailable()
+        if restored {
+            isUsingProtectedCache = true
+            status = "Offline · saved coaching"
+            errorMessage = cachedSnapshotStatusLine
+                ?? "Nest is unavailable. Showing a protected coaching snapshot; scheduling actions are disabled."
+        } else {
+            status = "Coaching temporarily unavailable"
+            errorMessage = fallbackMessage
+        }
+    }
+
+    private func clearAfterAuthorityFailure() {
+        response = nil
+        publicOfferings = []
+        latestHandoff = nil
+        invitationDeliveries = [:]
+        isUsingProtectedCache = false
+        cachedSnapshotSavedAt = nil
+        Self.clearProtectedSnapshot()
+    }
+
+    private func handleAccountIdentityChange(_ ownerAccountID: String?) {
+        let normalizedOwnerAccountID = Self.normalizedOwnerAccountID(ownerAccountID)
+        guard normalizedOwnerAccountID != observedOwnerAccountID else { return }
+        observedOwnerAccountID = normalizedOwnerAccountID
+        clearAfterAuthorityFailure()
+        status = normalizedOwnerAccountID == nil ? "Coaching not loaded" : "Coaching account changed"
+        errorMessage = nil
+    }
+
+    @discardableResult
+    private func restoreProtectedSnapshotIfAvailable() -> Bool {
+        guard let ownerAccountID = Self.normalizedOwnerAccountID(AuthManager.currentStoredOwnerID()),
+              let ownerEmail = Self.normalizedOwnerEmail(AuthManager.shared.userEmail),
+              let cacheURL = Self.protectedCacheURL(),
+              FileManager.default.fileExists(atPath: cacheURL.path) else { return false }
+        do {
+            let data = try Data(contentsOf: cacheURL, options: .mappedIfSafe)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let cache = try decoder.decode(ProtectedCoachingRunwayCache.self, from: data)
+            let age = Date().timeIntervalSince(cache.savedAt)
+            guard cache.schemaVersion == 2,
+                  cache.ownerAccountID == ownerAccountID,
+                  cache.ownerEmail == ownerEmail,
+                  age >= 0,
+                  age <= Self.protectedCacheLifetime else {
+                Self.clearProtectedSnapshot()
+                return false
+            }
+            response = cache.response
+            invitationDeliveries = Dictionary(
+                uniqueKeysWithValues: (cache.response.upcomingBookings ?? []).compactMap { booking in
+                    guard let roomID = booking.callRoomId,
+                          let delivery = booking.clientInvitationDelivery else { return nil }
+                    return (roomID, delivery)
+                }
+            )
+            cachedSnapshotSavedAt = cache.savedAt
+            isUsingProtectedCache = true
+            return true
+        } catch {
+            Self.clearProtectedSnapshot()
+            return false
+        }
+    }
+
+    private func persistProtectedSnapshot(_ runwayResponse: MobileCoachingRunwayResponse) {
+        guard AuthManager.shared.networkActionsAllowed,
+              let ownerAccountID = Self.normalizedOwnerAccountID(AuthManager.currentStoredOwnerID()),
+              let ownerEmail = Self.normalizedOwnerEmail(AuthManager.shared.userEmail),
+              let cacheURL = Self.protectedCacheURL() else { return }
+        let savedAt = Date()
+        do {
+            let fileManager = FileManager.default
+            let directoryURL = cacheURL.deletingLastPathComponent()
+            try fileManager.createDirectory(
+                at: directoryURL,
+                withIntermediateDirectories: true,
+                attributes: [.protectionKey: FileProtectionType.complete]
+            )
+            try fileManager.setAttributes(
+                [.protectionKey: FileProtectionType.complete],
+                ofItemAtPath: directoryURL.path
+            )
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.sortedKeys]
+            try encoder.encode(
+                ProtectedCoachingRunwayCache(
+                    schemaVersion: 2,
+                    ownerAccountID: ownerAccountID,
+                    ownerEmail: ownerEmail,
+                    savedAt: savedAt,
+                    response: runwayResponse
+                )
+            ).write(to: cacheURL, options: [.atomic, .completeFileProtection])
+            try fileManager.setAttributes(
+                [.protectionKey: FileProtectionType.complete],
+                ofItemAtPath: cacheURL.path
+            )
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            var mutableCacheURL = cacheURL
+            try mutableCacheURL.setResourceValues(resourceValues)
+            cachedSnapshotSavedAt = savedAt
+            isUsingProtectedCache = false
+        } catch {
+            print("Protected coaching runway cache could not be updated: \(error.localizedDescription)")
+        }
+    }
+
+    nonisolated private static func clearProtectedSnapshot() {
+        guard let cacheURL = protectedCacheURL() else { return }
+        try? FileManager.default.removeItem(at: cacheURL)
+    }
+
+    nonisolated private static func protectedCacheURL() -> URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("QuipslyCapture", isDirectory: true)
+            .appendingPathComponent(protectedCacheDirectoryName, isDirectory: true)
+            .appendingPathComponent(protectedCacheFileName, isDirectory: false)
+    }
+
+    nonisolated private static func normalizedOwnerEmail(_ value: String?) -> String? {
+        guard let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !normalized.isEmpty else { return nil }
+        return normalized
+    }
+
+    nonisolated private static func normalizedOwnerAccountID(_ value: String?) -> String? {
+        guard let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalized.isEmpty else { return nil }
+        return normalized
+    }
+
+    nonisolated private static func isTransportAmbiguousStatus(_ statusCode: Int) -> Bool {
+        [408, 425, 429].contains(statusCode) || (500...599).contains(statusCode)
+    }
+
+    private static func isTransportUnavailable(_ error: Error) -> Bool {
+        if AuthManager.shared.hasProtectedOfflineAccess { return true }
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else { return false }
+        return [
+            URLError.notConnectedToInternet.rawValue,
+            URLError.networkConnectionLost.rawValue,
+            URLError.cannotConnectToHost.rawValue,
+            URLError.cannotFindHost.rawValue,
+            URLError.dnsLookupFailed.rawValue,
+            URLError.timedOut.rawValue,
+            URLError.internationalRoamingOff.rawValue,
+            URLError.dataNotAllowed.rawValue,
+            URLError.secureConnectionFailed.rawValue,
+            URLError.cannotLoadFromNetwork.rawValue,
+            URLError.resourceUnavailable.rawValue,
+            URLError.badServerResponse.rawValue,
+        ].contains(nsError.code)
     }
 }
 
@@ -1248,6 +1503,10 @@ struct CaptureCoachingHomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+
+                if client.isUsingProtectedCache {
+                    offlineSnapshotCard
+                }
 
                 if client.isCoach {
                     createCard
@@ -1452,6 +1711,22 @@ struct CaptureCoachingHomeView: View {
         .captureCard()
     }
 
+    private var offlineSnapshotCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Saved coaching snapshot", systemImage: "wifi.slash")
+                .font(.headline)
+            Text(
+                client.cachedSnapshotStatusLine
+                    ?? "You can review saved Sessions and time requests while Nest reconnects. Scheduling changes stay disabled so stale data cannot overwrite current plans."
+            )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .captureCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("CaptureCoachingOfflineSnapshot")
+    }
+
     private var clientWelcomeCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Your private client space", systemImage: "lock.shield.fill")
@@ -1480,7 +1755,7 @@ struct CaptureCoachingHomeView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(client.isMutating || model.usesPreviewData)
+            .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
             .accessibilityIdentifier("CaptureCoachingSetupButton")
         }
         .captureCard()
@@ -1512,7 +1787,7 @@ struct CaptureCoachingHomeView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(client.isMutating || model.usesPreviewData)
+                            .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
                             .accessibilityIdentifier("CaptureCoachingConfirmRequest_\(request.id)")
 
                             Button(role: .destructive) {
@@ -1521,7 +1796,7 @@ struct CaptureCoachingHomeView: View {
                                 Text("Decline")
                             }
                             .buttonStyle(.bordered)
-                            .disabled(client.isMutating || model.usesPreviewData)
+                            .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
                             .accessibilityIdentifier("CaptureCoachingDeclineRequest_\(request.id)")
                         }
                     }
@@ -1558,7 +1833,7 @@ struct CaptureCoachingHomeView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
-                        .disabled(client.isMutating || model.usesPreviewData)
+                        .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
                         .accessibilityIdentifier("CaptureCoachingCancelRequest_\(request.id)")
                     }
                     .captureCard()
@@ -1610,7 +1885,7 @@ struct CaptureCoachingHomeView: View {
                                     .frame(maxWidth: .infinity)
                                 }
                                 .buttonStyle(.bordered)
-                                .disabled(client.isMutating || model.usesPreviewData)
+                                .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
                                 .accessibilityIdentifier("CaptureCoachingRequestTime_\(offering.id)_\(slot.id)")
                             }
                         }
@@ -1648,6 +1923,7 @@ struct CaptureCoachingHomeView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(
                     client.isMutating
+                        || client.isUsingProtectedCache
                         || (model.usesPreviewData && !allowsPreviewSchedulingInspection)
                 )
                 .accessibilityIdentifier("CaptureCoachingNewAppointmentButton")
@@ -1658,7 +1934,7 @@ struct CaptureCoachingHomeView: View {
                     Label("Working hours", systemImage: "clock.badge.checkmark")
                 }
                 .buttonStyle(.bordered)
-                .disabled(client.isMutating)
+                .disabled(client.isMutating || client.isUsingProtectedCache)
                 .accessibilityIdentifier("CaptureCoachingWorkingHoursButton")
             }
         }
@@ -1810,7 +2086,7 @@ struct CaptureCoachingHomeView: View {
                                         .frame(maxWidth: .infinity)
                                 }
                                 .buttonStyle(.bordered)
-                                .disabled(client.isMutating || model.usesPreviewData)
+                                .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
                                 .accessibilityHint("Messages your coach without changing the appointment until they confirm it.")
                                 .accessibilityIdentifier("CaptureCoachingRequestChange_\(booking.id)")
                             }
@@ -1843,7 +2119,7 @@ struct CaptureCoachingHomeView: View {
             Label("Manage", systemImage: "ellipsis.circle")
         }
         .buttonStyle(.bordered)
-        .disabled(client.isMutating || model.usesPreviewData)
+        .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
         .accessibilityIdentifier("CaptureCoachingManage_\(booking.id)")
     }
 
@@ -1878,7 +2154,7 @@ struct CaptureCoachingHomeView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(client.isMutating || model.usesPreviewData)
+                    .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
                     .accessibilityHint("Sends this Session invitation to the client's email.")
                     .accessibilityIdentifier("CaptureCoachingSendInvite_\(booking.id)")
 
@@ -2865,6 +3141,7 @@ private struct MobileCoachingRescheduleSheet: View {
                     }
                     .disabled(
                         client.isMutating
+                            || client.isUsingProtectedCache
                             || scheduledStart <= Date()
                             || scheduleConflict != nil
                             || isOutsideWorkingHours
@@ -2996,6 +3273,7 @@ private struct NewMobileCoachingAppointmentSheet: View {
                     }
                     .disabled(
                         client.isMutating
+                            || client.isUsingProtectedCache
                             || !draft.isReady
                             || scheduleConflict != nil
                             || isOutsideWorkingHours
@@ -3117,6 +3395,7 @@ private struct MobileCoachingAvailabilitySheet: View {
                     }
                     .disabled(
                         client.isMutating
+                            || client.isUsingProtectedCache
                             || selectedDays.isEmpty
                             || endMinute <= startMinute
                     )

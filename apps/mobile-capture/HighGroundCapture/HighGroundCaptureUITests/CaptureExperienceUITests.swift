@@ -26,8 +26,12 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testSchedulingRespectsWorkingHoursBeforeSave") {
             app.launchArguments.append("--capture-availability-scheduling-preview")
         }
-        if name.contains("testClientCanSeePublishedTimesAndOwnPendingRequest") {
+        if name.contains("testClientCanSeePublishedTimesAndOwnPendingRequest")
+            || name.contains("testOfflineCoachingSnapshotIsClearlyReadOnly") {
             app.launchArguments.append("--capture-client-booking-preview")
+        }
+        if name.contains("testOfflineCoachingSnapshotIsClearlyReadOnly") {
+            app.launchArguments.append("--capture-coaching-offline-preview")
         }
         if name.contains("testCoachCanReviewIncomingTimeRequest") {
             app.launchArguments.append("--capture-coach-requests-preview")
@@ -235,6 +239,41 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.buttons["CaptureCoachingDeclineRequest_preview-booking-request"].exists,
             "The coach should have a conventional decline action beside confirmation."
+        )
+    }
+
+    func testOfflineCoachingSnapshotIsClearlyReadOnly() {
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+
+        let offlineSnapshot = app.staticTexts["Saved coaching snapshot"]
+        XCTAssertTrue(
+            offlineSnapshot.waitForExistence(timeout: 5),
+            "A restored scheduling projection must identify itself as saved, not current truth."
+        )
+        let offlineExplanation = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Scheduling actions are disabled")
+        ).firstMatch
+        XCTAssertTrue(
+            offlineExplanation.exists,
+            "The offline explanation should make the read-only boundary explicit."
+        )
+
+        let pendingRequest = app.descendants(matching: .any)[
+            "CaptureCoachingClientRequest_preview-booking-request"
+        ]
+        reveal(pendingRequest)
+        XCTAssertTrue(
+            pendingRequest.exists,
+            "A client should retain evidence of their pending request during a temporary outage."
+        )
+        let cancel = app.buttons["CaptureCoachingCancelRequest_preview-booking-request"]
+        reveal(cancel)
+        XCTAssertTrue(cancel.exists)
+        XCTAssertFalse(
+            cancel.isEnabled,
+            "Cached scheduling must never issue a mutation until authoritative Nest state returns."
         )
     }
 

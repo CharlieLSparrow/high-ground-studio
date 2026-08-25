@@ -367,6 +367,7 @@ function checkMeetingSpineContractSources() {
   );
   const episodeChatText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileEpisodeChat.swift");
   const coachingHomeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureCoachingHome.swift");
+  const captureExperienceUITestText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift");
   const nestChatRouteText = sourceText("apps/quipsly/src/app/api/nest-chat/route.ts");
   const sessionConversationText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileSessionConversation.swift");
   const liveKitEgressText = sourceText("apps/quipsly/src/lib/server/coaching-livekit-egress.ts");
@@ -418,6 +419,20 @@ function checkMeetingSpineContractSources() {
       && coachingHomeText.includes("CaptureCoachingCancelRequest_"),
     "nativeCoachingSelfSchedulingParity",
     "Capture lists only the server's published public times, authenticates client request mutations, lets a client cancel their own request, and gives the assigned coach explicit confirm or decline actions on iPhone.",
+  );
+  expect(
+    coachingHomeText.includes("ProtectedCoachingRunwayCache")
+      && coachingHomeText.includes("ownerAccountID == ownerAccountID")
+      && coachingHomeText.includes("ownerEmail == ownerEmail")
+      && coachingHomeText.includes(".completeFileProtection")
+      && coachingHomeText.includes("isExcludedFromBackup = true")
+      && coachingHomeText.includes("allowOfflineRecovery: true")
+      && coachingHomeText.includes("Scheduling actions are disabled until Nest reconnects.")
+      && coachingHomeText.includes("guard !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed")
+      && coachingHomeText.includes("CaptureCoachingOfflineSnapshot")
+      && captureExperienceUITestText.includes("testOfflineCoachingSnapshotIsClearlyReadOnly"),
+    "nativeCoachingRequestReadbackIsProtectedAndReadOnlyOffline",
+    "Capture preserves an account-partitioned, file-protected request snapshot across relaunch while clearly marking it stale and refusing scheduling mutations until authoritative Nest state returns.",
   );
   expect(
     coachingHomeText.includes("var coachLabel: String")
