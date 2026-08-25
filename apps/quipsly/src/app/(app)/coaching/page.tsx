@@ -136,6 +136,7 @@ type CoachingRunway = {
     name: string | null;
     isStaff: boolean;
     isCoach?: boolean;
+    isClient?: boolean;
   };
   boundaries?: {
     stripeScope: string;
@@ -1721,6 +1722,40 @@ export default function CoachingPage() {
     }
   }
 
+  async function cancelClientBookingRequest(holdId: string) {
+    if (!window.confirm("Cancel this coaching time request?")) return;
+    setHoldBusyById((current) => ({ ...current, [holdId]: true }));
+    setHoldStatusById((current) => ({
+      ...current,
+      [holdId]: "Canceling your request…",
+    }));
+    try {
+      const response = await fetch(
+        `/api/coaching/booking-requests?holdId=${encodeURIComponent(holdId)}`,
+        { method: "DELETE" },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "That request could not be canceled.");
+      }
+      setHoldStatusById((current) => ({
+        ...current,
+        [holdId]: payload.nextAction || "Time request canceled.",
+      }));
+      await loadRunway();
+    } catch (cause) {
+      setHoldStatusById((current) => ({
+        ...current,
+        [holdId]:
+          cause instanceof Error
+            ? cause.message
+            : "That request could not be canceled.",
+      }));
+    } finally {
+      setHoldBusyById((current) => ({ ...current, [holdId]: false }));
+    }
+  }
+
   async function convertBookingHold(holdId: string) {
     setHoldBusyById((current) => ({ ...current, [holdId]: true }));
     setHoldStatusById((current) => ({
@@ -2008,8 +2043,10 @@ export default function CoachingPage() {
   const isStaff = runway?.user?.isStaff === true;
   const canManageCoaching = isStaff || runway?.user?.isCoach === true;
   const isCoachingClient = Boolean(
-    runway?.user?.id &&
-    bookings.some((booking) => booking.clientUserId === runway.user?.id),
+    runway?.user?.isClient ||
+      (runway?.user?.id &&
+        (bookings.some((booking) => booking.clientUserId === runway.user?.id) ||
+          bookingHolds.some((hold) => hold.client?.id === runway.user?.id))),
   );
   const isClientOnly = isCoachingClient && !canManageCoaching;
   const canScheduleCoaching = Boolean(runway?.user) && !isClientOnly;
@@ -2036,6 +2073,10 @@ export default function CoachingPage() {
   const nextBooking = bookings.find(
     (booking) => !["CANCELED", "COMPLETED", "NO_SHOW"].includes(booking.status),
   );
+  const nextClientHold = bookingHolds.find(
+    (hold) =>
+      hold.status === "ACTIVE" && new Date(hold.expiresAt).getTime() > Date.now(),
+  );
   const journeyAction = (() => {
     if (!canManageCoaching && !isClientOnly) {
       return {
@@ -2054,6 +2095,15 @@ export default function CoachingPage() {
         detail: `${formatDateTime(nextBooking.scheduledStart)} · ${nextBooking.timezone}. Check your devices, review consent, and join from the private room.`,
         label: "Open my session",
         href: nextBooking.liveSessionPath,
+      };
+    }
+    if (isClientOnly && nextClientHold) {
+      return {
+        eyebrow: "Time requested",
+        title: nextClientHold.offeringTitle || "Coaching session",
+        detail: `${formatDateTime(nextClientHold.scheduledStart)} · ${nextClientHold.timezone}. Your coach confirms next; you do not need to configure anything yet.`,
+        label: "View my request",
+        href: "#my-time-requests",
       };
     }
     if (nextRoom?.packetSummaryNoteId) {
@@ -2085,6 +2135,16 @@ export default function CoachingPage() {
         href: nextBooking.liveSessionPath,
       };
     }
+    if (isClientOnly) {
+      return {
+        eyebrow: "Coaching",
+        title: "No session is scheduled yet",
+        detail:
+          "Choose an open time from a coach’s Quipsly booking page, or return here after your coach sends an invitation.",
+        label: "Find a time",
+        href: "/public/coaching",
+      };
+    }
     return {
       eyebrow: "Start here",
       title: "Schedule your first coaching session",
@@ -2102,16 +2162,17 @@ export default function CoachingPage() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-[#b98036]">
-                Quipsly coaching runway
+                {isClientOnly ? "Quipsly coaching" : "Quipsly coaching runway"}
               </p>
               <h1 className="max-w-3xl text-4xl font-black leading-tight text-[#3d3122]">
-                Schedule the next session. Quipsly keeps the rest together.
+                {isClientOnly
+                  ? "Your coaching, without the admin maze."
+                  : "Schedule the next session. Quipsly keeps the rest together."}
               </h1>
               <p className="mt-3 max-w-3xl text-[#7b5c3b]">
-                Coaches get one calm place to create sessions, invite clients,
-                record only after consent, and review follow-up. Clients get the
-                simple version: time, consent, join, shared notes, goals, and
-                tasks. Payment stays optional while a coach is getting started.
+                {isClientOnly
+                  ? "See your requested time, open the private Session when it is confirmed, and keep shared notes, goals, and tasks in one place."
+                  : "Coaches get one calm place to create sessions, invite clients, record only after consent, and review follow-up. Clients get the simple version: time, consent, join, shared notes, goals, and tasks. Payment stays optional while a coach is getting started."}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -2240,6 +2301,61 @@ export default function CoachingPage() {
 
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-8 pb-10 xl:grid-cols-[1.5fr_0.95fr]">
         <section className="space-y-6">
+          {isClientOnly && bookingHolds.length > 0 ? (
+            <div
+              id="my-time-requests"
+              className="scroll-mt-6 rounded-[1.7rem] border border-violet-200 bg-violet-50/85 p-6 shadow-sm"
+            >
+              <h2 className="flex items-center gap-2 text-2xl font-black text-violet-950">
+                <Clock className="text-violet-700" /> My time requests
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-violet-900/75">
+                Your coach sees the same request. A private Session appears after
+                they confirm it.
+              </p>
+              <div className="mt-4 space-y-3">
+                {bookingHolds.slice(0, 8).map((hold) => (
+                  <div
+                    key={hold.id}
+                    className="rounded-2xl border border-violet-200 bg-white p-4"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="font-black text-[#3d3122]">
+                          {hold.offeringTitle || "Coaching session"}
+                        </h3>
+                        <p className="mt-1 text-sm font-semibold text-[#6f5c42]">
+                          {formatDateTime(hold.scheduledStart)} · {hold.timezone}
+                        </p>
+                        <p className="mt-1 text-xs text-[#7b5c3b]">
+                          With {hold.coach?.name || "your coach"}
+                        </p>
+                      </div>
+                      <StatusPill label={normalize(hold.status)} tone={holdTone(hold.status)} />
+                    </div>
+                    <p className="mt-3 text-sm font-semibold leading-6 text-[#6f5c42]">
+                      {hold.nextAction}
+                    </p>
+                    {holdStatusById[hold.id] ? (
+                      <p role="status" className="mt-3 rounded-xl bg-violet-100 p-3 text-xs font-bold text-violet-900">
+                        {holdStatusById[hold.id]}
+                      </p>
+                    ) : null}
+                    {hold.status === "ACTIVE" ? (
+                      <button
+                        type="button"
+                        disabled={holdBusyById[hold.id]}
+                        onClick={() => void cancelClientBookingRequest(hold.id)}
+                        className="mt-3 text-xs font-black text-rose-700 underline decoration-rose-300 underline-offset-4 disabled:opacity-50"
+                      >
+                        {holdBusyById[hold.id] ? "Canceling…" : "Cancel request"}
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {isStaff ? (
             <details className="rounded-[1.7rem] border border-sky-200 bg-sky-50/70 p-5 shadow-sm">
               <summary className="cursor-pointer text-sm font-black uppercase tracking-[0.14em] text-sky-800">
@@ -2564,9 +2680,9 @@ export default function CoachingPage() {
             <div className="space-y-3">
               {bookings.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-[#d6c5a5] bg-[#fffaf1] p-5 text-[#7b5c3b]">
-                  No sessions are scheduled yet. Create the first one below;
-                  Quipsly will prepare the private room and the invitation you
-                  send to your client.
+                  {isClientOnly
+                    ? "No Session is confirmed yet. Your requested time appears above while the coach reviews it."
+                    : "No sessions are scheduled yet. Create the first one below; Quipsly will prepare the private room and the invitation you send to your client."}
                 </div>
               ) : (
                 bookings.map((booking) => {

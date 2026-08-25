@@ -21,6 +21,12 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 function addMinutes(value: Date, minutes: number) {
   return new Date(value.getTime() + minutes * 60_000);
 }
@@ -245,6 +251,86 @@ export async function POST(request: Request) {
       },
       { status: result.repeated ? 200 : 201 },
     );
+  } catch (error) {
+    return bookingRequestError(error);
+  }
+}
+
+export async function DELETE(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+  if (!session?.user?.id) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Sign in before canceling a coaching request.",
+        code: "SIGN_IN_REQUIRED",
+      },
+      { status: 401 },
+    );
+  }
+  const holdId = text(new URL(request.url).searchParams.get("holdId"));
+  if (!holdId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Choose a coaching request to cancel.",
+        code: "COACHING_REQUEST_REQUIRED",
+      },
+      { status: 400 },
+    );
+  }
+
+  const prisma = getPrismaClient() as any;
+  try {
+    const result = await prisma.$transaction(async (tx: any) => {
+      await acquirePrismaAdvisoryTransactionLock(
+        tx,
+        `quipsly:coaching-client-request:${session.user.id}`,
+      );
+      const hold = await tx.bookingHold.findFirst({
+        where: { id: holdId, clientUserId: session.user.id },
+        select: { id: true, status: true, metadataJson: true },
+      });
+      if (!hold) {
+        throw new BookingRequestError(
+          "That coaching request was not found.",
+          404,
+          "COACHING_REQUEST_NOT_FOUND",
+        );
+      }
+      if (hold.status === "CANCELED") {
+        return { holdId: hold.id, repeated: true };
+      }
+      if (hold.status !== "ACTIVE") {
+        throw new BookingRequestError(
+          "That request can no longer be canceled because its status has changed.",
+          409,
+          "COACHING_REQUEST_NOT_ACTIVE",
+        );
+      }
+      await tx.bookingHold.update({
+        where: { id: hold.id },
+        data: {
+          status: "CANCELED",
+          metadataJson: {
+            ...record(hold.metadataJson),
+            source: "quipsly-client-self-scheduling",
+            requestKind: "client-booking-hold",
+            canceledByUserId: session.user.id,
+            canceledAt: new Date().toISOString(),
+            externalCalendarMutated: false,
+            externalInviteSent: false,
+            paymentMutated: false,
+          },
+        },
+      });
+      return { holdId: hold.id, repeated: false };
+    });
+    return NextResponse.json({
+      ok: true,
+      request: { holdId: result.holdId, status: "CANCELED", repeated: result.repeated },
+      nextAction: "Time request canceled. No calendar event, payment, call, or recording was changed.",
+    });
   } catch (error) {
     return bookingRequestError(error);
   }

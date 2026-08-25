@@ -1176,6 +1176,7 @@ export async function GET(request: Request) {
       name: session.user.name,
       isStaff: session.user.isStaff,
       isCoach: coachProfiles.length > 0,
+      isClient: session.user.roles.includes("CLIENT"),
     },
     generatedAt: new Date().toISOString(),
     boundaries: {

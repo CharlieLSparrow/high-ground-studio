@@ -332,6 +332,8 @@ for (const [label, needle] of [
   ["client request no calendar side effect", "externalCalendarCreated: false"],
   ["client request no invite side effect", "externalInviteSent: false"],
   ["client request no payment side effect", "paymentCreated: false"],
+  ["client-owned request cancellation", "export async function DELETE"],
+  ["client cancellation owner scope", "clientUserId: session.user.id"],
 ]) {
   requireIncludes(texts.quipslyBookingRequests, needle, label, files.quipslyBookingRequests);
 }
@@ -340,8 +342,17 @@ for (const [label, needle] of [
   ["runway public booking action", '"update-public-booking"'],
   ["runway public booking owner scope", "coachProfileId: actingCoachProfile?.id"],
   ["runway public booking explicit flag", "publicBookingEnabled: enabled"],
+  ["runway client role projection", 'isClient: session.user.roles.includes("CLIENT")'],
 ]) {
   requireIncludes(texts.quipslyCoachingRunway, needle, label, files.quipslyCoachingRunway);
+}
+
+for (const [label, needle] of [
+  ["client request home", "My time requests"],
+  ["client request cancellation affordance", "cancelClientBookingRequest"],
+  ["client coaching plain heading", "Your coaching, without the admin maze."],
+]) {
+  requireIncludes(texts.quipslyCoachingPage, needle, label, files.quipslyCoachingPage);
 }
 
 for (const [label, needle] of [

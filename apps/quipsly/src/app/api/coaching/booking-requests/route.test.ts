@@ -5,7 +5,7 @@ import { assertCoachingScheduleAvailable } from "@/lib/server/coaching-schedule-
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
-import { POST } from "./route";
+import { DELETE, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({
@@ -47,6 +47,13 @@ function request(body: Record<string, unknown>) {
   });
 }
 
+function deleteRequest(holdId = "hold-1") {
+  return new Request(
+    `https://nest.quipsly.com/api/coaching/booking-requests?holdId=${encodeURIComponent(holdId)}`,
+    { method: "DELETE" },
+  );
+}
+
 function prismaFor(input?: { existing?: any; activeCount?: number }) {
   const hold = {
     id: "hold-1",
@@ -63,6 +70,7 @@ function prismaFor(input?: { existing?: any; activeCount?: number }) {
       findFirst: jest.fn().mockResolvedValue(input?.existing || null),
       count: jest.fn().mockResolvedValue(input?.activeCount || 0),
       create: jest.fn().mockResolvedValue(hold),
+      update: jest.fn().mockResolvedValue({}),
     },
   };
   const prisma = {
@@ -168,5 +176,36 @@ describe("client coaching booking requests", () => {
     expect(payload.code).toBe("COACHING_REQUEST_LIMIT");
     expect(tx.bookingHold.create).not.toHaveBeenCalled();
     expect(assertCoachingScheduleAvailable).not.toHaveBeenCalled();
+  });
+
+  it("lets only the owning client cancel an active request without external mutations", async () => {
+    const { tx } = prismaFor();
+    tx.bookingHold.findFirst.mockResolvedValue({
+      id: "hold-1",
+      status: "ACTIVE",
+      metadataJson: { retained: true },
+    });
+    const response = await DELETE(deleteRequest());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.request).toMatchObject({ holdId: "hold-1", status: "CANCELED" });
+    expect(tx.bookingHold.findFirst).toHaveBeenCalledWith({
+      where: { id: "hold-1", clientUserId: actor.id },
+      select: { id: true, status: true, metadataJson: true },
+    });
+    expect(tx.bookingHold.update).toHaveBeenCalledWith({
+      where: { id: "hold-1" },
+      data: expect.objectContaining({
+        status: "CANCELED",
+        metadataJson: expect.objectContaining({
+          retained: true,
+          canceledByUserId: actor.id,
+          externalCalendarMutated: false,
+          externalInviteSent: false,
+          paymentMutated: false,
+        }),
+      }),
+    });
   });
 });

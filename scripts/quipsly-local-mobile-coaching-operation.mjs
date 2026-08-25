@@ -230,6 +230,44 @@ async function publicPage(origin, path) {
   return { status: response.status, body: await response.text() };
 }
 
+async function proveClientCoachingHome({ origin, idToken, offeringTitle }) {
+  const sessionResponse = await fetch(`${origin}/api/auth/session`, {
+    method: "POST",
+    signal: AbortSignal.timeout(30_000),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ idToken }),
+  });
+  const sessionBody = await sessionResponse.json().catch(() => null);
+  assert(
+    sessionResponse.status === 200 && sessionBody?.success === true,
+    "The client browser session could not be created.",
+  );
+  const cookieMatch = sessionResponse.headers.get("set-cookie")?.match(/(?:^|,\s*)session=([^;]+)/);
+  assert(cookieMatch?.[1], "The client browser session did not return its session cookie.");
+
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext();
+  try {
+    await context.addCookies([
+      { name: "session", value: cookieMatch[1], url: origin },
+    ]);
+    const page = await context.newPage();
+    await page.goto(`${origin}/coaching`, { waitUntil: "domcontentloaded" });
+    await page.getByText("Your coaching, without the admin maze.").waitFor({ timeout: 15_000 });
+    await page.getByRole("heading", { name: "My time requests" }).waitFor({ timeout: 15_000 });
+    await page.getByText(offeringTitle, { exact: true }).first().waitFor({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Cancel request" }).waitFor({ timeout: 15_000 });
+    return {
+      clientModeRendered: true,
+      requestRendered: true,
+      cancelAffordanceRendered: true,
+    };
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
 async function main() {
   assert(
     process.env.QUIPSLY_LOCAL_MOBILE_COACHING_OPERATION === "1",
@@ -497,6 +535,11 @@ async function main() {
       ),
       "The client's private runway omitted their own booking request.",
     );
+    const clientHomeProof = await proveClientCoachingHome({
+      origin,
+      idToken: clientToken,
+      offeringTitle: publicOffering.title,
+    });
 
     const [coachJoin, clientJoin] = await Promise.all([
       api(origin, coachToken, "/api/mobile/capture/rooms/join", {
@@ -526,6 +569,26 @@ async function main() {
     assert(clientJoin.body?.providerReadiness === "livekit-ready", "Client provider was not ready.");
 
     const providerProof = await proveProviderRoom({ origin, coachJoin, clientJoin });
+
+    const canceledClientRequest = await api(
+      origin,
+      clientToken,
+      `/api/coaching/booking-requests?holdId=${encodeURIComponent(clientRequest.body.request.holdId)}`,
+      { method: "DELETE" },
+    );
+    assert(
+      canceledClientRequest.status === 200 &&
+        canceledClientRequest.body?.request?.status === "CANCELED",
+      "The client could not cancel their own time request.",
+    );
+    const clientAfterCancel = await api(origin, clientToken, "/api/coaching/runway");
+    assert(
+      clientAfterCancel.body?.bookingHolds?.some(
+        (hold) =>
+          hold.id === clientRequest.body.request.holdId && hold.status === "CANCELED",
+      ),
+      "The canceled client request did not remain visible as history.",
+    );
 
     const hidePublicBooking = await api(origin, coachToken, "/api/coaching/runway", {
       method: "POST",
@@ -574,7 +637,10 @@ async function main() {
       clientSelfSchedulingCreatedHold: clientRequest.body?.request?.status === "ACTIVE",
       repeatedClientRequestWasIdempotent: repeatedClientRequest.body?.request?.repeated === true,
       clientAndCoachHoldReadback: true,
+      clientCouldCancelOwnRequest: true,
+      canceledRequestRetainedAsHistory: true,
       testOfferingReturnedPrivate: true,
+      clientHomeProof,
       providerProof,
       consentStarted: false,
       recordingStarted: false,
