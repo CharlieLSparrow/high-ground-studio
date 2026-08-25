@@ -4636,10 +4636,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.scrollViews["CaptureCoachFollowUpReviewView"].waitForExistence(timeout: 8),
             "The private follow-up editor should open as a bounded workspace instead of expanding inside the recorder timeline."
         )
+        let deliveryBoundary = app.staticTexts["CaptureCoachFollowUpDeliveryBoundary"].firstMatch
         XCTAssertTrue(
-            app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS %@", "never emails, texts, publishes, schedules, bills, changes consent")
-            ).firstMatch.exists
+            waitForRuntimeElement(deliveryBoundary, in: app, timeout: 12, swipeAttempts: 10),
+            "The follow-up editor should state its ordinary in-app sharing boundary without implying an external send."
+        )
+        XCTAssertTrue(
+            deliveryBoundary.label.localizedCaseInsensitiveContains("does not send an email or message")
         )
 
         let titleField = app.descendants(matching: .any)["CaptureCoachFollowUpTitle"].firstMatch
@@ -4748,7 +4751,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["RETAINED SHARED MARKER: room visibility is not follow-up consent."].exists)
         XCTAssertFalse(app.staticTexts["RETAINED UNREVIEWED MARKER"].exists)
 
-        let openState = app.descendants(matching: .any)["CaptureClientFollowUpOpenState_\(outputID)"].firstMatch
+        let openState = app.staticTexts["CaptureClientFollowUpOpenState_\(outputID)"].firstMatch
         let receipt = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "label CONTAINS %@", "Viewed"),
             object: openState

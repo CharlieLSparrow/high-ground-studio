@@ -528,17 +528,17 @@ private struct MobileClientFollowUpSnapshot: View {
             HStack(spacing: 8) {
                 StatusChip(
                     label: followUp.status == "DRAFT" ? "Draft" : "Shared",
-                    tint: followUp.status == "DRAFT" ? .orange : .green
+                    tint: followUp.status == "DRAFT" ? .orange : .green,
+                    accessibilityIdentifier: "CaptureClientFollowUpSnapshot_\(followUp.id)_r\(followUp.revision)"
                 )
                 if followUp.status == "RELEASED" {
                     StatusChip(
                         label: followUp.openedAt == nil ? "New" : "Viewed",
-                        tint: followUp.openedAt == nil ? .orange : .green
+                        tint: followUp.openedAt == nil ? .orange : .green,
+                        accessibilityIdentifier: "CaptureClientFollowUpOpenState_\(followUp.id)"
                     )
-                    .accessibilityIdentifier("CaptureClientFollowUpOpenState_\(followUp.id)")
                 }
             }
-            .accessibilityIdentifier("CaptureClientFollowUpSnapshot_\(followUp.id)_r\(followUp.revision)")
 
             Text(followUp.title)
                 .font(.headline)
@@ -1022,6 +1022,7 @@ struct MobileCoachClientFollowUpCard: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("CaptureCoachFollowUpDeliveryBoundary")
                         }
                         .padding(16)
                     }
@@ -1046,6 +1047,56 @@ struct MobileCoachClientFollowUpCard: View {
                     loadedWorkspaceVersion = workspaceVersion
                 }
             }
+        }
+    }
+}
+
+struct MobileClientFollowUpLoadingCard: View {
+    let state: MobileCaptureClientFollowUpLoadState
+    let retry: () -> Void
+
+    var body: some View {
+        switch state {
+        case .idle, .loading:
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Checking follow-up")
+                        .font(.subheadline.bold())
+                    Text("Looking for notes, tasks, goals, and next steps")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .background(Color.teal.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("CaptureClientFollowUpLoading")
+        case .failed:
+            Button(action: retry) {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.clockwise.circle")
+                        .foregroundStyle(.teal)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Follow-up couldn't load")
+                            .font(.subheadline.bold())
+                        Text("Tap to try again. Your Session and recording controls are still available.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(10)
+            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityIdentifier("CaptureClientFollowUpRetry")
+            .accessibilityHint("Retries the private follow-up check without changing the Session.")
+        case .loaded, .unavailable:
+            EmptyView()
         }
     }
 }
@@ -1089,13 +1140,24 @@ private struct MobileCoachFollowUpSelectionSection: View {
 struct StatusChip: View {
     let label: String
     let tint: Color
+    var accessibilityIdentifier: String? = nil
 
+    @ViewBuilder
     var body: some View {
+        if let accessibilityIdentifier {
+            content
+                .accessibilityIdentifier(accessibilityIdentifier)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         Text(label)
-            .font(.caption2.bold())
-            .foregroundStyle(tint)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(tint.opacity(0.14), in: Capsule())
+                .font(.caption2.bold())
+                .foregroundStyle(tint)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(tint.opacity(0.14), in: Capsule())
     }
 }

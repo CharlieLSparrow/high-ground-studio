@@ -6479,6 +6479,37 @@ private struct CaptureRecorderView: View {
                     )
                     .captureCard()
 
+                    // The shared coaching outcome is a primary Session action,
+                    // not a diagnostic buried beneath capture recovery details.
+                    // Keep a stable near-field slot while the focused request
+                    // resolves so the card cannot jump out from under a person
+                    // (or an assistive-technology cursor) after selection.
+                    if session.clientFollowUpWorkspace?.isCoach == true {
+                        MobileCoachClientFollowUpCard(
+                            session: session,
+                            sessionClient: model.sessionClient,
+                            previewOnly: model.usesPreviewData
+                        )
+                    } else if session.clientFollowUp != nil {
+                        MobileClientFollowUpCard(
+                            session: session,
+                            sessionClient: model.sessionClient,
+                            previewOnly: model.usesPreviewData
+                        )
+                    } else if session.isCoachingSession {
+                        MobileClientFollowUpLoadingCard(
+                            state: model.sessionClient.clientFollowUpLoadState(
+                                forSessionID: session.id
+                            )
+                        ) {
+                            Task {
+                                await model.sessionClient.refreshClientFollowUp(
+                                    forSessionID: session.id
+                                )
+                            }
+                        }
+                    }
+
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
                         || audioCapture.activeSessionID == session.id
@@ -6903,20 +6934,6 @@ private struct CaptureRecorderView: View {
                             }
                             model.select(sourceSession)
                         }
-                    }
-
-                    if session.clientFollowUpWorkspace?.isCoach == true {
-                        MobileCoachClientFollowUpCard(
-                            session: session,
-                            sessionClient: model.sessionClient,
-                            previewOnly: model.usesPreviewData
-                        )
-                    } else if session.clientFollowUp != nil {
-                        MobileClientFollowUpCard(
-                            session: session,
-                            sessionClient: model.sessionClient,
-                            previewOnly: model.usesPreviewData
-                        )
                     }
 
                     if let engagementURL = session.coachingEngagementURL(

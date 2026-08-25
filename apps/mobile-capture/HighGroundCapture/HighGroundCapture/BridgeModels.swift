@@ -6973,6 +6973,14 @@ final class CaptureWorkClient: ObservableObject {
     }
 }
 
+enum MobileCaptureClientFollowUpLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case unavailable
+    case failed(String)
+}
+
 @MainActor
 final class CaptureSessionClient: ObservableObject {
     @Published var sessions: [MobileCaptureSession] = []
@@ -6986,6 +6994,7 @@ final class CaptureSessionClient: ObservableObject {
     @Published var latestRoomStateResponse: MobileCaptureRoomStateResponse?
     @Published var latestTranscriptRunResponse: MobileCaptureTranscriptRunResponse?
     @Published var latestPacketBuildResponse: MobileCapturePacketBuildResponse?
+    @Published private(set) var clientFollowUpLoadStates: [String: MobileCaptureClientFollowUpLoadState] = [:]
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
 
@@ -7015,6 +7024,10 @@ final class CaptureSessionClient: ObservableObject {
 
     var sessionsAreStale: Bool {
         isUsingCachedSessions
+    }
+
+    func clientFollowUpLoadState(forSessionID sessionID: String) -> MobileCaptureClientFollowUpLoadState {
+        clientFollowUpLoadStates[sessionID] ?? .idle
     }
 
     var cachedSessionStatusLine: String? {
@@ -7073,6 +7086,9 @@ final class CaptureSessionClient: ObservableObject {
             }
 
             sessions = payload.sessions ?? []
+            clientFollowUpLoadStates = clientFollowUpLoadStates.filter { entry in
+                sessions.contains(where: { $0.id == entry.key })
+            }
             captureProjects = payload.captureProjects ?? []
             coachingEngagements = payload.coachingEngagements ?? []
             isUsingCachedSessions = false
@@ -7130,6 +7146,7 @@ final class CaptureSessionClient: ObservableObject {
         sessions = []
         captureProjects = []
         coachingEngagements = []
+        clientFollowUpLoadStates = [:]
         isUsingCachedSessions = false
         cachedSessionsSavedAt = nil
     }
@@ -8482,6 +8499,7 @@ final class CaptureSessionClient: ObservableObject {
             return
         }
 
+        clientFollowUpLoadStates[sessionID] = .loading
         do {
             var request = URLRequest(
                 url: url,
@@ -8497,6 +8515,7 @@ final class CaptureSessionClient: ObservableObject {
                 refreshedSession.clientFollowUp = nil
                 refreshedSession.clientFollowUpWorkspace = nil
                 sessions[currentIndex] = refreshedSession
+                clientFollowUpLoadStates[sessionID] = .unavailable
                 persistProtectedSessionCache()
                 return
             }
@@ -8520,9 +8539,12 @@ final class CaptureSessionClient: ObservableObject {
             refreshedSession.clientFollowUp = payload.releasedClientFollowUp
             refreshedSession.clientFollowUpWorkspace = payload.workspace
             sessions[currentIndex] = refreshedSession
+            clientFollowUpLoadStates[sessionID] = .loaded
             persistProtectedSessionCache()
         } catch {
-            errorMessage = "Session loaded, but its private follow-up could not be refreshed: \(error.localizedDescription)"
+            let message = error.localizedDescription
+            clientFollowUpLoadStates[sessionID] = .failed(message)
+            errorMessage = "Session loaded, but its private follow-up could not be refreshed: \(message)"
         }
     }
 
