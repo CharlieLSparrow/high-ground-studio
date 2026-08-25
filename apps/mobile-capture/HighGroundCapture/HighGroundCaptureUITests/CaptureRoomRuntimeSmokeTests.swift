@@ -2263,8 +2263,19 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         let exactSource = app.descendants(matching: .any)["CaptureTranscriptExactSourceMatch"].firstMatch
         let reviewOnly = app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].firstMatch
+        let sourceTruthAvailable = waitForRuntimeElementAbove(
+            exactSource,
+            in: app,
+            timeout: 8,
+            swipeAttempts: 6
+        ) || waitForRuntimeElementAbove(
+            reviewOnly,
+            in: app,
+            timeout: 8,
+            swipeAttempts: 6
+        )
         XCTAssertTrue(
-            exactSource.exists || reviewOnly.exists,
+            sourceTruthAvailable,
             "Transcript review must state whether this installation holds the exact local recording."
         )
         attachRecordingIdentity("\(sessionID):\(taskID)", name: "Fresh transcript task phone readback")
