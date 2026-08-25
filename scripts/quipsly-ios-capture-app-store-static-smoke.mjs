@@ -960,7 +960,10 @@ for (const needle of [
   "CaptureRecordingModePicker",
   "CaptureRehearsalReadinessCard",
   "CaptureConsentConfirmationSheet",
-  "Review what this Session will record, then agree once.",
+  "Record this Session?",
+  "Everyone agrees once. Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.",
+  "Allow recording",
+  "Recording options",
   "Setup needed",
   "Button(\"Cancel\")",
   "Revoke",
@@ -1044,7 +1047,10 @@ for (const needle of [
   "CaptureVideoPauseResumeButton",
   "CaptureVideoSwitchCameraButton",
   "Podcast camera",
-  "Review what this Session will record, then agree once.",
+  "Record this Session?",
+  "Everyone agrees once. Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.",
+  "Allow recording",
+  "Recording options",
   "transcriptionConsentGrantedParticipantCount",
   "the transcript waits for everyone to enable it",
   "model.providerControlsLockedForLocalCapture",
@@ -1706,9 +1712,9 @@ requireIncludes(captureExperienceModelText, "await dismissRoomCameraPreview(usin
 requireIncludes(capturePhoneShellText, ".onChange(of: visibleTab)", "leaving Record closes an unjoined call-camera preview instead of leaving hidden capture active");
 requireIncludes(capturePhoneShellText, "!model.ownsRoomCameraPreview", "recording-mode preferences do not silently repurpose the active call-lobby camera graph");
 requireIncludes(capturePhoneShellText, "if microphonePermissionNeedsRecovery", "shipping call entry does not lead a valid muted join with microphone Settings paperwork");
-requireIncludes(capturePhoneShellText, '.localizedCaseInsensitiveContains("microphone access") == true', "a connected muted participant sees Settings recovery only after an explicit blocked microphone action");
+requireIncludes(capturePhoneShellText, "return !joinMuted && model.providerRoom.isMuted", "a connected participant sees microphone Settings recovery only when speaking was requested but the provider remained muted");
 requireIncludes(captureExperienceModelText, "if useCallAudio && !joinMuted", "a muted iPhone join defers microphone permission until the person chooses to speak");
-requireIncludes(captureExperienceModelText, "joinMuted: joinMuted", "the native join carries the microphone choice independently from call-audio routing");
+requireIncludes(captureExperienceModelText, "joinMuted: effectiveJoinMuted", "the native join carries the requested or permission-fallback microphone choice independently from call-audio routing");
 requireIncludes(providerRoomText, "ConnectOptions(autoSubscribe: useCallAudio)", "native companion mode does not subscribe to remote call media");
 requireIncludes(providerRoomText, "enabled: useCallAudio && !joinMuted", "native primary endpoints can subscribe to the conversation while joining with microphone publication off");
 requireIncludes(providerRoomText, 'prepareMicrophonePermission(action: "speak in the call")', "the first explicit Unmute action becomes the deferred microphone permission boundary");

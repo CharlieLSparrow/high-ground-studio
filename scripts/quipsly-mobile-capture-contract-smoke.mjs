@@ -1282,6 +1282,7 @@ function checkTranscriptCorrectionContractSources() {
   const nestDashboardText = sourceText("apps/quipsly/src/app/(app)/nests/[slug]/page.tsx");
   const nestFollowThroughText = sourceText("apps/quipsly/src/lib/server/nest-project-follow-through.ts");
   const workspaceSearchText = sourceText("apps/quipsly/src/lib/server/workspace-search.ts");
+  const taskAccessText = sourceText("apps/quipsly/src/lib/server/task-access.ts");
   const workspaceSearchPageText = sourceText("apps/quipsly/src/app/(app)/find/page.tsx");
   const tagSearchChipsText = sourceText("apps/quipsly/src/components/tag-search-chips.tsx");
   const researchLibraryModelText = sourceText("apps/quipsly/src/app/(app)/research/research-library-model.ts");
@@ -2428,7 +2429,11 @@ function checkTranscriptCorrectionContractSources() {
     "A Nest shows actor-scoped owned goals and accepted canonical tasks with same-ID Work navigation and exact transcript return.",
   );
   expect(
-    workspaceSearchText.includes("taskAccessWhere")
+    workspaceSearchText.includes("personalOrSharedWorkspaceTaskAccessWhere")
+      && taskAccessText.includes("export function personalOrSharedWorkspaceTaskAccessWhere")
+      && taskAccessText.includes("{ assignedUserId: userId }")
+      && taskAccessText.includes("{ assignedUserId: null, projectId: { in: projectIds } }")
+      && taskAccessText.includes("assignedUserId: null")
       && workspaceSearchText.includes("roomAccessWhere")
       && workspaceSearchText.includes("isUnreviewedTranscriptActionItem")
       && workspaceSearchText.includes("createdByUserId: input.actorUserId")
