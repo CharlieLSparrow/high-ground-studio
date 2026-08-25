@@ -183,6 +183,7 @@ final class MobileEpisodeChatClient: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var accountCancellable: AnyCancellable?
     private var pendingMessageBody: String?
+    private var pendingMessageSchedulingEvidence: String?
     private var pendingMessageID: UUID?
     private var pollingDisabledForMissingThread = false
     private var lastReceivedLiveMessageID: String?
@@ -444,15 +445,27 @@ final class MobileEpisodeChatClient: ObservableObject {
     @discardableResult
     func send(
         engagement: MobileCaptureCoachingEngagement,
-        body: String
+        body: String,
+        coachingScheduleRequest: MobileCoachingScheduleRequestEnvelope? = nil,
+        coachingScheduleDecision: MobileCoachingScheduleDecisionEnvelope? = nil
     ) async -> Bool {
         guard scope == .engagement,
               let context = context(for: engagement) else { return false }
-        return await send(context: context, body: body)
+        return await send(
+            context: context,
+            body: body,
+            coachingScheduleRequest: coachingScheduleRequest,
+            coachingScheduleDecision: coachingScheduleDecision
+        )
     }
 
     @discardableResult
-    private func send(context: Context, body: String) async -> Bool {
+    private func send(
+        context: Context,
+        body: String,
+        coachingScheduleRequest: MobileCoachingScheduleRequestEnvelope? = nil,
+        coachingScheduleDecision: MobileCoachingScheduleDecisionEnvelope? = nil
+    ) async -> Bool {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               trimmed.count <= 4_000,
@@ -461,12 +474,19 @@ final class MobileEpisodeChatClient: ObservableObject {
               AuthManager.shared.networkActionsAllowed else {
             return false
         }
+        let schedulingEvidence = Self.schedulingEvidence(
+            request: coachingScheduleRequest,
+            decision: coachingScheduleDecision
+        )
         let requestID: UUID
-        if pendingMessageBody == trimmed, let pendingMessageID {
+        if pendingMessageBody == trimmed,
+           pendingMessageSchedulingEvidence == schedulingEvidence,
+           let pendingMessageID {
             requestID = pendingMessageID
         } else {
             requestID = UUID()
             pendingMessageBody = trimmed
+            pendingMessageSchedulingEvidence = schedulingEvidence
             pendingMessageID = requestID
         }
 
@@ -486,6 +506,16 @@ final class MobileEpisodeChatClient: ObservableObject {
             ]
             requestBody[scope == .episode ? "episodeSlug" : "threadKey"] =
                 scope == .episode ? context.scopeKey : context.threadKey
+            if let coachingScheduleRequest {
+                requestBody["coachingScheduleRequest"] = try Self.jsonObject(
+                    coachingScheduleRequest
+                )
+            }
+            if let coachingScheduleDecision {
+                requestBody["coachingScheduleDecision"] = try Self.jsonObject(
+                    coachingScheduleDecision
+                )
+            }
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
             let (data, response) = try await AuthManager.shared.authenticatedData(
                 for: request
@@ -513,6 +543,7 @@ final class MobileEpisodeChatClient: ObservableObject {
                 messages = Array(messages.suffix(200))
             }
             pendingMessageBody = nil
+            pendingMessageSchedulingEvidence = nil
             pendingMessageID = nil
             outboundLiveHint = MobileChatPersistedLiveHint(
                 schema: MobileChatPersistedLiveHint.schemaVersion,
@@ -635,6 +666,7 @@ final class MobileEpisodeChatClient: ObservableObject {
         statusMessage = nil
         errorMessage = nil
         pendingMessageBody = nil
+        pendingMessageSchedulingEvidence = nil
         pendingMessageID = nil
         pollingDisabledForMissingThread = false
         outboundLiveHint = nil
@@ -787,6 +819,24 @@ final class MobileEpisodeChatClient: ObservableObject {
             code: code,
             userInfo: [NSLocalizedDescriptionKey: message]
         )
+    }
+
+    nonisolated private static func jsonObject<T: Encodable>(
+        _ value: T
+    ) throws -> Any {
+        try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))
+    }
+
+    nonisolated private static func schedulingEvidence(
+        request: MobileCoachingScheduleRequestEnvelope?,
+        decision: MobileCoachingScheduleDecisionEnvelope?
+    ) -> String {
+        let encoder = JSONEncoder()
+        let requestBytes = request.flatMap { try? encoder.encode($0) }
+        let decisionBytes = decision.flatMap { try? encoder.encode($0) }
+        return [requestBytes, decisionBytes]
+            .map { $0?.base64EncodedString() ?? "-" }
+            .joined(separator: "|")
     }
 }
 

@@ -1595,6 +1595,24 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         coachCoaching.tap()
         XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 20))
 
+        let pendingChange = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingPendingChangeRequest_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(pendingChange, in: app, timeout: 30, swipeAttempts: 12),
+            "The assigned coach should see the typed scheduling request on the exact appointment without parsing chat prose."
+        )
+        let keepCurrent = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingKeepCurrent_")
+        ).firstMatch
+        XCTAssertTrue(keepCurrent.waitForExistence(timeout: 8))
+        keepCurrent.tap()
+        XCTAssertTrue(
+            pendingChange.waitForNonExistence(timeout: 30),
+            "Keeping the current appointment should append a decision and close the request without moving calendar truth."
+        )
+        attachRuntimeScreenshot(app, name: "Phone-first coach scheduling decision")
+
         let open = app.buttons.matching(
             NSPredicate(
                 format: "identifier BEGINSWITH %@ OR label == %@ OR label == %@",

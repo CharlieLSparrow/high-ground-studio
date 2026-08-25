@@ -758,6 +758,7 @@ struct CaptureCoachingHomeView: View {
     @Binding var visibleTab: CaptureRootTab
     @State private var showsNewAppointment = false
     @State private var bookingToReschedule: MobileCoachingBooking?
+    @State private var requestedRescheduleStart: Date?
     @State private var bookingToCancel: MobileCoachingBooking?
     @State private var bookingToRequestChange: MobileCoachingBooking?
 
@@ -815,8 +816,14 @@ struct CaptureCoachingHomeView: View {
             )
             .presentationDetents([.large])
         }
-        .sheet(item: $bookingToReschedule) { booking in
-            MobileCoachingRescheduleSheet(client: client, booking: booking)
+        .sheet(item: $bookingToReschedule, onDismiss: {
+            requestedRescheduleStart = nil
+        }) { booking in
+            MobileCoachingRescheduleSheet(
+                client: client,
+                booking: booking,
+                preferredStart: requestedRescheduleStart
+            )
                 .presentationDetents([.medium])
         }
         .sheet(item: $bookingToRequestChange) { booking in
@@ -1049,6 +1056,20 @@ struct CaptureCoachingHomeView: View {
                                 }
                                 appointmentManagementMenu(for: booking)
                             }
+                            if let engagement = engagement(for: booking) {
+                                MobileCoachingScheduleRequestReviewCard(
+                                    engagement: engagement,
+                                    booking: booking,
+                                    previewOnly: model.usesPreviewData,
+                                    onReviewRequestedTime: { proposedStart in
+                                        requestedRescheduleStart = proposedStart
+                                        bookingToReschedule = booking
+                                    },
+                                    onReviewCancellation: {
+                                        bookingToCancel = booking
+                                    }
+                                )
+                            }
                         } else {
                             if let roomID = booking.callRoomId {
                                 Button {
@@ -1280,6 +1301,107 @@ struct CaptureCoachingHomeView: View {
     }
 }
 
+private struct MobileCoachingScheduleRequestReviewCard: View {
+    let engagement: MobileCaptureCoachingEngagement
+    let booking: MobileCoachingBooking
+    let previewOnly: Bool
+    let onReviewRequestedTime: (Date) -> Void
+    let onReviewCancellation: () -> Void
+    @StateObject private var conversation = MobileEpisodeChatClient(scope: .engagement)
+
+    var body: some View {
+        Group {
+            if let message = pendingRequestMessage,
+               let request = message.metadataJson?.coachingScheduleRequest {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Client requested a change", systemImage: "calendar.badge.exclamationmark")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.orange)
+
+                    Text(message.body)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if request.kind == "RESCHEDULE",
+                       let proposedStart = coachingISO8601Date(request.requestedScheduledStart ?? "") {
+                        Button {
+                            onReviewRequestedTime(proposedStart)
+                        } label: {
+                            Label("Review requested time", systemImage: "calendar.badge.clock")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("CaptureCoachingReviewRequestedTime_\(booking.id)")
+                    } else if request.kind == "CANCEL" {
+                        Button(role: .destructive) {
+                            onReviewCancellation()
+                        } label: {
+                            Label("Review cancellation", systemImage: "calendar.badge.minus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("CaptureCoachingReviewRequestedCancellation_\(booking.id)")
+                    }
+
+                    Button {
+                        Task { await keepCurrentAppointment(requestMessage: message) }
+                    } label: {
+                        Label(
+                            request.kind == "CANCEL" ? "Keep Session" : "Keep current time",
+                            systemImage: "calendar.badge.checkmark"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(previewOnly || conversation.isSending || !conversation.canEdit)
+                    .accessibilityHint("Confirms the existing appointment in the private coaching conversation without changing any calendar time.")
+                    .accessibilityIdentifier("CaptureCoachingKeepCurrent_\(booking.id)")
+                }
+                .padding(12)
+                .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureCoachingPendingChangeRequest_\(booking.id)")
+            }
+        }
+        .task(id: engagement.id) {
+            guard !previewOnly else { return }
+            await conversation.load(engagement: engagement)
+        }
+    }
+
+    private var pendingRequestMessage: NestChatMessage? {
+        let decidedRequestIDs = Set(
+            conversation.messages.compactMap {
+                $0.metadataJson?.coachingScheduleDecision?.requestMessageId
+            }
+        )
+        return conversation.messages.reversed().first { message in
+            guard !decidedRequestIDs.contains(message.id),
+                  let request = message.metadataJson?.coachingScheduleRequest,
+                  request.schema == MobileCoachingScheduleRequestEnvelope.schemaVersion,
+                  request.bookingId == booking.id,
+                  let requestedCurrent = coachingISO8601Date(request.currentScheduledStart),
+                  let bookingCurrent = booking.scheduledDate else { return false }
+            return abs(requestedCurrent.timeIntervalSince(bookingCurrent)) < 1
+        }
+    }
+
+    @MainActor
+    private func keepCurrentAppointment(requestMessage: NestChatMessage) async {
+        let body = "Let’s keep \(booking.title) at \(booking.scheduleLabel). Message me here if another time would work better."
+        _ = await conversation.send(
+            engagement: engagement,
+            body: body,
+            coachingScheduleDecision: MobileCoachingScheduleDecisionEnvelope(
+                bookingId: booking.id,
+                requestMessageId: requestMessage.id,
+                decision: "KEEP_CURRENT"
+            )
+        )
+    }
+}
+
 private enum MobileCoachingScheduleRequestKind: String, CaseIterable, Identifiable {
     case reschedule = "New time"
     case cancel = "Cancel"
@@ -1311,7 +1433,7 @@ private struct MobileCoachingScheduleRequestSheet: View {
         )
         _preferredStart = State(
             initialValue: max(
-                booking.scheduledDate ?? Date().addingTimeInterval(24 * 60 * 60),
+                (booking.scheduledDate ?? Date()).addingTimeInterval(24 * 60 * 60),
                 Date().addingTimeInterval(30 * 60)
             )
         )
@@ -1394,7 +1516,17 @@ private struct MobileCoachingScheduleRequestSheet: View {
                             Task {
                                 if await conversation.send(
                                     engagement: engagement,
-                                    body: requestMessage
+                                    body: requestMessage,
+                                    coachingScheduleRequest: MobileCoachingScheduleRequestEnvelope(
+                                        bookingId: booking.id,
+                                        kind: kind == .reschedule ? "RESCHEDULE" : "CANCEL",
+                                        currentScheduledStart: booking.scheduledStart,
+                                        requestedScheduledStart: kind == .reschedule
+                                            ? ISO8601DateFormatter().string(from: preferredStart)
+                                            : nil,
+                                        note: note.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            .nonemptyCoachingText
+                                    )
                                 ) {
                                     wasSent = true
                                 }
@@ -1916,10 +2048,16 @@ private struct MobileCoachingRescheduleSheet: View {
     @State private var scheduledStart: Date
     @State private var durationMinutes: Int
 
-    init(client: MobileCoachingRunwayClient, booking: MobileCoachingBooking) {
+    init(
+        client: MobileCoachingRunwayClient,
+        booking: MobileCoachingBooking,
+        preferredStart: Date? = nil
+    ) {
         self.client = client
         self.booking = booking
-        _scheduledStart = State(initialValue: max(booking.scheduledDate ?? Date(), Date()))
+        _scheduledStart = State(
+            initialValue: max(preferredStart ?? booking.scheduledDate ?? Date(), Date())
+        )
         _durationMinutes = State(initialValue: booking.durationMinutes)
     }
 

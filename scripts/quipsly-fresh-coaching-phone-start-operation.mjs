@@ -284,6 +284,20 @@ assert(
   clientScheduleRequest,
   "Independent readback omitted the invited client's iPhone scheduling request.",
 );
+assert.equal(
+  clientScheduleRequest.metadataJson?.coachingScheduleRequest?.bookingId,
+  booking.id,
+  "The client scheduling request was not structurally bound to the exact appointment.",
+);
+const coachScheduleDecision = conversation.messages?.find(
+  (candidate) =>
+    candidate.metadataJson?.coachingScheduleDecision?.requestMessageId === clientScheduleRequest.id
+    && candidate.metadataJson?.coachingScheduleDecision?.decision === "KEEP_CURRENT",
+);
+assert(
+  coachScheduleDecision,
+  "Independent readback omitted the assigned coach's typed keep-current decision.",
+);
 
 await ensureFirebaseIdentity(outsider);
 const clientToken = await bearerToken(client);
@@ -421,6 +435,8 @@ const receipt = {
       actorRole: conversation.actor?.role || null,
       clientScheduleRequestId: clientScheduleRequest.id,
       clientScheduleRequestBody: clientScheduleRequest.body,
+      coachScheduleDecisionId: coachScheduleDecision.id,
+      coachScheduleDecisionBody: coachScheduleDecision.body,
     },
     isolation: {
       invitedClientRole: clientConversation.actor?.role || null,

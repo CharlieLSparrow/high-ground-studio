@@ -367,8 +367,8 @@ function checkMeetingSpineContractSources() {
   );
   const episodeChatText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileEpisodeChat.swift");
   const coachingHomeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureCoachingHome.swift");
-  const sessionConversationText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileSessionConversation.swift");
   const nestChatRouteText = sourceText("apps/quipsly/src/app/api/nest-chat/route.ts");
+  const sessionConversationText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileSessionConversation.swift");
   const liveKitEgressText = sourceText("apps/quipsly/src/lib/server/coaching-livekit-egress.ts");
   const providerRecordingCommandText = sourceText("apps/quipsly/src/lib/server/provider-recording-command.ts");
   const liveKitWebhookText = sourceText("apps/quipsly/src/app/api/providers/livekit/webhook/route.ts");
@@ -417,6 +417,22 @@ function checkMeetingSpineContractSources() {
       && !coachingHomeText.includes('"action": "request-reschedule-booking"'),
     "nativeClientSchedulingRequestUsesRelationshipConversation",
     "Capture labels the other participant correctly and lets an invited client request a new time or cancellation through the durable relationship conversation without bypassing coach availability or mutating the appointment.",
+  );
+  expect(
+    coachingHomeText.includes("MobileCoachingScheduleRequestReviewCard")
+      && coachingHomeText.includes("CaptureCoachingPendingChangeRequest_")
+      && coachingHomeText.includes("CaptureCoachingReviewRequestedTime_")
+      && coachingHomeText.includes("CaptureCoachingKeepCurrent_")
+      && coachingHomeText.includes("MobileCoachingScheduleDecisionEnvelope")
+      && runtimeUITestText.includes("Phone-first coach scheduling decision")
+      && runtimeUITestText.includes("Keeping the current appointment should append a decision")
+      && nestChatRouteText.includes("COACHING_SCHEDULE_REQUEST_SCHEMA")
+      && nestChatRouteText.includes("Only the invited client can request a change")
+      && nestChatRouteText.includes("Only the assigned coach can decide this scheduling request")
+      && nestChatRouteText.includes("This appointment changed before the request was sent")
+      && !coachingHomeText.includes('"action": "accept-client-schedule-request"'),
+    "nativeCoachSchedulingRequestDecisionBoundary",
+    "Capture presents a typed client request to the assigned coach, pre-fills the requested time for explicit review, and can keep the current appointment through an auditable conversation decision without parsing prose or silently mutating calendar truth.",
   );
   expect(
     meetingSpineText.includes("joiningStartsRecording: false")

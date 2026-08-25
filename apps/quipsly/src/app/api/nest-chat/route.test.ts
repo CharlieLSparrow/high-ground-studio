@@ -32,6 +32,9 @@ function request(body: unknown) {
 
 const createdAt = new Date("2026-07-26T21:51:34.993Z");
 const prisma = {
+  coachingBooking: {
+    findUnique: jest.fn(),
+  },
   coachingEngagement: {
     findFirst: jest.fn(),
   },
@@ -98,6 +101,7 @@ describe("scoped Nest chat threads", () => {
     prisma.studioNestChatMessage.findMany.mockResolvedValue([]);
     prisma.studioNestChatMessage.createMany.mockResolvedValue({ count: 1 });
     prisma.callRoom.findFirst.mockResolvedValue(null);
+    prisma.coachingBooking.findUnique.mockResolvedValue(null);
     prisma.coachingEngagement.findFirst.mockResolvedValue(null);
     prisma.studioEpisodeProduction.findUnique.mockResolvedValue({
       id: "episode-production-1",
@@ -477,6 +481,261 @@ describe("scoped Nest chat threads", () => {
         OR: expect.any(Array),
       }),
       select: expect.any(Object),
+    });
+  });
+
+  it("binds a client schedule request to the exact current appointment and relationship", async () => {
+    prisma.coachingEngagement.findFirst.mockResolvedValue({
+      id: "engagement-1",
+      title: "Scott coaching",
+      status: "ACTIVE",
+      primaryClientUserId: "user-1",
+      primaryCoachUserId: "coach-1",
+      members: [{ role: "CLIENT" }],
+      project: { id: "project-1", slug: "coaching-home", name: "Coaching home" },
+    });
+    prisma.studioNestChatThread.findUnique.mockResolvedValue({
+      id: "thread-engagement-1",
+      key: "engagement:engagement-1",
+      title: "Scott coaching · shared thread",
+      projectId: "project-1",
+      createdAt,
+      updatedAt: createdAt,
+    });
+    prisma.coachingBooking.findUnique.mockResolvedValue({
+      id: "booking-1",
+      clientUserId: "user-1",
+      engagementId: "engagement-1",
+      status: "CONFIRMED",
+      scheduledStart: new Date("2099-09-12T16:00:00.000Z"),
+    });
+    prisma.studioNestChatMessage.create.mockImplementation(async ({ data }: any) => ({
+      ...data,
+      id: "chat_018f97c6b7bf7b2e8f760b482e9f5e95",
+      createdAt,
+      updatedAt: createdAt,
+      linkedGoalId: null,
+    }));
+
+    const response = await POST(request({
+      projectSlug: "coaching-home",
+      threadKey: "engagement:engagement-1",
+      body: "Could we meet Saturday afternoon instead?",
+      clientMessageId: "018f97c6-b7bf-7b2e-8f76-0b482e9f5e95",
+      clientSurface: "capture-ios",
+      coachingScheduleRequest: {
+        schema: "quipsly.coaching.schedule-request.v1",
+        bookingId: "booking-1",
+        kind: "RESCHEDULE",
+        currentScheduledStart: "2099-09-12T16:00:00.000Z",
+        requestedScheduledStart: "2099-09-12T20:00:00.000Z",
+        note: "Saturday afternoon works better.",
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(prisma.studioNestChatMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        metadataJson: expect.objectContaining({
+          coachingEngagementId: "engagement-1",
+          coachingScheduleRequest: {
+            schema: "quipsly.coaching.schedule-request.v1",
+            bookingId: "booking-1",
+            kind: "RESCHEDULE",
+            currentScheduledStart: "2099-09-12T16:00:00.000Z",
+            requestedScheduledStart: "2099-09-12T20:00:00.000Z",
+            note: "Saturday afternoon works better.",
+          },
+        }),
+      }),
+    });
+  });
+
+  it("rejects a stale client schedule request instead of mutating or inventing availability", async () => {
+    prisma.coachingEngagement.findFirst.mockResolvedValue({
+      id: "engagement-1",
+      title: "Scott coaching",
+      status: "ACTIVE",
+      primaryClientUserId: "user-1",
+      primaryCoachUserId: "coach-1",
+      members: [{ role: "CLIENT" }],
+      project: { id: "project-1", slug: "coaching-home", name: "Coaching home" },
+    });
+    prisma.studioNestChatThread.findUnique.mockResolvedValue({
+      id: "thread-engagement-1",
+      key: "engagement:engagement-1",
+      title: "Scott coaching · shared thread",
+      projectId: "project-1",
+      createdAt,
+      updatedAt: createdAt,
+    });
+    prisma.coachingBooking.findUnique.mockResolvedValue({
+      id: "booking-1",
+      clientUserId: "user-1",
+      engagementId: "engagement-1",
+      status: "CONFIRMED",
+      scheduledStart: new Date("2099-09-13T16:00:00.000Z"),
+    });
+
+    const response = await POST(request({
+      projectSlug: "coaching-home",
+      threadKey: "engagement:engagement-1",
+      body: "Could we move this?",
+      coachingScheduleRequest: {
+        schema: "quipsly.coaching.schedule-request.v1",
+        bookingId: "booking-1",
+        kind: "RESCHEDULE",
+        currentScheduledStart: "2099-09-12T16:00:00.000Z",
+        requestedScheduledStart: "2099-09-12T20:00:00.000Z",
+      },
+    }));
+
+    expect(response.status).toBe(409);
+    expect(prisma.studioNestChatMessage.create).not.toHaveBeenCalled();
+  });
+
+  it("replays an exact schedule request before rechecking a later appointment state", async () => {
+    prisma.coachingEngagement.findFirst.mockResolvedValue({
+      id: "engagement-1",
+      title: "Scott coaching",
+      status: "ACTIVE",
+      primaryClientUserId: "user-1",
+      primaryCoachUserId: "coach-1",
+      members: [{ role: "CLIENT" }],
+      project: { id: "project-1", slug: "coaching-home", name: "Coaching home" },
+    });
+    prisma.studioNestChatThread.findUnique.mockResolvedValue({
+      id: "thread-engagement-1",
+      key: "engagement:engagement-1",
+      title: "Scott coaching · shared thread",
+      projectId: "project-1",
+      createdAt,
+      updatedAt: createdAt,
+    });
+    prisma.studioNestChatMessage.findUnique.mockResolvedValue({
+      id: "chat_018f97c6b7bf7b2e8f760b482e9f5e95",
+      projectId: "project-1",
+      threadId: "thread-engagement-1",
+      authorEmail: "editor@example.test",
+      authorName: "Episode Editor",
+      body: "Could we meet Saturday afternoon instead?",
+      gifUrl: null,
+      metadataJson: {
+        coachingScheduleRequest: {
+          schema: "quipsly.coaching.schedule-request.v1",
+          bookingId: "booking-1",
+          kind: "RESCHEDULE",
+          currentScheduledStart: "2099-09-12T16:00:00.000Z",
+          requestedScheduledStart: "2099-09-12T20:00:00.000Z",
+          note: null,
+        },
+      },
+      createdAt,
+      updatedAt: createdAt,
+      linkedGoalId: null,
+    });
+
+    const response = await POST(request({
+      projectSlug: "coaching-home",
+      threadKey: "engagement:engagement-1",
+      body: "Could we meet Saturday afternoon instead?",
+      clientMessageId: "018f97c6-b7bf-7b2e-8f76-0b482e9f5e95",
+      coachingScheduleRequest: {
+        schema: "quipsly.coaching.schedule-request.v1",
+        bookingId: "booking-1",
+        kind: "RESCHEDULE",
+        currentScheduledStart: "2099-09-12T16:00:00.000Z",
+        requestedScheduledStart: "2099-09-12T20:00:00.000Z",
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+    });
+    expect(prisma.coachingBooking.findUnique).not.toHaveBeenCalled();
+    expect(prisma.studioNestChatMessage.create).not.toHaveBeenCalled();
+  });
+
+  it("lets the assigned coach close a verified request while keeping the current appointment", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: {
+        id: "coach-1",
+        primaryEmail: "coach@example.test",
+        name: "Coach",
+        isStaff: false,
+      },
+    } as never);
+    prisma.coachingEngagement.findFirst.mockResolvedValue({
+      id: "engagement-1",
+      title: "Scott coaching",
+      status: "ACTIVE",
+      primaryClientUserId: "user-1",
+      primaryCoachUserId: "coach-1",
+      members: [{ role: "COACH" }],
+      project: { id: "project-1", slug: "coaching-home", name: "Coaching home" },
+    });
+    prisma.studioNestChatThread.findUnique.mockResolvedValue({
+      id: "thread-engagement-1",
+      key: "engagement:engagement-1",
+      title: "Scott coaching · shared thread",
+      projectId: "project-1",
+      createdAt,
+      updatedAt: createdAt,
+    });
+    prisma.coachingBooking.findUnique.mockResolvedValue({
+      id: "booking-1",
+      coachUserId: "coach-1",
+      engagementId: "engagement-1",
+    });
+    prisma.studioNestChatMessage.findUnique.mockImplementation(
+      async ({ where }: { where: { id: string } }) => (
+        where.id === "chat_018f97c6b7bf7b2e8f760b482e9f5e95"
+          ? {
+              id: "chat_018f97c6b7bf7b2e8f760b482e9f5e95",
+              threadId: "thread-engagement-1",
+              metadataJson: {
+                coachingScheduleRequest: {
+                  schema: "quipsly.coaching.schedule-request.v1",
+                  bookingId: "booking-1",
+                },
+              },
+            }
+          : null
+      ),
+    );
+    prisma.studioNestChatMessage.create.mockImplementation(async ({ data }: any) => ({
+      ...data,
+      id: "chat_018f97c6b7bf7b2e8f760b482e9f5e96",
+      createdAt,
+      updatedAt: createdAt,
+      linkedGoalId: null,
+    }));
+
+    const response = await POST(request({
+      projectSlug: "coaching-home",
+      threadKey: "engagement:engagement-1",
+      body: "Let’s keep the current time.",
+      clientMessageId: "018f97c6-b7bf-7b2e-8f76-0b482e9f5e96",
+      coachingScheduleDecision: {
+        schema: "quipsly.coaching.schedule-decision.v1",
+        bookingId: "booking-1",
+        requestMessageId: "chat_018f97c6b7bf7b2e8f760b482e9f5e95",
+        decision: "KEEP_CURRENT",
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(prisma.studioNestChatMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        metadataJson: expect.objectContaining({
+          coachingScheduleDecision: expect.objectContaining({
+            requestMessageId: "chat_018f97c6b7bf7b2e8f760b482e9f5e95",
+            decision: "KEEP_CURRENT",
+          }),
+        }),
+      }),
     });
   });
 

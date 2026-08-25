@@ -23,6 +23,8 @@ const LEGACY_BELIEVE_GIF_ID = "5B925WaCAIWojy3KMG";
 const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_THREAD_KEY_LENGTH = 120;
 const CLIENT_MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const COACHING_SCHEDULE_REQUEST_SCHEMA = "quipsly.coaching.schedule-request.v1";
+const COACHING_SCHEDULE_DECISION_SCHEMA = "quipsly.coaching.schedule-decision.v1";
 const CLIENT_SURFACES = new Set([
   "capture-ios",
   "episode-room-web",
@@ -155,6 +157,72 @@ function normalizeClientMessageId(input: unknown) {
   return CLIENT_MESSAGE_ID.test(value) ? value : null;
 }
 
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function isoDate(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function normalizeCoachingScheduleRequest(input: unknown) {
+  if (input === undefined || input === null) return { present: false as const };
+  const value = objectValue(input);
+  if (!value || value.schema !== COACHING_SCHEDULE_REQUEST_SCHEMA) {
+    return { present: true as const, error: "The coaching schedule request is not valid." };
+  }
+  const bookingId = normalizeEngagementId(value.bookingId);
+  const kind = String(value.kind ?? "").trim().toUpperCase();
+  const currentScheduledStart = isoDate(value.currentScheduledStart);
+  const requestedScheduledStart = isoDate(value.requestedScheduledStart);
+  const note = cleanMessage(value.note).slice(0, 1_000) || null;
+  if (!bookingId || !["RESCHEDULE", "CANCEL"].includes(kind) || !currentScheduledStart) {
+    return { present: true as const, error: "The coaching schedule request is incomplete." };
+  }
+  if (kind === "RESCHEDULE" && !requestedScheduledStart) {
+    return { present: true as const, error: "A requested time is required to ask for a reschedule." };
+  }
+  return {
+    present: true as const,
+    value: {
+      schema: COACHING_SCHEDULE_REQUEST_SCHEMA,
+      bookingId,
+      kind,
+      currentScheduledStart,
+      requestedScheduledStart: kind === "RESCHEDULE" ? requestedScheduledStart : null,
+      note,
+    },
+  };
+}
+
+function normalizeCoachingScheduleDecision(input: unknown) {
+  if (input === undefined || input === null) return { present: false as const };
+  const value = objectValue(input);
+  if (!value || value.schema !== COACHING_SCHEDULE_DECISION_SCHEMA) {
+    return { present: true as const, error: "The coaching schedule decision is not valid." };
+  }
+  const bookingId = normalizeEngagementId(value.bookingId);
+  const requestMessageId = String(value.requestMessageId ?? "").trim();
+  const decision = String(value.decision ?? "").trim().toUpperCase();
+  if (!bookingId || !/^chat_[0-9a-f]{32}$/i.test(requestMessageId) || decision !== "KEEP_CURRENT") {
+    return { present: true as const, error: "The coaching schedule decision is incomplete." };
+  }
+  return {
+    present: true as const,
+    value: {
+      schema: COACHING_SCHEDULE_DECISION_SCHEMA,
+      bookingId,
+      requestMessageId,
+      decision,
+    },
+  };
+}
+
 function persistedMessageId(clientMessageId: string) {
   return `chat_${clientMessageId.replaceAll("-", "")}`;
 }
@@ -219,6 +287,14 @@ function serializeMessage(message: ChatMessageRow) {
     updatedAt: message.updatedAt.toISOString(),
     linkedGoalId: message.linkedGoalId,
   };
+}
+
+function schedulingEvidence(value: unknown) {
+  const metadata = objectValue(value);
+  return JSON.stringify({
+    coachingScheduleRequest: metadata?.coachingScheduleRequest ?? null,
+    coachingScheduleDecision: metadata?.coachingScheduleDecision ?? null,
+  });
 }
 
 function isPrismaConnectionPressure(error: unknown) {
@@ -623,6 +699,8 @@ export async function POST(request: NextRequest) {
   const clientMessageId = normalizeClientMessageId(body.clientMessageId);
   const messageId = clientMessageId ? persistedMessageId(clientMessageId) : null;
   const clientSurface = normalizeClientSurface(body.clientSurface, scope.episodeSlug);
+  const coachingScheduleRequest = normalizeCoachingScheduleRequest(body.coachingScheduleRequest);
+  const coachingScheduleDecision = normalizeCoachingScheduleDecision(body.coachingScheduleDecision);
   const actor = await resolveActor(request);
 
   if (scope.invalidScope) {
@@ -641,6 +719,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Sign in to send Nest chat messages." }, { status: 401 });
   }
 
+  if (coachingScheduleRequest.present && "error" in coachingScheduleRequest) {
+    return NextResponse.json({ ok: false, error: coachingScheduleRequest.error }, { status: 400 });
+  }
+  if (coachingScheduleDecision.present && "error" in coachingScheduleDecision) {
+    return NextResponse.json({ ok: false, error: coachingScheduleDecision.error }, { status: 400 });
+  }
+  if (coachingScheduleRequest.present && coachingScheduleDecision.present) {
+    return NextResponse.json({ ok: false, error: "Send one coaching scheduling action at a time." }, { status: 400 });
+  }
+  if ((coachingScheduleRequest.present || coachingScheduleDecision.present) && !scope.engagementId) {
+    return NextResponse.json({ ok: false, error: "Coaching scheduling actions belong to a private coaching relationship." }, { status: 400 });
+  }
+
   try {
     const loaded = await loadThread(projectSlug, actor, scope, "write");
     if (!loaded.ok) {
@@ -648,6 +739,88 @@ export async function POST(request: NextRequest) {
     }
 
     const prisma = getPrismaClient();
+    if (messageId) {
+      const existing = await prisma.studioNestChatMessage.findUnique({
+        where: { id: messageId },
+      });
+      if (existing) {
+        const expectedSchedulingEvidence = schedulingEvidence({
+          ...(coachingScheduleRequest.present && "value" in coachingScheduleRequest
+            ? { coachingScheduleRequest: coachingScheduleRequest.value }
+            : {}),
+          ...(coachingScheduleDecision.present && "value" in coachingScheduleDecision
+            ? { coachingScheduleDecision: coachingScheduleDecision.value }
+            : {}),
+        });
+        const exactRetry = existing.projectId === loaded.project.id
+          && existing.threadId === loaded.thread.id
+          && normalizeAccessEmail(existing.authorEmail) === actor.email
+          && existing.body === (message || gifUrl || "")
+          && existing.gifUrl === gifUrl
+          && schedulingEvidence(existing.metadataJson) === expectedSchedulingEvidence;
+        if (!exactRetry) {
+          return NextResponse.json(
+            { ok: false, error: "This message retry identity is already in use." },
+            { status: 409 },
+          );
+        }
+        return NextResponse.json({
+          ok: true,
+          idempotentReplay: true,
+          message: serializeMessage(existing),
+        });
+      }
+    }
+    if (coachingScheduleRequest.present && "value" in coachingScheduleRequest) {
+      const intent = coachingScheduleRequest.value;
+      const booking = await prisma.coachingBooking.findUnique({
+        where: { id: intent.bookingId },
+        select: {
+          id: true,
+          clientUserId: true,
+          engagementId: true,
+          status: true,
+          scheduledStart: true,
+        },
+      });
+      if (!booking || booking.engagementId !== loaded.engagement?.id) {
+        return NextResponse.json({ ok: false, error: "That appointment does not belong to this coaching relationship." }, { status: 404 });
+      }
+      if (!actor.id || booking.clientUserId !== actor.id) {
+        return NextResponse.json({ ok: false, error: "Only the invited client can request a change to this appointment." }, { status: 403 });
+      }
+      if (["CANCELED", "COMPLETED", "NO_SHOW"].includes(booking.status)) {
+        return NextResponse.json({ ok: false, error: "This appointment is no longer open for schedule changes." }, { status: 409 });
+      }
+      if (booking.scheduledStart.toISOString() !== intent.currentScheduledStart) {
+        return NextResponse.json({ ok: false, error: "This appointment changed before the request was sent. Refresh and review its current time." }, { status: 409 });
+      }
+      if (intent.requestedScheduledStart && new Date(intent.requestedScheduledStart).getTime() <= Date.now()) {
+        return NextResponse.json({ ok: false, error: "Choose a future time for the schedule request." }, { status: 400 });
+      }
+    }
+    if (coachingScheduleDecision.present && "value" in coachingScheduleDecision) {
+      const intent = coachingScheduleDecision.value;
+      const [booking, requestMessage] = await Promise.all([
+        prisma.coachingBooking.findUnique({
+          where: { id: intent.bookingId },
+          select: { id: true, coachUserId: true, engagementId: true },
+        }),
+        prisma.studioNestChatMessage.findUnique({
+          where: { id: intent.requestMessageId },
+          select: { id: true, threadId: true, metadataJson: true },
+        }),
+      ]);
+      const requestMetadata = objectValue(requestMessage?.metadataJson);
+      const requestIntent = objectValue(requestMetadata?.coachingScheduleRequest);
+      if (!booking || booking.engagementId !== loaded.engagement?.id || requestMessage?.threadId !== loaded.thread.id
+          || requestIntent?.bookingId !== booking.id || requestIntent?.schema !== COACHING_SCHEDULE_REQUEST_SCHEMA) {
+        return NextResponse.json({ ok: false, error: "That scheduling request is not part of this appointment conversation." }, { status: 404 });
+      }
+      if (!actor.id || (booking.coachUserId !== actor.id && !actor.isStaff)) {
+        return NextResponse.json({ ok: false, error: "Only the assigned coach can decide this scheduling request." }, { status: 403 });
+      }
+    }
     const data = {
       ...(messageId ? { id: messageId } : {}),
       projectId: loaded.project.id,
@@ -672,6 +845,12 @@ export async function POST(request: NextRequest) {
           coachingEngagementId: loaded.engagement?.id,
           coachingEngagementTitle: loaded.engagement?.title,
         } : {}),
+        ...(coachingScheduleRequest.present && "value" in coachingScheduleRequest
+          ? { coachingScheduleRequest: coachingScheduleRequest.value }
+          : {}),
+        ...(coachingScheduleDecision.present && "value" in coachingScheduleDecision
+          ? { coachingScheduleDecision: coachingScheduleDecision.value }
+          : {}),
         ...(scope.storyCardId ? {
           sourceCardId: loaded.sourceCard?.id,
           sourceCardStableId: loaded.sourceCard?.stableId,
@@ -681,30 +860,6 @@ export async function POST(request: NextRequest) {
         ...(clientMessageId ? { clientMessageId } : {}),
       },
     };
-
-    if (messageId) {
-      const existing = await prisma.studioNestChatMessage.findUnique({
-        where: { id: messageId },
-      });
-      if (existing) {
-        const exactRetry = existing.projectId === data.projectId
-          && existing.threadId === data.threadId
-          && normalizeAccessEmail(existing.authorEmail) === actor.email
-          && existing.body === data.body
-          && existing.gifUrl === data.gifUrl;
-        if (!exactRetry) {
-          return NextResponse.json(
-            { ok: false, error: "This message retry identity is already in use." },
-            { status: 409 },
-          );
-        }
-        return NextResponse.json({
-          ok: true,
-          idempotentReplay: true,
-          message: serializeMessage(existing),
-        });
-      }
-    }
 
     try {
       const created = await prisma.studioNestChatMessage.create({ data });
@@ -720,7 +875,8 @@ export async function POST(request: NextRequest) {
           && raced.threadId === data.threadId
           && normalizeAccessEmail(raced.authorEmail) === actor.email
           && raced.body === data.body
-          && raced.gifUrl === data.gifUrl;
+          && raced.gifUrl === data.gifUrl
+          && schedulingEvidence(raced.metadataJson) === schedulingEvidence(data.metadataJson);
         if (raced && exactRetry) {
           return NextResponse.json({
             ok: true,
