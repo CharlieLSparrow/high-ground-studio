@@ -16,6 +16,20 @@ function normalizedEmail(actor: SessionAccessActor) {
 }
 
 const SESSION_MUTATION_PROJECT_ROLES = ["OWNER", "EDITOR"] as const;
+const MISSING_SESSION_ACTOR_ID = "__quipsly_missing_session_actor__";
+
+function hasStableActorId(actor: SessionAccessActor) {
+  return typeof actor.id === "string" && actor.id.trim().length > 0;
+}
+
+function deniedSessionActorAccess(): Prisma.CallRoomWhereInput {
+  return {
+    AND: [
+      { id: MISSING_SESSION_ACTOR_ID },
+      { id: { not: MISSING_SESSION_ACTOR_ID } },
+    ],
+  };
+}
 
 function sessionActorAccessConditions(
   actor: SessionAccessActor,
@@ -66,6 +80,7 @@ function sessionActorAccessConditions(
  * separate instead of treating Nest membership as ownership of personal work.
  */
 export function sessionActorAccessWhere(actor: SessionAccessActor) {
+  if (!hasStableActorId(actor)) return deniedSessionActorAccess();
   if (actor.isStaff) return {};
   return {
     OR: sessionActorAccessConditions(actor, "read"),
@@ -81,6 +96,7 @@ export function sessionActorAccessWhere(actor: SessionAccessActor) {
  * OWNER/EDITOR collaborators may read the Session thread.
  */
 export function sessionConversationActorAccessWhere(actor: SessionAccessActor) {
+  if (!hasStableActorId(actor)) return deniedSessionActorAccess();
   if (actor.isStaff) return {};
   return {
     OR: sessionActorAccessConditions(actor, "collaborate"),
@@ -95,6 +111,7 @@ export function sessionConversationActorAccessWhere(actor: SessionAccessActor) {
  * active OWNER or EDITOR grant; VIEWER remains a read-only role.
  */
 export function sessionMutationActorAccessWhere(actor: SessionAccessActor) {
+  if (!hasStableActorId(actor)) return deniedSessionActorAccess();
   if (actor.isStaff) return {};
   return {
     OR: sessionActorAccessConditions(actor, "mutate"),
@@ -108,6 +125,7 @@ export function sessionMutationActorAccessWhere(actor: SessionAccessActor) {
  * owners/editors can issue or revoke expiring Session-scoped invitations.
  */
 export function sessionInvitationActorAccessWhere(actor: SessionAccessActor): Prisma.CallRoomWhereInput {
+  if (!hasStableActorId(actor)) return deniedSessionActorAccess();
   if (actor.isStaff) return {};
   const email = normalizedEmail(actor);
   const conditions: Prisma.CallRoomWhereInput[] = [

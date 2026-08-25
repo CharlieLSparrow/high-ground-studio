@@ -5,6 +5,7 @@ jest.mock("server-only", () => ({}));
 import {
   sessionAccessWhere,
   sessionActorAccessWhere,
+  sessionConversationAccessWhere,
   sessionMutationAccessWhere,
   sessionMutationActorAccessWhere,
   sessionInvitationAccessWhere,
@@ -97,6 +98,31 @@ describe("canonical Session access", () => {
         isStaff: true,
       }),
     ).toEqual({ id: "room-1" });
+  });
+
+  it("fails closed when a runtime caller omits the canonical actor ID", () => {
+    const malformedActor = {
+      primaryEmail: "project-owner@example.test",
+      isStaff: true,
+    } as any;
+
+    for (const where of [
+      sessionAccessWhere("room-1", malformedActor),
+      sessionConversationAccessWhere("room-1", malformedActor),
+      sessionMutationAccessWhere("room-1", malformedActor),
+      sessionInvitationAccessWhere("room-1", malformedActor),
+    ]) {
+      expect(where).toEqual(
+        expect.objectContaining({
+          id: "room-1",
+          AND: [
+            { id: "__quipsly_missing_session_actor__" },
+            { id: { not: "__quipsly_missing_session_actor__" } },
+          ],
+        }),
+      );
+      expect(where).not.toHaveProperty("OR");
+    }
   });
 
   it("lets hosts, coaches, and producers invite without letting ordinary guests expand the room", () => {

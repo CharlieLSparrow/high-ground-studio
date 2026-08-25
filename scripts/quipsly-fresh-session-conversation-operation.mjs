@@ -151,15 +151,25 @@ try {
     take: 100,
     select: { id: true },
   });
+  const coachAccessActor = {
+    id: target.identities.coach.userId,
+    primaryEmail: target.identities.coach.email,
+    isStaff: false,
+  };
+  const clientAccessActor = {
+    id: target.identities.client.userId,
+    primaryEmail: target.identities.client.email,
+    isStaff: false,
+  };
   let unrelatedRoom = null;
   for (const candidate of opaqueRoomCandidates) {
     const [coachAccess, clientAccess] = await Promise.all([
       prisma.callRoom.findFirst({
-        where: { id: candidate.id, ...sessionConversationActorAccessWhere(target.identities.coach) },
+        where: { id: candidate.id, ...sessionConversationActorAccessWhere(coachAccessActor) },
         select: { id: true },
       }),
       prisma.callRoom.findFirst({
-        where: { id: candidate.id, ...sessionConversationActorAccessWhere(target.identities.client) },
+        where: { id: candidate.id, ...sessionConversationActorAccessWhere(clientAccessActor) },
         select: { id: true },
       }),
     ]);
