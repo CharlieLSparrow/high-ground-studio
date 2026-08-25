@@ -10,6 +10,7 @@ import {
   buildSessionSourceAlignmentPlan,
   decideSessionSourceAlignment,
   queueSessionSourceAlignment,
+  suggestSessionSourceAlignment,
   SessionSourceAlignmentError,
 } from "./session-source-alignment";
 import {
@@ -112,6 +113,104 @@ describe("Session exact-source audio alignment planning", () => {
     expect(plan.clockAuthority).toBe("reported-wall-clock-fallback");
     expect(plan.initialOffsetSeconds).toBe(1.25);
     expect(plan.proposal.searchRadiusSeconds).toBeGreaterThanOrEqual(1);
+  });
+
+  it("derives a free automatic suggestion from two released participant masters", async () => {
+    const room = { id: "room_session_12345678", captureGroupId };
+    const exactAsset = (input: {
+      id: string;
+      participantId: string;
+      role: string;
+      startedAt: string;
+      hash: string;
+    }) => ({
+      id: input.id,
+      roomId: room.id,
+      participantId: input.participantId,
+      participant: { role: input.role },
+      durationSeconds: 120,
+      recordedStartedAt: new Date(input.startedAt),
+      localManifestJson: {
+        exactBytesVerified: true,
+        storageGeneration: "123",
+        captureGroupId,
+        alignment: {
+          schema: "quipsly-capture-alignment-proposal-v1",
+          status: "proposal-ready",
+          captureGroupId,
+          estimatedServerStartedAt: input.startedAt,
+          uncertaintyMilliseconds: 24,
+          sampleAccurateClaimed: false,
+          reviewRequired: true,
+        },
+      },
+      status: "VERIFIED",
+      contentType: "audio/mp4",
+      byteSize: BigInt(10_000),
+      checksum: input.hash.repeat(64),
+      storageBucket: "quipsly-media-test",
+      storageObjectPath: `media-vault/${input.id}.m4a`,
+      verifiedAt: new Date("2026-08-24T20:02:00.000Z"),
+    });
+    const assets = [
+      exactAsset({
+        id: "recording_client_1234",
+        participantId: "participant_client_1",
+        role: "CLIENT",
+        startedAt: "2026-08-24T20:00:00.350Z",
+        hash: "b",
+      }),
+      exactAsset({
+        id: "recording_coach_12345",
+        participantId: "participant_coach_1",
+        role: "COACH",
+        startedAt: "2026-08-24T20:00:00.000Z",
+        hash: "a",
+      }),
+      exactAsset({
+        id: "recording_coach_older",
+        participantId: "participant_coach_1",
+        role: "COACH",
+        startedAt: "2026-08-24T19:00:00.000Z",
+        hash: "c",
+      }),
+    ];
+    const receipt = (asset: (typeof assets)[number]) => ({
+      uploadSessionId: `upload-${asset.id}`,
+      roomId: room.id,
+      recordingAssetId: asset.id,
+      processingDisposition: "RELEASED",
+      releasedAt: new Date("2026-08-24T20:03:00.000Z"),
+      createdAt: new Date("2026-08-24T20:02:00.000Z"),
+      metadataJson: {
+        immutableUploadBinding: {
+          roomId: room.id,
+          bucketName: asset.storageBucket,
+          objectName: asset.storageObjectPath,
+          generation: "123",
+          sha256: asset.checksum,
+          sizeBytes: 10_000,
+        },
+      },
+    });
+    const result = await suggestSessionSourceAlignment({
+      prisma: {
+        recordingAsset: { findMany: jest.fn().mockResolvedValue(assets) },
+        mobileCaptureFinalizationReceipt: {
+          findMany: jest.fn().mockResolvedValue(assets.map(receipt)),
+        },
+      },
+      room,
+    });
+    expect(result).toMatchObject({
+      status: "ready",
+      generatedAutomatically: true,
+      acousticAnalysisStarted: false,
+      spineRecordingAssetId: "recording_coach_12345",
+      targetRecordingAssetId: "recording_client_1234",
+      clockAuthority: "capture-clock-proposal",
+      initialOffsetSeconds: 0.35,
+    });
   });
 
   it("fails closed when retained overlap cannot support opening and drift checks", () => {

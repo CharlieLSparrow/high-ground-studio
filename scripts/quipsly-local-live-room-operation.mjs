@@ -1138,6 +1138,33 @@ try {
     });
   }
 
+  const suggestionResponse = await journeys[0].page.request.get(
+    `${baseURL}/api/sessions/${encodeURIComponent(ROOM_ID)}/source-alignment`,
+  );
+  const suggestionPayload = await suggestionResponse.json().catch(() => null);
+  const automaticAlignmentSuggestion = suggestionPayload?.suggestion;
+  assert(
+    suggestionResponse.ok() &&
+      suggestionPayload?.ok === true &&
+      automaticAlignmentSuggestion?.status === "ready" &&
+      automaticAlignmentSuggestion.generatedAutomatically === true &&
+      automaticAlignmentSuggestion.acousticAnalysisStarted === false &&
+      verifiedSources.some(
+        (source) =>
+          source.id === automaticAlignmentSuggestion.spineRecordingAssetId,
+      ) &&
+      verifiedSources.some(
+        (source) =>
+          source.id === automaticAlignmentSuggestion.targetRecordingAssetId,
+      ) &&
+      automaticAlignmentSuggestion.spineRecordingAssetId !==
+        automaticAlignmentSuggestion.targetRecordingAssetId &&
+      Number.isFinite(automaticAlignmentSuggestion.initialOffsetSeconds) &&
+      automaticAlignmentSuggestion.overlapEndSeconds >
+        automaticAlignmentSuggestion.overlapStartSeconds,
+    `Automatic two-source alignment suggestion failed: ${JSON.stringify(suggestionPayload)}.`,
+  );
+
   for (const journey of journeys) {
     await journey.page.reload({ waitUntil: "domcontentloaded" });
     await journey.page
@@ -1237,6 +1264,7 @@ try {
     verifiedSourceIds: verifiedSources.map((source) => source.id),
     twoEndpointMaterializationAndPlayback: "passed",
     twoEndpointMaterializationEvidence,
+    automaticAlignmentSuggestion,
     browserSourceOverlapMilliseconds: overlapMilliseconds,
     allPartyConsentReceipts: "passed",
     allPartyTranscriptionConsentReceipts: "passed",

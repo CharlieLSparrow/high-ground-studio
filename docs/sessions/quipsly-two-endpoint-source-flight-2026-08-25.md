@@ -18,6 +18,7 @@ This is regression evidence, not human acceptance. It uses retained `.test` iden
 - Studio source/materialization records: 2 sources, 2 media assets, 2 project attachments
 - Authenticated playback: beginning, middle, and ending byte ranges returned `206` for each source
 - Source-bound transcripts: 2 completed with matching source SHA-256 and at least one segment each
+- Automatic alignment suggestion: exact newest source from each participant, coach/host-preferred spine, capture-clock authority, no acoustic processing or edit applied
 - Saved consent restored after re-entry: passed
 - Post-call recorder remained mounted and safe to close: passed
 
@@ -41,5 +42,5 @@ pnpm quipsly:local:live-room
 - The fake media sources do not prove natural speech quality, speaker attribution quality, or camera capture.
 - Provider/cloud recording was intentionally not started. The production truth is the independently retained participant masters.
 - The sources are now eligible for alignment planning because duration is canonical, but this pass does not claim an acoustic sync proposal or an approved edit alignment.
+- Quipsly now displays the cost-free capture-clock suggestion before the explicit waveform-analysis action. The suggestion remains review-only and cannot silently become timeline placement.
 - Human hands-off acceptance remains separate and must use a fresh real coach/client pair without fixture knowledge.
-

@@ -60,6 +60,28 @@ export type SessionSourceAlignmentPlan = {
   };
 };
 
+export type SessionSourceAlignmentSuggestion =
+  | {
+      status: "ready";
+      generatedAutomatically: true;
+      acousticAnalysisStarted: false;
+      spineRecordingAssetId: string;
+      targetRecordingAssetId: string;
+      clockAuthority: SessionSourceAlignmentPlan["clockAuthority"];
+      initialOffsetSeconds: number;
+      overlapStartSeconds: number;
+      overlapEndSeconds: number;
+      searchRadiusSeconds: number;
+      boundaries: SessionSourceAlignmentPlan["boundaries"];
+    }
+  | {
+      status: "waiting";
+      generatedAutomatically: true;
+      acousticAnalysisStarted: false;
+      code: string;
+      reason: string;
+    };
+
 export type PublicSessionSourceAlignment = {
   jobId: string;
   status:
@@ -257,9 +279,133 @@ export async function readSessionSourceAlignments(input: {
   });
   return {
     captureGroupId: room.captureGroupId,
+    suggestion: await suggestSessionSourceAlignment({
+      prisma: input.prisma,
+      room,
+    }),
     alignments: rows.map(publicStatus),
     boundaries: readBoundaries(),
   };
+}
+
+export async function suggestSessionSourceAlignment(input: {
+  prisma: any;
+  room: { id: string; captureGroupId: string };
+}): Promise<SessionSourceAlignmentSuggestion> {
+  const assets = await input.prisma.recordingAsset.findMany({
+    where: {
+      roomId: input.room.id,
+      kind: "LOCAL_AUDIO",
+      status: "VERIFIED",
+      participantId: { not: null },
+      durationSeconds: { gt: 0 },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: {
+      id: true,
+      createdAt: true,
+      roomId: true,
+      participantId: true,
+      durationSeconds: true,
+      recordedStartedAt: true,
+      localManifestJson: true,
+      status: true,
+      contentType: true,
+      byteSize: true,
+      checksum: true,
+      storageBucket: true,
+      storageObjectPath: true,
+      verifiedAt: true,
+      participant: { select: { role: true } },
+    },
+  });
+  const receipts = assets.length
+    ? await input.prisma.mobileCaptureFinalizationReceipt.findMany({
+        where: {
+          recordingAssetId: { in: assets.map((asset: any) => asset.id) },
+          processingDisposition: "RELEASED",
+        },
+        orderBy: [{ releasedAt: "desc" }, { createdAt: "desc" }],
+      })
+    : [];
+  const playable = assets.flatMap((asset: any) => {
+    const receipt = receipts.find(
+      (candidate: any) => candidate.recordingAssetId === asset.id,
+    );
+    const playback = sessionProtectedPlaybackBinding({
+      roomId: input.room.id,
+      asset,
+      receipt,
+    });
+    const manifest = object(asset.localManifestJson);
+    const sourceCaptureGroupId =
+      text(manifest.captureGroupId) ||
+      text(object(manifest.alignment).captureGroupId);
+    return playback && sourceCaptureGroupId === input.room.captureGroupId
+      ? [{ ...asset, playback }]
+      : [];
+  });
+  const rolePriority = new Map([
+    ["HOST", 0],
+    ["COACH", 1],
+    ["PRODUCER", 2],
+    ["GUEST", 3],
+    ["CLIENT", 4],
+  ]);
+  const distinctParticipants = [] as any[];
+  const participantIds = new Set<string>();
+  for (const candidate of playable) {
+    const participantId = text(candidate.participantId);
+    if (!participantId || participantIds.has(participantId)) continue;
+    participantIds.add(participantId);
+    distinctParticipants.push(candidate);
+  }
+  distinctParticipants.sort((left: any, right: any) => {
+    const leftPriority = rolePriority.get(text(left.participant?.role)) ?? 99;
+    const rightPriority = rolePriority.get(text(right.participant?.role)) ?? 99;
+    return leftPriority - rightPriority || left.id.localeCompare(right.id);
+  });
+  if (distinctParticipants.length < 2) {
+    return {
+      status: "waiting",
+      generatedAutomatically: true,
+      acousticAnalysisStarted: false,
+      code: "ALIGNMENT_TWO_PARTICIPANTS_REQUIRED",
+      reason:
+        "Two released, verified participant recordings from this take are needed before Quipsly can estimate their shared clock.",
+    };
+  }
+  try {
+    const plan = buildSessionSourceAlignmentPlan({
+      captureGroupId: input.room.captureGroupId,
+      spine: distinctParticipants[0],
+      target: distinctParticipants[1],
+    });
+    return {
+      status: "ready",
+      generatedAutomatically: true,
+      acousticAnalysisStarted: false,
+      spineRecordingAssetId: plan.spineRecordingAssetId,
+      targetRecordingAssetId: plan.targetRecordingAssetId,
+      clockAuthority: plan.clockAuthority,
+      initialOffsetSeconds: plan.initialOffsetSeconds,
+      overlapStartSeconds: plan.overlapStartSeconds,
+      overlapEndSeconds: plan.overlapEndSeconds,
+      searchRadiusSeconds: plan.proposal.searchRadiusSeconds,
+      boundaries: plan.boundaries,
+    };
+  } catch (error) {
+    if (error instanceof SessionSourceAlignmentError) {
+      return {
+        status: "waiting",
+        generatedAutomatically: true,
+        acousticAnalysisStarted: false,
+        code: error.code,
+        reason: error.message,
+      };
+    }
+    throw error;
+  }
 }
 
 export async function decideSessionSourceAlignment(input: {

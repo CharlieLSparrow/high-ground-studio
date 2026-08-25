@@ -59,6 +59,29 @@ type Alignment = {
   };
 };
 
+type AlignmentSuggestion =
+  | {
+      status: "ready";
+      generatedAutomatically: true;
+      acousticAnalysisStarted: false;
+      spineRecordingAssetId: string;
+      targetRecordingAssetId: string;
+      clockAuthority:
+        | "capture-clock-proposal"
+        | "reported-wall-clock-fallback";
+      initialOffsetSeconds: number;
+      overlapStartSeconds: number;
+      overlapEndSeconds: number;
+      searchRadiusSeconds: number;
+    }
+  | {
+      status: "waiting";
+      generatedAutomatically: true;
+      acousticAnalysisStarted: false;
+      code: string;
+      reason: string;
+    };
+
 function sourceLabel(source: SessionSourceEvidence["sources"][number]) {
   return source.fileName || source.recordingAssetId;
 }
@@ -92,6 +115,8 @@ export function SessionSourceAlignmentCard({
       ?.recordingAssetId ?? "",
   );
   const [alignments, setAlignments] = useState<Alignment[]>([]);
+  const [suggestion, setSuggestion] =
+    useState<AlignmentSuggestion | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [revokeReason, setRevokeReason] = useState("");
@@ -105,11 +130,17 @@ export function SessionSourceAlignmentCard({
     const payload = (await response.json()) as {
       ok?: boolean;
       alignments?: Alignment[];
+      suggestion?: AlignmentSuggestion;
       error?: string;
     };
     if (!response.ok || !payload.ok)
       throw new Error(payload.error || "Could not read Session sync evidence.");
     setAlignments(payload.alignments ?? []);
+    setSuggestion(payload.suggestion ?? null);
+    if (payload.suggestion?.status === "ready") {
+      setSpineId(payload.suggestion.spineRecordingAssetId);
+      setTargetId(payload.suggestion.targetRecordingAssetId);
+    }
   }
 
   useEffect(() => {
@@ -365,6 +396,46 @@ export function SessionSourceAlignmentCard({
           </select>
         </label>
       </div>
+      {suggestion?.status === "ready" && !current ? (
+        <div
+          className="mt-5 rounded-2xl border border-sky-700 bg-sky-950/50 p-4"
+          role="region"
+          aria-label="Automatic capture clock suggestion"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-black text-sky-100">
+              Capture clocks found a shared recording window
+            </p>
+            <span className="rounded-full border border-sky-700 px-2.5 py-1 text-[9px] font-black uppercase text-sky-200">
+              No processing started
+            </span>
+          </div>
+          <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+            <Metric
+              label="Estimated offset"
+              value={milliseconds(suggestion.initialOffsetSeconds)}
+            />
+            <Metric
+              label="Shared window"
+              value={`${suggestion.overlapStartSeconds.toFixed(2)}–${suggestion.overlapEndSeconds.toFixed(2)} s`}
+            />
+            <Metric
+              label="Waveform search"
+              value={`±${suggestion.searchRadiusSeconds.toFixed(2)} s`}
+            />
+          </dl>
+          <p className="mt-3 text-xs font-semibold leading-5 text-sky-100/80">
+            This automatic estimate comes from retained capture timing. It is a
+            starting point, not an acoustic match or an applied edit. Compare
+            waveforms to measure the opening offset and later drift from the
+            exact source bytes.
+          </p>
+        </div>
+      ) : suggestion?.status === "waiting" && sources.length >= 2 ? (
+        <p className="mt-5 rounded-2xl border border-amber-700 bg-amber-950/40 p-4 text-sm font-bold text-amber-100">
+          {suggestion.reason}
+        </p>
+      ) : null}
       {current?.evidence ? (
         <div className="mt-5 rounded-2xl border border-cyan-700 bg-slate-950/80 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -549,7 +620,7 @@ export function SessionSourceAlignmentCard({
           )}
           {current?.evidence
             ? "Analyze these exact sources again"
-            : "Analyze exact source sync"}
+            : "Compare exact-source waveforms"}
         </button>
         <p className="text-[10px] font-semibold leading-4 text-slate-400">
           Analysis only creates evidence. Choosing “Use measured placement”

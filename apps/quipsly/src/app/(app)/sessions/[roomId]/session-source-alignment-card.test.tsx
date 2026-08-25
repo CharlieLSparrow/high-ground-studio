@@ -146,7 +146,7 @@ describe("SessionSourceAlignmentCard", () => {
     );
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
     fireEvent.click(
-      screen.getByRole("button", { name: /analyze exact source sync/i }),
+      screen.getByRole("button", { name: /compare exact-source waveforms/i }),
     );
     await screen.findByText("The processor is paused.");
     expect(global.fetch).toHaveBeenNthCalledWith(
@@ -161,5 +161,45 @@ describe("SessionSourceAlignmentCard", () => {
         }),
       }),
     );
+  });
+
+  it("shows the automatic capture-clock estimate before starting acoustic processing", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        alignments: [],
+        suggestion: {
+          status: "ready",
+          generatedAutomatically: true,
+          acousticAnalysisStarted: false,
+          spineRecordingAssetId: "recording-coach",
+          targetRecordingAssetId: "recording-client",
+          clockAuthority: "capture-clock-proposal",
+          initialOffsetSeconds: 0.351,
+          overlapStartSeconds: 0,
+          overlapEndSeconds: 119.649,
+          searchRadiusSeconds: 1,
+        },
+      }),
+    }) as jest.Mock;
+    render(
+      <SessionSourceAlignmentCard
+        roomId="room-1"
+        evidence={evidence}
+        canManage
+      />,
+    );
+    expect(
+      await screen.findByRole("region", {
+        name: /automatic capture clock suggestion/i,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("+351.0 ms")).toBeInTheDocument();
+    expect(screen.getByText(/no processing started/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/not an acoustic match or an applied edit/i),
+    ).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });
