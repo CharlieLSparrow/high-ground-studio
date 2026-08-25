@@ -966,6 +966,7 @@ for (const needle of [
   "CaptureProviderRoomControls",
   "CaptureCallInputRoute",
   "CaptureUseCallAudioToggle",
+  "CaptureJoinMicrophoneToggle",
   "Join call",
   "CaptureStudioHandoffCard_",
   "CaptureSourceTruthFootnote",
@@ -1019,6 +1020,7 @@ for (const needle of [
   "audioCapture.activeSessionID == session.id",
   "videoCapture.activeSessionID == session.id",
   "CaptureUseCallAudioToggle",
+  "CaptureJoinMicrophoneToggle",
   "Finish or stop the current take first.",
   ".disabled(providerControlsLocked",
   "CaptureRecordingModePicker",
@@ -1667,10 +1669,17 @@ requireIncludes(audioSoundCheckModelText, "Listen back for mouth noise", "health
 requireIncludes(capturePhoneShellText, "ProviderRoomControls(", "shipping recorder reaches provider room controls");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureProviderRoomControls")', "shipping provider controls have a stable automation identity");
 requireIncludes(capturePhoneShellText, '@AppStorage("quipsly.call.join-muted.v1")', "shipping call entry remembers whether call audio belongs on this iPhone");
+requireIncludes(capturePhoneShellText, '@AppStorage("quipsly.call.microphone-muted.v1")', "shipping call entry remembers the conventional pre-join microphone choice separately");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCallInputRoute")', "shipping call entry names the current microphone route");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureUseCallAudioToggle")', "shipping call entry exposes an addressable audio-device control");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinMicrophoneToggle")', "shipping call entry exposes an addressable pre-join microphone control");
+requireIncludes(capturePhoneShellText, "if microphonePermissionNeedsRecovery", "shipping call entry does not lead a valid muted join with microphone Settings paperwork");
+requireIncludes(capturePhoneShellText, '.localizedCaseInsensitiveContains("microphone access") == true', "a connected muted participant sees Settings recovery only after an explicit blocked microphone action");
+requireIncludes(captureExperienceModelText, "if useCallAudio && !joinMuted", "a muted iPhone join defers microphone permission until the person chooses to speak");
+requireIncludes(captureExperienceModelText, "joinMuted: joinMuted", "the native join carries the microphone choice independently from call-audio routing");
 requireIncludes(providerRoomText, "ConnectOptions(autoSubscribe: useCallAudio)", "native companion mode does not subscribe to remote call media");
-requireIncludes(providerRoomText, "setMicrophone(enabled: useCallAudio)", "native companion mode does not publish a call microphone");
+requireIncludes(providerRoomText, "enabled: useCallAudio && !joinMuted", "native primary endpoints can subscribe to the conversation while joining with microphone publication off");
+requireIncludes(providerRoomText, 'prepareMicrophonePermission(action: "speak in the call")', "the first explicit Unmute action becomes the deferred microphone permission boundary");
 requireIncludes(providerRoomText, "didSubscribeTrack publication: RemoteTrackPublication", "native call refreshes its remote-video surface when a participant publishes video");
 requireIncludes(providerRoomText, "didUnsubscribeTrack publication: RemoteTrackPublication", "native call removes stale remote video when a participant stops video");
 requireIncludes(providerRoomText, "SwiftUIVideoView(track, layoutMode: .fill)", "native call renders subscribed remote video using the provider SDK");

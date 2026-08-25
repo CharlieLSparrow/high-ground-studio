@@ -150,22 +150,24 @@ final class ProviderRoomController: NSObject, ObservableObject {
         }
     }
 
-    /// iOS remembers this system decision. Quipsly asks only from the person's
-    /// Join action, before minting a short-lived room token or opening CallKit.
-    func prepareMicrophonePermissionForJoin() async -> Bool {
+    /// iOS remembers this system decision. Quipsly asks only from an explicit
+    /// action that will publish the microphone. Joining muted can subscribe to
+    /// call audio without prompting; Unmute becomes the permission boundary.
+    private func prepareMicrophonePermission(action: String) async -> Bool {
         switch AVAudioApplication.shared.recordPermission {
         case .granted:
             lastError = nil
             lastTechnicalError = nil
             return true
         case .denied:
-            fail("Allow microphone access in Settings to join the call.")
+            fail("Allow microphone access in Settings to \(action).")
             return false
         case .undetermined:
+            let wasConnected = isConnected
             isConnecting = true
             lastError = nil
             connectionStateLabel = "Checking microphone"
-            statusText = "Allow microphone access to join the call. Quipsly will remember the iPhone setting."
+            statusText = "Allow microphone access to \(action). Quipsly will remember the iPhone setting."
             let allowed = await withCheckedContinuation { continuation in
                 AVAudioApplication.requestRecordPermission { granted in
                     continuation.resume(returning: granted)
@@ -173,12 +175,12 @@ final class ProviderRoomController: NSObject, ObservableObject {
             }
             isConnecting = false
             if allowed {
-                connectionStateLabel = "Ready"
-                statusText = "Microphone ready."
+                connectionStateLabel = wasConnected ? "Connected" : "Ready"
+                statusText = wasConnected ? "Microphone ready to unmute." : "Microphone ready."
                 lastTechnicalError = nil
                 return true
             }
-            fail("Allow microphone access in Settings to join the call.")
+            fail("Allow microphone access in Settings to \(action).")
             return false
         @unknown default:
             fail("Microphone access is unavailable. Check Quipsly in Settings, then try again.")
@@ -186,11 +188,16 @@ final class ProviderRoomController: NSObject, ObservableObject {
         }
     }
 
+    func prepareMicrophonePermissionForJoin() async -> Bool {
+        await prepareMicrophonePermission(action: "join with your microphone on")
+    }
+
     func connect(
         using join: MobileCaptureRoomJoinResponse?,
         session: MobileCaptureSession,
         expectedOwnerSnapshot: AuthManager.StableOwnerSnapshot,
-        useCallAudio: Bool = true
+        useCallAudio: Bool = true,
+        joinMuted: Bool = false
     ) async {
         #if canImport(LiveKit)
         guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
@@ -299,12 +306,14 @@ final class ProviderRoomController: NSObject, ObservableObject {
             // media. It stays in the room for presence, Session data, shared
             // Watch, and synchronized local capture without claiming the
             // microphone or creating speaker echo.
-            try await room.localParticipant.setMicrophone(enabled: useCallAudio)
+            try await room.localParticipant.setMicrophone(
+                enabled: useCallAudio && !joinMuted
+            )
             guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
                 await abortForAccountChange()
                 return
             }
-            isMuted = !useCallAudio
+            isMuted = !useCallAudio || joinMuted
             isConnected = true
             isReconnecting = false
             lastTechnicalError = nil
@@ -317,7 +326,9 @@ final class ProviderRoomController: NSObject, ObservableObject {
             }
             refreshCallAudioMeterLifecycle()
             statusText = useCallAudio
-                ? "Joined the call. Recording still starts separately."
+                ? joinMuted
+                    ? "Joined muted. Recording still starts separately."
+                    : "Joined the call. Recording still starts separately."
                 : "Joined as a second device. Call audio stays on your other device."
         } catch {
             stopCallAudioMeter()
@@ -360,6 +371,14 @@ final class ProviderRoomController: NSObject, ObservableObject {
             }
             fail("Join the call before changing your microphone.", technical: "Mute was requested without an active provider room.")
             return
+        }
+
+        if !muted {
+            guard await prepareMicrophonePermission(action: "speak in the call") else { return }
+            guard AuthManager.shared.matchesStableOwnerSnapshot(activeOwnerSnapshot) else {
+                await abortForAccountChange()
+                return
+            }
         }
 
         do {

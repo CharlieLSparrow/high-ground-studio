@@ -5008,6 +5008,17 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "A consented LiveKit-ready Session should expose an explicit Join room action."
         )
         XCTAssertTrue(join.isEnabled)
+        let microphone = app.switches["CaptureJoinMicrophoneToggle"].firstMatch
+        XCTAssertTrue(
+            microphone.exists,
+            "The real signed-in call lobby should expose the conventional microphone-on or microphone-off choice before joining."
+        )
+        turnOn(microphone, in: app)
+        XCTAssertEqual(
+            microphone.value as? String,
+            "1",
+            "This permission flight should deliberately exercise the microphone-on join path regardless of the person's saved preference."
+        )
 
         let microphoneAlertHandler = addUIInterruptionMonitor(withDescription: "Provider microphone permission") { alert in
             for label in ["Allow", "OK"] where alert.buttons[label].exists {

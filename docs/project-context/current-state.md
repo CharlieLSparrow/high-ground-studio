@@ -3822,3 +3822,22 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   remembered re-entry, and retained-source listening remain in the deferred
   validation ledger. Detailed decision record:
   `docs/coordination/2026-08-24-conventional-call-ux-review.md`.
+
+### 2026-08-25 native join-muted call lobby
+
+- Capture now separates using this iPhone for call audio from publishing its
+  microphone. A primary endpoint can subscribe to the conversation while
+  joining muted; a companion endpoint continues to subscribe to and publish
+  no call media.
+- The ordinary pre-join microphone choice is persisted independently from
+  call-audio routing. A muted join does not request microphone access; the first
+  explicit Unmute becomes the permission boundary and rechecks the stable
+  signed-in owner before publication.
+- A denied participant can remain connected and listen instead of being blocked
+  by permission ceremony. Recording still starts and stops separately from
+  provider-room membership.
+- The 1,199-check Capture static gate, a dual-architecture Simulator build, and
+  the focused operated outer-room journey pass. Real iPhone audibility,
+  permission timing, remote mute visibility, echo behavior, and retained-source
+  survival remain in the deferred validation ledger. Detailed decision record:
+  `docs/sessions/native-join-muted-lobby-2026-08-25.md`.

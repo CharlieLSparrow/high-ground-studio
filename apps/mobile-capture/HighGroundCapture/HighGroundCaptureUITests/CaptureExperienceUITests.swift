@@ -196,6 +196,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let call = app.descendants(matching: .any)["CaptureProviderRoomControls"]
         let join = app.buttons["ProviderJoinRoomButton"]
         let useCallAudio = app.switches["CaptureUseCallAudioToggle"]
+        let microphone = app.switches["CaptureJoinMicrophoneToggle"]
         let route = app.descendants(matching: .any)["CaptureCallInputRoute"]
         let consent = app.descendants(matching: .any)["CaptureConsentStrip"]
         let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"]
@@ -203,6 +204,21 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(call.waitForExistence(timeout: 5))
         XCTAssertTrue(join.exists, "The green room should expose one obvious Join call action.")
         XCTAssertTrue(useCallAudio.exists, "The familiar pre-join surface should make second-device audio routing obvious.")
+        turnOn(useCallAudio)
+        XCTAssertTrue(microphone.exists, "Using this iPhone for call audio should expose the standard pre-join microphone choice.")
+        turnOff(microphone)
+        XCTAssertTrue(
+            microphone.label.localizedCaseInsensitiveContains("Microphone off"),
+            "Turning the pre-join microphone off should remain an ordinary mute choice, not companion mode."
+        )
+        turnOn(microphone)
+        turnOff(useCallAudio)
+        XCTAssertFalse(
+            app.switches["CaptureJoinMicrophoneToggle"].exists,
+            "Second-device mode should remove the irrelevant local microphone publication choice."
+        )
+        turnOn(useCallAudio)
+        XCTAssertTrue(app.switches["CaptureJoinMicrophoneToggle"].exists)
         XCTAssertTrue(route.exists, "The current microphone route should be visible before joining.")
         XCTAssertTrue(localOnly.exists, "Local-only recording should remain one secondary escape hatch.")
         XCTAssertFalse(
@@ -3291,6 +3307,17 @@ final class CaptureExperienceUITests: XCTestCase {
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         expectation(
             for: NSPredicate(format: "value == %@", "1"),
+            evaluatedWith: toggle
+        )
+        waitForExpectations(timeout: 3)
+    }
+
+    private func turnOff(_ toggle: XCUIElement) {
+        reveal(toggle)
+        guard toggle.value as? String != "0" else { return }
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        expectation(
+            for: NSPredicate(format: "value == %@", "0"),
             evaluatedWith: toggle
         )
         waitForExpectations(timeout: 3)

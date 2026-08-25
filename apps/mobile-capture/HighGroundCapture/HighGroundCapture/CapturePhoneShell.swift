@@ -12332,6 +12332,7 @@ private struct ProviderRoomControls: View {
     let onToggleLocalRecordingWorkspace: () -> Void
     // Keep the existing storage key so upgrades preserve the person's choice.
     @AppStorage("quipsly.call.join-muted.v1") private var callAudioOnAnotherDevice = false
+    @AppStorage("quipsly.call.microphone-muted.v1") private var joinMuted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -12468,6 +12469,22 @@ private struct ProviderRoomControls: View {
                     .disabled(providerControlsLocked || model.isChangingRoom)
                     .accessibilityIdentifier("CaptureUseCallAudioToggle")
 
+                    if !callAudioOnAnotherDevice {
+                        Toggle(isOn: Binding(
+                            get: { !joinMuted },
+                            set: { joinMuted = !$0 }
+                        )) {
+                            Label(
+                                joinMuted ? "Microphone off" : "Microphone on",
+                                systemImage: joinMuted ? "mic.slash.fill" : "mic.fill"
+                            )
+                                .font(.subheadline)
+                        }
+                        .toggleStyle(.switch)
+                        .disabled(providerControlsLocked || model.isChangingRoom)
+                        .accessibilityIdentifier("CaptureJoinMicrophoneToggle")
+                    }
+
                     if callAudioOnAnotherDevice {
                         Text("Call audio stays off here to prevent echo. Local camera recording still works.")
                             .font(.caption)
@@ -12478,7 +12495,10 @@ private struct ProviderRoomControls: View {
 
                     Button {
                         Task {
-                            await model.joinRoom(useCallAudio: !callAudioOnAnotherDevice)
+                            await model.joinRoom(
+                                useCallAudio: !callAudioOnAnotherDevice,
+                                joinMuted: callAudioOnAnotherDevice || joinMuted
+                            )
                         }
                     } label: {
                         HStack {
@@ -12529,10 +12549,12 @@ private struct ProviderRoomControls: View {
                     .foregroundStyle(.orange)
             }
 
-            if !callAudioOnAnotherDevice && AVAudioApplication.shared.recordPermission == .denied {
+            if microphonePermissionNeedsRecovery {
                 CapturePermissionRecoveryButton(
                     title: "Allow microphone in Settings",
-                    detail: "Microphone access is off. Turn it on once, then return and join the call."
+                    detail: model.providerRoom.isConnected
+                        ? "You are still in the call muted. Turn microphone access on once, then return and tap Unmute."
+                        : "Microphone access is off. Turn it on once, then return and join with your microphone on."
                 )
             }
         }
@@ -12542,6 +12564,21 @@ private struct ProviderRoomControls: View {
 
     private var providerControlsLocked: Bool {
         model.providerControlsLockedForLocalCapture
+    }
+
+    /// A denied system choice should not turn a valid listen-only join into
+    /// permission paperwork. Recovery appears before a microphone-on join or
+    /// after an explicit Unmute attempt reports that the microphone is blocked.
+    private var microphonePermissionNeedsRecovery: Bool {
+        guard !callAudioOnAnotherDevice,
+              AVAudioApplication.shared.recordPermission == .denied else {
+            return false
+        }
+        if !model.providerRoom.isConnected {
+            return !joinMuted
+        }
+        return model.providerRoom.lastError?
+            .localizedCaseInsensitiveContains("microphone access") == true
     }
 
     private var callPermanentlyClosed: Bool {
@@ -12573,10 +12610,12 @@ private struct ProviderRoomControls: View {
         callPermanentlyClosed
             ? "The call is closed. Local source controls remain available."
             : model.providerRoom.canRejoin
-            ? "Reconnects the conversation with the saved call-audio choice. Your local recording remains separate."
+            ? "Reconnects the conversation with the saved call-audio and microphone choices. Your local recording remains separate."
             : providerControlsLocked
             ? "Finish or stop the current take first."
-            : "Joins the conversation. Recording starts only when someone taps Record."
+            : joinMuted && !callAudioOnAnotherDevice
+                ? "Joins the conversation muted. Recording starts only when someone taps Record."
+                : "Joins the conversation. Recording starts only when someone taps Record."
     }
 }
 

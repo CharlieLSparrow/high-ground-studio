@@ -2226,7 +2226,10 @@ final class CaptureExperienceModel: ObservableObject {
         message = "Moment marked in the source timeline."
     }
 
-    func joinRoom(useCallAudio: Bool = true) async {
+    func joinRoom(
+        useCallAudio: Bool = true,
+        joinMuted: Bool = false
+    ) async {
         guard let session = selectedSession, !isChangingRoom else { return }
         guard !providerRoom.isPermanentlyClosed(callRoomID: session.callRoomId) else {
             errorMessage = "This call has ended. Your local recording remains available to stop, save, upload, or recover."
@@ -2251,7 +2254,7 @@ final class CaptureExperienceModel: ObservableObject {
             message = "Room join is disabled in preview mode."
             return
         }
-        if useCallAudio {
+        if useCallAudio && !joinMuted {
             guard await providerRoom.prepareMicrophonePermissionForJoin() else {
                 errorMessage = providerRoom.lastError
                 return
@@ -2295,7 +2298,8 @@ final class CaptureExperienceModel: ObservableObject {
             using: join,
             session: session,
             expectedOwnerSnapshot: ownerSnapshot,
-            useCallAudio: useCallAudio
+            useCallAudio: useCallAudio,
+            joinMuted: joinMuted
         )
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
             await providerRoom.disconnect()
