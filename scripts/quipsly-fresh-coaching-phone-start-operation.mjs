@@ -48,6 +48,12 @@ const coach = {
 const client = {
   email: `phone-client-${suffix}@dev.test`,
   displayName: `Phone Client ${suffix.slice(0, 4).toUpperCase()}`,
+  password: `Qc-${randomBytes(18).toString("base64url")}!26`,
+};
+const outsider = {
+  email: `phone-outsider-${suffix}@dev.test`,
+  displayName: `Phone Outsider ${suffix.slice(0, 4).toUpperCase()}`,
+  password: `Qo-${randomBytes(18).toString("base64url")}!26`,
 };
 const sessionTitle = "Coaching session";
 const workSuffix = suffix;
@@ -80,7 +86,7 @@ async function run(command, args, options = {}) {
   return stdout.trim();
 }
 
-async function bearerToken() {
+async function bearerToken(identity) {
   const endpoint = new URL(
     "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key",
     `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`,
@@ -89,14 +95,48 @@ async function bearerToken() {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      email: coach.email,
-      password: coach.password,
+      email: identity.email,
+      password: identity.password,
       returnSecureToken: true,
     }),
   });
   const packet = await response.json().catch(() => null);
   assert(response.ok && packet?.idToken, "Local Firebase adapter did not mint a coach bearer token.");
   return packet.idToken;
+}
+
+async function ensureFirebaseIdentity(identity) {
+  const existing = await auth.getUserByEmail(identity.email).catch((error) => {
+    if (error?.code === "auth/user-not-found") return null;
+    throw error;
+  });
+  if (existing) {
+    return auth.updateUser(existing.uid, {
+      password: identity.password,
+      emailVerified: true,
+      displayName: identity.displayName,
+    });
+  }
+  return auth.createUser({
+    email: identity.email,
+    password: identity.password,
+    emailVerified: true,
+    displayName: identity.displayName,
+  });
+}
+
+async function rejectedJSON(pathname, token, expectedStatus) {
+  const response = await fetch(new URL(pathname, baseURL), {
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: "application/json",
+      "cache-control": "no-store",
+    },
+  });
+  const packet = await response.json().catch(() => null);
+  assert.equal(response.status, expectedStatus, `${pathname} returned an unexpected isolation status.`);
+  assert.equal(packet?.ok, false, `${pathname} did not preserve its private not-found envelope.`);
+  return packet;
 }
 
 async function authenticatedJSON(pathname, token) {
@@ -161,7 +201,7 @@ await run(
   },
 );
 
-const token = await bearerToken();
+const token = await bearerToken(coach);
 const runway = await authenticatedJSON("/api/coaching/runway", token);
 assert.equal(runway.user?.isCoach, true, "The iPhone coach setup did not persist.");
 const booking = runway.upcomingBookings?.find(
@@ -224,6 +264,52 @@ assert(
   "Independent readback omitted the exact message posted by the compiled iPhone UI.",
 );
 
+await ensureFirebaseIdentity(client);
+await ensureFirebaseIdentity(outsider);
+const clientToken = await bearerToken(client);
+const outsiderToken = await bearerToken(outsider);
+const clientConversation = await authenticatedJSON(
+  `/api/nest-chat?${conversationQuery.toString()}`,
+  clientToken,
+);
+assert.equal(
+  clientConversation.actor?.role,
+  "CLIENT",
+  "The invited client did not retain relationship-scoped conversation access.",
+);
+assert(
+  clientConversation.messages?.some(
+    (candidate) => candidate.id === conversationMessage.id,
+  ),
+  "The invited client could not read the exact iPhone-authored relationship message.",
+);
+const clientWorkspace = await authenticatedJSON(
+  `/api/coaching/engagements/${encodeURIComponent(booking.coachingEngagementId)}/work`,
+  clientToken,
+);
+for (const expected of [expectedWork.sharedNote, expectedWork.task, expectedWork.goal]) {
+  assert(
+    clientWorkspace.engagement?.entries?.some((candidate) => candidate.title === expected),
+    `The invited client could not read shared relationship work: ${expected}.`,
+  );
+}
+assert(
+  !clientWorkspace.engagement?.entries?.some(
+    (candidate) => candidate.title === expectedWork.privateNote,
+  ),
+  "The coach's author-private note leaked into the invited client's response.",
+);
+await rejectedJSON(
+  `/api/nest-chat?${conversationQuery.toString()}`,
+  outsiderToken,
+  404,
+);
+await rejectedJSON(
+  `/api/coaching/engagements/${encodeURIComponent(booking.coachingEngagementId)}/work`,
+  outsiderToken,
+  404,
+);
+
 function requireWork(title, kind, visibility) {
   const entry = workspace.engagement?.entries?.find(
     (candidate) => candidate.title === title,
@@ -261,6 +347,7 @@ const receipt = {
     firebaseUid: firebaseUser.uid,
     coachEmail: coach.email,
     clientEmail: client.email,
+    outsiderEmail: outsider.email,
   },
   operatedByCompiledIPhoneUI: {
     coachSetup: true,
@@ -271,6 +358,10 @@ const receipt = {
     relationshipWorkspaceEntry: true,
     relationshipConversationPostAndReadback: true,
     relationshipSessionContinuityVisible: true,
+    invitedClientConversationReadback: true,
+    invitedClientSharedWorkReadback: true,
+    authorPrivateNoteHiddenFromClient: true,
+    unrelatedAccountDeniedConversationAndWork: true,
     sharedNoteCreation: true,
     taskCreation: true,
     goalCreation: true,
@@ -300,6 +391,14 @@ const receipt = {
       messageId: conversationMessage.id,
       body: conversationMessage.body,
       actorRole: conversation.actor?.role || null,
+    },
+    isolation: {
+      invitedClientRole: clientConversation.actor?.role || null,
+      invitedClientSawMessage: true,
+      invitedClientSawSharedWork: true,
+      invitedClientSawCoachPrivateNote: false,
+      unrelatedConversationStatus: 404,
+      unrelatedWorkspaceStatus: 404,
     },
   },
   artifacts: {
