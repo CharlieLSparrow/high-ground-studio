@@ -147,9 +147,12 @@ alignment_control_folder="media-vault/control/audio-alignment/"
 mastery_control_folder="media-vault/control/audio-mastery/"
 signal_profile_control_folder="media-vault/control/audio-signal-profile/"
 spectral_control_folder="media-vault/control/audio-spectral-evidence/"
+session_audio_audition_control_folder="media-vault/control/session-audio-audition/"
+session_recording_share_control_folder="media-vault/control/session-recording-share/"
 proxy_folder="media-vault/proxy/"
 mastering_folder="media-vault/mastering/"
 spectral_folder="media-vault/spectral/"
+session_recording_share_folder="media-vault/derived/session-recording-share/"
 for folder in \
   "${recordings_folder}" \
   "${raw_folder}" \
@@ -158,9 +161,12 @@ for folder in \
   "${mastery_control_folder}" \
   "${signal_profile_control_folder}" \
   "${spectral_control_folder}" \
+  "${session_audio_audition_control_folder}" \
+  "${session_recording_share_control_folder}" \
   "${proxy_folder}" \
   "${mastering_folder}" \
-  "${spectral_folder}"; do
+  "${spectral_folder}" \
+  "${session_recording_share_folder}"; do
   ensure_managed_folder "${folder}"
 done
 
@@ -180,7 +186,9 @@ for folder in \
   "${alignment_control_folder}" \
   "${mastery_control_folder}" \
   "${signal_profile_control_folder}" \
-  "${spectral_control_folder}"; do
+  "${spectral_control_folder}" \
+  "${session_audio_audition_control_folder}" \
+  "${session_recording_share_control_folder}"; do
   ensure_binding \
     "${folder}" \
     "serviceAccount:${processor_service_account}" \
@@ -207,6 +215,14 @@ ensure_binding \
   "serviceAccount:${processor_service_account}" \
   "roles/storage.objectViewer"
 ensure_binding \
+  "${session_recording_share_folder}" \
+  "serviceAccount:${processor_service_account}" \
+  "roles/storage.objectCreator"
+ensure_binding \
+  "${session_recording_share_folder}" \
+  "serviceAccount:${processor_service_account}" \
+  "roles/storage.objectViewer"
+ensure_binding \
   "${control_folder}" \
   "serviceAccount:${nest_service_account}" \
   "roles/storage.objectUser"
@@ -214,7 +230,9 @@ for folder in \
   "${alignment_control_folder}" \
   "${mastery_control_folder}" \
   "${signal_profile_control_folder}" \
-  "${spectral_control_folder}"; do
+  "${spectral_control_folder}" \
+  "${session_audio_audition_control_folder}" \
+  "${session_recording_share_control_folder}"; do
   ensure_binding \
     "${folder}" \
     "serviceAccount:${nest_service_account}" \
@@ -230,6 +248,10 @@ ensure_binding \
   "roles/storage.objectViewer"
 ensure_binding \
   "${spectral_folder}" \
+  "serviceAccount:${nest_service_account}" \
+  "roles/storage.objectViewer"
+ensure_binding \
+  "${session_recording_share_folder}" \
   "serviceAccount:${nest_service_account}" \
   "roles/storage.objectViewer"
 

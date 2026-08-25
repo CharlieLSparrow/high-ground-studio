@@ -47,9 +47,7 @@
     "provenanceReceipt": "quipsly-media-processor-source.json"
   },
   "proofs": {
-    "source": [
-      "scripts/release/quipsly-media-processor-context.test.sh"
-    ],
+    "source": ["scripts/release/quipsly-media-processor-context.test.sh"],
     "deterministic": [
       "pnpm --filter quipsly-media-processor build",
       "pnpm quipsly:media-processor:test",
@@ -62,6 +60,8 @@
       "pnpm quipsly:audio-signal-profile-cloud:test",
       "pnpm quipsly:audio-spectral-evidence:test",
       "pnpm quipsly:audio-spectral-cloud:test",
+      "pnpm quipsly:session-audio-audition:test",
+      "pnpm quipsly:session-recording-share:test",
       "pnpm quipsly:media-processor:access:test"
     ],
     "localRuntime": [

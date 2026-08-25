@@ -26,6 +26,10 @@ Date: 2026-08-24
   two-source rendering, proof listening, recipient readback, revocation, and
   cost measurement remain deferred release evidence. Detailed decision record:
   `docs/coordination/2026-08-25-cloud-session-recording-share.md`.
+- Release IAM now includes dedicated Session audition/share control folders and
+  a create/read-only recording-share derivative folder. The processor cannot
+  overwrite derivatives; Nest can queue/reconcile work and read the result but
+  cannot create it. Both new worker lanes are deterministic manifest proofs.
 
 ## Conventional call progression checkpoint
 

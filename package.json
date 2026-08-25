@@ -277,6 +277,8 @@
     "quipsly:audio-spectral-evidence:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-spectral-evidence.test.mjs",
     "quipsly:audio-spectral-cloud:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-spectral-cloud-worker.test.mjs",
     "quipsly:audio-spectral:gcs-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-audio-spectral-gcs-fixture.mjs",
+    "quipsly:session-audio-audition:test": "pnpm exec tsx --test packages/quipsly-media-processing/src/session-audio-audition.test.ts apps/quipsly-media-processor/src/session-audio-audition-worker.test.ts",
+    "quipsly:session-recording-share:test": "pnpm exec tsx --test packages/quipsly-media-processing/src/session-recording-share-cloud.test.ts apps/quipsly-media-processor/src/session-recording-share-cloud-worker.test.ts apps/quipsly-media-processor/src/session-recording-share-ffmpeg.test.ts",
     "quipsly:transcript-worker:build": "pnpm --filter quipsly-transcript-worker build",
     "quipsly:transcript-worker:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-capture-transcript-worker.test.mjs scripts/quipsly-capture-transcript-cloud-fixture.test.mjs scripts/release/quipsly-transcript-worker-deploy.test.mjs",
     "quipsly:transcript-worker:deploy": "bash scripts/release/quipsly-transcript-worker-deploy.sh",

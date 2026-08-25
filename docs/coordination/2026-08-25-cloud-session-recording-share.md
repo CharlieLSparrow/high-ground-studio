@@ -59,6 +59,10 @@ cloud outbox rather than creating another render.
 - Shared cloud contract, local and cloud worker, renderer, private outbox,
   generation-pinned object reader, existing recording-share service/UI tests,
   and strict TypeScript pass locally.
+- The media-processor release manifest now runs the audition and recording-share
+  lane tests, while its least-privilege access contract creates separate
+  updateable control folders and a create/read-only recording-share derivative
+  folder for the worker. Nest receives control access plus derivative read only.
 - Cloud worker execution with two real participant masters, exact output
   readback, authenticated proof listening, deliberate release, recipient
   playback/download, revocation, and cost observation remain release-train
