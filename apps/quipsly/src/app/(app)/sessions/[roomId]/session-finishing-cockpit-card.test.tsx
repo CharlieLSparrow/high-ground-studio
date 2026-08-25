@@ -3,6 +3,11 @@
 import "@testing-library/jest-dom";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
+const refresh = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh }),
+}));
+
 import { SessionFinishingCockpitCard } from "./session-finishing-cockpit-card";
 import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessTopology } from "./session-readiness-topology";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
@@ -140,6 +145,7 @@ describe("Session finishing cockpit card", () => {
           segmentCount: 340,
           wordCount: 3_400,
           readiness: buildSessionTranscriptReadiness({
+            id: "transcript-mv7i",
             status: "COMPLETED",
             segmentCount: 340,
             wordCount: 3_400,

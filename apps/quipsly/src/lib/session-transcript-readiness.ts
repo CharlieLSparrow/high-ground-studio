@@ -32,6 +32,7 @@ export type SessionTranscriptReadiness = {
 };
 
 type TranscriptJobEvidence = {
+  id: string;
   status: string;
   segmentCount: number;
   wordCount: number;
@@ -88,6 +89,53 @@ function routingEvidence(value: unknown) {
   };
 }
 
+function validIsoDate(value: unknown) {
+  const parsed = text(value);
+  return Boolean(parsed && Number.isFinite(Date.parse(parsed)));
+}
+
+function localProviderEvidence(job: TranscriptJobEvidence) {
+  const result = object(job.resultJson);
+  const local = object(result.localProcessing);
+  const rawSha256 = text(local.rawProviderSha256)?.toLowerCase() ?? null;
+  const jobId = text(job.id);
+  const expectedEvidencePath = jobId && rawSha256
+    ? `transcripts/jobs/${jobId}/provider-${rawSha256}.json`
+    : null;
+  const localHash = text(local.sourceSha256)?.toLowerCase() ?? null;
+  const jobHash = text(job.sourceSha256)?.toLowerCase() ?? null;
+  const localGeneration = text(local.sourceGeneration);
+  const jobGeneration = text(job.sourceGeneration);
+  const segmentCount = Number(local.segmentCount);
+  const wordCount = Number(local.wordCount);
+
+  return Boolean(
+    result.source === "local-durable-transcript-worker"
+    && local.schema === "quipsly-local-transcript-result-v1"
+    && local.status === "COMPLETED"
+    && local.immutableProviderEvidence === true
+    && local.sourceMutationAllowed === false
+    && localHash
+    && jobHash
+    && localHash === jobHash
+    && localGeneration
+    && jobGeneration
+    && localGeneration === jobGeneration
+    && Number.isSafeInteger(segmentCount)
+    && segmentCount > 0
+    && segmentCount === job.segmentCount
+    && Number.isSafeInteger(wordCount)
+    && wordCount > 0
+    && wordCount === job.wordCount
+    && rawSha256
+    && /^[a-f0-9]{64}$/.test(rawSha256)
+    && text(local.rawProviderEvidencePath) === expectedEvidencePath
+    && validIsoDate(local.startedAt)
+    && validIsoDate(local.completedAt)
+    && text(job.workerBuildId)
+  );
+}
+
 function result(input: Omit<SessionTranscriptReadiness, "boundaries">): SessionTranscriptReadiness {
   return {
     ...input,
@@ -105,6 +153,7 @@ export function buildSessionTranscriptReadiness(
   source: RetainedSourceEvidence,
 ): SessionTranscriptReadiness {
   const routing = routingEvidence(job.resultJson);
+  const durableLocalProviderEvidence = localProviderEvidence(job);
   const normalizedHash = text(job.sourceSha256)?.toLowerCase() ?? null;
   const sourceHash = text(source?.sha256)?.toLowerCase() ?? null;
   const normalizedGeneration = text(job.sourceGeneration);
@@ -112,8 +161,9 @@ export function buildSessionTranscriptReadiness(
   const hashMatches = Boolean(normalizedHash && sourceHash && normalizedHash === sourceHash);
   const generationMatches = Boolean(normalizedGeneration && sourceGeneration && normalizedGeneration === sourceGeneration);
   const manifestReceiptPresent = Boolean(job.processingManifestObject) || routing.manifestBacked === false;
-  const resultReceiptPresent = Boolean(job.processingResultObject);
-  const providerReceiptPresent = Boolean(job.providerRequestId && job.providerResponseObject && job.workerBuildId);
+  const resultReceiptPresent = Boolean(job.processingResultObject) || durableLocalProviderEvidence;
+  const providerReceiptPresent = Boolean(job.providerRequestId && job.providerResponseObject && job.workerBuildId)
+    || durableLocalProviderEvidence;
   const exactSourceBound = source?.status === "VERIFIED_MATCH"
     && hashMatches
     && generationMatches

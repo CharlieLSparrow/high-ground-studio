@@ -4,6 +4,7 @@ const A = "a".repeat(64);
 
 function job(overrides: Record<string, unknown> = {}) {
   return {
+    id: "job-1",
     status: "COMPLETED",
     segmentCount: 42,
     wordCount: 420,
@@ -106,6 +107,75 @@ describe("Session transcript readiness", () => {
       state: "READY",
       timing: { granularity: "segment", transcriptEditingPrecision: "segment" },
       detail: expect.stringContaining("Word-level editing is unavailable"),
+    });
+  });
+
+  function localJob(localOverride: Record<string, unknown> = {}) {
+    const rawSha256 = "c".repeat(64);
+    return job({
+      segmentCount: 6,
+      wordCount: 64,
+      processingManifestObject: null,
+      processingResultObject: null,
+      providerRequestId: null,
+      providerResponseObject: null,
+      resultJson: {
+        source: "local-durable-transcript-worker",
+        processingControl: {
+          routing: {
+            schema: "quipsly-transcript-routing-summary-v1",
+            sourceTopology: "participant-isolated",
+            participantLabel: "Charlie",
+            speakerAuthority: "source-binding",
+            timingGranularity: "segment",
+            manifestBacked: false,
+          },
+        },
+        localProcessing: {
+          schema: "quipsly-local-transcript-result-v1",
+          status: "COMPLETED",
+          startedAt: "2026-08-24T18:00:00.000Z",
+          completedAt: "2026-08-24T18:01:00.000Z",
+          sourceSha256: A,
+          sourceGeneration: "9",
+          segmentCount: 6,
+          wordCount: 64,
+          rawProviderSha256: rawSha256,
+          rawProviderEvidencePath: `transcripts/jobs/job-1/provider-${rawSha256}.json`,
+          immutableProviderEvidence: true,
+          sourceMutationAllowed: false,
+          ...localOverride,
+        },
+      },
+    });
+  }
+
+  it("accepts a strict durable local provider receipt without pretending it is a cloud receipt", () => {
+    expect(buildSessionTranscriptReadiness(localJob(), source)).toMatchObject({
+      state: "READY",
+      sourceBinding: {
+        exactSourceBound: true,
+        manifestReceiptPresent: true,
+        resultReceiptPresent: true,
+        providerReceiptPresent: true,
+      },
+      timing: { transcriptEditingPrecision: "segment" },
+    });
+  });
+
+  it.each([
+    ["wrong evidence path", { rawProviderEvidencePath: "transcripts/jobs/other/provider.json" }],
+    ["wrong source hash", { sourceSha256: "d".repeat(64) }],
+    ["wrong segment count", { segmentCount: 7 }],
+    ["mutable provider evidence", { immutableProviderEvidence: false }],
+  ])("rejects a local receipt with %s", (_label, localOverride) => {
+    expect(buildSessionTranscriptReadiness(localJob(localOverride), source)).toMatchObject({
+      state: "REVIEW_REQUIRED",
+      sourceBinding: {
+        exactSourceBound: false,
+        resultReceiptPresent: false,
+        providerReceiptPresent: false,
+      },
     });
   });
 });

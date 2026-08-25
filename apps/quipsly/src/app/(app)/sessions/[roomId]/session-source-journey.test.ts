@@ -124,6 +124,7 @@ function finishingEvidence(overrides: Partial<SessionFinishingEvidence> = {}): S
       segmentCount: 340,
       wordCount: 3_400,
       readiness: buildSessionTranscriptReadiness({
+        id: "transcript-1",
         status: "COMPLETED",
         segmentCount: 340,
         wordCount: 3_400,

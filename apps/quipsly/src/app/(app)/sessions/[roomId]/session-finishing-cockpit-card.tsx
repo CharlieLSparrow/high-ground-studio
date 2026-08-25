@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, Clock3, DatabaseZap, ShieldAlert } from "lucide-react";
 
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
@@ -65,8 +67,21 @@ function checkpointAction(input: {
 }
 
 export function SessionFinishingCockpitCard(props: Props) {
+  const router = useRouter();
   const cockpit = buildSessionFinishingCockpit(props);
   const sourceJourney = buildSessionSourceJourneyProjection(props);
+  const shouldRefresh = sourceJourney.counts.attention === 0
+    && sourceJourney.counts.inProgress > 0;
+  useEffect(() => {
+    if (!shouldRefresh) return;
+    let attempts = 0;
+    const interval = window.setInterval(() => {
+      attempts += 1;
+      router.refresh();
+      if (attempts >= 24) window.clearInterval(interval);
+    }, 5_000);
+    return () => window.clearInterval(interval);
+  }, [props.roomId, router, shouldRefresh]);
   const protectedSourceCount = props.sourceEvidence.counts.VERIFIED_MATCH;
   const completedTranscriptCount = props.finishingEvidence.transcriptJobs.filter(
     (job) => job.readiness ? job.readiness.state === "READY" : job.status === "COMPLETED" && job.segmentCount > 0,

@@ -1,7 +1,12 @@
+import { createReadStream as createFileReadStream } from "node:fs";
 import { Readable } from "node:stream";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getMediaBucket, requireMediaBucketName } from "@/lib/server/gcs";
+import {
+  loadLocalMobileCaptureObject,
+  MOBILE_CAPTURE_LOCAL_VAULT_BUCKET,
+} from "@/lib/server/mobile-capture-local-vault";
 import { privateMediaByteRange } from "@/lib/server/private-media-byte-range";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionAccessWhere } from "@/lib/server/session-access";
@@ -152,6 +157,54 @@ async function protectedSessionMediaResponse(
       );
     }
 
+    const headers = mediaHeaders({
+      contentType: binding.contentType,
+      sha256: binding.sha256,
+      size: binding.byteSize,
+    });
+    const range = privateMediaByteRange(
+      request.headers.get("range"),
+      binding.byteSize,
+    );
+    if (range === "invalid") {
+      headers.set("Content-Range", `bytes */${binding.byteSize}`);
+      return new Response(null, { status: 416, headers });
+    }
+
+    if (binding.bucketName === MOBILE_CAPTURE_LOCAL_VAULT_BUCKET) {
+      const local = await loadLocalMobileCaptureObject(binding.objectName);
+      if (
+        !local ||
+        local.generation !== binding.generation ||
+        local.sizeBytes !== binding.byteSize ||
+        local.contentType !== binding.contentType ||
+        local.customMetadata.quipslyExpectedSizeBytes !==
+          String(binding.byteSize) ||
+        local.customMetadata.quipslyExpectedSha256 !== binding.sha256
+      ) {
+        return privateJson(
+          409,
+          "SOURCE_OBJECT_MISMATCH",
+          "Quipsly stopped playback because the retained object no longer matches its immutable receipt.",
+        );
+      }
+      if (range) {
+        headers.set("Content-Length", String(range.end - range.start + 1));
+        headers.set(
+          "Content-Range",
+          `bytes ${range.start}-${range.end}/${binding.byteSize}`,
+        );
+      } else {
+        headers.set("Content-Length", String(binding.byteSize));
+      }
+      const body = headOnly
+        ? null
+        : (Readable.toWeb(
+            createFileReadStream(local.objectPath, range ?? undefined),
+          ) as ReadableStream);
+      return new Response(body, { status: range ? 206 : 200, headers });
+    }
+
     const configuredBucket = requireMediaBucketName();
     if (binding.bucketName !== configuredBucket) {
       return privateJson(
@@ -175,20 +228,6 @@ async function protectedSessionMediaResponse(
         "SOURCE_OBJECT_MISMATCH",
         "Quipsly stopped playback because the retained object no longer matches its immutable receipt.",
       );
-    }
-
-    const headers = mediaHeaders({
-      contentType: binding.contentType,
-      sha256: binding.sha256,
-      size: binding.byteSize,
-    });
-    const range = privateMediaByteRange(
-      request.headers.get("range"),
-      binding.byteSize,
-    );
-    if (range === "invalid") {
-      headers.set("Content-Range", `bytes */${binding.byteSize}`);
-      return new Response(null, { status: 416, headers });
     }
     if (range) {
       headers.set("Content-Length", String(range.end - range.start + 1));

@@ -629,6 +629,7 @@ async function loadTranscriptEditSegments(
     const manifest = object(binding.source.localManifestJson);
     const readiness = buildSessionTranscriptReadiness(
       {
+        id: job.id,
         status: "COMPLETED",
         segmentCount: job.segments.length,
         wordCount: words.length,

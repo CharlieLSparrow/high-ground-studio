@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import { MEDIA_VAULT_PREFIXES } from "@/lib/server/media-vault";
+import { ensureMobileCaptureAudioAnalysisQueued } from "@/lib/server/mobile-capture-audio-analysis";
 import {
   assertMobileCaptureUploadReferences,
   MobileCaptureReferenceError,
@@ -197,6 +198,22 @@ function verifiedResponse(manifest: MobileCaptureResumableManifest, idempotent: 
     }),
     localRetention: buildMobileCaptureLocalRetention(),
   });
+}
+
+async function verifiedResponseWithAutomaticAnalysis(
+  prisma: any,
+  manifest: MobileCaptureResumableManifest,
+  idempotent: boolean,
+) {
+  try {
+    await ensureMobileCaptureAudioAnalysisQueued({ prisma, manifest });
+  } catch (error) {
+    console.error("[Mobile Capture Resumable] Audio analysis scheduling deferred", {
+      uploadSessionId: manifest.uploadSessionId,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+  }
+  return verifiedResponse(manifest, idempotent);
 }
 
 function failureResponse(manifest: MobileCaptureResumableManifest) {
@@ -411,7 +428,7 @@ export async function POST(request: Request) {
         crc32c: stored.manifest.verification!.crc32c,
         verifiedAt: stored.manifest.verification!.verifiedAt,
       });
-      return verifiedResponse(stored.manifest, true);
+      return verifiedResponseWithAutomaticAnalysis(prisma, stored.manifest, true);
     }
     if (stored.manifest.status === "failed" && !stored.manifest.failure?.retryable) {
       return failureResponse(stored.manifest);
@@ -505,7 +522,7 @@ export async function POST(request: Request) {
         crc32c: stored.manifest.verification!.crc32c,
         verifiedAt: stored.manifest.verification!.verifiedAt,
       });
-      return verifiedResponse(stored.manifest, true);
+      return verifiedResponseWithAutomaticAnalysis(prisma, stored.manifest, true);
     }
     if (stored.manifest.status === "failed") {
       return failureResponse(stored.manifest);
@@ -687,7 +704,7 @@ export async function POST(request: Request) {
           crc32c: recovered.manifest.verification!.crc32c,
           verifiedAt: recovered.manifest.verification!.verifiedAt,
         });
-        return verifiedResponse(recovered.manifest, true);
+        return verifiedResponseWithAutomaticAnalysis(prisma, recovered.manifest, true);
       }
       return jsonNoStore({
         ok: false,
@@ -699,7 +716,7 @@ export async function POST(request: Request) {
     if (stored.manifest.status !== "verified") {
       return verifyingResponse(stored.manifest);
     }
-    return verifiedResponse(stored.manifest, false);
+    return verifiedResponseWithAutomaticAnalysis(prisma, stored.manifest, false);
   } catch (error) {
     if (error instanceof MediaVaultUploadReservationError) {
       return jsonNoStore({

@@ -270,7 +270,7 @@ async function operateRenderedSession({ baseURL, context, password }) {
       recordingHeadlineText === "Recording protected",
       `Completed participant recordings did not resolve to a calm protected state: ${recordingHeadlineText}. Projection: ${String(projectedSourceDetail || "unavailable").replace(/\s+/g, " ").slice(0, 1600)}`,
     );
-    await recordingSummary.getByText(/participant-owned sources are verified and ready to play/i).waitFor();
+    await recordingSummary.getByText(/\d+ of \d+ participant-owned sources are verified, decoded, and ready/i).waitFor();
     const recordingReadiness = recordingSummary.locator(
       'dl[aria-label="Recording readiness"]',
     );

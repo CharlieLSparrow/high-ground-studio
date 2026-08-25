@@ -4,6 +4,7 @@ import { notFound, unstable_rethrow } from "next/navigation";
 import { readLastTranscriptMergedNoteSource, readTranscriptDerivedNoteSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { reconcileAudioSignalProfile } from "@/lib/server/audio-signal-profile";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA } from "@/lib/server/mobile-capture-quick-entry";
 import { recordingContentReadiness } from "@/lib/server/mobile-capture-content-readiness";
@@ -309,7 +310,7 @@ export default async function SessionReviewPage({
     const promotedMediaAssetIds = [...new Set(room.recordingAssets
       .map((recording: any) => cleanText(jsonObject(jsonObject(recording.localManifestJson).promotion).mediaAssetId))
       .filter(Boolean))];
-    const audioSignalProfileJobs = room.project && promotedMediaAssetIds.length
+    let audioSignalProfileJobs = room.project && promotedMediaAssetIds.length
       ? await prisma.studioAssetProcessingJob.findMany({
         where: {
           projectId: room.project.id,
@@ -330,6 +331,48 @@ export default async function SessionReviewPage({
         },
       })
       : [];
+    if (room.project && audioSignalProfileJobs.some((job: { status: string }) => job.status === "output-ready")) {
+      for (const job of audioSignalProfileJobs.filter((candidate: { status: string }) => candidate.status === "output-ready") as Array<{ id: string; assetId: string; status: string }>) {
+        const recording = room.recordingAssets.find((candidate: any) => (
+          cleanText(jsonObject(jsonObject(candidate.localManifestJson).promotion).mediaAssetId) === job.assetId
+        ));
+        const sourceId = cleanText(jsonObject(jsonObject(recording?.localManifestJson).promotion).sourceId);
+        if (!sourceId) continue;
+        try {
+          await reconcileAudioSignalProfile({
+            prisma,
+            projectSlug: room.project.slug,
+            assetId: job.assetId,
+            sourceId,
+          });
+        } catch (error) {
+          console.error("[Session] Audio analysis registration deferred", {
+            roomId: room.id,
+            jobId: job.id,
+            reason: error instanceof Error ? error.message : "unknown",
+          });
+        }
+      }
+      audioSignalProfileJobs = await prisma.studioAssetProcessingJob.findMany({
+        where: {
+          projectId: room.project.id,
+          assetId: { in: promotedMediaAssetIds },
+          type: "audio-signal-profile",
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          assetId: true,
+          type: true,
+          status: true,
+          inputJson: true,
+          resultJson: true,
+          error: true,
+          completedAt: true,
+          updatedAt: true,
+        },
+      });
+    }
     const sourceEvidence = buildSessionSourceEvidence({
       roomId: room.id,
       project: room.project
@@ -775,6 +818,7 @@ export default async function SessionReviewPage({
           segmentCount: job._count?.segments ?? 0,
           wordCount: job._count?.words ?? 0,
           readiness: buildSessionTranscriptReadiness({
+            id: job.id,
             status: String(job.status),
             segmentCount: job._count?.segments ?? 0,
             wordCount: job._count?.words ?? 0,

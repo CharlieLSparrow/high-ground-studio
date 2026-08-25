@@ -194,6 +194,18 @@ const context = await browser.newContext({
   reducedMotion: "reduce",
   acceptDownloads: true,
 });
+await context.addInitScript(() => {
+  // This flight proves the conventional browser-download fallback. Devices that
+  // expose Web Share take the separately tested native share-sheet branch.
+  Object.defineProperty(navigator, "share", {
+    configurable: true,
+    value: undefined,
+  });
+  Object.defineProperty(navigator, "canShare", {
+    configurable: true,
+    value: undefined,
+  });
+});
 const page = await context.newPage();
 const results = [];
 
@@ -327,42 +339,73 @@ try {
     await protectedMedia.waitFor({ state: "visible", timeout: 20_000 });
     const playbackProbe = await protectedMedia.evaluate(async (element) => {
       const media = element;
-      if (media.readyState < 1) {
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(
-            () => reject(new Error("protected-media-metadata-timeout")),
-            20_000,
-          );
-          media.addEventListener(
-            "loadedmetadata",
-            () => {
-              clearTimeout(timeout);
-              resolve();
-            },
-            { once: true },
-          );
-          media.addEventListener(
-            "error",
-            () => {
-              clearTimeout(timeout);
-              reject(new Error("protected-media-decode-error"));
-            },
-            { once: true },
-          );
-          media.load();
-        });
+      let loadError = null;
+      try {
+        if (media.readyState < 1) {
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(
+              () => reject(new Error("protected-media-metadata-timeout")),
+              20_000,
+            );
+            media.addEventListener(
+              "loadedmetadata",
+              () => {
+                clearTimeout(timeout);
+                resolve();
+              },
+              { once: true },
+            );
+            media.addEventListener(
+              "error",
+              () => {
+                clearTimeout(timeout);
+                reject(new Error("protected-media-decode-error"));
+              },
+              { once: true },
+            );
+            media.load();
+          });
+        }
+        await media.play();
+        const playbackDeadline = Date.now() + 5_000;
+        while (
+          media.currentTime <= 0 &&
+          !media.ended &&
+          Date.now() < playbackDeadline
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        media.pause();
+      } catch (error) {
+        loadError = error instanceof Error ? error.message : String(error);
       }
-      await media.play();
-      const playbackDeadline = Date.now() + 5_000;
-      while (
-        media.currentTime <= 0 &&
-        !media.ended &&
-        Date.now() < playbackDeadline
-      ) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+      const sourceURL = media.currentSrc || media.getAttribute("src") || "";
+      const responseEvidence = {};
+      if (sourceURL) {
+        for (const [label, init] of [
+          ["head", { method: "HEAD", cache: "no-store" }],
+          ["range", { headers: { Range: "bytes=0-4095" }, cache: "no-store" }],
+        ]) {
+          try {
+            const response = await fetch(sourceURL, init);
+            responseEvidence[label] = {
+              status: response.status,
+              contentType: response.headers.get("content-type"),
+              contentLength: response.headers.get("content-length"),
+              contentRange: response.headers.get("content-range"),
+              acceptRanges: response.headers.get("accept-ranges"),
+            };
+            if (label === "range") await response.arrayBuffer();
+          } catch (error) {
+            responseEvidence[label] = {
+              fetchError: error instanceof Error ? error.message : String(error),
+            };
+          }
+        }
       }
-      media.pause();
       return {
+        sourcePath: sourceURL ? new URL(sourceURL, location.href).pathname : null,
+        loadError,
         durationSeconds: Number.isFinite(media.duration)
           ? media.duration
           : null,
@@ -371,6 +414,7 @@ try {
         networkState: media.networkState,
         mediaErrorCode: media.error?.code ?? null,
         mediaErrorMessage: media.error?.message ?? null,
+        responseEvidence,
       };
     });
     assert(
@@ -481,16 +525,21 @@ try {
     exact: true,
   });
   await mentorReportButton.waitFor({ state: "visible", timeout: 20_000 });
-  const [mentorReportDownload, mentorReportResponse] = await Promise.all([
-    page.waitForEvent("download"),
-    page.waitForResponse(
-      (candidate) =>
-        candidate.request().method() === "GET" &&
-        new URL(candidate.url()).pathname ===
-          `/api/sessions/${ROOM_ID}/transcript-report`,
-    ),
-    mentorReportButton.click(),
-  ]);
+  const shareCapabilities = await page.evaluate(() => ({
+    share: typeof navigator.share,
+    canShare: typeof navigator.canShare,
+  }));
+  const mentorReportDownloadPromise = page
+    .waitForEvent("download", { timeout: 10_000 })
+    .catch(() => null);
+  const mentorReportResponsePromise = page.waitForResponse(
+    (candidate) =>
+      candidate.request().method() === "GET" &&
+      new URL(candidate.url()).pathname ===
+        `/api/sessions/${ROOM_ID}/transcript-report`,
+  );
+  await mentorReportButton.click();
+  const mentorReportResponse = await mentorReportResponsePromise;
   assert(
     mentorReportResponse.ok(),
     `Mentor transcript request failed with ${mentorReportResponse.status()}.`,
@@ -502,6 +551,16 @@ try {
         "2",
     "Mentor transcript did not prove a two-source coaching report.",
   );
+  const mentorReportDownload = await mentorReportDownloadPromise;
+  if (!mentorReportDownload) {
+    const mentorReportStatus = await page
+      .locator('[role="status"]')
+      .allTextContents()
+      .catch(() => []);
+    throw new Error(
+      `Mentor transcript response succeeded but no browser download started: ${JSON.stringify({ shareCapabilities, mentorReportStatus })}`,
+    );
+  }
   const mentorStream = await mentorReportDownload.createReadStream();
   const mentorChunks = [];
   for await (const chunk of mentorStream) mentorChunks.push(Buffer.from(chunk));

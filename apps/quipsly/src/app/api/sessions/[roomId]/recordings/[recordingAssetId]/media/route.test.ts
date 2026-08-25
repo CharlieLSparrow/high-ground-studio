@@ -1,9 +1,16 @@
 /** @jest-environment node */
 
 import { Readable } from "node:stream";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getMediaBucket, requireMediaBucketName } from "@/lib/server/gcs";
+import {
+  loadLocalMobileCaptureObject,
+  MOBILE_CAPTURE_LOCAL_VAULT_BUCKET,
+} from "@/lib/server/mobile-capture-local-vault";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import { GET, HEAD } from "./route";
@@ -16,6 +23,10 @@ jest.mock("@/lib/server/quipsly-session", () => ({
 jest.mock("@/lib/server/gcs", () => ({
   getMediaBucket: jest.fn(),
   requireMediaBucketName: jest.fn(),
+}));
+jest.mock("@/lib/server/mobile-capture-local-vault", () => ({
+  MOBILE_CAPTURE_LOCAL_VAULT_BUCKET: "quipsly-local-development-vault",
+  loadLocalMobileCaptureObject: jest.fn(),
 }));
 
 const roomId = "room-coaching-1";
@@ -33,6 +44,8 @@ const file = {
   createReadStream: jest.fn(),
 };
 const bucket = { file: jest.fn() };
+let localDirectory = "";
+let localObjectPath = "";
 
 function context() {
   return { params: Promise.resolve({ roomId, recordingAssetId }) };
@@ -88,6 +101,16 @@ function releasedReceipt() {
 }
 
 describe("Session protected recording media", () => {
+  beforeAll(async () => {
+    localDirectory = await mkdtemp(path.join(os.tmpdir(), "quipsly-protected-media-test-"));
+    localObjectPath = path.join(localDirectory, "source.webm");
+    await writeFile(localObjectPath, bytes);
+  });
+
+  afterAll(async () => {
+    await rm(localDirectory, { recursive: true, force: true });
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
@@ -102,6 +125,7 @@ describe("Session protected recording media", () => {
       .mocked(requireMediaBucketName)
       .mockReturnValue("quipsly-private-media");
     jest.mocked(getMediaBucket).mockReturnValue(bucket as never);
+    jest.mocked(loadLocalMobileCaptureObject).mockResolvedValue(null);
     prisma.callRoom.findFirst.mockResolvedValue(accessibleRoom());
     prisma.mobileCaptureFinalizationReceipt.findFirst.mockResolvedValue(
       releasedReceipt(),
@@ -209,6 +233,47 @@ describe("Session protected recording media", () => {
       "mobile/room-coaching-1/session-audio.m4a",
       { generation },
     );
+  });
+
+  it("streams a confined local-vault source without requiring production GCS", async () => {
+    prisma.callRoom.findFirst.mockResolvedValue({
+      ...accessibleRoom(),
+      recordingAssets: [{
+        ...accessibleRoom().recordingAssets[0],
+        storageBucket: MOBILE_CAPTURE_LOCAL_VAULT_BUCKET,
+      }],
+    });
+    prisma.mobileCaptureFinalizationReceipt.findFirst.mockResolvedValue({
+      ...releasedReceipt(),
+      metadataJson: {
+        immutableUploadBinding: {
+          ...releasedReceipt().metadataJson.immutableUploadBinding,
+          bucketName: MOBILE_CAPTURE_LOCAL_VAULT_BUCKET,
+        },
+      },
+    });
+    jest.mocked(loadLocalMobileCaptureObject).mockResolvedValue({
+      objectPath: localObjectPath,
+      generation,
+      sizeBytes: bytes.length,
+      contentType: "audio/mp4",
+      createdAt: "2026-08-24T12:00:00.000Z",
+      customMetadata: {
+        quipslyExpectedSizeBytes: String(bytes.length),
+        quipslyExpectedSha256: sha256,
+      },
+    });
+
+    const response = await GET(request("bytes=2-8"), context());
+    expect(response.status).toBe(206);
+    expect(response.headers.get("content-range")).toBe(
+      `bytes 2-8/${bytes.length}`,
+    );
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(
+      bytes.subarray(2, 9),
+    );
+    expect(requireMediaBucketName).not.toHaveBeenCalled();
+    expect(getMediaBucket).not.toHaveBeenCalled();
   });
 
   it("serves standards-compliant byte ranges and rejects invalid ranges", async () => {

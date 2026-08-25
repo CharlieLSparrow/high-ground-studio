@@ -2054,7 +2054,10 @@ export function TranscriptCorrectionDesk({
       const link = document.createElement("a");
       link.href = url;
       link.download = filename;
+      link.hidden = true;
+      document.body.appendChild(link);
       link.click();
+      link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
       setMessage("Mentor transcript downloaded. It keeps coach/client columns, timestamps, and source identity.");
     } catch (error) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { ensureMobileCaptureAudioAnalysisQueued } from "@/lib/server/mobile-capture-audio-analysis";
 import { mobileCaptureReleasePolicy } from "@/lib/server/mobile-capture-release-policy";
 import { finalizeMobileCaptureDatabaseEvidence } from "@/lib/server/mobile-capture-resumable-finalization";
 import {
@@ -42,6 +43,22 @@ function releaseResponse(manifest: MobileCaptureResumableManifest, idempotent: b
     captureRecords: manifest.finalization ?? null,
     originalReadiness: manifest.initialRoomReadiness,
   });
+}
+
+async function releaseResponseWithAutomaticAnalysis(
+  prisma: any,
+  manifest: MobileCaptureResumableManifest,
+  idempotent: boolean,
+) {
+  try {
+    await ensureMobileCaptureAudioAnalysisQueued({ prisma, manifest });
+  } catch (error) {
+    console.error("[Mobile Capture Release] Audio analysis scheduling deferred", {
+      uploadSessionId: manifest.uploadSessionId,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+  }
+  return releaseResponse(manifest, idempotent);
 }
 
 export async function POST(request: Request) {
@@ -163,7 +180,7 @@ export async function POST(request: Request) {
         reasonCode: policy.errorCode,
       }, policy.status);
     }
-    if (policy.idempotent) return releaseResponse(manifest, true);
+    if (policy.idempotent) return releaseResponseWithAutomaticAnalysis(prisma, manifest, true);
 
     const releasedAt = new Date().toISOString();
     const mediaNeedsRelease = policy.mediaNeedsRelease;
@@ -216,7 +233,7 @@ export async function POST(request: Request) {
     } catch {
       const winner = await loadMobileCaptureResumableManifest(uploadSessionId);
       if (winner?.manifest.finalization?.processingDisposition === "RELEASED") {
-        return releaseResponse(winner.manifest, true);
+        return releaseResponseWithAutomaticAnalysis(prisma, winner.manifest, true);
       }
       return jsonNoStore({
         ok: false,
@@ -224,7 +241,7 @@ export async function POST(request: Request) {
       }, 503);
     }
 
-    return releaseResponse(stored.manifest, false);
+    return releaseResponseWithAutomaticAnalysis(prisma, stored.manifest, false);
   } catch (error) {
     console.error("[Mobile Capture Release] failed", {
       uploadSessionId,

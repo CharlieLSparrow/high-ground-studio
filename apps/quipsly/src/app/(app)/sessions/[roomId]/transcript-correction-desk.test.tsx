@@ -119,6 +119,7 @@ describe("TranscriptCorrectionDesk", () => {
 
   it("offers a conventional mentor report download inside a coaching Session", async () => {
     const click = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const appendChild = jest.spyOn(document.body, "appendChild");
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: jest.fn(() => "blob:mentor-report") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: jest.fn() });
     const fetchMock = jest.fn()
@@ -136,6 +137,12 @@ describe("TranscriptCorrectionDesk", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls[1][0]).toBe("/api/sessions/room-1/transcript-report");
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(appendChild).toHaveBeenCalledWith(expect.any(HTMLAnchorElement));
+    const downloadLink = appendChild.mock.calls.find(
+      ([node]) => node instanceof HTMLAnchorElement,
+    )?.[0] as HTMLAnchorElement | undefined;
+    expect(downloadLink?.download).toBe("20260823 Coaching Transcript.docx");
+    expect(downloadLink?.isConnected).toBe(false);
     expect(await screen.findByText(/mentor transcript downloaded/i)).toBeInTheDocument();
   });
 

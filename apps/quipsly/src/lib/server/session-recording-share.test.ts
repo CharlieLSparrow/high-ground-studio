@@ -42,6 +42,7 @@ describe("Session recording share take selection", () => {
 describe("Session recording share text edits", () => {
   const sourceSha256 = "f".repeat(64);
   const transcriptReadiness = (overrides: Record<string, unknown> = {}) => buildSessionTranscriptReadiness({
+    id: "job-1",
     status: "COMPLETED",
     segmentCount: 1,
     wordCount: 8,

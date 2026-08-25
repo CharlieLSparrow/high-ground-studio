@@ -37,6 +37,45 @@ async function decodeAndAdvance(card) {
   });
 }
 
+async function completeRequiredPreviewReview(card, recipientLabel) {
+  const progress = card.getByRole("progressbar", {
+    name: "Private preview listening review",
+  });
+  await progress.waitFor({ state: "visible", timeout: 30_000 });
+  const required = Number(await progress.getAttribute("aria-valuemax"));
+  let observed = Number(await progress.getAttribute("aria-valuenow"));
+  assert(
+    Number.isInteger(required) && required > 0,
+    `Private preview did not disclose required listening checkpoints (${required}).`,
+  );
+  while (observed < required) {
+    const before = observed;
+    await card
+      .getByRole("button", { name: "Play next review point", exact: true })
+      .click();
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      observed = Number(await progress.getAttribute("aria-valuenow"));
+      if (observed > before) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert(
+      observed > before,
+      `Preview listening checkpoint did not advance beyond ${before}/${required}.`,
+    );
+  }
+  await card
+    .getByText("Listening review saved for this exact revision", { exact: false })
+    .waitFor({ timeout: 30_000 });
+  const release = card.getByRole("button", {
+    name: `Share with ${recipientLabel}`,
+    exact: true,
+  });
+  await release.waitFor({ state: "visible", timeout: 30_000 });
+  assert(await release.isEnabled(), "Reviewed private preview remained held from release.");
+  return { requiredCheckpointCount: required, observedCheckpointCount: observed };
+}
+
 assert(enabled, "Set QUIPSLY_LOCAL_RECORDING_SHARE_OPERATION=1 to authorize retained local recording-share artifacts.");
 const freshContext = await loadFreshCoachingAcceptanceContext({ baseURL });
 const ROOM_ID = freshContext?.roomId || retainedRoomId;
@@ -128,10 +167,11 @@ try {
     coachCard = coachPage.locator("#recording-share");
   }
   const prepareButton = coachCard.getByRole("button", { name: "Create private preview", exact: true });
-  if (freshContext) {
-    await prepareButton.waitFor({ state: "visible", timeout: 30_000 });
-  }
-  if (await prepareButton.count()) {
+  await Promise.race([
+    prepareButton.waitFor({ state: "visible", timeout: 30_000 }),
+    coachCard.getByText("VERIFIED", { exact: true }).waitFor({ timeout: 30_000 }),
+  ]);
+  if (await prepareButton.isVisible().catch(() => false)) {
     const sourceCheckboxes = coachCard.locator('fieldset input[type="checkbox"]');
     assert(await sourceCheckboxes.count() >= 2, "Rendered preparation did not offer separately attributed participant masters.");
     const checkedCount = await sourceCheckboxes.evaluateAll((boxes) => boxes.filter((box) => box.checked).length);
@@ -151,6 +191,10 @@ try {
   await coachCard.getByText("VERIFIED", { exact: true }).waitFor({ timeout: 120_000 });
   results.coachPreview = await decodeAndAdvance(coachCard);
   assert(results.coachPreview.readyState >= 1 && results.coachPreview.currentTimeSeconds > 0, "Coach preview did not decode and advance.");
+  results.playbackReview = await completeRequiredPreviewReview(
+    coachCard,
+    identities.client.displayName,
+  );
   const output = await prisma.sessionOutput.findFirstOrThrow({ where: { roomId: ROOM_ID, kind: "RECORDING_SHARE", status: "DRAFT" }, orderBy: { updatedAt: "desc" }, select: { id: true, revision: true, contentSha256: true, bodyJson: true, sourceManifestJson: true } });
   const derived = await prisma.recordingAsset.findUniqueOrThrow({ where: { id: output.bodyJson.render.recordingAssetId }, select: { id: true, checksum: true, byteSize: true, storageBucket: true, storageObjectPath: true, localManifestJson: true } });
   assert(derived.localManifestJson?.sessionRecordingShare?.outputId === output.id, "Derived recording omitted exact output lineage.");
