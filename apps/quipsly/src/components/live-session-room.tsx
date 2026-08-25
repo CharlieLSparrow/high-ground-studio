@@ -1342,15 +1342,19 @@ export function LiveSessionRoom({
       selectedMicrophoneId = microphoneIdRef.current;
       selectedCameraId = cameraIdRef.current;
     }
-    if (useCallAudioHere && !selectedMicrophoneId) {
-      setStatus("error");
-      setMessage("Microphone access is off. Allow it in this site's browser settings, then join again.");
-      return;
+    const joinWithoutMicrophone = useCallAudioHere && !selectedMicrophoneId;
+    const joinWithoutCamera = cameraWanted && !selectedCameraId;
+    const joinRecoveryMessages: string[] = [];
+    const joinTechnicalMessages: string[] = [];
+    if (joinWithoutMicrophone) {
+      joinRecoveryMessages.push(
+        "You joined muted. Choose a microphone in settings whenever you’re ready.",
+      );
     }
-    if (cameraWanted && !selectedCameraId) {
-      setStatus("error");
-      setMessage("Camera access is off. Allow it in this site's browser settings, or turn the camera off and join again.");
-      return;
+    if (joinWithoutCamera) {
+      joinRecoveryMessages.push(
+        "Your camera is off. Choose a camera in settings whenever you’re ready.",
+      );
     }
     setStatus("joining");
     setMessage("Joining…");
@@ -1472,10 +1476,8 @@ export function LiveSessionRoom({
         });
 
       await room.connect(packet.serverUrl, packet.participantToken);
-      const joinRecoveryMessages: string[] = [];
-      const joinTechnicalMessages: string[] = [];
       let microphonePublication;
-      if (useCallAudioHere) {
+      if (useCallAudioHere && selectedMicrophoneId) {
         try {
           await room.switchActiveDevice("audioinput", selectedMicrophoneId);
           microphonePublication = await room.localParticipant.setMicrophoneEnabled(!joinMuted, {
@@ -1503,6 +1505,7 @@ export function LiveSessionRoom({
         await room.localParticipant.setMicrophoneEnabled(false);
         setMicrophoneMuted(true);
         microphoneMutedRef.current = true;
+        setMicrophoneRecoveryHeld(joinWithoutMicrophone);
       }
       if (cameraWanted && selectedCameraId) {
         try {
@@ -1522,6 +1525,11 @@ export function LiveSessionRoom({
           joinRecoveryMessages.push("You joined with the camera off because it couldn't start. The conversation is still connected.");
           joinTechnicalMessages.push(error instanceof Error ? `Camera: ${error.message}` : "Camera: device start failed.");
         }
+      } else if (joinWithoutCamera) {
+        await room.localParticipant.setCameraEnabled(false).catch(() => undefined);
+        await attachLocalCameraTrack(null);
+        setCameraMuted(true);
+        cameraMutedRef.current = true;
       }
       suppressPreferenceWriteRef.current = false;
       room.remoteParticipants.forEach((participant: RemoteParticipant) => {
