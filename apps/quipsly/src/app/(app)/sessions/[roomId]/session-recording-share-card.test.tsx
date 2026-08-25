@@ -101,6 +101,34 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.getByText(/preview preparation is temporarily unavailable/i)).toBeInTheDocument();
   });
 
+  it("reopens the retained edit choices after a failed private preview", async () => {
+    const failedSnapshot = {
+      ...snapshot,
+      output: {
+        id: "session_output_failed_0001",
+        status: "DRAFT",
+        title: "Retained recording edit",
+        revision: 2,
+        contentSha256: "d".repeat(64),
+        recipient: { id: "client_user_0001", label: "Client" },
+        render: { status: "FAILED", durationSeconds: null, sizeBytes: null, sha256: null },
+        mediaUrl: null,
+        body: { edit: { startSeconds: 3, endSeconds: 24, transcriptExclusions: [] } },
+        sourceManifest: { sources: [{ recordingAssetId: "recording_asset_0001" }] },
+      },
+    };
+    global.fetch = jest.fn(async (_input: RequestInfo | URL) => response(failedSnapshot)) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(await screen.findByText(/original recording and edit choices are safe/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Review trim and try again" }));
+
+    expect(screen.getByDisplayValue("Retained recording edit")).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Recording start" })).toHaveValue("3");
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("24");
+    expect(screen.getByRole("button", { name: "Create private preview" })).toBeEnabled();
+  });
+
   it("focuses the exact transcript cut requested by the review surface", async () => {
     global.fetch = jest.fn(async (_input: RequestInfo | URL) => response(snapshot)) as jest.MockedFunction<typeof fetch>;
     const focusTranscriptKey = `${transcriptSegment.transcriptJobId}:${transcriptSegment.segmentId}`;

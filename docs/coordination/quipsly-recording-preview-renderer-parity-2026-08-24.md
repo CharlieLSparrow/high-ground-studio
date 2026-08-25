@@ -20,6 +20,8 @@ operational detail, not a choice the coach must understand.
   clients explain that preparation is temporarily unavailable.
 - Existing trim and transcript choices stay on screen; the clients do not
   claim a draft exists or mutate original recordings.
+- A failed render now offers **Review trim and try again**, reopens the exact
+  retained choices, and states that no recording was shared or lost.
 - Authorization, source verification, immutable render inputs, private review,
   explicit release, and revocation boundaries are unchanged.
 
@@ -29,11 +31,11 @@ operational detail, not a choice the coach must understand.
 pnpm --filter quipsly exec jest --runInBand --runTestsByPath \
   'src/app/(app)/sessions/[roomId]/session-recording-share-card.test.tsx'
 
-PASS: 1 suite, 11 tests
+PASS: 1 suite, 12 tests
 ```
 
-The focused browser suite includes both a cloud-only renderer case and a true
-no-renderer case.
+The focused browser suite includes a cloud-only renderer case, a true
+no-renderer case, and failed-render recovery with retained edit choices.
 
 ```text
 pnpm --filter quipsly typecheck

@@ -1953,6 +1953,8 @@ function checkTranscriptCorrectionContractSources() {
       && nativeRecordingShareText.includes("localRendererAvailable || cloudRendererAvailable")
       && nativeRecordingShareText.includes("snapshot.readiness?.verifiedRendererAvailable != true")
       && !nativeRecordingShareText.includes("snapshot.readiness?.localRendererAvailable != true")
+      && nativeRecordingShareText.includes('"Review trim and try again"')
+      && nativeRecordingShareText.includes("Your original recording and edit choices are safe")
       && nativeRecordingShareText.includes("Listen to exact passage")
       && nativeRecordingShareText.includes("source.programOffsetSeconds")
       && nativeRecordingShareText.includes("sourcePlayback.playRange")

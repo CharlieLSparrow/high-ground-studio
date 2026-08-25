@@ -937,7 +937,7 @@ struct CaptureRecordingShareEditor: View {
                 }
             }
         } else if snapshot.output != nil {
-            Button("Make another private edit") {
+            Button(snapshot.output?.render.status == "FAILED" ? "Review trim and try again" : "Make another private edit") {
                 restoreEditorFromCurrentOutput(snapshot)
             }
             .buttonStyle(.bordered)
@@ -1086,7 +1086,7 @@ struct CaptureRecordingShareEditor: View {
             } else if output.render.status == "QUEUED" || output.render.status == "PROCESSING" {
                 ProgressView("Aligning, leveling, decoding, and verifying…")
             } else if output.render.status == "FAILED" {
-                Text("This copy did not pass verification. Nothing was released.")
+                Text("The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.")
                     .font(.caption.weight(.bold)).foregroundStyle(.red)
             }
 
