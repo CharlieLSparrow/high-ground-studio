@@ -82,6 +82,13 @@ async function refresh(page) {
   await page.getByRole("button", { name: "Refresh conversation", exact: true }).click();
 }
 
+function messageArticle(page, body) {
+  return page
+    .locator("p.whitespace-pre-wrap", { hasText: body })
+    .filter({ hasText: body })
+    .locator("xpath=ancestor::article");
+}
+
 try {
   await Promise.all([
     signIn(coachPage, target.identities.coach),
@@ -94,7 +101,7 @@ try {
   await coachPage.getByText(originalBody, { exact: true }).waitFor({ timeout: 20_000 });
 
   await refresh(clientPage);
-  const clientOriginal = clientPage.locator("article").filter({ hasText: originalBody });
+  const clientOriginal = messageArticle(clientPage, originalBody);
   await clientOriginal.waitFor({ timeout: 20_000 });
   assert.equal(await clientOriginal.getByRole("button", { name: "Edit", exact: true }).count(), 0, "Client could edit the coach's message.");
   await clientOriginal.getByRole("button", { name: "Reply", exact: true }).click();
@@ -104,11 +111,10 @@ try {
   await clientPage.getByText(replyBody, { exact: true }).waitFor({ timeout: 20_000 });
 
   await refresh(coachPage);
-  const coachReply = coachPage.locator("article").filter({ hasText: replyBody });
+  const coachReply = messageArticle(coachPage, replyBody);
   await coachReply.waitFor({ timeout: 20_000 });
-  await coachPage.getByText(originalBody, { exact: true }).waitFor();
 
-  const coachOriginal = coachPage.locator("article").filter({ hasText: originalBody });
+  const coachOriginal = messageArticle(coachPage, originalBody);
   await coachOriginal.getByRole("button", { name: "Edit", exact: true }).click();
   const editor = coachOriginal.getByRole("textbox");
   await editor.fill(correctedBody);
@@ -132,7 +138,7 @@ try {
   await refresh(clientPage);
   await clientPage.getByText(retryBody, { exact: true }).waitFor({ timeout: 20_000 });
 
-  const clientReply = clientPage.locator("article").filter({ hasText: replyBody });
+  const clientReply = messageArticle(clientPage, replyBody);
   await clientReply.getByRole("button", { name: "Remove", exact: true }).click();
   await clientReply.getByRole("button", { name: "Remove", exact: true }).click();
   await clientReply.getByText("Message removed", { exact: true }).waitFor({ timeout: 20_000 });
