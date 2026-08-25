@@ -445,6 +445,17 @@ function checkMeetingSpineContractSources() {
     "Capture warns about known Quipsly conflicts before save, excludes the booking being edited, and still relies on the server mutation boundary for final authority.",
   );
   expect(
+    coachingHomeText.includes("MobileCoachingAvailabilitySheet")
+      && coachingHomeText.includes('"action": "update-weekly-availability"')
+      && coachingHomeText.includes("func isOutsideWeeklyAvailability(")
+      && coachingHomeText.includes("CaptureCoachingWorkingHoursButton")
+      && coachingHomeText.includes("CaptureCoachingAppointmentOutsideWorkingHours")
+      && coachingHomeText.includes("CaptureCoachingRescheduleOutsideWorkingHours")
+      && coachingHomeText.includes("CaptureCoachingSaveWorkingHours"),
+    "nativeCoachWorkingHours",
+    "Capture gives a coach one conventional weekly working-hours sheet, prevents obviously unavailable choices before save, and leaves final timezone-aware authority at the server mutation boundary.",
+  );
+  expect(
     meetingSpineText.includes("joiningStartsRecording: false")
       && meetingSpineText.includes("localRecordingRequiresConsent: true")
       && meetingSpineText.includes("providerRecordingRequiresAllParticipantConsent: true")

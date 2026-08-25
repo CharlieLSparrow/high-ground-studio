@@ -9,10 +9,12 @@ const requireFromQuipsly = createRequire(
 const { deleteApp, initializeApp } = requireFromQuipsly("firebase-admin/app");
 const { getAuth } = requireFromQuipsly("firebase-admin/auth");
 const { chromium } = requireFromQuipsly("playwright");
+const { Temporal } = requireFromQuipsly("@js-temporal/polyfill");
 const livekitBundle = requireFromQuipsly.resolve("livekit-client");
 
-const COACH_EMAIL = "quipsly-mobile-coach@dev.test";
-const CLIENT_EMAIL = "quipsly-mobile-client@dev.test";
+const identitySuffix = randomBytes(4).toString("hex");
+const COACH_EMAIL = `quipsly-mobile-coach-${identitySuffix}@dev.test`;
+const CLIENT_EMAIL = `quipsly-mobile-client-${identitySuffix}@dev.test`;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -266,7 +268,27 @@ async function main() {
       `Coach setup failed (${coachSetup.status}: ${String(coachSetup.body?.error || "unknown")}).`,
     );
 
-    const scheduledStart = new Date(Date.now() + 2 * 60 * 60 * 1_000);
+    const timezone = "America/Denver";
+    const scheduledLocalStart = Temporal.Now.zonedDateTimeISO(timezone)
+      .add({ days: 1 })
+      .with({ hour: 10, minute: 0, second: 0, millisecond: 0, microsecond: 0, nanosecond: 0 });
+    const scheduledStart = new Date(scheduledLocalStart.epochMilliseconds);
+    const schemaDayOfWeek = scheduledLocalStart.dayOfWeek === 7
+      ? 0
+      : scheduledLocalStart.dayOfWeek;
+    const availability = await api(origin, coachToken, "/api/coaching/runway", {
+      method: "POST",
+      body: {
+        action: "update-weekly-availability",
+        timezone,
+        windows: [{ dayOfWeek: schemaDayOfWeek, startMinute: 9 * 60, endMinute: 17 * 60 }],
+      },
+    });
+    assert(
+      availability.status === 200 && availability.body?.ok === true,
+      `Working-hours update failed (${availability.status}: ${String(availability.body?.error || "unknown")}).`,
+    );
+
     const appointment = await api(origin, coachToken, "/api/coaching/runway", {
       method: "POST",
       body: {
@@ -278,7 +300,7 @@ async function main() {
         durationMinutes: 60,
         purpose: "COACHING",
         paymentPolicy: "MANUAL",
-        timezone: "America/Denver",
+        timezone,
         currency: "USD",
       },
     });
@@ -316,6 +338,31 @@ async function main() {
         && overlappingAppointment.body?.code === "COACHING_TIME_CONFLICT"
         && /overlaps another Quipsly session/i.test(overlappingAppointment.body?.error || ""),
       `Overlapping appointment was not rejected clearly (${overlappingAppointment.status}: ${String(overlappingAppointment.body?.error || "unknown")}).`,
+    );
+
+    const outsideWorkingHours = await api(origin, coachToken, "/api/coaching/runway", {
+      method: "POST",
+      body: {
+        action: "create-booking-room",
+        clientEmail: CLIENT_EMAIL,
+        clientName: "Quipsly Mobile Client",
+        title: "This unavailable Session must not be created",
+        scheduledStart: new Date(
+          scheduledLocalStart.with({ hour: 18 }).epochMilliseconds,
+        ).toISOString(),
+        durationMinutes: 30,
+        purpose: "COACHING",
+        paymentPolicy: "MANUAL",
+        timezone,
+        currency: "USD",
+      },
+    });
+    assert(
+      outsideWorkingHours.status === 409
+        && outsideWorkingHours.body?.ok === false
+        && outsideWorkingHours.body?.code === "COACHING_OUTSIDE_AVAILABILITY"
+        && /outside the coach's Quipsly availability/i.test(outsideWorkingHours.body?.error || ""),
+      `Outside-hours appointment was not rejected clearly (${outsideWorkingHours.status}: ${String(outsideWorkingHours.body?.error || "unknown")}).`,
     );
 
     const [coachSessions, clientSessions, coachRunway, clientRunway] = await Promise.all([
@@ -404,6 +451,9 @@ async function main() {
         coachJoin.body?.participantToken && clientJoin.body?.participantToken
       ),
       overlappingAppointmentRejected: overlappingAppointment.body?.code === "COACHING_TIME_CONFLICT",
+      workingHoursSaved: availability.body?.action === "update-weekly-availability",
+      outsideWorkingHoursRejected:
+        outsideWorkingHours.body?.code === "COACHING_OUTSIDE_AVAILABILITY",
       providerProof,
       consentStarted: false,
       recordingStarted: false,

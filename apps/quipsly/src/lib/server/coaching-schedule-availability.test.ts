@@ -2,15 +2,25 @@ import {
   assertCoachingScheduleAvailable,
   CoachingScheduleConflictError,
   CoachingScheduleIntervalError,
+  CoachingOutsideAvailabilityError,
 } from "./coaching-schedule-availability";
 
-function transaction(input: { bookings?: unknown[]; holds?: unknown[] } = {}) {
+function transaction(
+  input: {
+    bookings?: unknown[];
+    holds?: unknown[];
+    availabilityWindows?: unknown[];
+  } = {},
+) {
   return {
     $queryRaw: jest.fn().mockResolvedValue([{ lock: null }]),
     coachingBooking: {
       findMany: jest.fn().mockResolvedValue(input.bookings || []),
     },
     bookingHold: { findMany: jest.fn().mockResolvedValue(input.holds || []) },
+    availabilityWindow: {
+      findMany: jest.fn().mockResolvedValue(input.availabilityWindows || []),
+    },
   };
 }
 
@@ -91,5 +101,56 @@ describe("coaching schedule availability", () => {
       status: 400,
     });
     expect(tx.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("accepts a session fully inside recurring local working hours", async () => {
+    const tx = transaction({
+      availabilityWindows: [
+        {
+          id: "window-1",
+          timezone: "America/Denver",
+          dayOfWeek: 3,
+          startMinute: 9 * 60,
+          endMinute: 17 * 60,
+          startsAt: null,
+          endsAt: null,
+        },
+      ],
+    });
+    await expect(
+      assertCoachingScheduleAvailable({
+        tx,
+        coachUserId: "coach-1",
+        scheduledStart: new Date("2026-08-26T15:00:00.000Z"),
+        scheduledEnd: new Date("2026-08-26T16:00:00.000Z"),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a session outside recurring local working hours", async () => {
+    const tx = transaction({
+      availabilityWindows: [
+        {
+          id: "window-1",
+          timezone: "America/Denver",
+          dayOfWeek: 3,
+          startMinute: 9 * 60,
+          endMinute: 17 * 60,
+          startsAt: null,
+          endsAt: null,
+        },
+      ],
+    });
+    await expect(
+      assertCoachingScheduleAvailable({
+        tx,
+        coachUserId: "coach-1",
+        scheduledStart: new Date("2026-08-26T23:30:00.000Z"),
+        scheduledEnd: new Date("2026-08-27T00:30:00.000Z"),
+      }),
+    ).rejects.toMatchObject<Partial<CoachingOutsideAvailabilityError>>({
+      code: "COACHING_OUTSIDE_AVAILABILITY",
+      status: 409,
+    });
   });
 });

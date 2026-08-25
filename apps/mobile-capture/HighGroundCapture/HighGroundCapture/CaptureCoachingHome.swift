@@ -74,6 +74,24 @@ struct MobileCoachingRunwayResponse: Codable {
     let user: MobileCoachingRunwayUser?
     let readiness: MobileCoachingRunwayReadiness?
     let upcomingBookings: [MobileCoachingBooking]?
+    let availabilityWindows: [MobileCoachingAvailabilityWindow]?
+}
+
+struct MobileCoachingAvailabilityWindow: Codable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let timezone: String
+    let dayOfWeek: Int?
+    let startMinute: Int?
+    let endMinute: Int?
+    let kind: String
+
+    var isRecurringWorkingHours: Bool {
+        kind == "recurring"
+            && dayOfWeek != nil
+            && startMinute != nil
+            && endMinute != nil
+    }
 }
 
 struct MobileCoachingRunwayReadiness: Codable, Hashable {
@@ -354,6 +372,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
             !["CANCELED", "COMPLETED", "NO_SHOW"].contains($0.status.uppercased())
         }
     }
+    var weeklyAvailability: [MobileCoachingAvailabilityWindow] {
+        (response?.availabilityWindows ?? []).filter(\.isRecurringWorkingHours)
+    }
     var isCoachingClient: Bool {
         guard let userID = response?.user?.id else { return false }
         return allBookings.contains { $0.client?.id == userID }
@@ -377,9 +398,50 @@ final class MobileCoachingRunwayClient: ObservableObject {
         }
     }
 
+    func isOutsideWeeklyAvailability(
+        startingAt scheduledStart: Date,
+        durationMinutes: Int
+    ) -> Bool {
+        let windows = weeklyAvailability
+        guard !windows.isEmpty else { return false }
+        let scheduledEnd = scheduledStart.addingTimeInterval(
+            TimeInterval(max(15, durationMinutes) * 60)
+        )
+        return !windows.contains { window in
+            guard let dayOfWeek = window.dayOfWeek,
+                  let startMinute = window.startMinute,
+                  let endMinute = window.endMinute,
+                  let timezone = TimeZone(identifier: window.timezone) else { return false }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = timezone
+            let startParts = calendar.dateComponents(
+                [.year, .month, .day, .weekday, .hour, .minute],
+                from: scheduledStart
+            )
+            let endParts = calendar.dateComponents(
+                [.year, .month, .day, .hour, .minute],
+                from: scheduledEnd
+            )
+            guard startParts.year == endParts.year,
+                  startParts.month == endParts.month,
+                  startParts.day == endParts.day,
+                  let weekday = startParts.weekday,
+                  let startHour = startParts.hour,
+                  let startMinutePart = startParts.minute,
+                  let endHour = endParts.hour,
+                  let endMinutePart = endParts.minute else { return false }
+            return weekday - 1 == dayOfWeek
+                && startHour * 60 + startMinutePart >= startMinute
+                && endHour * 60 + endMinutePart <= endMinute
+        }
+    }
+
     func loadPreview() {
         let conflictPreview = ProcessInfo.processInfo.arguments.contains(
             "--capture-conflict-scheduling-preview"
+        )
+        let availabilityPreview = ProcessInfo.processInfo.arguments.contains(
+            "--capture-availability-scheduling-preview"
         )
         let start = Date().addingTimeInterval((conflictPreview ? 55 : 35) * 60)
         response = MobileCoachingRunwayResponse(
@@ -396,7 +458,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 invitationEmailConfigured: true,
                 invitationEmailStatus: "AVAILABLE"
             ),
-            upcomingBookings: [
+            upcomingBookings: availabilityPreview ? [] : [
                 MobileCoachingBooking(
                     id: "preview-booking",
                     coachingEngagementId: "preview-engagement",
@@ -417,7 +479,18 @@ final class MobileCoachingRunwayClient: ObservableObject {
                     liveSessionPath: "/sessions/room-preview-coaching-ready?mode=live",
                     sessionWorkspacePath: "/sessions/room-preview-coaching-ready"
                 ),
-            ]
+            ],
+            availabilityWindows: (conflictPreview || availabilityPreview) ? [
+                MobileCoachingAvailabilityWindow(
+                    id: "preview-hours",
+                    label: "Today working hours",
+                    timezone: TimeZone.current.identifier,
+                    dayOfWeek: Calendar.current.component(.weekday, from: Date()) - 1,
+                    startMinute: 0,
+                    endMinute: conflictPreview ? 24 * 60 : 1,
+                    kind: "recurring"
+                ),
+            ] : []
         )
         status = "Coaching ready"
         errorMessage = nil
@@ -512,6 +585,13 @@ final class MobileCoachingRunwayClient: ObservableObject {
             errorMessage = "That time overlaps \(conflict.title) (\(conflict.scheduleLabel)). Choose another time first."
             return nil
         }
+        if isOutsideWeeklyAvailability(
+            startingAt: draft.scheduledStart,
+            durationMinutes: draft.durationMinutes
+        ) {
+            errorMessage = "That time is outside your weekly working hours. Choose a listed time or update Working hours."
+            return nil
+        }
 
         isMutating = true
         defer { isMutating = false }
@@ -567,6 +647,13 @@ final class MobileCoachingRunwayClient: ObservableObject {
             errorMessage = "That time overlaps \(conflict.title) (\(conflict.scheduleLabel)). Choose another time first."
             return false
         }
+        if isOutsideWeeklyAvailability(
+            startingAt: scheduledStart,
+            durationMinutes: durationMinutes
+        ) {
+            errorMessage = "That time is outside your weekly working hours. Choose a listed time or update Working hours."
+            return false
+        }
 
         isMutating = true
         defer { isMutating = false }
@@ -590,6 +677,46 @@ final class MobileCoachingRunwayClient: ObservableObject {
             return true
         } catch {
             status = "Rescheduling needs attention"
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func updateWeeklyAvailability(
+        days: Set<Int>,
+        startMinute: Int,
+        endMinute: Int
+    ) async -> Bool {
+        guard !isMutating else { return false }
+        guard !days.isEmpty, endMinute > startMinute else {
+            errorMessage = "Choose at least one weekday and an end time after the start time."
+            return false
+        }
+        isMutating = true
+        defer { isMutating = false }
+        status = "Saving working hours"
+        errorMessage = nil
+        do {
+            let payload = try await performAction([
+                "action": "update-weekly-availability",
+                "timezone": TimeZone.current.identifier,
+                "windows": days.sorted().map { day in
+                    [
+                        "dayOfWeek": day,
+                        "startMinute": startMinute,
+                        "endMinute": endMinute,
+                    ]
+                },
+            ])
+            guard payload.ok else {
+                throw coachingClientError(payload.error ?? "Working hours could not be saved.")
+            }
+            await load()
+            status = "Working hours saved"
+            return true
+        } catch {
+            status = "Working hours need attention"
             errorMessage = error.localizedDescription
             return false
         }
@@ -795,6 +922,7 @@ struct CaptureCoachingHomeView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
     @State private var showsNewAppointment = false
+    @State private var showsWorkingHours = false
     @State private var bookingToReschedule: MobileCoachingBooking?
     @State private var requestedRescheduleStart: Date?
     @State private var bookingToCancel: MobileCoachingBooking?
@@ -803,6 +931,7 @@ struct CaptureCoachingHomeView: View {
     private var client: MobileCoachingRunwayClient { model.coachingRunwayClient }
     private var allowsPreviewSchedulingInspection: Bool {
         ProcessInfo.processInfo.arguments.contains("--capture-conflict-scheduling-preview")
+            || ProcessInfo.processInfo.arguments.contains("--capture-availability-scheduling-preview")
     }
 
     var body: some View {
@@ -856,6 +985,10 @@ struct CaptureCoachingHomeView: View {
                 }
             )
             .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showsWorkingHours) {
+            MobileCoachingAvailabilitySheet(client: client)
+                .presentationDetents([.medium, .large])
         }
         .sheet(item: $bookingToReschedule, onDismiss: {
             requestedRescheduleStart = nil
@@ -972,18 +1105,29 @@ struct CaptureCoachingHomeView: View {
                     .font(.title2)
                     .foregroundStyle(.teal)
             }
-            Button {
-                showsNewAppointment = true
-            } label: {
-                Label("Schedule coaching", systemImage: "calendar.badge.plus")
-                    .frame(maxWidth: .infinity)
+            HStack {
+                Button {
+                    showsNewAppointment = true
+                } label: {
+                    Label("Schedule coaching", systemImage: "calendar.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(
+                    client.isMutating
+                        || (model.usesPreviewData && !allowsPreviewSchedulingInspection)
+                )
+                .accessibilityIdentifier("CaptureCoachingNewAppointmentButton")
+
+                Button {
+                    showsWorkingHours = true
+                } label: {
+                    Label("Working hours", systemImage: "clock.badge.checkmark")
+                }
+                .buttonStyle(.bordered)
+                .disabled(client.isMutating)
+                .accessibilityIdentifier("CaptureCoachingWorkingHoursButton")
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(
-                client.isMutating
-                    || (model.usesPreviewData && !allowsPreviewSchedulingInspection)
-            )
-            .accessibilityIdentifier("CaptureCoachingNewAppointmentButton")
         }
         .captureCard()
     }
@@ -2100,6 +2244,13 @@ private struct MobileCoachingRescheduleSheet: View {
         )
     }
 
+    private var isOutsideWorkingHours: Bool {
+        client.isOutsideWeeklyAvailability(
+            startingAt: scheduledStart,
+            durationMinutes: durationMinutes
+        )
+    }
+
     init(
         client: MobileCoachingRunwayClient,
         booking: MobileCoachingBooking,
@@ -2146,6 +2297,14 @@ private struct MobileCoachingRescheduleSheet: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                         .accessibilityIdentifier("CaptureCoachingRescheduleConflict")
+                    } else if isOutsideWorkingHours {
+                        Label(
+                            "Outside your working hours",
+                            systemImage: "clock.badge.exclamationmark.fill"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("CaptureCoachingRescheduleOutsideWorkingHours")
                     }
                 }
 
@@ -2171,7 +2330,12 @@ private struct MobileCoachingRescheduleSheet: View {
                             }
                         }
                     }
-                    .disabled(client.isMutating || scheduledStart <= Date() || scheduleConflict != nil)
+                    .disabled(
+                        client.isMutating
+                            || scheduledStart <= Date()
+                            || scheduleConflict != nil
+                            || isOutsideWorkingHours
+                    )
                     .accessibilityIdentifier("CaptureCoachingSaveReschedule")
                 }
             }
@@ -2190,6 +2354,13 @@ private struct NewMobileCoachingAppointmentSheet: View {
 
     private var scheduleConflict: MobileCoachingBooking? {
         client.scheduleConflict(
+            startingAt: draft.scheduledStart,
+            durationMinutes: draft.durationMinutes
+        )
+    }
+
+    private var isOutsideWorkingHours: Bool {
+        client.isOutsideWeeklyAvailability(
             startingAt: draft.scheduledStart,
             durationMinutes: draft.durationMinutes
         )
@@ -2231,6 +2402,14 @@ private struct NewMobileCoachingAppointmentSheet: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                         .accessibilityIdentifier("CaptureCoachingAppointmentConflict")
+                    } else if isOutsideWorkingHours {
+                        Label(
+                            "Outside your working hours",
+                            systemImage: "clock.badge.exclamationmark.fill"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("CaptureCoachingAppointmentOutsideWorkingHours")
                     }
                 }
 
@@ -2282,7 +2461,12 @@ private struct NewMobileCoachingAppointmentSheet: View {
                             isPresented = false
                         }
                     }
-                    .disabled(client.isMutating || !draft.isReady || scheduleConflict != nil)
+                    .disabled(
+                        client.isMutating
+                            || !draft.isReady
+                            || scheduleConflict != nil
+                            || isOutsideWorkingHours
+                    )
                     .accessibilityIdentifier("CaptureCoachingCreateAppointment")
                 }
             }
@@ -2290,6 +2474,135 @@ private struct NewMobileCoachingAppointmentSheet: View {
         }
         .accessibilityIdentifier("CaptureCoachingAppointmentSheet")
     }
+}
+
+private struct MobileCoachingAvailabilitySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: MobileCoachingRunwayClient
+    @State private var selectedDays: Set<Int>
+    @State private var startMinute: Int
+    @State private var endMinute: Int
+
+    private let dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    private let timeOptions = Array(stride(from: 0, through: 24 * 60, by: 30))
+
+    init(client: MobileCoachingRunwayClient) {
+        self.client = client
+        let windows = client.weeklyAvailability
+        _selectedDays = State(
+            initialValue: windows.isEmpty
+                ? Set(1...5)
+                : Set(windows.compactMap(\.dayOfWeek))
+        )
+        _startMinute = State(initialValue: windows.first?.startMinute ?? 9 * 60)
+        _endMinute = State(initialValue: windows.first?.endMinute ?? 17 * 60)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Choose when clients can be scheduled. Quipsly still checks existing Sessions before anything is saved.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Days") {
+                    HStack(spacing: 7) {
+                        ForEach(dayLabels.indices, id: \.self) { day in
+                            Button {
+                                if selectedDays.contains(day) {
+                                    selectedDays.remove(day)
+                                } else {
+                                    selectedDays.insert(day)
+                                }
+                            } label: {
+                                Text(dayLabels[day])
+                                    .font(.caption.weight(.bold))
+                                    .frame(maxWidth: .infinity, minHeight: 32)
+                                    .foregroundStyle(selectedDays.contains(day) ? .white : .primary)
+                                    .background(
+                                        selectedDays.contains(day) ? Color.teal : Color.secondary.opacity(0.12),
+                                        in: Capsule()
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(dayLabels[day])
+                            .accessibilityValue(selectedDays.contains(day) ? "Selected" : "Not selected")
+                            .accessibilityIdentifier("CaptureCoachingWorkingDay_\(day)")
+                        }
+                    }
+                }
+
+                Section("Hours") {
+                    Picker("Start", selection: $startMinute) {
+                        ForEach(timeOptions.dropLast(), id: \.self) { minute in
+                            Text(coachingTimeLabel(minute)).tag(minute)
+                        }
+                    }
+                    Picker("End", selection: $endMinute) {
+                        ForEach(timeOptions.dropFirst(), id: \.self) { minute in
+                            Text(coachingTimeLabel(minute)).tag(minute)
+                        }
+                    }
+                    LabeledContent("Time zone", value: TimeZone.current.identifier)
+                }
+
+                if selectedDays.isEmpty || endMinute <= startMinute {
+                    Section {
+                        Label(
+                            selectedDays.isEmpty
+                                ? "Choose at least one day."
+                                : "End time must be after start time.",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .foregroundStyle(.orange)
+                    }
+                }
+
+                if let error = client.errorMessage {
+                    Section { Text(error).foregroundStyle(.red) }
+                }
+            }
+            .navigationTitle("Working hours")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(client.isMutating ? "Saving…" : "Save") {
+                        Task {
+                            if await client.updateWeeklyAvailability(
+                                days: selectedDays,
+                                startMinute: startMinute,
+                                endMinute: endMinute
+                            ) {
+                                dismiss()
+                            }
+                        }
+                    }
+                    .disabled(
+                        client.isMutating
+                            || selectedDays.isEmpty
+                            || endMinute <= startMinute
+                    )
+                    .accessibilityIdentifier("CaptureCoachingSaveWorkingHours")
+                }
+            }
+        }
+        .interactiveDismissDisabled(client.isMutating)
+        .accessibilityIdentifier("CaptureCoachingWorkingHoursSheet")
+    }
+}
+
+private func coachingTimeLabel(_ minute: Int) -> String {
+    if minute == 24 * 60 { return "Midnight" }
+    let hour = minute / 60
+    let minutePart = minute % 60
+    let suffix = hour < 12 ? "AM" : "PM"
+    let displayHour = hour % 12 == 0 ? 12 : hour % 12
+    return String(format: "%d:%02d %@", displayHour, minutePart, suffix)
 }
 
 private func coachingISO8601Date(_ value: String) -> Date? {

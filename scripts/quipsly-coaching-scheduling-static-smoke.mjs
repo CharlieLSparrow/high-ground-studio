@@ -106,6 +106,24 @@ addCheck(
 );
 
 addCheck(
+  "runwayEnforcesCoachWorkingHours",
+  includesAll(route, [
+    '"update-weekly-availability"',
+    "CoachingOutsideAvailabilityError",
+    'code: error.code',
+    "acquirePrismaAdvisoryTransactionLock",
+    "availabilityWindow.create",
+  ]) && includesAll(scheduleAvailability, [
+    "COACHING_OUTSIDE_AVAILABILITY",
+    "Temporal.Instant.from",
+    "availabilityWindow.findMany",
+    "recurringWindowContains",
+    "specificWindowContains",
+  ]),
+  "Coaches can replace simple recurring working hours atomically, and every authoritative schedule mutation enforces those timezone-aware windows with a stable 409 contract.",
+);
+
+addCheck(
   "runwayReturnsCalendarReadiness",
   includesAll(route, [
     "getCoachingCalendarReadiness",

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { Temporal } from "@js-temporal/polyfill";
 import { acquirePrismaAdvisoryTransactionLock } from "./prisma-advisory-lock";
 
 const BLOCKING_BOOKING_STATUSES = [
@@ -41,6 +42,64 @@ export class CoachingScheduleIntervalError extends Error {
   }
 }
 
+export class CoachingOutsideAvailabilityError extends Error {
+  readonly code = "COACHING_OUTSIDE_AVAILABILITY";
+  readonly status = 409;
+
+  constructor() {
+    super(
+      "That time is outside the coach's Quipsly availability. Choose a time inside the working hours shown.",
+    );
+    this.name = "CoachingOutsideAvailabilityError";
+  }
+}
+
+function recurringWindowContains(
+  window: any,
+  scheduledStart: Date,
+  scheduledEnd: Date,
+) {
+  if (
+    !Number.isInteger(window.dayOfWeek) ||
+    !Number.isInteger(window.startMinute) ||
+    !Number.isInteger(window.endMinute)
+  ) {
+    return false;
+  }
+  try {
+    const start = Temporal.Instant.from(
+      scheduledStart.toISOString(),
+    ).toZonedDateTimeISO(window.timezone);
+    const end = Temporal.Instant.from(
+      scheduledEnd.toISOString(),
+    ).toZonedDateTimeISO(window.timezone);
+    const schemaDayOfWeek = start.dayOfWeek === 7 ? 0 : start.dayOfWeek;
+    return (
+      schemaDayOfWeek === window.dayOfWeek &&
+      start.toPlainDate().equals(end.toPlainDate()) &&
+      start.hour * 60 + start.minute >= window.startMinute &&
+      end.hour * 60 + end.minute <= window.endMinute
+    );
+  } catch {
+    return false;
+  }
+}
+
+function specificWindowContains(
+  window: any,
+  scheduledStart: Date,
+  scheduledEnd: Date,
+) {
+  const startsAt = window.startsAt instanceof Date ? window.startsAt : null;
+  const endsAt = window.endsAt instanceof Date ? window.endsAt : null;
+  return Boolean(
+    startsAt &&
+    endsAt &&
+    scheduledStart.getTime() >= startsAt.getTime() &&
+    scheduledEnd.getTime() <= endsAt.getTime(),
+  );
+}
+
 function assertValidInterval(scheduledStart: Date, scheduledEnd: Date) {
   if (
     !Number.isFinite(scheduledStart.getTime()) ||
@@ -71,7 +130,7 @@ export async function assertCoachingScheduleAvailable(input: {
     `quipsly:coaching-schedule:${input.coachUserId}`,
   );
 
-  const [bookings, holds] = await Promise.all([
+  const [bookings, holds, availabilityWindows] = await Promise.all([
     input.tx.coachingBooking.findMany({
       where: {
         coachUserId: input.coachUserId,
@@ -99,6 +158,30 @@ export async function assertCoachingScheduleAvailable(input: {
       orderBy: { scheduledStart: "asc" },
       take: 4,
     }),
+    input.tx.availabilityWindow.findMany({
+      where: {
+        coachProfile: { userId: input.coachUserId },
+        isActive: true,
+        OR: [
+          {
+            dayOfWeek: { not: null },
+            startMinute: { not: null },
+            endMinute: { not: null },
+          },
+          { startsAt: { not: null }, endsAt: { not: null } },
+        ],
+      },
+      select: {
+        id: true,
+        timezone: true,
+        dayOfWeek: true,
+        startMinute: true,
+        endMinute: true,
+        startsAt: true,
+        endsAt: true,
+      },
+      take: 40,
+    }),
   ]);
 
   const conflicts: CoachingScheduleConflict[] = [
@@ -109,4 +192,22 @@ export async function assertCoachingScheduleAvailable(input: {
     ...holds.map((hold: any) => ({ kind: "hold" as const, ...hold })),
   ];
   if (conflicts.length) throw new CoachingScheduleConflictError(conflicts);
+  if (
+    availabilityWindows.length &&
+    !availabilityWindows.some(
+      (window: any) =>
+        recurringWindowContains(
+          window,
+          input.scheduledStart,
+          input.scheduledEnd,
+        ) ||
+        specificWindowContains(
+          window,
+          input.scheduledStart,
+          input.scheduledEnd,
+        ),
+    )
+  ) {
+    throw new CoachingOutsideAvailabilityError();
+  }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
+import { Temporal } from "@js-temporal/polyfill";
 import { buildQuipslyCoachingLifecycle } from "@high-ground/quipsly-domain/coaching-lifecycle";
 import {
   isTranscriptPacketSource,
@@ -32,6 +33,7 @@ import { ensureInvitedStudioUserByEmail } from "@/lib/server/studio-user-identit
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import {
   assertCoachingScheduleAvailable,
+  CoachingOutsideAvailabilityError,
   CoachingScheduleConflictError,
   CoachingScheduleIntervalError,
 } from "@/lib/server/coaching-schedule-availability";
@@ -123,6 +125,12 @@ function runwayActionErrorResponse(error: unknown) {
     );
   }
   if (error instanceof CoachingScheduleIntervalError) {
+    return NextResponse.json(
+      { ok: false, error: error.message, code: error.code },
+      { status: error.status },
+    );
+  }
+  if (error instanceof CoachingOutsideAvailabilityError) {
     return NextResponse.json(
       { ok: false, error: error.message, code: error.code },
       { status: error.status },
@@ -1278,6 +1286,7 @@ export async function POST(request: Request) {
 
   if (![
     "setup-coach-profile",
+    "update-weekly-availability",
     "create-booking-room",
     "create-booking-hold",
     "release-booking-hold",
@@ -1549,6 +1558,99 @@ export async function POST(request: Request) {
 
       return { id: profile.id, slug: profile.slug };
     });
+  }
+
+  if (action === "update-weekly-availability") {
+    const requestedProfileId = text(body.coachProfileId);
+    const profile = await prisma.coachProfile.findFirst({
+      where: session.user.isStaff
+        ? requestedProfileId
+          ? { id: requestedProfileId, isActive: true }
+          : { userId: session.user.id, isActive: true }
+        : { id: actingCoachProfile?.id, userId: session.user.id, isActive: true },
+      select: { id: true, userId: true },
+    });
+    if (!profile) {
+      return NextResponse.json(
+        { ok: false, error: "Set up a coach profile before choosing weekly availability." },
+        { status: 404 },
+      );
+    }
+
+    const timezone = text(body.timezone) || getCoachingDefaultTimezone();
+    try {
+      Temporal.Now.instant().toZonedDateTimeISO(timezone);
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Choose a valid IANA time zone for weekly availability." },
+        { status: 400 },
+      );
+    }
+    const windows = (Array.isArray(body.windows) ? body.windows : []).map((value: unknown) => {
+      const window = isObject(value) ? value : {};
+      return {
+        dayOfWeek: integer(window.dayOfWeek),
+        startMinute: integer(window.startMinute),
+        endMinute: integer(window.endMinute),
+      };
+    });
+    if (
+      windows.length < 1 ||
+      windows.length > 14 ||
+      windows.some((window) =>
+        window.dayOfWeek === null || window.dayOfWeek < 0 || window.dayOfWeek > 6 ||
+        window.startMinute === null || window.startMinute < 0 ||
+        window.endMinute === null || window.endMinute > 24 * 60 ||
+        window.endMinute <= window.startMinute)
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Choose at least one weekday with an end time after its start time." },
+        { status: 400 },
+      );
+    }
+
+    const result = await prisma.$transaction(async (tx: any) => {
+      await acquirePrismaAdvisoryTransactionLock(
+        tx,
+        `quipsly:coaching-availability:${profile.userId}`,
+      );
+      await tx.availabilityWindow.updateMany({
+        where: {
+          coachProfileId: profile.id,
+          isActive: true,
+          startsAt: null,
+          endsAt: null,
+        },
+        data: { isActive: false },
+      });
+      const created = await Promise.all(
+        windows.map((window) => tx.availabilityWindow.create({
+          data: {
+            coachProfileId: profile.id,
+            label: `${dayLabel(window.dayOfWeek)} working hours`,
+            timezone,
+            dayOfWeek: window.dayOfWeek,
+            startMinute: window.startMinute,
+            endMinute: window.endMinute,
+            isActive: true,
+            metadataJson: {
+              source: "quipsly.coaching.weekly-availability.v1",
+              updatedByUserId: session.user.id,
+            },
+          },
+          select: { id: true },
+        })),
+      );
+      await tx.coachProfile.update({ where: { id: profile.id }, data: { timezone } });
+      return {
+        coachProfileId: profile.id,
+        timezone,
+        windowCount: created.length,
+        nextAction:
+          "Weekly availability saved. Quipsly will still recheck conflicts when a Session is created or moved.",
+      };
+    });
+    return NextResponse.json({ ok: true, action, result });
   }
 
   if (action === "attach-calendar-receipt") {

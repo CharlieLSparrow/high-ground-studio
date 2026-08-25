@@ -23,6 +23,9 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testSchedulingShowsKnownConflictBeforeSave") {
             app.launchArguments.append("--capture-conflict-scheduling-preview")
         }
+        if name.contains("testSchedulingRespectsWorkingHoursBeforeSave") {
+            app.launchArguments.append("--capture-availability-scheduling-preview")
+        }
         if name.contains("testRecordingReceiptOutboxSurvivesRelaunchAndStaysAccountPartitioned") {
             app.launchArguments += [
                 "--capture-share-owner-ui-preview=recording-receipt-owner",
@@ -185,6 +188,43 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(
             create.isEnabled,
             "The iPhone must not offer Save while its current schedule projection already conflicts."
+        )
+    }
+
+    func testSchedulingRespectsWorkingHoursBeforeSave() {
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+
+        let workingHours = app.buttons["CaptureCoachingWorkingHoursButton"]
+        XCTAssertTrue(
+            workingHours.waitForExistence(timeout: 5),
+            "A coach should be able to edit ordinary working hours without leaving the iPhone app."
+        )
+        workingHours.tap()
+        XCTAssertTrue(
+            app.navigationBars["Working hours"].waitForExistence(timeout: 5),
+            "Working hours should be one conventional sheet, not a separate administration workflow."
+        )
+        XCTAssertTrue(app.buttons["CaptureCoachingSaveWorkingHours"].exists)
+        app.buttons["Cancel"].tap()
+
+        let newAppointment = app.buttons["CaptureCoachingNewAppointmentButton"]
+        XCTAssertTrue(newAppointment.waitForExistence(timeout: 5))
+        newAppointment.tap()
+
+        let unavailable = app.descendants(matching: .any)[
+            "CaptureCoachingAppointmentOutsideWorkingHours"
+        ].firstMatch
+        XCTAssertTrue(
+            unavailable.waitForExistence(timeout: 5),
+            "The current choice should explain that it falls outside the coach's saved working hours."
+        )
+        let create = app.buttons["CaptureCoachingCreateAppointment"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            create.isEnabled,
+            "The iPhone must not offer Save for a time outside authoritative working hours."
         )
     }
 
