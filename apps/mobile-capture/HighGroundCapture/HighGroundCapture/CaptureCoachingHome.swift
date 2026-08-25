@@ -38,6 +38,12 @@ struct MobileCoachingBooking: Codable, Identifiable, Hashable {
         coachingISO8601Date(scheduledStart)
     }
 
+    var durationMinutes: Int {
+        guard let start = coachingISO8601Date(scheduledStart),
+              let end = coachingISO8601Date(scheduledEnd) else { return 60 }
+        return max(15, Int(end.timeIntervalSince(start) / 60))
+    }
+
     var scheduleLabel: String {
         guard let scheduledDate else { return scheduledStart }
         if Calendar.current.isDateInToday(scheduledDate) {
@@ -502,6 +508,75 @@ final class MobileCoachingRunwayClient: ObservableObject {
     }
 
     @discardableResult
+    func rescheduleBooking(
+        _ booking: MobileCoachingBooking,
+        scheduledStart: Date,
+        durationMinutes: Int
+    ) async -> Bool {
+        guard !isMutating else { return false }
+        guard scheduledStart > Date() else {
+            errorMessage = "Choose a future time for this Session."
+            return false
+        }
+
+        isMutating = true
+        defer { isMutating = false }
+        status = "Rescheduling Session"
+        errorMessage = nil
+
+        do {
+            let payload = try await performAction([
+                "action": "reschedule-booking",
+                "bookingId": booking.id,
+                "scheduledStart": ISO8601DateFormatter().string(from: scheduledStart),
+                "durationMinutes": max(15, durationMinutes),
+                "timezone": TimeZone.current.identifier,
+                "reason": "Rescheduled from Quipsly Capture on iPhone.",
+            ])
+            guard payload.ok, payload.result?.bookingId == booking.id else {
+                throw coachingClientError(payload.error ?? "This Session could not be rescheduled.")
+            }
+            await load()
+            status = "Session rescheduled"
+            return true
+        } catch {
+            status = "Rescheduling needs attention"
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func cancelBooking(_ booking: MobileCoachingBooking) async -> Bool {
+        guard !isMutating else { return false }
+        isMutating = true
+        defer { isMutating = false }
+        status = "Canceling Session"
+        errorMessage = nil
+
+        do {
+            let payload = try await performAction([
+                "action": "cancel-booking",
+                "bookingId": booking.id,
+                "reason": "Canceled from Quipsly Capture on iPhone.",
+            ])
+            guard payload.ok, payload.result?.bookingId == booking.id else {
+                throw coachingClientError(payload.error ?? "This Session could not be canceled.")
+            }
+            if latestHandoff?.bookingId == booking.id {
+                latestHandoff = nil
+            }
+            await load()
+            status = "Session canceled"
+            return true
+        } catch {
+            status = "Cancellation needs attention"
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
     func sendInvitationEmail(
         roomID: String,
         recipientEmail: String,
@@ -671,6 +746,8 @@ struct CaptureCoachingHomeView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
     @State private var showsNewAppointment = false
+    @State private var bookingToReschedule: MobileCoachingBooking?
+    @State private var bookingToCancel: MobileCoachingBooking?
 
     private var client: MobileCoachingRunwayClient { model.coachingRunwayClient }
 
@@ -725,6 +802,28 @@ struct CaptureCoachingHomeView: View {
                 }
             )
             .presentationDetents([.large])
+        }
+        .sheet(item: $bookingToReschedule) { booking in
+            MobileCoachingRescheduleSheet(client: client, booking: booking)
+                .presentationDetents([.medium])
+        }
+        .alert(
+            "Cancel this Session?",
+            isPresented: Binding(
+                get: { bookingToCancel != nil },
+                set: { if !$0 { bookingToCancel = nil } }
+            ),
+            presenting: bookingToCancel
+        ) { booking in
+            Button("Keep Session", role: .cancel) {
+                bookingToCancel = nil
+            }
+            Button("Cancel Session", role: .destructive) {
+                bookingToCancel = nil
+                Task { _ = await client.cancelBooking(booking) }
+            }
+        } message: { booking in
+            Text("Cancel \(booking.scheduleLabel)? The client space and its existing work stay available.")
         }
         .accessibilityIdentifier("CaptureCoachingHome")
     }
@@ -914,6 +1013,25 @@ struct CaptureCoachingHomeView: View {
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
+                            }
+                            if client.isCoach {
+                                Menu {
+                                    Button {
+                                        bookingToReschedule = booking
+                                    } label: {
+                                        Label("Reschedule", systemImage: "calendar.badge.clock")
+                                    }
+                                    Button(role: .destructive) {
+                                        bookingToCancel = booking
+                                    } label: {
+                                        Label("Cancel Session", systemImage: "calendar.badge.minus")
+                                    }
+                                } label: {
+                                    Label("Manage", systemImage: "ellipsis.circle")
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(client.isMutating || model.usesPreviewData)
+                                .accessibilityIdentifier("CaptureCoachingManage_\(booking.id)")
                             }
                         }
                         if client.isCoach {
@@ -1573,6 +1691,79 @@ private struct MobileCoachingWorkEditorSheet: View {
         }
         .interactiveDismissDisabled(client.isSaving)
         .accessibilityIdentifier("CaptureCoachingWorkEditor")
+    }
+}
+
+private struct MobileCoachingRescheduleSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: MobileCoachingRunwayClient
+    let booking: MobileCoachingBooking
+    @State private var scheduledStart: Date
+    @State private var durationMinutes: Int
+
+    init(client: MobileCoachingRunwayClient, booking: MobileCoachingBooking) {
+        self.client = client
+        self.booking = booking
+        _scheduledStart = State(initialValue: max(booking.scheduledDate ?? Date(), Date()))
+        _durationMinutes = State(initialValue: booking.durationMinutes)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent("Client", value: booking.clientLabel)
+                    LabeledContent("Session", value: booking.title)
+                }
+
+                Section("New time") {
+                    DatePicker(
+                        "Starts",
+                        selection: $scheduledStart,
+                        in: Date()...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .accessibilityIdentifier("CaptureCoachingRescheduleStart")
+                    Picker("Duration", selection: $durationMinutes) {
+                        Text("30 minutes").tag(30)
+                        Text("45 minutes").tag(45)
+                        Text("60 minutes").tag(60)
+                        Text("90 minutes").tag(90)
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("CaptureCoachingRescheduleDuration")
+                    LabeledContent("Time zone", value: TimeZone.current.identifier)
+                }
+
+                if let error = client.errorMessage {
+                    Section { Text(error).foregroundStyle(.red) }
+                }
+            }
+            .navigationTitle("Reschedule")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(client.isMutating ? "Saving…" : "Save") {
+                        Task {
+                            if await client.rescheduleBooking(
+                                booking,
+                                scheduledStart: scheduledStart,
+                                durationMinutes: durationMinutes
+                            ) {
+                                dismiss()
+                            }
+                        }
+                    }
+                    .disabled(client.isMutating || scheduledStart <= Date())
+                    .accessibilityIdentifier("CaptureCoachingSaveReschedule")
+                }
+            }
+        }
+        .interactiveDismissDisabled(client.isMutating)
+        .accessibilityIdentifier("CaptureCoachingRescheduleSheet")
     }
 }
 

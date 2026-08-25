@@ -395,6 +395,16 @@ function checkMeetingSpineContractSources() {
     "Capture keeps relationship-wide conversation and Session continuity beside private/shared work on the iPhone.",
   );
   expect(
+    coachingHomeText.includes('"action": "reschedule-booking"')
+      && coachingHomeText.includes('"action": "cancel-booking"')
+      && coachingHomeText.includes("CaptureCoachingManage_")
+      && coachingHomeText.includes("CaptureCoachingRescheduleSheet")
+      && coachingHomeText.includes("CaptureCoachingSaveReschedule")
+      && coachingHomeText.includes("The client space and its existing work stay available."),
+    "nativeCoachingSchedulingManagementParity",
+    "Capture lets an authorized coach reschedule or cancel a canonical appointment from the iPhone while preserving the client relationship and existing work.",
+  );
+  expect(
     meetingSpineText.includes("joiningStartsRecording: false")
       && meetingSpineText.includes("localRecordingRequiresConsent: true")
       && meetingSpineText.includes("providerRecordingRequiresAllParticipantConsent: true")

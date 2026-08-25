@@ -1434,6 +1434,37 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         back.tap()
         XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 15))
 
+        let manage = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingManage_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(manage, in: app, timeout: 20, swipeAttempts: 12),
+            "The phone-created appointment should remain manageable from the same native coaching home."
+        )
+        manage.tap()
+        let reschedule = app.buttons["Reschedule"].firstMatch
+        XCTAssertTrue(reschedule.waitForExistence(timeout: 5))
+        reschedule.tap()
+        let rescheduleSheet = app.descendants(matching: .any)[
+            "CaptureCoachingRescheduleSheet"
+        ].firstMatch
+        XCTAssertTrue(rescheduleSheet.waitForExistence(timeout: 8))
+        let duration = app.buttons["CaptureCoachingRescheduleDuration"].firstMatch
+        XCTAssertTrue(duration.waitForExistence(timeout: 5))
+        duration.tap()
+        let fortyFiveMinutes = app.buttons["45 minutes"].firstMatch
+        XCTAssertTrue(fortyFiveMinutes.waitForExistence(timeout: 5))
+        fortyFiveMinutes.tap()
+        let saveReschedule = app.buttons["CaptureCoachingSaveReschedule"].firstMatch
+        XCTAssertTrue(saveReschedule.waitForExistence(timeout: 5))
+        XCTAssertTrue(saveReschedule.isEnabled)
+        saveReschedule.tap()
+        XCTAssertTrue(
+            rescheduleSheet.waitForNonExistence(timeout: 30),
+            "A standard iPhone reschedule must persist and return to the same coaching home."
+        )
+        attachRuntimeScreenshot(app, name: "Phone-first canonical appointment rescheduled")
+
         let open = app.buttons.matching(
             NSPredicate(
                 format: "identifier BEGINSWITH %@ OR label == %@ OR label == %@",

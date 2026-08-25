@@ -213,6 +213,11 @@ assert(booking, "Independent readback did not find the exact iPhone-created book
 assert(booking.coachingEngagementId, "The phone-created booking lacks its canonical client relationship.");
 assert(booking.callRoomId, "The phone-created booking lacks its canonical Session room.");
 assert(booking.clientEntryPath, "The phone-created booking lacks its verified-email client entry.");
+assert.equal(
+  Math.round((new Date(booking.scheduledEnd).getTime() - new Date(booking.scheduledStart).getTime()) / 60_000),
+  45,
+  "The iPhone reschedule did not persist the operated 45-minute duration to canonical booking truth.",
+);
 
 const sessions = await authenticatedJSON("/api/mobile/capture/sessions", token);
 const session = sessions.sessions?.find(

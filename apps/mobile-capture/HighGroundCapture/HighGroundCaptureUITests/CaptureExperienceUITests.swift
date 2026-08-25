@@ -120,6 +120,16 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureCoachingBooking_preview-booking"].exists,
             "The native home should expose upcoming appointments with exact client continuity."
         )
+        let manageAppointment = app.buttons["CaptureCoachingManage_preview-booking"].firstMatch
+        reveal(manageAppointment)
+        XCTAssertTrue(
+            manageAppointment.exists,
+            "A coach should be able to manage the canonical appointment without leaving the iPhone app."
+        )
+        XCTAssertFalse(
+            manageAppointment.isEnabled,
+            "Deterministic preview must expose reschedule and cancellation without mutating scheduling truth."
+        )
         // Newer SwiftUI runtimes omit a custom identifier from the accessibility
         // snapshot for this disabled control, but retain the visible Button role
         // and label. Operate the same affordance a coach can actually perceive.
