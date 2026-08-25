@@ -3,6 +3,7 @@
 import {
   AudioWaveform,
   CheckCircle2,
+  CircleAlert,
   LoaderCircle,
   RefreshCw,
   ShieldCheck,
@@ -42,6 +43,8 @@ type Alignment = {
       observedPartsPerMillion: number;
     };
     qualification: {
+      minimumCorrelation: number;
+      minimumPeakMargin: number;
       qualifiedForAuthorizedAgentReview: boolean;
       reason: string;
     };
@@ -112,6 +115,104 @@ function compactSignalWaveform(
 
 function waveformHeight(dbfs: number) {
   return Math.max(6, Math.min(100, ((dbfs + 72) / 72) * 100));
+}
+
+function EvidenceQuality({
+  evidence,
+}: {
+  evidence: NonNullable<Alignment["evidence"]>;
+}) {
+  const windows = [
+    { label: "Opening window", value: evidence.opening },
+    { label: "Later window", value: evidence.later },
+  ];
+  return (
+    <div
+      className="mt-4 grid gap-3 sm:grid-cols-2"
+      aria-label="Waveform evidence quality"
+    >
+      {windows.map((window) => {
+        const correlationPass =
+          window.value.normalizedCorrelation >=
+          evidence.qualification.minimumCorrelation;
+        const marginPass =
+          window.value.peakMargin >=
+          evidence.qualification.minimumPeakMargin;
+        return (
+          <div
+            key={window.label}
+            className="rounded-xl border border-slate-800 bg-slate-900 p-3"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-300">
+                {window.label}
+              </p>
+              <span
+                className={`text-[9px] font-black uppercase ${correlationPass && marginPass ? "text-emerald-300" : "text-amber-300"}`}
+              >
+                {correlationPass && marginPass ? "Distinct" : "Held"}
+              </span>
+            </div>
+            <QualityBar
+              label="Waveform likeness"
+              value={window.value.normalizedCorrelation}
+              threshold={evidence.qualification.minimumCorrelation}
+              maximum={1}
+            />
+            <QualityBar
+              label="Peak distinctness"
+              value={window.value.peakMargin}
+              threshold={evidence.qualification.minimumPeakMargin}
+              maximum={Math.max(
+                0.2,
+                evidence.qualification.minimumPeakMargin * 3,
+              )}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function QualityBar({
+  label,
+  value,
+  threshold,
+  maximum,
+}: {
+  label: string;
+  value: number;
+  threshold: number;
+  maximum: number;
+}) {
+  const width = Math.max(0, Math.min(100, (value / maximum) * 100));
+  const thresholdPosition = Math.max(
+    0,
+    Math.min(100, (threshold / maximum) * 100),
+  );
+  const passed = value >= threshold;
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between gap-2 text-[9px] font-bold text-slate-400">
+        <span>{label}</span>
+        <span className={passed ? "text-emerald-300" : "text-amber-300"}>
+          {value.toFixed(3)} / {threshold.toFixed(3)} needed
+        </span>
+      </div>
+      <div className="relative mt-1 h-2 overflow-hidden rounded-full bg-slate-950">
+        <span
+          className={`absolute inset-y-0 left-0 rounded-full ${passed ? "bg-emerald-300" : "bg-amber-300"}`}
+          style={{ width: `${width}%` }}
+        />
+        <span
+          className="absolute inset-y-0 w-px bg-white"
+          style={{ left: `${thresholdPosition}%` }}
+          aria-hidden="true"
+        />
+      </div>
+    </div>
+  );
 }
 
 function SourceClockOverview({
@@ -616,9 +717,40 @@ export function SessionSourceAlignmentCard({
               value={`${current.evidence.drift.observedPartsPerMillion.toFixed(1)} ppm`}
             />
           </dl>
+          {suggestion?.status === "ready" ? (
+            <p className="mt-3 rounded-xl border border-sky-900 bg-sky-950/40 p-3 text-xs font-semibold leading-5 text-sky-100">
+              The retained capture clocks estimated{" "}
+              {milliseconds(suggestion.initialOffsetSeconds)}. The decoded
+              waveforms measured{" "}
+              {milliseconds(current.evidence.opening.measuredOffsetSeconds)}, a{" "}
+              {milliseconds(
+                current.evidence.opening.measuredOffsetSeconds -
+                  suggestion.initialOffsetSeconds,
+              )}{" "}
+              difference.
+            </p>
+          ) : null}
+          <EvidenceQuality evidence={current.evidence} />
           <p className="mt-3 text-xs font-semibold leading-5 text-slate-300">
             {current.evidence.qualification.reason}
           </p>
+          {!current.evidence.qualification
+            .qualifiedForAuthorizedAgentReview ? (
+            <div className="mt-3 flex gap-3 rounded-xl border border-amber-800 bg-amber-950/40 p-3 text-xs font-semibold leading-5 text-amber-100">
+              <CircleAlert
+                className="mt-0.5 shrink-0"
+                size={17}
+                aria-hidden="true"
+              />
+              <p>
+                Quipsly kept the capture-clock estimate and changed nothing.
+                Repeating tones, silence, or similar background noise can
+                produce several equally plausible peaks. Speech, a clap, or
+                another distinct shared sound gives the analyzer stronger
+                evidence.
+              </p>
+            </div>
+          ) : null}
           <p className="mt-2 text-[9px] font-black uppercase tracking-wide text-slate-500">
             Opening corr{" "}
             {current.evidence.opening.normalizedCorrelation.toFixed(3)} · peak

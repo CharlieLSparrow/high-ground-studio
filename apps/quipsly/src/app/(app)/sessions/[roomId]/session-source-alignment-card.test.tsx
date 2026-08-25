@@ -83,6 +83,8 @@ describe("SessionSourceAlignmentCard", () => {
                 observedPartsPerMillion: 16.6667,
               },
               qualification: {
+                minimumCorrelation: 0.78,
+                minimumPeakMargin: 0.04,
                 qualifiedForAuthorizedAgentReview: true,
                 reason: "Two distinct exact-source peaks qualify for review.",
               },
@@ -113,6 +115,75 @@ describe("SessionSourceAlignmentCard", () => {
     expect(
       screen.getByRole("button", { name: /use measured placement/i }),
     ).toBeInTheDocument();
+  });
+
+  it("explains ambiguous peaks and keeps the capture-clock estimate visibly safe", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        suggestion: {
+          status: "ready",
+          generatedAutomatically: true,
+          acousticAnalysisStarted: false,
+          spineRecordingAssetId: "recording-coach",
+          targetRecordingAssetId: "recording-client",
+          clockAuthority: "capture-clock-proposal",
+          initialOffsetSeconds: 4.011,
+          overlapStartSeconds: 0,
+          overlapEndSeconds: 12.596,
+          searchRadiusSeconds: 2.544,
+        },
+        alignments: [
+          {
+            jobId: "session_alignment_ambiguous123",
+            status: "completed",
+            spineRecordingAssetId: "recording-coach",
+            targetRecordingAssetId: "recording-client",
+            clockAuthority: "capture-clock-proposal",
+            evidence: {
+              opening: {
+                measuredOffsetSeconds: 4.49,
+                normalizedCorrelation: 0.999,
+                peakMargin: 0.135,
+              },
+              later: {
+                measuredOffsetSeconds: 4.49,
+                normalizedCorrelation: 0.999,
+                peakMargin: 0,
+              },
+              drift: {
+                residualDriftMilliseconds: 0,
+                observedPartsPerMillion: 0,
+              },
+              qualification: {
+                minimumCorrelation: 0.78,
+                minimumPeakMargin: 0.04,
+                qualifiedForAuthorizedAgentReview: false,
+                reason: "The decoded-audio peaks are weak or ambiguous.",
+              },
+            },
+            error: null,
+          },
+        ],
+      }),
+    }) as jest.Mock;
+    render(
+      <SessionSourceAlignmentCard
+        roomId="room-1"
+        evidence={evidence}
+        canManage
+      />,
+    );
+    expect(
+      await screen.findByText(/waveform match needs more evidence/i),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Held")).toHaveLength(1);
+    expect(screen.getByText(/kept the capture-clock estimate and changed nothing/i)).toBeInTheDocument();
+    expect(screen.getByText(/a \+479\.0 ms difference/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /use measured placement/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("queues the selected exact pair from one explicit cost-bearing action", async () => {
