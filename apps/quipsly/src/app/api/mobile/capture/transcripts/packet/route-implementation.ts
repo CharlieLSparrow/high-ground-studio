@@ -697,7 +697,16 @@ export async function GET(request: Request) {
       },
     }),
     prisma.actionItem.findMany({
-      where: { roomId },
+      where: {
+        roomId,
+        OR: [
+          { assignedUserId: actor.id },
+          {
+            assignedUserId: null,
+            note: { authorUserId: actor.id },
+          },
+        ],
+      },
       orderBy: [{ status: "asc" }, { createdAt: "asc" }],
       select: {
         id: true,

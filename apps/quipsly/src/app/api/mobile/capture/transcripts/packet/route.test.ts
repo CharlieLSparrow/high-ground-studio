@@ -572,6 +572,15 @@ describe("packet source selection", () => {
     expect(prisma.transcriptJob.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { roomId: "room-1", assetId: "asset-recovered-2" },
     }));
+    expect(prisma.actionItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        roomId: "room-1",
+        OR: [
+          { assignedUserId: actor.id },
+          { assignedUserId: null, note: { authorUserId: actor.id } },
+        ],
+      },
+    }));
     expect(payload.selectedRecordingAsset).toEqual({
       id: "asset-recovered-2",
       fileName: "DJI backup delayed.wav",
