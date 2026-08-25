@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { NextRequest, NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
@@ -29,6 +31,15 @@ const CLIENT_SURFACES = new Set([
   "nest-chat-web",
 ]);
 
+const THREAD_SELECT = {
+  id: true,
+  key: true,
+  title: true,
+  projectId: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 type ChatMessageRow = {
   id: string;
   projectId: string;
@@ -45,6 +56,19 @@ type ChatMessageRow = {
 
 function cleanMessage(input: unknown) {
   return String(input ?? "").trim().slice(0, MAX_MESSAGE_LENGTH);
+}
+
+function prismaErrorCode(error: unknown) {
+  return typeof error === "object" && error && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : "";
+}
+
+function threadSeedMessageId(threadId: string) {
+  return `nest-seed-${createHash("sha256")
+    .update(`believe:${threadId}`)
+    .digest("hex")
+    .slice(0, 36)}`;
 }
 
 function normalizeProjectSlug(input: string | null) {
@@ -229,12 +253,18 @@ async function resolveActor(request: NextRequest) {
   };
 }
 
-async function normalizeBelieveSeedMessages(projectId?: string) {
+async function normalizeBelieveSeedMessages(projectId: string, threadId: string) {
   const prisma = getPrismaClient();
   await prisma.studioNestChatMessage.updateMany({
     where: {
       authorEmail: "quipsly@nest.system",
-      ...(projectId ? { projectId } : {}),
+      projectId,
+      threadId,
+      OR: [
+        { body: { not: `Believe. Every Nest thread starts here. ${BELIEVE_GIF_PAGE_URL}` } },
+        { gifUrl: null },
+        { gifUrl: { not: BELIEVE_GIF_URL } },
+      ],
     },
     data: {
       body: `Believe. Every Nest thread starts here. ${BELIEVE_GIF_PAGE_URL}`,
@@ -255,7 +285,8 @@ async function normalizeBelieveSeedMessages(projectId?: string) {
         { body: { contains: LEGACY_BELIEVE_GIF_ID } },
         { gifUrl: { contains: LEGACY_BELIEVE_GIF_ID } },
       ],
-      ...(projectId ? { projectId } : {}),
+      projectId,
+      threadId,
     },
     data: {
       body: `Codex smoke test: Believe. ${BELIEVE_GIF_URL}`,
@@ -272,25 +303,42 @@ async function normalizeBelieveSeedMessages(projectId?: string) {
 
 async function ensureThread(projectId: string, projectName: string, key: string, titleOverride?: string) {
   const prisma = getPrismaClient();
-  const thread = await prisma.studioNestChatThread.upsert({
-    where: { projectId_key: { projectId, key } },
-    update: titleOverride ? { title: titleOverride } : {},
-    create: {
-      projectId,
-      key,
-      title: titleOverride || threadTitle(projectName, key),
-    },
-    select: {
-      id: true,
-      key: true,
-      title: true,
-      projectId: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+  const identity = { projectId_key: { projectId, key } };
+  let thread = await prisma.studioNestChatThread.findUnique({
+    where: identity,
+    select: THREAD_SELECT,
   });
 
-  await normalizeBelieveSeedMessages(projectId);
+  if (!thread) {
+    // createMany(skipDuplicates) maps to INSERT ... ON CONFLICT DO NOTHING on
+    // PostgreSQL, so parallel first loads do not use exceptions as control
+    // flow or emit false-positive Prisma errors into operational logs.
+    await prisma.studioNestChatThread.createMany({
+      data: [{
+        projectId,
+        key,
+        title: titleOverride || threadTitle(projectName, key),
+      }],
+      skipDuplicates: true,
+    });
+    thread = await prisma.studioNestChatThread.findUnique({
+      where: identity,
+      select: THREAD_SELECT,
+    });
+    if (!thread) {
+      throw new Error("The canonical Nest chat thread could not be read after creation.");
+    }
+  }
+
+  if (titleOverride && thread.title !== titleOverride) {
+    thread = await prisma.studioNestChatThread.update({
+      where: identity,
+      data: { title: titleOverride },
+      select: THREAD_SELECT,
+    });
+  }
+
+  await normalizeBelieveSeedMessages(projectId, thread.id);
 
   const existingMessage = await prisma.studioNestChatMessage.findFirst({
     where: { threadId: thread.id },
@@ -298,8 +346,10 @@ async function ensureThread(projectId: string, projectName: string, key: string,
   });
 
   if (!existingMessage) {
-    await prisma.studioNestChatMessage.create({
-      data: {
+    const seedId = threadSeedMessageId(thread.id);
+    const inserted = await prisma.studioNestChatMessage.createMany({
+      data: [{
+        id: seedId,
         projectId,
         threadId: thread.id,
         authorEmail: "quipsly@nest.system",
@@ -312,8 +362,18 @@ async function ensureThread(projectId: string, projectName: string, key: string,
           sourceUrl: BELIEVE_GIF_PAGE_URL,
           note: "Seeded as the first message for every Nest chat thread.",
         },
-      },
+      }],
+      skipDuplicates: true,
     });
+    if (inserted.count === 0) {
+      const racedSeed = await prisma.studioNestChatMessage.findUnique({
+        where: { id: seedId },
+        select: { id: true, projectId: true, threadId: true },
+      });
+      if (!racedSeed || racedSeed.projectId !== projectId || racedSeed.threadId !== thread.id) {
+        throw new Error("The deterministic Nest chat seed identity is already in use.");
+      }
+    }
   }
 
   return thread;
@@ -650,9 +710,7 @@ export async function POST(request: NextRequest) {
       const created = await prisma.studioNestChatMessage.create({ data });
       return NextResponse.json({ ok: true, message: serializeMessage(created) });
     } catch (error) {
-      const code = typeof error === "object" && error && "code" in error
-        ? String((error as { code?: unknown }).code)
-        : "";
+      const code = prismaErrorCode(error);
       if (messageId && code === "P2002") {
         const raced = await prisma.studioNestChatMessage.findUnique({
           where: { id: messageId },

@@ -45,13 +45,16 @@ const prisma = {
     findFirst: jest.fn(),
   },
   studioNestChatThread: {
-    upsert: jest.fn(),
+    findUnique: jest.fn(),
+    createMany: jest.fn(),
+    update: jest.fn(),
   },
   studioNestChatMessage: {
     updateMany: jest.fn(),
     findFirst: jest.fn(),
     findMany: jest.fn(),
     findUnique: jest.fn(),
+    createMany: jest.fn(),
     create: jest.fn(),
   },
 };
@@ -72,7 +75,16 @@ describe("scoped Nest chat threads", () => {
       slug: "high-ground-odyssey",
       name: "High Ground Odyssey",
     } as never);
-    prisma.studioNestChatThread.upsert.mockResolvedValue({
+    prisma.studioNestChatThread.findUnique.mockResolvedValue({
+      id: "thread-1",
+      key: "episode:episode-4-part-2",
+      title: "Episode 4 Part 2 Chat",
+      projectId: "project-1",
+      createdAt,
+      updatedAt: createdAt,
+    });
+    prisma.studioNestChatThread.createMany.mockResolvedValue({ count: 1 });
+    prisma.studioNestChatThread.update.mockResolvedValue({
       id: "thread-1",
       key: "episode:episode-4-part-2",
       title: "Episode 4 Part 2 Chat",
@@ -84,6 +96,7 @@ describe("scoped Nest chat threads", () => {
     prisma.studioNestChatMessage.findFirst.mockResolvedValue({ id: "seed-1" });
     prisma.studioNestChatMessage.findUnique.mockResolvedValue(null);
     prisma.studioNestChatMessage.findMany.mockResolvedValue([]);
+    prisma.studioNestChatMessage.createMany.mockResolvedValue({ count: 1 });
     prisma.callRoom.findFirst.mockResolvedValue(null);
     prisma.coachingEngagement.findFirst.mockResolvedValue(null);
     prisma.studioEpisodeProduction.findUnique.mockResolvedValue({
@@ -140,7 +153,7 @@ describe("scoped Nest chat threads", () => {
       email: "editor@example.test",
       action: "write",
     }));
-    expect(prisma.studioNestChatThread.upsert).toHaveBeenCalledWith(
+    expect(prisma.studioNestChatThread.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           projectId_key: {
@@ -166,6 +179,96 @@ describe("scoped Nest chat threads", () => {
     });
   });
 
+  it("converges a concurrent first-load thread create onto the canonical row", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as never);
+    const canonical = {
+      id: "thread-race-winner",
+      key: "episode:episode-4-part-2",
+      title: "Episode 4 Part 2 Chat",
+      projectId: "project-1",
+      createdAt,
+      updatedAt: createdAt,
+    };
+    prisma.studioNestChatThread.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(canonical);
+    prisma.studioNestChatMessage.findFirst.mockResolvedValue({ id: "seed-race-winner" });
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nest-chat?projectSlug=high-ground-odyssey&episodeSlug=episode-4-part-2",
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      thread: { id: canonical.id },
+    });
+    expect(prisma.studioNestChatThread.findUnique).toHaveBeenCalledWith({
+      where: {
+        projectId_key: {
+          projectId: "project-1",
+          key: "episode:episode-4-part-2",
+        },
+      },
+      select: expect.any(Object),
+    });
+    expect(prisma.studioNestChatThread.createMany).toHaveBeenCalledWith({
+      data: [{
+        projectId: "project-1",
+        key: "episode:episode-4-part-2",
+        title: "Episode 4 Part 2 Chat",
+      }],
+      skipDuplicates: true,
+    });
+  });
+
+  it("converges a concurrent seed insert without duplicating the system message", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as never);
+    prisma.studioNestChatMessage.findFirst.mockResolvedValue(null);
+    prisma.studioNestChatMessage.createMany.mockResolvedValue({ count: 0 });
+    prisma.studioNestChatMessage.findUnique.mockImplementation(async (args: { where?: { id?: string } }) => ({
+      id: args.where?.id,
+      projectId: "project-1",
+      threadId: "thread-1",
+    }) as never);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nest-chat?projectSlug=high-ground-odyssey&episodeSlug=episode-4-part-2",
+    ));
+
+    expect(response.status).toBe(200);
+    expect(prisma.studioNestChatMessage.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        id: expect.stringMatching(/^nest-seed-[a-f0-9]{36}$/),
+        projectId: "project-1",
+        threadId: "thread-1",
+      })],
+      skipDuplicates: true,
+    });
+  });
+
+  it("does not hide an unrelated thread uniqueness failure", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as never);
+    prisma.studioNestChatThread.findUnique.mockResolvedValue(null);
+    prisma.studioNestChatThread.createMany.mockRejectedValue({ code: "P2002" });
+
+    await expect(GET(new NextRequest(
+      "http://localhost/api/nest-chat?projectSlug=high-ground-odyssey&episodeSlug=episode-4-part-2",
+    ))).rejects.toMatchObject({ code: "P2002" });
+  });
+
   it("does not create an invented episode thread inside an accessible Nest", async () => {
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
       allowed: true,
@@ -185,7 +288,7 @@ describe("scoped Nest chat threads", () => {
       ok: false,
       error: "Episode chat is not available.",
     });
-    expect(prisma.studioNestChatThread.upsert).not.toHaveBeenCalled();
+    expect(prisma.studioNestChatThread.findUnique).not.toHaveBeenCalled();
     expect(prisma.studioNestChatMessage.create).not.toHaveBeenCalled();
   });
 
@@ -214,7 +317,7 @@ describe("scoped Nest chat threads", () => {
 
   it("binds a card discussion to an existing project source card", async () => {
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, projectId: "project-1", role: "EDITOR" } as never);
-    prisma.studioNestChatThread.upsert.mockResolvedValue({ id: "thread-card-1", key: "story-card:card-1", title: "Lake reveal · source card", projectId: "project-1", createdAt, updatedAt: createdAt });
+    prisma.studioNestChatThread.findUnique.mockResolvedValue({ id: "thread-card-1", key: "story-card:card-1", title: "Lake reveal · source card", projectId: "project-1", createdAt, updatedAt: createdAt });
 
     const response = await POST(request({
       projectSlug: "high-ground-odyssey",
@@ -228,9 +331,8 @@ describe("scoped Nest chat threads", () => {
       where: { id: "card-1", projectId: "project-1", archivedAt: null },
       select: { id: true, stableId: true, title: true, revision: true, sourceRangeId: true },
     });
-    expect(prisma.studioNestChatThread.upsert).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prisma.studioNestChatThread.findUnique).toHaveBeenCalledWith(expect.objectContaining({
       where: { projectId_key: { projectId: "project-1", key: "story-card:card-1" } },
-      create: expect.objectContaining({ title: "Lake reveal · source card" }),
     }));
     expect(prisma.studioNestChatMessage.create).toHaveBeenCalledWith({ data: expect.objectContaining({ metadataJson: expect.objectContaining({
       sourceCardId: "card-1",
@@ -252,7 +354,7 @@ describe("scoped Nest chat threads", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({ ok: false, error: "Source-card thread is not available." });
-    expect(prisma.studioNestChatThread.upsert).not.toHaveBeenCalled();
+    expect(prisma.studioNestChatThread.findUnique).not.toHaveBeenCalled();
     expect(prisma.studioNestChatMessage.create).not.toHaveBeenCalled();
   });
 
@@ -275,7 +377,7 @@ describe("scoped Nest chat threads", () => {
         name: "High Ground Odyssey",
       },
     });
-    prisma.studioNestChatThread.upsert.mockResolvedValue({
+    prisma.studioNestChatThread.findUnique.mockResolvedValue({
       id: "thread-session-1",
       key: "session:room-1",
       title: "High Ground Odyssey · session room 1",
@@ -334,7 +436,7 @@ describe("scoped Nest chat threads", () => {
       ok: false,
       error: "Session thread is not available.",
     });
-    expect(prisma.studioNestChatThread.upsert).not.toHaveBeenCalled();
+    expect(prisma.studioNestChatThread.findUnique).not.toHaveBeenCalled();
   });
 
   it("authorizes an engagement member without granting the surrounding Nest", async () => {
@@ -347,7 +449,7 @@ describe("scoped Nest chat threads", () => {
       members: [{ role: "CLIENT" }],
       project: { id: "project-1", slug: "coaching-home", name: "Coaching home" },
     });
-    prisma.studioNestChatThread.upsert.mockResolvedValue({
+    prisma.studioNestChatThread.findUnique.mockResolvedValue({
       id: "thread-engagement-1",
       key: "engagement:engagement-1",
       title: "Scott coaching · shared thread",
@@ -384,7 +486,7 @@ describe("scoped Nest chat threads", () => {
     ));
     expect(response.status).toBe(400);
     expect(resolveStudioProjectAccess).not.toHaveBeenCalled();
-    expect(prisma.studioNestChatThread.upsert).not.toHaveBeenCalled();
+    expect(prisma.studioNestChatThread.findUnique).not.toHaveBeenCalled();
   });
 
   it("uses the shared Firebase bearer-or-cookie session boundary for native chat", async () => {
@@ -525,7 +627,7 @@ describe("scoped Nest chat threads", () => {
     }));
 
     expect(response.status).toBe(404);
-    expect(prisma.studioNestChatThread.upsert).not.toHaveBeenCalled();
+    expect(prisma.studioNestChatThread.findUnique).not.toHaveBeenCalled();
     expect(prisma.studioNestChatMessage.create).not.toHaveBeenCalled();
   });
 });

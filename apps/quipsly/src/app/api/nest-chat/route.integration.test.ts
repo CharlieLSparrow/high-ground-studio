@@ -139,6 +139,37 @@ runLocalDatabaseSmoke("episode collaboration local database smoke", () => {
     }
   });
 
+  it("converges simultaneous first loads onto one thread and one seed message", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: {
+        id: "episode-chat-editor",
+        primaryEmail: editorEmail,
+        name: "Episode Chat Editor QA",
+      },
+    } as never);
+
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, () => GET(get(projectSlug, episodeSlug))),
+    );
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+
+    const threads = await prisma.studioNestChatThread.findMany({
+      where: { projectId, key: `episode:${episodeSlug}` },
+      select: { id: true },
+    });
+    expect(threads).toHaveLength(1);
+
+    const seedMessages = await prisma.studioNestChatMessage.findMany({
+      where: {
+        projectId,
+        threadId: threads[0]?.id,
+        metadataJson: { path: ["seed"], equals: "ted-lasso-believe" },
+      },
+      select: { id: true },
+    });
+    expect(seedMessages).toHaveLength(1);
+  });
+
   it("persists one exact episode message and deduplicates the retry", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: {
