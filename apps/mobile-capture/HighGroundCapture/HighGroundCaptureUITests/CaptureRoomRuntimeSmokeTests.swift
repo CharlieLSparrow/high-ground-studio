@@ -71,6 +71,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let password: String
         let sessionID: String?
         let sessionTitle: String?
+        let sessionConversationExpectedBody: String?
+        let sessionConversationReplyBody: String?
         let coachingClientEmail: String?
         let coachingClientName: String?
         let taskID: String?
@@ -140,6 +142,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 password: envPassword,
                 sessionID: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_ID"],
                 sessionTitle: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE"],
+                sessionConversationExpectedBody: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_CONVERSATION_EXPECTED_BODY"],
+                sessionConversationReplyBody: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_CONVERSATION_REPLY_BODY"],
                 coachingClientEmail: environment["QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_EMAIL"],
                 coachingClientName: environment["QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_NAME"],
                 taskID: environment["QUIPSLY_CAPTURE_UI_TEST_TASK_ID"],
@@ -223,6 +227,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             password: password,
             sessionID: payload["sessionID"] as? String,
             sessionTitle: payload["sessionTitle"] as? String,
+            sessionConversationExpectedBody: payload["sessionConversationExpectedBody"] as? String,
+            sessionConversationReplyBody: payload["sessionConversationReplyBody"] as? String,
             coachingClientEmail: payload["coachingClientEmail"] as? String,
             coachingClientName: payload["coachingClientName"] as? String,
             taskID: payload["taskID"] as? String,
@@ -4491,6 +4497,76 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRecordingIdentity(
             "\(sessionID)|\(sessionTitle)|focused|not-joined|not-recording",
             name: "Accepted Session link to native canonical room"
+        )
+    }
+
+    func testSessionConversationRoundTripsBetweenBrowserAndIPhone() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty,
+              let expectedBody = credentials.sessionConversationExpectedBody,
+              !expectedBody.isEmpty,
+              let replyBody = credentials.sessionConversationReplyBody,
+              !replyBody.isEmpty else {
+            throw XCTSkip("Session conversation proof requires an exact Session plus unique browser and iPhone message bodies.")
+        }
+
+        let app = try launchSignedInCaptureApp(
+            initialTab: "record",
+            sessionDeepLinkRoomID: sessionID
+        )
+        XCTAssertTrue(
+            app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 30),
+            "The signed-in iPhone should focus the exact Session before reading its conversation."
+        )
+
+        let card = app.descendants(matching: .any)["CaptureSessionChatCard"].firstMatch
+        XCTAssertTrue(
+            scrollRuntimeElementIntoHittableView(card, in: app),
+            "The Session conversation should be an ordinary reachable recorder card."
+        )
+        let open = app.buttons["CaptureSessionChatOpenButton"].firstMatch
+        XCTAssertTrue(
+            scrollRuntimeElementIntoHittableView(open, in: app),
+            "The exact-call conversation should open without joining or starting a recording."
+        )
+        open.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSessionChatThread"]
+                .firstMatch.waitForExistence(timeout: 15),
+            "The native Session conversation sheet did not open."
+        )
+        XCTAssertTrue(
+            app.staticTexts[expectedBody].firstMatch.waitForExistence(timeout: 20),
+            "The native client did not render the browser-authored canonical message."
+        )
+
+        let composer = app.textFields["CaptureSessionChatComposer"].firstMatch
+        XCTAssertTrue(
+            composer.waitForExistence(timeout: 10) && composer.isEnabled,
+            "An authorized Session participant should have one conventional message composer."
+        )
+        composer.tap()
+        composer.typeText(replyBody)
+        let send = app.buttons["CaptureSessionChatSendButton"].firstMatch
+        XCTAssertTrue(send.waitForExistence(timeout: 5) && send.isEnabled)
+        send.tap()
+        XCTAssertTrue(
+            app.staticTexts[replyBody].firstMatch.waitForExistence(timeout: 20),
+            "The iPhone-authored Session message did not read back through the native thread."
+        )
+        XCTAssertFalse(
+            app.otherElements["GlobalCaptureBanner"].exists,
+            "Using Session conversation must not start or imply local recording."
+        )
+        XCTAssertFalse(
+            app.buttons["ProviderLeaveRoomButton"].exists,
+            "Using Session conversation must not join provider media."
+        )
+        attachRecordingIdentity(
+            "\(sessionID)|browser-to-iphone|iphone-to-browser|not-joined|not-recording",
+            name: "Canonical Session conversation cross-device round trip"
         )
     }
 

@@ -12,6 +12,8 @@ TEST_EMAIL="${QUIPSLY_CAPTURE_UI_TEST_EMAIL:-}"
 TEST_PASSWORD="${QUIPSLY_CAPTURE_UI_TEST_PASSWORD:-}"
 TEST_SESSION_ID="${QUIPSLY_CAPTURE_UI_TEST_SESSION_ID:-}"
 TEST_SESSION_TITLE="${QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE:-}"
+TEST_SESSION_CONVERSATION_EXPECTED_BODY="${QUIPSLY_CAPTURE_UI_TEST_SESSION_CONVERSATION_EXPECTED_BODY:-}"
+TEST_SESSION_CONVERSATION_REPLY_BODY="${QUIPSLY_CAPTURE_UI_TEST_SESSION_CONVERSATION_REPLY_BODY:-}"
 TEST_COACHING_CLIENT_EMAIL="${QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_EMAIL:-}"
 TEST_COACHING_CLIENT_NAME="${QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_NAME:-}"
 TEST_TASK_ID="${QUIPSLY_CAPTURE_UI_TEST_TASK_ID:-}"
@@ -113,6 +115,13 @@ case "$TEST_MODE" in
     TEST_CASE="testAcceptedSessionLinkFocusesCanonicalRoomWithoutJoiningOrRecording"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
       echo "Session deep-link mode requires the exact accessible Session ID and title." >&2
+      exit 2
+    fi
+    ;;
+  session-conversation)
+    TEST_CASE="testSessionConversationRoundTripsBetweenBrowserAndIPhone"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_SESSION_CONVERSATION_EXPECTED_BODY" || -z "$TEST_SESSION_CONVERSATION_REPLY_BODY" ]]; then
+      echo "Session conversation mode requires the exact Session identity plus unique browser and iPhone message bodies." >&2
       exit 2
     fi
     ;;
@@ -596,6 +605,22 @@ payload.update(
     {
         "coachingClientEmail": client_email or None,
         "coachingClientName": client_name or None,
+    }
+)
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle)
+PY
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$TEST_SESSION_CONVERSATION_EXPECTED_BODY" "$TEST_SESSION_CONVERSATION_REPLY_BODY" <<'PY'
+import json
+import sys
+
+path, expected_body, reply_body = sys.argv[1:4]
+with open(path, encoding="utf-8") as handle:
+    payload = json.load(handle)
+payload.update(
+    {
+        "sessionConversationExpectedBody": expected_body or None,
+        "sessionConversationReplyBody": reply_body or None,
     }
 )
 with open(path, "w", encoding="utf-8") as handle:
