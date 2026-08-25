@@ -31,6 +31,7 @@ const offering = {
   id: "offering-1",
   durationMinutes: 60,
   isActive: true,
+  publicBookingEnabled: true,
   coachProfile: {
     id: "coach-profile-1",
     userId: "coach-1",
@@ -54,7 +55,7 @@ function deleteRequest(holdId = "hold-1") {
   );
 }
 
-function prismaFor(input?: { existing?: any; activeCount?: number }) {
+function prismaFor(input?: { existing?: any; activeCount?: number; offering?: any }) {
   const hold = {
     id: "hold-1",
     status: "ACTIVE",
@@ -64,7 +65,13 @@ function prismaFor(input?: { existing?: any; activeCount?: number }) {
     expiresAt: new Date("2099-08-27T16:00:00Z"),
   };
   const tx = {
-    serviceOffering: { findFirst: jest.fn().mockResolvedValue(offering) },
+    serviceOffering: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(
+          input?.offering === undefined ? offering : input.offering,
+        ),
+    },
     userRole: { upsert: jest.fn().mockResolvedValue({}) },
     bookingHold: {
       findFirst: jest.fn().mockResolvedValue(input?.existing || null),
@@ -139,6 +146,28 @@ describe("client coaching booking requests", () => {
     );
     expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledTimes(2);
     expect((tx as any).coachProfile).toBeUndefined();
+  });
+
+  it("does not accept a guessed private offering ID", async () => {
+    const { tx } = prismaFor({ offering: null });
+    const response = await POST(
+      request({ offeringId: "private-offering", scheduledStart: start }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(payload.code).toBe("COACHING_OFFERING_UNAVAILABLE");
+    expect(tx.serviceOffering.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: "private-offering",
+        isActive: true,
+        publicBookingEnabled: true,
+        coachProfile: { isActive: true },
+      },
+      include: { coachProfile: true },
+    });
+    expect(tx.userRole.upsert).not.toHaveBeenCalled();
+    expect(tx.bookingHold.create).not.toHaveBeenCalled();
   });
 
   it("returns the existing hold for a repeated submit", async () => {

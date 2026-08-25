@@ -26,6 +26,12 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testSchedulingRespectsWorkingHoursBeforeSave") {
             app.launchArguments.append("--capture-availability-scheduling-preview")
         }
+        if name.contains("testClientCanSeePublishedTimesAndOwnPendingRequest") {
+            app.launchArguments.append("--capture-client-booking-preview")
+        }
+        if name.contains("testCoachCanReviewIncomingTimeRequest") {
+            app.launchArguments.append("--capture-coach-requests-preview")
+        }
         if name.contains("testRecordingReceiptOutboxSurvivesRelaunchAndStaysAccountPartitioned") {
             app.launchArguments += [
                 "--capture-share-owner-ui-preview=recording-receipt-owner",
@@ -163,6 +169,72 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             relationship.exists,
             "The phone should expose the durable client space rather than reducing coaching to a call."
+        )
+    }
+
+    func testClientCanSeePublishedTimesAndOwnPendingRequest() {
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Your coaching on this iPhone"].waitForExistence(timeout: 5),
+            "A client should see the ordinary coaching experience, not coach administration."
+        )
+        let request = app.descendants(matching: .any)[
+            "CaptureCoachingClientRequest_preview-booking-request"
+        ]
+        reveal(request)
+        XCTAssertTrue(
+            request.exists,
+            "The client should be able to read back their pending request on iPhone."
+        )
+        let cancel = app.buttons["CaptureCoachingCancelRequest_preview-booking-request"]
+        reveal(cancel)
+        XCTAssertTrue(cancel.exists)
+        XCTAssertFalse(
+            cancel.isEnabled,
+            "Deterministic preview must expose cancellation without pretending to mutate canonical scheduling truth."
+        )
+
+        let offering = app.descendants(matching: .any)[
+            "CaptureCoachingPublicOffering_preview-offering"
+        ]
+        reveal(offering)
+        XCTAssertTrue(
+            offering.exists,
+            "Published, privacy-safe coaching times should be available without a browser handoff."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureCoachingNewAppointmentButton"].exists,
+            "A client-only user must not inherit the coach scheduling surface."
+        )
+    }
+
+    func testCoachCanReviewIncomingTimeRequest() {
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+
+        let request = app.descendants(matching: .any)[
+            "CaptureCoachingIncomingRequest_preview-booking-request"
+        ]
+        reveal(request)
+        XCTAssertTrue(
+            request.exists,
+            "An assigned coach should see incoming time requests directly in Capture."
+        )
+        let confirm = app.buttons[
+            "CaptureCoachingConfirmRequest_preview-booking-request"
+        ]
+        XCTAssertTrue(confirm.exists)
+        XCTAssertFalse(
+            confirm.isEnabled,
+            "Deterministic preview must expose confirmation without creating a fake Session."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureCoachingDeclineRequest_preview-booking-request"].exists,
+            "The coach should have a conventional decline action beside confirmation."
         )
     }
 

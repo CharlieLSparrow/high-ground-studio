@@ -118,6 +118,7 @@ export async function POST(request: Request) {
         where: {
           id: offeringId,
           isActive: true,
+          publicBookingEnabled: true,
           coachProfile: { isActive: true },
         },
         include: { coachProfile: true },

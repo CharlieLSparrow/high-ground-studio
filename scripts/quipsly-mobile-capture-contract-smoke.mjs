@@ -406,6 +406,20 @@ function checkMeetingSpineContractSources() {
     "Capture lets an authorized coach reschedule or cancel a canonical appointment from the iPhone while preserving the client relationship and existing work.",
   );
   expect(
+    coachingHomeText.includes("MobilePublicCoachingOffering")
+      && coachingHomeText.includes("/api/coaching/public?source=capture-ios")
+      && coachingHomeText.includes("/api/coaching/booking-requests")
+      && coachingHomeText.includes("AuthManager.shared.authenticatedData(for: request)")
+      && coachingHomeText.includes('action: "convert-booking-hold"')
+      && coachingHomeText.includes('action: "release-booking-hold"')
+      && coachingHomeText.includes("CaptureCoachingClientRequest_")
+      && coachingHomeText.includes("CaptureCoachingIncomingRequest_")
+      && coachingHomeText.includes("CaptureCoachingConfirmRequest_")
+      && coachingHomeText.includes("CaptureCoachingCancelRequest_"),
+    "nativeCoachingSelfSchedulingParity",
+    "Capture lists only the server's published public times, authenticates client request mutations, lets a client cancel their own request, and gives the assigned coach explicit confirm or decline actions on iPhone.",
+  );
+  expect(
     coachingHomeText.includes("var coachLabel: String")
       && coachingHomeText.includes("CaptureCoachingRequestChange_")
       && coachingHomeText.includes("MobileCoachingScheduleRequestSheet")

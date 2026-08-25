@@ -327,6 +327,7 @@ for (const [label, needle] of [
   ["client request auth", "getQuipslySessionFromRequest"],
   ["client request role", 'role: "CLIENT"'],
   ["client request canonical availability", "assertCoachingScheduleAvailable"],
+  ["client request explicit public offering boundary", "publicBookingEnabled: true"],
   ["client request retry safety", "repeated: true"],
   ["client request limit", "COACHING_REQUEST_LIMIT"],
   ["client request no calendar side effect", "externalCalendarCreated: false"],

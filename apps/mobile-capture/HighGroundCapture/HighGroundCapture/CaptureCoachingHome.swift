@@ -14,6 +14,82 @@ struct MobileCoachingRunwayUser: Codable, Hashable {
     let name: String?
     let isStaff: Bool?
     let isCoach: Bool
+    let isClient: Bool?
+}
+
+struct MobileCoachingBookableSlot: Codable, Identifiable, Hashable {
+    let instant: String
+    let timezone: String
+    let label: String
+
+    var id: String { "\(instant)|\(timezone)" }
+}
+
+struct MobilePublicCoachingOffering: Codable, Identifiable, Hashable {
+    let id: String
+    let slug: String
+    let title: String
+    let description: String?
+    let kind: String
+    let paymentPolicy: String
+    let durationMinutes: Int
+    let priceLabel: String?
+    let coachName: String
+    let nextAction: String
+    let bookingPath: String
+    let bookableSlots: [MobileCoachingBookableSlot]
+}
+
+private struct MobilePublicCoachingOfferings: Codable {
+    let unavailable: Bool
+    let error: String?
+    let items: [MobilePublicCoachingOffering]
+}
+
+private struct MobilePublicCoachingPacket: Codable {
+    let ok: Bool
+    let offerings: MobilePublicCoachingOfferings
+}
+
+struct MobileCoachingBookingHold: Codable, Identifiable, Hashable {
+    let id: String
+    let status: String
+    let scheduledStart: String
+    let scheduledEnd: String
+    let timezone: String
+    let expiresAt: String
+    let contactEmail: String?
+    let client: MobileCoachingPerson?
+    let coach: MobileCoachingPerson?
+    let offeringTitle: String?
+    let convertedBookingId: String?
+    let nextAction: String?
+
+    var scheduledDate: Date? { coachingISO8601Date(scheduledStart) }
+
+    var scheduleLabel: String {
+        guard let scheduledDate else { return scheduledStart }
+        if Calendar.current.isDateInToday(scheduledDate) {
+            return "Today at \(scheduledDate.formatted(date: .omitted, time: .shortened))"
+        }
+        if Calendar.current.isDateInTomorrow(scheduledDate) {
+            return "Tomorrow at \(scheduledDate.formatted(date: .omitted, time: .shortened))"
+        }
+        return scheduledDate.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    var clientLabel: String {
+        client?.name?.nonemptyCoachingText
+            ?? client?.email?.nonemptyCoachingText
+            ?? contactEmail?.nonemptyCoachingText
+            ?? "Client"
+    }
+
+    var coachLabel: String {
+        coach?.name?.nonemptyCoachingText
+            ?? coach?.email?.nonemptyCoachingText
+            ?? "Your coach"
+    }
 }
 
 struct MobileCoachingBooking: Codable, Identifiable, Hashable {
@@ -75,6 +151,7 @@ struct MobileCoachingRunwayResponse: Codable {
     let readiness: MobileCoachingRunwayReadiness?
     let upcomingBookings: [MobileCoachingBooking]?
     let availabilityWindows: [MobileCoachingAvailabilityWindow]?
+    let bookingHolds: [MobileCoachingBookingHold]?
 }
 
 struct MobileCoachingAvailabilityWindow: Codable, Identifiable, Hashable {
@@ -118,6 +195,23 @@ private struct MobileCoachingActionResponse: Codable {
     let error: String?
     let action: String?
     let result: MobileCoachingAppointmentResult?
+}
+
+private struct MobileCoachingBookingRequestReceipt: Codable {
+    let holdId: String
+    let status: String
+    let scheduledStart: String?
+    let scheduledEnd: String?
+    let timezone: String?
+    let expiresAt: String?
+    let repeated: Bool?
+}
+
+private struct MobileCoachingBookingRequestResponse: Codable {
+    let ok: Bool
+    let error: String?
+    let request: MobileCoachingBookingRequestReceipt?
+    let nextAction: String?
 }
 
 struct MobileCoachingInvitationDelivery: Codable, Hashable {
@@ -350,6 +444,7 @@ struct MobileCoachingAppointmentDraft: Equatable {
 @MainActor
 final class MobileCoachingRunwayClient: ObservableObject {
     @Published private(set) var response: MobileCoachingRunwayResponse?
+    @Published private(set) var publicOfferings: [MobilePublicCoachingOffering] = []
     @Published private(set) var latestHandoff: MobileCoachingAppointmentResult?
     @Published private(set) var isLoading = false
     @Published private(set) var isMutating = false
@@ -375,9 +470,22 @@ final class MobileCoachingRunwayClient: ObservableObject {
     var weeklyAvailability: [MobileCoachingAvailabilityWindow] {
         (response?.availabilityWindows ?? []).filter(\.isRecurringWorkingHours)
     }
+    var activeBookingHolds: [MobileCoachingBookingHold] {
+        (response?.bookingHolds ?? []).filter { $0.status == "ACTIVE" }
+    }
+    var clientBookingRequests: [MobileCoachingBookingHold] {
+        guard let userID = response?.user?.id else { return [] }
+        return activeBookingHolds.filter { $0.client?.id == userID }
+    }
+    var coachBookingRequests: [MobileCoachingBookingHold] {
+        guard let userID = response?.user?.id else { return [] }
+        return activeBookingHolds.filter { $0.coach?.id == userID }
+    }
     var isCoachingClient: Bool {
+        if response?.user?.isClient == true { return true }
         guard let userID = response?.user?.id else { return false }
         return allBookings.contains { $0.client?.id == userID }
+            || activeBookingHolds.contains { $0.client?.id == userID }
     }
 
     func scheduleConflict(
@@ -443,22 +551,45 @@ final class MobileCoachingRunwayClient: ObservableObject {
         let availabilityPreview = ProcessInfo.processInfo.arguments.contains(
             "--capture-availability-scheduling-preview"
         )
+        let clientRequestPreview = ProcessInfo.processInfo.arguments.contains(
+            "--capture-client-booking-preview"
+        )
+        let coachRequestPreview = ProcessInfo.processInfo.arguments.contains(
+            "--capture-coach-requests-preview"
+        )
         let start = Date().addingTimeInterval((conflictPreview ? 55 : 35) * 60)
+        let previewIsCoach = !clientRequestPreview
+        let previewUserID = previewIsCoach ? "preview-coach" : "preview-client"
+        let previewHold = MobileCoachingBookingHold(
+            id: "preview-booking-request",
+            status: "ACTIVE",
+            scheduledStart: ISO8601DateFormatter().string(from: start),
+            scheduledEnd: ISO8601DateFormatter().string(from: start.addingTimeInterval(60 * 60)),
+            timezone: TimeZone.current.identifier,
+            expiresAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(24 * 60 * 60)),
+            contactEmail: "homer@example.test",
+            client: MobileCoachingPerson(id: "preview-client", name: "Homer", email: "homer@example.test"),
+            coach: MobileCoachingPerson(id: "preview-coach", name: "Charlie Sparrow", email: "charlie@example.test"),
+            offeringTitle: "One-to-one coaching session",
+            convertedBookingId: nil,
+            nextAction: "Active hold. Convert to a booking only when the human confirms."
+        )
         response = MobileCoachingRunwayResponse(
             ok: true,
             error: nil,
             user: MobileCoachingRunwayUser(
-                id: "preview-coach",
-                email: "charlie@example.test",
-                name: "Charlie Sparrow",
+                id: previewUserID,
+                email: previewIsCoach ? "charlie@example.test" : "homer@example.test",
+                name: previewIsCoach ? "Charlie Sparrow" : "Homer",
                 isStaff: false,
-                isCoach: true
+                isCoach: previewIsCoach,
+                isClient: clientRequestPreview
             ),
             readiness: MobileCoachingRunwayReadiness(
                 invitationEmailConfigured: true,
                 invitationEmailStatus: "AVAILABLE"
             ),
-            upcomingBookings: availabilityPreview ? [] : [
+            upcomingBookings: (availabilityPreview || clientRequestPreview || coachRequestPreview) ? [] : [
                 MobileCoachingBooking(
                     id: "preview-booking",
                     coachingEngagementId: "preview-engagement",
@@ -490,8 +621,31 @@ final class MobileCoachingRunwayClient: ObservableObject {
                     endMinute: conflictPreview ? 24 * 60 : 1,
                     kind: "recurring"
                 ),
-            ] : []
+            ] : [],
+            bookingHolds: (clientRequestPreview || coachRequestPreview) ? [previewHold] : []
         )
+        publicOfferings = clientRequestPreview ? [
+            MobilePublicCoachingOffering(
+                id: "preview-offering",
+                slug: "preview-coaching",
+                title: "One-to-one coaching session",
+                description: "A private coaching conversation with shared follow-through.",
+                kind: "ONE_TO_ONE_COACHING",
+                paymentPolicy: "MANUAL",
+                durationMinutes: 60,
+                priceLabel: nil,
+                coachName: "Charlie Sparrow",
+                nextAction: "Choose a time and sign in to request it.",
+                bookingPath: "/coaching/book/preview-coaching",
+                bookableSlots: [
+                    MobileCoachingBookableSlot(
+                        instant: ISO8601DateFormatter().string(from: start.addingTimeInterval(24 * 60 * 60)),
+                        timezone: TimeZone.current.identifier,
+                        label: "Tomorrow at 10:00 AM"
+                    )
+                ]
+            )
+        ] : []
         status = "Coaching ready"
         errorMessage = nil
     }
@@ -526,10 +680,151 @@ final class MobileCoachingRunwayClient: ObservableObject {
                     return (roomID, delivery)
                 }
             )
-            status = payload.user?.isCoach == true ? "Coaching ready" : "Coach setup available"
+            await loadPublicOfferings()
+            status = payload.user?.isCoach == true
+                ? "Coaching ready"
+                : payload.user?.isClient == true ? "Your coaching is ready" : "Coaching ready"
         } catch {
             status = "Coaching needs attention"
             errorMessage = error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func requestBooking(
+        offering: MobilePublicCoachingOffering,
+        slot: MobileCoachingBookableSlot
+    ) async -> Bool {
+        guard !isMutating else { return false }
+        guard let url = URL(string: "\(baseURL)/api/coaching/booking-requests") else {
+            errorMessage = "The configured Nest URL is not valid."
+            return false
+        }
+        isMutating = true
+        defer { isMutating = false }
+        status = "Requesting time"
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "offeringId": offering.id,
+                "scheduledStart": slot.instant,
+            ])
+            let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCoachingBookingRequestResponse.self, from: data)
+            guard httpResponse.statusCode < 400, payload.ok, payload.request?.holdId.isEmpty == false else {
+                throw coachingClientError(payload.error ?? "That coaching time could not be requested.")
+            }
+            await load()
+            status = "Time requested"
+            return true
+        } catch {
+            status = "Time request needs attention"
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func cancelBookingRequest(_ hold: MobileCoachingBookingHold) async -> Bool {
+        guard !isMutating else { return false }
+        guard var components = URLComponents(string: "\(baseURL)/api/coaching/booking-requests") else {
+            errorMessage = "The configured Nest URL is not valid."
+            return false
+        }
+        components.queryItems = [URLQueryItem(name: "holdId", value: hold.id)]
+        guard let url = components.url else {
+            errorMessage = "The configured Nest URL is not valid."
+            return false
+        }
+        isMutating = true
+        defer { isMutating = false }
+        status = "Canceling time request"
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCoachingBookingRequestResponse.self, from: data)
+            guard httpResponse.statusCode < 400, payload.ok else {
+                throw coachingClientError(payload.error ?? "That time request could not be canceled.")
+            }
+            await load()
+            status = "Time request canceled"
+            return true
+        } catch {
+            status = "Cancellation needs attention"
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func confirmBookingRequest(_ hold: MobileCoachingBookingHold) async -> Bool {
+        await manageBookingRequest(
+            hold,
+            action: "convert-booking-hold",
+            workingStatus: "Confirming Session",
+            completeStatus: "Session confirmed"
+        )
+    }
+
+    @discardableResult
+    func declineBookingRequest(_ hold: MobileCoachingBookingHold) async -> Bool {
+        await manageBookingRequest(
+            hold,
+            action: "release-booking-hold",
+            workingStatus: "Declining request",
+            completeStatus: "Request declined"
+        )
+    }
+
+    private func manageBookingRequest(
+        _ hold: MobileCoachingBookingHold,
+        action: String,
+        workingStatus: String,
+        completeStatus: String
+    ) async -> Bool {
+        guard !isMutating else { return false }
+        isMutating = true
+        defer { isMutating = false }
+        status = workingStatus
+        errorMessage = nil
+        do {
+            let payload = try await performAction([
+                "action": action,
+                "holdId": hold.id,
+                "notes": "Confirmed from Quipsly Capture on iPhone.",
+                "reason": "Declined from Quipsly Capture on iPhone.",
+            ])
+            guard payload.ok else {
+                throw coachingClientError(payload.error ?? "That time request could not be updated.")
+            }
+            await load()
+            status = completeStatus
+            return true
+        } catch {
+            status = "Request needs attention"
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func loadPublicOfferings() async {
+        guard let url = URL(string: "\(baseURL)/api/coaching/public?source=capture-ios") else { return }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode < 400 else { return }
+            let packet = try JSONDecoder().decode(MobilePublicCoachingPacket.self, from: data)
+            publicOfferings = packet.ok && !packet.offerings.unavailable ? packet.offerings.items : []
+        } catch {
+            // Public discovery is an enhancement. Existing bookings and client
+            // spaces remain usable if the published-offerings projection is down.
         }
     }
 
@@ -918,6 +1213,13 @@ struct CaptureCoachingHomeCard: View {
     }
 }
 
+private struct MobileCoachingPublicTimeSelection: Identifiable {
+    let offering: MobilePublicCoachingOffering
+    let slot: MobileCoachingBookableSlot
+
+    var id: String { "\(offering.id)|\(slot.id)" }
+}
+
 struct CaptureCoachingHomeView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
@@ -927,6 +1229,9 @@ struct CaptureCoachingHomeView: View {
     @State private var requestedRescheduleStart: Date?
     @State private var bookingToCancel: MobileCoachingBooking?
     @State private var bookingToRequestChange: MobileCoachingBooking?
+    @State private var bookingRequestToCancel: MobileCoachingBookingHold?
+    @State private var bookingRequestToDecline: MobileCoachingBookingHold?
+    @State private var selectedPublicTime: MobileCoachingPublicTimeSelection?
 
     private var client: MobileCoachingRunwayClient { model.coachingRunwayClient }
     private var allowsPreviewSchedulingInspection: Bool {
@@ -935,6 +1240,11 @@ struct CaptureCoachingHomeView: View {
     }
 
     var body: some View {
+        bookingTimeDialog
+            .accessibilityIdentifier("CaptureCoachingHome")
+    }
+
+    private var coachingScrollView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
@@ -944,7 +1254,14 @@ struct CaptureCoachingHomeView: View {
                 } else if client.isCoachingClient {
                     clientWelcomeCard
                 } else {
-                    coachSetupCard
+                    coachingChoiceCard
+                }
+
+                if client.isCoach {
+                    incomingRequestsSection
+                } else {
+                    clientRequestsSection
+                    publishedTimesSection
                 }
 
                 if let handoff = client.latestHandoff {
@@ -974,6 +1291,10 @@ struct CaptureCoachingHomeView: View {
             async let sessionLoad = model.sessionClient.load()
             _ = await (coachingLoad, sessionLoad)
         }
+    }
+
+    private var coachingSheets: some View {
+        coachingScrollView
         .sheet(isPresented: $showsNewAppointment) {
             NewMobileCoachingAppointmentSheet(
                 client: client,
@@ -1016,6 +1337,10 @@ struct CaptureCoachingHomeView: View {
                 )
             }
         }
+    }
+
+    private var sessionCancellationAlert: some View {
+        coachingSheets
         .alert(
             "Cancel this Session?",
             isPresented: Binding(
@@ -1034,7 +1359,78 @@ struct CaptureCoachingHomeView: View {
         } message: { booking in
             Text("Cancel \(booking.scheduleLabel)? The client space and its existing work stay available.")
         }
-        .accessibilityIdentifier("CaptureCoachingHome")
+    }
+
+    private var requestCancellationAlert: some View {
+        sessionCancellationAlert
+        .alert(
+            "Cancel this time request?",
+            isPresented: Binding(
+                get: { bookingRequestToCancel != nil },
+                set: { if !$0 { bookingRequestToCancel = nil } }
+            ),
+            presenting: bookingRequestToCancel
+        ) { request in
+            Button("Keep request", role: .cancel) {
+                bookingRequestToCancel = nil
+            }
+            Button("Cancel request", role: .destructive) {
+                bookingRequestToCancel = nil
+                Task { _ = await client.cancelBookingRequest(request) }
+            }
+        } message: { request in
+            Text("Cancel your request for \(request.scheduleLabel)?")
+        }
+    }
+
+    private var requestDeclineAlert: some View {
+        requestCancellationAlert
+        .alert(
+            "Decline this request?",
+            isPresented: Binding(
+                get: { bookingRequestToDecline != nil },
+                set: { if !$0 { bookingRequestToDecline = nil } }
+            ),
+            presenting: bookingRequestToDecline
+        ) { request in
+            Button("Keep request", role: .cancel) {
+                bookingRequestToDecline = nil
+            }
+            Button("Decline", role: .destructive) {
+                bookingRequestToDecline = nil
+                Task { _ = await client.declineBookingRequest(request) }
+            }
+        } message: { request in
+            Text("Decline \(request.clientLabel)'s request for \(request.scheduleLabel)?")
+        }
+    }
+
+    private var bookingTimeDialog: some View {
+        requestDeclineAlert
+        .confirmationDialog(
+            "Request this coaching time?",
+            isPresented: Binding(
+                get: { selectedPublicTime != nil },
+                set: { if !$0 { selectedPublicTime = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: selectedPublicTime
+        ) { selection in
+            Button("Request \(selection.slot.label)") {
+                selectedPublicTime = nil
+                Task {
+                    _ = await client.requestBooking(
+                        offering: selection.offering,
+                        slot: selection.slot
+                    )
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                selectedPublicTime = nil
+            }
+        } message: { selection in
+            Text("\(selection.offering.title) with \(selection.offering.coachName). The coach will confirm before a Session is created.")
+        }
     }
 
     private var header: some View {
@@ -1070,11 +1466,11 @@ struct CaptureCoachingHomeView: View {
         .accessibilityIdentifier("CaptureCoachingClientWelcome")
     }
 
-    private var coachSetupCard: some View {
+    private var coachingChoiceCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Set up your coaching space")
+            Text("What would you like to do?")
                 .font(.headline)
-            Text("Quipsly will create your private coach profile and a flexible one-to-one offering. No payment account or public profile is required.")
+            Text("Choose an available coaching time below, or set up your own private coaching space.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Button {
@@ -1088,6 +1484,143 @@ struct CaptureCoachingHomeView: View {
             .accessibilityIdentifier("CaptureCoachingSetupButton")
         }
         .captureCard()
+    }
+
+    @ViewBuilder
+    private var incomingRequestsSection: some View {
+        if !client.coachBookingRequests.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Time requests")
+                    .font(.title3.weight(.bold))
+                Text("Confirming creates the private Session. Declining only releases this requested time.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(client.coachBookingRequests) { request in
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(request.offeringTitle ?? "Coaching session")
+                            .font(.headline)
+                        Text(request.clientLabel)
+                            .font(.subheadline.weight(.semibold))
+                        Text(request.scheduleLabel)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            Button {
+                                Task { _ = await client.confirmBookingRequest(request) }
+                            } label: {
+                                Label("Confirm Session", systemImage: "checkmark.circle.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(client.isMutating || model.usesPreviewData)
+                            .accessibilityIdentifier("CaptureCoachingConfirmRequest_\(request.id)")
+
+                            Button(role: .destructive) {
+                                bookingRequestToDecline = request
+                            } label: {
+                                Text("Decline")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(client.isMutating || model.usesPreviewData)
+                            .accessibilityIdentifier("CaptureCoachingDeclineRequest_\(request.id)")
+                        }
+                    }
+                    .captureCard()
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("CaptureCoachingIncomingRequest_\(request.id)")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var clientRequestsSection: some View {
+        if !client.clientBookingRequests.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("My time requests")
+                    .font(.title3.weight(.bold))
+                ForEach(client.clientBookingRequests) { request in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Waiting for \(request.coachLabel)", systemImage: "clock.fill")
+                            .font(.headline)
+                            .foregroundStyle(.teal)
+                        Text(request.offeringTitle ?? "Coaching session")
+                            .font(.subheadline.weight(.semibold))
+                        Text(request.scheduleLabel)
+                            .font(.subheadline)
+                        Text("A Session will appear here after the coach confirms.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button(role: .destructive) {
+                            bookingRequestToCancel = request
+                        } label: {
+                            Text("Cancel time request")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(client.isMutating || model.usesPreviewData)
+                        .accessibilityIdentifier("CaptureCoachingCancelRequest_\(request.id)")
+                    }
+                    .captureCard()
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("CaptureCoachingClientRequest_\(request.id)")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var publishedTimesSection: some View {
+        if !client.publicOfferings.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Find a coaching time")
+                    .font(.title3.weight(.bold))
+                Text("Only times the coach chose to publish appear here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(client.publicOfferings) { offering in
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(offering.title)
+                            .font(.headline)
+                        Text("with \(offering.coachName) · \(offering.durationMinutes) minutes")
+                            .font(.subheadline.weight(.semibold))
+                        if let description = offering.description?.nonemptyCoachingText {
+                            Text(description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if offering.bookableSlots.isEmpty {
+                            Text("No open times right now.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(offering.bookableSlots.prefix(6)) { slot in
+                                Button {
+                                    selectedPublicTime = MobileCoachingPublicTimeSelection(
+                                        offering: offering,
+                                        slot: slot
+                                    )
+                                } label: {
+                                    HStack {
+                                        Label(slot.label, systemImage: "calendar.badge.plus")
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.bold))
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(client.isMutating || model.usesPreviewData)
+                                .accessibilityIdentifier("CaptureCoachingRequestTime_\(offering.id)_\(slot.id)")
+                            }
+                        }
+                    }
+                    .captureCard()
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("CaptureCoachingPublicOffering_\(offering.id)")
+                }
+            }
+        }
     }
 
     private var createCard: some View {
