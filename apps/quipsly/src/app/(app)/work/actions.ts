@@ -15,6 +15,7 @@ import { mutateWorkTagCandidate, type WorkTagCandidateOperation } from "@/lib/se
 import { createAndAssignWorkEntityTag, createWorkTagTaxonomy, mutateWorkTagTaxonomy, replaceWorkEntityTags, type WorkTagEntityKind, type WorkTagTaxonomyOperation } from "@/lib/server/work-tags";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { setTaskReminderInTransaction } from "@/lib/server/task-reminders";
+import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
 import {
   normalizeWeeklyCommitmentIntent,
   parseWeeklyCommitmentWeekStart,
@@ -527,19 +528,6 @@ export async function recordWorkGoalProgress(input: {
   }
 }
 
-function taskAccessWhere(userId: string) {
-  return [
-    { assignedUserId: userId },
-    { room: { OR: [
-      { createdByUserId: userId },
-      { participants: { some: { userId, accessStatus: "ACTIVE" } } },
-      { booking: { clientUserId: userId } },
-      { booking: { coachUserId: userId } },
-    ] } },
-    { booking: { OR: [{ clientUserId: userId }, { coachUserId: userId }] } },
-  ];
-}
-
 export async function linkWorkGoalTask(input: {
   goalId: string;
   taskId: string;
@@ -562,7 +550,7 @@ export async function linkWorkGoalTask(input: {
     const result = await prisma.$transaction(async (tx: any) => {
       const [goal, task] = await Promise.all([
         tx.goal.findFirst({ where: { id: goalId, ownerUserId: userId }, select: { id: true, status: true, sourceJson: true, updatedAt: true } }),
-        tx.actionItem.findFirst({ where: { id: taskId, OR: taskAccessWhere(userId) }, select: { id: true, sourceJson: true } }),
+        tx.actionItem.findFirst({ where: { id: taskId, OR: personalOrSharedSessionTaskAccessWhere(userId) }, select: { id: true, sourceJson: true } }),
       ]);
       if (!goal || !task || isUnreviewedTranscriptActionItemSource(task.sourceJson)) return { kind: "not-found" as const };
       if (goal.updatedAt.getTime() !== expected.getTime()) return { kind: "conflict" as const };
@@ -1553,16 +1541,7 @@ export async function updateWorkTaskStatus(input: {
 
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
-  const accessOr = [
-    { assignedUserId: userId },
-    { room: { OR: [
-      { createdByUserId: userId },
-      { participants: { some: { userId, accessStatus: "ACTIVE" } } },
-      { booking: { clientUserId: userId } },
-      { booking: { coachUserId: userId } },
-    ] } },
-    { booking: { OR: [{ clientUserId: userId }, { coachUserId: userId }] } },
-  ];
+  const accessOr = personalOrSharedSessionTaskAccessWhere(userId);
   try {
     const result = await prisma.$transaction((tx: any) => updateCanonicalTaskStatusInTransaction({
       tx,

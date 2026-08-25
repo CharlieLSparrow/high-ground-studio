@@ -543,6 +543,16 @@ describe("Work Queue task decisions", () => {
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
     const result = await linkWorkGoalTask({ goalId: "goal-1", taskId: "task-1", relationship: "CONTRIBUTES", expectedUpdatedAt: expected.toISOString() });
     expect(result).toMatchObject({ ok: true, status: "ACTIVE" });
+    expect(tx.actionItem.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: "task-1",
+        OR: expect.arrayContaining([
+          { assignedUserId: "user-1" },
+          expect.objectContaining({ assignedUserId: null, room: expect.any(Object) }),
+          expect.objectContaining({ assignedUserId: null, booking: expect.any(Object) }),
+        ]),
+      }),
+    }));
     expect(tx.goal.updateMany.mock.invocationCallOrder[0]).toBeLessThan(tx.goalTaskLink.upsert.mock.invocationCallOrder[0]);
     expect(tx.goalTaskLink.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ createdByUserId: "user-1", relationship: "CONTRIBUTES", sourceJson: expect.objectContaining({ externalSideEffects: false }) }) }));
   });
@@ -608,6 +618,16 @@ describe("Work Queue task decisions", () => {
 
     const result = await updateWorkTaskStatus({ taskId: "task-1", nextStatus: "DONE", expectedUpdatedAt: expected.toISOString() });
     expect(result).toMatchObject({ ok: true, taskId: "task-1", status: "DONE", updatedAt: persisted.toISOString(), receiptId: expect.any(String) });
+    expect(tx.actionItem.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: "task-1",
+        OR: expect.arrayContaining([
+          { assignedUserId: "user-1" },
+          expect.objectContaining({ assignedUserId: null, room: expect.any(Object) }),
+          expect.objectContaining({ assignedUserId: null, booking: expect.any(Object) }),
+        ]),
+      }),
+    }));
     expect(tx.actionItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "task-1", updatedAt: expected },
       data: expect.objectContaining({ status: "DONE", completedAt: expect.any(Date) }),
