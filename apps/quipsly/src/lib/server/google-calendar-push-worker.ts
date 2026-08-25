@@ -7,6 +7,7 @@ import {
   queueGoogleCalendarReconciliationWake,
 } from "@/lib/server/google-calendar-push";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
+import { authorizeGoogleOidcWorker } from "@/lib/server/google-oidc-worker-auth";
 
 const PROCESSING_LEASE_MS = 10 * 60 * 1000;
 const RENEW_BEFORE_MS = 24 * 60 * 60 * 1000;
@@ -22,51 +23,12 @@ export async function authorizeGoogleCalendarPushWorker(input: {
   }>;
 }) {
   const environment = input.environment ?? process.env;
-  const expectedEmail =
-    environment.GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT?.trim();
-  const audience = environment.GOOGLE_CALENDAR_PUSH_WORKER_AUDIENCE?.trim();
-  if (!expectedEmail || !audience) return "not-configured" as const;
-  try {
-    const parsed = new URL(audience);
-    if (
-      parsed.protocol !== "https:" ||
-      parsed.origin !== parsed.toString().replace(/\/$/, "")
-    ) {
-      return "not-configured" as const;
-    }
-  } catch {
-    return "not-configured" as const;
-  }
-  const token = input.authorization?.startsWith("Bearer ")
-    ? input.authorization.slice("Bearer ".length).trim()
-    : "";
-  if (!token) return "unauthorized" as const;
-  const verifyIdToken = input.verifyIdToken ?? verifyGoogleOidcToken;
-  try {
-    const identity = await verifyIdToken({ idToken: token, audience });
-    return identity.email === expectedEmail && identity.emailVerified !== false
-      ? ("authorized" as const)
-      : ("unauthorized" as const);
-  } catch {
-    return "unauthorized" as const;
-  }
-}
-
-async function verifyGoogleOidcToken(input: {
-  idToken: string;
-  audience: string;
-}) {
-  const { google } = await import("googleapis");
-  const client = new google.auth.OAuth2();
-  const ticket = await client.verifyIdToken({
-    idToken: input.idToken,
-    audience: input.audience,
+  return authorizeGoogleOidcWorker({
+    authorization: input.authorization,
+    expectedEmail: environment.GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT,
+    audience: environment.GOOGLE_CALENDAR_PUSH_WORKER_AUDIENCE,
+    verifyIdToken: input.verifyIdToken,
   });
-  const payload = ticket.getPayload();
-  return {
-    email: payload?.email || null,
-    emailVerified: payload?.email_verified ?? null,
-  };
 }
 
 async function claimWake(prisma: any, now: Date) {

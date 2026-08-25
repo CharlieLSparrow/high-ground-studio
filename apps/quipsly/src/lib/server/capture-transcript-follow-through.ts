@@ -2,6 +2,7 @@ import "server-only";
 
 import { buildCoachingPacketFromTranscriptJob } from "@/lib/server/coaching-packets";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
 export type CaptureTranscriptFollowThroughResult = {
   transcriptJobId: string;
@@ -36,6 +37,24 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
     };
   }
 
+  return input.prisma.$transaction(async (tx: any) => {
+    await acquirePrismaAdvisoryTransactionLock(
+      tx,
+      `capture-transcript-follow-through:${input.transcriptJobId}`,
+    );
+    return preparePrivateFollowThrough({
+      prisma: tx,
+      transcriptJobId: input.transcriptJobId,
+      refreshExistingPacket: input.refreshExistingPacket,
+    });
+  }, { maxWait: 5_000, timeout: 30_000, isolationLevel: "Serializable" });
+}
+
+async function preparePrivateFollowThrough(input: {
+  prisma: any;
+  transcriptJobId: string;
+  refreshExistingPacket?: boolean;
+}): Promise<CaptureTranscriptFollowThroughResult> {
   const authority = await input.prisma.transcriptJob.findUnique({
     where: { id: input.transcriptJobId },
     select: {
@@ -47,6 +66,7 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
           booking: { select: { coachUserId: true } },
         },
       },
+      resultJson: true,
     },
   });
   // A booked coaching Session belongs in the assigned coach's private review
@@ -75,7 +95,7 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
         title: `Transcript packet: ${input.transcriptJobId}`,
       },
       orderBy: { createdAt: "desc" },
-      select: { sourceJson: true },
+      select: { id: true, sourceJson: true },
     });
     if (existing) {
       const source = typeof existing.sourceJson === "object"
@@ -83,11 +103,19 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
         && !Array.isArray(existing.sourceJson)
         ? existing.sourceJson as Record<string, unknown>
         : {};
+      const packetBuildId = typeof source.packetBuildId === "string" ? source.packetBuildId : null;
+      await recordReadyFollowThrough(input.prisma, {
+        transcriptJobId: input.transcriptJobId,
+        resultJson: authority.resultJson,
+        packetBuildId,
+        summaryNoteId: existing.id,
+        reusedExistingPacket: true,
+      });
       return {
         transcriptJobId: input.transcriptJobId,
         transcriptStatus: "completed",
         packetStatus: "ready",
-        packetBuildId: typeof source.packetBuildId === "string" ? source.packetBuildId : null,
+        packetBuildId,
         reusedExistingPacket: true,
       };
     }
@@ -108,6 +136,13 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
       reusedExistingPacket: false,
     };
   }
+  await recordReadyFollowThrough(input.prisma, {
+    transcriptJobId: input.transcriptJobId,
+    resultJson: authority.resultJson,
+    packetBuildId: packet.packetBuildId || null,
+    summaryNoteId: packet.summaryNoteId || null,
+    reusedExistingPacket: packet.reusedExistingPacket === true,
+  });
   return {
     transcriptJobId: input.transcriptJobId,
     transcriptStatus: "completed",
@@ -115,4 +150,37 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
     packetBuildId: packet.packetBuildId || null,
     reusedExistingPacket: packet.reusedExistingPacket === true,
   };
+}
+
+async function recordReadyFollowThrough(prisma: any, input: {
+  transcriptJobId: string;
+  resultJson: unknown;
+  packetBuildId: string | null;
+  summaryNoteId: string | null;
+  reusedExistingPacket: boolean;
+}) {
+  const resultJson = input.resultJson && typeof input.resultJson === "object" && !Array.isArray(input.resultJson)
+    ? input.resultJson as Record<string, unknown>
+    : {};
+  await prisma.transcriptJob.update({
+    where: { id: input.transcriptJobId },
+    data: {
+      resultJson: {
+        ...resultJson,
+        followThrough: {
+          schema: "quipsly-capture-transcript-follow-through-v1",
+          packetStatus: "ready",
+          packetBuildId: input.packetBuildId,
+          summaryNoteId: input.summaryNoteId,
+          reusedExistingPacket: input.reusedExistingPacket,
+          candidateOnly: true,
+          authorPrivate: true,
+          automaticAssignment: false,
+          automaticSharing: false,
+          externalSideEffects: false,
+          preparedAt: new Date().toISOString(),
+        },
+      },
+    },
+  });
 }

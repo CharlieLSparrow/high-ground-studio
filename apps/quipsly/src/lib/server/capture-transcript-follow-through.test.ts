@@ -3,6 +3,7 @@
 import { buildCoachingPacketFromTranscriptJob } from "./coaching-packets";
 import { reconcileCaptureTranscriptFollowThrough } from "./capture-transcript-follow-through";
 import { reconcileCaptureTranscriptJob } from "./capture-transcript-reconciliation";
+import { acquirePrismaAdvisoryTransactionLock } from "./prisma-advisory-lock";
 
 jest.mock("server-only", () => ({}));
 jest.mock("./coaching-packets", () => ({
@@ -11,6 +12,16 @@ jest.mock("./coaching-packets", () => ({
 jest.mock("./capture-transcript-reconciliation", () => ({
   reconcileCaptureTranscriptJob: jest.fn(),
 }));
+jest.mock("./prisma-advisory-lock", () => ({
+  acquirePrismaAdvisoryTransactionLock: jest.fn(),
+}));
+
+function transactionalPrisma<T extends Record<string, any>>(prisma: T) {
+  prisma.transcriptJob.update ??= jest.fn().mockResolvedValue({ id: "job-1" });
+  return Object.assign(prisma, {
+    $transaction: jest.fn(async (callback: (tx: T) => unknown) => callback(prisma)),
+  });
+}
 
 describe("automatic transcript follow-through", () => {
   beforeEach(() => {
@@ -30,7 +41,7 @@ describe("automatic transcript follow-through", () => {
   });
 
   it("uses the assigned coach for booked coaching even when another participant queued transcription", async () => {
-    const prisma = {
+    const prisma = transactionalPrisma({
       coachingNote: { findFirst: jest.fn().mockResolvedValue(null) },
       transcriptJob: {
         findUnique: jest.fn().mockResolvedValue({
@@ -42,7 +53,7 @@ describe("automatic transcript follow-through", () => {
           },
         }),
       },
-    };
+    });
     await expect(reconcileCaptureTranscriptFollowThrough({
       prisma,
       transcriptJobId: "job-1",
@@ -67,10 +78,10 @@ describe("automatic transcript follow-through", () => {
         requestedBy: null,
         room: { createdByUserId: "room-owner", booking: null },
       });
-    const prisma = {
+    const prisma = transactionalPrisma({
       coachingNote: { findFirst: jest.fn().mockResolvedValue(null) },
       transcriptJob: { findUnique },
-    };
+    });
     await reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId: "job-1" });
     await reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId: "job-1" });
     expect(jest.mocked(buildCoachingPacketFromTranscriptJob).mock.calls[0]?.[0].authorUserId).toBe("recording-owner");
@@ -91,10 +102,10 @@ describe("automatic transcript follow-through", () => {
   });
 
   it("does not create authorless private packet material", async () => {
-    const prisma = {
+    const prisma = transactionalPrisma({
       coachingNote: { findFirst: jest.fn() },
       transcriptJob: { findUnique: jest.fn().mockResolvedValue({ roomId: "room-1", requestedBy: null, room: null }) },
-    };
+    });
     await expect(reconcileCaptureTranscriptFollowThrough({
       prisma,
       transcriptJobId: "job-1",
@@ -103,9 +114,9 @@ describe("automatic transcript follow-through", () => {
   });
 
   it("uses a cheap existing-packet read during Session-list sweeps", async () => {
-    const prisma = {
+    const prisma = transactionalPrisma({
       coachingNote: {
-        findFirst: jest.fn().mockResolvedValue({ sourceJson: { packetBuildId: "packet-existing" } }),
+        findFirst: jest.fn().mockResolvedValue({ id: "summary-existing", sourceJson: { packetBuildId: "packet-existing" } }),
       },
       transcriptJob: {
         findUnique: jest.fn().mockResolvedValue({
@@ -113,8 +124,9 @@ describe("automatic transcript follow-through", () => {
           requestedBy: "recording-owner",
           room: { createdByUserId: "room-owner", booking: null },
         }),
+        update: jest.fn().mockResolvedValue({ id: "job-1" }),
       },
-    };
+    });
     await expect(reconcileCaptureTranscriptFollowThrough({
       prisma,
       transcriptJobId: "job-1",
@@ -132,12 +144,27 @@ describe("automatic transcript follow-through", () => {
         title: "Transcript packet: job-1",
       },
       orderBy: { createdAt: "desc" },
-      select: { sourceJson: true },
+      select: { id: true, sourceJson: true },
     });
+    expect(prisma.transcriptJob.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "job-1" },
+      data: { resultJson: expect.objectContaining({
+        followThrough: expect.objectContaining({
+          packetStatus: "ready",
+          packetBuildId: "packet-existing",
+          summaryNoteId: "summary-existing",
+          candidateOnly: true,
+          authorPrivate: true,
+          automaticAssignment: false,
+          automaticSharing: false,
+          externalSideEffects: false,
+        }),
+      }) },
+    }));
   });
 
   it("does not let another author's packet suppress the canonical owner's packet", async () => {
-    const prisma = {
+    const prisma = transactionalPrisma({
       coachingNote: { findFirst: jest.fn().mockResolvedValue(null) },
       transcriptJob: {
         findUnique: jest.fn().mockResolvedValue({
@@ -146,7 +173,7 @@ describe("automatic transcript follow-through", () => {
           room: { createdByUserId: "room-owner", booking: null },
         }),
       },
-    };
+    });
     await reconcileCaptureTranscriptFollowThrough({
       prisma,
       transcriptJobId: "job-1",
@@ -156,6 +183,52 @@ describe("automatic transcript follow-through", () => {
     }));
     expect(buildCoachingPacketFromTranscriptJob).toHaveBeenCalledWith(expect.objectContaining({
       authorUserId: "recording-owner",
+    }));
+  });
+
+  it("serializes one candidate-only private build for a transcript", async () => {
+    const prisma = transactionalPrisma({
+      coachingNote: { findFirst: jest.fn().mockResolvedValue(null) },
+      transcriptJob: {
+        findUnique: jest.fn().mockResolvedValue({
+          roomId: "room-1",
+          requestedBy: "recording-owner",
+          resultJson: { providerEvidence: true },
+          room: { createdByUserId: "room-owner", booking: null },
+        }),
+        update: jest.fn().mockResolvedValue({ id: "job-1" }),
+      },
+    });
+    jest.mocked(buildCoachingPacketFromTranscriptJob).mockResolvedValue({
+      ok: true,
+      packetBuildId: "packet-1",
+      summaryNoteId: "summary-1",
+      reusedExistingPacket: false,
+    } as any);
+
+    await reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId: "job-1" });
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 5_000,
+      timeout: 30_000,
+      isolationLevel: "Serializable",
+    });
+    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledWith(
+      prisma,
+      "capture-transcript-follow-through:job-1",
+    );
+    expect(prisma.transcriptJob.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { resultJson: expect.objectContaining({
+        providerEvidence: true,
+        followThrough: expect.objectContaining({
+          packetBuildId: "packet-1",
+          summaryNoteId: "summary-1",
+          candidateOnly: true,
+          authorPrivate: true,
+          automaticAssignment: false,
+          automaticSharing: false,
+        }),
+      }) },
     }));
   });
 });
