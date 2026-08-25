@@ -6,6 +6,10 @@ import { ensureQuipslyStarterStateForUser } from '@/lib/server/quipsly-onboardin
 import { ensureStudioUserFromFirebaseIdentity } from '@/lib/server/studio-user-identity';
 import { getQuipslySession, QUIPSLY_SESSION_COOKIE_NAME } from '@/lib/server/quipsly-session';
 import { quipslySessionCookieOptions } from '@/lib/server/quipsly-session-cookie';
+import {
+  isDatabaseSchemaUnavailableError,
+  isDatabaseUnavailableError,
+} from '@/lib/server/service-availability';
 
 const LEGACY_AUTH_COOKIE_NAMES = [
   "authjs.session-token",
@@ -28,32 +32,6 @@ function clearLegacyAuthCookies(cookieStore: Awaited<ReturnType<typeof cookies>>
   }
 }
 
-function errorHasCode(error: unknown, code: string): boolean {
-  if (!error || typeof error !== "object") return false;
-  const record = error as Record<string, unknown>;
-  if (record.code === code) return true;
-
-  const nestedErrors = record.errors;
-  if (Array.isArray(nestedErrors) && nestedErrors.some((nested) => errorHasCode(nested, code))) {
-    return true;
-  }
-
-  const cause = record.cause;
-  return Boolean(cause && errorHasCode(cause, code));
-}
-
-function isDatabaseUnavailable(error: unknown) {
-  return (
-    errorHasCode(error, "ECONNREFUSED")
-    || errorHasCode(error, "ETIMEDOUT")
-    || errorHasCode(error, "P2028")
-  );
-}
-
-function isDatabaseSchemaUnavailable(error: unknown) {
-  return errorHasCode(error, "P2021") || errorHasCode(error, "P2022");
-}
-
 function isFirebaseAdminCredentialUnavailable(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const record = error as Record<string, unknown>;
@@ -71,7 +49,7 @@ export async function GET() {
   try {
     session = await getQuipslySession();
   } catch (error) {
-    if (isDatabaseUnavailable(error)) {
+    if (isDatabaseUnavailableError(error)) {
       console.error("Session read failed because the Quipsly database is unavailable", error);
       return NextResponse.json(
         { error: "Quipsly database unavailable", authenticated: false, user: null },
@@ -200,10 +178,10 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error('Session creation failed', error);
-    if (isDatabaseUnavailable(error)) {
+    if (isDatabaseUnavailableError(error)) {
       return NextResponse.json({ error: 'Quipsly database unavailable' }, { status: 503 });
     }
-    if (isDatabaseSchemaUnavailable(error)) {
+    if (isDatabaseSchemaUnavailableError(error)) {
       return NextResponse.json({ error: 'Quipsly database schema unavailable' }, { status: 503 });
     }
     if (isFirebaseAdminCredentialUnavailable(error)) {

@@ -1485,10 +1485,24 @@ final class AuthManager: ObservableObject {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let payload = try JSONDecoder().decode(NativeSessionCheckResponse.self, from: data)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400, payload.ok == true || payload.authenticated == true else {
-            throw NSError(domain: "QuipslySession", code: (response as? HTTPURLResponse)?.statusCode ?? 401, userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Quipsly could not verify this native session."])
+        var data = Data()
+        var response: URLResponse?
+        var payload: NativeSessionCheckResponse?
+        for attempt in 0..<3 {
+            (data, response) = try await URLSession.shared.data(for: request)
+            payload = try JSONDecoder().decode(NativeSessionCheckResponse.self, from: data)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+            if statusCode == 503 && attempt < 2 {
+                try await Task.sleep(nanoseconds: UInt64(attempt + 1) * 300_000_000)
+                continue
+            }
+            break
+        }
+        guard let payload,
+              let http = response as? HTTPURLResponse,
+              http.statusCode < 400,
+              payload.ok == true || payload.authenticated == true else {
+            throw NSError(domain: "QuipslySession", code: (response as? HTTPURLResponse)?.statusCode ?? 401, userInfo: [NSLocalizedDescriptionKey: payload?.error ?? "Quipsly could not verify this native session."])
         }
 
         guard let ownerID = Self.normalizedOwnerID(payload.user?.id) else {
