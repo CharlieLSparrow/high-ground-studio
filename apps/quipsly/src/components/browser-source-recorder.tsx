@@ -2557,9 +2557,8 @@ export function BrowserSourceRecorder({
                 {transcriptionAllowed ? "Transcript on" : "Transcript off"}
               </p>
               <p className="mt-1 text-[10px] font-semibold leading-4">
-                Everyone agrees once. Quipsly remembers your choice for this
-                Session. Recording starts only when the coach or host presses
-                Record.
+                Quipsly remembers your choice for this Session. Recording
+                starts only when the coach or host presses Record.
               </p>
             </div>
             <button

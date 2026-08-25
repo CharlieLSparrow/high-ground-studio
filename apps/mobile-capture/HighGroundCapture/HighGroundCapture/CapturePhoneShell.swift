@@ -10970,7 +10970,7 @@ private struct ConsentStrip: View {
             }
         }
         guard session.hasCurrentRecordingConsent else {
-            return "Everyone agrees once. Recording starts only when the coach or host presses Record."
+            return "Choose once for this Session. Recording starts only when the coach or host presses Record."
         }
         let sources = [
             session.recordingConsentCanRecordAudio == true ? "audio" : nil,
@@ -11041,7 +11041,7 @@ struct CaptureConsentConfirmationSheet: View {
                             .font(.title3.weight(.semibold))
                         Text(defaultConsentSummary)
                             .font(.subheadline.weight(.semibold))
-                        Text("Everyone agrees once. Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.")
+                        Text("Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
