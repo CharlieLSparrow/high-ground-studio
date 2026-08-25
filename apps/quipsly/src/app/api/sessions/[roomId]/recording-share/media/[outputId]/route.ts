@@ -1,11 +1,14 @@
+import { createReadStream as createFileReadStream } from "node:fs";
 import { Readable } from "node:stream";
 
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getMediaBucket, requireMediaBucketName } from "@/lib/server/gcs";
-import { readMobileCaptureObjectBytes } from "@/lib/server/mobile-capture-object-reader";
-import { MOBILE_CAPTURE_LOCAL_VAULT_BUCKET } from "@/lib/server/mobile-capture-local-vault";
+import {
+  loadLocalMobileCaptureObject,
+  MOBILE_CAPTURE_LOCAL_VAULT_BUCKET,
+} from "@/lib/server/mobile-capture-local-vault";
 import { privateMediaByteRange } from "@/lib/server/private-media-byte-range";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
@@ -16,7 +19,6 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_AUDIO_BYTES = 1024 * 1024 * 1024;
 const PRIVATE = {
   "Cache-Control": "private, no-store",
   Vary: "Authorization, Cookie",
@@ -143,14 +145,26 @@ async function response(
       return new Response(body, { status: 200, headers });
     }
 
-    const bytes = await readMobileCaptureObjectBytes({
-      bucketName: asset.storageBucket,
-      objectName: asset.storageObjectPath,
-      expectedByteSize: size,
-      expectedSha256: asset.checksum,
-      expectedGeneration: asset.storageGeneration,
-      maxBytes: MAX_AUDIO_BYTES,
-    });
+    const local = await loadLocalMobileCaptureObject(
+      asset.storageObjectPath,
+    );
+    if (
+      !local ||
+      local.generation !== asset.storageGeneration ||
+      local.sizeBytes !== size ||
+      local.contentType !== asset.contentType ||
+      local.customMetadata.quipslyExpectedSha256 !== asset.checksum ||
+      local.customMetadata.quipslyExpectedSizeBytes !== String(size) ||
+      !/^session-recording-share-v[1-3]$/.test(
+        local.customMetadata.quipslyKind || "",
+      )
+    ) {
+      throw new SessionRecordingShareError(
+        409,
+        "RECORDING_SHARE_OBJECT_MISMATCH",
+        "This private preview no longer matches its immutable local render receipt.",
+      );
+    }
     if (requested) {
       headers.set(
         "Content-Length",
@@ -160,18 +174,20 @@ async function response(
         "Content-Range",
         `bytes ${requested.start}-${requested.end}/${size}`,
       );
-      return new Response(
-        headOnly
-          ? null
-          : new Uint8Array(bytes.subarray(requested.start, requested.end + 1)),
-        { status: 206, headers },
-      );
+      const body = headOnly
+        ? null
+        : (Readable.toWeb(
+            createFileReadStream(local.objectPath, requested),
+          ) as ReadableStream);
+      return new Response(body, { status: 206, headers });
     }
     headers.set("Content-Length", String(size));
-    return new Response(headOnly ? null : new Uint8Array(bytes), {
-      status: 200,
-      headers,
-    });
+    const body = headOnly
+      ? null
+      : (Readable.toWeb(
+          createFileReadStream(local.objectPath),
+        ) as ReadableStream);
+    return new Response(body, { status: 200, headers });
   } catch (error) {
     return errorResponse(error);
   }

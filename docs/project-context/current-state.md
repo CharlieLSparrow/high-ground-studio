@@ -4039,3 +4039,8 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   hashes, byte-checks, and file-protects the copy first. Coaches cannot export
   an unreviewed draft; clients cannot export before Session release. The system
   completion callback is reported without claiming a particular recipient.
+- Local Nest now range-streams large reviewed MP4/M4A files directly from the
+  confined development vault after matching generation, size, media type,
+  expected digest metadata, and Session-share lineage. The prior whole-file
+  buffer and 1 GiB ceiling no longer prevent realistic long-video local tests;
+  the production GCS exact-generation path is unchanged.

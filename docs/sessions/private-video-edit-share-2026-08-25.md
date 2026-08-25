@@ -60,6 +60,13 @@ after Session release. Quipsly does not choose a destination or claim who
 received a file, and canceling the sheet changes neither the output nor any
 original recording.
 
+Local-development playback uses the same byte-range behavior as cloud playback.
+It validates the confined local object's generation, size, content type,
+expected SHA-256 receipt, and Session-share lineage before opening a file
+stream. It no longer buffers the complete output in the Nest process or rejects
+realistic local video merely because the result is larger than 1 GiB. This is a
+development-only path; production continues to stream the exact GCS generation.
+
 ## Local evidence
 
 - Shared contract and cloud policy tests: 11 passing.
@@ -71,6 +78,9 @@ original recording.
 - Quipsly Capture dual-architecture Simulator build: passing.
 - The native export control, account/release gate, exact-byte preparation, and
   standard share-sheet integration compile for both Simulator architectures.
+- Four private-media route tests prove authentication, local byte-range video
+  streaming, stale receipt rejection, and metadata-only HEAD behavior; strict
+  Quipsly TypeScript passes.
 
 These checks prove deterministic contracts and local executable behavior. They
 do not prove physical-iPhone playback or share-sheet delivery, live Cloud Run
