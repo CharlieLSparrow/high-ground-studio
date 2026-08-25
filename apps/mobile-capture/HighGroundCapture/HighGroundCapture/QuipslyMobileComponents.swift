@@ -196,6 +196,7 @@ struct CaptureSessionContextPanel: View {
         }
         .padding(10)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureSessionContextPanel")
         .onAppear { loadIfNeeded(force: true) }
         .onChange(of: session.id) { _, _ in loadIfNeeded(force: true) }

@@ -355,6 +355,9 @@ final class CaptureExperienceModel: ObservableObject {
     let sourcePlanOutbox = CaptureSourcePlanOutbox.shared
     let quickEntryOutbox = MobileQuickEntryOutbox.shared
     let sessionNoteEditOutbox = SessionNoteEditOutbox.shared
+    // Reminder status is observed by its small projection view. Forwarding its
+    // changes through this root model relays out the entire recorder surface
+    // while sheets dismiss and can make accessibility traversal unresponsive.
     let taskReminderScheduler = TaskReminderScheduler.shared
 
     private(set) var usesPreviewData: Bool
@@ -444,15 +447,7 @@ final class CaptureExperienceModel: ObservableObject {
                 self.queueRecoveredUploadsWhenSafe(recordings)
             }
             .store(in: &cancellables)
-        quickEntryOutbox.objectWillChange
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
         sessionNoteEditOutbox.objectWillChange
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-        taskReminderScheduler.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -758,7 +753,9 @@ final class CaptureExperienceModel: ObservableObject {
                 reminderAt: reminderAt,
                 recurrence: recurrence
             )
-            if kind == .source {
+            if usesPreviewData {
+                quickEntrySyncMessage = nil
+            } else if kind == .source {
                 quickEntrySyncMessage = "Source saved on this iPhone. Nest sync will place the same private ID in Inbox."
             } else if let destinationProjectName {
                 quickEntrySyncMessage = "\(kind.title) saved on this iPhone for \(destinationProjectName). Nest sync will keep that exact project and retry-safe ID."
@@ -787,10 +784,7 @@ final class CaptureExperienceModel: ObservableObject {
                         self.quickEntrySyncMessage = message
                         return
                     }
-                    if self.usesPreviewData {
-                        self.quickEntrySyncMessage = self.taskReminderScheduler.statusMessage
-                        return
-                    }
+                    if self.usesPreviewData { return }
                 }
                 if self?.usesPreviewData == true { return }
                 await self?.syncQuickEntry(entry)

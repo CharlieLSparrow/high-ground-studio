@@ -1265,7 +1265,7 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("availableTags: (workspace?.tags ?? [])")
       && capturePhoneShellText.includes("!projects.contains(where: { $0.id == initialProject.id })")
       && capturePhoneShellText.includes("destination == \"NEST:\\($0.id)\" ? $0 : nil")
-      && capturePhoneShellText.includes("CaptureQuickEntrySyncCard(model: model)")
+      && capturePhoneShellText.includes("CaptureQuickEntrySyncStatus(model: model)")
       && capturePhoneShellText.includes("CaptureWorkTaskTagsEdit_")
       && capturePhoneShellText.includes("CaptureWorkTaskEdit_")
       && capturePhoneShellText.includes("CaptureTodayTaskEdit_")

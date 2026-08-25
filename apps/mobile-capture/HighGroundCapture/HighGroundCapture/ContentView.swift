@@ -276,9 +276,7 @@ private struct ProtectedOfflineLibraryShell: View {
                         quickEntryKind = kind
                     }
 
-                    if captureModel.quickEntryOutbox.hasRetryableEntries || captureModel.quickEntrySyncMessage != nil {
-                        CaptureQuickEntrySyncCard(model: captureModel)
-                    }
+                    CaptureQuickEntrySyncStatus(model: captureModel)
 
                     Text("Saving here writes only to this account's file-protected iPhone outbox. Nothing is sent until Nest is reachable and re-verifies the account; retry keeps the same canonical ID.")
                         .font(.caption)

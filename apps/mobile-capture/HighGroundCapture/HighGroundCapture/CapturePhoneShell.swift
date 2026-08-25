@@ -1205,9 +1205,7 @@ private struct CaptureWorkView: View {
                 if let workspace {
                     projectSummary(workspace)
                     quickCapture
-                    if model.quickEntryOutbox.hasRetryableEntries || model.quickEntrySyncMessage != nil {
-                        CaptureQuickEntrySyncCard(model: model)
-                    }
+                    CaptureQuickEntrySyncStatus(model: model)
                     tagLens
                     workSections
                 } else if client.isLoading {
@@ -6926,9 +6924,7 @@ private struct CaptureRecorderView: View {
                         quickEntryKind = kind
                     }
 
-                    if model.quickEntryOutbox.hasRetryableEntries || model.quickEntrySyncMessage != nil {
-                        CaptureQuickEntrySyncCard(model: model)
-                    }
+                    CaptureQuickEntrySyncStatus(model: model)
 
                     CaptureSessionNotesCard(
                         session: session,
@@ -7025,12 +7021,8 @@ private struct CaptureRecorderView: View {
                         .accessibilityIdentifier("CaptureOpenCoachingEngagement")
                     }
 
-                    DisclosureGroup(isExpanded: $showsSessionContext) {
-                        CaptureSessionContextPanel(
-                            session: session,
-                            sessionClient: model.sessionClient
-                        )
-                        .padding(.top, 12)
+                    Button {
+                        showsSessionContext = true
                     } label: {
                         HStack {
                             Label("Session plan", systemImage: "note.text.badge.plus")
@@ -7041,8 +7033,14 @@ private struct CaptureRecorderView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .buttonStyle(.plain)
                     .captureCard()
-                    .accessibilityHint("Opens the local-first session note, goals, tasks, and Nest revision controls.")
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(
+                        TapGesture().onEnded { showsSessionContext = true }
+                    )
+                    .accessibilityIdentifier("CaptureSessionPlanOpen")
+                    .accessibilityHint("Opens the local-first session note, goals, tasks, and Nest revision controls in a focused workspace.")
 
                     MobileSessionConversationCard(
                         client: sessionConversation,
@@ -7288,6 +7286,20 @@ private struct CaptureRecorderView: View {
                 previewOnly: model.usesPreviewData,
                 focusSegmentID: destination.source.segmentId
             )
+        }
+        .navigationDestination(isPresented: $showsSessionContext) {
+            if let session = model.selectedSession {
+                ScrollView {
+                    CaptureSessionContextPanel(
+                        session: session,
+                        sessionClient: model.sessionClient
+                    )
+                    .padding()
+                }
+                .background(CaptureCanvas())
+                .navigationTitle("Session plan")
+                .navigationBarTitleDisplayMode(.inline)
+            }
         }
         .interactiveDismissDisabled(captureIsActive)
         .onChange(of: recordingMode) { oldMode, newMode in
@@ -8969,14 +8981,40 @@ struct CaptureQuickEntryBar: View {
     }
 }
 
+struct CaptureQuickEntrySyncStatus: View {
+    @ObservedObject var model: CaptureExperienceModel
+    @ObservedObject private var outbox: MobileQuickEntryOutbox
+    @ObservedObject private var scheduler: TaskReminderScheduler
+
+    init(model: CaptureExperienceModel) {
+        self.model = model
+        outbox = model.quickEntryOutbox
+        scheduler = model.taskReminderScheduler
+    }
+
+    var body: some View {
+        if outbox.hasRetryableEntries
+            || model.quickEntrySyncMessage != nil
+            || scheduler.activeReminderCount > 0 {
+            CaptureQuickEntrySyncCard(
+                model: model,
+                outbox: outbox,
+                scheduler: scheduler
+            )
+        }
+    }
+}
+
 struct CaptureQuickEntrySyncCard: View {
     @ObservedObject var model: CaptureExperienceModel
+    @ObservedObject var outbox: MobileQuickEntryOutbox
+    @ObservedObject var scheduler: TaskReminderScheduler
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: model.quickEntryOutbox.heldCount > 0 ? "exclamationmark.icloud" : "icloud.and.arrow.up")
-                    .foregroundStyle(model.quickEntryOutbox.heldCount > 0 ? Color.orange : CapturePalette.accent)
+                Image(systemName: outbox.heldCount > 0 ? "exclamationmark.icloud" : "icloud.and.arrow.up")
+                    .foregroundStyle(outbox.heldCount > 0 ? Color.orange : CapturePalette.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(syncTitle)
                         .font(.subheadline.weight(.bold))
@@ -8989,8 +9027,8 @@ struct CaptureQuickEntrySyncCard: View {
                 Spacer()
             }
 
-            if model.quickEntryOutbox.hasRetryableEntries {
-                ForEach(model.quickEntryOutbox.entries.prefix(3)) { entry in
+            if outbox.hasRetryableEntries {
+                ForEach(outbox.entries.prefix(3)) { entry in
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(entry.kind.title) · \(entry.displayTitle)")
                             .font(.caption.weight(.semibold))
@@ -9031,21 +9069,9 @@ struct CaptureQuickEntrySyncCard: View {
                 .accessibilityIdentifier("CaptureQuickEntryRetry")
             }
 
-            if model.taskReminderScheduler.activeReminderCount > 0 {
-                Divider()
-                Label(
-                    "\(model.taskReminderScheduler.scheduledReminderCount) of \(model.taskReminderScheduler.activeReminderCount) private task alert\(model.taskReminderScheduler.activeReminderCount == 1 ? "" : "s") scheduled on this iPhone",
-                    systemImage: model.taskReminderScheduler.scheduledReminderCount > 0 ? "bell.badge.fill" : "bell.slash"
-                )
-                .font(.caption.weight(.semibold))
-                .accessibilityIdentifier("CaptureTaskReminderProjectionCount")
-                Text(model.taskReminderScheduler.statusMessage)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("CaptureTaskReminderProjectionStatus")
-            }
+            CaptureTaskReminderProjection(scheduler: scheduler)
 
-            if let persistenceError = model.quickEntryOutbox.persistenceError {
+            if let persistenceError = outbox.persistenceError {
                 Text(persistenceError)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.red)
@@ -9056,13 +9082,33 @@ struct CaptureQuickEntrySyncCard: View {
     }
 
     private var syncTitle: String {
-        if model.quickEntryOutbox.heldCount > 0 {
-            return "\(model.quickEntryOutbox.heldCount) quick capture\(model.quickEntryOutbox.heldCount == 1 ? "" : "s") held"
+        if outbox.heldCount > 0 {
+            return "\(outbox.heldCount) quick capture\(outbox.heldCount == 1 ? "" : "s") held"
         }
-        if model.quickEntryOutbox.pendingCount > 0 {
-            return "\(model.quickEntryOutbox.pendingCount) quick capture\(model.quickEntryOutbox.pendingCount == 1 ? "" : "s") waiting"
+        if outbox.pendingCount > 0 {
+            return "\(outbox.pendingCount) quick capture\(outbox.pendingCount == 1 ? "" : "s") waiting"
         }
         return "Quick capture synced"
+    }
+}
+
+private struct CaptureTaskReminderProjection: View {
+    @ObservedObject var scheduler: TaskReminderScheduler
+
+    var body: some View {
+        if scheduler.activeReminderCount > 0 {
+            Divider()
+            Label(
+                "\(scheduler.scheduledReminderCount) of \(scheduler.activeReminderCount) private task alert\(scheduler.activeReminderCount == 1 ? "" : "s") scheduled on this iPhone",
+                systemImage: scheduler.scheduledReminderCount > 0 ? "bell.badge.fill" : "bell.slash"
+            )
+            .font(.caption.weight(.semibold))
+            .accessibilityIdentifier("CaptureTaskReminderProjectionCount")
+            Text(scheduler.statusMessage)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("CaptureTaskReminderProjectionStatus")
+        }
     }
 }
 
@@ -9694,6 +9740,7 @@ struct CaptureQuickEntrySheet: View {
     @State private var noteKind = MobileSessionNoteKind.sessionNote
     @State private var noteVisibility = MobileSessionNoteVisibility.authorPrivate
     @State private var showsNoteDetails = false
+    @State private var savesWhenDismissed = false
     @FocusState private var focusedField: FocusedField?
 
     init(
@@ -10191,23 +10238,12 @@ struct CaptureQuickEntrySheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        if model.saveQuickEntry(
-                            kind: kind,
-                            title: title,
-                            body: entryBody,
-                            saveToHomeNest: savesToHomeNest,
-                            destinationProjectID: destinationProjectID,
-                            destinationProjectName: destinationProjectName,
-                            noteKind: savesSessionNote ? noteKind : nil,
-                            noteVisibility: savesSessionNote ? noteVisibility : nil,
-                            tagIDs: Array(selectedTagIDs).sorted(),
-                            newTagLabels: newTagLabels,
-                            dueAt: dueAt,
-                            reminderAt: reminderAt,
-                            recurrence: recurrence
-                        ) {
-                            dismiss()
-                        }
+                        // Let the focused sheet finish dismissing before its
+                        // protected outbox and reminder projections update the
+                        // much larger recorder hierarchy behind it.
+                        savesWhenDismissed = true
+                        focusedField = nil
+                        dismiss()
                     }
                     .disabled(!contentIsValid)
                     .accessibilityIdentifier("CaptureQuickEntrySave")
@@ -10239,6 +10275,25 @@ struct CaptureQuickEntrySheet: View {
                 if !availableNoteKinds.contains(noteKind) { noteKind = .sessionNote }
                 if !availableNoteVisibilities.contains(noteVisibility) { noteVisibility = .authorPrivate }
             }
+        }
+        .onDisappear {
+            guard savesWhenDismissed else { return }
+            savesWhenDismissed = false
+            model.saveQuickEntry(
+                kind: kind,
+                title: title,
+                body: entryBody,
+                saveToHomeNest: savesToHomeNest,
+                destinationProjectID: destinationProjectID,
+                destinationProjectName: destinationProjectName,
+                noteKind: savesSessionNote ? noteKind : nil,
+                noteVisibility: savesSessionNote ? noteVisibility : nil,
+                tagIDs: Array(selectedTagIDs).sorted(),
+                newTagLabels: newTagLabels,
+                dueAt: dueAt,
+                reminderAt: reminderAt,
+                recurrence: recurrence
+            )
         }
         .accessibilityIdentifier("CaptureQuickEntrySheet_\(kind.rawValue)")
     }
@@ -15095,6 +15150,7 @@ extension View {
             .overlay {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(.primary.opacity(0.055), lineWidth: 1)
+                    .allowsHitTesting(false)
             }
     }
 }

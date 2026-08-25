@@ -3301,10 +3301,11 @@ final class CaptureExperienceUITests: XCTestCase {
         openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
 
-        let disclosure = app.buttons["Session plan, Notes, goals & tasks"]
-        reveal(disclosure)
-        XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
-        disclosure.tap()
+        let openPlan = app.buttons["CaptureSessionPlanOpen"]
+        reveal(openPlan)
+        XCTAssertTrue(openPlan.waitForExistence(timeout: 5))
+        XCTAssertTrue(openPlan.isHittable)
+        app.buttons["CaptureSessionPlanOpen"].tap()
 
         let panel = app.descendants(matching: .any)["CaptureSessionContextPanel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
