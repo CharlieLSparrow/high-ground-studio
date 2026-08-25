@@ -74,6 +74,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let sessionConversationExpectedBody: String?
         let sessionConversationReplyBody: String?
         let coachingClientEmail: String?
+        let coachingClientPassword: String?
+        let coachingClientRequestNote: String?
         let coachingClientName: String?
         let taskID: String?
         let taskEditSourceTitle: String?
@@ -145,6 +147,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 sessionConversationExpectedBody: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_CONVERSATION_EXPECTED_BODY"],
                 sessionConversationReplyBody: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_CONVERSATION_REPLY_BODY"],
                 coachingClientEmail: environment["QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_EMAIL"],
+                coachingClientPassword: environment["QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_PASSWORD"],
+                coachingClientRequestNote: environment["QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_REQUEST_NOTE"],
                 coachingClientName: environment["QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_NAME"],
                 taskID: environment["QUIPSLY_CAPTURE_UI_TEST_TASK_ID"],
                 taskEditSourceTitle: environment["QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_SOURCE_TITLE"],
@@ -230,6 +234,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             sessionConversationExpectedBody: payload["sessionConversationExpectedBody"] as? String,
             sessionConversationReplyBody: payload["sessionConversationReplyBody"] as? String,
             coachingClientEmail: payload["coachingClientEmail"] as? String,
+            coachingClientPassword: payload["coachingClientPassword"] as? String,
+            coachingClientRequestNote: payload["coachingClientRequestNote"] as? String,
             coachingClientName: payload["coachingClientName"] as? String,
             taskID: payload["taskID"] as? String,
             taskEditSourceTitle: payload["taskEditSourceTitle"] as? String,
@@ -291,12 +297,18 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         baseURLOverride: String? = nil,
         expectProtectedOfflineShell: Bool = false,
         initialTab: String = "today",
-        sessionDeepLinkRoomID: String? = nil
+        sessionDeepLinkRoomID: String? = nil,
+        identityEmailOverride: String? = nil,
+        identityPasswordOverride: String? = nil
     ) throws -> XCUIApplication {
         let credentials = try runtimeSmokeCredentials()
+        let identityEmail = identityEmailOverride ?? credentials.email
+        let identityPassword = identityPasswordOverride ?? credentials.password
         let app = XCUIApplication()
         app.launchEnvironment["QUIPSLY_API_BASE_URL"] = baseURLOverride ?? credentials.baseURL
-        if let credentialsPath = credentials.credentialsPath {
+        if identityEmailOverride == nil,
+           identityPasswordOverride == nil,
+           let credentialsPath = credentials.credentialsPath {
             app.launchEnvironment["QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE"] = credentialsPath
         }
         app.launchArguments.append("--quipsly-capture-runtime-smoke")
@@ -321,10 +333,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             return app
         }
 
-        signInIfNeeded(app, credentials: credentials)
+        signInIfNeeded(app, email: identityEmail, password: identityPassword)
         ensureExactSignedInAccount(
             app,
-            credentials: credentials,
+            email: identityEmail,
+            password: identityPassword,
             restoringTab: initialTab
         )
         let initialSurfaceIdentifier: String
@@ -349,7 +362,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         return app
     }
 
-    private func signInIfNeeded(_ app: XCUIApplication, credentials: RuntimeSmokeCredentials) {
+    private func signInIfNeeded(
+        _ app: XCUIApplication,
+        email: String,
+        password: String
+    ) {
         // Runtime flights provide a credential file and LoginView begins that
         // transaction as soon as it appears. Prefer the stable signed-in shell
         // over interacting with a login form that may be disappearing while
@@ -372,7 +389,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             emailField.tap()
             emailField.typeKey("a", modifierFlags: .command)
             emailField.typeKey(.delete, modifierFlags: [])
-            emailField.typeText(credentials.email)
+            emailField.typeText(email)
 
             let passwordField = app.secureTextFields["QuipslyCapturePasswordField"]
             if !passwordField.waitForExistence(timeout: 4) {
@@ -386,7 +403,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             let currentPassword = passwordField.value as? String
             if currentPassword == nil || currentPassword?.isEmpty == true || currentPassword == "Password" {
                 passwordField.tap()
-                passwordField.typeText(credentials.password)
+                passwordField.typeText(password)
             }
 
             let signInButton = app.buttons["QuipslyCaptureSignInButton"]
@@ -405,7 +422,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
     private func ensureExactSignedInAccount(
         _ app: XCUIApplication,
-        credentials: RuntimeSmokeCredentials,
+        email: String,
+        password: String,
         restoringTab: String
     ) {
         let tabBar = app.tabBars.firstMatch
@@ -426,7 +444,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             return account
         }
 
-        let expectedEmail = credentials.email.lowercased()
+        let expectedEmail = email.lowercased()
         var shellAccount = app.descendants(matching: .any)["CaptureSignedInShellAccount"].firstMatch
         XCTAssertTrue(
             shellAccount.waitForExistence(timeout: 20),
@@ -447,7 +465,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             // exact replacement identity below instead of mistaking a hidden
             // automatic sign-in for a failed sign-out.
             if app.textFields["QuipslyCaptureEmailField"].waitForExistence(timeout: 2) {
-                signInIfNeeded(app, credentials: credentials)
+                signInIfNeeded(app, email: email, password: password)
             }
             XCTAssertTrue(
                 tabBar.waitForExistence(timeout: 60),
@@ -1197,12 +1215,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
     func testFreshCoachSchedulesAndInvitesFromIPhone() throws {
         let credentials = try runtimeSmokeCredentials()
-        guard let clientEmail = credentials.coachingClientEmail, !clientEmail.isEmpty else {
-            throw XCTSkip("Phone-first coaching requires one exact client email.")
+        guard let clientEmail = credentials.coachingClientEmail, !clientEmail.isEmpty,
+              let clientPassword = credentials.coachingClientPassword, !clientPassword.isEmpty,
+              let clientRequestNote = credentials.coachingClientRequestNote, !clientRequestNote.isEmpty else {
+            throw XCTSkip("Phone-first coaching requires one exact client identity and scheduling-request marker.")
         }
         let defaultSessionTitle = "Coaching session"
 
-        let app = try launchSignedInCaptureApp()
+        var app = try launchSignedInCaptureApp()
         let coaching = app.buttons["CaptureOpenCoachingHome"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(coaching, in: app, timeout: 30, swipeAttempts: 10),
@@ -1464,6 +1484,74 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "A standard iPhone reschedule must persist and return to the same coaching home."
         )
         attachRuntimeScreenshot(app, name: "Phone-first canonical appointment rescheduled")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(
+            identityEmailOverride: clientEmail,
+            identityPasswordOverride: clientPassword
+        )
+        let clientCoaching = app.buttons["CaptureOpenCoachingHome"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(clientCoaching, in: app, timeout: 30, swipeAttempts: 10),
+            "The invited client should find the same conventional Coaching destination from Today."
+        )
+        clientCoaching.tap()
+        XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingClientWelcome"].waitForExistence(timeout: 10),
+            "The invited identity should enter a client experience without coach setup controls."
+        )
+        let clientParticipant = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingBookingParticipant_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(clientParticipant, in: app, timeout: 20, swipeAttempts: 10),
+            "The client appointment should name the coach instead of echoing the client's own identity."
+        )
+        XCTAssertFalse(
+            clientParticipant.label.localizedCaseInsensitiveContains(clientEmail),
+            "The client appointment participant line must identify the coach, not the signed-in client."
+        )
+        let requestChange = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingRequestChange_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(requestChange, in: app, timeout: 20, swipeAttempts: 12),
+            "The invited client should have one conventional schedule-change request action."
+        )
+        requestChange.tap()
+        let requestSheet = app.descendants(matching: .any)["CaptureCoachingChangeRequestSheet"].firstMatch
+        XCTAssertTrue(requestSheet.waitForExistence(timeout: 8))
+        let requestNote = app.textFields["CaptureCoachingChangeRequestNote"].firstMatch
+        XCTAssertTrue(requestNote.waitForExistence(timeout: 5))
+        requestNote.tap()
+        requestNote.typeText(clientRequestNote)
+        let sendRequest = app.buttons["CaptureCoachingSendChangeRequest"].firstMatch
+        let requestReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true"),
+            object: sendRequest
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [requestReady], timeout: 30),
+            .completed,
+            "The relationship conversation should load before the client sends a scheduling request."
+        )
+        sendRequest.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingChangeRequestSent"].waitForExistence(timeout: 30),
+            "The client should receive a clear acknowledgement without the appointment silently changing."
+        )
+        attachRuntimeScreenshot(app, name: "Phone-first client scheduling request")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp()
+        let coachCoaching = app.buttons["CaptureOpenCoachingHome"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(coachCoaching, in: app, timeout: 30, swipeAttempts: 10),
+            "The coach should return to the same appointment after the client's request."
+        )
+        coachCoaching.tap()
+        XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 20))
 
         let open = app.buttons.matching(
             NSPredicate(

@@ -64,6 +64,7 @@ const expectedWork = {
   privateNote: `Private phone note ${workSuffix}`,
 };
 const expectedConversationBody = `Phone coaching conversation ${workSuffix}`;
+const expectedClientRequestNote = `Client scheduling request ${workSuffix}`;
 const keychainService = "com.quipsly.qa.fresh-coaching-phone-start";
 
 async function run(command, args, options = {}) {
@@ -166,6 +167,7 @@ const firebaseUser = await auth.createUser({
   emailVerified: true,
   displayName: coach.displayName,
 });
+const clientFirebaseUser = await ensureFirebaseIdentity(client);
 writeRetainedQAPassword({
   service: keychainService,
   account: coach.email,
@@ -195,6 +197,8 @@ await run(
       QUIPSLY_CAPTURE_UI_TEST_EMAIL: coach.email,
       QUIPSLY_CAPTURE_UI_TEST_PASSWORD: coach.password,
       QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_EMAIL: client.email,
+      QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_PASSWORD: client.password,
+      QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_REQUEST_NOTE: expectedClientRequestNote,
       QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH: resultBundlePath,
       QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS: "900",
     },
@@ -273,8 +277,14 @@ assert(
   conversationMessage,
   "Independent readback omitted the exact message posted by the compiled iPhone UI.",
 );
+const clientScheduleRequest = conversation.messages?.find(
+  (candidate) => candidate.body?.includes(expectedClientRequestNote),
+);
+assert(
+  clientScheduleRequest,
+  "Independent readback omitted the invited client's iPhone scheduling request.",
+);
 
-await ensureFirebaseIdentity(client);
 await ensureFirebaseIdentity(outsider);
 const clientToken = await bearerToken(client);
 const outsiderToken = await bearerToken(outsider);
@@ -355,6 +365,7 @@ const receipt = {
   },
   identity: {
     firebaseUid: firebaseUser.uid,
+    clientFirebaseUid: clientFirebaseUser.uid,
     coachEmail: coach.email,
     clientEmail: client.email,
     outsiderEmail: outsider.email,
@@ -369,6 +380,7 @@ const receipt = {
     systemShareFallbackPresent: true,
     relationshipWorkspaceEntry: true,
     relationshipConversationPostAndReadback: true,
+    invitedClientSchedulingRequestPostAndReadback: true,
     relationshipSessionContinuityVisible: true,
     invitedClientConversationReadback: true,
     invitedClientSharedWorkReadback: true,
@@ -407,6 +419,8 @@ const receipt = {
       messageId: conversationMessage.id,
       body: conversationMessage.body,
       actorRole: conversation.actor?.role || null,
+      clientScheduleRequestId: clientScheduleRequest.id,
+      clientScheduleRequestBody: clientScheduleRequest.body,
     },
     isolation: {
       invitedClientRole: clientConversation.actor?.role || null,

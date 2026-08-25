@@ -406,6 +406,17 @@ function checkMeetingSpineContractSources() {
     "Capture lets an authorized coach reschedule or cancel a canonical appointment from the iPhone while preserving the client relationship and existing work.",
   );
   expect(
+    coachingHomeText.includes("var coachLabel: String")
+      && coachingHomeText.includes("CaptureCoachingRequestChange_")
+      && coachingHomeText.includes("MobileCoachingScheduleRequestSheet")
+      && coachingHomeText.includes("conversation.send(")
+      && coachingHomeText.includes("This sends a private message. It does not move or cancel the Session until your coach confirms the change.")
+      && coachingHomeText.includes('Text(client.isCoach ? booking.clientLabel : booking.coachLabel)')
+      && !coachingHomeText.includes('"action": "request-reschedule-booking"'),
+    "nativeClientSchedulingRequestUsesRelationshipConversation",
+    "Capture labels the other participant correctly and lets an invited client request a new time or cancellation through the durable relationship conversation without bypassing coach availability or mutating the appointment.",
+  );
+  expect(
     meetingSpineText.includes("joiningStartsRecording: false")
       && meetingSpineText.includes("localRecordingRequiresConsent: true")
       && meetingSpineText.includes("providerRecordingRequiresAllParticipantConsent: true")

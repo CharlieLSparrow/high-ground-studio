@@ -60,6 +60,12 @@ struct MobileCoachingBooking: Codable, Identifiable, Hashable {
             ?? client?.email?.nonemptyCoachingText
             ?? "Invited client"
     }
+
+    var coachLabel: String {
+        coach?.name?.nonemptyCoachingText
+            ?? coach?.email?.nonemptyCoachingText
+            ?? "Your coach"
+    }
 }
 
 struct MobileCoachingRunwayResponse: Codable {
@@ -753,6 +759,7 @@ struct CaptureCoachingHomeView: View {
     @State private var showsNewAppointment = false
     @State private var bookingToReschedule: MobileCoachingBooking?
     @State private var bookingToCancel: MobileCoachingBooking?
+    @State private var bookingToRequestChange: MobileCoachingBooking?
 
     private var client: MobileCoachingRunwayClient { model.coachingRunwayClient }
 
@@ -811,6 +818,22 @@ struct CaptureCoachingHomeView: View {
         .sheet(item: $bookingToReschedule) { booking in
             MobileCoachingRescheduleSheet(client: client, booking: booking)
                 .presentationDetents([.medium])
+        }
+        .sheet(item: $bookingToRequestChange) { booking in
+            if let engagement = engagement(for: booking) {
+                MobileCoachingScheduleRequestSheet(
+                    engagement: engagement,
+                    booking: booking,
+                    previewOnly: model.usesPreviewData
+                )
+                .presentationDetents([.medium, .large])
+            } else {
+                ContentUnavailableView(
+                    "Coaching conversation unavailable",
+                    systemImage: "bubble.left.and.exclamationmark.bubble.right",
+                    description: Text("Open the client space below and message your coach there.")
+                )
+            }
         }
         .alert(
             "Cancel this Session?",
@@ -997,8 +1020,9 @@ struct CaptureCoachingHomeView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(booking.title)
                                     .font(.headline)
-                                Text(booking.clientLabel)
+                                Text(client.isCoach ? booking.clientLabel : booking.coachLabel)
                                     .font(.subheadline.weight(.semibold))
+                                    .accessibilityIdentifier("CaptureCoachingBookingParticipant_\(booking.id)")
                                 Text(booking.scheduleLabel)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -1011,7 +1035,21 @@ struct CaptureCoachingHomeView: View {
                                 .padding(.vertical, 5)
                                 .background(.teal.opacity(0.1), in: Capsule())
                         }
-                        HStack {
+                        if client.isCoach {
+                            HStack {
+                                if let roomID = booking.callRoomId {
+                                    Button {
+                                        Task { await refreshAndOpen(roomID: roomID, navigate: true) }
+                                    } label: {
+                                        Label("Open Session", systemImage: "arrow.right.circle.fill")
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
+                                }
+                                appointmentManagementMenu(for: booking)
+                            }
+                        } else {
                             if let roomID = booking.callRoomId {
                                 Button {
                                     Task { await refreshAndOpen(roomID: roomID, navigate: true) }
@@ -1022,8 +1060,17 @@ struct CaptureCoachingHomeView: View {
                                 .buttonStyle(.borderedProminent)
                                 .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
                             }
-                            if client.isCoach {
-                                appointmentManagementMenu(for: booking)
+                            if engagement(for: booking) != nil {
+                                Button {
+                                    bookingToRequestChange = booking
+                                } label: {
+                                    Label("Request a change", systemImage: "calendar.badge.clock")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(client.isMutating || model.usesPreviewData)
+                                .accessibilityHint("Messages your coach without changing the appointment until they confirm it.")
+                                .accessibilityIdentifier("CaptureCoachingRequestChange_\(booking.id)")
                             }
                         }
                         if client.isCoach {
@@ -1133,9 +1180,14 @@ struct CaptureCoachingHomeView: View {
         return client.upcomingBookings.first { $0.callRoomId == roomID }
     }
 
+    private func engagement(for booking: MobileCoachingBooking) -> MobileCaptureCoachingEngagement? {
+        guard let engagementID = booking.coachingEngagementId else { return nil }
+        return model.coachingEngagements.first { $0.id == engagementID }
+    }
+
     private var relationshipsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Client spaces")
+            Text(client.isCoach ? "Client spaces" : "Coaching spaces")
                 .font(.title3.weight(.bold))
             if model.coachingEngagements.isEmpty {
                 Text("A private client space appears here after the first appointment. It carries shared notes, goals, tasks, session history, and conversation continuity.")
@@ -1165,7 +1217,7 @@ struct CaptureCoachingHomeView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                                Text("Open shared notes, goals, tasks, and Session continuity")
+                                Text("Open shared notes, goals, tasks, conversation, and Sessions")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -1180,7 +1232,7 @@ struct CaptureCoachingHomeView: View {
                     .captureCard()
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Open client space, \(engagement.title)")
-                    .accessibilityHint("Manage this relationship's shared notes, goals, tasks, and Sessions.")
+                    .accessibilityHint("Open this relationship's conversation, shared notes, goals, tasks, and Sessions.")
                     .accessibilityIdentifier("CaptureCoachingRelationship_\(engagement.id)")
                 }
             }
@@ -1225,6 +1277,157 @@ struct CaptureCoachingHomeView: View {
         }
         model.select(session)
         if navigate { visibleTab = .record }
+    }
+}
+
+private enum MobileCoachingScheduleRequestKind: String, CaseIterable, Identifiable {
+    case reschedule = "New time"
+    case cancel = "Cancel"
+
+    var id: String { rawValue }
+}
+
+private struct MobileCoachingScheduleRequestSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let engagement: MobileCaptureCoachingEngagement
+    let booking: MobileCoachingBooking
+    let previewOnly: Bool
+    @StateObject private var conversation: MobileEpisodeChatClient
+    @State private var kind: MobileCoachingScheduleRequestKind = .reschedule
+    @State private var preferredStart: Date
+    @State private var note = ""
+    @State private var wasSent = false
+
+    init(
+        engagement: MobileCaptureCoachingEngagement,
+        booking: MobileCoachingBooking,
+        previewOnly: Bool
+    ) {
+        self.engagement = engagement
+        self.booking = booking
+        self.previewOnly = previewOnly
+        _conversation = StateObject(
+            wrappedValue: MobileEpisodeChatClient(scope: .engagement)
+        )
+        _preferredStart = State(
+            initialValue: max(
+                booking.scheduledDate ?? Date().addingTimeInterval(24 * 60 * 60),
+                Date().addingTimeInterval(30 * 60)
+            )
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if wasSent {
+                    Section {
+                        Label("Request sent", systemImage: "checkmark.circle.fill")
+                            .font(.headline)
+                            .foregroundStyle(.green)
+                        Text("Your appointment has not changed yet. Your coach will confirm the next step in this private coaching conversation.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityIdentifier("CaptureCoachingChangeRequestSent")
+                } else {
+                    Section {
+                        Text(booking.title)
+                            .font(.headline)
+                        LabeledContent("Coach", value: booking.coachLabel)
+                        LabeledContent("Current time", value: booking.scheduleLabel)
+                    }
+
+                    Section("What needs to change?") {
+                        Picker("Request", selection: $kind) {
+                            ForEach(MobileCoachingScheduleRequestKind.allCases) { requestKind in
+                                Text(requestKind.rawValue).tag(requestKind)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityIdentifier("CaptureCoachingChangeRequestKind")
+
+                        if kind == .reschedule {
+                            DatePicker(
+                                "Preferred time",
+                                selection: $preferredStart,
+                                in: Date().addingTimeInterval(5 * 60)...,
+                                displayedComponents: [.date, .hourAndMinute]
+                            )
+                            .accessibilityIdentifier("CaptureCoachingChangeRequestTime")
+                        }
+
+                        TextField(
+                            kind == .reschedule
+                                ? "Anything your coach should know? (optional)"
+                                : "Reason (optional)",
+                            text: $note,
+                            axis: .vertical
+                        )
+                        .lineLimit(2...5)
+                        .accessibilityIdentifier("CaptureCoachingChangeRequestNote")
+                    }
+
+                    Section {
+                        Text("This sends a private message. It does not move or cancel the Session until your coach confirms the change.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if conversation.isLoading {
+                        Section { ProgressView("Opening private conversation…") }
+                    }
+                    if let error = conversation.errorMessage {
+                        Section { MobileCoachingInlineWarning(text: error) }
+                    }
+                }
+            }
+            .navigationTitle("Request a change")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(wasSent ? "Done" : "Cancel") { dismiss() }
+                }
+                if !wasSent {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(conversation.isSending ? "Sending…" : "Send") {
+                            Task {
+                                if await conversation.send(
+                                    engagement: engagement,
+                                    body: requestMessage
+                                ) {
+                                    wasSent = true
+                                }
+                            }
+                        }
+                        .disabled(
+                            previewOnly
+                                || conversation.isLoading
+                                || conversation.isSending
+                                || !conversation.canEdit
+                        )
+                        .accessibilityIdentifier("CaptureCoachingSendChangeRequest")
+                    }
+                }
+            }
+        }
+        .task(id: engagement.id) {
+            guard !previewOnly else { return }
+            await conversation.load(engagement: engagement)
+        }
+        .accessibilityIdentifier("CaptureCoachingChangeRequestSheet")
+    }
+
+    private var requestMessage: String {
+        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let request: String
+        switch kind {
+        case .reschedule:
+            request = "Could we move \(booking.title) from \(booking.scheduleLabel) to \(preferredStart.formatted(date: .abbreviated, time: .shortened))?"
+        case .cancel:
+            request = "I need to cancel \(booking.title) scheduled for \(booking.scheduleLabel)."
+        }
+        return trimmedNote.isEmpty ? request : "\(request) \(trimmedNote)"
     }
 }
 
