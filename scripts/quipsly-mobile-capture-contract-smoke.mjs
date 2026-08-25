@@ -412,6 +412,8 @@ function checkMeetingSpineContractSources() {
       && coachingHomeText.includes("conversation.send(")
       && coachingHomeText.includes("This sends a private message. It does not move or cancel the Session until your coach confirms the change.")
       && coachingHomeText.includes('Text(client.isCoach ? booking.clientLabel : booking.coachLabel)')
+      && runtimeUITestText.includes("CaptureCoachingChangeRequestSent")
+      && runtimeRunnerText.includes("TEST_COACHING_CLIENT_REQUEST_NOTE")
       && !coachingHomeText.includes('"action": "request-reschedule-booking"'),
     "nativeClientSchedulingRequestUsesRelationshipConversation",
     "Capture labels the other participant correctly and lets an invited client request a new time or cancellation through the durable relationship conversation without bypassing coach availability or mutating the appointment.",

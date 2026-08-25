@@ -15,6 +15,8 @@ TEST_SESSION_TITLE="${QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE:-}"
 TEST_SESSION_CONVERSATION_EXPECTED_BODY="${QUIPSLY_CAPTURE_UI_TEST_SESSION_CONVERSATION_EXPECTED_BODY:-}"
 TEST_SESSION_CONVERSATION_REPLY_BODY="${QUIPSLY_CAPTURE_UI_TEST_SESSION_CONVERSATION_REPLY_BODY:-}"
 TEST_COACHING_CLIENT_EMAIL="${QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_EMAIL:-}"
+TEST_COACHING_CLIENT_PASSWORD="${QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_PASSWORD:-}"
+TEST_COACHING_CLIENT_REQUEST_NOTE="${QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_REQUEST_NOTE:-}"
 TEST_COACHING_CLIENT_NAME="${QUIPSLY_CAPTURE_UI_TEST_COACHING_CLIENT_NAME:-}"
 TEST_TASK_ID="${QUIPSLY_CAPTURE_UI_TEST_TASK_ID:-}"
 TEST_TASK_EDIT_SOURCE_TITLE="${QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_SOURCE_TITLE:-}"
@@ -151,8 +153,8 @@ case "$TEST_MODE" in
     ;;
   coaching-phone-start)
     TEST_CASE="testFreshCoachSchedulesAndInvitesFromIPhone"
-    if [[ -z "$TEST_COACHING_CLIENT_EMAIL" ]]; then
-      echo "Phone-first coaching mode requires one exact client email." >&2
+    if [[ -z "$TEST_COACHING_CLIENT_EMAIL" || -z "$TEST_COACHING_CLIENT_PASSWORD" || -z "$TEST_COACHING_CLIENT_REQUEST_NOTE" ]]; then
+      echo "Phone-first coaching mode requires one exact client identity and scheduling-request marker." >&2
       exit 2
     fi
     ;;
@@ -594,16 +596,18 @@ payload.update(
 with open(path, "w", encoding="utf-8") as handle:
     json.dump(payload, handle)
 PY
-  python3 - "$SMOKE_CREDENTIALS_FILE" "$TEST_COACHING_CLIENT_EMAIL" "$TEST_COACHING_CLIENT_NAME" <<'PY'
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$TEST_COACHING_CLIENT_EMAIL" "$TEST_COACHING_CLIENT_PASSWORD" "$TEST_COACHING_CLIENT_REQUEST_NOTE" "$TEST_COACHING_CLIENT_NAME" <<'PY'
 import json
 import sys
 
-path, client_email, client_name = sys.argv[1:4]
+path, client_email, client_password, client_request_note, client_name = sys.argv[1:6]
 with open(path, encoding="utf-8") as handle:
     payload = json.load(handle)
 payload.update(
     {
         "coachingClientEmail": client_email or None,
+        "coachingClientPassword": client_password or None,
+        "coachingClientRequestNote": client_request_note or None,
         "coachingClientName": client_name or None,
     }
 )
