@@ -3896,3 +3896,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   continuity, source survival, headset hang-up, and closed-Session behavior
   remain in the deferred validation ledger. Detailed decision record:
   `docs/sessions/native-call-reconnect-recovery-2026-08-25.md`.
+
+### 2026-08-25 coordinated recording control recovery
+
+- Ready non-controller participants now see an affirmative waiting state instead
+  of a gray Record button. Capture claims Ready only when the exact endpoint has
+  current Session consent and required system access.
+- A controller whose own retained source joined late or failed can retry the
+  existing durable START locally. Capture no longer issues a second conflicting
+  room command in that recovery state.
+- Browser consent/readiness now reuses the canonical Session control boundary,
+  closing project owner/editor drift with the recording-command endpoint.
+- The 1,243-check Capture static gate, five focused route tests, strict Quipsly
+  TypeScript, a dual-architecture Simulator build, and the focused 1/1 operated
+  waiting-state journey pass. Physical two-endpoint START/STOP, source retention,
+  synchronization, upload, playback, and minimally instructed comprehension
+  remain in the deferred validation ledger. Detailed decision record:
+  `docs/sessions/coordinated-recording-control-recovery-2026-08-25.md`.

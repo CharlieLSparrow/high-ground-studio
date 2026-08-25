@@ -87,6 +87,7 @@ describe("capture consent readback", () => {
 
     expect(response.status).toBe(200);
     expect(packet.session).toMatchObject({
+      canControlRoom: true,
       participantId: "participant-1",
       recordingConsentId: "consent-1",
       recordingConsentCanRecordAudio: true,
@@ -97,6 +98,32 @@ describe("capture consent readback", () => {
       allRegisteredParticipantTranscriptionConsentGranted: true,
       transcriptionConsentGrantedParticipantCount: 1,
       consentRequiredParticipantCount: 1,
+    });
+  });
+
+  test("uses the canonical Session control boundary for a project owner or editor", async () => {
+    const participant = { id: "participant-1", userId: "user-1", role: "CLIENT" };
+    findFirst
+      .mockResolvedValueOnce({
+        id: "room-1",
+        status: "OPEN",
+        createdByUserId: "another-user",
+        booking: null,
+        participants: [participant],
+        recordingConsents: [],
+      })
+      .mockResolvedValueOnce({ id: "room-1" });
+
+    const response = await GET(
+      new Request("http://localhost/api/mobile/capture/consent?callRoomId=room-1"),
+    );
+    const packet = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(packet.session.canControlRoom).toBe(true);
+    expect(findFirst).toHaveBeenCalledTimes(2);
+    expect(findFirst.mock.calls[1]?.[0]).toMatchObject({
+      select: { id: true },
     });
   });
 

@@ -219,6 +219,17 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesWaitingForHostDeterministicUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-waiting-for-host-ui-test"
+            )
+        #else
+        false
+        #endif
+    }
+
     static var usesStaleFollowUpPreview: Bool {
         #if DEBUG && targetEnvironment(simulator)
         usesPreviewData

@@ -80,6 +80,7 @@ const files = {
   mobileComponents: path.join(sourceRoot, "QuipslyMobileComponents.swift"),
   bridgeModels: path.join(sourceRoot, "BridgeModels.swift"),
   mobileCaptureReadinessRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/readiness/route.ts"),
+  mobileCaptureConsentRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/consent/route.ts"),
   onDeviceTranscriptRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/transcripts/on-device/route.ts"),
   mobileQuickEntryRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts"),
   mobileTodayRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/today/route.ts"),
@@ -261,6 +262,7 @@ const localEngineEpisodeMediaRegistrationText = read(files.localEngineEpisodeMed
 const liveKitJoinTokenHelperText = read(files.liveKitJoinTokenHelper);
 const liveKitEgressHelperText = read(files.liveKitEgressHelper);
 const providerRecordingCommandText = read(files.providerRecordingCommand);
+const mobileCaptureConsentRouteText = read(files.mobileCaptureConsentRoute);
 const meetingSpineContractText = read(files.meetingSpineContract);
 const readinessDocText = read(files.readinessDoc);
 const listingDocText = read(files.listingDoc);
@@ -1763,7 +1765,37 @@ assert(
 );
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePersistentRecorderDock")', "persistent iPhone Record row has a stable automation identity");
 requireIncludes(capturePhoneShellText, "Waiting for participant", "persistent iPhone Record row explains participant readiness without extra administration");
-requireIncludes(capturePhoneShellText, "Waiting for host", "persistent iPhone Record row explains host-controlled recording without hiding the primary action");
+requireIncludes(capturePhoneShellText, "Waiting for host", "persistent iPhone recorder explains host-controlled recording");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePersistentRecorderWaitingForHostStatus")', "ready participants see a conventional status instead of a broken-looking disabled Record button");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureAudioWaitingForHostStatus")', "audio recorder projects a non-interactive ready state for non-controller participants");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureVideoWaitingForHostStatus")', "video recorder projects a non-interactive ready state for non-controller participants");
+requireIncludes(capturePhoneShellText, "&& coordinatedLocalRecordingReady(for: session)", "waiting-for-host truth requires this exact iPhone's consent and system access");
+const coordinatedStartFunctionStart = capturePhoneShellText.indexOf(
+  "private func requestCoordinatedStart",
+);
+const coordinatedStopFunctionStart = capturePhoneShellText.indexOf(
+  "private func requestCoordinatedStop",
+  coordinatedStartFunctionStart,
+);
+assert(
+  coordinatedStartFunctionStart >= 0
+    && coordinatedStopFunctionStart > coordinatedStartFunctionStart,
+  "The coordinated recording start boundary must remain inspectable.",
+  { label: "coordinated recording start boundary remains explicit" },
+);
+const coordinatedStartFunction = capturePhoneShellText.slice(
+  coordinatedStartFunctionStart,
+  coordinatedStopFunctionStart,
+);
+assert(
+  coordinatedStartFunction.indexOf("recordingCoordinator.acceptActiveRecording()") >= 0
+    && coordinatedStartFunction.indexOf("recordingCoordinator.acceptActiveRecording()")
+      < coordinatedStartFunction.indexOf("session.canControlRecording == true"),
+  "A controller must retry its endpoint against the existing durable START before issuing a conflicting second room command.",
+  { label: "iPhone controller can recover its own failed or late local recording" },
+);
+requireIncludes(mobileCaptureConsentRouteText, "sessionInvitationAccessWhere", "browser recording readiness reuses the canonical Session control boundary");
+requireIncludes(mobileCaptureConsentRouteText, "const canControlRoom = await actorCanControlRoom", "browser consent response cannot drift from recording-command authority");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleSpeakerButton"', "shipping persistent provider speaker action is addressable");
 requireIncludes(capturePhoneShellText, "joinMuted = model.providerRoom.isMuted", "manual Rejoin remembers the person's latest successful in-call microphone state");

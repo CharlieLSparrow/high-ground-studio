@@ -17,6 +17,7 @@ import {
 import { quarantineRoomTranscriptsForConsentChange } from "@/lib/server/capture-transcript-privacy";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { captureRoomAccessWhere } from "@/lib/server/mobile-capture-room-join-diagnostics";
+import { sessionInvitationAccessWhere } from "@/lib/server/session-access";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,6 +61,32 @@ async function readJson(request: Request) {
   } catch {
     return {};
   }
+}
+
+async function actorCanControlRoom(input: {
+  prisma: any;
+  room: any;
+  user: any;
+  participant?: any | null;
+}) {
+  const participant = input.participant ?? input.room.participants.find(
+    (item: any) => item.userId === input.user.id,
+  );
+  const directController =
+    input.user.isStaff === true ||
+    input.room.createdByUserId === input.user.id ||
+    input.room.booking?.coachUserId === input.user.id ||
+    ["HOST", "COACH", "PRODUCER"].includes(participant?.role ?? "");
+  if (directController) return true;
+
+  // Project OWNER/EDITOR authority is already part of Quipsly's canonical
+  // Session invitation/control boundary. Reuse that exact query instead of
+  // letting consent readiness disagree with the recording-command endpoint.
+  const controller = await input.prisma.callRoom.findFirst({
+    where: sessionInvitationAccessWhere(input.room.id, input.user),
+    select: { id: true },
+  });
+  return Boolean(controller);
 }
 
 export async function GET(request: Request) {
@@ -131,11 +158,12 @@ export async function GET(request: Request) {
   ).length;
   const participant =
     registeredParticipants.find((item: any) => item.userId === userId) ?? null;
-  const canControlRoom =
-    session.user.isStaff ||
-    room.createdByUserId === userId ||
-    room.booking?.coachUserId === userId ||
-    ["HOST", "COACH", "PRODUCER"].includes(participant?.role ?? "");
+  const canControlRoom = await actorCanControlRoom({
+    prisma,
+    room,
+    user: session.user,
+    participant,
+  });
   const consent = participant
     ? (room.recordingConsents
         .filter(
@@ -518,6 +546,12 @@ export async function POST(request: Request) {
   const selectedSourceConsentsReady =
     (!consent.canRecordAudio || allRegisteredParticipantConsentGranted) &&
     (!consent.canRecordVideo || allRegisteredParticipantVideoConsentGranted);
+  const canControlRoom = await actorCanControlRoom({
+    prisma,
+    room,
+    user: session.user,
+    participant,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -525,11 +559,7 @@ export async function POST(request: Request) {
       id: room.id,
       callRoomId: room.id,
       roomStatus: room.status,
-      canControlRoom:
-        session.user.isStaff ||
-        room.createdByUserId === userId ||
-        room.booking?.coachUserId === userId ||
-        ["HOST", "COACH", "PRODUCER"].includes(participant.role ?? ""),
+      canControlRoom,
       participantId: participant.id,
       recordingConsentId: consent.id,
       recordingConsentStatus: consent.status,

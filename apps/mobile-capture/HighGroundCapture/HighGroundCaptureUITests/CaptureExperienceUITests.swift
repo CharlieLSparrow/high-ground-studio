@@ -17,6 +17,9 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged") {
             app.launchArguments.append("--capture-follow-up-source-changed-preview")
         }
+        if name.contains("testReadyParticipantSeesWaitingStatusInsteadOfDisabledRecord") {
+            app.launchArguments.append("--capture-waiting-for-host-ui-test")
+        }
         let launchesWatchPreview: Bool
         if name.contains(
             "testEpisodeWatchKeepsExactCurrentPassVisibleWithoutALocalClip"
@@ -2478,6 +2481,24 @@ final class CaptureExperienceUITests: XCTestCase {
         waitForExpectations(timeout: 5)
         XCTAssertTrue(readyStart.isEnabled, "The local recorder should become available once the visible Session consent action is saved.")
         XCTAssertEqual(app.staticTexts["CaptureRecorderStateLabel"].label, "Consent ready · mic checks on tap")
+    }
+
+    func testReadyParticipantSeesWaitingStatusInsteadOfDisabledRecord() {
+        app.tabBars.buttons["Record"].tap()
+        openLocalRecorderIfNeeded()
+
+        let ready = app.descendants(matching: .any)[
+            "CaptureAudioWaitingForHostStatus"
+        ]
+        XCTAssertTrue(
+            ready.waitForExistence(timeout: 5),
+            "A ready participant should see a conventional waiting state."
+        )
+        XCTAssertTrue(app.staticTexts["Microphone ready"].exists)
+        XCTAssertFalse(
+            app.buttons["CaptureStartButton"].exists,
+            "A participant who cannot control the room must not see a broken-looking disabled Record button."
+        )
     }
 
     func testCallCheckUsesStandardLanguageAndHidesProviderDetails() {

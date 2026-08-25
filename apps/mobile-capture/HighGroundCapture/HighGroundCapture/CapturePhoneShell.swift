@@ -6680,10 +6680,9 @@ private struct CaptureRecorderView: View {
                                 !model.providerRoom.isConnected
                                 || session.canControlRecording == true
                                 || recordingCoordinator.joinConfirmationRequired,
-                            waitingForHost:
-                                model.providerRoom.isConnected
-                                && session.canControlRecording != true
-                                && !recordingCoordinator.joinConfirmationRequired,
+                            waitingForHost: waitsForRecordingController(
+                                session
+                            ),
                             onPrimaryAction: {
                                 Task {
                                     if audioCaptureIsActive {
@@ -6721,10 +6720,9 @@ private struct CaptureRecorderView: View {
                                 !model.providerRoom.isConnected
                                 || session.canControlRecording == true
                                 || recordingCoordinator.joinConfirmationRequired,
-                            waitingForHost:
-                                model.providerRoom.isConnected
-                                && session.canControlRecording != true
-                                && !recordingCoordinator.joinConfirmationRequired,
+                            waitingForHost: waitsForRecordingController(
+                                session
+                            ),
                             onPrepare: {
                                 Task {
                                     await model.prepareVideoCapture(
@@ -7163,9 +7161,9 @@ private struct CaptureRecorderView: View {
                             canStartRecording:
                                 session.canControlRecording == true
                                 || recordingCoordinator.joinConfirmationRequired,
-                            waitingForHost:
-                                session.canControlRecording != true
-                                && !recordingCoordinator.joinConfirmationRequired,
+                            waitingForHost: waitsForRecordingController(
+                                session
+                            ),
                             onPrimaryAction: {
                                 Task {
                                     if captureIsActive {
@@ -7451,9 +7449,35 @@ private struct CaptureRecorderView: View {
         return true
     }
 
+    /// A participant should see an ordinary ready/waiting state only after
+    /// this exact iPhone has the saved Session choice and system access needed
+    /// to honor a future START. Before then, the visible action remains the
+    /// missing consent or device step instead of falsely claiming readiness.
+    private func waitsForRecordingController(
+        _ session: MobileCaptureSession
+    ) -> Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        if CaptureLaunchConfiguration.usesWaitingForHostDeterministicUITest {
+            return true
+        }
+        #endif
+        return model.providerRoom.isConnected
+            && session.canControlRecording != true
+            && !recordingCoordinator.joinConfirmationRequired
+            && coordinatedLocalRecordingReady(for: session)
+    }
+
     private func requestCoordinatedStart(for session: MobileCaptureSession) async {
         guard shouldCoordinateRecording(for: session) else {
             await startLocalRecording()
+            return
+        }
+        // A controller can also be the endpoint that joined late or failed to
+        // start its own retained source. Retry that already-durable START
+        // locally; issuing a second room command would correctly conflict and
+        // previously left the coach with no recovery action.
+        if let directive = recordingCoordinator.acceptActiveRecording() {
+            await applyRecordingDirective(directive, for: session)
             return
         }
         if session.canControlRecording == true {
@@ -7464,11 +7488,7 @@ private struct CaptureRecorderView: View {
             await applyRecordingDirective(directive, for: session)
             return
         }
-        guard let directive = recordingCoordinator.acceptActiveRecording() else {
-            model.message = "Recording starts when the coach or host presses Record."
-            return
-        }
-        await applyRecordingDirective(directive, for: session)
+        model.message = "Recording starts when the coach or host presses Record."
     }
 
     private func requestCoordinatedStop(for session: MobileCaptureSession) async {
@@ -11650,27 +11670,35 @@ private struct VideoRecorderHero: View {
                 .accessibilityIdentifier("CaptureVideoResolvedProfile")
             }
 
-            Button(action: primaryAction) {
-                ZStack {
-                    Circle()
-                        .fill(primaryTint.opacity(0.14))
-                        .frame(width: 126, height: 126)
-                    Circle()
-                        .fill(primaryTint)
-                        .frame(width: 96, height: 96)
-                    if isBusy || [.preparing, .arming, .finalizing].contains(controller.state) {
-                        ProgressView().tint(.white).controlSize(.large)
-                    } else {
-                        Image(systemName: primarySystemImage)
-                            .font(.system(size: 34, weight: .bold))
-                            .foregroundStyle(.white)
+            if waitingForHost && !isCaptureGroupOpen && controller.state == .ready {
+                CaptureReadyForHostIndicator(
+                    title: "Camera ready",
+                    detail: "The coach or host starts recording for the Session"
+                )
+                .accessibilityIdentifier("CaptureVideoWaitingForHostStatus")
+            } else {
+                Button(action: primaryAction) {
+                    ZStack {
+                        Circle()
+                            .fill(primaryTint.opacity(0.14))
+                            .frame(width: 126, height: 126)
+                        Circle()
+                            .fill(primaryTint)
+                            .frame(width: 96, height: 96)
+                        if isBusy || [.preparing, .arming, .finalizing].contains(controller.state) {
+                            ProgressView().tint(.white).controlSize(.large)
+                        } else {
+                            Image(systemName: primarySystemImage)
+                                .font(.system(size: 34, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
                     }
                 }
+                .buttonStyle(CaptureRecordButtonStyle())
+                .disabled(primaryDisabled)
+                .accessibilityLabel(primaryAccessibilityLabel)
+                .accessibilityIdentifier(primaryIdentifier)
             }
-            .buttonStyle(CaptureRecordButtonStyle())
-            .disabled(primaryDisabled)
-            .accessibilityLabel(primaryAccessibilityLabel)
-            .accessibilityIdentifier(primaryIdentifier)
 
             if controller.state == .recording || controller.state == .paused {
                 HStack(spacing: 10) {
@@ -12059,28 +12087,36 @@ private struct RecorderHero: View {
                 isActive: isActuallyRecording
             )
 
-            Button(action: onPrimaryAction) {
-                ZStack {
-                    Circle()
-                        .fill(primaryTint.opacity(0.14))
-                        .frame(width: 126, height: 126)
-                    Circle()
-                        .fill(primaryTint)
-                        .frame(width: 96, height: 96)
-                    if isBusy || captureState == .finalizing {
-                        ProgressView().tint(.white).controlSize(.large)
-                    } else {
-                        Image(systemName: primarySystemImage)
-                            .font(.system(size: 35, weight: .bold))
-                            .foregroundStyle(.white)
+            if waitingForHost && !isCaptureActive {
+                CaptureReadyForHostIndicator(
+                    title: "Microphone ready",
+                    detail: "The coach or host starts recording for the Session"
+                )
+                .accessibilityIdentifier("CaptureAudioWaitingForHostStatus")
+            } else {
+                Button(action: onPrimaryAction) {
+                    ZStack {
+                        Circle()
+                            .fill(primaryTint.opacity(0.14))
+                            .frame(width: 126, height: 126)
+                        Circle()
+                            .fill(primaryTint)
+                            .frame(width: 96, height: 96)
+                        if isBusy || captureState == .finalizing {
+                            ProgressView().tint(.white).controlSize(.large)
+                        } else {
+                            Image(systemName: primarySystemImage)
+                                .font(.system(size: 35, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
                     }
                 }
+                .buttonStyle(CaptureRecordButtonStyle())
+                .disabled(primaryDisabled)
+                .accessibilityLabel(primaryAccessibilityLabel)
+                .accessibilityValue(formattedDuration)
+                .accessibilityIdentifier(isCaptureActive ? "CaptureStopButton" : "CaptureStartButton")
             }
-            .buttonStyle(CaptureRecordButtonStyle())
-            .disabled(primaryDisabled)
-            .accessibilityLabel(primaryAccessibilityLabel)
-            .accessibilityValue(formattedDuration)
-            .accessibilityIdentifier(isCaptureActive ? "CaptureStopButton" : "CaptureStartButton")
 
             if isCaptureActive && captureState != .finalizing {
                 HStack(spacing: 12) {
@@ -12914,19 +12950,33 @@ private struct CapturePersistentRecorderDock: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .layoutPriority(1)
 
-            Button(action: onPrimaryAction) {
-                Label(actionTitle, systemImage: actionSystemImage)
+            if waitingForHost && !captureIsActive {
+                Label("Ready", systemImage: "checkmark.circle.fill")
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(CapturePalette.accent)
                     .padding(.horizontal, 16)
                     .frame(minHeight: 50)
-                    .background(actionTint, in: Capsule())
+                    .background(
+                        CapturePalette.accent.opacity(0.12),
+                        in: Capsule()
+                    )
+                    .accessibilityLabel("Ready and waiting for the coach or host")
+                    .accessibilityIdentifier("CapturePersistentRecorderWaitingForHostStatus")
+            } else {
+                Button(action: onPrimaryAction) {
+                    Label(actionTitle, systemImage: actionSystemImage)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 50)
+                        .background(actionTint, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(actionDisabled)
+                .opacity(actionDisabled ? 0.55 : 1)
+                .accessibilityLabel(actionAccessibilityLabel)
+                .accessibilityIdentifier(actionIdentifier)
             }
-            .buttonStyle(.plain)
-            .disabled(actionDisabled)
-            .opacity(actionDisabled ? 0.55 : 1)
-            .accessibilityLabel(actionAccessibilityLabel)
-            .accessibilityIdentifier(actionIdentifier)
         }
         .padding(.horizontal, 18)
         .padding(.top, 9)
@@ -12947,7 +12997,7 @@ private struct CapturePersistentRecorderDock: View {
 
     private var actionDisabled: Bool {
         if isBusy { return true }
-        if !captureIsActive && (!canStartRecording || waitingForHost) {
+        if !captureIsActive && !canStartRecording {
             return true
         }
         if mode == .audio {
@@ -13042,6 +13092,35 @@ private struct CapturePersistentRecorderDock: View {
         }
         if actionDisabled { return "Recording unavailable until consent is ready" }
         return actionTitle
+    }
+}
+
+/// A familiar non-interactive ready state replaces a disabled Record button
+/// for participants who do not control the room. This makes authority obvious
+/// without suggesting the recorder is broken or asking for an extra ceremony.
+private struct CaptureReadyForHostIndicator: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(CapturePalette.accent.opacity(0.12))
+                    .frame(width: 104, height: 104)
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 46, weight: .semibold))
+                    .foregroundStyle(CapturePalette.accent)
+            }
+            Text(title)
+                .font(.headline)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
