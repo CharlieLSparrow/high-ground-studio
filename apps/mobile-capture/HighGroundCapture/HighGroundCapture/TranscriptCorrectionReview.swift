@@ -2888,6 +2888,7 @@ struct CaptureTranscriptReviewView: View {
     @State private var recentPacketDecisionID: String?
     @State private var previousPacketCandidateStates: [String: CapturePacketCandidateReviewState] = [:]
     @State private var showsAllAudioListenPoints = false
+    @State private var showsRecordingSource = false
     private static let transcriptPresentationModeKey = "quipsly.capture.transcript.presentation-mode"
     @State private var transcriptPresentationMode = CaptureTranscriptPresentationMode(
         rawValue: UserDefaults.standard.string(forKey: transcriptPresentationModeKey) ?? ""
@@ -3138,17 +3139,7 @@ struct CaptureTranscriptReviewView: View {
                     Menu {
                         if client.desk != nil {
                             Button {
-                                // A Menu action is delivered before its presentation is fully
-                                // dismissed. Yield once so the underlying lazy stack can accept
-                                // the new target instead of letting the focused segment reclaim it.
-                                scrollTargetSegmentID = nil
-                                Task { @MainActor in
-                                    await Task.yield()
-                                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                        scrollTargetSegmentID = "source-truth"
-                                        scrollProxy.scrollTo("source-truth", anchor: .top)
-                                    }
-                                }
+                                showsRecordingSource = true
                             } label: {
                                 Label("Recording source", systemImage: "waveform.badge.magnifyingglass")
                             }
@@ -3235,6 +3226,28 @@ struct CaptureTranscriptReviewView: View {
                     .disabled(client.isLoading || client.isMutating)
                     .accessibilityLabel("Refresh transcript review")
                 }
+            }
+            .sheet(isPresented: $showsRecordingSource) {
+                NavigationStack {
+                    ScrollView {
+                        if let desk = client.desk {
+                            sourceTruth(desk)
+                                .padding(18)
+                        } else {
+                            ProgressView("Loading recording source…")
+                                .frame(maxWidth: .infinity, minHeight: 180)
+                        }
+                    }
+                    .background(Color(uiColor: .systemGroupedBackground))
+                    .navigationTitle("Recording source")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showsRecordingSource = false }
+                        }
+                    }
+                }
+                .presentationDetents([.medium, .large])
             }
             .task {
                 await client.load(roomID: roomID, previewOnly: previewOnly)
