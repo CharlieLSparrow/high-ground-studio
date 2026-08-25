@@ -13,9 +13,12 @@ import {
   newDialogueRepairProposal,
   newDialogueRepairReviewReceipt,
   buildDialogueRepairTargetLocator,
+  buildDialogueRepairCloudManifestObjectName,
+  buildDialogueRepairCloudResultObjectName,
   parseAudioMasteryJob,
   parseAudioMasteryResult,
   parseDialogueRepairCandidate,
+  parseDialogueRepairCloudManifest,
   parseDialogueRepairJob,
   parseDialogueRepairResult,
   parseDialogueRepairReviewReceipt,
@@ -27,10 +30,12 @@ import {
 } from "@high-ground/quipsly-media-processing";
 
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
+import { getMediaBucket } from "@/lib/server/gcs";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
 
 import { publicSignalDiagnosis } from "./audio-mastery";
+import { ensureDialogueRepairCloudQueued } from "./dialogue-repair-cloud";
 
 type Actor = { id: string; email: string };
 type Coordinates = { prisma: any; projectSlug: string; assetId: string; sourceId: string };
@@ -54,7 +59,7 @@ export type PublicDialogueRepairStatus = {
     reviewCounts: { confirmed: number; falsePositive: number; needsComparison: number };
     experiment: null | {
       jobId: string;
-      status: "queued" | "processing" | "output-ready" | "completed" | "failed";
+      status: "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
       authorizingReviewReceiptId: string;
       playbackUrl: string | null;
       error: string | null;
@@ -293,7 +298,6 @@ export async function queueDialogueRepairExperiment(input: Coordinates & {
   const candidateId = requiredId(input.candidateId, "candidateId");
   const actorEmail = requiredEmail(input.actor.email);
   const context = await loadDialogueRepairContext(input);
-  if (context.sourceBinding.provider !== "local") throw new DialogueRepairError("Cloud Dialogue Repair is not qualified yet. This release accepts local Nest media only.", 409, "DIALOGUE_REPAIR_PROVIDER_UNSUPPORTED");
   const candidateRow = await input.prisma.studioDialogueRepairCandidate.findFirst({
     where: { id: candidateId, projectId: context.project.id, assetId: context.asset.id, sourceId: context.source.id },
     include: { reviews: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 1 } },
@@ -311,7 +315,7 @@ export async function queueDialogueRepairExperiment(input: Coordinates & {
   if (reviewReceipt.decision !== "confirmed") throw new DialogueRepairError("The latest review does not confirm this event for treatment.", 409, "DIALOGUE_REPAIR_CONFIRMATION_REQUIRED");
   if (candidate.source.sha256 !== context.sourceBinding.sha256 || candidate.source.generation !== context.sourceBinding.generation) throw new DialogueRepairError("The confirmed candidate no longer matches the immutable source.", 409, "DIALOGUE_REPAIR_SOURCE_DRIFT");
 
-  return input.prisma.$transaction(async (tx: any) => {
+  const queued = await input.prisma.$transaction(async (tx: any) => {
     await acquirePrismaAdvisoryTransactionLock(tx, `dialogue-repair-render:${candidate.candidateId}`);
     const existingRows = await tx.studioAssetProcessingJob.findMany({
       where: { projectId: context.project.id, assetId: context.asset.id, type: "dialogue-repair" },
@@ -326,7 +330,7 @@ export async function queueDialogueRepairExperiment(input: Coordinates & {
           && existing.proposal.authorizingReviewReceiptId === reviewReceipt.receiptId
           && existing.source.sha256 === context.sourceBinding.sha256
           && row.status !== "failed"
-        ) return { ok: true, idempotentReplay: true, experiment: publicExperiment(row) };
+        ) return { idempotentReplay: true, row };
       } catch {
         // Malformed rows cannot own this confirmed source-bound request.
       }
@@ -342,7 +346,7 @@ export async function queueDialogueRepairExperiment(input: Coordinates & {
       source: context.sourceBinding,
       proposal,
       target: {
-        provider: "local",
+        provider: context.sourceBinding.provider,
         locator: buildDialogueRepairTargetLocator({ assetId: context.asset.id, sourceSha256: context.sourceBinding.sha256, candidateId: candidate.candidateId, range: candidate.range }),
         contentType: "audio/wav",
         codec: "pcm_s24le",
@@ -353,8 +357,22 @@ export async function queueDialogueRepairExperiment(input: Coordinates & {
     const row = await tx.studioAssetProcessingJob.create({
       data: { id: job.jobId, projectId: context.project.id, assetId: context.asset.id, type: "dialogue-repair", status: "queued", requestedByEmail: actorEmail, inputJson: json(job) },
     });
-    return { ok: true, idempotentReplay: false, experiment: publicExperiment(row) };
+    return { idempotentReplay: false, row };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  if (context.sourceBinding.provider === "gcs") {
+    const cloud = await ensureDialogueRepairCloudQueued({ prisma: input.prisma, processingJob: queued.row });
+    const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: queued.row.id } });
+    const row = refreshed ?? queued.row;
+    const experiment = publicExperiment(row);
+    return {
+      ok: true,
+      idempotentReplay: queued.idempotentReplay,
+      experiment: cloud.status === "configuration-required"
+        ? { ...experiment, status: "blocked" as const, error: "Cloud Dialogue Repair is retained, but media processing is not configured." }
+        : experiment,
+    };
+  }
+  return { ok: true, idempotentReplay: queued.idempotentReplay, experiment: publicExperiment(queued.row) };
 }
 
 export async function reconcileDialogueRepairExperiment(input: Coordinates & { candidateId: string; jobId: string }) {
@@ -368,6 +386,9 @@ export async function reconcileDialogueRepairExperiment(input: Coordinates & { c
   let result: ReturnType<typeof parseDialogueRepairResult>;
   try {
     job = parseDialogueRepairJob(row.inputJson, row.id);
+    if (job.source.provider === "gcs") {
+      return reconcileCloudDialogueRepair(input, row, job, context, candidateId);
+    }
     result = parseDialogueRepairResult(object(row.resultJson).receipt, job);
   } catch (error) {
     throw new DialogueRepairError(error instanceof Error ? `Dialogue Repair output evidence is invalid: ${error.message}` : "Dialogue Repair output evidence is invalid.", 409, "DIALOGUE_REPAIR_OUTPUT_INVALID");
@@ -398,6 +419,101 @@ export async function reconcileDialogueRepairExperiment(input: Coordinates & { c
     data: { status: "completed", completedAt: new Date(result.completedAt), resultJson: json({ state: "completed", receipt: result, registration: { playbackUrl, sourceId: derivedSource.id, originalRemainsSourceTruth: true, outputIsUnpromotedExperiment: true } }) },
   });
   return { ok: true, experiment: publicExperiment(updated) };
+}
+
+async function reconcileCloudDialogueRepair(
+  input: Coordinates & { candidateId: string; jobId: string },
+  row: any,
+  job: ReturnType<typeof parseDialogueRepairJob>,
+  context: Awaited<ReturnType<typeof loadDialogueRepairContext>>,
+  candidateId: string,
+) {
+  if (job.proposal.candidate.candidateId !== candidateId) {
+    throw new DialogueRepairError("The experiment does not belong to this candidate.", 409, "DIALOGUE_REPAIR_JOB_CANDIDATE_MISMATCH");
+  }
+  const cloud = await ensureDialogueRepairCloudQueued({ prisma: input.prisma, processingJob: row });
+  const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: row.id } });
+  const currentRow = refreshed ?? row;
+  if (cloud.status === "configuration-required") {
+    return { ok: true, experiment: { ...publicExperiment(currentRow), status: "blocked" as const, error: "Cloud Dialogue Repair is retained, but media processing is not configured." } };
+  }
+  if (cloud.status === "failed") return { ok: true, experiment: publicExperiment(currentRow) };
+  const bucket = getMediaBucket(cloud.bucketName);
+  const storedManifest = await loadGcsJsonIfPresent(bucket, buildDialogueRepairCloudManifestObjectName(job.jobId));
+  if (!storedManifest) return { ok: true, experiment: publicExperiment(currentRow) };
+  const manifest = parseDialogueRepairCloudManifest(storedManifest.value, job.jobId);
+  if (manifest.status === "failed-terminal") {
+    const failed = await input.prisma.studioAssetProcessingJob.update({
+      where: { id: job.jobId },
+      data: {
+        status: "failed",
+        error: `${manifest.failure?.code || "dialogue-repair-worker-failed"}: ${manifest.failure?.message || "Cloud Dialogue Repair failed terminal."}`.slice(0, 4_000),
+        completedAt: new Date(manifest.failure?.failedAt || manifest.updatedAt),
+      },
+    });
+    return { ok: true, experiment: publicExperiment(failed) };
+  }
+  if (manifest.status !== "completed") return { ok: true, experiment: publicExperiment(currentRow) };
+  const storedResult = await loadGcsJsonIfPresent(bucket, buildDialogueRepairCloudResultObjectName(job.jobId));
+  if (!storedResult) return { ok: true, experiment: publicExperiment(currentRow) };
+  let result: ReturnType<typeof parseDialogueRepairResult>;
+  try {
+    result = parseDialogueRepairResult(storedResult.value, job);
+  } catch (error) {
+    throw new DialogueRepairError(error instanceof Error ? `Cloud Dialogue Repair output evidence is invalid: ${error.message}` : "Cloud Dialogue Repair output evidence is invalid.", 409, "DIALOGUE_REPAIR_OUTPUT_INVALID");
+  }
+  const currentSource = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
+  if (
+    currentSource.provider !== "gcs"
+    || currentSource.locator !== job.source.locator
+    || currentSource.sha256 !== job.source.sha256
+    || currentSource.generation !== job.source.generation
+    || currentSource.sizeBytes !== job.source.sizeBytes
+  ) throw new DialogueRepairError("The immutable cloud source changed before Dialogue Repair registration.", 409, "DIALOGUE_REPAIR_SOURCE_DRIFT");
+
+  const outputLocation = exactGcsLocation(result.derivative.locator, result.derivative.generation);
+  if (outputLocation.bucketName !== cloud.bucketName || outputLocation.objectName !== job.target.locator) {
+    throw new DialogueRepairError("Cloud Dialogue Repair output escaped its deterministic target binding.", 409, "DIALOGUE_REPAIR_OUTPUT_PATH_INVALID");
+  }
+  await assertCloudDialogueRepairOutput(bucket, job, result);
+  const providerSourceId = result.derivative.locator;
+  let derivedSource = await input.prisma.studioVideoSource.findFirst({ where: { providerSourceId } });
+  if (!derivedSource) {
+    derivedSource = await input.prisma.studioVideoSource.create({
+      data: { provider: "dialogue-repair-worker", providerSourceId, url: "/api/ingest/media/pending", title: `${context.asset.filename} Dialogue Repair experiment` },
+    });
+  }
+  const playbackUrl = `/api/ingest/media/${derivedSource.id}`;
+  if (derivedSource.url !== playbackUrl) await input.prisma.studioVideoSource.update({ where: { id: derivedSource.id }, data: { url: playbackUrl } });
+  await input.prisma.studioAssetVariant.upsert({
+    where: { assetId_kind_url: { assetId: context.asset.id, kind: "dialogue-repair-preview", url: playbackUrl } },
+    create: { assetId: context.asset.id, kind: "dialogue-repair-preview", url: playbackUrl, mimeType: "audio/wav", duration: result.derivative.diagnosis.durationSeconds, sizeBytes: BigInt(result.derivative.sizeBytes), metadataJson: json(dialogueRegistration(result, derivedSource.id, providerSourceId)) },
+    update: { duration: result.derivative.diagnosis.durationSeconds, sizeBytes: BigInt(result.derivative.sizeBytes), metadataJson: json(dialogueRegistration(result, derivedSource.id, providerSourceId)) },
+  });
+  const completed = await input.prisma.studioAssetProcessingJob.update({
+    where: { id: job.jobId },
+    data: {
+      status: "completed",
+      error: null,
+      completedAt: new Date(result.completedAt),
+      resultJson: json({
+        state: "completed",
+        receipt: result,
+        registration: {
+          playbackUrl,
+          sourceId: derivedSource.id,
+          providerSourceId,
+          originalRemainsSourceTruth: true,
+          outputIsUnpromotedExperiment: true,
+          cloudManifestObjectName: cloud.manifestObjectName,
+          cloudManifestGeneration: storedManifest.generation,
+          cloudResultObjectName: cloud.resultObjectName,
+          cloudResultGeneration: storedResult.generation,
+        },
+      }),
+    },
+  });
+  return { ok: true, experiment: publicExperiment(completed) };
 }
 
 export async function appendDialogueRepairAudition(input: Coordinates & {
@@ -435,12 +551,17 @@ export async function appendDialogueRepairAudition(input: Coordinates & {
 
   const registration = object(object(jobRow.resultJson).registration);
   if (typeof registration.playbackUrl !== "string") throw new DialogueRepairError("The verified repair preview is not playable.", 409, "DIALOGUE_REPAIR_AUDITION_PREVIEW_UNAVAILABLE");
-  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
-  const previewPath = await resolveAllowedLocalStudioMediaPath(path.resolve(root, result.derivative.locator));
-  if (!previewPath) throw new DialogueRepairError("The Dialogue Repair preview escaped the authorized media root.", 409, "DIALOGUE_REPAIR_OUTPUT_PATH_INVALID");
-  const [previewStat, previewEvidence] = await Promise.all([stat(previewPath), inspectImmutableStudioMediaSource(previewPath, "audio/wav")]);
-  if (!previewStat.isFile() || previewEvidence.sha256 !== result.derivative.sha256 || previewEvidence.sizeBytes !== result.derivative.sizeBytes) {
-    throw new DialogueRepairError("The Dialogue Repair preview no longer matches its verified receipt.", 409, "DIALOGUE_REPAIR_OUTPUT_DRIFT");
+  if (result.derivative.provider === "gcs") {
+    const output = exactGcsLocation(result.derivative.locator, result.derivative.generation);
+    await assertCloudDialogueRepairOutput(getMediaBucket(output.bucketName), job, result);
+  } else {
+    const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+    const previewPath = await resolveAllowedLocalStudioMediaPath(path.resolve(root, result.derivative.locator));
+    if (!previewPath) throw new DialogueRepairError("The Dialogue Repair preview escaped the authorized media root.", 409, "DIALOGUE_REPAIR_OUTPUT_PATH_INVALID");
+    const [previewStat, previewEvidence] = await Promise.all([stat(previewPath), inspectImmutableStudioMediaSource(previewPath, "audio/wav")]);
+    if (!previewStat.isFile() || previewEvidence.sha256 !== result.derivative.sha256 || previewEvidence.sizeBytes !== result.derivative.sizeBytes) {
+      throw new DialogueRepairError("The Dialogue Repair preview no longer matches its verified receipt.", 409, "DIALOGUE_REPAIR_OUTPUT_DRIFT");
+    }
   }
 
   const occurredAt = new Date();
@@ -548,7 +669,7 @@ function publicExperiment(row: any, auditionRows: any[] = []): NonNullable<Publi
   let result: ReturnType<typeof parseDialogueRepairResult> | null = null;
   try { job = parseDialogueRepairJob(row.inputJson, row.id); } catch { /* surfaced below */ }
   try { if (job && object(row.resultJson).receipt) result = parseDialogueRepairResult(object(row.resultJson).receipt, job); } catch { /* surfaced below */ }
-  const declared = ["queued", "processing", "output-ready", "completed", "failed"].includes(row.status) ? row.status as "queued" | "processing" | "output-ready" | "completed" | "failed" : "failed";
+  const declared = ["queued", "processing", "output-ready", "completed", "blocked", "failed"].includes(row.status) ? row.status as "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed" : "failed";
   const integrityFailure = !job || ((declared === "output-ready" || declared === "completed") && !result);
   const registration = object(object(row.resultJson).registration);
   const matchingAuditions = auditionRows.filter((audition) => audition.repairJobId === row.id);
@@ -581,6 +702,56 @@ function publicMeasurement(value: ReturnType<typeof parseDialogueRepairResult>["
 }
 function dialogueRegistration(result: ReturnType<typeof parseDialogueRepairResult>, sourceId: string, outputPath: string) {
   return { schema: "quipsly-dialogue-repair-registration-v1", sourceId, providerSourceId: outputPath, proposal: result.proposal, sourceMeasurement: result.sourceMeasurement, sourceDiagnosis: result.sourceDiagnosis, verification: result.verification, derivative: result.derivative, worker: result.worker, originalRemainsSourceTruth: true, outputIsUnpromotedExperiment: true, outputIsNotAMasteredDeliveryFile: true, matchedAuditionRequired: true, promotionRequiresSeparateApproval: true };
+}
+async function assertCloudDialogueRepairOutput(
+  bucket: any,
+  job: ReturnType<typeof parseDialogueRepairJob>,
+  result: ReturnType<typeof parseDialogueRepairResult>,
+) {
+  const output = exactGcsLocation(result.derivative.locator, result.derivative.generation);
+  if (output.objectName !== job.target.locator) throw new DialogueRepairError("Cloud Dialogue Repair output escaped its target binding.", 409, "DIALOGUE_REPAIR_OUTPUT_PATH_INVALID");
+  const outputEvidence = await inspectImmutableStudioMediaSource(result.derivative.locator, "audio/wav");
+  const [metadata] = await bucket.file(output.objectName, { generation: output.generation }).getMetadata();
+  const custom = Object.fromEntries(Object.entries(metadata.metadata ?? {}).map(([key, value]) => [key, String(value)]));
+  if (
+    outputEvidence.provider !== "gcs"
+    || outputEvidence.locator !== result.derivative.locator
+    || outputEvidence.generation !== result.derivative.generation
+    || outputEvidence.sha256 !== result.derivative.sha256
+    || outputEvidence.sizeBytes !== result.derivative.sizeBytes
+    || custom.quipslyKind !== "dialogue-repair-preview-v1"
+    || custom.quipslyDialogueRepairJobId !== job.jobId
+    || custom.quipslyCandidateId !== job.proposal.candidate.candidateId
+    || custom.quipslyReviewReceiptId !== job.proposal.authorizingReviewReceiptId
+    || custom.quipslySourceGeneration !== job.source.generation
+    || custom.quipslySourceSha256 !== job.source.sha256
+    || custom.quipslyOutputSha256 !== result.derivative.sha256
+    || custom.quipslyOutputSizeBytes !== String(result.derivative.sizeBytes)
+    || custom.quipslyOriginalRemainsSourceTruth !== "true"
+    || custom.quipslyMatchedAuditionRequired !== "true"
+    || custom.quipslyPromotionRequiresSeparateApproval !== "true"
+  ) throw new DialogueRepairError("Cloud Dialogue Repair preview no longer matches its worker and object receipts.", 409, "DIALOGUE_REPAIR_OUTPUT_DRIFT");
+}
+
+async function loadGcsJsonIfPresent(bucket: any, objectName: string) {
+  try {
+    const [metadata] = await bucket.file(objectName).getMetadata();
+    const generation = String(metadata.generation ?? "");
+    if (!/^[1-9][0-9]*$/.test(generation)) throw new Error("Dialogue Repair cloud object lacks an immutable generation.");
+    const [raw] = await bucket.file(objectName, { generation }).download({ validation: "crc32c" });
+    return { value: JSON.parse(raw.toString("utf8")) as unknown, generation };
+  } catch (error) {
+    if (Number((error as { code?: unknown }).code) === 404) return null;
+    throw error;
+  }
+}
+
+function exactGcsLocation(locator: string, generation: string) {
+  const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(locator);
+  if (!match || match[3] !== generation || match[2].split("/").some((part) => !part || part === "." || part === "..")) {
+    throw new DialogueRepairError("Dialogue Repair output is not generation-bound to the media vault.", 409, "DIALOGUE_REPAIR_OUTPUT_PATH_INVALID");
+  }
+  return { bucketName: match[1], objectName: match[2], generation: match[3] };
 }
 function reviewIntent(receipt: DialogueRepairReviewReceipt) {
   return {

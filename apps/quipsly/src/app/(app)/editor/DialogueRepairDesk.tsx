@@ -30,7 +30,7 @@ type DialogueCandidate = {
 
 type DialogueExperiment = {
   jobId: string;
-  status: "queued" | "processing" | "output-ready" | "completed" | "failed";
+  status: "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
   authorizingReviewReceiptId: string;
   playbackUrl: string | null;
   error: string | null;
