@@ -145,17 +145,29 @@ try {
   await refresh(coachPage);
   await coachPage.locator("article").filter({ hasText: "Message removed" }).waitFor({ timeout: 20_000 });
 
-  const unrelatedRoom = await prisma.callRoom.findFirst({
-    where: {
-      id: { not: target.roomId },
-      AND: [
-        { NOT: sessionConversationActorAccessWhere(target.identities.coach) },
-        { NOT: sessionConversationActorAccessWhere(target.identities.client) },
-      ],
-    },
+  const opaqueRoomCandidates = await prisma.callRoom.findMany({
+    where: { id: { not: target.roomId } },
     orderBy: { createdAt: "desc" },
+    take: 100,
     select: { id: true },
   });
+  let unrelatedRoom = null;
+  for (const candidate of opaqueRoomCandidates) {
+    const [coachAccess, clientAccess] = await Promise.all([
+      prisma.callRoom.findFirst({
+        where: { id: candidate.id, ...sessionConversationActorAccessWhere(target.identities.coach) },
+        select: { id: true },
+      }),
+      prisma.callRoom.findFirst({
+        where: { id: candidate.id, ...sessionConversationActorAccessWhere(target.identities.client) },
+        select: { id: true },
+      }),
+    ]);
+    if (!coachAccess && !clientAccess) {
+      unrelatedRoom = candidate;
+      break;
+    }
+  }
   assert(unrelatedRoom?.id, "No unrelated retained room was available for direct-route isolation proof.");
   const isolation = await clientPage.evaluate(async (roomId) => {
     const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/conversation`, { cache: "no-store" });
