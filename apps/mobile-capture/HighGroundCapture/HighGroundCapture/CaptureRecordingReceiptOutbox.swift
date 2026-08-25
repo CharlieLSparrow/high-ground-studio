@@ -10,6 +10,9 @@ struct CaptureRecordingReceiptPayload: Codable, Equatable {
     let clientKind: String
     let deviceLabel: String
     let detail: String?
+    /// Optional for backward-compatible decoding of receipts queued before
+    /// device event time became part of the immutable server contract.
+    let occurredAt: String?
 }
 
 struct PendingCaptureRecordingReceipt: Codable, Equatable, Identifiable {

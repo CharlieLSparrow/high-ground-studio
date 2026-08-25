@@ -1,4 +1,10 @@
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
+import {
+  enqueueBrowserRecordingReceipt,
+  flushBrowserRecordingReceiptOutbox,
+  listBrowserRecordingReceipts,
+  type BrowserRecordingReceiptState,
+} from "@/lib/browser-recording-receipt-outbox";
 
 export type BrowserRecordingDirective = {
   id: string;
@@ -152,11 +158,20 @@ export function projectBrowserRecordingHealth(
   };
 }
 
-function receiptId(roomId: string, directiveId: string, state: string) {
-  const key = `quipsly-recording-directive-receipt:${roomId}:${directiveId}:${state}`;
+function receiptId(
+  ownerParticipantId: string,
+  roomId: string,
+  directiveId: string,
+  state: string,
+) {
+  const key = `quipsly-recording-directive-receipt:${ownerParticipantId}:${roomId}:${directiveId}:${state}`;
   const existing = window.localStorage.getItem(key);
   if (existing) return existing;
-  const created = crypto.randomUUID();
+  const legacyKey = `quipsly-recording-directive-receipt:${roomId}:${directiveId}:${state}`;
+  const legacy = window.localStorage.getItem(legacyKey);
+  const created = legacy && /^[0-9a-f-]{36}$/i.test(legacy)
+    ? legacy
+    : crypto.randomUUID();
   window.localStorage.setItem(key, created);
   return created;
 }
@@ -197,38 +212,42 @@ export async function issueBrowserRecordingDirective(
 }
 
 export async function acknowledgeBrowserRecordingDirective(input: {
+  ownerParticipantId: string;
   roomId: string;
   directiveId: string;
-  state:
-    | "OBSERVED"
-    | "STARTED"
-    | "START_FAILED"
-    | "STOPPING"
-    | "STOPPED"
-    | "STOP_FAILED";
+  state: BrowserRecordingReceiptState;
   captureId?: string | null;
   detail?: string | null;
 }) {
   const clientInstanceId = browserClientInstanceId();
-  const response = await fetch(
-    `/api/sessions/${encodeURIComponent(input.roomId)}/recording-directive`,
-    {
-      method: "PATCH",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        receiptId: receiptId(input.roomId, input.directiveId, input.state),
-        directiveId: input.directiveId,
-        state: input.state,
-        captureId: input.captureId || null,
-        clientInstanceId,
-        clientKind: "web",
-        deviceLabel: navigator.platform
-          ? `Quipsly Web · ${navigator.platform}`
-          : "Quipsly Web",
-        detail: input.detail || null,
-      }),
-    },
+  const stableReceiptId = receiptId(
+    input.ownerParticipantId,
+    input.roomId,
+    input.directiveId,
+    input.state,
   );
-  return packet(response);
+  const existingReceipt = listBrowserRecordingReceipts(
+    input.ownerParticipantId,
+  ).find((entry) => entry.payload.receiptId === stableReceiptId);
+  enqueueBrowserRecordingReceipt({
+    ownerParticipantId: input.ownerParticipantId,
+    roomId: input.roomId,
+    payload: {
+      receiptId: stableReceiptId,
+      directiveId: input.directiveId,
+      state: input.state,
+      captureId: input.captureId || null,
+      clientInstanceId,
+      clientKind: "web",
+      deviceLabel: navigator.platform
+        ? `Quipsly Web · ${navigator.platform}`
+        : "Quipsly Web",
+      detail: input.detail || null,
+      occurredAt:
+        existingReceipt?.payload.occurredAt ?? new Date().toISOString(),
+    },
+  });
+  return flushBrowserRecordingReceiptOutbox({
+    ownerParticipantId: input.ownerParticipantId,
+  });
 }

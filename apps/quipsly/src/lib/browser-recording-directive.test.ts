@@ -272,17 +272,24 @@ describe("browser recording directive client", () => {
   });
 
   it("retries the exact durable endpoint receipt identity", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true }),
-    }) as typeof fetch;
+    global.fetch = jest.fn()
+      .mockRejectedValueOnce(new Error("response lost after commit"))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true }),
+      }) as typeof fetch;
     const input = {
+      ownerParticipantId: "participant-owner-1",
       roomId: "room-1",
-      directiveId: "directive-1",
+      directiveId: "e7d2429c-a308-40a7-87d6-1ed2c0d2cd54",
       state: "STARTED" as const,
-      captureId: "capture-1",
+      captureId: "f83e23ee-c1a1-47e8-9d13-e66366c874e7",
     };
-    await acknowledgeBrowserRecordingDirective(input);
+    await expect(acknowledgeBrowserRecordingDirective(input)).resolves.toMatchObject({
+      pendingCount: 1,
+      latestError: "response lost after commit",
+    });
     await acknowledgeBrowserRecordingDirective(input);
     const first = JSON.parse(
       String((global.fetch as jest.Mock).mock.calls[0][1].body),
@@ -294,7 +301,7 @@ describe("browser recording directive client", () => {
       clientInstanceId: "browser-installation-1",
       clientKind: "web",
       state: "STARTED",
-      captureId: "capture-1",
+      captureId: "f83e23ee-c1a1-47e8-9d13-e66366c874e7",
     });
     expect(second.receiptId).toBe(first.receiptId);
   });

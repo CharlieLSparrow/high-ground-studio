@@ -94,6 +94,7 @@ import {
   readBrowserRecordingDirective,
   type BrowserRecordingDirective,
 } from "@/lib/browser-recording-directive";
+import { flushBrowserRecordingReceiptOutbox } from "@/lib/browser-recording-receipt-outbox";
 import { useActiveMediaLifecycle } from "@/hooks/use-active-media-lifecycle";
 
 type ConsentPolicy = {
@@ -363,6 +364,11 @@ export function BrowserSourceRecorder({
   const [recordingDirective, setRecordingDirective] =
     useState<BrowserRecordingDirective | null>(null);
   const [directiveBusy, setDirectiveBusy] = useState(false);
+  const [pendingCoordinationReceiptCount, setPendingCoordinationReceiptCount] =
+    useState(0);
+  const [coordinationReceiptError, setCoordinationReceiptError] = useState<
+    string | null
+  >(null);
   const recordingHealthProjection = recordingDirective
     ? projectBrowserRecordingHealth(recordingDirective)
     : null;
@@ -447,6 +453,33 @@ export function BrowserSourceRecorder({
   useEffect(() => {
     recordingDirectiveRef.current = recordingDirective;
   }, [recordingDirective]);
+
+  const flushRecordingReceipts = useCallback(async () => {
+    if (!participantId) return null;
+    try {
+      const result = await flushBrowserRecordingReceiptOutbox({
+        ownerParticipantId: participantId,
+      });
+      setPendingCoordinationReceiptCount(result.pendingCount);
+      setCoordinationReceiptError(result.latestError);
+      return result;
+    } catch (error) {
+      setCoordinationReceiptError(
+        error instanceof Error
+          ? error.message
+          : "Recording status recovery needs attention.",
+      );
+      return null;
+    }
+  }, [participantId]);
+
+  useEffect(() => {
+    if (!participantId) return;
+    const flush = () => void flushRecordingReceipts();
+    flush();
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, [flushRecordingReceipts, participantId]);
 
   const reconcileEndpointQueue = useCallback(() => {
     if (endpointQueueTimerRef.current !== null)
@@ -2060,8 +2093,9 @@ export function BrowserSourceRecorder({
             await updateLedger(current);
           }
           const activeDirective = recordingDirectiveRef.current;
-          if (activeDirective?.action === "START") {
+          if (activeDirective?.action === "START" && participantId) {
             await acknowledgeBrowserRecordingDirective({
+              ownerParticipantId: participantId,
               roomId: callRoomId,
               directiveId: activeDirective.id,
               state: "STOPPED",
@@ -2225,6 +2259,7 @@ export function BrowserSourceRecorder({
     if (
       directiveBusy ||
       directive?.action !== "START" ||
+      !participantId ||
       !["ready", "error"].includes(status) ||
       !retainedReadiness.ok
     ) {
@@ -2233,6 +2268,7 @@ export function BrowserSourceRecorder({
     setDirectiveBusy(true);
     try {
       await acknowledgeBrowserRecordingDirective({
+        ownerParticipantId: participantId,
         roomId: callRoomId,
         directiveId: directive.id,
         state: "OBSERVED",
@@ -2246,6 +2282,7 @@ export function BrowserSourceRecorder({
         ? ("STARTED" as const)
         : ("START_FAILED" as const);
       await acknowledgeBrowserRecordingDirective({
+        ownerParticipantId: participantId,
         roomId: callRoomId,
         directiveId: directive.id,
         state,
@@ -2263,6 +2300,7 @@ export function BrowserSourceRecorder({
   }, [
     callRoomId,
     directiveBusy,
+    participantId,
     recordingDirective,
     retainedReadiness.ok,
     start,
@@ -2274,6 +2312,8 @@ export function BrowserSourceRecorder({
     let cancelled = false;
     const coordinate = async () => {
       try {
+        if (!participantId) return;
+        await flushRecordingReceipts();
         const directive = await readBrowserRecordingDirective(callRoomId);
         if (cancelled) return;
         if (!directiveBaselineEstablishedRef.current) {
@@ -2331,6 +2371,7 @@ export function BrowserSourceRecorder({
             if (status === "recording") {
               const captureId = ledgerRef.current?.captureId ?? null;
               await acknowledgeBrowserRecordingDirective({
+                ownerParticipantId: participantId,
                 roomId: callRoomId,
                 directiveId: directive.id,
                 state: "STARTED",
@@ -2339,6 +2380,7 @@ export function BrowserSourceRecorder({
               directiveHandlingRef.current.set(directive.id, "STARTED");
             } else if (status === "ready" && retainedReadiness.ok) {
               await acknowledgeBrowserRecordingDirective({
+                ownerParticipantId: participantId,
                 roomId: callRoomId,
                 directiveId: directive.id,
                 state: "OBSERVED",
@@ -2350,6 +2392,7 @@ export function BrowserSourceRecorder({
                 ? ("STARTED" as const)
                 : ("START_FAILED" as const);
               await acknowledgeBrowserRecordingDirective({
+                ownerParticipantId: participantId,
                 roomId: callRoomId,
                 directiveId: directive.id,
                 state,
@@ -2364,6 +2407,7 @@ export function BrowserSourceRecorder({
               !retainedReadiness.ok
             ) {
               await acknowledgeBrowserRecordingDirective({
+                ownerParticipantId: participantId,
                 roomId: callRoomId,
                 directiveId: directive.id,
                 state: "START_FAILED",
@@ -2374,6 +2418,7 @@ export function BrowserSourceRecorder({
           } else if (status === "recording") {
             const captureId = ledgerRef.current?.captureId ?? null;
             await acknowledgeBrowserRecordingDirective({
+              ownerParticipantId: participantId,
               roomId: callRoomId,
               directiveId: directive.id,
               state: "STOPPING",
@@ -2384,6 +2429,7 @@ export function BrowserSourceRecorder({
           } else if (!["starting", "stopping", "uploading"].includes(status)) {
             const captureId = ledgerRef.current?.captureId ?? null;
             await acknowledgeBrowserRecordingDirective({
+              ownerParticipantId: participantId,
               roomId: callRoomId,
               directiveId: directive.id,
               state: "STOPPED",
@@ -2411,6 +2457,8 @@ export function BrowserSourceRecorder({
   }, [
     callRoomId,
     conversationConnected,
+    flushRecordingReceipts,
+    participantId,
     retainedReadiness.ok,
     retainedReadiness.reason,
     start,
@@ -2791,6 +2839,17 @@ export function BrowserSourceRecorder({
             className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-950"
           >
             {retainedReadiness.reason}
+          </p>
+        ) : null}
+        {pendingCoordinationReceiptCount > 0 || coordinationReceiptError ? (
+          <p
+            role="status"
+            aria-label="Recording status delivery"
+            className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-950"
+          >
+            Room status is saved on this device and will retry automatically
+            when the Session connection is ready. Any recording already
+            captured remains protected separately.
           </p>
         ) : null}
         {recordingDirective &&

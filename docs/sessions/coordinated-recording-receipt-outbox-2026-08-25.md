@@ -31,7 +31,7 @@ even when Nest accepts, delays, or rejects an endpoint status.
 
 ## Automated and operated evidence
 
-- Capture App Store static smoke: **1,253/1,253 passed**.
+- Capture App Store static smoke: **1,254/1,254 passed**.
 - Capture compiled as an unsigned universal iOS Simulator binary with `arm64`
   and `x86_64` slices.
 - `CaptureExperienceUITests.testRecordingReceiptOutboxSurvivesRelaunchAndStaysAccountPartitioned`

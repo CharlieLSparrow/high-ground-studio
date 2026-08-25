@@ -3922,8 +3922,29 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   polling also resume pending delivery with the original idempotency identity.
 - Pending status receipts never age out, and the outbox remains collaboration
   evidence rather than media, upload, or `RecordingAsset` truth.
-- The 1,253-check Capture static gate, dual-architecture Simulator build, and
+- The 1,254-check Capture static gate, dual-architecture Simulator build, and
   focused operated relaunch/account-switch journey pass. Physical outage,
   process-death, server convergence, and exact-source playback remain in the
   deferred validation ledger. Detailed decision record:
   `docs/sessions/coordinated-recording-receipt-outbox-2026-08-25.md`.
+
+### 2026-08-25 browser recording receipt recovery
+
+- Browser endpoints now persist the complete coordinated status request before
+  delivery instead of retaining only a UUID while callers swallow failures.
+- Browser and iPhone receipts now preserve the device's original event time;
+  delayed delivery no longer rewrites an endpoint transition as the reconnect
+  time. Nest keeps receipt time separately and rejects idempotency drift.
+- One local-storage record per receipt avoids shared-array lost updates;
+  participant-scoped keys keep the normal application drain on the restored
+  participant's queue. This is logical application isolation, not encrypted
+  isolation from the owner of the same browser profile. Legacy idempotency IDs
+  are reused safely.
+- Room polling, browser-online recovery, and initial participant restoration
+  drain pending work. Concurrent triggers are coalesced, terminal protocol
+  conflicts remain diagnostic evidence, and corrupt bytes remain untouched.
+- The browser shows a calm saved-status recovery notice without claiming that
+  media exists or uploaded. Focused client/route tests pass 25/25 and the
+  full Quipsly typecheck passes. Real navigation, outage, account-switch,
+  server convergence, and exact-source playback remain deferred. Detailed
+  record: `docs/sessions/browser-recording-receipt-outbox-2026-08-25.md`.

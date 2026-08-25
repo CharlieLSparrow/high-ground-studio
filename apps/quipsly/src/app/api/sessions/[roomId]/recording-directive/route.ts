@@ -12,6 +12,7 @@ import {
   mobileCaptureAllPartiesReady,
   mobileCaptureConsentVersion,
 } from "@/lib/server/mobile-capture-room-readiness";
+import { normalizedCaptureReceiptOccurredAt } from "@/lib/server/capture-room-state-ledger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -503,6 +504,8 @@ export async function PATCH(
   const clientInstanceId = text(body?.clientInstanceId, 240);
   const clientKind = text(body?.clientKind, 32).toLowerCase();
   const deviceLabel = text(body?.deviceLabel, 240);
+  const rawOccurredAt = text(body?.occurredAt, 64);
+  const occurredAt = normalizedCaptureReceiptOccurredAt(rawOccurredAt);
   if (
     !receiptId ||
     !directiveId ||
@@ -593,12 +596,19 @@ export async function PATCH(
       where: { id: receiptId },
     });
     if (existing) {
+      const replayOccurredAt = rawOccurredAt
+        ? normalizedCaptureReceiptOccurredAt(
+            rawOccurredAt,
+            existing.receivedAt ?? existing.occurredAt,
+          )
+        : existing.occurredAt;
       const matches =
         existing.directiveId === directive.id &&
         existing.actorUserId === session.user.id &&
         existing.clientInstanceId === clientInstanceId &&
         existing.state === state &&
-        (existing.captureId ?? null) === (captureId || null);
+        (existing.captureId ?? null) === (captureId || null) &&
+        existing.occurredAt.getTime() === replayOccurredAt.getTime();
       if (!matches)
         return privateJson(
           {
@@ -631,11 +641,12 @@ export async function PATCH(
         state,
         captureId: captureId || null,
         detail: text(body?.detail, 1000) || null,
-        occurredAt: new Date(),
+        occurredAt,
         evidenceJson: {
           schema: "quipsly-call-recording-endpoint-receipt-v1",
           directiveAction: directive.action,
           receiptIsNotVerifiedUpload: true,
+          clientOccurredAtProvided: Boolean(rawOccurredAt),
         },
       },
     });

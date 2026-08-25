@@ -137,7 +137,8 @@ final class CaptureRecordingCoordinator: ObservableObject {
             clientInstanceId: "ios-operated-outbox",
             clientKind: "ios",
             deviceLabel: "Quipsly Capture · operated simulator",
-            detail: "Protected recording-status outbox relaunch evidence."
+            detail: "Protected recording-status outbox relaunch evidence.",
+            occurredAt: ISO8601DateFormatter().string(from: Date())
         )
         return try receiptOutbox.enqueue(
             roomID: roomID,
@@ -295,7 +296,8 @@ final class CaptureRecordingCoordinator: ObservableObject {
             clientInstanceId: CaptureClientInstallation.id,
             clientKind: "ios",
             deviceLabel: deviceLabel,
-            detail: normalizedDetail(detail)
+            detail: normalizedDetail(detail),
+            occurredAt: ISO8601DateFormatter().string(from: Date())
         )
         do {
             _ = try receiptOutbox.enqueue(

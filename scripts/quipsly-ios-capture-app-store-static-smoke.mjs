@@ -1809,6 +1809,7 @@ requireIncludes(captureRecordingCoordinatorText, "scheduleRetry()", "retryable e
 requireIncludes(captureRecordingCoordinatorText, "receipt.ownerAccountID == AuthManager.currentStoredOwnerID()", "recording-status delivery stays bound to the active account");
 requireIncludes(captureRecordingCoordinatorText, "v1.\\(ownerAccountID).\\(roomID)", "recording-status idempotency identities stay partitioned by account");
 requireIncludes(captureRecordingCoordinatorText, 'packet.errorCode == "RECEIPT_ID_CONFLICT"', "iPhone recognizes Nest's terminal immutable-receipt conflict contract");
+requireIncludes(captureRecordingCoordinatorText, "occurredAt: ISO8601DateFormatter().string(from: Date())", "iPhone persists original endpoint event time before delayed delivery");
 requireIncludes(captureExperienceModelText, ".flushPendingReceipts()", "app load resumes recording-status delivery without requiring another call");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleSpeakerButton"', "shipping persistent provider speaker action is addressable");

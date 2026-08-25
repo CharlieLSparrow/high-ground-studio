@@ -384,6 +384,7 @@ describe("Session recording directive route", () => {
       action: "START",
     });
     const receiptId = "44444444-4444-4444-8444-444444444444";
+    const occurredAt = "2026-08-22T22:30:02.125Z";
     const response = await PATCH(
       request("PATCH", {
         receiptId,
@@ -393,13 +394,116 @@ describe("Session recording directive route", () => {
         clientInstanceId: "browser-1",
         clientKind: "web",
         deviceLabel: "Mac",
+        occurredAt,
       }),
       context,
     );
     expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject({
       ok: true,
-      endpointReceipt: { state: "STARTED" },
+      endpointReceipt: { state: "STARTED", occurredAt },
+    });
+    expect(prisma.callRecordingEndpointReceipt.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          occurredAt: new Date(occurredAt),
+          evidenceJson: expect.objectContaining({
+            clientOccurredAtProvided: true,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("replays the original endpoint event time and rejects identity drift", async () => {
+    prisma.callRecordingDirective.findFirst.mockResolvedValue({
+      id: directive.id,
+      action: "START",
+    });
+    const receiptId = "44444444-4444-4444-8444-444444444444";
+    const occurredAt = new Date("2026-08-22T22:30:02.125Z");
+    prisma.callRecordingEndpointReceipt.findUnique.mockResolvedValue({
+      id: receiptId,
+      directiveId: directive.id,
+      actorUserId: "coach-1",
+      clientInstanceId: "browser-1",
+      state: "STARTED",
+      captureId: "55555555-5555-4555-8555-555555555555",
+      occurredAt,
+      receivedAt: new Date("2026-08-22T22:30:04.000Z"),
+    });
+    const body = {
+      receiptId,
+      directiveId: directive.id,
+      state: "STARTED",
+      captureId: "55555555-5555-4555-8555-555555555555",
+      clientInstanceId: "browser-1",
+      clientKind: "web",
+      deviceLabel: "Mac",
+      occurredAt: occurredAt.toISOString(),
+    };
+
+    const replay = await PATCH(request("PATCH", body), context);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      endpointReceipt: { occurredAt: occurredAt.toISOString() },
+    });
+
+    const conflict = await PATCH(
+      request("PATCH", {
+        ...body,
+        occurredAt: "2026-08-22T22:30:03.125Z",
+      }),
+      context,
+    );
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({
+      ok: false,
+      code: "RECEIPT_ID_CONFLICT",
+    });
+    expect(prisma.callRecordingEndpointReceipt.create).not.toHaveBeenCalled();
+  });
+
+  it("normalizes a future-skewed device time against immutable receipt time on replay", async () => {
+    prisma.callRecordingDirective.findFirst.mockResolvedValue({
+      id: directive.id,
+      action: "START",
+    });
+    const receiptId = "44444444-4444-4444-8444-444444444444";
+    const receivedAt = new Date("2026-08-22T22:30:04.000Z");
+    const futureDeviceTime = "2026-08-22T23:30:04.000Z";
+    prisma.callRecordingEndpointReceipt.findUnique.mockResolvedValue({
+      id: receiptId,
+      directiveId: directive.id,
+      actorUserId: "coach-1",
+      clientInstanceId: "browser-1",
+      state: "STARTED",
+      captureId: "55555555-5555-4555-8555-555555555555",
+      occurredAt: receivedAt,
+      receivedAt,
+    });
+
+    const response = await PATCH(
+      request("PATCH", {
+        receiptId,
+        directiveId: directive.id,
+        state: "STARTED",
+        captureId: "55555555-5555-4555-8555-555555555555",
+        clientInstanceId: "browser-1",
+        clientKind: "web",
+        deviceLabel: "Mac",
+        occurredAt: futureDeviceTime,
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      endpointReceipt: { occurredAt: receivedAt.toISOString() },
     });
   });
 
