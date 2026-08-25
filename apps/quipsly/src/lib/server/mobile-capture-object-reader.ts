@@ -7,13 +7,15 @@ import path from "node:path";
 
 import { getMediaBucket } from "@/lib/server/gcs";
 
-export const MOBILE_CAPTURE_LOCAL_VAULT_BUCKET = "quipsly-local-development-vault";
+export const MOBILE_CAPTURE_LOCAL_VAULT_BUCKET =
+  "quipsly-local-development-vault";
 
 type ReadMobileCaptureObjectArgs = {
   bucketName: string;
   objectName: string;
   expectedByteSize?: number | null;
   expectedSha256?: string | null;
+  expectedGeneration?: string | null;
   maxBytes: number;
 };
 
@@ -37,7 +39,8 @@ function localDatabaseConfigured() {
 
 function localVaultRoot() {
   const configuredRoot = process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT?.trim();
-  if (!configuredRoot) throw new Error("Local Capture vault is not configured.");
+  if (!configuredRoot)
+    throw new Error("Local Capture vault is not configured.");
   if (process.env.NODE_ENV === "production") {
     throw new Error("Local Capture vault reads are disabled in production.");
   }
@@ -49,7 +52,9 @@ function localVaultRoot() {
   const temporaryRoot = path.resolve(os.tmpdir());
   const relative = path.relative(temporaryRoot, root);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error("Local Capture vault root must be a dedicated directory below the operating-system temporary directory.");
+    throw new Error(
+      "Local Capture vault root must be a dedicated directory below the operating-system temporary directory.",
+    );
   }
   return root;
 }
@@ -70,19 +75,24 @@ function positiveInteger(value: unknown) {
 }
 
 function normalizedSha256(value: unknown) {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  const normalized =
+    typeof value === "string" ? value.trim().toLowerCase() : "";
   return /^[a-f0-9]{64}$/.test(normalized) ? normalized : null;
 }
 
 function assertExpectedSize(actual: number, expected: number | null) {
   if (expected !== null && actual !== expected) {
-    throw new Error("Capture source size does not match its immutable recording receipt.");
+    throw new Error(
+      "Capture source size does not match its immutable recording receipt.",
+    );
   }
 }
 
 function assertWithinRouteLimit(actual: number, maxBytes: number) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || actual > maxBytes) {
-    throw new Error("Capture source is too large for in-request transcription.");
+    throw new Error(
+      "Capture source is too large for in-request transcription.",
+    );
   }
 }
 
@@ -90,7 +100,9 @@ function assertExpectedHash(bytes: Buffer, expectedSha256: string | null) {
   if (!expectedSha256) return;
   const actual = createHash("sha256").update(bytes).digest("hex");
   if (actual !== expectedSha256) {
-    throw new Error("Capture source hash does not match its immutable recording receipt.");
+    throw new Error(
+      "Capture source hash does not match its immutable recording receipt.",
+    );
   }
 }
 
@@ -100,12 +112,15 @@ async function readLocalObject(args: ReadMobileCaptureObjectArgs) {
     readFile(`${objectPath}.quipsly.json`, "utf8"),
     stat(objectPath),
   ]);
-  if (!objectStat.isFile()) throw new Error("Local Capture source is not a regular file.");
+  if (!objectStat.isFile())
+    throw new Error("Local Capture source is not a regular file.");
 
   const metadata = JSON.parse(metadataValue) as LocalObjectMetadata;
   const metadataSize = positiveInteger(metadata.sizeBytes);
   if (metadataSize === null || metadataSize !== objectStat.size) {
-    throw new Error("Local Capture source does not match its immutable metadata receipt.");
+    throw new Error(
+      "Local Capture source does not match its immutable metadata receipt.",
+    );
   }
 
   const expectedByteSize = positiveInteger(args.expectedByteSize);
@@ -121,11 +136,29 @@ async function readLocalObject(args: ReadMobileCaptureObjectArgs) {
 }
 
 async function readGcsObject(args: ReadMobileCaptureObjectArgs) {
-  const file = getMediaBucket(args.bucketName).file(args.objectName);
+  const expectedGeneration =
+    typeof args.expectedGeneration === "string" &&
+    /^[1-9][0-9]*$/.test(args.expectedGeneration)
+      ? args.expectedGeneration
+      : null;
+  const file = getMediaBucket(args.bucketName).file(
+    args.objectName,
+    expectedGeneration ? { generation: expectedGeneration } : undefined,
+  );
   const [metadata] = await file.getMetadata();
+  if (
+    expectedGeneration &&
+    String(metadata.generation) !== expectedGeneration
+  ) {
+    throw new Error(
+      "Capture source generation does not match its immutable recording receipt.",
+    );
+  }
   const metadataSize = positiveInteger(metadata.size);
   if (metadataSize === null) {
-    throw new Error("Capture source storage metadata does not include a trustworthy size.");
+    throw new Error(
+      "Capture source storage metadata does not include a trustworthy size.",
+    );
   }
 
   const expectedByteSize = positiveInteger(args.expectedByteSize);
@@ -148,7 +181,9 @@ async function readGcsObject(args: ReadMobileCaptureObjectArgs) {
  * Local-vault access is development-only and confined below the configured
  * temporary root; production reads stay on the configured GCS object.
  */
-export async function readMobileCaptureObjectBytes(args: ReadMobileCaptureObjectArgs) {
+export async function readMobileCaptureObjectBytes(
+  args: ReadMobileCaptureObjectArgs,
+) {
   if (!args.bucketName.trim() || !args.objectName.trim()) {
     throw new Error("Capture source storage identity is incomplete.");
   }

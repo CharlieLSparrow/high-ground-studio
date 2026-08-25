@@ -14,15 +14,16 @@ import { FfmpegInterruptionRepairEngine } from "./interruption-repair-ffmpeg.js"
 import { runInterruptionRepairWorker } from "./interruption-repair-worker.js";
 import { FfmpegSessionAudioAuditionEngine } from "./session-audio-audition-ffmpeg.js";
 import { runSessionAudioAuditionWorker } from "./session-audio-audition-worker.js";
+import { FfmpegSessionRecordingShareRenderer } from "./session-recording-share-ffmpeg.js";
+import { runSessionRecordingShareCloudWorker } from "./session-recording-share-cloud-worker.js";
 
 const bucketName = requiredEnv("QUIPSLY_MEDIA_BUCKET");
 const buildId = requiredEnv("QUIPSLY_WORKER_BUILD_ID");
 const executionId =
-  process.env.CLOUD_RUN_EXECUTION?.trim()
-  || process.env.HOSTNAME?.trim()
-  || "local-execution";
-const imageDigest =
-  process.env.QUIPSLY_WORKER_IMAGE_DIGEST?.trim() || null;
+  process.env.CLOUD_RUN_EXECUTION?.trim() ||
+  process.env.HOSTNAME?.trim() ||
+  "local-execution";
+const imageDigest = process.env.QUIPSLY_WORKER_IMAGE_DIGEST?.trim() || null;
 const jobLimit = boundedInteger(
   process.env.QUIPSLY_MEDIA_PROCESSOR_JOB_LIMIT,
   2,
@@ -41,11 +42,17 @@ try {
   const storage = new GcsCaptureProxyWorkerStorage(bucketName);
   const transcoder = new FfmpegCaptureProxyTranscoder();
   const failures: Array<{ lane: string; reason: string }> = [];
-  const runLane = async <Result>(lane: string, operation: () => Promise<Result[]>): Promise<Result[]> => {
+  const runLane = async <Result>(
+    lane: string,
+    operation: () => Promise<Result[]>,
+  ): Promise<Result[]> => {
     try {
       return await operation();
     } catch (error) {
-      failures.push({ lane, reason: error instanceof Error ? error.message : "unknown" });
+      failures.push({
+        lane,
+        reason: error instanceof Error ? error.message : "unknown",
+      });
       return [];
     }
   };
@@ -56,81 +63,115 @@ try {
     leaseDurationMs,
     now: () => new Date(),
   };
-  const captureResults = await runLane("capture-proxy", () => runCaptureProxyWorker(
-    storage,
-    transcoder,
-    workerOptions,
-    jobLimit,
-  ));
-  const episodeResults = await runLane("episode-proxy", () => runEpisodeCloudProxyWorker(
-    storage,
-    transcoder,
-    workerOptions,
-    jobLimit,
-  ));
-  const alignmentResults = await runLane("audio-alignment", () => runAudioAlignmentCloudWorker(
-    storage,
-    new FfmpegAudioAlignmentAnalyzer(),
-    workerOptions,
-    jobLimit,
-  ));
-  const masteryResults = await runLane("audio-mastery", () => runAudioMasteryCloudWorker(
-    storage,
-    new FfmpegAudioMasteringEngine(),
-    workerOptions,
-    jobLimit,
-  ));
-  const signalProfileResults = await runLane("audio-signal-profile", () => runAudioSignalProfileCloudWorker(
-    storage,
-    new FfmpegAudioSignalProfiler(),
-    workerOptions,
-    jobLimit,
-  ));
-  const spectralResults = await runLane("audio-spectral-evidence", () => runAudioSpectralCloudWorker(
-    storage,
-    new FfmpegAudioSpectralAnalyzer(),
-    workerOptions,
-    jobLimit,
-  ));
-  const interruptionRepairResults = await runLane("interruption-repair", () => runInterruptionRepairWorker(
-    storage,
-    new FfmpegInterruptionRepairEngine(),
-    workerOptions,
-    jobLimit,
-  ));
-  const sessionAudioAuditionResults = await runLane("session-audio-audition", () => runSessionAudioAuditionWorker(
-    storage,
-    new FfmpegSessionAudioAuditionEngine(),
-    workerOptions,
-    jobLimit,
-  ));
-  console.log(JSON.stringify({
-    severity: failures.length ? "ERROR" : "INFO",
-    message: failures.length ? "Quipsly media processor completed with lanes needing retry." : "Quipsly media processor completed.",
-    executionId,
-    buildId,
-    elapsedMs: Date.now() - startedAt,
-    resultCount: captureResults.length + episodeResults.length + alignmentResults.length + masteryResults.length + signalProfileResults.length + spectralResults.length + interruptionRepairResults.length + sessionAudioAuditionResults.length,
-    captureResults,
-    episodeResults,
-    alignmentResults,
-    masteryResults,
-    signalProfileResults,
-    spectralResults,
-    interruptionRepairResults,
-    sessionAudioAuditionResults,
-    failures,
-  }));
+  const captureResults = await runLane("capture-proxy", () =>
+    runCaptureProxyWorker(storage, transcoder, workerOptions, jobLimit),
+  );
+  const episodeResults = await runLane("episode-proxy", () =>
+    runEpisodeCloudProxyWorker(storage, transcoder, workerOptions, jobLimit),
+  );
+  const alignmentResults = await runLane("audio-alignment", () =>
+    runAudioAlignmentCloudWorker(
+      storage,
+      new FfmpegAudioAlignmentAnalyzer(),
+      workerOptions,
+      jobLimit,
+    ),
+  );
+  const masteryResults = await runLane("audio-mastery", () =>
+    runAudioMasteryCloudWorker(
+      storage,
+      new FfmpegAudioMasteringEngine(),
+      workerOptions,
+      jobLimit,
+    ),
+  );
+  const signalProfileResults = await runLane("audio-signal-profile", () =>
+    runAudioSignalProfileCloudWorker(
+      storage,
+      new FfmpegAudioSignalProfiler(),
+      workerOptions,
+      jobLimit,
+    ),
+  );
+  const spectralResults = await runLane("audio-spectral-evidence", () =>
+    runAudioSpectralCloudWorker(
+      storage,
+      new FfmpegAudioSpectralAnalyzer(),
+      workerOptions,
+      jobLimit,
+    ),
+  );
+  const interruptionRepairResults = await runLane("interruption-repair", () =>
+    runInterruptionRepairWorker(
+      storage,
+      new FfmpegInterruptionRepairEngine(),
+      workerOptions,
+      jobLimit,
+    ),
+  );
+  const sessionAudioAuditionResults = await runLane(
+    "session-audio-audition",
+    () =>
+      runSessionAudioAuditionWorker(
+        storage,
+        new FfmpegSessionAudioAuditionEngine(),
+        workerOptions,
+        jobLimit,
+      ),
+  );
+  const sessionRecordingShareResults = await runLane(
+    "session-recording-share",
+    () =>
+      runSessionRecordingShareCloudWorker(
+        storage,
+        new FfmpegSessionRecordingShareRenderer(),
+        workerOptions,
+        jobLimit,
+      ),
+  );
+  console.log(
+    JSON.stringify({
+      severity: failures.length ? "ERROR" : "INFO",
+      message: failures.length
+        ? "Quipsly media processor completed with lanes needing retry."
+        : "Quipsly media processor completed.",
+      executionId,
+      buildId,
+      elapsedMs: Date.now() - startedAt,
+      resultCount:
+        captureResults.length +
+        episodeResults.length +
+        alignmentResults.length +
+        masteryResults.length +
+        signalProfileResults.length +
+        spectralResults.length +
+        interruptionRepairResults.length +
+        sessionAudioAuditionResults.length +
+        sessionRecordingShareResults.length,
+      captureResults,
+      episodeResults,
+      alignmentResults,
+      masteryResults,
+      signalProfileResults,
+      spectralResults,
+      interruptionRepairResults,
+      sessionAudioAuditionResults,
+      sessionRecordingShareResults,
+      failures,
+    }),
+  );
   if (failures.length) process.exitCode = 1;
 } catch (error) {
-  console.error(JSON.stringify({
-    severity: "ERROR",
-    message: "Quipsly capture proxy processor needs retry.",
-    executionId,
-    buildId,
-    elapsedMs: Date.now() - startedAt,
-    reason: error instanceof Error ? error.message : "unknown",
-  }));
+  console.error(
+    JSON.stringify({
+      severity: "ERROR",
+      message: "Quipsly capture proxy processor needs retry.",
+      executionId,
+      buildId,
+      elapsedMs: Date.now() - startedAt,
+      reason: error instanceof Error ? error.message : "unknown",
+    }),
+  );
   process.exitCode = 1;
 }
 

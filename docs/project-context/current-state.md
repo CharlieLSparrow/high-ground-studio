@@ -2,6 +2,28 @@
 
 Date: 2026-08-24
 
+## Cloud coaching recording render checkpoint
+
+- The built-in coaching recording editor no longer depends on a Mac-local
+  renderer in production. Exact released participant generations now queue a
+  create-once private GCS render through the existing media Cloud Run Job.
+- The worker independently checks metadata and complete SHA-256 for every
+  participant source, renders the reviewed trim/text-edit decision, verifies
+  AAC format and duration, decodes to EOF, uploads create-once, and downloads
+  the exact output generation for byte-level readback before completion.
+- Session output and workflow rows commit before the cloud outbox. Lost-response
+  replay reuses the same output, job, and manifest. Originals remain immutable;
+  the result stays coach-private until the existing proof-listen and explicit
+  release gate is satisfied.
+- Derived Session playback now pins its registered GCS generation in addition
+  to byte count and SHA-256. The renderer hashes files incrementally rather than
+  retaining an entire long recording in Node memory.
+- Focused contract, worker, outbox, object-reader, recording-share service, and
+  UI tests plus strict shared, worker, and Quipsly TypeScript pass. Live
+  two-source rendering, proof listening, recipient readback, revocation, and
+  cost measurement remain deferred release evidence. Detailed decision record:
+  `docs/coordination/2026-08-25-cloud-session-recording-share.md`.
+
 ## Conventional call progression checkpoint
 
 - Quipsly's call-entry contract now matches familiar Meet, Teams, Zoom, and

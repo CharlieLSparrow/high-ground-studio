@@ -34,6 +34,7 @@ export * from "./transcript-evaluation-report-html.js";
 export * from "./transcript-provider-adapters.js";
 export * from "./transcript-routing.js";
 export * from "./session-recording-share.js";
+export * from "./session-recording-share-cloud.js";
 export * from "./session-audio-audition.js";
 export * from "./interruption-repair.js";
 export const CAPTURE_PROXY_MANIFEST_KIND =

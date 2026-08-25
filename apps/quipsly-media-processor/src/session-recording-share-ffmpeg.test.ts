@@ -120,7 +120,7 @@ test("FFmpeg renders a verified aligned Session share without mutating sources",
       target: { provider: "local", bucketName: base.bucketName, objectName: "share.m4a", locator: output, contentType: "audio/mp4", codec: "aac-lc", sampleRateHz: 48_000, channels: 2 },
     });
     const rendered = await new FfmpegSessionRecordingShareRenderer().render(job, output);
-    assert.ok(rendered.bytes.length > 1_000);
+    assert.ok(rendered.sizeBytes > 1_000);
     assert.match(rendered.sha256, /^[a-f0-9]{64}$/);
     assert.ok(Math.abs(rendered.technical.durationSeconds - 1.74) <= 0.25);
     assert.equal(rendered.technical.completeDecode, true);
