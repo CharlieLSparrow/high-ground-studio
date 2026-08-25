@@ -143,7 +143,11 @@ try {
   await clientReply.getByRole("button", { name: "Remove", exact: true }).click();
   await clientPage.getByText("Message removed", { exact: true }).last().waitFor({ timeout: 20_000 });
   await refresh(coachPage);
-  await coachPage.locator("article").filter({ hasText: "Message removed" }).waitFor({ timeout: 20_000 });
+  await coachPage
+    .locator("article")
+    .filter({ hasText: correctedBody })
+    .filter({ hasText: "Message removed" })
+    .waitFor({ timeout: 20_000 });
 
   const opaqueRoomCandidates = await prisma.callRoom.findMany({
     where: { id: { not: target.roomId } },
