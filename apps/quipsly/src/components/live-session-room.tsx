@@ -105,6 +105,13 @@ type JoinPacket = {
   roomName?: string;
   recordingConsentGranted?: boolean;
   recordingConsentStatus?: string;
+  providerReadiness?: string;
+  localFallback?: {
+    available?: boolean;
+    safeToRecordLocally?: boolean;
+    reason?: string;
+    nextAction?: string;
+  };
   nextAction?: string;
 };
 
@@ -504,6 +511,7 @@ export function LiveSessionRoom({
   const [callRecoveryAvailable, setCallRecoveryAvailable] = useState(false);
   const [callEndedByPerson, setCallEndedByPerson] = useState(false);
   const [callPermanentlyClosed, setCallPermanentlyClosed] = useState(false);
+  const [localRecordingFallback, setLocalRecordingFallback] = useState(false);
 
   const roomRef = useRef<Room | null>(null);
   const intentionalDisconnectRef = useRef(false);
@@ -1346,6 +1354,7 @@ export function LiveSessionRoom({
     }
     setStatus("joining");
     setMessage("Joining…");
+    setLocalRecordingFallback(false);
     if (!recoveringCall) setCallRecoveryAvailable(false);
     setCallEndedByPerson(false);
     if (!recoveringCall) setCallPermanentlyClosed(false);
@@ -1364,6 +1373,23 @@ export function LiveSessionRoom({
         }),
       });
       const packet = await response.json().catch(() => ({})) as JoinPacket;
+      if (
+        response.ok &&
+        packet.ok &&
+        !packet.canJoin &&
+        packet.localFallback?.available
+      ) {
+        setLocalRecordingFallback(true);
+        setStatus("error");
+        setTechnicalMessage(packet.nextAction || packet.localFallback.nextAction || null);
+        setMessage(
+          packet.providerReadiness === "provider-not-configured" ||
+          packet.providerReadiness === "livekit-needs-config"
+            ? "The live call isn't configured for this Session yet. You can still record a high-quality copy on this device after everyone allows recording."
+            : "The live call isn't available right now. You can retry Join call or continue with the protected recorder on this device.",
+        );
+        return;
+      }
       if (!response.ok || !packet.ok || !packet.canJoin || !packet.serverUrl || !packet.participantToken) {
         throw new CallJoinFailure(
           packet.error || packet.nextAction || "This Session is not ready for a live room.",
@@ -1505,6 +1531,7 @@ export function LiveSessionRoom({
       });
       updateRoster(room);
       setCallRecoveryAvailable(false);
+      setLocalRecordingFallback(false);
       setStatus("connected");
       setTechnicalMessage(joinTechnicalMessages.length ? joinTechnicalMessages.join(" ") : null);
       setMessage(joinRecoveryMessages.length
@@ -1528,13 +1555,22 @@ export function LiveSessionRoom({
         return;
       }
       setCallRecoveryAvailable(recoveringCall);
+      const fallbackAllowed = !(
+        error instanceof CallJoinFailure &&
+        ["AUTH_REQUIRED", "ROOM_ACCESS_DENIED", "ROOM_NOT_OPEN", "PAYMENT_HOLD"].includes(
+          error.code || "",
+        )
+      );
+      setLocalRecordingFallback(fallbackAllowed);
       setStatus("error");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a call connection error.");
       setMessage(error instanceof CallJoinFailure && error.code === "AUTH_REQUIRED"
         ? "Your sign-in expired. Sign in again, then return to this Session. Any local recording remains protected on this device."
         : error instanceof CallJoinFailure && error.code === "ROOM_ACCESS_DENIED"
           ? "Your access to this Session changed. Return to Quipsly Home or ask the host for a new invitation."
-          : "The call couldn't connect. Check your internet connection and try again.");
+          : fallbackAllowed
+            ? "The live call couldn't connect. Retry Join call, or continue with the protected recorder on this device."
+            : "The call couldn't connect. Check your internet connection and try again.");
     }
   }, [attachLocalCameraTrack, attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
 
@@ -1843,9 +1879,9 @@ export function LiveSessionRoom({
       microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
       cameraId={cameraId}
       cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
-      conversationConnected={connected || callRecoveryAvailable || sourceLocked}
+      conversationConnected={connected || callRecoveryAvailable || localRecordingFallback || sourceLocked}
       conversationEnded={callEndedByPerson}
-      callTransportInterrupted={status === "reconnecting" || callRecoveryAvailable}
+      callTransportInterrupted={status === "reconnecting" || callRecoveryAvailable || localRecordingFallback}
       onSourceLockChange={setSourceLocked}
       stopRequestVersion={sourceStopRequestVersion}
       onGuardianEvidenceChange={setRetainedGuardianEvidence}
@@ -1858,7 +1894,7 @@ export function LiveSessionRoom({
       <p className="mt-2 text-[10px] font-black leading-4">Refresh the Session. If recording is still unavailable, ask the host to reopen it.</p>
     </section>
   );
-  const showRetainedSourceControls = connected || callRecoveryAvailable || status === "ended" || sourceLocked || leaveAfterSourceStops;
+  const showRetainedSourceControls = connected || callRecoveryAvailable || localRecordingFallback || status === "ended" || sourceLocked || leaveAfterSourceStops;
   const callVideoStage = (
     <div
       data-testid="call-video-stage"
@@ -2150,6 +2186,21 @@ export function LiveSessionRoom({
         </aside>
       </div>
       <div className="mt-5 space-y-4">
+        {!connected && localRecordingFallback ? (
+          <section
+            className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950"
+            aria-label="Local recording fallback"
+          >
+            <p className="text-xs font-black uppercase tracking-wide">
+              Call unavailable · recorder ready
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6">
+              Retry Join call when you want the conversation here. You can also
+              use the protected recorder below now; it still waits for consent,
+              saves on this device first, and uploads to this Session.
+            </p>
+          </section>
+        ) : null}
         {!connected && showRetainedSourceControls ? retainedSourceControls : null}
         <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">

@@ -294,6 +294,16 @@ assert.equal(db.rooms[0].status, "PLANNED", "upload must not silently end or reo
 assert.equal(db.consents[0].status, "REQUESTED", "a client consent header must not grant server consent");
 assert.equal(db.consents[0].canTranscribe, false, "a client consent header must not add processing permission");
 assert.equal(db.assets[0].status, "HELD");
+assert.equal(db.assets[0].durationSeconds, 300, "capture boundaries should materialize a provisional duration");
+assert.deepEqual(
+  db.assets[0].localManifestJson.durationEvidence,
+  {
+    source: "recorded-boundary-clock",
+    durationSeconds: 300,
+    provisionalUntilMediaDecode: true,
+  },
+  "duration provenance should remain explicit until decoded media replaces it",
+);
 assert.equal(db.transcriptJobs[0].status, "HELD");
 
 db.consents[0].status = "GRANTED";

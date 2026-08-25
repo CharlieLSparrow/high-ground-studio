@@ -86,6 +86,10 @@ const actor = await prisma.user.findUniqueOrThrow({
   where: { primaryEmail: email },
   select: { id: true },
 });
+const canonicalRoom = await prisma.callRoom.findUniqueOrThrow({
+  where: { id: roomId },
+  select: { id: true, projectId: true, captureGroupId: true },
+});
 const participant = await prisma.callParticipant.findFirstOrThrow({
   where: { roomId, userId: actor.id, accessStatus: "ACTIVE" },
   select: { id: true },
@@ -123,27 +127,45 @@ try {
   const liveDock = page.locator('aside[aria-label$="live call dock"]');
   await liveDock.waitFor({ timeout: 3_000 }).catch(() => undefined);
   if (!(await liveDock.isVisible().catch(() => false))) {
-    await page.getByRole("button", { name: "Open mic, camera & call" }).click();
+    const browserEntry = page
+      .getByRole("button", {
+        name: /^(?:Open call lobby|Join in browser|Join call)$/,
+      })
+      .filter({ visible: true })
+      .first();
+    await browserEntry.waitFor();
+    await browserEntry.click();
     await liveDock.waitFor();
   }
-  await page.getByRole("button", { name: "Allow microphone" }).click();
-  const microphone = page.locator("select").filter({
-    has: page.locator('option[value=""]', { hasText: "Choose a microphone" }),
+  const deviceSettings = liveDock.getByTestId("call-device-settings");
+  await deviceSettings.getByText("Audio and video settings", { exact: true }).click();
+  const allowMicrophone = deviceSettings.getByRole("button", {
+    name: /^Allow microphone(?: and camera)?$/,
   });
-  await microphone
-    .locator('option:not([value=""])')
-    .first()
-    .waitFor({ state: "attached" });
-  if (!(await microphone.inputValue())) {
-    const firstMicrophone = await microphone
-      .locator('option:not([value=""])')
-      .first()
-      .getAttribute("value");
-    if (!firstMicrophone)
-      throw new Error("No synthetic microphone was exposed.");
-    await microphone.selectOption(firstMicrophone);
+  const allowMicrophoneVisible = await allowMicrophone
+    .isVisible()
+    .catch(() => false);
+  if (allowMicrophoneVisible) {
+    await allowMicrophone.click();
   }
-  await page.getByRole("button", { name: "Test selected setup" }).click();
+  const microphone = deviceSettings.locator("select").first();
+  await microphone.waitFor({ state: "visible" });
+  await microphone.selectOption({ index: 1 }, { timeout: 30_000 }).catch(
+    async () => {
+      throw new Error(
+        `No synthetic microphone appeared after preflight permission. ${JSON.stringify({
+          allowMicrophoneVisible,
+          allowMicrophoneCount: await allowMicrophone.count(),
+          callStatus: await liveDock
+            .getByTestId("call-status-message")
+            .textContent()
+            .catch(() => null),
+          deviceSettings: await deviceSettings.innerText(),
+        })}`,
+      );
+    },
+  );
+  await deviceSettings.getByRole("button", { name: "Test selected setup" }).click();
   await page
     .getByText(
       /Selected setup is ready|Live input is ready|Microphone names are visible/i,
@@ -151,6 +173,36 @@ try {
     .first()
     .waitFor({ timeout: 20_000 })
     .catch(() => undefined);
+  await liveDock.getByRole("button", { name: "Join call" }).click();
+  const connectedCallControl = liveDock.getByRole("button", {
+    name: /^(?:Mute|Unmute)$/,
+  });
+  const localRecordingFallback = liveDock.getByRole("region", {
+    name: "Local recording fallback",
+  });
+  await Promise.race([
+    connectedCallControl.waitFor({ timeout: 30_000 }),
+    localRecordingFallback.waitFor({ timeout: 30_000 }),
+  ]).catch(async () => {
+      throw new Error(
+        `The rendered browser call did not connect. ${JSON.stringify({
+          callStatus: await liveDock
+            .getByTestId("call-status-message")
+            .textContent()
+            .catch(() => null),
+          liveDock: await liveDock.innerText(),
+        })}`,
+      );
+  });
+  const liveCallConnected = await connectedCallControl
+    .isVisible()
+    .catch(() => false);
+  const localRecordingFallbackUsed = await localRecordingFallback
+    .isVisible()
+    .catch(() => false);
+  if (!liveCallConnected && !localRecordingFallbackUsed) {
+    throw new Error("Neither a connected call nor the local recording fallback became available.");
+  }
 
   const recorder = page.getByRole("region", {
     name: /Record (?:this coaching Session|the selected studio source)/,
@@ -163,20 +215,35 @@ try {
     await reopenButton.click();
     await recorder.getByText(/Session reopened/i).waitFor({ timeout: 20_000 });
   }
-  await recorder.getByLabel(/using headphones/).check();
-  const transcription = recorder.getByLabel(/Create a transcript and suggested notes\/tasks/);
-  if (!(await transcription.isChecked())) await transcription.check();
-  await recorder
-    .getByRole("button", { name: /Agree and continue|Update choices/ })
-    .click();
-  await recorder
-    .getByText(
-      /Everyone is ready to record|Your choice is saved/i,
-    )
-    .waitFor({ timeout: 20_000 });
+  const allowRecording = recorder.getByRole("button", {
+    name: "Allow recording",
+  });
+  let explicitConsentActionPerformed = false;
+  if (await allowRecording.isVisible().catch(() => false)) {
+    const consentDeadline = Date.now() + 30_000;
+    while (
+      Date.now() < consentDeadline &&
+      (await allowRecording.isVisible().catch(() => false))
+    ) {
+      if (await allowRecording.isEnabled().catch(() => false)) {
+        await allowRecording.click();
+        explicitConsentActionPerformed = true;
+        break;
+      }
+      await page.waitForTimeout(250);
+    }
+    if (
+      (await allowRecording.isVisible().catch(() => false)) &&
+      !(await allowRecording.isEnabled().catch(() => false))
+    ) {
+      throw new Error(
+        `Recording consent never became actionable: ${await recorder.innerText()}`,
+      );
+    }
+  }
 
   const recordButton = recorder.getByRole("button", {
-    name: /Record (?:on this device|local source)/,
+    name: "Record",
   });
   await recordButton.waitFor();
   if (!(await recordButton.isEnabled())) {
@@ -186,7 +253,7 @@ try {
   }
   await recordButton.click();
   const stopButton = recorder.getByRole("button", {
-    name: "Stop local source",
+    name: "Stop recording",
   });
   await stopButton.waitFor({ timeout: 30_000 }).catch(async () => {
     throw new Error(
@@ -196,7 +263,7 @@ try {
   await page.waitForTimeout(8_000);
   await stopButton.click();
   await recorder
-    .getByText(/Source uploaded|verified editor evidence/i)
+    .getByText(/Recording saved(?: and verified in Quipsly|\. Quipsly is preparing it for reliable playback)/i)
     .first()
     .waitFor({ timeout: 90_000 });
 
@@ -216,6 +283,7 @@ try {
       verifiedAt: true,
       recordedStartedAt: true,
       recordedStoppedAt: true,
+      durationSeconds: true,
       localManifestJson: true,
       transcriptJobs: {
         select: { id: true, status: true },
@@ -228,10 +296,171 @@ try {
     !recording.checksum ||
     !recording.verifiedAt ||
     !recording.byteSize ||
-    recording.byteSize <= 0
+    recording.byteSize <= 0 ||
+    !recording.durationSeconds ||
+    recording.durationSeconds <= 0
   ) {
     throw new Error(
       `Canonical recording verification failed: ${JSON.stringify(recording)}`,
+    );
+  }
+  const finalization = await prisma.mobileCaptureFinalizationReceipt.findFirst({
+    where: { roomId, recordingAssetId: recording.id },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      uploadSessionId: true,
+      captureId: true,
+      startReceiptId: true,
+      processingDisposition: true,
+      transcriptDisposition: true,
+      sourceId: true,
+      mediaAssetId: true,
+      transcriptJobId: true,
+      metadataJson: true,
+    },
+  });
+  if (
+    !finalization ||
+    finalization.processingDisposition !== "RELEASED" ||
+    finalization.transcriptDisposition !== "RELEASED" ||
+    !finalization.startReceiptId ||
+    !finalization.sourceId ||
+    !finalization.mediaAssetId ||
+    !finalization.transcriptJobId
+  ) {
+    throw new Error(
+      `Canonical finalization and release failed: ${JSON.stringify(finalization)}`,
+    );
+  }
+  const [studioSource, studioAsset, studioAttachments] = await Promise.all([
+    prisma.studioVideoSource.findUnique({
+      where: { id: finalization.sourceId },
+      select: { id: true, provider: true, url: true },
+    }),
+    prisma.studioMediaAsset.findUnique({
+      where: { id: finalization.mediaAssetId },
+      select: {
+        id: true,
+        filename: true,
+        url: true,
+        mimeType: true,
+        sizeBytes: true,
+        rawAssetId: true,
+        cloudProvider: true,
+      },
+    }),
+    prisma.studioAssetAttachment.findMany({
+      where: { assetId: finalization.mediaAssetId },
+      select: { projectId: true, role: true, source: true, metadataJson: true },
+    }),
+  ]);
+  const projectAttachment = studioAttachments.find(
+    (attachment) => attachment.projectId === canonicalRoom.projectId,
+  );
+  if (
+    !studioSource ||
+    studioSource.provider !== "capture-recording" ||
+    !studioAsset ||
+    studioAsset.rawAssetId !== studioSource.id ||
+    studioAsset.sizeBytes !== recording.byteSize ||
+    !projectAttachment ||
+    projectAttachment.source !== "mobile-capture-finalization"
+  ) {
+    throw new Error(
+      `Automatic Studio materialization failed: ${JSON.stringify(
+        { studioSource, studioAsset, studioAttachments },
+        (_, value) => (typeof value === "bigint" ? value.toString() : value),
+      )}`,
+    );
+  }
+
+  const verifiedSize = Number(recording.byteSize);
+  const playbackURL = `${baseURL}/api/sessions/${encodeURIComponent(roomId)}/recordings/${encodeURIComponent(recording.id)}/media`;
+  const playbackWindows = [
+    { label: "beginning", start: 0, end: Math.min(verifiedSize - 1, 4095) },
+    {
+      label: "middle",
+      start: Math.max(0, Math.floor(verifiedSize / 2) - 2048),
+      end: Math.min(verifiedSize - 1, Math.floor(verifiedSize / 2) + 2047),
+    },
+    {
+      label: "ending",
+      start: Math.max(0, verifiedSize - 4096),
+      end: verifiedSize - 1,
+    },
+  ];
+  const playbackEvidence = [];
+  for (const window of playbackWindows) {
+    const response = await page.request.get(playbackURL, {
+      headers: { Range: `bytes=${window.start}-${window.end}` },
+    });
+    const headers = response.headers();
+    const body = await response.body();
+    const expectedLength = window.end - window.start + 1;
+    if (
+      response.status() !== 206 ||
+      body.byteLength !== expectedLength ||
+      headers["content-range"] !==
+        `bytes ${window.start}-${window.end}/${verifiedSize}` ||
+      headers["x-quipsly-verified-bytes"] !== String(verifiedSize) ||
+      headers.etag !== `"sha256-${recording.checksum}"`
+    ) {
+      throw new Error(
+        `Authenticated ${window.label} playback failed: ${JSON.stringify({
+          status: response.status(),
+          bodyBytes: body.byteLength,
+          headers,
+        })}`,
+      );
+    }
+    playbackEvidence.push({
+      label: window.label,
+      status: response.status(),
+      contentRange: headers["content-range"],
+      byteLength: body.byteLength,
+    });
+  }
+
+  let transcript = await prisma.transcriptJob.findUnique({
+    where: { id: finalization.transcriptJobId },
+    select: {
+      id: true,
+      status: true,
+      provider: true,
+      sourceGeneration: true,
+      sourceSha256: true,
+      errorMessage: true,
+      _count: { select: { segments: true } },
+    },
+  });
+  const transcriptDeadline = Date.now() + 90_000;
+  while (
+    transcript &&
+    !["COMPLETED", "FAILED", "CANCELED"].includes(transcript.status) &&
+    Date.now() < transcriptDeadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    transcript = await prisma.transcriptJob.findUnique({
+      where: { id: finalization.transcriptJobId },
+      select: {
+        id: true,
+        status: true,
+        provider: true,
+        sourceGeneration: true,
+        sourceSha256: true,
+        errorMessage: true,
+        _count: { select: { segments: true } },
+      },
+    });
+  }
+  if (
+    !transcript ||
+    transcript.status !== "COMPLETED" ||
+    transcript.sourceSha256 !== recording.checksum ||
+    transcript._count.segments < 1
+  ) {
+    throw new Error(
+      `Source-bound transcript did not complete: ${JSON.stringify(transcript)}`,
     );
   }
   const manifest =
@@ -266,17 +495,38 @@ try {
           verifiedAt: recording.verifiedAt.toISOString(),
           recordedStartedAt: recording.recordedStartedAt?.toISOString() ?? null,
           recordedStoppedAt: recording.recordedStoppedAt?.toISOString() ?? null,
+          durationSeconds: recording.durationSeconds,
+          durationEvidence: manifest.durationEvidence ?? null,
           transcriptJobs: recording.transcriptJobs,
+        },
+        materialization: {
+          uploadSessionId: finalization.uploadSessionId,
+          startReceiptId: finalization.startReceiptId,
+          sourceId: studioSource.id,
+          mediaAssetId: studioAsset.id,
+          projectAttachment: {
+            projectId: projectAttachment.projectId,
+            role: projectAttachment.role,
+            source: projectAttachment.source,
+          },
+          playbackEvidence,
+          transcript,
         },
         operated: {
           ordinaryLogin: true,
           devicePermission: true,
           selectedSetupPreview: true,
-          explicitConsent: true,
+          liveCallConnected,
+          localRecordingFallbackUsed,
+          explicitConsentActionPerformed,
+          currentConsentReadback: true,
           explicitRecordAndStop: true,
           opfsLocalRetention: true,
           resumableUploadAndVerification: true,
           canonicalReadback: true,
+          automaticStudioMaterialization: true,
+          authenticatedRangedPlayback: true,
+          sourceBoundTranscription: true,
         },
       },
       null,

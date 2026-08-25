@@ -63,6 +63,14 @@ function parseDate(value?: string | null) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function captureClockDurationSeconds(startedAt: Date | null, stoppedAt: Date | null) {
+  if (!startedAt || !stoppedAt) return null;
+  const durationSeconds = (stoppedAt.getTime() - startedAt.getTime()) / 1_000;
+  return Number.isFinite(durationSeconds) && durationSeconds > 0
+    ? durationSeconds
+    : null;
+}
+
 function purposeFor(value?: string | null) {
   const normalized = (value || "").toLowerCase();
   if (normalized.includes("podcast")) return "PODCAST";
@@ -571,6 +579,12 @@ export async function recordMobileCaptureIngestion(input: MobileCaptureRecordInp
   const existingRecordingAsset =
     references.recordingAsset ||
     await findReusableRecordingAsset(input, room.id, participant.id, startedAt);
+  const effectiveStartedAt = startedAt || existingRecordingAsset?.recordedStartedAt || null;
+  const effectiveStoppedAt = stoppedAt || existingRecordingAsset?.recordedStoppedAt || null;
+  const reportedDurationSeconds =
+    captureClockDurationSeconds(effectiveStartedAt, effectiveStoppedAt) ||
+    existingRecordingAsset?.durationSeconds ||
+    null;
   const recordingStatus =
     !consentAllowsProcessing
       ? "HELD"
@@ -592,11 +606,19 @@ export async function recordMobileCaptureIngestion(input: MobileCaptureRecordInp
       provider: input.provider,
       totalChunks: input.totalChunks || 1,
       consentId: consent?.id || null,
+      durationEvidence: reportedDurationSeconds
+        ? {
+            source: "recorded-boundary-clock",
+            durationSeconds: reportedDurationSeconds,
+            provisionalUntilMediaDecode: true,
+          }
+        : null,
       lastMobileCaptureIngestedAt: new Date().toISOString(),
     },
     segmentsJson: recordingSegments(input.segmentsJson, existingRecordingAsset?.segmentsJson || []),
-    recordedStartedAt: startedAt || existingRecordingAsset?.recordedStartedAt || null,
-    recordedStoppedAt: stoppedAt || existingRecordingAsset?.recordedStoppedAt || null,
+    recordedStartedAt: effectiveStartedAt,
+    recordedStoppedAt: effectiveStoppedAt,
+    durationSeconds: reportedDurationSeconds,
     uploadedAt: new Date(),
     verifiedAt: exactBytesVerified ? new Date() : existingRecordingAsset?.verifiedAt || null,
   };

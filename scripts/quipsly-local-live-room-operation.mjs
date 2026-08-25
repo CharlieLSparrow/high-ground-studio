@@ -38,6 +38,12 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function safeJson(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+}
+
 assert(
   enabled,
   "Set QUIPSLY_LOCAL_LIVE_ROOM_OPERATION=1 to authorize retained local call and chat artifacts.",
@@ -260,6 +266,15 @@ if (freshContext) {
     }
   }
 }
+
+const canonicalRoom = await prisma.callRoom.findUnique({
+  where: { id: ROOM_ID },
+  select: { id: true, projectId: true },
+});
+assert(
+  canonicalRoom?.projectId,
+  "The operated Session must retain a canonical project binding.",
+);
 
 const { chromium } = await loadPlaywright();
 const browsers = [];
@@ -893,6 +908,7 @@ try {
       checksum: true,
       recordedStartedAt: true,
       recordedStoppedAt: true,
+      durationSeconds: true,
       verifiedAt: true,
       localManifestJson: true,
     },
@@ -911,6 +927,8 @@ try {
         source.checksum &&
         source.recordedStartedAt &&
         source.recordedStoppedAt &&
+        source.durationSeconds &&
+        source.durationSeconds > 0 &&
         source.verifiedAt,
       `Verified browser source ${source.id} is missing immutable-byte or timing evidence.`,
     );
@@ -967,6 +985,158 @@ try {
     overlapMilliseconds >= 2_000,
     `Independent browser masters overlapped by only ${overlapMilliseconds} ms.`,
   );
+
+  const finalizations = await prisma.mobileCaptureFinalizationReceipt.findMany({
+    where: {
+      roomId: ROOM_ID,
+      recordingAssetId: { in: verifiedSources.map((source) => source.id) },
+    },
+    select: {
+      recordingAssetId: true,
+      uploadSessionId: true,
+      startReceiptId: true,
+      processingDisposition: true,
+      transcriptDisposition: true,
+      sourceId: true,
+      mediaAssetId: true,
+      transcriptJobId: true,
+    },
+  });
+  assert(
+    finalizations.length === verifiedSources.length,
+    `Expected ${verifiedSources.length} canonical finalizations, observed ${finalizations.length}.`,
+  );
+  const finalizationByRecordingId = new Map(
+    finalizations.map((finalization) => [finalization.recordingAssetId, finalization]),
+  );
+  const twoEndpointMaterializationEvidence = [];
+  for (const source of verifiedSources) {
+    const finalization = finalizationByRecordingId.get(source.id);
+    assert(
+      finalization?.processingDisposition === "RELEASED" &&
+        finalization.transcriptDisposition === "RELEASED" &&
+        finalization.startReceiptId &&
+        finalization.sourceId &&
+        finalization.mediaAssetId &&
+        finalization.transcriptJobId,
+      `Recording ${source.id} did not retain a complete released finalization.`,
+    );
+
+    const [studioSource, studioAsset, studioAttachments] = await Promise.all([
+      prisma.studioVideoSource.findUnique({
+        where: { id: finalization.sourceId },
+        select: { id: true, provider: true },
+      }),
+      prisma.studioMediaAsset.findUnique({
+        where: { id: finalization.mediaAssetId },
+        select: { id: true, rawAssetId: true, sizeBytes: true },
+      }),
+      prisma.studioAssetAttachment.findMany({
+        where: { assetId: finalization.mediaAssetId },
+        select: { projectId: true, role: true, source: true },
+      }),
+    ]);
+    const projectAttachment = studioAttachments.find(
+      (attachment) => attachment.projectId === canonicalRoom.projectId,
+    );
+    assert(
+      studioSource?.provider === "capture-recording" &&
+        studioAsset?.rawAssetId === studioSource.id &&
+        studioAsset.sizeBytes === source.byteSize &&
+        projectAttachment?.source === "mobile-capture-finalization",
+      `Recording ${source.id} was not materialized into the operated Session project.`,
+    );
+
+    const verifiedSize = Number(source.byteSize);
+    const playbackURL = `${baseURL}/api/sessions/${encodeURIComponent(ROOM_ID)}/recordings/${encodeURIComponent(source.id)}/media`;
+    const playbackWindows = [
+      { label: "beginning", start: 0, end: Math.min(verifiedSize - 1, 4095) },
+      {
+        label: "middle",
+        start: Math.max(0, Math.floor(verifiedSize / 2) - 2048),
+        end: Math.min(verifiedSize - 1, Math.floor(verifiedSize / 2) + 2047),
+      },
+      {
+        label: "ending",
+        start: Math.max(0, verifiedSize - 4096),
+        end: verifiedSize - 1,
+      },
+    ];
+    const playbackEvidence = [];
+    for (const window of playbackWindows) {
+      const response = await journeys[0].page.request.get(playbackURL, {
+        headers: { Range: `bytes=${window.start}-${window.end}` },
+      });
+      const headers = response.headers();
+      const body = await response.body();
+      const expectedLength = window.end - window.start + 1;
+      assert(
+        response.status() === 206 &&
+          body.byteLength === expectedLength &&
+          headers["content-range"] ===
+            `bytes ${window.start}-${window.end}/${verifiedSize}` &&
+          headers["x-quipsly-verified-bytes"] === String(verifiedSize) &&
+          headers.etag === `"sha256-${source.checksum}"`,
+        `Authenticated ${window.label} playback failed for recording ${source.id}.`,
+      );
+      playbackEvidence.push({
+        label: window.label,
+        status: response.status(),
+        contentRange: headers["content-range"],
+        byteLength: body.byteLength,
+      });
+    }
+
+    let transcript = await prisma.transcriptJob.findUnique({
+      where: { id: finalization.transcriptJobId },
+      select: {
+        id: true,
+        status: true,
+        provider: true,
+        sourceSha256: true,
+        errorMessage: true,
+        _count: { select: { segments: true } },
+      },
+    });
+    const transcriptDeadline = Date.now() + 90_000;
+    while (
+      transcript &&
+      !["COMPLETED", "FAILED", "CANCELED"].includes(transcript.status) &&
+      Date.now() < transcriptDeadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      transcript = await prisma.transcriptJob.findUnique({
+        where: { id: finalization.transcriptJobId },
+        select: {
+          id: true,
+          status: true,
+          provider: true,
+          sourceSha256: true,
+          errorMessage: true,
+          _count: { select: { segments: true } },
+        },
+      });
+    }
+    assert(
+      transcript?.status === "COMPLETED" &&
+        transcript.sourceSha256 === source.checksum &&
+        transcript._count.segments >= 1,
+      `Recording ${source.id} did not produce a completed source-bound transcript: ${JSON.stringify(transcript)}.`,
+    );
+
+    twoEndpointMaterializationEvidence.push({
+      recordingAssetId: source.id,
+      participantId: source.participantId,
+      durationSeconds: source.durationSeconds,
+      durationEvidence: safeJson(source.localManifestJson).durationEvidence || null,
+      uploadSessionId: finalization.uploadSessionId,
+      sourceId: studioSource.id,
+      mediaAssetId: studioAsset.id,
+      projectAttachment,
+      playbackEvidence,
+      transcript,
+    });
+  }
 
   for (const journey of journeys) {
     await journey.page.reload({ waitUntil: "domcontentloaded" });
@@ -1065,6 +1235,8 @@ try {
     allExpectedParticipantsRecordingVisible: true,
     coordinatedEndpointBoundaries: directiveReceipts.length,
     verifiedSourceIds: verifiedSources.map((source) => source.id),
+    twoEndpointMaterializationAndPlayback: "passed",
+    twoEndpointMaterializationEvidence,
     browserSourceOverlapMilliseconds: overlapMilliseconds,
     allPartyConsentReceipts: "passed",
     allPartyTranscriptionConsentReceipts: "passed",
