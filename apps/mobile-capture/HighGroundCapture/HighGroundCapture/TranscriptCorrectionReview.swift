@@ -3138,13 +3138,16 @@ struct CaptureTranscriptReviewView: View {
                     Menu {
                         if client.desk != nil {
                             Button {
-                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    // Keep the bound scroll position and the imperative jump
-                                    // pointed at the same stable target. Clearing the binding
-                                    // lets the deeply focused transcript segment immediately
-                                    // reclaim the position before the lazy source card is built.
-                                    scrollTargetSegmentID = "source-truth"
-                                    scrollProxy.scrollTo("source-truth", anchor: .top)
+                                // A Menu action is delivered before its presentation is fully
+                                // dismissed. Yield once so the underlying lazy stack can accept
+                                // the new target instead of letting the focused segment reclaim it.
+                                scrollTargetSegmentID = nil
+                                Task { @MainActor in
+                                    await Task.yield()
+                                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                                        scrollTargetSegmentID = "source-truth"
+                                        scrollProxy.scrollTo("source-truth", anchor: .top)
+                                    }
                                 }
                             } label: {
                                 Label("Recording source", systemImage: "waveform.badge.magnifyingglass")
