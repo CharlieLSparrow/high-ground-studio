@@ -441,6 +441,8 @@ function checkMeetingSpineContractSources() {
       && coachingHomeText.includes("CaptureCoachingConfirmedHandoff")
       && coachingHomeText.includes("if model.usesPreviewData")
       && bridgeText.includes("$0.callRoomId == identifier")
+      && bridgeText.includes("authoritativeSessionID == nil")
+      && bridgeText.includes(": authoritativeSession?.id")
       && captureExperienceUITestText.includes("testConfirmedRequestHasImmediateSessionHandoff")
       && captureExperienceUITestText.includes('app.buttons["ProviderJoinRoomButton"].exists'),
     "nativeConfirmedRequestHasImmediateSessionHandoff",

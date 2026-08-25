@@ -7099,7 +7099,10 @@ final class CaptureSessionClient: ObservableObject {
                     $0.id == identifier || $0.callRoomId == identifier
                 })
             }
-            if let selectedSessionID = authoritativeSession?.id ?? sessions.first?.id {
+            let followUpSessionID = authoritativeSessionID == nil
+                ? sessions.first?.id
+                : authoritativeSession?.id
+            if let selectedSessionID = followUpSessionID {
                 await refreshClientFollowUp(forSessionID: selectedSessionID)
             }
             persistProtectedSessionCache()
