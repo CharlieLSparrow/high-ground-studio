@@ -302,6 +302,21 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["Share coaching invitation"].exists,
             "The confirmed Session should retain the conventional system share fallback."
         )
+
+        app.buttons["Open Session"].tap()
+        XCTAssertTrue(
+            app.tabBars.buttons["Record"].isSelected,
+            "The confirmed appointment should move directly into the recorder."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureProviderRoomControls"]
+                .waitForExistence(timeout: 5),
+            "Open Session should land in the standard call lobby for the exact confirmed Session."
+        )
+        XCTAssertTrue(
+            app.buttons["ProviderJoinRoomButton"].exists,
+            "The confirmed Session handoff should end at one conventional Join call action."
+        )
     }
 
     func testSchedulingShowsKnownConflictBeforeSave() {

@@ -7094,14 +7094,19 @@ final class CaptureSessionClient: ObservableObject {
             coachingEngagements = payload.coachingEngagements ?? []
             isUsingCachedSessions = false
             cachedSessionsSavedAt = Date()
-            if let selectedSessionID = authoritativeSessionID ?? sessions.first?.id {
+            let authoritativeSession = authoritativeSessionID.flatMap { identifier in
+                sessions.first(where: {
+                    $0.id == identifier || $0.callRoomId == identifier
+                })
+            }
+            if let selectedSessionID = authoritativeSession?.id ?? sessions.first?.id {
                 await refreshClientFollowUp(forSessionID: selectedSessionID)
             }
             persistProtectedSessionCache()
             status = sessions.isEmpty ? "No sessions yet" : "Ready"
 
-            if let authoritativeSessionID,
-               !sessions.contains(where: { $0.id == authoritativeSessionID }) {
+            if authoritativeSessionID != nil,
+               authoritativeSession == nil {
                 let message = "This capture session is no longer present in the authoritative Nest session list."
                 status = "Session unavailable"
                 errorMessage = message

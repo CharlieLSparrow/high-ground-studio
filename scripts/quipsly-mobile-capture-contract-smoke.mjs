@@ -439,7 +439,10 @@ function checkMeetingSpineContractSources() {
       && coachingHomeText.includes("latestHandoff = payload.result")
       && coachingHomeText.includes("appointmentResult(for: booking)")
       && coachingHomeText.includes("CaptureCoachingConfirmedHandoff")
-      && captureExperienceUITestText.includes("testConfirmedRequestHasImmediateSessionHandoff"),
+      && coachingHomeText.includes("if model.usesPreviewData")
+      && bridgeText.includes("$0.callRoomId == identifier")
+      && captureExperienceUITestText.includes("testConfirmedRequestHasImmediateSessionHandoff")
+      && captureExperienceUITestText.includes('app.buttons["ProviderJoinRoomButton"].exists'),
     "nativeConfirmedRequestHasImmediateSessionHandoff",
     "After an assigned coach confirms a requested time, Capture preserves the idempotent booking receipt and immediately presents the same explicit Open Session and share handoff as direct scheduling.",
   );

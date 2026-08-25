@@ -2318,6 +2318,14 @@ struct CaptureCoachingHomeView: View {
 
     @MainActor
     private func refreshAndOpen(roomID: String, navigate: Bool) async {
+        if model.usesPreviewData,
+           let session = model.sessions.first(where: {
+               $0.callRoomId == roomID || $0.id == roomID
+           }) {
+            model.select(session)
+            if navigate { visibleTab = .record }
+            return
+        }
         let outcome = await model.sessionClient.load(authoritativeSessionID: roomID)
         guard outcome == .loaded,
               let session = model.sessions.first(where: { $0.callRoomId == roomID || $0.id == roomID }) else {
