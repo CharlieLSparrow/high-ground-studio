@@ -540,6 +540,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         return elements.contains(where: { $0.exists })
     }
 
+    private func recordingStartActions(in app: XCUIApplication) -> [XCUIElement] {
+        [
+            app.buttons["CapturePersistentRecorderStartButton"].firstMatch,
+            app.buttons["CaptureStartButton"].firstMatch,
+        ]
+    }
+
+    private func recordingStopActions(in app: XCUIApplication) -> [XCUIElement] {
+        [
+            app.buttons["CapturePersistentRecorderStopButton"].firstMatch,
+            app.buttons["CaptureStopButton"].firstMatch,
+        ]
+    }
+
     private func waitUntilHittable(
         _ element: XCUIElement,
         timeout: TimeInterval
@@ -4961,8 +4975,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let recordingsBeforeSafeTake = recordingIdentifiers(in: app, prefix: "LocalRecordingRow_")
         tapRootTab("Record", in: app)
 
-        let start = app.buttons["CaptureStartButton"].firstMatch
-        XCTAssertTrue(waitForRuntimeElement(start, in: app, timeout: 8, swipeAttempts: 6))
+        let startActions = recordingStartActions(in: app)
+        XCTAssertTrue(
+            waitForAnyRuntimeElement(startActions, timeout: 8),
+            "The visible recorder dock or full recorder should expose Start."
+        )
+        guard let start = startActions.first(where: { $0.exists }) else {
+            XCTFail("The visible Start action disappeared before the take began.")
+            return
+        }
         expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: start)
         waitForExpectations(timeout: 8)
         start.tap()
@@ -4973,8 +4994,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             allow.tap()
         }
 
-        var stop = app.buttons["CaptureStopButton"].firstMatch
-        if !stop.waitForExistence(timeout: 8) {
+        var stopActions = recordingStopActions(in: app)
+        if !waitForAnyRuntimeElement(stopActions, timeout: 8) {
             // A first-install permission transition can rebuild the root shell
             // while AVAudioRecorder keeps the take alive. Operate the same
             // global recovery banner a coach sees instead of assuming the
@@ -4985,23 +5006,27 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "Starting a take should expose either recorder controls or the global active-capture recovery banner."
             )
             activeCapture.tap()
-            stop = app.buttons["CaptureStopButton"].firstMatch
+            stopActions = recordingStopActions(in: app)
         }
         XCTAssertTrue(
-            stop.waitForExistence(timeout: 8),
+            waitForAnyRuntimeElement(stopActions, timeout: 8),
             "The actual AVAudioRecorder-backed take should start and remain operable after permission transitions."
         )
+        guard let stop = stopActions.first(where: { $0.exists }) else {
+            XCTFail("The visible Stop action disappeared while the take was active.")
+            return
+        }
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
         let mark = app.buttons["CaptureMarkMomentButton"].firstMatch
         XCTAssertTrue(mark.exists)
         mark.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureLatestMomentMark"].firstMatch.waitForExistence(timeout: 4))
         stop.tap()
-        let recorderReady = app.buttons["CaptureStartButton"].firstMatch
+        let recorderReady = recordingStartActions(in: app)
         let protectedLibrary = app.descendants(matching: .any)["CaptureOfflineAccessBanner"].firstMatch
         let onlineLibrary = app.scrollViews["CaptureLibraryView"].firstMatch
         XCTAssertTrue(
-            waitForAnyRuntimeElement([recorderReady, protectedLibrary, onlineLibrary], timeout: 15),
+            waitForAnyRuntimeElement(recorderReady + [protectedLibrary, onlineLibrary], timeout: 15),
             "The first take should finish on Recorder or the visible protected/online Library recovery surface."
         )
 
@@ -5059,12 +5084,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         let recordingsBeforeCrashTake = recordingIdentifiers(in: app, prefix: "LocalRecordingRow_")
         tapRootTab("Record", in: app)
-        let secondStart = app.buttons["CaptureStartButton"].firstMatch
-        var secondStartVisible = waitForRuntimeElement(
-            secondStart,
-            in: app,
-            timeout: 8,
-            swipeAttempts: 6
+        let secondStartActions = recordingStartActions(in: app)
+        var secondStartVisible = waitForAnyRuntimeElement(
+            secondStartActions,
+            timeout: 8
         )
         if !secondStartVisible {
             // A verified first take can insert recovery and review cards above
@@ -5075,17 +5098,24 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             for _ in 0..<8 where !secondStartVisible {
                 guard recorder.exists else { break }
                 recorder.swipeDown()
-                secondStartVisible = secondStart.exists
+                secondStartVisible = secondStartActions.contains(where: { $0.exists })
             }
         }
         XCTAssertTrue(
             secondStartVisible,
-            "Returning from Library should keep the selected recording workspace and expose another take in ordinary vertical navigation."
+            "Returning from Library should keep the selected recording workspace and expose another take through the persistent dock or full recorder."
         )
+        guard let secondStart = secondStartActions.first(where: { $0.exists }) else {
+            XCTFail("The second Start action disappeared before the crash-recovery take began.")
+            return
+        }
         expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: secondStart)
         waitForExpectations(timeout: 8)
         secondStart.tap()
-        XCTAssertTrue(app.buttons["CaptureStopButton"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(
+            waitForAnyRuntimeElement(recordingStopActions(in: app), timeout: 15),
+            "The second take should expose Stop through the persistent dock or full recorder."
+        )
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
         tapRootTab("Library", in: app)
         guard let crashRow = waitForNewRecordingRow(in: app, excluding: recordingsBeforeCrashTake) else {
