@@ -936,14 +936,17 @@ struct CaptureCoachingHomeView: View {
                         .foregroundStyle(.secondary)
                 }
                 if let roomID = handoff.callRoomId {
-                    Button {
-                        Task { await refreshAndOpen(roomID: roomID, navigate: true) }
-                    } label: {
-                        Label("Open Session", systemImage: "arrow.right.circle.fill")
-                            .frame(maxWidth: .infinity)
+                    HStack {
+                        Button {
+                            Task { await refreshAndOpen(roomID: roomID, navigate: true) }
+                        } label: {
+                            Label("Open Session", systemImage: "arrow.right.circle.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("CaptureCoachingOpen_Handoff_\(roomID)")
+                        appointmentManagementMenu(for: booking)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("CaptureCoachingOpen_Handoff_\(roomID)")
                 }
                 invitationActions(for: booking)
             } else {
@@ -1015,23 +1018,7 @@ struct CaptureCoachingHomeView: View {
                                 .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
                             }
                             if client.isCoach {
-                                Menu {
-                                    Button {
-                                        bookingToReschedule = booking
-                                    } label: {
-                                        Label("Reschedule", systemImage: "calendar.badge.clock")
-                                    }
-                                    Button(role: .destructive) {
-                                        bookingToCancel = booking
-                                    } label: {
-                                        Label("Cancel Session", systemImage: "calendar.badge.minus")
-                                    }
-                                } label: {
-                                    Label("Manage", systemImage: "ellipsis.circle")
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(client.isMutating || model.usesPreviewData)
-                                .accessibilityIdentifier("CaptureCoachingManage_\(booking.id)")
+                                appointmentManagementMenu(for: booking)
                             }
                         }
                         if client.isCoach {
@@ -1044,6 +1031,26 @@ struct CaptureCoachingHomeView: View {
                 }
             }
         }
+    }
+
+    private func appointmentManagementMenu(for booking: MobileCoachingBooking) -> some View {
+        Menu {
+            Button {
+                bookingToReschedule = booking
+            } label: {
+                Label("Reschedule", systemImage: "calendar.badge.clock")
+            }
+            Button(role: .destructive) {
+                bookingToCancel = booking
+            } label: {
+                Label("Cancel Session", systemImage: "calendar.badge.minus")
+            }
+        } label: {
+            Label("Manage", systemImage: "ellipsis.circle")
+        }
+        .buttonStyle(.bordered)
+        .disabled(client.isMutating || model.usesPreviewData)
+        .accessibilityIdentifier("CaptureCoachingManage_\(booking.id)")
     }
 
     private var displayedUpcomingBookings: [MobileCoachingBooking] {

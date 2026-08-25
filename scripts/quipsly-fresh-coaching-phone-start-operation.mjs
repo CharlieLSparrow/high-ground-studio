@@ -358,6 +358,7 @@ const receipt = {
     coachSetup: true,
     clientIdentityAndRelationshipCreation: true,
     appointmentCreation: true,
+    appointmentReschedule: true,
     invitationAttemptWithVisibleOutcome: true,
     systemShareFallbackPresent: true,
     relationshipWorkspaceEntry: true,
@@ -378,6 +379,9 @@ const receipt = {
     bookingId: booking.id,
     roomId: booking.callRoomId,
     sessionTitle,
+    scheduledStart: booking.scheduledStart,
+    scheduledEnd: booking.scheduledEnd,
+    durationMinutes: 45,
     clientEntryPath: booking.clientEntryPath,
     invitationDelivery: booking.clientInvitationDelivery || null,
     relationshipWork: {
