@@ -435,6 +435,16 @@ function checkMeetingSpineContractSources() {
     "Capture presents a typed client request to the assigned coach, pre-fills the requested time for explicit review, and can keep the current appointment through an auditable conversation decision without parsing prose or silently mutating calendar truth.",
   );
   expect(
+    coachingHomeText.includes("func scheduleConflict(")
+      && coachingHomeText.includes("scheduledStart < existingEnd && scheduledEnd > existingStart")
+      && coachingHomeText.includes("excludingBookingID: booking.id")
+      && coachingHomeText.includes("CaptureCoachingAppointmentConflict")
+      && coachingHomeText.includes("CaptureCoachingRescheduleConflict")
+      && coachingHomeText.includes("scheduleConflict != nil"),
+    "nativeConflictAwareScheduling",
+    "Capture warns about known Quipsly conflicts before save, excludes the booking being edited, and still relies on the server mutation boundary for final authority.",
+  );
+  expect(
     meetingSpineText.includes("joiningStartsRecording: false")
       && meetingSpineText.includes("localRecordingRequiresConsent: true")
       && meetingSpineText.includes("providerRecordingRequiresAllParticipantConsent: true")

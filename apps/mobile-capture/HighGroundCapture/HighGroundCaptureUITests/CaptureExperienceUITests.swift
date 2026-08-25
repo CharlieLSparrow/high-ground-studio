@@ -20,6 +20,9 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testReadyParticipantSeesWaitingStatusInsteadOfDisabledRecord") {
             app.launchArguments.append("--capture-waiting-for-host-ui-test")
         }
+        if name.contains("testSchedulingShowsKnownConflictBeforeSave") {
+            app.launchArguments.append("--capture-conflict-scheduling-preview")
+        }
         if name.contains("testRecordingReceiptOutboxSurvivesRelaunchAndStaysAccountPartitioned") {
             app.launchArguments += [
                 "--capture-share-owner-ui-preview=recording-receipt-owner",
@@ -157,6 +160,31 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             relationship.exists,
             "The phone should expose the durable client space rather than reducing coaching to a call."
+        )
+    }
+
+    func testSchedulingShowsKnownConflictBeforeSave() {
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+
+        let newAppointment = app.buttons["CaptureCoachingNewAppointmentButton"]
+        XCTAssertTrue(newAppointment.waitForExistence(timeout: 5))
+        XCTAssertTrue(newAppointment.isEnabled)
+        newAppointment.tap()
+
+        let conflict = app.descendants(matching: .any)[
+            "CaptureCoachingAppointmentConflict"
+        ].firstMatch
+        XCTAssertTrue(
+            conflict.waitForExistence(timeout: 5),
+            "A known overlapping Quipsly Session should be explained while the coach chooses a time."
+        )
+        let create = app.buttons["CaptureCoachingCreateAppointment"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            create.isEnabled,
+            "The iPhone must not offer Save while its current schedule projection already conflicts."
         )
     }
 

@@ -359,8 +359,29 @@ final class MobileCoachingRunwayClient: ObservableObject {
         return allBookings.contains { $0.client?.id == userID }
     }
 
+    func scheduleConflict(
+        startingAt scheduledStart: Date,
+        durationMinutes: Int,
+        excludingBookingID: String? = nil
+    ) -> MobileCoachingBooking? {
+        guard let coachUserID = response?.user?.id else { return nil }
+        let scheduledEnd = scheduledStart.addingTimeInterval(
+            TimeInterval(max(15, durationMinutes) * 60)
+        )
+        return upcomingBookings.first { booking in
+            guard booking.id != excludingBookingID,
+                  booking.coach?.id == coachUserID,
+                  let existingStart = booking.scheduledDate,
+                  let existingEnd = coachingISO8601Date(booking.scheduledEnd) else { return false }
+            return scheduledStart < existingEnd && scheduledEnd > existingStart
+        }
+    }
+
     func loadPreview() {
-        let start = Date().addingTimeInterval(35 * 60)
+        let conflictPreview = ProcessInfo.processInfo.arguments.contains(
+            "--capture-conflict-scheduling-preview"
+        )
+        let start = Date().addingTimeInterval((conflictPreview ? 55 : 35) * 60)
         response = MobileCoachingRunwayResponse(
             ok: true,
             error: nil,
@@ -382,7 +403,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
                     title: "Coaching session",
                     status: "CONFIRMED",
                     scheduledStart: ISO8601DateFormatter().string(from: start),
-                    scheduledEnd: ISO8601DateFormatter().string(from: start.addingTimeInterval(50 * 60)),
+                    scheduledEnd: ISO8601DateFormatter().string(
+                        from: start.addingTimeInterval((conflictPreview ? 95 : 50) * 60)
+                    ),
                     timezone: TimeZone.current.identifier,
                     client: MobileCoachingPerson(id: "preview-client", name: "Homer", email: "homer@example.test"),
                     coach: MobileCoachingPerson(id: "preview-coach", name: "Charlie Sparrow", email: "charlie@example.test"),
@@ -482,6 +505,13 @@ final class MobileCoachingRunwayClient: ObservableObject {
             errorMessage = "Enter the client's email, a short title, and a future session time."
             return nil
         }
+        if let conflict = scheduleConflict(
+            startingAt: draft.scheduledStart,
+            durationMinutes: draft.durationMinutes
+        ) {
+            errorMessage = "That time overlaps \(conflict.title) (\(conflict.scheduleLabel)). Choose another time first."
+            return nil
+        }
 
         isMutating = true
         defer { isMutating = false }
@@ -527,6 +557,14 @@ final class MobileCoachingRunwayClient: ObservableObject {
         guard !isMutating else { return false }
         guard scheduledStart > Date() else {
             errorMessage = "Choose a future time for this Session."
+            return false
+        }
+        if let conflict = scheduleConflict(
+            startingAt: scheduledStart,
+            durationMinutes: durationMinutes,
+            excludingBookingID: booking.id
+        ) {
+            errorMessage = "That time overlaps \(conflict.title) (\(conflict.scheduleLabel)). Choose another time first."
             return false
         }
 
@@ -763,6 +801,9 @@ struct CaptureCoachingHomeView: View {
     @State private var bookingToRequestChange: MobileCoachingBooking?
 
     private var client: MobileCoachingRunwayClient { model.coachingRunwayClient }
+    private var allowsPreviewSchedulingInspection: Bool {
+        ProcessInfo.processInfo.arguments.contains("--capture-conflict-scheduling-preview")
+    }
 
     var body: some View {
         ScrollView {
@@ -938,7 +979,10 @@ struct CaptureCoachingHomeView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(client.isMutating || model.usesPreviewData)
+            .disabled(
+                client.isMutating
+                    || (model.usesPreviewData && !allowsPreviewSchedulingInspection)
+            )
             .accessibilityIdentifier("CaptureCoachingNewAppointmentButton")
         }
         .captureCard()
@@ -2048,6 +2092,14 @@ private struct MobileCoachingRescheduleSheet: View {
     @State private var scheduledStart: Date
     @State private var durationMinutes: Int
 
+    private var scheduleConflict: MobileCoachingBooking? {
+        client.scheduleConflict(
+            startingAt: scheduledStart,
+            durationMinutes: durationMinutes,
+            excludingBookingID: booking.id
+        )
+    }
+
     init(
         client: MobileCoachingRunwayClient,
         booking: MobileCoachingBooking,
@@ -2086,6 +2138,15 @@ private struct MobileCoachingRescheduleSheet: View {
                     .pickerStyle(.menu)
                     .accessibilityIdentifier("CaptureCoachingRescheduleDuration")
                     LabeledContent("Time zone", value: TimeZone.current.identifier)
+                    if let conflict = scheduleConflict {
+                        Label(
+                            "Conflicts with \(conflict.title) · \(conflict.scheduleLabel)",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("CaptureCoachingRescheduleConflict")
+                    }
                 }
 
                 if let error = client.errorMessage {
@@ -2110,7 +2171,7 @@ private struct MobileCoachingRescheduleSheet: View {
                             }
                         }
                     }
-                    .disabled(client.isMutating || scheduledStart <= Date())
+                    .disabled(client.isMutating || scheduledStart <= Date() || scheduleConflict != nil)
                     .accessibilityIdentifier("CaptureCoachingSaveReschedule")
                 }
             }
@@ -2126,6 +2187,13 @@ private struct NewMobileCoachingAppointmentSheet: View {
     let onCreated: @MainActor (MobileCoachingAppointmentResult) async -> Void
     @State private var draft = MobileCoachingAppointmentDraft()
     @FocusState private var focusedField: Field?
+
+    private var scheduleConflict: MobileCoachingBooking? {
+        client.scheduleConflict(
+            startingAt: draft.scheduledStart,
+            durationMinutes: draft.durationMinutes
+        )
+    }
 
     private enum Field { case name, email, title }
 
@@ -2155,6 +2223,15 @@ private struct NewMobileCoachingAppointmentSheet: View {
                     Text("\(draft.durationMinutes) minutes · \(TimeZone.current.identifier)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if let conflict = scheduleConflict {
+                        Label(
+                            "Conflicts with \(conflict.title) · \(conflict.scheduleLabel)",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("CaptureCoachingAppointmentConflict")
+                    }
                 }
 
                 Section {
@@ -2205,7 +2282,7 @@ private struct NewMobileCoachingAppointmentSheet: View {
                             isPresented = false
                         }
                     }
-                    .disabled(client.isMutating || !draft.isReady)
+                    .disabled(client.isMutating || !draft.isReady || scheduleConflict != nil)
                     .accessibilityIdentifier("CaptureCoachingCreateAppointment")
                 }
             }
