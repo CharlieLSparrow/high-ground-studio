@@ -192,6 +192,24 @@ export async function main() {
       (await prisma.sessionOutput.count({ where: { title } })) === 0,
       "The unique native follow-up title already exists.",
     );
+    const [releasedTask, releasedGoal] = await Promise.all([
+      prisma.actionItem.findFirstOrThrow({
+        where: {
+          roomId: ROOM_ID,
+          assignedUser: { primaryEmail: CLIENT.email },
+          title: "Run one protected rehearsal",
+        },
+        select: { id: true },
+      }),
+      prisma.goal.findFirstOrThrow({
+        where: {
+          roomId: ROOM_ID,
+          owner: { primaryEmail: CLIENT.email },
+          title: "Use a sustainable boundary",
+        },
+        select: { id: true },
+      }),
+    ]);
 
     runNativeJourney({
       mode: "coach-follow-up-authoring",
@@ -259,6 +277,8 @@ export async function main() {
         QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_TITLE: title,
         QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_SHA256:
           released.contentSha256,
+        QUIPSLY_CAPTURE_UI_TEST_TASK_ID: releasedTask.id,
+        QUIPSLY_CAPTURE_UI_TEST_GOAL_ID: releasedGoal.id,
       },
     });
 
@@ -313,7 +333,13 @@ export async function main() {
       localOnly: true,
       compiledCaptureOperation: true,
       coach: { created: true, revised: true, releasedInApp: true },
-      client: { exactReleaseRead: true, openedInApp: true },
+      client: {
+        exactReleaseRead: true,
+        openedInApp: true,
+        liveTaskStatusRead: true,
+        liveGoalStatusRead: true,
+        exactTaskOpenedInWork: true,
+      },
       immutableRevisionOperations: released.revisions.map(
         (item) => item.operation,
       ),

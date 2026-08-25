@@ -192,7 +192,7 @@ export type PriorSessionFollowThrough = {
     changedSinceReleaseCount: number;
     unavailableCount: number;
   };
-  relationship: "same-coaching-engagement" | "legacy-same-project-purpose-client-and-coach";
+  relationship: "current-session" | "same-coaching-engagement" | "legacy-same-project-purpose-client-and-coach";
   canOpenWork: boolean;
   canonicalRecordsMutated: false;
   currentSessionMutated: false;

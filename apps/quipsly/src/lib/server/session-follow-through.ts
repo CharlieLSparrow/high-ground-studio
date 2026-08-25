@@ -157,21 +157,27 @@ function validatedReleasedOutput(output: any, room: FollowThroughRoomIdentity) {
   return { body, tasks, goals };
 }
 
-export async function loadPriorSessionFollowThroughByRoomId(input: {
+async function loadSessionFollowThroughByRoomId(input: {
   prisma: FollowThroughClient;
   actor: SessionAccessActor;
   rooms: FollowThroughRoomIdentity[];
-}): Promise<Record<string, PriorSessionFollowThrough>> {
+}, mode: "current" | "prior"): Promise<Record<string, PriorSessionFollowThrough>> {
   const targets = input.rooms.filter((room) => room.projectId && room.booking?.clientUserId);
   const projectIds = [...new Set(targets.flatMap((room) => room.projectId ? [room.projectId] : []))];
   if (!input.actor.id || projectIds.length === 0) return {};
 
   const candidates: Array<FollowThroughRoomIdentity & { outputs: any[] }> = await input.prisma.callRoom.findMany({
-    where: {
-      projectId: { in: projectIds },
-      ...sessionActorAccessWhere(input.actor),
-      outputs: { some: { kind: "CLIENT_FOLLOW_UP", status: "RELEASED" } },
-    },
+    where: mode === "current"
+      ? {
+          id: { in: targets.map((target) => target.id) },
+          ...sessionActorAccessWhere(input.actor),
+          outputs: { some: { kind: "CLIENT_FOLLOW_UP", status: "RELEASED" } },
+        }
+      : {
+          projectId: { in: projectIds },
+          ...sessionActorAccessWhere(input.actor),
+          outputs: { some: { kind: "CLIENT_FOLLOW_UP", status: "RELEASED" } },
+        },
     select: {
       id: true,
       title: true,
@@ -217,17 +223,19 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
     if (!viewerRole) return [];
 
     const selected = candidates
-      .filter((candidate) => (
-        candidate.id !== target.id
-        && (target.coachingEngagementId
-          ? candidate.coachingEngagementId === target.coachingEngagementId
-          : candidate.projectId === target.projectId
-            && !candidate.coachingEngagementId
-            && String(candidate.purpose) === String(target.purpose)
-            && candidate.booking?.clientUserId === booking.clientUserId
-            && candidate.booking?.coachUserId === booking.coachUserId)
-        && isBefore(candidate, target)
-      ))
+      .filter((candidate) => mode === "current"
+        ? candidate.id === target.id
+        : (
+            candidate.id !== target.id
+            && (target.coachingEngagementId
+              ? candidate.coachingEngagementId === target.coachingEngagementId
+              : candidate.projectId === target.projectId
+                && !candidate.coachingEngagementId
+                && String(candidate.purpose) === String(target.purpose)
+                && candidate.booking?.clientUserId === booking.clientUserId
+                && candidate.booking?.coachUserId === booking.coachUserId)
+            && isBefore(candidate, target)
+          ))
       .flatMap((candidate) => candidate.outputs.flatMap((output: any) => {
         if (
           output.recipientUserId !== booking.clientUserId
@@ -417,7 +425,8 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
       viewerRole: selection.viewerRole,
       sourceRoom: {
         id: selection.candidate.id,
-        title: selection.candidate.title || "Previous coaching Session",
+        title: selection.candidate.title
+          || (mode === "current" ? "Coaching Session" : "Previous coaching Session"),
         projectId: selection.candidate.projectId!,
         scheduledStart: iso(selection.candidate.scheduledStart),
       },
@@ -443,9 +452,11 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
         changedSinceReleaseCount,
         unavailableCount,
       },
-      relationship: selection.target.coachingEngagementId
-        ? "same-coaching-engagement"
-        : "legacy-same-project-purpose-client-and-coach",
+      relationship: mode === "current"
+        ? "current-session"
+        : selection.target.coachingEngagementId
+          ? "same-coaching-engagement"
+          : "legacy-same-project-purpose-client-and-coach",
       canOpenWork: selection.viewerRole === "CLIENT",
       canonicalRecordsMutated: false,
       currentSessionMutated: false,
@@ -453,4 +464,20 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
     };
   }
   return result;
+}
+
+export async function loadCurrentSessionFollowThroughByRoomId(input: {
+  prisma: FollowThroughClient;
+  actor: SessionAccessActor;
+  rooms: FollowThroughRoomIdentity[];
+}): Promise<Record<string, PriorSessionFollowThrough>> {
+  return loadSessionFollowThroughByRoomId(input, "current");
+}
+
+export async function loadPriorSessionFollowThroughByRoomId(input: {
+  prisma: FollowThroughClient;
+  actor: SessionAccessActor;
+  rooms: FollowThroughRoomIdentity[];
+}): Promise<Record<string, PriorSessionFollowThrough>> {
+  return loadSessionFollowThroughByRoomId(input, "prior");
 }

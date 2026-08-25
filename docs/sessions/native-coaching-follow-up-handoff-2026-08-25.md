@@ -65,3 +65,40 @@ Verification after this addition:
 - operation cleanup again removed the exact QA output and restored the baseline.
 
 The automation deliberately did not choose a destination in the system share sheet. A physical-device flight must still inspect the generated file in Files/Mail/Messages or another real destination and read back the `EXPORTED` receipt. Reachability and compilation are not represented as completed human sharing.
+
+## Live work beside the immutable handoff
+
+The next continuation connected the shared follow-up to the client's real work without turning a released report into mutable truth. The mobile Sessions response now returns a separately authorized `currentFollowThrough` projection for the same room. Nest accepts that projection only when all of these identities still agree:
+
+- the current Session is accessible to the signed-in actor;
+- the actor is the booked coach or client, not merely another project collaborator;
+- the released output was created by that coach for that client;
+- the output body, manifest, selected record identities, revision, and SHA-256 are valid;
+- every live task still belongs to the client and project;
+- every live goal still belongs to the client and project.
+
+Capture binds the projection back to the visible follow-up's exact room, output ID, revision, and content SHA-256 before rendering it. The released title, prose, and selected-record snapshot stay unchanged. A distinct `Current progress` panel and per-row statuses show canonical work as it exists now. The intended client can open the exact task or goal in Work; the coach can see shared progress but cannot act through the client's Work controls. No duplicate task or goal is created.
+
+### Operated proof
+
+The retained operation passed again after this addition:
+
+- coach created, revised, and released the exact client-safe follow-up;
+- a distinct client received and automatically acknowledged the exact release;
+- the client read current canonical status for the exact selected task and goal;
+- the client tapped `Open current task` and reached `CaptureWorkTask_retained-follow-up-client-task-20260731`;
+- revision history remained `DRAFT_CREATED`, `DRAFT_UPDATED`, `RELEASED_IN_APP`;
+- no external message, provider Calendar mutation, or publication occurred;
+- cleanup removed the exact QA output and restored baseline output/delivery counts.
+
+Evidence:
+
+- coach result bundle: `/private/tmp/quipsly-native-coach-follow-up-20260825T071620887Z-36223.xcresult`;
+- client result bundle: `/private/tmp/quipsly-native-client-follow-up-20260825T071620887Z-36223.xcresult`;
+- focused server projection suite: 9 of 9 tests passed, including coach/client authorization, outsider denial, hash-tamper denial, and canonical-state projection;
+- Quipsly TypeScript typecheck passed;
+- universal unsigned iOS Simulator build passed for arm64 and x86_64;
+- Capture App Store static smoke passed 1,190 of 1,190 checks;
+- `git diff --check` passed.
+
+This remains local-service and simulator proof. It does not claim a physical iPhone, TestFlight, production Nest, weak-network, or minimally instructed human flight. Those are intentionally tracked as release-train evidence rather than reasons to stop independent product work.

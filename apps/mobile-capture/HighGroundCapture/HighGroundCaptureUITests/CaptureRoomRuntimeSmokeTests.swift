@@ -4719,9 +4719,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
               let outputID = credentials.clientFollowUpID, !outputID.isEmpty,
               let outputTitle = credentials.clientFollowUpTitle, !outputTitle.isEmpty,
+              let taskID = credentials.taskID, !taskID.isEmpty,
+              let goalID = credentials.goalID, !goalID.isEmpty,
               let contentSHA256 = credentials.clientFollowUpSHA256,
               contentSHA256.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
-            throw XCTSkip("The client follow-up journey requires exact Session, released output, title, and SHA-256 identities.")
+            throw XCTSkip("The client follow-up journey requires exact Session, released output, task, goal, title, and SHA-256 identities.")
         }
         let app = try launchSignedInCaptureApp()
         tapRootTab("Record", in: app)
@@ -4763,10 +4765,37 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts["Run one protected rehearsal"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts["Use a sustainable boundary"].firstMatch.exists)
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.descendants(matching: .any)["CaptureClientFollowUpCurrentProgress_\(outputID)"].firstMatch,
+                in: app,
+                timeout: 12,
+                swipeAttempts: 8
+            ),
+            "The exact immutable follow-up should expose separately authorized live work status without rewriting the release."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureClientFollowUpCurrentTaskStatus_\(taskID)"].firstMatch.exists,
+            "The intended client should read current canonical status for the exact released task identity."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureClientFollowUpCurrentGoalStatus_\(goalID)"].firstMatch.exists,
+            "The intended client should read current canonical status for the exact released goal identity."
+        )
         let shareFile = app.buttons["CaptureClientFollowUpShareFile_\(outputID)"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(shareFile, in: app, timeout: 12, swipeAttempts: 10),
             "The intended client should be able to open the standard iPhone share sheet for the exact client-safe revision without leaving Capture."
+        )
+        let openTask = app.buttons["CaptureClientFollowUpOpenTask_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(openTask, in: app, timeout: 12, swipeAttempts: 10),
+            "The intended client should have one ordinary path from the shared follow-up to its live canonical task."
+        )
+        openTask.tap()
+        XCTAssertTrue(
+            app.staticTexts["CaptureWorkTask_\(taskID)"].firstMatch.waitForExistence(timeout: 30),
+            "Opening a current follow-up task should navigate to the exact canonical Work row, not create a duplicate."
         )
         attachRecordingIdentity(
             "\(sessionID)|\(outputID)|\(contentSHA256)",

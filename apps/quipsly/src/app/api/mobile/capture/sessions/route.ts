@@ -22,7 +22,10 @@ import {
 import { mapMobileCaptureSessionsForUser } from "@/lib/server/mobile-capture-sessions";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadPriorSessionContinuityByRoomId } from "@/lib/server/session-continuity";
-import { loadPriorSessionFollowThroughByRoomId } from "@/lib/server/session-follow-through";
+import {
+  loadCurrentSessionFollowThroughByRoomId,
+  loadPriorSessionFollowThroughByRoomId,
+} from "@/lib/server/session-follow-through";
 import {
   resolveSessionEpisodeBinding,
   SessionEpisodeBindingError,
@@ -400,42 +403,41 @@ export async function GET(request: Request) {
     projectTags.push(tag);
     captureTagsByProject.set(tag.projectId, projectTags);
   }
-  const priorContinuityByRoomId = await loadPriorSessionContinuityByRoomId({
-    prisma,
-    actor: session.user,
-    rooms: rooms.map((room: any) => ({
-      id: room.id,
-      title: room.title,
-      purpose: room.purpose,
-      projectId: room.projectId,
-      coachingEngagementId: room.coachingEngagementId,
-      scheduledStart: room.scheduledStart,
-      endedAt: room.endedAt,
-      createdAt: room.createdAt,
-      booking: room.booking ? {
-        clientUserId: room.booking.clientUserId,
-        coachUserId: room.booking.coachUserId,
-      } : null,
-    })),
-  });
-  const priorFollowThroughByRoomId = await loadPriorSessionFollowThroughByRoomId({
-    prisma,
-    actor: session.user,
-    rooms: rooms.map((room: any) => ({
-      id: room.id,
-      title: room.title,
-      purpose: room.purpose,
-      projectId: room.projectId,
-      coachingEngagementId: room.coachingEngagementId,
-      scheduledStart: room.scheduledStart,
-      endedAt: room.endedAt,
-      createdAt: room.createdAt,
-      booking: room.booking ? {
-        clientUserId: room.booking.clientUserId,
-        coachUserId: room.booking.coachUserId,
-      } : null,
-    })),
-  });
+  const followThroughRooms = rooms.map((room: any) => ({
+    id: room.id,
+    title: room.title,
+    purpose: room.purpose,
+    projectId: room.projectId,
+    coachingEngagementId: room.coachingEngagementId,
+    scheduledStart: room.scheduledStart,
+    endedAt: room.endedAt,
+    createdAt: room.createdAt,
+    booking: room.booking ? {
+      clientUserId: room.booking.clientUserId,
+      coachUserId: room.booking.coachUserId,
+    } : null,
+  }));
+  const [
+    priorContinuityByRoomId,
+    priorFollowThroughByRoomId,
+    currentFollowThroughByRoomId,
+  ] = await Promise.all([
+    loadPriorSessionContinuityByRoomId({
+      prisma,
+      actor: session.user,
+      rooms: followThroughRooms,
+    }),
+    loadPriorSessionFollowThroughByRoomId({
+      prisma,
+      actor: session.user,
+      rooms: followThroughRooms,
+    }),
+    loadCurrentSessionFollowThroughByRoomId({
+      prisma,
+      actor: session.user,
+      rooms: followThroughRooms,
+    }),
+  ]);
 
   return NextResponse.json({
     ok: true,
@@ -481,6 +483,7 @@ export async function GET(request: Request) {
       captureMediaAssets,
       priorContinuityByRoomId,
       priorFollowThroughByRoomId,
+      currentFollowThroughByRoomId,
     }),
     links: {
       today: "/api/mobile/capture/today",

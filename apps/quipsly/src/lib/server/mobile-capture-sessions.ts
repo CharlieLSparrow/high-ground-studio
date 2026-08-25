@@ -1046,6 +1046,7 @@ export function mapMobileCaptureSessionsForUser(input: {
   captureMediaAssets?: any[];
   priorContinuityByRoomId?: Record<string, unknown>;
   priorFollowThroughByRoomId?: Record<string, unknown>;
+  currentFollowThroughByRoomId?: Record<string, unknown>;
 }) {
   const finalizationReceipts = Array.isArray(input.finalizationReceipts)
     ? input.finalizationReceipts
@@ -1512,6 +1513,7 @@ export function mapMobileCaptureSessionsForUser(input: {
         : null,
       priorContinuity: input.priorContinuityByRoomId?.[room.id] ?? null,
       priorFollowThrough: input.priorFollowThroughByRoomId?.[room.id] ?? null,
+      currentFollowThrough: input.currentFollowThroughByRoomId?.[room.id] ?? null,
       canUseProjectTeamNotes:
         input.isStaff === true ||
         (sessionProject.projectId != null &&

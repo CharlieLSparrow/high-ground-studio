@@ -761,7 +761,23 @@ private struct MobileClientFollowUpSnapshot: View {
     let followUp: MobileCaptureClientFollowUp
     let session: MobileCaptureSession
     let previewOnly: Bool
+    var onOpenTask: ((MobileCaptureFollowThroughTask) -> Void)? = nil
+    var onOpenGoal: ((MobileCaptureFollowThroughGoal) -> Void)? = nil
     @State private var showsDetails = false
+
+    private var currentFollowThrough: MobileCapturePriorFollowThrough? {
+        guard let current = session.currentFollowThrough,
+              current.relationship == "current-session",
+              current.sourceRoom.id == session.callRoomId,
+              current.output.id == followUp.id,
+              current.output.revision == followUp.revision,
+              current.output.contentSha256 == followUp.contentSha256 else { return nil }
+        return current
+    }
+
+    private func currentStatusLabel(_ value: String) -> String {
+        value.replacingOccurrences(of: "_", with: " ").capitalized
+    }
 
     private func nonempty(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -834,6 +850,39 @@ private struct MobileClientFollowUpSnapshot: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if let current = currentFollowThrough,
+               !current.tasks.isEmpty || !current.goals.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Current progress")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.blue)
+                    HStack(spacing: 8) {
+                        StatusChip(
+                            label: "\(current.summary.completedTaskCount) done",
+                            tint: .green
+                        )
+                        StatusChip(
+                            label: "\(current.summary.openTaskCount) open",
+                            tint: current.summary.openTaskCount == 0 ? .green : .orange
+                        )
+                        if current.summary.changedSinceReleaseCount > 0 {
+                            StatusChip(
+                                label: "\(current.summary.changedSinceReleaseCount) updated",
+                                tint: .blue
+                            )
+                        }
+                    }
+                    Text("The shared snapshot stays unchanged. These statuses come from the original live tasks and goals.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureClientFollowUpCurrentProgress_\(followUp.id)")
+            }
+
             if !followUp.notes.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("What we want to keep")
@@ -866,6 +915,7 @@ private struct MobileClientFollowUpSnapshot: View {
                         .font(.caption2.bold())
                         .foregroundStyle(.secondary)
                     ForEach(followUp.goals) { goal in
+                        let current = currentFollowThrough?.goals.first(where: { $0.id == goal.id })
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "circle")
                                 .font(.caption2)
@@ -881,6 +931,34 @@ private struct MobileClientFollowUpSnapshot: View {
                                     recordID: "goal_\(goal.id)",
                                     recordLabel: goal.title
                                 )
+                                if let current {
+                                    Label(
+                                        current.availability == "CURRENT"
+                                            ? "Current: \(currentStatusLabel(current.status))"
+                                            : "Current goal unavailable",
+                                        systemImage: current.status == "ACHIEVED"
+                                            ? "checkmark.circle.fill"
+                                            : current.availability == "CURRENT"
+                                                ? "target"
+                                                : "questionmark.circle"
+                                    )
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(current.status == "ACHIEVED" ? .green : .blue)
+                                    .accessibilityIdentifier("CaptureClientFollowUpCurrentGoalStatus_\(goal.id)")
+                                    if let progress = current.latestProgress {
+                                        Text(progress.progressPercent.map { "Latest check-in \($0)%" } ?? "Latest check-in recorded")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if current.availability == "CURRENT",
+                                       currentFollowThrough?.canOpenWork == true,
+                                       let onOpenGoal {
+                                        Button("Open current goal") { onOpenGoal(current) }
+                                            .font(.caption2.bold())
+                                            .buttonStyle(.bordered)
+                                            .accessibilityIdentifier("CaptureClientFollowUpOpenGoal_\(goal.id)")
+                                    }
+                                }
                             }
                         }
                     }
@@ -893,6 +971,7 @@ private struct MobileClientFollowUpSnapshot: View {
                         .font(.caption2.bold())
                         .foregroundStyle(.secondary)
                     ForEach(followUp.tasks) { task in
+                        let current = currentFollowThrough?.tasks.first(where: { $0.id == task.id })
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
                                 .font(.caption)
@@ -910,6 +989,29 @@ private struct MobileClientFollowUpSnapshot: View {
                                     recordID: "task_\(task.id)",
                                     recordLabel: task.title
                                 )
+                                if let current {
+                                    Label(
+                                        current.availability == "CURRENT"
+                                            ? "Current: \(currentStatusLabel(current.status))"
+                                            : "Current task unavailable",
+                                        systemImage: current.status == "DONE"
+                                            ? "checkmark.circle.fill"
+                                            : current.availability == "CURRENT"
+                                                ? "circle"
+                                                : "questionmark.circle"
+                                    )
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(current.status == "DONE" ? .green : .blue)
+                                    .accessibilityIdentifier("CaptureClientFollowUpCurrentTaskStatus_\(task.id)")
+                                    if current.availability == "CURRENT",
+                                       currentFollowThrough?.canOpenWork == true,
+                                       let onOpenTask {
+                                        Button("Open current task") { onOpenTask(current) }
+                                            .font(.caption2.bold())
+                                            .buttonStyle(.bordered)
+                                            .accessibilityIdentifier("CaptureClientFollowUpOpenTask_\(task.id)")
+                                    }
+                                }
                             }
                         }
                     }
@@ -956,6 +1058,8 @@ struct MobileClientFollowUpCard: View {
     let session: MobileCaptureSession
     @ObservedObject var sessionClient: CaptureSessionClient
     let previewOnly: Bool
+    var onOpenTask: ((MobileCaptureFollowThroughTask) -> Void)? = nil
+    var onOpenGoal: ((MobileCaptureFollowThroughGoal) -> Void)? = nil
     @State private var isExpanded = true
 
     var body: some View {
@@ -965,7 +1069,9 @@ struct MobileClientFollowUpCard: View {
                     MobileClientFollowUpSnapshot(
                         followUp: followUp,
                         session: session,
-                        previewOnly: previewOnly
+                        previewOnly: previewOnly,
+                        onOpenTask: onOpenTask,
+                        onOpenGoal: onOpenGoal
                     )
                     MobileClientFollowUpExportControl(
                         followUp: followUp,
@@ -1017,6 +1123,8 @@ struct MobileCoachClientFollowUpCard: View {
     let session: MobileCaptureSession
     @ObservedObject var sessionClient: CaptureSessionClient
     let previewOnly: Bool
+    var onOpenTask: ((MobileCaptureFollowThroughTask) -> Void)? = nil
+    var onOpenGoal: ((MobileCaptureFollowThroughGoal) -> Void)? = nil
     @State private var isReviewing = false
     @State private var draft = MobileCaptureClientFollowUpDraft(
         title: "",
@@ -1147,7 +1255,9 @@ struct MobileCoachClientFollowUpCard: View {
                             MobileClientFollowUpSnapshot(
                                 followUp: output,
                                 session: session,
-                                previewOnly: previewOnly
+                                previewOnly: previewOnly,
+                                onOpenTask: onOpenTask,
+                                onOpenGoal: onOpenGoal
                             )
                             MobileClientFollowUpExportControl(
                                 followUp: output,

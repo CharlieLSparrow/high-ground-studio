@@ -453,6 +453,8 @@ requireIncludes(deterministicUITestsText, "func testTodayWeeklyPlanEditorKeepsRe
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInIPhoneUpdatesCanonicalWeeklyPlanAndSurvivesRelaunch", "runtime UI smoke changes one canonical weekly plan through iPhone controls and reads it back after relaunch");
 requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUp_", "runtime UI smoke addresses the exact released follow-up artifact");
 requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUpOpenState_", "runtime UI smoke addresses automatic client open acknowledgement");
+requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUpCurrentProgress_", "runtime UI smoke reads separately authorized live work beside the immutable release");
+requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUpOpenTask_", "runtime UI smoke opens one exact released task in canonical Work");
 requireIncludes(runtimeUISmokeTestsText, "func testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials", "runtime UI smoke opens Apple's protected Google handoff without typing a credential");
 requireIncludes(runtimeUISmokeTestsText, '"google.com"', "Google handoff proof asserts the exact external provider before leaving Quipsly");
 requireIncludes(runtimeUISmokeTestsText, "hold duplicate auth attempts", "Google handoff proof keeps duplicate identity attempts disabled");
@@ -527,6 +529,10 @@ requireIncludes(capturePhoneShellText, "MobileCoachClientFollowUpCard(", "the pr
 requireIncludes(capturePhoneShellText, "CaptureTodayClientFollowUpOpen_", "Today exposes one exact new coaching follow-up handoff");
 requireIncludes(capturePhoneShellText, "onOpenClientFollowUp", "Today opens the exact Session rather than acknowledging a follow-up in place");
 requireIncludes(mobileText, "CaptureClientFollowUpOpenState_", "the native follow-up card exposes ordinary new/viewed state after automatic acknowledgement");
+requireIncludes(mobileText, "CaptureClientFollowUpCurrentProgress_", "the native follow-up distinguishes immutable shared content from live canonical progress");
+requireIncludes(mobileText, "current.output.contentSha256 == followUp.contentSha256", "the native live projection is bound to the exact released hash before rendering");
+requireIncludes(mobileText, "CaptureClientFollowUpOpenTask_", "the native follow-up exposes the exact current task in canonical Work");
+requireIncludes(mobileText, "CaptureClientFollowUpOpenGoal_", "the native follow-up exposes the exact current goal in canonical Work");
 requireIncludes(mobileText, "CaptureCoachFollowUpSave", "the native coach editor exposes an explicit private revision save");
 requireIncludes(mobileText, "CaptureCoachFollowUpKeyboardDone", "the native coach editor exposes a reachable keyboard dismissal action across its long form");
 requireIncludes(mobileText, "Share with \\(output.recipientLabel)", "the native coach editor names the exact recipient on its single share action");
@@ -538,6 +544,7 @@ requireIncludes(mobileText, "CaptureCoachFollowUpReleaseHeld", "the native coach
 requireIncludes(mobileText, "CaptureCoachFollowUpUnsavedChanges", "the native coach editor distinguishes unsaved values from the immutable releasable revision");
 requireIncludes(mobileText, ".disabled(previewOnly || !releaseReady || isSaving", "preview and changed-source drafts cannot share a follow-up");
 requireIncludes(bridgeText, "let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?", "native follow-up rows decode their immutable transcript anchors");
+requireIncludes(bridgeText, "var currentFollowThrough: MobileCapturePriorFollowThrough?", "native Sessions decode live work as a separate optional projection beside the immutable follow-up");
 requireIncludes(captureExperienceModelText, "capturePreviewClientFollowUpWorkspace", "deterministic Capture preview operates the real coach follow-up source-return card");
 requireIncludes(deterministicUITestsText, "testCoachFollowUpPreservesExactSourceWithoutReleasingPreview", "operated iPhone coverage verifies source return without preview mutation");
 requireIncludes(deterministicUITestsText, "testTodayOpensTheExactNewClientFollowUpWithoutAcknowledgingIt", "operated iPhone coverage verifies the recipient Today-to-Session follow-up handoff");

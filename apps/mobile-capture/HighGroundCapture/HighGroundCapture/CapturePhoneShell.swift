@@ -6488,13 +6488,53 @@ private struct CaptureRecorderView: View {
                         MobileCoachClientFollowUpCard(
                             session: session,
                             sessionClient: model.sessionClient,
-                            previewOnly: model.usesPreviewData
+                            previewOnly: model.usesPreviewData,
+                            onOpenTask: { task in
+                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
+                                model.requestWorkNavigation(
+                                    kind: .task,
+                                    entityID: task.id,
+                                    title: task.title,
+                                    projectID: projectID
+                                )
+                                visibleTab = .work
+                            },
+                            onOpenGoal: { goal in
+                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
+                                model.requestWorkNavigation(
+                                    kind: .goal,
+                                    entityID: goal.id,
+                                    title: goal.title,
+                                    projectID: projectID
+                                )
+                                visibleTab = .work
+                            }
                         )
                     } else if session.clientFollowUp != nil {
                         MobileClientFollowUpCard(
                             session: session,
                             sessionClient: model.sessionClient,
-                            previewOnly: model.usesPreviewData
+                            previewOnly: model.usesPreviewData,
+                            onOpenTask: { task in
+                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
+                                model.requestWorkNavigation(
+                                    kind: .task,
+                                    entityID: task.id,
+                                    title: task.title,
+                                    projectID: projectID
+                                )
+                                visibleTab = .work
+                            },
+                            onOpenGoal: { goal in
+                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
+                                model.requestWorkNavigation(
+                                    kind: .goal,
+                                    entityID: goal.id,
+                                    title: goal.title,
+                                    projectID: projectID
+                                )
+                                visibleTab = .work
+                            }
                         )
                     } else if session.isCoachingSession {
                         MobileClientFollowUpLoadingCard(

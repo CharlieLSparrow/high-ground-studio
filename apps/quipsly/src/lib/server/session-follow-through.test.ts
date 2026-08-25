@@ -3,7 +3,10 @@ import {
   CLIENT_FOLLOW_UP_SCHEMA,
   clientFollowUpSha256,
 } from "./session-client-follow-up";
-import { loadPriorSessionFollowThroughByRoomId } from "./session-follow-through";
+import {
+  loadCurrentSessionFollowThroughByRoomId,
+  loadPriorSessionFollowThroughByRoomId,
+} from "./session-follow-through";
 
 const CLIENT = { id: "client-1", email: "client@example.test", primaryEmail: "client@example.test", isStaff: false };
 const COACH = { id: "coach-1", email: "coach@example.test", primaryEmail: "coach@example.test", isStaff: false };
@@ -145,10 +148,46 @@ function fixture() {
       }],
     }]) },
   };
-  return { prisma, target, output };
+  return { prisma, prior, target, output };
 }
 
 describe("Session follow-through projection", () => {
+  it.each([
+    ["client", CLIENT, "CLIENT", true],
+    ["coach", COACH, "COACH", false],
+  ])("shows %s live work beside the exact current released follow-up", async (_label, actor, role, canOpenWork) => {
+    const { prisma, prior } = fixture();
+    const result = await loadCurrentSessionFollowThroughByRoomId({
+      prisma,
+      actor,
+      rooms: [prior],
+    });
+
+    expect(result[prior.id]).toMatchObject({
+      schema: "quipsly-session-follow-through-v1",
+      viewerRole: role,
+      relationship: "current-session",
+      sourceRoom: { id: "room-prior", projectId: "project-1" },
+      output: { id: "follow-up-1", revision: 2 },
+      tasks: [{ id: "task-1", status: "DONE", releasedStatus: "OPEN" }],
+      goals: [{ id: "goal-1", latestProgress: { progressPercent: 60 } }],
+      canOpenWork,
+      canonicalRecordsMutated: false,
+      currentSessionMutated: false,
+      externalSideEffects: false,
+    });
+  });
+
+  it("does not project current follow-through to a Session collaborator who is neither coach nor client", async () => {
+    const { prisma, prior } = fixture();
+    await expect(loadCurrentSessionFollowThroughByRoomId({
+      prisma,
+      actor: OUTSIDER,
+      rooms: [prior],
+    })).resolves.toEqual({});
+    expect(prisma.actionItem.findMany).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["client", CLIENT, "CLIENT", true],
     ["coach", COACH, "COACH", false],

@@ -974,6 +974,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     var clientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace? = nil
     var priorContinuity: MobileCapturePriorContinuity? = nil
     var priorFollowThrough: MobileCapturePriorFollowThrough? = nil
+    var currentFollowThrough: MobileCapturePriorFollowThrough? = nil
     var canUseProjectTeamNotes: Bool? = nil
     var sessionNotes: [MobileCaptureSessionNote]? = nil
     let afterCaptureNextAction: String?
