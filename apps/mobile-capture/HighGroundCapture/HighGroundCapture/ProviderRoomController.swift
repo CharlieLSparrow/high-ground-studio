@@ -100,7 +100,15 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
     private var activeCallUUID: UUID?
     private var intentionalProviderDisconnect = false
-    private var skipProtectionForPendingCallKitEnd = false
+    private enum PendingCallKitEndDisposition {
+        case personEnded
+        case programmaticCleanup
+        case reconnectExhausted
+
+        var protectsLocalSource: Bool { self == .personEnded }
+        var allowsRejoin: Bool { self == .reconnectExhausted }
+    }
+    private var pendingCallKitEndDisposition: PendingCallKitEndDisposition?
     private var activeOwnerSnapshot: AuthManager.StableOwnerSnapshot?
     private var accountObserver: NSObjectProtocol?
     private var activeCallRoomID: String?
@@ -675,7 +683,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     private func endNativeCallPresentation(
         reason: CXCallEndedReason,
-        protectLocalSource: Bool = false
+        protectLocalSource: Bool = false,
+        allowRejoin: Bool = false
     ) async {
         guard let uuid = activeCallUUID else {
             isNativeCallPresentationActive = false
@@ -688,13 +697,17 @@ final class ProviderRoomController: NSObject, ObservableObject {
         // the call from the lock screen or a headset. In particular, an
         // exhausted LiveKit reconnect must leave the participant-owned master
         // running so the person can rejoin without losing the take.
-        skipProtectionForPendingCallKitEnd = !protectLocalSource
+        pendingCallKitEndDisposition = allowRejoin
+            ? .reconnectExhausted
+            : protectLocalSource
+                ? .personEnded
+                : .programmaticCleanup
         let action = CXEndCallAction(call: uuid)
         let transaction = CXTransaction(action: action)
         do {
             try await requestCallKitTransaction(transaction)
         } catch {
-            skipProtectionForPendingCallKitEnd = false
+            pendingCallKitEndDisposition = nil
         }
         callKitProvider.reportCall(with: uuid, endedAt: Date(), reason: reason)
         clearNativeCallPresentation()
@@ -949,6 +962,7 @@ extension ProviderRoomController: CXProviderDelegate {
             #endif
             self.stopCallAudioMeter()
             self.clearNativeCallPresentation()
+            self.pendingCallKitEndDisposition = nil
             try? self.audioSessionCoordinator.callKitDidDeactivate()
             self.audioSessionCoordinator.providerDidDisconnect()
             self.isConnected = false
@@ -976,16 +990,18 @@ extension ProviderRoomController: CXProviderDelegate {
             // audio lease independently while the already-issued recorder stop
             // finishes closing durable bytes.
             action.fulfill()
-            let shouldProtectLocalSource = !self.skipProtectionForPendingCallKitEnd
-            self.skipProtectionForPendingCallKitEnd = false
+            let disposition = self.pendingCallKitEndDisposition ?? .personEnded
+            self.pendingCallKitEndDisposition = nil
+            let shouldProtectLocalSource = disposition.protectsLocalSource
+            let shouldAllowRejoin = disposition.allowsRejoin
             let localSourceProtected: Bool
             if shouldProtectLocalSource {
                 localSourceProtected = await self.protectLocalSourceBeforeNativeCallEnd?() ?? true
             } else {
                 localSourceProtected = true
             }
-            self.canRejoin = false
-            self.intentionalProviderDisconnect = true
+            self.canRejoin = shouldAllowRejoin
+            self.intentionalProviderDisconnect = !shouldAllowRejoin
             #if canImport(LiveKit)
             self.localVideoSource?.setLiveVideoFrameConsumer(nil)
             if self.isConnected || self.isConnecting {
@@ -1004,9 +1020,11 @@ extension ProviderRoomController: CXProviderDelegate {
             self.activeOwnerSnapshot = nil
             self.clearEpisodeWatchBridge()
             self.connectionStateLabel = "Disconnected"
-            self.statusText = localSourceProtected
-                ? "Native call ended. This iPhone's local source is protected; upload and transcript work can continue."
-                : "Native call ended. This iPhone is still closing its local source; keep Quipsly open until Library shows the result."
+            self.statusText = shouldAllowRejoin
+                ? "The call disconnected. Your recording is still protected on this iPhone. Tap Rejoin call when ready."
+                : localSourceProtected
+                    ? "Native call ended. This iPhone's local source is protected; upload and transcript work can continue."
+                    : "Native call ended. This iPhone is still closing its local source; keep Quipsly open until Library shows the result."
         }
     }
 
@@ -1104,7 +1122,10 @@ extension ProviderRoomController: RoomDelegate {
                 self.usesCallAudio = false
                 self.remoteParticipantCount = 0
                 self.audioSessionCoordinator.providerDidDisconnect()
-                await self.endNativeCallPresentation(reason: .remoteEnded)
+                await self.endNativeCallPresentation(
+                    reason: .remoteEnded,
+                    allowRejoin: reconnectWasExhausted
+                )
                 self.activeOwnerSnapshot = nil
                 self.clearEpisodeWatchBridge()
                 self.clearRemoteVideoTrack()

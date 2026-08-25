@@ -261,6 +261,38 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.state == .runningForeground)
     }
 
+    func testCallLobbyRemembersSafeDeviceChoicesAcrossRelaunch() {
+        app.tabBars.buttons["Record"].tap()
+
+        let useCallAudio = app.switches["CaptureUseCallAudioToggle"]
+        let microphone = app.switches["CaptureJoinMicrophoneToggle"]
+        let camera = app.switches["CaptureJoinCameraToggle"]
+        XCTAssertTrue(useCallAudio.waitForExistence(timeout: 5))
+        turnOn(useCallAudio)
+        turnOff(microphone)
+        turnOff(camera)
+
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+        ]
+        app.launch()
+
+        let restoredCallAudio = app.switches["CaptureUseCallAudioToggle"]
+        let restoredMicrophone = app.switches["CaptureJoinMicrophoneToggle"]
+        let restoredCamera = app.switches["CaptureJoinCameraToggle"]
+        XCTAssertTrue(restoredCallAudio.waitForExistence(timeout: 8))
+        XCTAssertEqual(restoredCallAudio.value as? String, "1")
+        XCTAssertEqual(restoredMicrophone.value as? String, "0")
+        XCTAssertEqual(restoredCamera.value as? String, "0")
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCallAudioRoutePicker"].exists,
+            "A safe returning caller should regain the actual this-iPhone route control without another setup ceremony."
+        )
+    }
+
     func testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation() {
         app.tabBars.buttons["Record"].tap()
 

@@ -3877,3 +3877,22 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   profile behavior, wired/USB routing, route-loss recovery, echo, and retained
   source survival remain in the deferred validation ledger. Detailed decision
   record: `docs/sessions/native-call-audio-routing-2026-08-25.md`.
+
+### 2026-08-25 native call reconnect recovery
+
+- Provider reconnect exhaustion, programmatic CallKit cleanup, and a deliberate
+  person/system hang-up now travel through one explicit end disposition. The
+  asynchronous CallKit handler can no longer erase an exhausted provider
+  **Rejoin call** state or accidentally reinterpret it as a source-ending
+  hang-up.
+- Reconnecting opens and closes explicit call-transport-gap evidence without
+  asserting what the local microphone retained. Manual Rejoin requests fresh
+  server authority while the existing participant master remains independent.
+- Successful in-call mic and camera changes become the next remembered Rejoin
+  choices. A focused relaunch journey operated safe call-audio, muted, and
+  camera-off preference readback without repeated ceremony.
+- The 1,235-check Capture static gate, a dual-architecture Simulator build, and
+  the 1/1 relaunch journey pass. Physical network/CallKit event order, audible
+  continuity, source survival, headset hang-up, and closed-Session behavior
+  remain in the deferred validation ledger. Detailed decision record:
+  `docs/sessions/native-call-reconnect-recovery-2026-08-25.md`.

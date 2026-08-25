@@ -1706,6 +1706,13 @@ requireIncludes(captureExperienceModelText, "joinMuted: joinMuted", "the native 
 requireIncludes(providerRoomText, "ConnectOptions(autoSubscribe: useCallAudio)", "native companion mode does not subscribe to remote call media");
 requireIncludes(providerRoomText, "enabled: useCallAudio && !joinMuted", "native primary endpoints can subscribe to the conversation while joining with microphone publication off");
 requireIncludes(providerRoomText, 'prepareMicrophonePermission(action: "speak in the call")', "the first explicit Unmute action becomes the deferred microphone permission boundary");
+requireIncludes(providerRoomText, "enum PendingCallKitEndDisposition", "native CallKit cleanup uses one coherent person-ended, programmatic, or reconnect-exhausted policy");
+requireIncludes(providerRoomText, "case reconnectExhausted", "native CallKit cleanup represents exhausted provider reconnect explicitly");
+requireIncludes(providerRoomText, "var protectsLocalSource: Bool", "native CallKit end policy keeps source protection separate from rejoin eligibility");
+requireIncludes(providerRoomText, "var allowsRejoin: Bool", "native CallKit end policy exposes manual-rejoin eligibility explicitly");
+requireIncludes(providerRoomText, "allowRejoin: reconnectWasExhausted", "provider reconnect exhaustion preserves the manual Rejoin path through CallKit cleanup");
+requireIncludes(providerRoomText, "self.canRejoin = shouldAllowRejoin", "CallKit's asynchronous end handler cannot erase the exhausted provider Rejoin state");
+requireIncludes(providerRoomText, "self.intentionalProviderDisconnect = !shouldAllowRejoin", "provider-exhausted cleanup remains distinct from a deliberate person-owned hang-up");
 requireIncludes(providerRoomText, "didSubscribeTrack publication: RemoteTrackPublication", "native call refreshes its remote-video surface when a participant publishes video");
 requireIncludes(providerRoomText, "didUnsubscribeTrack publication: RemoteTrackPublication", "native call removes stale remote video when a participant stops video");
 requireIncludes(providerRoomText, "SwiftUIVideoView(track, layoutMode: .fill)", "native call renders subscribed remote video using the provider SDK");
@@ -1759,6 +1766,8 @@ requireIncludes(capturePhoneShellText, "Waiting for participant", "persistent iP
 requireIncludes(capturePhoneShellText, "Waiting for host", "persistent iPhone Record row explains host-controlled recording without hiding the primary action");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleSpeakerButton"', "shipping persistent provider speaker action is addressable");
+requireIncludes(capturePhoneShellText, "joinMuted = model.providerRoom.isMuted", "manual Rejoin remembers the person's latest successful in-call microphone state");
+requireIncludes(capturePhoneShellText, "joinCameraOff = !model.providerRoom.isLocalVideoPublished", "manual Rejoin remembers the person's latest successful in-call camera state");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderLeaveRoomButton"', "shipping persistent provider leave action is addressable");
 requireIncludes(capturePhoneShellText, "Finish or stop the current take first.", "shipping room controls cannot reconfigure active local capture");
 requireIncludes(capturePhoneShellText, "Joins the conversation. Recording starts only when someone taps Record.", "shipping call control hint preserves explicit recording start");

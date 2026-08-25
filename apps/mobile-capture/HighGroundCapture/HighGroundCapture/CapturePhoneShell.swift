@@ -13051,6 +13051,8 @@ private struct ProviderRoomDock: View {
     @ObservedObject var model: CaptureExperienceModel
     @ObservedObject private var callAudioSession = CaptureAudioSessionCoordinator.shared
     @EnvironmentObject private var videoCapture: VideoCaptureController
+    @AppStorage("quipsly.call.microphone-muted.v1") private var joinMuted = false
+    @AppStorage("quipsly.call.camera-off.v1") private var joinCameraOff = true
     let localRecordingActive: Bool
     let isSafelyLeaving: Bool
     let cameraPosition: VideoCaptureCameraPosition
@@ -13071,7 +13073,10 @@ private struct ProviderRoomDock: View {
                         || model.providerRoom.isReconnecting,
                     accessibilityIdentifier: "ProviderToggleMuteButton"
                 ) {
-                    Task { await model.toggleRoomMute() }
+                    Task {
+                        await model.toggleRoomMute()
+                        joinMuted = model.providerRoom.isMuted
+                    }
                 }
 
                 dockButton(
@@ -13117,6 +13122,7 @@ private struct ProviderRoomDock: View {
                         position: cameraPosition,
                         qualityIntent: videoQualityIntent
                     )
+                    joinCameraOff = !model.providerRoom.isLocalVideoPublished
                 }
             }
 
