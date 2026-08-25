@@ -1015,7 +1015,16 @@ struct CaptureCoachingHomeView: View {
             } else {
                 ForEach(model.coachingEngagements) { engagement in
                     NavigationLink {
-                        CaptureCoachingEngagementWorkspaceView(engagement: engagement)
+                        CaptureCoachingEngagementWorkspaceView(
+                            engagement: engagement,
+                            sessions: model.sessions.filter {
+                                $0.coachingEngagementId == engagement.id
+                            },
+                            previewOnly: model.usesPreviewData,
+                            onOpenSession: { roomID in
+                                await refreshAndOpen(roomID: roomID, navigate: true)
+                            }
+                        )
                     } label: {
                         HStack(alignment: .center, spacing: 12) {
                             VStack(alignment: .leading, spacing: 5) {
@@ -1121,17 +1130,32 @@ private struct MobileCoachingInlineWarning: View {
 
 private struct CaptureCoachingEngagementWorkspaceView: View {
     let engagement: MobileCaptureCoachingEngagement
+    let sessions: [MobileCaptureSession]
+    let previewOnly: Bool
+    let onOpenSession: (String) async -> Void
     @StateObject private var client: MobileCoachingEngagementWorkspaceClient
+    @StateObject private var conversation: MobileEpisodeChatClient
     @State private var filter: MobileCoachingWorkFilter = .all
     @State private var isPresentingNewWork = false
     @State private var editingEntry: MobileCoachingEngagementWorkEntry?
 
-    init(engagement: MobileCaptureCoachingEngagement) {
+    init(
+        engagement: MobileCaptureCoachingEngagement,
+        sessions: [MobileCaptureSession],
+        previewOnly: Bool,
+        onOpenSession: @escaping (String) async -> Void
+    ) {
         self.engagement = engagement
+        self.sessions = sessions
+        self.previewOnly = previewOnly
+        self.onOpenSession = onOpenSession
         _client = StateObject(
             wrappedValue: MobileCoachingEngagementWorkspaceClient(
                 engagementID: engagement.id
             )
+        )
+        _conversation = StateObject(
+            wrappedValue: MobileEpisodeChatClient(scope: .engagement)
         )
     }
 
@@ -1143,6 +1167,14 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 workspaceHeader
+
+                MobileEngagementChatCard(
+                    client: conversation,
+                    engagement: engagement,
+                    previewOnly: previewOnly
+                )
+
+                sessionContinuity
 
                 Picker("Show coaching work", selection: $filter) {
                     ForEach(MobileCoachingWorkFilter.allCases) { value in
@@ -1195,8 +1227,27 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                 }
             }
         }
-        .refreshable { await client.load() }
-        .task { await client.load() }
+        .refreshable {
+            async let workLoad: Void = client.load()
+            async let conversationLoad: Void = conversation.load(
+                engagement: engagement,
+                forceRefresh: true
+            )
+            _ = await (workLoad, conversationLoad)
+        }
+        .task(id: "\(engagement.id)|\(previewOnly)") {
+            if previewOnly {
+                await client.load()
+            } else {
+                async let workLoad: Void = client.load()
+                async let conversationLoad: Void = conversation.load(
+                    engagement: engagement
+                )
+                _ = await (workLoad, conversationLoad)
+                conversation.startPolling(engagement: engagement)
+            }
+        }
+        .onDisappear { conversation.stopPolling() }
         .sheet(isPresented: $isPresentingNewWork) {
             if let workspace = client.workspace {
                 MobileCoachingWorkEditorSheet(
@@ -1231,6 +1282,71 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         }
         .captureCard()
         .accessibilityIdentifier("CaptureCoachingWorkspacePrivacy")
+    }
+
+    @ViewBuilder
+    private var sessionContinuity: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Sessions", systemImage: "calendar.badge.clock")
+                .font(.headline)
+            if sessions.isEmpty {
+                Text("Scheduled and completed Sessions for this coaching relationship will stay here.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(sessions.sorted(by: sessionComesFirst)) { session in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(session.displayTitle)
+                            .font(.subheadline.weight(.bold))
+                        Text(sessionContinuityLabel(session))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            Task { await onOpenSession(session.callRoomId) }
+                        } label: {
+                            Label("Open Session", systemImage: "arrow.right.circle.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(previewOnly)
+                        .accessibilityIdentifier("CaptureCoachingContinuityOpen_\(session.id)")
+                    }
+                    .padding(.vertical, 4)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("CaptureCoachingContinuitySession_\(session.id)")
+                }
+            }
+        }
+        .captureCard()
+        .accessibilityIdentifier("CaptureCoachingSessionContinuity")
+    }
+
+    private func sessionComesFirst(
+        _ left: MobileCaptureSession,
+        _ right: MobileCaptureSession
+    ) -> Bool {
+        let leftDate = left.scheduledStart.flatMap(coachingISO8601Date)
+        let rightDate = right.scheduledStart.flatMap(coachingISO8601Date)
+        return switch (leftDate, rightDate) {
+        case let (left?, right?): left > right
+        case (.some, .none): true
+        case (.none, .some): false
+        case (.none, .none): left.title < right.title
+        }
+    }
+
+    private func sessionContinuityLabel(_ session: MobileCaptureSession) -> String {
+        var parts: [String] = []
+        if let start = session.scheduledStart.flatMap(coachingISO8601Date) {
+            parts.append(start.formatted(date: .abbreviated, time: .shortened))
+        }
+        if let status = session.status?.nonemptyCoachingText {
+            parts.append(status.replacingOccurrences(of: "_", with: " ").capitalized)
+        }
+        if session.recordingCount > 0 {
+            parts.append("\(session.recordingCount) recording\(session.recordingCount == 1 ? "" : "s")")
+        }
+        return parts.isEmpty ? "Private coaching Session" : parts.joined(separator: " · ")
     }
 
     private func coachingWorkCard(_ entry: MobileCoachingEngagementWorkEntry) -> some View {

@@ -57,6 +57,7 @@ const expectedWork = {
   goal: `Phone goal ${workSuffix}`,
   privateNote: `Private phone note ${workSuffix}`,
 };
+const expectedConversationBody = `Phone coaching conversation ${workSuffix}`;
 const keychainService = "com.quipsly.qa.fresh-coaching-phone-start";
 
 async function run(command, args, options = {}) {
@@ -191,6 +192,38 @@ assert.equal(
 );
 assert.equal(workspace.engagement?.canWrite, true, "The fresh coach cannot write relationship work.");
 
+const conversationQuery = new URLSearchParams({
+  projectSlug: sessions.coachingEngagements?.find(
+    (candidate) => candidate.id === booking.coachingEngagementId,
+  )?.projectSlug || "",
+  threadKey: `engagement:${booking.coachingEngagementId}`,
+});
+assert(
+  conversationQuery.get("projectSlug"),
+  "The mobile relationship projection omitted the exact private project boundary.",
+);
+const conversation = await authenticatedJSON(
+  `/api/nest-chat?${conversationQuery.toString()}`,
+  token,
+);
+assert.equal(
+  conversation.engagement?.id,
+  booking.coachingEngagementId,
+  "The relationship conversation resolved a different coaching engagement.",
+);
+assert.equal(
+  conversation.thread?.key,
+  `engagement:${booking.coachingEngagementId}`,
+  "The relationship conversation escaped its canonical thread key.",
+);
+const conversationMessage = conversation.messages?.find(
+  (candidate) => candidate.body === expectedConversationBody,
+);
+assert(
+  conversationMessage,
+  "Independent readback omitted the exact message posted by the compiled iPhone UI.",
+);
+
 function requireWork(title, kind, visibility) {
   const entry = workspace.engagement?.entries?.find(
     (candidate) => candidate.title === title,
@@ -208,7 +241,7 @@ const privateNote = requireWork(expectedWork.privateNote, "NOTE", "PRIVATE");
 
 const receipt = {
   ok: true,
-  schema: "quipsly-fresh-coaching-phone-start-v2",
+  schema: "quipsly-fresh-coaching-phone-start-v3",
   createdAt: new Date().toISOString(),
   source: {
     sha: sourceSha,
@@ -236,6 +269,8 @@ const receipt = {
     invitationAttemptWithVisibleOutcome: true,
     systemShareFallbackPresent: true,
     relationshipWorkspaceEntry: true,
+    relationshipConversationPostAndReadback: true,
+    relationshipSessionContinuityVisible: true,
     sharedNoteCreation: true,
     taskCreation: true,
     goalCreation: true,
@@ -259,6 +294,12 @@ const receipt = {
         visibility: privateNote.visibility,
         canEdit: privateNote.canEdit,
       },
+    },
+    relationshipConversation: {
+      threadKey: conversation.thread.key,
+      messageId: conversationMessage.id,
+      body: conversationMessage.body,
+      actorRole: conversation.actor?.role || null,
     },
   },
   artifacts: {

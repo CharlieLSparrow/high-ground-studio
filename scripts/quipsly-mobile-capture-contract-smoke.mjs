@@ -366,6 +366,7 @@ function checkMeetingSpineContractSources() {
     authManagerText.indexOf("func stableOwnerSnapshot()"),
   );
   const episodeChatText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileEpisodeChat.swift");
+  const coachingHomeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureCoachingHome.swift");
   const sessionConversationText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileSessionConversation.swift");
   const nestChatRouteText = sourceText("apps/quipsly/src/app/api/nest-chat/route.ts");
   const liveKitEgressText = sourceText("apps/quipsly/src/lib/server/coaching-livekit-egress.ts");
@@ -383,6 +384,15 @@ function checkMeetingSpineContractSources() {
       && meetingSpineText.includes("localFallback"),
     "roomJoinStructuredSpineContract",
     "Room join responses expose provider readiness, recording boundary, provider recording, and local fallback as explicit contract fields.",
+  );
+  expect(
+    episodeChatText.includes("case engagement")
+      && episodeChatText.includes("MobileChatPersistedLiveHint.engagementThreadKey")
+      && episodeChatText.includes("payload.engagement?.id.lowercased() == context.scopeKey")
+      && episodeChatText.includes("CaptureCoachingConversationOpenButton")
+      && coachingHomeText.includes("CaptureCoachingSessionContinuity"),
+    "nativeCoachingRelationshipRetainsConversationAndSessions",
+    "Capture keeps relationship-wide conversation and Session continuity beside private/shared work on the iPhone.",
   );
   expect(
     meetingSpineText.includes("joiningStartsRecording: false")

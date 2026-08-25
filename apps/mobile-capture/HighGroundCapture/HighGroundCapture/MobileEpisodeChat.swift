@@ -36,6 +36,12 @@ struct MobileChatPersistedLiveHint: Codable, Hashable {
         return !roomID.isEmpty && safeIdentifier(key, includesColon: true) ? key : nil
     }
 
+    static func engagementThreadKey(_ engagementID: String?) -> String? {
+        let identifier = engagementID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let key = "engagement:\(identifier)"
+        return !identifier.isEmpty && safeIdentifier(key, includesColon: true) ? key : nil
+    }
+
     static func decodeStrict(_ data: Data) -> Self? {
         guard data.count >= 2, data.count <= 2_048,
               let object = try? JSONSerialization.jsonObject(with: data),
@@ -65,11 +71,13 @@ struct MobileChatPersistedLiveHint: Codable, Hashable {
 enum MobileCollaborationChatScope: String, Codable {
     case episode
     case session
+    case engagement
 
     var title: String {
         switch self {
         case .episode: "Episode thread"
         case .session: "Session thread"
+        case .engagement: "Coaching conversation"
         }
     }
 
@@ -77,6 +85,7 @@ enum MobileCollaborationChatScope: String, Codable {
         switch self {
         case .episode: "Canonical episode conversation"
         case .session: "Canonical take conversation"
+        case .engagement: "Private coaching conversation"
         }
     }
 
@@ -84,6 +93,7 @@ enum MobileCollaborationChatScope: String, Codable {
         switch self {
         case .episode: "Open episode thread"
         case .session: "Open Session thread"
+        case .engagement: "Open coaching conversation"
         }
     }
 
@@ -91,6 +101,53 @@ enum MobileCollaborationChatScope: String, Codable {
         switch self {
         case .episode: "CaptureEpisodeChat"
         case .session: "CaptureSessionChat"
+        case .engagement: "CaptureCoachingConversation"
+        }
+    }
+
+    var openButtonAccessibilityIdentifier: String {
+        switch self {
+        case .episode: "CaptureEpisodeChatOpenButton"
+        case .session: "CaptureSessionChatOpenButton"
+        case .engagement: "CaptureCoachingConversationOpenButton"
+        }
+    }
+
+    var startNoun: String {
+        switch self {
+        case .episode: "episode"
+        case .session: "Session"
+        case .engagement: "coaching"
+        }
+    }
+
+    var composerPlaceholder: String {
+        switch self {
+        case .episode: "Message the episode team"
+        case .session: "Message this Session"
+        case .engagement: "Message this coaching space"
+        }
+    }
+
+    var emptyExplanation: String {
+        switch self {
+        case .episode:
+            "Keep writing, recording, editing, and publishing decisions with this exact episode."
+        case .session:
+            "Coordinate device checks, consent, this take, and immediate handoff with everyone in this exact Session."
+        case .engagement:
+            "Keep the conversation with this coaching relationship across every Session, note, task, and goal."
+        }
+    }
+
+    var boundaryExplanation: String {
+        switch self {
+        case .episode:
+            "Posts stay with this episode. Recording and playback never start from chat."
+        case .session:
+            "Posts stay with this exact call. They do not become notes, goals, or tasks, and chat never starts recording."
+        case .engagement:
+            "Only members of this coaching relationship can read these posts. Messages stay separate from shared notes, goals, tasks, and recording controls."
         }
     }
 }
@@ -197,6 +254,36 @@ final class MobileEpisodeChatClient: ObservableObject {
                 : "This Session is not attached to a valid Nest Session thread."
             return
         }
+        await load(
+            context: context,
+            forceRefresh: forceRefresh,
+            quietly: quietly
+        )
+    }
+
+    func load(
+        engagement: MobileCaptureCoachingEngagement,
+        forceRefresh: Bool = false,
+        quietly: Bool = false
+    ) async {
+        guard scope == .engagement,
+              let context = context(for: engagement) else {
+            reset()
+            errorMessage = "This coaching relationship is not attached to a valid private conversation."
+            return
+        }
+        await load(
+            context: context,
+            forceRefresh: forceRefresh,
+            quietly: quietly
+        )
+    }
+
+    private func load(
+        context: Context,
+        forceRefresh: Bool,
+        quietly: Bool
+    ) async {
         if currentContextKey != context.key {
             reset()
             currentContextKey = context.key
@@ -255,9 +342,7 @@ final class MobileEpisodeChatClient: ObservableObject {
             guard response.statusCode < 400,
                   payload.ok,
                   payload.thread?.key == context.threadKey,
-                  (scope == .episode
-                    ? payload.episode?.slug == context.scopeKey
-                    : payload.session?.id.lowercased() == context.scopeKey) else {
+                  payloadMatchesScope(payload, context: context) else {
                 throw Self.error(
                     payload.error ?? "The \(scope.title.lowercased()) is unavailable.",
                     code: response.statusCode
@@ -287,7 +372,7 @@ final class MobileEpisodeChatClient: ObservableObject {
                 errorMessage = nil
             }
             let nextStatusMessage = nextMessages.isEmpty
-                ? "Start the \(scope == .episode ? "episode" : "Session") conversation"
+                ? "Start the \(scope.startNoun) conversation"
                 : "\(nextMessages.count) \(nextMessages.count == 1 ? "message" : "messages")"
             if statusMessage != nextStatusMessage {
                 statusMessage = nextStatusMessage
@@ -333,6 +418,18 @@ final class MobileEpisodeChatClient: ObservableObject {
         }
     }
 
+    func startPolling(engagement: MobileCaptureCoachingEngagement) {
+        stopPolling()
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled, let self else { return }
+                guard !self.pollingDisabledForMissingThread else { return }
+                await self.load(engagement: engagement, quietly: true)
+            }
+        }
+    }
+
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
@@ -340,13 +437,28 @@ final class MobileEpisodeChatClient: ObservableObject {
 
     @discardableResult
     func send(session: MobileCaptureSession, body: String) async -> Bool {
+        guard let context = context(for: session) else { return false }
+        return await send(context: context, body: body)
+    }
+
+    @discardableResult
+    func send(
+        engagement: MobileCaptureCoachingEngagement,
+        body: String
+    ) async -> Bool {
+        guard scope == .engagement,
+              let context = context(for: engagement) else { return false }
+        return await send(context: context, body: body)
+    }
+
+    @discardableResult
+    private func send(context: Context, body: String) async -> Bool {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               trimmed.count <= 4_000,
               canEdit,
               !isSending,
-              AuthManager.shared.networkActionsAllowed,
-              let context = context(for: session) else {
+              AuthManager.shared.networkActionsAllowed else {
             return false
         }
         let requestID: UUID
@@ -433,7 +545,7 @@ final class MobileEpisodeChatClient: ObservableObject {
     }
 
     static func clearProtectedCache() {
-        for scope in [MobileCollaborationChatScope.episode, .session] {
+        for scope in [MobileCollaborationChatScope.episode, .session, .engagement] {
             guard let root = protectedCacheRoot(scope: scope) else { continue }
             try? FileManager.default.removeItem(at: root)
         }
@@ -462,6 +574,8 @@ final class MobileEpisodeChatClient: ObservableObject {
                   let sessionThreadKey = MobileChatPersistedLiveHint.sessionThreadKey(callRoomID) else { return nil }
             scopeKey = callRoomID
             threadKey = sessionThreadKey
+        case .engagement:
+            return nil
         }
         let endpoint = baseURL
             .appendingPathComponent("api", isDirectory: true)
@@ -473,6 +587,39 @@ final class MobileEpisodeChatClient: ObservableObject {
             threadKey: threadKey,
             endpoint: endpoint
         )
+    }
+
+    private func context(for engagement: MobileCaptureCoachingEngagement) -> Context? {
+        guard scope == .engagement,
+              let projectSlug = Self.safeSlug(engagement.projectSlug),
+              let engagementID = Self.safeSlug(engagement.id),
+              let threadKey = MobileChatPersistedLiveHint.engagementThreadKey(engagementID) else {
+            return nil
+        }
+        let endpoint = baseURL
+            .appendingPathComponent("api", isDirectory: true)
+            .appendingPathComponent("nest-chat", isDirectory: false)
+        return Context(
+            key: "\(scope.rawValue)|\(projectSlug)|\(engagementID)",
+            projectSlug: projectSlug,
+            scopeKey: engagementID,
+            threadKey: threadKey,
+            endpoint: endpoint
+        )
+    }
+
+    private func payloadMatchesScope(
+        _ payload: NestChatLoadResponse,
+        context: Context
+    ) -> Bool {
+        switch scope {
+        case .episode:
+            payload.episode?.slug == context.scopeKey
+        case .session:
+            payload.session?.id.lowercased() == context.scopeKey
+        case .engagement:
+            payload.engagement?.id.lowercased() == context.scopeKey
+        }
     }
 
     private func reset() {
@@ -643,6 +790,32 @@ final class MobileEpisodeChatClient: ObservableObject {
     }
 }
 
+private enum MobileCollaborationChatTarget {
+    case session(MobileCaptureSession)
+    case engagement(MobileCaptureCoachingEngagement)
+
+    func load(
+        with client: MobileEpisodeChatClient,
+        forceRefresh: Bool = false
+    ) async {
+        switch self {
+        case let .session(session):
+            await client.load(session: session, forceRefresh: forceRefresh)
+        case let .engagement(engagement):
+            await client.load(engagement: engagement, forceRefresh: forceRefresh)
+        }
+    }
+
+    func send(with client: MobileEpisodeChatClient, body: String) async -> Bool {
+        switch self {
+        case let .session(session):
+            await client.send(session: session, body: body)
+        case let .engagement(engagement):
+            await client.send(engagement: engagement, body: body)
+        }
+    }
+}
+
 struct MobileEpisodeChatCard: View {
     @ObservedObject var client: MobileEpisodeChatClient
     let session: MobileCaptureSession
@@ -674,15 +847,9 @@ struct MobileEpisodeChatCard: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier(
-                        client.scope == .episode
-                            ? "CaptureEpisodeChatLatestMessage"
-                            : "CaptureSessionChatLatestMessage"
-                    )
+                    .accessibilityIdentifier("\(client.scope.accessibilityPrefix)LatestMessage")
             } else {
-                Text(client.scope == .episode
-                    ? "Keep writing, recording, editing, and publishing decisions with this exact episode."
-                    : "Coordinate device checks, consent, this take, and immediate handoff with everyone in this exact Session.")
+                Text(client.scope.emptyExplanation)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -695,34 +862,22 @@ struct MobileEpisodeChatCard: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(client.isLoading && client.messages.isEmpty)
-            .accessibilityIdentifier(
-                client.scope == .episode
-                    ? "CaptureEpisodeChatOpenButton"
-                    : "CaptureSessionChatOpenButton"
-            )
+            .accessibilityIdentifier(client.scope.openButtonAccessibilityIdentifier)
 
             if let errorMessage = client.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.red)
-                    .accessibilityIdentifier(
-                        client.scope == .episode
-                            ? "CaptureEpisodeChatError"
-                            : "CaptureSessionChatError"
-                    )
+                    .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Error")
             }
         }
         .captureCard()
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(
-            client.scope == .episode
-                ? "CaptureEpisodeChatCard"
-                : "CaptureSessionChatCard"
-        )
+        .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Card")
         .sheet(isPresented: $isPresented) {
             MobileEpisodeChatThread(
                 client: client,
-                session: session,
+                target: .session(session),
                 previewOnly: previewOnly
             )
         }
@@ -739,11 +894,89 @@ struct MobileEpisodeChatCard: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(client.isUsingProtectedCache ? .orange : .secondary)
             .fixedSize(horizontal: false, vertical: true)
-            .accessibilityIdentifier(
-                client.scope == .episode
-                    ? "CaptureEpisodeChatStatus"
-                    : "CaptureSessionChatStatus"
+            .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Status")
+    }
+}
+
+struct MobileEngagementChatCard: View {
+    @ObservedObject var client: MobileEpisodeChatClient
+    let engagement: MobileCaptureCoachingEngagement
+    let previewOnly: Bool
+    @State private var isPresented = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    heading
+                    Spacer()
+                    status
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    heading
+                    status
+                }
+            }
+
+            if client.isLoading && client.messages.isEmpty {
+                ProgressView("Loading coaching conversation…")
+            } else if let latest = client.latestMessage {
+                Text(latest.authorName ?? latest.authorEmail ?? "Collaborator")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tint)
+                Text(latest.body)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureCoachingConversationLatestMessage")
+            } else {
+                Text(client.scope.emptyExplanation)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button {
+                isPresented = true
+            } label: {
+                Label(client.scope.openLabel, systemImage: "bubble.left.and.bubble.right.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(client.isLoading && client.messages.isEmpty)
+            .accessibilityIdentifier("CaptureCoachingConversationOpenButton")
+
+            if let errorMessage = client.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("CaptureCoachingConversationError")
+            }
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCoachingConversationCard")
+        .sheet(isPresented: $isPresented) {
+            MobileEpisodeChatThread(
+                client: client,
+                target: .engagement(engagement),
+                previewOnly: previewOnly
             )
+        }
+    }
+
+    private var heading: some View {
+        Label(client.scope.title, systemImage: "person.2.fill")
+            .font(.headline)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var status: some View {
+        Text(client.isUsingProtectedCache ? "Offline copy" : (client.statusMessage ?? "Private chat"))
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(client.isUsingProtectedCache ? .orange : .secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("CaptureCoachingConversationStatus")
     }
 }
 
@@ -763,7 +996,7 @@ struct MobileSessionChatCard: View {
 
 private struct MobileEpisodeChatThread: View {
     @ObservedObject var client: MobileEpisodeChatClient
-    let session: MobileCaptureSession
+    let target: MobileCollaborationChatTarget
     let previewOnly: Bool
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
@@ -800,10 +1033,7 @@ private struct MobileEpisodeChatThread: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         Task {
-                            await client.load(
-                                session: session,
-                                forceRefresh: true
-                            )
+                            await target.load(with: client, forceRefresh: true)
                         }
                     } label: {
                         if client.isLoading {
@@ -814,19 +1044,11 @@ private struct MobileEpisodeChatThread: View {
                     }
                     .disabled(client.isLoading || previewOnly)
                     .accessibilityLabel("Refresh \(client.scope.title.lowercased())")
-                    .accessibilityIdentifier(
-                        client.scope == .episode
-                            ? "CaptureEpisodeChatRefreshButton"
-                            : "CaptureSessionChatRefreshButton"
-                    )
+                    .accessibilityIdentifier("\(client.scope.accessibilityPrefix)RefreshButton")
                 }
             }
         }
-        .accessibilityIdentifier(
-            client.scope == .episode
-                ? "CaptureEpisodeChatThread"
-                : "CaptureSessionChatThread"
-        )
+        .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Thread")
     }
 
     private var boundary: some View {
@@ -840,19 +1062,13 @@ private struct MobileEpisodeChatThread: View {
                     : "checkmark.seal.fill"
             )
             .font(.subheadline.weight(.bold))
-            Text(client.scope == .episode
-                ? "Posts stay with this episode. Recording and playback never start from chat."
-                : "Posts stay with this exact call. They do not become notes, goals, or tasks, and chat never starts recording.")
+            Text(client.scope.boundaryExplanation)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(
-            client.scope == .episode
-                ? "CaptureEpisodeChatBoundary"
-                : "CaptureSessionChatBoundary"
-        )
+        .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Boundary")
     }
 
     private func messageCard(_ message: NestChatMessage) -> some View {
@@ -884,11 +1100,7 @@ private struct MobileEpisodeChatThread: View {
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(
-            client.scope == .episode
-                ? "CaptureEpisodeChatMessage_\(message.id)"
-                : "CaptureSessionChatMessage_\(message.id)"
-        )
+        .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Message_\(message.id)")
     }
 
     private var composer: some View {
@@ -901,7 +1113,7 @@ private struct MobileEpisodeChatThread: View {
             HStack(alignment: .bottom, spacing: 8) {
                 TextField(
                     client.canEdit
-                        ? (client.scope == .episode ? "Message the episode team" : "Message this Session")
+                        ? client.scope.composerPlaceholder
                         : "View-only \(client.scope.title.lowercased())",
                     text: $draft,
                     axis: .vertical
@@ -909,16 +1121,12 @@ private struct MobileEpisodeChatThread: View {
                 .lineLimit(2 ... 6)
                 .textFieldStyle(.roundedBorder)
                 .disabled(!client.canEdit || previewOnly)
-                .accessibilityIdentifier(
-                    client.scope == .episode
-                        ? "CaptureEpisodeChatComposer"
-                        : "CaptureSessionChatComposer"
-                )
+                .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Composer")
 
                 Button {
                     let body = draft
                     Task {
-                        if await client.send(session: session, body: body) {
+                        if await target.send(with: client, body: body) {
                             draft = ""
                         }
                     }
@@ -936,12 +1144,8 @@ private struct MobileEpisodeChatThread: View {
                         || client.isSending
                         || previewOnly
                 )
-                .accessibilityLabel(client.scope == .episode ? "Send episode message" : "Send Session message")
-                .accessibilityIdentifier(
-                    client.scope == .episode
-                        ? "CaptureEpisodeChatSendButton"
-                        : "CaptureSessionChatSendButton"
-                )
+                .accessibilityLabel("Send \(client.scope.startNoun) message")
+                .accessibilityIdentifier("\(client.scope.accessibilityPrefix)SendButton")
             }
             Text("A failed send keeps this draft and reuses the same message identity on retry.")
                 .font(.caption2)

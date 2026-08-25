@@ -1312,6 +1312,55 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkspacePrivacy"].exists)
 
+        let workSuffix = clientEmail
+            .split(separator: "@", maxSplits: 1)
+            .first
+            .map(String.init)?
+            .replacingOccurrences(of: "phone-client-", with: "")
+            ?? clientEmail
+        let conversationBody = "Phone coaching conversation \(workSuffix)"
+        let conversationCard = app.descendants(matching: .any)[
+            "CaptureCoachingConversationCard"
+        ].firstMatch
+        XCTAssertTrue(
+            conversationCard.waitForExistence(timeout: 30),
+            "The native client space must expose the relationship-wide conversation without requiring a Session or desktop."
+        )
+        let openConversation = app.buttons[
+            "CaptureCoachingConversationOpenButton"
+        ].firstMatch
+        XCTAssertTrue(openConversation.waitForExistence(timeout: 10))
+        openConversation.tap()
+        let conversationThread = app.descendants(matching: .any)[
+            "CaptureCoachingConversationThread"
+        ].firstMatch
+        XCTAssertTrue(conversationThread.waitForExistence(timeout: 15))
+        let conversationComposer = app.textFields[
+            "CaptureCoachingConversationComposer"
+        ].firstMatch
+        XCTAssertTrue(conversationComposer.waitForExistence(timeout: 10))
+        XCTAssertTrue(conversationComposer.isEnabled)
+        conversationComposer.tap()
+        conversationComposer.typeText(conversationBody)
+        let sendConversation = app.buttons[
+            "CaptureCoachingConversationSendButton"
+        ].firstMatch
+        XCTAssertTrue(sendConversation.waitForExistence(timeout: 5))
+        XCTAssertTrue(sendConversation.isEnabled)
+        sendConversation.tap()
+        XCTAssertTrue(
+            app.staticTexts[conversationBody].firstMatch.waitForExistence(timeout: 30),
+            "The compiled iPhone UI must read its canonical relationship message back after persistence."
+        )
+        let closeConversation = app.buttons["Done"].firstMatch
+        XCTAssertTrue(closeConversation.waitForExistence(timeout: 5))
+        closeConversation.tap()
+        XCTAssertTrue(conversationThread.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingSessionContinuity"].waitForExistence(timeout: 10),
+            "The same client space must retain Session continuity beside conversation and work."
+        )
+
         func addRelationshipWork(kind: String, title: String, privateNote: Bool = false) {
             let add = app.buttons["CaptureCoachingAddWork"].firstMatch
             XCTAssertTrue(add.waitForExistence(timeout: 10))
@@ -1364,12 +1413,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             )
         }
 
-        let workSuffix = clientEmail
-            .split(separator: "@", maxSplits: 1)
-            .first
-            .map(String.init)?
-            .replacingOccurrences(of: "phone-client-", with: "")
-            ?? clientEmail
         addRelationshipWork(kind: "Note", title: "Shared phone note \(workSuffix)")
         addRelationshipWork(kind: "Task", title: "Phone task \(workSuffix)")
         addRelationshipWork(kind: "Goal", title: "Phone goal \(workSuffix)")

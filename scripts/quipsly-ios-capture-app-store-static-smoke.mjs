@@ -69,6 +69,7 @@ const files = {
   captureRecordingCoordinator: path.join(sourceRoot, "CaptureRecordingCoordinator.swift"),
   captureRecordingReceiptOutbox: path.join(sourceRoot, "CaptureRecordingReceiptOutbox.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
+  captureCoachingHome: path.join(sourceRoot, "CaptureCoachingHome.swift"),
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
   captureRecordingShare: path.join(sourceRoot, "CaptureRecordingShare.swift"),
@@ -210,6 +211,7 @@ const captureAudioSessionCoordinatorText = read(files.captureAudioSessionCoordin
 const episodeWatchText = read(files.episodeWatch);
 const episodeManuscriptText = read(files.episodeManuscript);
 const episodeChatText = read(files.episodeChat);
+const captureCoachingHomeText = read(files.captureCoachingHome);
 const sessionConversationText = read(files.sessionConversation);
 const uploadText = read(files.uploadManager);
 const uploadLedgerText = read(files.uploadLedgerStore);
@@ -687,6 +689,12 @@ requireIncludes(episodeChatText, "stableOwnerSnapshot()", "episode chat cache is
 requireIncludes(episodeChatText, '"clientMessageId": requestID.uuidString.lowercased()', "episode chat retries preserve one client message identity");
 requireIncludes(episodeChatText, "CaptureEpisodeChatOpenButton", "episode chat is reachable beside the primary recorder");
 requireIncludes(episodeChatText, "Recording and playback never start from chat.", "episode chat states the non-capture boundary");
+requireIncludes(episodeChatText, "case engagement", "native collaboration chat retains a relationship-wide coaching scope");
+requireIncludes(episodeChatText, "MobileChatPersistedLiveHint.engagementThreadKey", "native coaching conversation binds to the canonical engagement thread key");
+requireIncludes(episodeChatText, "payload.engagement?.id.lowercased() == context.scopeKey", "native coaching conversation rejects a mismatched relationship response");
+requireIncludes(episodeChatText, "CaptureCoachingConversationOpenButton", "the iPhone client space exposes its durable relationship conversation");
+requireIncludes(captureCoachingHomeText, "CaptureCoachingSessionContinuity", "the iPhone client space exposes relationship Session continuity");
+requireIncludes(runtimeUISmokeTestsText, "Phone coaching conversation", "the fresh compiled iPhone journey authors relationship conversation through product UI");
 requireIncludes(sessionConversationText, "CaptureSessionChatOpenButton", "exact-call Session conversation is reachable beside the primary recorder");
 requireIncludes(sessionConversationText, "QuipslyCapture/SessionConversation", "Session conversation uses a distinct protected cache namespace");
 requireIncludes(sessionConversationText, 'hint.threadKey == "session:\\(context.roomID)"', "native Session hints accept only the exact requested durable thread");
