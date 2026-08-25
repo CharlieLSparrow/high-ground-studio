@@ -11,7 +11,6 @@ struct CapturePhoneShell: View {
     @EnvironmentObject private var deepLinkRouter: CaptureDeepLinkRouter
     @StateObject private var model = CaptureExperienceModel()
     @State private var showsNewSession = false
-    @State private var completedInitialLoad = false
     @State private var isRoutingSessionLink = false
     @State private var localOnlyRecordingSessionID: String?
     @Binding var visibleTab: CaptureRootTab
@@ -126,9 +125,12 @@ struct CapturePhoneShell: View {
         }
         .task {
             await model.load()
-            completedInitialLoad = true
             showRejectedLinkNotice()
             await routePendingSessionLink()
+        }
+        .onChange(of: model.hasCompletedInitialSessionAuthorityLoad) { _, ready in
+            guard ready else { return }
+            Task { await routePendingSessionLink() }
         }
         .onChange(of: deepLinkRouter.pendingSession) { _, _ in
             // A cold app-link launch publishes the URL before the authenticated
@@ -136,7 +138,7 @@ struct CapturePhoneShell: View {
             // second Session load at that point lets two re-entrant refreshes
             // mutate the same navigation projection. Wait for the shell to be
             // ready and route exactly one request at a time.
-            guard completedInitialLoad else { return }
+            guard model.hasCompletedInitialSessionAuthorityLoad else { return }
             Task { await routePendingSessionLink() }
         }
         .onChange(of: deepLinkRouter.rejectedLinkNotice) { _, _ in
@@ -172,7 +174,8 @@ struct CapturePhoneShell: View {
 
     @MainActor
     private func routePendingSessionLink() async {
-        guard completedInitialLoad, !isRoutingSessionLink else { return }
+        guard model.hasCompletedInitialSessionAuthorityLoad,
+              !isRoutingSessionLink else { return }
         isRoutingSessionLink = true
         defer { isRoutingSessionLink = false }
 
@@ -10994,6 +10997,7 @@ struct CaptureConsentConfirmationSheet: View {
     @State private var canTranscribe: Bool
     @State private var isSubmitting = false
     @State private var showsRecordingOptions = false
+    @State private var selectedDetent: PresentationDetent = .medium
     @State private var presentedAt = Date()
     @State private var presentationOwnerSnapshot: AuthManager.StableOwnerSnapshot?
     @State private var localErrorMessage: String?
@@ -11110,7 +11114,20 @@ struct CaptureConsentConfirmationSheet: View {
             }
             .interactiveDismissDisabled(isSubmitting)
         }
-        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+        .presentationDetents(
+            dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large],
+            selection: $selectedDetent
+        )
+        .onAppear {
+            if dynamicTypeSize.isAccessibilitySize {
+                selectedDetent = .large
+            }
+        }
+        .onChange(of: showsRecordingOptions) { _, isExpanded in
+            if isExpanded {
+                selectedDetent = .large
+            }
+        }
         .accessibilityIdentifier("CaptureConsentConfirmationSheet")
     }
 

@@ -291,6 +291,7 @@ struct CaptureStudioHandoffFeedback: Equatable {
 final class CaptureExperienceModel: ObservableObject {
     @Published var selectedSessionID: String?
     @Published var isRefreshing = false
+    @Published private(set) var hasCompletedInitialSessionAuthorityLoad = false
     @Published var isCreatingSession = false
     @Published var isChangingConsent = false
     @Published var isChangingCapture = false
@@ -625,6 +626,7 @@ final class CaptureExperienceModel: ObservableObject {
             reviewDigestClient.loadPreview()
             sessionClient.status = "Preview ready"
             selectedSessionID = selectedSessionID ?? sessionClient.sessions.first?.id
+            hasCompletedInitialSessionAuthorityLoad = true
             return
         }
 
@@ -640,7 +642,7 @@ final class CaptureExperienceModel: ObservableObject {
         if importedSharedSources > 0 {
             quickEntrySyncMessage = "Imported \(importedSharedSources) protected Share Sheet source\(importedSharedSources == 1 ? "" : "s") into this account's outbox."
         }
-        async let sessionLoad = sessionClient.load()
+        async let sessionLoad = loadInitialSessionAuthority()
         async let todayLoad: Void = todayClient.load()
         async let workLoad: Void = workClient.load(projectID: workClient.selectedProjectID)
         async let calendarLoad: Void = calendarSubscriptionClient.load()
@@ -676,6 +678,16 @@ final class CaptureExperienceModel: ObservableObject {
             selectedSessionID = nextSession?.id
         }
         errorMessage = sessionClient.errorMessage
+    }
+
+    /// Session links are the shortest path into a live call. Publish this
+    /// narrow readiness barrier as soon as the canonical Session collection
+    /// returns; Today, Work, Calendar, review, and outbox refreshes can finish
+    /// independently without holding the requested room behind a dashboard.
+    private func loadInitialSessionAuthority() async -> CaptureSessionLoadOutcome {
+        let outcome = await sessionClient.load()
+        hasCompletedInitialSessionAuthorityLoad = true
+        return outcome
     }
 
     @discardableResult
