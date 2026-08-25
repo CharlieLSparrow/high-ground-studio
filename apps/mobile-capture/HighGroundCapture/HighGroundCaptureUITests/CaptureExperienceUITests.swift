@@ -41,6 +41,8 @@ final class CaptureExperienceUITests: XCTestCase {
         }
         if name.contains(
             "testEpisodeThreadKeepsCollaborationBesideTheRecorderWithoutStartingCapture"
+        ) || name.contains(
+            "testEpisodeManuscriptIsReadableBesideTheRecorderWithoutCreatingAnEditableCopy"
         ) {
             app.launchArguments += [
                 "--capture-ui-preview-tab=record",
@@ -56,6 +58,8 @@ final class CaptureExperienceUITests: XCTestCase {
         let launchesRecorderPreview: Bool
         if name.contains(
             "testEpisodeThreadKeepsCollaborationBesideTheRecorderWithoutStartingCapture"
+        ) || name.contains(
+            "testEpisodeManuscriptIsReadableBesideTheRecorderWithoutCreatingAnEditableCopy"
         ) {
             launchesRecorderPreview = true
         } else if name.contains(
