@@ -30,6 +30,7 @@ const files = {
   schema: "prisma/schema.prisma",
   runwayRoute: "apps/quipsly/src/app/api/coaching/runway/route.ts",
   scheduleAvailability: "apps/quipsly/src/lib/server/coaching-schedule-availability.ts",
+  scheduleTime: "apps/quipsly/src/lib/server/coaching-schedule-time.ts",
   runwayPage: "apps/quipsly/src/app/(app)/coaching/page.tsx",
   calendarAdapter: "apps/quipsly/src/lib/server/coaching-google-calendar.ts",
   lifecycle: "packages/quipsly-domain/src/coaching-lifecycle.ts",
@@ -52,6 +53,7 @@ for (const [key, value] of Object.entries(texts)) {
 const schema = texts.schema || "";
 const route = texts.runwayRoute || "";
 const scheduleAvailability = texts.scheduleAvailability || "";
+const scheduleTime = texts.scheduleTime || "";
 const page = texts.runwayPage || "";
 const calendarAdapter = texts.calendarAdapter || "";
 const lifecycle = texts.lifecycle || "";
@@ -121,6 +123,20 @@ addCheck(
     "specificWindowContains",
   ]),
   "Coaches can replace simple recurring working hours atomically, and every authoritative schedule mutation enforces those timezone-aware windows with a stable 409 contract.",
+);
+
+addCheck(
+  "runwayPreservesBrowserWallClockTimezone",
+  includesAll(route, [
+    "parseCoachingScheduleDate",
+    "parseCoachingScheduleDate(body.scheduledStart, timezone)",
+    "parseCoachingScheduleDate(body.scheduledEnd, timezone)",
+  ]) && includesAll(scheduleTime, [
+    "Temporal.PlainDateTime.from(raw)",
+    'disambiguation: "reject"',
+    "EXPLICIT_OFFSET",
+  ]),
+  "Browser datetime-local values are interpreted in the coach's explicit IANA timezone, exact instants remain exact, and ambiguous or nonexistent DST wall times fail closed.",
 );
 
 addCheck(

@@ -38,6 +38,7 @@ import {
   CoachingScheduleIntervalError,
 } from "@/lib/server/coaching-schedule-availability";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
+import { parseCoachingScheduleDate } from "@/lib/server/coaching-schedule-time";
 
 export const runtime = "nodejs";
 
@@ -1860,7 +1861,6 @@ export async function POST(request: Request) {
 
   if (action === "reschedule-booking") {
     const bookingId = text(body.bookingId);
-    const scheduledStart = parseDate(body.scheduledStart);
     const reason = text(body.reason) || "Rescheduled from the Quipsly coaching runway.";
 
     if (!bookingId) {
@@ -1870,7 +1870,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!scheduledStart) {
+    if (!text(body.scheduledStart)) {
       return NextResponse.json(
         { ok: false, error: "A valid scheduled start time is required before rescheduling a coaching session." },
         { status: 400 },
@@ -1917,8 +1917,15 @@ export async function POST(request: Request) {
         }
 
         const timezone = text(body.timezone) || booking.timezone || getCoachingDefaultTimezone();
+        const scheduledStart = parseCoachingScheduleDate(body.scheduledStart, timezone);
+        if (!scheduledStart) {
+          throw new RunwayActionError(
+            "Choose a valid start time in this Session's timezone. Daylight-saving gaps and repeated times must be changed.",
+            400,
+          );
+        }
         const durationMinutes = integer(body.durationMinutes) || minutesBetween(booking.scheduledStart, booking.scheduledEnd);
-        const scheduledEnd = parseDate(body.scheduledEnd) || addMinutes(scheduledStart, durationMinutes);
+        const scheduledEnd = parseCoachingScheduleDate(body.scheduledEnd, timezone) || addMinutes(scheduledStart, durationMinutes);
         if (!booking.coachUserId) {
           throw new RunwayActionError("Assign a coach before rescheduling this session.", 409);
         }
@@ -2516,7 +2523,7 @@ export async function POST(request: Request) {
   const title = text(body.title) || "Quipsly coaching session";
   const offeringId = text(body.offeringId) || null;
   const timezone = text(body.timezone) || getCoachingDefaultTimezone();
-  const scheduledStart = parseDate(body.scheduledStart);
+  const scheduledStart = parseCoachingScheduleDate(body.scheduledStart, timezone);
   const requestedDuration = integer(body.durationMinutes);
   const requestedAmountCents = integer(body.amountCents);
   const projectSlug = text(body.projectSlug) || null;
@@ -2551,7 +2558,7 @@ export async function POST(request: Request) {
       }
 
       const durationMinutes = requestedDuration || offering?.durationMinutes || 60;
-      const scheduledEnd = parseDate(body.scheduledEnd) || addMinutes(scheduledStart, durationMinutes);
+      const scheduledEnd = parseCoachingScheduleDate(body.scheduledEnd, timezone) || addMinutes(scheduledStart, durationMinutes);
       const client = await ensureInvitedStudioUserByEmail({
         email: clientEmail,
         name: clientName,
@@ -2643,7 +2650,7 @@ export async function POST(request: Request) {
     }
 
     const durationMinutes = requestedDuration || offering?.durationMinutes || 60;
-    const scheduledEnd = parseDate(body.scheduledEnd) || addMinutes(scheduledStart, durationMinutes);
+    const scheduledEnd = parseCoachingScheduleDate(body.scheduledEnd, timezone) || addMinutes(scheduledStart, durationMinutes);
     const paymentPolicy = text(body.paymentPolicy) || offering?.paymentPolicy || "MANUAL";
     const amountCents = requestedAmountCents ?? offering?.priceCents ?? null;
     const coachUserId = text(body.coachUserId) || offering?.coachProfile?.userId || session.user.id;

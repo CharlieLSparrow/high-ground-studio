@@ -273,6 +273,7 @@ async function main() {
       .add({ days: 1 })
       .with({ hour: 10, minute: 0, second: 0, millisecond: 0, microsecond: 0, nanosecond: 0 });
     const scheduledStart = new Date(scheduledLocalStart.epochMilliseconds);
+    const browserWallClockStart = `${scheduledLocalStart.toPlainDate().toString()}T10:00`;
     const schemaDayOfWeek = scheduledLocalStart.dayOfWeek === 7
       ? 0
       : scheduledLocalStart.dayOfWeek;
@@ -296,7 +297,7 @@ async function main() {
         clientEmail: CLIENT_EMAIL,
         clientName: "Quipsly Mobile Client",
         title: `Operated iPhone coaching ${scheduledStart.toISOString()}`,
-        scheduledStart: scheduledStart.toISOString(),
+        scheduledStart: browserWallClockStart,
         durationMinutes: 60,
         purpose: "COACHING",
         paymentPolicy: "MANUAL",
@@ -400,6 +401,13 @@ async function main() {
       coachRunway.body.upcomingBookings?.some((booking) => booking.id === result.bookingId),
       "The coach's phone runway omitted the new appointment.",
     );
+    const operatedBooking = coachRunway.body.upcomingBookings?.find(
+      (booking) => booking.id === result.bookingId,
+    );
+    assert(
+      new Date(operatedBooking?.scheduledStart).toISOString() === scheduledStart.toISOString(),
+      "The browser wall-clock appointment drifted from the coach's explicit timezone.",
+    );
     assert(
       clientRunway.body.upcomingBookings?.some((booking) => booking.id === result.bookingId),
       "The client's private runway omitted the invited appointment.",
@@ -452,6 +460,7 @@ async function main() {
       ),
       overlappingAppointmentRejected: overlappingAppointment.body?.code === "COACHING_TIME_CONFLICT",
       workingHoursSaved: availability.body?.action === "update-weekly-availability",
+      browserWallClockPreservedInCoachTimezone: true,
       outsideWorkingHoursRejected:
         outsideWorkingHours.body?.code === "COACHING_OUTSIDE_AVAILABILITY",
       providerProof,
