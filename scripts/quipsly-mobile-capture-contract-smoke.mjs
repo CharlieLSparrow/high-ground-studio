@@ -771,9 +771,12 @@ function checkMeetingSpineContractSources() {
       && capturePhoneShellText.includes('case "HELD", "FAILED"')
       && capturePhoneShellText.includes("sessionClient.runTranscript(for: session)")
       && capturePhoneShellText.includes("The original recording is safe")
+      && capturePhoneShellText.includes("monitorTranscriptLifecycle()")
+      && capturePhoneShellText.includes("authoritativeSessionID: session.id")
+      && capturePhoneShellText.includes("delaySeconds = min(delaySeconds * 1.7, 30)")
       && captureExperienceUITestText.includes("testVerifiedSourceShowsTranscriptLifecycleBeforeReviewIsReady"),
     "nativeTranscriptLifecycleNeverDisappearsBetweenRecordingAndReview",
-    "Capture keeps verified recording-to-transcript progress visible before review exists, treats queued work as automatic, and offers an explicit exact-source recovery action only when useful.",
+    "Capture keeps verified recording-to-transcript progress visible before review exists, monitors only the exact authoritative Session with bounded backoff, treats queued work as automatic, and offers an explicit exact-source recovery action only when useful.",
   );
   expect(
     bridgeText.includes("struct ProviderJoin: Codable")

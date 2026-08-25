@@ -8747,6 +8747,9 @@ private struct CaptureSessionTranscriptReviewCard: View {
             .captureCard()
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("CaptureSessionTranscriptLifecycle_\(session.callRoomId)")
+            .task(id: transcriptLifecycleMonitorID) {
+                await monitorTranscriptLifecycle()
+            }
         }
     }
 
@@ -8830,6 +8833,62 @@ private struct CaptureSessionTranscriptReviewCard: View {
         ["HELD", "FAILED"].contains(normalizedTranscriptStatus)
             ? .orange
             : .purple
+    }
+
+    private var transcriptLifecycleMonitorID: String {
+        [
+            session.id,
+            session.latestTranscriptJobId ?? "no-job",
+            normalizedTranscriptStatus,
+            "preview=\(previewOnly)",
+            "stale=\(sessionClient.sessionsAreStale)",
+        ].joined(separator: "|")
+    }
+
+    /// A queued transcript should become a review surface without requiring a
+    /// person to discover and repeatedly operate Refresh. Poll only the exact
+    /// authoritative Session, back off quickly, and stop on every terminal or
+    /// authority-changing result. SwiftUI cancels this task when the card or
+    /// selected Session leaves the hierarchy.
+    @MainActor
+    private func monitorTranscriptLifecycle() async {
+        guard transcriptIsAutomaticWorkInProgress,
+              !previewOnly,
+              !sessionClient.sessionsAreStale,
+              AuthManager.shared.networkActionsAllowed else { return }
+
+        var delaySeconds = 2.0
+        let expiresAt = Date().addingTimeInterval(20 * 60)
+        while !Task.isCancelled, Date() < expiresAt {
+            do {
+                try await Task.sleep(for: .seconds(delaySeconds))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+
+            let outcome = await sessionClient.load(
+                authoritativeSessionID: session.id
+            )
+            guard !Task.isCancelled else { return }
+            switch outcome {
+            case .loaded:
+                guard let refreshed = sessionClient.sessions.first(where: {
+                    $0.id == session.id || $0.callRoomId == session.callRoomId
+                }) else { return }
+                let refreshedStatus = refreshed.latestTranscriptStatus?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .uppercased() ?? ""
+                guard ["QUEUED", "RUNNING"].contains(refreshedStatus) else {
+                    return
+                }
+                delaySeconds = min(delaySeconds * 1.7, 30)
+            case .transportUnavailable:
+                delaySeconds = min(delaySeconds * 2, 60)
+            case .forbidden, .authoritativeAbsent, .invalidResponse:
+                return
+            }
+        }
     }
 
     @MainActor
