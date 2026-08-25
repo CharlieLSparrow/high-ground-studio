@@ -821,13 +821,13 @@ final class MobileEpisodeChatClient: ObservableObject {
         )
     }
 
-    nonisolated private static func jsonObject<T: Encodable>(
+    private static func jsonObject<T: Encodable>(
         _ value: T
     ) throws -> Any {
         try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))
     }
 
-    nonisolated private static func schedulingEvidence(
+    private static func schedulingEvidence(
         request: MobileCoachingScheduleRequestEnvelope?,
         decision: MobileCoachingScheduleDecisionEnvelope?
     ) -> String {

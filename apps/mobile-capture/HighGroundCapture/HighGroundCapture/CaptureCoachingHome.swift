@@ -1310,7 +1310,7 @@ private struct MobileCoachingScheduleRequestReviewCard: View {
     @StateObject private var conversation = MobileEpisodeChatClient(scope: .engagement)
 
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 0) {
             if let message = pendingRequestMessage,
                let request = message.metadataJson?.coachingScheduleRequest {
                 VStack(alignment: .leading, spacing: 10) {
