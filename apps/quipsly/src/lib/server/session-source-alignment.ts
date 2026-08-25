@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
+import path from "node:path";
 import type { Prisma } from "@prisma/client";
 import {
   buildAudioAlignmentCloudManifestObjectName,
@@ -19,6 +20,7 @@ import {
   sessionActorAccessWhere,
 } from "@/lib/server/session-access";
 import { ensureSessionAudioSourceAlignmentCloudQueued } from "@/lib/server/audio-source-alignment-cloud";
+import { MOBILE_CAPTURE_LOCAL_VAULT_BUCKET } from "@/lib/server/mobile-capture-local-vault";
 import {
   sessionProtectedPlaybackBinding,
   type SessionProtectedPlaybackBinding,
@@ -562,8 +564,8 @@ export async function decideSessionSourceAlignment(input: {
             actor: input.actor,
           });
           if (
-            !sameBinding(job.spine, sourceBinding(context.spine.playback)) ||
-            !sameBinding(job.target, sourceBinding(context.target.playback))
+            !sameBinding(job.spine, sourceBinding(context.spine)) ||
+            !sameBinding(job.target, sourceBinding(context.target))
           ) {
             throw new SessionSourceAlignmentError(
               409,
@@ -649,8 +651,8 @@ export async function queueSessionSourceAlignment(input: {
     requestedByUserId: input.actor.id,
     requestedByEmail: actorEmail(input.actor),
     queuedAt: new Date().toISOString(),
-    spine: sourceBinding(context.spine.playback),
-    target: sourceBinding(context.target.playback),
+    spine: sourceBinding(context.spine),
+    target: sourceBinding(context.target),
     proposal: plan.proposal,
   });
   const recent = await input.prisma.sessionAudioAlignmentJob.findFirst({
@@ -669,7 +671,7 @@ export async function queueSessionSourceAlignment(input: {
         recent.id,
       );
       if (sameRequest(existing, job))
-        return queueCloud(input.prisma, recent, plan.clockAuthority);
+        return queueExecution(input.prisma, recent, plan.clockAuthority);
     } catch {
       // A malformed or differently bound row cannot own this exact request.
     }
@@ -686,7 +688,7 @@ export async function queueSessionSourceAlignment(input: {
       inputJson: json({ ...job, sessionPlan: plan }),
     },
   });
-  return queueCloud(input.prisma, saved, plan.clockAuthority);
+  return queueExecution(input.prisma, saved, plan.clockAuthority);
 }
 
 export async function reconcileSessionSourceAlignment(input: {
@@ -718,6 +720,32 @@ export async function reconcileSessionSourceAlignment(input: {
       "That Session alignment job is unavailable.",
     );
   const job = parseSessionAudioAlignmentJob(row.inputJson, row.id);
+  if (isLocalJob(job)) {
+    if (row.status === "failed") return publicStatus(row);
+    if (row.status !== "output-ready" && row.status !== "completed") {
+      return publicStatus(row);
+    }
+    if (row.status === "completed") return publicStatus(row);
+    const result = parseAudioAlignmentResult(
+      object(row.resultJson).receipt,
+      job,
+    );
+    return registerCompletedAlignment({
+      prisma: input.prisma,
+      roomId: input.roomId,
+      actor: input.actor,
+      job,
+      result,
+      registration: { localWorkerEvidence: true },
+    });
+  }
+  if (!isCloudJob(job)) {
+    throw new SessionSourceAlignmentError(
+      409,
+      "ALIGNMENT_PROVIDER_MISMATCH",
+      "Both exact Session sources must be available to the same media processor.",
+    );
+  }
   const cloud = await ensureSessionAudioSourceAlignmentCloudQueued({
     prisma: input.prisma,
     processingJob: row,
@@ -759,44 +787,17 @@ export async function reconcileSessionSourceAlignment(input: {
   );
   if (!storedResult) return publicStatus(refreshed);
   const result = parseAudioAlignmentResult(storedResult.value, job);
-  const context = await loadContext({
+  return registerCompletedAlignment({
     prisma: input.prisma,
     roomId: input.roomId,
-    spineRecordingAssetId: job.spine.assetId,
-    targetRecordingAssetId: job.target.assetId,
     actor: input.actor,
-  });
-  if (
-    !sameBinding(job.spine, sourceBinding(context.spine.playback)) ||
-    !sameBinding(job.target, sourceBinding(context.target.playback))
-  ) {
-    throw new SessionSourceAlignmentError(
-      409,
-      "ALIGNMENT_SOURCE_CHANGED",
-      "A retained Session source changed before alignment evidence registration.",
-    );
-  }
-  const completed = await input.prisma.sessionAudioAlignmentJob.update({
-    where: { id: job.jobId },
-    data: {
-      status: "completed",
-      completedAt: new Date(result.completedAt),
-      error: null,
-      resultJson: json({
-        state: "completed",
-        receipt: result,
-        registration: {
-          exactSourceBytesBound: true,
-          sourceTimesMutated: false,
-          placementApplied: false,
-          placementRequiresSeparateReview: true,
-          cloudManifestGeneration: storedManifest.generation,
-          cloudResultGeneration: storedResult.generation,
-        },
-      }),
+    job,
+    result,
+    registration: {
+      cloudManifestGeneration: storedManifest.generation,
+      cloudResultGeneration: storedResult.generation,
     },
   });
-  return publicStatus(completed);
 }
 
 async function loadContext(input: {
@@ -890,11 +891,22 @@ async function loadContext(input: {
   };
 }
 
-async function queueCloud(
+async function queueExecution(
   prisma: any,
   row: any,
   clockAuthority: SessionSourceAlignmentPlan["clockAuthority"],
 ) {
+  const job = parseSessionAudioAlignmentJob(row.inputJson, row.id);
+  if (isLocalJob(job)) {
+    return { ...publicStatus(row), clockAuthority };
+  }
+  if (!isCloudJob(job)) {
+    throw new SessionSourceAlignmentError(
+      409,
+      "ALIGNMENT_PROVIDER_MISMATCH",
+      "Both exact Session sources must be available to the same media processor.",
+    );
+  }
   const cloud = await ensureSessionAudioSourceAlignmentCloudQueued({
     prisma,
     processingJob: row,
@@ -1008,7 +1020,31 @@ export function buildSessionReviewedPlacement(
   };
 }
 
-function sourceBinding(binding: SessionProtectedPlaybackBinding) {
+function sourceBinding(candidate: Candidate) {
+  const binding = candidate.playback;
+  const promotion = object(object(candidate.localManifestJson).promotion);
+  const localPath = text(promotion.providerSourceId);
+  if (
+    binding.bucketName === MOBILE_CAPTURE_LOCAL_VAULT_BUCKET &&
+    path.isAbsolute(localPath)
+  ) {
+    return {
+      assetId: binding.recordingAssetId,
+      provider: "local" as const,
+      locator: localPath,
+      generation: binding.generation,
+      sha256: binding.sha256,
+      sizeBytes: binding.byteSize,
+      contentType: binding.contentType,
+    };
+  }
+  if (binding.bucketName === MOBILE_CAPTURE_LOCAL_VAULT_BUCKET) {
+    throw new SessionSourceAlignmentError(
+      409,
+      "ALIGNMENT_LOCAL_SOURCE_UNAVAILABLE",
+      "The retained local Session source is missing its private processor binding.",
+    );
+  }
   return {
     assetId: binding.recordingAssetId,
     provider: "gcs" as const,
@@ -1018,6 +1054,61 @@ function sourceBinding(binding: SessionProtectedPlaybackBinding) {
     sizeBytes: binding.byteSize,
     contentType: binding.contentType,
   };
+}
+
+function isLocalJob(job: SessionAudioAlignmentJob) {
+  return job.spine.provider === "local" && job.target.provider === "local";
+}
+
+function isCloudJob(job: SessionAudioAlignmentJob) {
+  return job.spine.provider === "gcs" && job.target.provider === "gcs";
+}
+
+async function registerCompletedAlignment(input: {
+  prisma: any;
+  roomId: string;
+  actor: Actor;
+  job: SessionAudioAlignmentJob;
+  result: ReturnType<typeof parseAudioAlignmentResult>;
+  registration: Record<string, unknown>;
+}) {
+  const context = await loadContext({
+    prisma: input.prisma,
+    roomId: input.roomId,
+    spineRecordingAssetId: input.job.spine.assetId,
+    targetRecordingAssetId: input.job.target.assetId,
+    actor: input.actor,
+  });
+  if (
+    !sameBinding(input.job.spine, sourceBinding(context.spine)) ||
+    !sameBinding(input.job.target, sourceBinding(context.target))
+  ) {
+    throw new SessionSourceAlignmentError(
+      409,
+      "ALIGNMENT_SOURCE_CHANGED",
+      "A retained Session source changed before alignment evidence registration.",
+    );
+  }
+  const completed = await input.prisma.sessionAudioAlignmentJob.update({
+    where: { id: input.job.jobId },
+    data: {
+      status: "completed",
+      completedAt: new Date(input.result.completedAt),
+      error: null,
+      resultJson: json({
+        state: "completed",
+        receipt: input.result,
+        registration: {
+          exactSourceBytesBound: true,
+          sourceTimesMutated: false,
+          placementApplied: false,
+          placementRequiresSeparateReview: true,
+          ...input.registration,
+        },
+      }),
+    },
+  });
+  return publicStatus(completed);
 }
 
 function captureClock(value: unknown, captureGroupId: string) {

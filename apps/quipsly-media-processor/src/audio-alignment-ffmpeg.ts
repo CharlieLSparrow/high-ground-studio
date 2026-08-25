@@ -122,15 +122,17 @@ export class FfmpegAudioAlignmentAnalyzer {
     ]);
     const correlation = normalizedCrossCorrelation(reference, candidate, input.sampleRate);
     const measuredSpineStartSeconds = rounded(searchStartSeconds + correlation.startSample / input.sampleRate);
-    const measuredOffsetSeconds = rounded(measuredSpineStartSeconds - input.targetStartSeconds);
+    const targetStartSeconds = rounded(input.targetStartSeconds);
+    const normalizedCorrelation = rounded(correlation.best);
+    const secondBestCorrelation = rounded(correlation.secondBest);
     return {
-      targetStartSeconds: rounded(input.targetStartSeconds),
+      targetStartSeconds,
       expectedSpineStartSeconds: rounded(expectedSpineStartSeconds),
       measuredSpineStartSeconds,
-      measuredOffsetSeconds,
-      normalizedCorrelation: rounded(correlation.best),
-      secondBestCorrelation: rounded(correlation.secondBest),
-      peakMargin: rounded(correlation.best - correlation.secondBest),
+      measuredOffsetSeconds: rounded(measuredSpineStartSeconds - targetStartSeconds),
+      normalizedCorrelation,
+      secondBestCorrelation,
+      peakMargin: rounded(normalizedCorrelation - secondBestCorrelation),
     };
   }
 
@@ -179,7 +181,48 @@ export class FfmpegAudioAlignmentAnalyzer {
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
     const exitCode = await waitForChild(child);
     if (exitCode !== 0) throw new Error(`FFprobe alignment probe failed (${exitCode}): ${Buffer.concat(stderr).toString("utf8").trim()}`);
-    return boundedNumber(Number(Buffer.concat(stdout).toString("utf8").trim()), 0.001, 86_400, "duration");
+    const containerDuration = Number(Buffer.concat(stdout).toString("utf8").trim());
+    if (Number.isFinite(containerDuration) && containerDuration >= 0.001 && containerDuration <= 86_400) {
+      return containerDuration;
+    }
+    // MediaRecorder WebM commonly has no format-level duration until it is
+    // remuxed. The retained bytes are still valid and fully decodable, so use
+    // FFmpeg's decoded audio clock as the authoritative fallback instead of
+    // rejecting a normal browser capture or mutating it just to add metadata.
+    return this.probeDecodedDuration(inputPath);
+  }
+
+  private async probeDecodedDuration(inputPath: string) {
+    let stdout = "";
+    let stderr = "";
+    let outputExceeded = false;
+    const child = spawn(this.ffmpegPath, [
+      "-hide_banner", "-loglevel", "error", "-i", inputPath,
+      "-map", "0:a:0", "-vn", "-f", "null", "-",
+      "-progress", "pipe:1", "-nostats",
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+      if (stdout.length > 128 * 1_024) {
+        outputExceeded = true;
+        child.kill("SIGTERM");
+      }
+    });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr = `${stderr}${chunk}`.slice(-8_192);
+    });
+    const exitCode = await waitForChild(child);
+    if (outputExceeded) {
+      throw new Error("Decoded duration probe exceeded its bounded output contract.");
+    }
+    if (exitCode !== 0) {
+      throw new Error(`FFmpeg decoded duration probe failed (${exitCode}): ${stderr.trim() || "no diagnostic"}`);
+    }
+    const matches = [...stdout.matchAll(/^out_time_us=([0-9]+)$/gm)];
+    const microseconds = Number(matches.at(-1)?.[1]);
+    return boundedNumber(microseconds / 1_000_000, 0.001, 86_400, "decoded duration");
   }
 
   private async version() {

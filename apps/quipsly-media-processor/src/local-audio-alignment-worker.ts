@@ -5,8 +5,8 @@ import path from "node:path";
 
 import {
   newAudioAlignmentResult,
-  parseAudioAlignmentJob,
-  type AudioAlignmentJob,
+  parseAudioAlignmentWorkItem,
+  type AudioAlignmentWorkItem,
   type AudioAlignmentResult,
 } from "@high-ground/quipsly-media-processing";
 import pg from "pg";
@@ -63,9 +63,9 @@ export async function runOneLocalAudioAlignmentJob(
 ): Promise<LocalAudioAlignmentWorkerResult> {
   const claim = await store.claim({ executionId: options.executionId, leaseMs: options.leaseMs, now: options.now() });
   if (!claim) return { disposition: "idle" };
-  let job: AudioAlignmentJob;
+  let job: AudioAlignmentWorkItem;
   try {
-    job = parseAudioAlignmentJob(claim.inputJson, claim.id);
+    job = parseAudioAlignmentWorkItem(claim.inputJson, claim.id);
   } catch (error) {
     await store.fail({ claim, code: "audio-alignment-job-invalid", message: message(error), now: options.now() });
     return { disposition: "failed", jobId: claim.id, code: "audio-alignment-job-invalid" };
@@ -119,11 +119,21 @@ export async function runOneLocalAudioAlignmentJob(
   }
 }
 
-export class PostgresLocalAudioAlignmentStore implements LocalAudioAlignmentStore {
-  private readonly pool: InstanceType<typeof Pool>;
+type LocalAlignmentTable = "StudioAssetProcessingJob" | "SessionAudioAlignmentJob";
 
-  constructor(pool: InstanceType<typeof Pool>) {
+class PostgresLocalAlignmentStore implements LocalAudioAlignmentStore {
+  private readonly pool: InstanceType<typeof Pool>;
+  private readonly table: LocalAlignmentTable;
+  private readonly jobType: string | null;
+
+  constructor(
+    pool: InstanceType<typeof Pool>,
+    table: LocalAlignmentTable,
+    jobType: string | null,
+  ) {
     this.pool = pool;
+    this.table = table;
+    this.jobType = jobType;
   }
 
   async claim(input: { executionId: string; leaseMs: number; now: Date }) {
@@ -133,16 +143,18 @@ export class PostgresLocalAudioAlignmentStore implements LocalAudioAlignmentStor
       const selected = await client.query({
         text: `
           SELECT "id", "inputJson", "resultJson"
-          FROM "StudioAssetProcessingJob"
-          WHERE "type" = $1
-            AND "inputJson"->'spine'->>'provider' = 'local'
+          FROM "${this.table}"
+          WHERE ${this.jobType ? '"type" = $1 AND' : ''}
+            "inputJson"->'spine'->>'provider' = 'local'
             AND "inputJson"->'target'->>'provider' = 'local'
-            AND ("status" = 'queued' OR ("status" = 'processing' AND "updatedAt" < $2))
+            AND ("status" = 'queued' OR ("status" = 'processing' AND "updatedAt" < ${this.jobType ? "$2" : "$1"}))
           ORDER BY "createdAt" ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
         `,
-        values: [JOB_TYPE, new Date(input.now.getTime() - input.leaseMs)],
+        values: this.jobType
+          ? [this.jobType, new Date(input.now.getTime() - input.leaseMs)]
+          : [new Date(input.now.getTime() - input.leaseMs)],
       });
       const row = selected.rows[0];
       if (!row) { await client.query("COMMIT"); return null; }
@@ -150,7 +162,7 @@ export class PostgresLocalAudioAlignmentStore implements LocalAudioAlignmentStor
       const attempt = Math.max(0, Number(previousLease.attempt) || 0) + 1;
       const updated = await client.query({
         text: `
-          UPDATE "StudioAssetProcessingJob"
+          UPDATE "${this.table}"
           SET "status" = 'processing', "startedAt" = COALESCE("startedAt", $2),
               "updatedAt" = $2, "error" = NULL, "resultJson" = $3::jsonb
           WHERE "id" = $1
@@ -180,7 +192,7 @@ export class PostgresLocalAudioAlignmentStore implements LocalAudioAlignmentStor
   async complete(input: { claim: LocalAudioAlignmentClaim; receipt: AudioAlignmentResult; now: Date }) {
     const result = await this.pool.query({
       text: `
-        UPDATE "StudioAssetProcessingJob"
+        UPDATE "${this.table}"
         SET "status" = 'output-ready', "updatedAt" = $3, "error" = NULL,
             "resultJson" = $4::jsonb
         WHERE "id" = $1 AND "status" = 'processing'
@@ -204,7 +216,7 @@ export class PostgresLocalAudioAlignmentStore implements LocalAudioAlignmentStor
   ) {
     const result = await this.pool.query({
       text: `
-        UPDATE "StudioAssetProcessingJob"
+        UPDATE "${this.table}"
         SET "status" = $3::text, "updatedAt" = $4::timestamp(3),
             "completedAt" = CASE WHEN $3::text = 'failed' THEN $4::timestamp(3) ELSE NULL::timestamp END,
             "error" = $5, "resultJson" = $6::jsonb
@@ -229,6 +241,18 @@ export class PostgresLocalAudioAlignmentStore implements LocalAudioAlignmentStor
   }
 }
 
+export class PostgresLocalAudioAlignmentStore extends PostgresLocalAlignmentStore {
+  constructor(pool: InstanceType<typeof Pool>) {
+    super(pool, "StudioAssetProcessingJob", JOB_TYPE);
+  }
+}
+
+export class PostgresLocalSessionAudioAlignmentStore extends PostgresLocalAlignmentStore {
+  constructor(pool: InstanceType<typeof Pool>) {
+    super(pool, "SessionAudioAlignmentJob", null);
+  }
+}
+
 export function newLocalAudioAlignmentRuntime(input: {
   pool: InstanceType<typeof Pool>;
   localMediaRoot: string;
@@ -237,6 +261,26 @@ export function newLocalAudioAlignmentRuntime(input: {
 }) {
   return {
     store: new PostgresLocalAudioAlignmentStore(input.pool),
+    analyzer: new FfmpegAudioAlignmentAnalyzer(),
+    options: {
+      executionId: randomUUID(),
+      buildId: input.buildId,
+      imageDigest: null,
+      leaseMs: input.leaseMs,
+      localMediaRoot: input.localMediaRoot,
+      now: () => new Date(),
+    } satisfies LocalAudioAlignmentWorkerOptions,
+  };
+}
+
+export function newLocalSessionAudioAlignmentRuntime(input: {
+  pool: InstanceType<typeof Pool>;
+  localMediaRoot: string;
+  leaseMs: number;
+  buildId: string;
+}) {
+  return {
+    store: new PostgresLocalSessionAudioAlignmentStore(input.pool),
     analyzer: new FfmpegAudioAlignmentAnalyzer(),
     options: {
       executionId: randomUUID(),

@@ -48,6 +48,7 @@ import {
 } from "./local-studio-transcript-worker.js";
 import {
   newLocalAudioAlignmentRuntime,
+  newLocalSessionAudioAlignmentRuntime,
   runOneLocalAudioAlignmentJob,
 } from "./local-audio-alignment-worker.js";
 import {
@@ -685,6 +686,12 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const sessionAudioAlignment = newLocalSessionAudioAlignmentRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   const audioPairCorrelation = newLocalAudioPairCorrelationRuntime({
     pool,
     localMediaRoot,
@@ -928,20 +935,28 @@ async function main() {
           : transcriptResult;
       const pairResult =
         alignmentResult.disposition === "idle"
+          ? await runOneLocalAudioAlignmentJob(
+              sessionAudioAlignment.store,
+              sessionAudioAlignment.analyzer,
+              sessionAudioAlignment.options,
+            )
+          : alignmentResult;
+      const sourcePairResult =
+        pairResult.disposition === "idle"
           ? await runOneLocalAudioPairCorrelationJob(
               audioPairCorrelation.store,
               audioPairCorrelation.analyzer,
               audioPairCorrelation.options,
             )
-          : alignmentResult;
+          : pairResult;
       const mixResult =
-        pairResult.disposition === "idle"
+        sourcePairResult.disposition === "idle"
           ? await runOneLocalSessionRecordingShareJob(
               sessionRecordingShare.store,
               sessionRecordingShare.renderer,
               sessionRecordingShare.options,
             )
-          : pairResult;
+          : sourcePairResult;
       const episodeMixResult =
         mixResult.disposition === "idle"
           ? await runOneLocalEpisodeAudioMixJob(

@@ -188,3 +188,47 @@ test("local worker leases, analyzes, and commits a resumable evidence receipt", 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("local worker executes a Session-scoped work item without inventing Studio scope", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-session-alignment-worker-test-"));
+  try {
+    const spinePath = path.join(root, "spine.wav");
+    const targetPath = path.join(root, "target.wav");
+    await writeFile(spinePath, "spine");
+    await writeFile(targetPath, "target");
+    const job = newSessionAudioAlignmentJob({
+      jobId: "session_alignment_worker123",
+      roomId: "room_session_worker123",
+      captureGroupId: "ddfbb57c-7b7e-4a38-83a7-46ab27b51d82",
+      requestedByUserId: "user_session_worker123",
+      requestedByEmail: "coach@example.test",
+      queuedAt: "2026-08-25T12:00:00.000Z",
+      spine: source("recording_spine_worker", spinePath, "spine"),
+      target: source("recording_target_worker", targetPath, "target"),
+      proposal,
+    });
+    let saved = null;
+    const store = {
+      claim: async ({ executionId }) => ({ id: job.jobId, inputJson: job, attempt: 1, executionId }),
+      complete: async ({ receipt }) => { saved = receipt; return true; },
+      retry: async () => { throw new Error("unexpected retry"); },
+      fail: async () => { throw new Error("unexpected failure"); },
+    };
+    const result = await runOneLocalAudioAlignmentJob(
+      store,
+      { analyze: async () => evidence(job) },
+      {
+        executionId: "execution_session_worker123",
+        buildId: "test-build",
+        imageDigest: null,
+        leaseMs: 60_000,
+        localMediaRoot: root,
+        now: () => new Date("2026-08-25T12:00:02.000Z"),
+      },
+    );
+    assert.deepEqual(result, { disposition: "completed", jobId: job.jobId, qualified: true });
+    assert.equal(parseAudioAlignmentResult(saved, job).boundaries.placementApplied, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

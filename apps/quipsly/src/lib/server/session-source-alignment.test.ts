@@ -373,6 +373,87 @@ describe("Session exact-source audio alignment planning", () => {
     expect(result.clockAuthority).toBe("capture-clock-proposal");
   });
 
+  it("routes two local-vault exact sources to the local worker without cloud control", async () => {
+    const room = { id: "room_session_local123", captureGroupId };
+    const asset = (id: string, hash: string, offsetMs: number) => ({
+      id,
+      roomId: room.id,
+      durationSeconds: 120,
+      recordedStartedAt: new Date(1_787_601_600_000 + offsetMs),
+      localManifestJson: {
+        exactBytesVerified: true,
+        storageGeneration: "123",
+        captureGroupId,
+        promotion: { providerSourceId: `/tmp/quipsly-local-media/${id}.m4a` },
+        alignment: {
+          schema: "quipsly-capture-alignment-proposal-v1",
+          status: "proposal-ready",
+          captureGroupId,
+          estimatedServerStartedAt: new Date(1_787_601_600_000 + offsetMs).toISOString(),
+          uncertaintyMilliseconds: 24,
+          sampleAccurateClaimed: false,
+          reviewRequired: true,
+        },
+      },
+      status: "VERIFIED",
+      contentType: "audio/mp4",
+      byteSize: BigInt(10_000),
+      checksum: hash.repeat(64),
+      storageBucket: "quipsly-local-development-vault",
+      storageObjectPath: `objects/${id}.m4a`,
+      verifiedAt: new Date("2026-08-25T20:02:00.000Z"),
+    });
+    const assets = [
+      asset("recording_local_spine_123", "a", 0),
+      asset("recording_local_target_12", "b", 350),
+    ];
+    const receipts = assets.map((row) => ({
+      uploadSessionId: `upload-${row.id}`,
+      roomId: room.id,
+      recordingAssetId: row.id,
+      processingDisposition: "RELEASED",
+      releasedAt: new Date("2026-08-25T20:03:00.000Z"),
+      createdAt: new Date("2026-08-25T20:02:00.000Z"),
+      metadataJson: {
+        immutableUploadBinding: {
+          roomId: room.id,
+          bucketName: row.storageBucket,
+          objectName: row.storageObjectPath,
+          generation: "123",
+          sha256: row.checksum,
+          sizeBytes: 10_000,
+        },
+      },
+    }));
+    let saved: any = null;
+    const prisma = {
+      callRoom: { findFirst: jest.fn().mockResolvedValue(room) },
+      recordingAsset: { findMany: jest.fn().mockResolvedValue(assets) },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn().mockResolvedValue(receipts) },
+      sessionAudioAlignmentJob: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(async ({ data }) => {
+          saved = { ...data, createdAt: new Date(), updatedAt: new Date() };
+          return saved;
+        }),
+      },
+    };
+    const result = await queueSessionSourceAlignment({
+      prisma,
+      roomId: room.id,
+      spineRecordingAssetId: assets[0]!.id,
+      targetRecordingAssetId: assets[1]!.id,
+      actor: { id: "user_session_local123", email: "coach@example.test" },
+    });
+    expect(saved.inputJson.spine).toMatchObject({
+      provider: "local",
+      locator: `/tmp/quipsly-local-media/${assets[0]!.id}.m4a`,
+    });
+    expect(saved.inputJson.target.provider).toBe("local");
+    expect(mockEnsureCloudQueued).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: "queued", clockAuthority: "capture-clock-proposal" });
+  });
+
   it("normalizes a negative measured offset into a reversible source trim", () => {
     const binding = (assetId: string, hash: string) => ({
       assetId,

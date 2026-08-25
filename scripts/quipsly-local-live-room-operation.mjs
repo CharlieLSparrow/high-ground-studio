@@ -1165,6 +1165,58 @@ try {
     `Automatic two-source alignment suggestion failed: ${JSON.stringify(suggestionPayload)}.`,
   );
 
+  const queueAlignmentResponse = await journeys[0].page.request.post(
+    `${baseURL}/api/sessions/${encodeURIComponent(ROOM_ID)}/source-alignment`,
+    {
+      data: {
+        action: "QUEUE",
+        spineRecordingAssetId:
+          automaticAlignmentSuggestion.spineRecordingAssetId,
+        targetRecordingAssetId:
+          automaticAlignmentSuggestion.targetRecordingAssetId,
+      },
+    },
+  );
+  const queuedAlignmentPayload = await queueAlignmentResponse
+    .json()
+    .catch(() => null);
+  assert(
+    queueAlignmentResponse.ok() &&
+      queuedAlignmentPayload?.ok === true &&
+      queuedAlignmentPayload?.alignment?.jobId,
+    `Exact-source acoustic alignment did not queue: ${JSON.stringify(queuedAlignmentPayload)}.`,
+  );
+  let exactSourceAlignment = queuedAlignmentPayload.alignment;
+  const alignmentDeadline = Date.now() + 120_000;
+  while (
+    exactSourceAlignment.status !== "completed" &&
+    exactSourceAlignment.status !== "failed" &&
+    Date.now() < alignmentDeadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const reconcileResponse = await journeys[0].page.request.post(
+      `${baseURL}/api/sessions/${encodeURIComponent(ROOM_ID)}/source-alignment`,
+      {
+        data: {
+          action: "RECONCILE",
+          jobId: exactSourceAlignment.jobId,
+        },
+      },
+    );
+    const reconcilePayload = await reconcileResponse.json().catch(() => null);
+    assert(
+      reconcileResponse.ok() && reconcilePayload?.ok === true,
+      `Exact-source acoustic alignment did not reconcile: ${JSON.stringify(reconcilePayload)}.`,
+    );
+    exactSourceAlignment = reconcilePayload.alignment;
+  }
+  assert(
+    exactSourceAlignment.status === "completed" &&
+      exactSourceAlignment.evidence?.boundaries?.sourceBytesMutated === false &&
+      exactSourceAlignment.evidence?.boundaries?.timelinePlacementApplied === false,
+    `Exact-source acoustic alignment did not complete safely: ${JSON.stringify(exactSourceAlignment)}.`,
+  );
+
   for (const journey of journeys) {
     await journey.page.reload({ waitUntil: "domcontentloaded" });
     await journey.page
@@ -1265,6 +1317,18 @@ try {
     twoEndpointMaterializationAndPlayback: "passed",
     twoEndpointMaterializationEvidence,
     automaticAlignmentSuggestion,
+    exactSourceAcousticAlignment: {
+      status: exactSourceAlignment.status,
+      jobId: exactSourceAlignment.jobId,
+      qualifiedForAuthorizedAgentReview:
+        exactSourceAlignment.evidence.qualification
+          .qualifiedForAuthorizedAgentReview,
+      measuredOpeningOffsetSeconds:
+        exactSourceAlignment.evidence.opening.measuredOffsetSeconds,
+      residualDriftMilliseconds:
+        exactSourceAlignment.evidence.drift.residualDriftMilliseconds,
+      placementApplied: false,
+    },
     browserSourceOverlapMilliseconds: overlapMilliseconds,
     allPartyConsentReceipts: "passed",
     allPartyTranscriptionConsentReceipts: "passed",
