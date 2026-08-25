@@ -2219,6 +2219,78 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    func testReviewedTranscriptTaskAppearsInTodayAndReturnsToExactSourceOnIPhone() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let taskID = credentials.taskID, !taskID.isEmpty,
+              let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              let taskTitle = credentials.expectedPacketTaskTitle, !taskTitle.isEmpty else {
+            throw XCTSkip("Fresh transcript task readback requires exact Session, task, and title identities.")
+        }
+        let app = try launchSignedInCaptureApp()
+
+        let task = app.descendants(matching: .any)["CaptureTodayTask_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(task, in: app, timeout: 30, swipeAttempts: 10),
+            "Today should render the exact reviewed transcript task for its signed-in owner."
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", taskTitle)).firstMatch.exists,
+            "The phone must read back the reviewed task title rather than a fixture or inferred replacement."
+        )
+        let taskSource = app.descendants(matching: .any)["CaptureTodayTaskSourceLink_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(taskSource, in: app, timeout: 15, swipeAttempts: 8),
+            "The reviewed task should expose its exact transcript source-return control."
+        )
+        XCTAssertTrue(taskSource.label.contains("Task source: Return to"))
+
+        taskSource.tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30),
+            "Returning from Today should open the protected transcript review in Capture."
+        )
+        let sourceBoundary = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTranscriptSourceBoundary_")
+        ).firstMatch
+        XCTAssertTrue(sourceBoundary.waitForExistence(timeout: 15))
+        XCTAssertFalse(
+            sourceBoundary.identifier.contains(sessionID),
+            "The source boundary must retain a segment identity instead of substituting the Session ID."
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "send the recording to my instructor")).firstMatch.waitForExistence(timeout: 15),
+            "The source return should reveal the exact transcript wording behind the reviewed task."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].firstMatch.exists,
+            "A phone without the protected local source must stay review-only."
+        )
+        attachRecordingIdentity("\(sessionID):\(taskID)", name: "Fresh transcript task phone readback")
+    }
+
+    func testReviewedTranscriptTaskStaysPrivateFromOtherSessionParticipant() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let taskID = credentials.taskID, !taskID.isEmpty,
+              let taskTitle = credentials.expectedPacketTaskTitle, !taskTitle.isEmpty else {
+            throw XCTSkip("Fresh transcript task isolation requires exact task identity and title.")
+        }
+        let app = try launchSignedInCaptureApp()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTodayFollowThroughBoundary"].firstMatch.waitForExistence(timeout: 30),
+            "The other participant's canonical Today request must finish before isolation is judged."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTodayTask_\(taskID)"].exists,
+            "A room participant who does not own the reviewed task must not receive its canonical identity."
+        )
+        XCTAssertFalse(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", taskTitle)).firstMatch.exists,
+            "A room participant who does not own the reviewed task must not receive its title."
+        )
+        attachRecordingIdentity(taskID, name: "Fresh transcript task participant isolation")
+    }
+
     func testRetainedSessionShowsCompleteMultiSegmentPacketOnIPhone() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,

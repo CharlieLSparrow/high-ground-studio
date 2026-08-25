@@ -154,6 +154,20 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  transcript-task-readback)
+    TEST_CASE="testReviewedTranscriptTaskAppearsInTodayAndReturnsToExactSourceOnIPhone"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_EXPECTED_PACKET_TASK_TITLE" ]]; then
+      echo "Transcript task readback mode requires exact Session, task, and title identities." >&2
+      exit 2
+    fi
+    ;;
+  transcript-task-isolation)
+    TEST_CASE="testReviewedTranscriptTaskStaysPrivateFromOtherSessionParticipant"
+    if [[ -z "$TEST_TASK_ID" || -z "$TEST_EXPECTED_PACKET_TASK_TITLE" ]]; then
+      echo "Transcript task isolation mode requires exact task and title identities." >&2
+      exit 2
+    fi
+    ;;
   transcript-packet-span)
     TEST_CASE="testRetainedSessionShowsCompleteMultiSegmentPacketOnIPhone"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
@@ -386,7 +400,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-deep-link, today-client-follow-up, weekly-plan-preview, weekly-plan-operation, session-create-surface, coaching-phone-start, transcript-follow-through, transcript-packet-span, transcript-packet-materialization, transcript-packet-note-merge, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-deep-link, today-client-follow-up, weekly-plan-preview, weekly-plan-operation, session-create-surface, coaching-phone-start, transcript-follow-through, transcript-task-readback, transcript-task-isolation, transcript-packet-span, transcript-packet-materialization, transcript-packet-note-merge, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
     exit 2
     ;;
 esac
