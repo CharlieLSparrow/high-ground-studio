@@ -63,6 +63,10 @@ cloud outbox rather than creating another render.
   lane tests, while its least-privilege access contract creates separate
   updateable control folders and a create/read-only recording-share derivative
   folder for the worker. Nest receives control access plus derivative read only.
+- A guarded GCS fixture uses only generated participant audio under a unique
+  `processor-fixtures` job prefix. It exercises the real storage adapter,
+  two-source renderer, non-destructive edit join, immutable-generation readback,
+  create-once replay, and job-confined cleanup without reading application data.
 - Cloud worker execution with two real participant masters, exact output
   readback, authenticated proof listening, deliberate release, recipient
   playback/download, revocation, and cost observation remain release-train

@@ -62,6 +62,7 @@
       "pnpm quipsly:audio-spectral-cloud:test",
       "pnpm quipsly:session-audio-audition:test",
       "pnpm quipsly:session-recording-share:test",
+      "pnpm quipsly:session-recording-share:gcs-fixture:test",
       "pnpm quipsly:media-processor:access:test"
     ],
     "localRuntime": [
@@ -73,6 +74,7 @@
       "Run ALLOW_GCS_FIXTURE=1 PROJECT_ID=<project> QUIPSLY_MEDIA_BUCKET=<bucket> EXPECTED_BUILD_ID=<sha> pnpm quipsly:audio-mastery:gcs-fixture against the exact deployed build and verify complete-decode source measurement, deterministic preview generation, independent output measurement, immutable source readback, unpromoted state, and create-once replay.",
       "Run ALLOW_GCS_FIXTURE=1 PROJECT_ID=<project> QUIPSLY_MEDIA_BUCKET=<bucket> EXPECTED_BUILD_ID=<sha> pnpm quipsly:audio-signal-profile:gcs-fixture against the exact deployed build and verify complete-decode bounded waveform and frequency evidence, immutable source readback, create-once replay, and fixture cleanup.",
       "Run ALLOW_GCS_FIXTURE=1 PROJECT_ID=<project> QUIPSLY_MEDIA_BUCKET=<bucket> EXPECTED_BUILD_ID=<sha> pnpm quipsly:audio-spectral:gcs-fixture against the exact deployed build and verify the three-level logarithmic tile pack, exact-generation range reads, unchanged source hash, create-once replay, and fixture cleanup.",
+      "Run ALLOW_GCS_FIXTURE=1 PROJECT_ID=<project> QUIPSLY_MEDIA_BUCKET=<bucket> EXPECTED_BUILD_ID=<sha> pnpm quipsly:session-recording-share:gcs-fixture with synthetic participant media and verify generation-pinned sources, non-destructive text-edit joins, complete-decode private output, immutable source readback, create-once replay, and fixture cleanup.",
       "Verify one released video through the authorized Nest finalization and reconciliation boundary.",
       "Apply and read back managed-folder IAM plus no-override Cloud Run Jobs execution authority."
     ],

@@ -42,6 +42,11 @@ Date: 2026-08-24
   a create/read-only recording-share derivative folder. The processor cannot
   overwrite derivatives; Nest can queue/reconcile work and read the result but
   cannot create it. Both new worker lanes are deterministic manifest proofs.
+- Recording-share cloud qualification now has an explicit opt-in, synthetic-only
+  GCS fixture with generation-pinned sources, real FFmpeg editing, output
+  readback, create-once replay, and cleanup confined to its random job identity.
+  Its credentialed run remains deferred; the static guard, manifest audit, and
+  worker/FFmpeg suites pass locally.
 
 ## Conventional call progression checkpoint
 
