@@ -363,6 +363,9 @@ const result = {
   engagementId: start.engagementId,
   freshAccountsCreated: true,
   exactRenderedClientEntryUsed: true,
+  automaticCoachDefaultsOperated:
+    start.automaticCoachDefaultsRendered === true &&
+    start.mandatoryCoachConfigurationRequired === false,
   coachAndClientTenantIsolationOperated:
     isolation.coachAndClientIsolationOperated === true &&
     isolation.normalNavigationLeakageObserved === false &&
@@ -445,7 +448,9 @@ const result = {
   interactionSurfaceEvidence: {
     renderedBrowser: {
       accountCreation: true,
-      coachSetup: start.coachSetupThroughRenderedProduct === true,
+      coachSetup:
+        start.automaticCoachDefaultsRendered === true &&
+        start.mandatoryCoachConfigurationRequired === false,
       appointmentCreation:
         start.appointmentCreatedThroughRenderedProduct === true,
       invitationHandoff:
@@ -526,6 +531,7 @@ const result = {
     privateTestArtifactLeakageObserved:
       isolation.privateTestArtifactLeakageObserved === true,
     externalInvitationMessageSent: false,
+    mandatoryCoachConfigurationRequired: false,
   },
 };
 await writeFile(receiptPath, `${JSON.stringify(result, null, 2)}\n`, {

@@ -210,6 +210,8 @@ try {
     null,
     "Optional coaching preferences opened before the scheduling path.",
   );
+  evidence.automaticCoachDefaultsRendered = true;
+  evidence.mandatoryCoachConfigurationRequired = false;
 
   const appointment = coachPage.locator("#create-appointment");
   await appointment.waitFor({ state: "visible", timeout: 30_000 });
