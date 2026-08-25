@@ -105,6 +105,7 @@
     "quipsly:fresh:coaching-native-task": "QUIPSLY_FRESH_COACHING_NATIVE_TASK=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-native-task-operation.mjs",
     "quipsly:fresh:transcript-follow-through": "QUIPSLY_FRESH_TRANSCRIPT_FOLLOW_THROUGH_OPERATION=1 TSX_TSCONFIG_PATH=apps/quipsly/tsconfig.json node --import tsx --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-transcript-follow-through-operation.mjs",
     "quipsly:fresh:session-conversation": "QUIPSLY_FRESH_SESSION_CONVERSATION_OPERATION=1 TSX_TSCONFIG_PATH=apps/quipsly/tsconfig.json node --import tsx --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-session-conversation-operation.mjs",
+    "quipsly:fresh:private-packet-isolation": "QUIPSLY_FRESH_PRIVATE_PACKET_ISOLATION_OPERATION=1 TSX_TSCONFIG_PATH=apps/quipsly/tsconfig.json node --import tsx --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-private-packet-isolation-operation.mjs",
     "quipsly:transcript-follow-through:scheduler": "bash scripts/release/quipsly-transcript-follow-through-scheduler.sh",
     "quipsly:transcript-follow-through:scheduler:test": "node --test scripts/release/quipsly-transcript-follow-through-scheduler.test.mjs",
     "quipsly:local:session-invitation": "QUIPSLY_LOCAL_SESSION_INVITATION_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-session-invitation-operation.mjs",
