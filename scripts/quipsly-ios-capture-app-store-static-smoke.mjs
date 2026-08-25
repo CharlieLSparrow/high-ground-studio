@@ -974,7 +974,7 @@ for (const needle of [
   "CaptureRehearsalReadinessCard",
   "CaptureConsentConfirmationSheet",
   "Record this Session?",
-  "Everyone agrees once. Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.",
+  "Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.",
   "Allow recording",
   "Recording options",
   "Setup needed",
@@ -1061,7 +1061,7 @@ for (const needle of [
   "CaptureVideoSwitchCameraButton",
   "Podcast camera",
   "Record this Session?",
-  "Everyone agrees once. Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.",
+  "Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.",
   "Allow recording",
   "Recording options",
   "transcriptionConsentGrantedParticipantCount",
@@ -1471,7 +1471,9 @@ for (const needle of [
   "isTransportAmbiguousSessionCollectionStatus(response.statusCode)",
   "[404, 408, 410, 425, 429].contains(statusCode) || (500...599).contains(statusCode)",
   "return .transportUnavailable(message: message)",
-  "!sessions.contains(where: { $0.id == authoritativeSessionID })",
+  "let authoritativeSession = authoritativeSessionID.flatMap",
+  "$0.id == identifier || $0.callRoomId == identifier",
+  "authoritativeSession == nil",
   "return .authoritativeAbsent(message: message)",
 ]) {
   requireIncludes(bridgeText, needle, "typed capture-session authority refresh");

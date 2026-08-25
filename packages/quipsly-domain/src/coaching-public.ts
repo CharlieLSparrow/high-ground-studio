@@ -535,6 +535,13 @@ export type QuipslyPublicCoachingPacket = {
     noExternalSideEffects: string;
   };
   freeAccount: string;
+  payment: {
+    mode: "custom-quote";
+    label: string;
+    summary: string;
+    nextAction: string;
+    publicReadCreatesCharge: false;
+  };
   publicLoop: QuipslyPublicLoopStatus;
   positioning: QuipslyPublicCoachingPositioning;
   scheduling: QuipslyPublicCoachingScheduling;
@@ -564,7 +571,10 @@ export function isQuipslyPublicCoachingPacket(
     typeof value.title === "string" &&
     typeof value.summary === "string" &&
     isRecord(value.links) &&
-    isRecord(value.boundaries)
+    isRecord(value.boundaries) &&
+    isRecord(value.payment) &&
+    value.payment.mode === "custom-quote" &&
+    value.payment.publicReadCreatesCharge === false
   );
 }
 

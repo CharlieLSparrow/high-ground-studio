@@ -69,6 +69,15 @@ export async function GET(request: Request) {
     },
     freeAccount:
       "New Google and email/password users get a free Quipsly account and private Home Nest during Firebase-backed sign-in.",
+    payment: {
+      mode: "custom-quote",
+      label: "Custom quote",
+      summary:
+        "Public pages explain paid one-to-one coaching without creating a booking, checkout, or charge.",
+      nextAction:
+        "Sign in to request a booking hold or custom checkout link. Quipsly records app-owned intent before Stripe is treated as payment evidence.",
+      publicReadCreatesCharge: false,
+    },
     publicLoop: QUIPSLY_PUBLIC_LOOP_STATUS,
     positioning: QUIPSLY_PUBLIC_COACHING_POSITIONING,
     scheduling: {
