@@ -3001,6 +3001,10 @@ struct CaptureTranscriptReviewView: View {
                     } else if let desk = client.desk {
                         sourceTruth(desk)
                             .id("source-truth")
+                        if !client.canReviewPrivatePacket {
+                            participantFollowUpBoundary
+                                .id("shared-follow-up")
+                        }
                         audioAttentionSection(desk, scrollProxy: scrollProxy)
                             .id("audio-listen-points")
                         transcriptSegments(desk, scrollProxy: scrollProxy)
@@ -3033,9 +3037,7 @@ struct CaptureTranscriptReviewView: View {
                             )
                             .accessibilityIdentifier("CaptureTranscriptPacketLoadedBoundary")
                         }
-                        if !client.canReviewPrivatePacket {
-                            participantFollowUpBoundary
-                        } else if client.packetSegmentCount > 0 {
+                        if client.canReviewPrivatePacket && client.packetSegmentCount > 0 {
                             packetTranscriptReviewBoundary
                         }
                         speakerIdentitySection(desk)
