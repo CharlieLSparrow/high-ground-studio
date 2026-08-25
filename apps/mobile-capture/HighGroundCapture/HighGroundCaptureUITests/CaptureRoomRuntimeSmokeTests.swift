@@ -1487,9 +1487,18 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.staticTexts[defaultSessionTitle].firstMatch.waitForExistence(timeout: 20),
             "The iPhone must enter the exact Session it just scheduled, not a fixture or generic room."
         )
-        let backToCoaching = app.navigationBars.buttons.firstMatch
-        XCTAssertTrue(backToCoaching.waitForExistence(timeout: 5))
-        backToCoaching.tap()
+        let todayTab = app.tabBars.firstMatch.buttons["Today"].firstMatch
+        XCTAssertTrue(
+            todayTab.waitForExistence(timeout: 8),
+            "Record should retain the ordinary app navigation after exact Session entry."
+        )
+        todayTab.tap()
+        let reopenCoaching = app.buttons["CaptureOpenCoachingHome"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(reopenCoaching, in: app, timeout: 20, swipeAttempts: 10),
+            "The coach should be able to return to appointment management through Today."
+        )
+        reopenCoaching.tap()
         XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 15))
 
         let manageAfterSession = app.buttons.matching(
