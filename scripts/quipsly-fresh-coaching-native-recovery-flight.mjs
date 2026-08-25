@@ -6,7 +6,7 @@ import { chmod, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
-import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
+import { parseFreshCoachingCredentialIPCPacket } from "./lib/fresh-coaching-credential-ipc.mjs";
 import {
   clearRenderedSession,
   loadPlaywright,
@@ -85,12 +85,16 @@ async function runFreshStart() {
         QUIPSLY_FRESH_COACHING_START_OPERATION: "1",
         QUIPSLY_LOCAL_BASE_URL: baseURL,
       },
-      stdio: ["ignore", "pipe", "inherit"],
+      stdio: ["ignore", "pipe", "inherit", "ipc"],
     },
   );
   let stdout = "";
+  let credentialPacket = null;
   child.stdout.on("data", (chunk) => {
     stdout += chunk;
+  });
+  child.on("message", (message) => {
+    credentialPacket = message;
   });
   const status = await new Promise((resolve, reject) => {
     child.on("error", reject);
@@ -101,7 +105,17 @@ async function runFreshStart() {
     0,
     `Fresh rendered start failed with exit ${String(status)}.`,
   );
-  return parsePacket(stdout, "Fresh rendered start");
+  const start = parsePacket(stdout, "Fresh rendered start");
+  return {
+    start,
+    credentials: parseFreshCoachingCredentialIPCPacket(
+      credentialPacket,
+      {
+        coach: { email: start.coachEmail },
+        client: { email: start.clientEmail },
+      },
+    ),
+  };
 }
 
 async function runInherited(command, args, options = {}) {
@@ -133,13 +147,7 @@ async function readJSONCommand(command, args) {
   return JSON.parse(stdout);
 }
 
-async function grantClientRecordingConsent(context) {
-  const password = readRetainedQAPassword({
-    service: context.keychainService,
-    account: context.identities.client.email,
-  });
-  assert(password, "Fresh client password was not found in macOS Keychain.");
-
+async function grantClientRecordingConsent(context, password) {
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch({ headless: true });
   const browserContext = await browser.newContext({
@@ -355,7 +363,8 @@ async function readCoachStudioHandoffProjection(context, password) {
 process.stderr.write(
   "[fresh native recovery] creating a new coach, client, and Session through rendered product UI\n",
 );
-const start = await runFreshStart();
+const freshStart = await runFreshStart();
+const { start, credentials } = freshStart;
 const context = await loadFreshCoachingAcceptanceContext({
   baseURL,
   env: { QUIPSLY_COACHING_ACCEPTANCE_CONTEXT: start.contextPath },
@@ -370,18 +379,10 @@ assert.equal(context.sessionTitle, start.sessionTitle);
 process.stderr.write(
   "[fresh native recovery] saving the invited client's ordinary recording consent\n",
 );
-await grantClientRecordingConsent(context);
+await grantClientRecordingConsent(context, credentials.client.password);
 
-const coachPassword = readRetainedQAPassword({
-  service: context.keychainService,
-  account: context.identities.coach.email,
-});
-assert(coachPassword, "Fresh coach password was not found in macOS Keychain.");
-const clientPassword = readRetainedQAPassword({
-  service: context.keychainService,
-  account: context.identities.client.email,
-});
-assert(clientPassword, "Fresh client password was not found in macOS Keychain.");
+const coachPassword = credentials.coach.password;
+const clientPassword = credentials.client.password;
 
 const artifactDirectory = path.dirname(context.contextPath);
 const clientEntryResultBundlePath = path.join(
@@ -556,6 +557,8 @@ const receipt = {
   },
   boundaries: {
     passwordsWrittenToArtifact: false,
+    credentialsTransferredByPrivateChildIPC: true,
+    keychainReadRequiredForAutomatedFlight: false,
     simulatorUsed: destination.includes("Simulator"),
     simulatorMicrophonePermissionPregrantedByHarness: true,
     simulatorAppContainerStartedFreshByHarness: true,

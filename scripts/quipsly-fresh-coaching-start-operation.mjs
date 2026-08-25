@@ -9,6 +9,7 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
 import { writeRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
+import { createFreshCoachingCredentialIPCPacket } from "./lib/fresh-coaching-credential-ipc.mjs";
 import {
   assertNoHorizontalOverflow,
   clearRenderedSession,
@@ -581,6 +582,15 @@ try {
   });
   evidence.contextPath = contextPath;
   evidence.sessionTitle = sessionTitle;
+
+  if (typeof process.send === "function") {
+    await new Promise((resolve, reject) => {
+      process.send(
+        createFreshCoachingCredentialIPCPacket(identities),
+        (error) => (error ? reject(error) : resolve()),
+      );
+    });
+  }
 
   console.log(
     JSON.stringify(
