@@ -116,9 +116,9 @@ try {
 
   const coachOriginal = messageArticle(coachPage, originalBody);
   await coachOriginal.getByRole("button", { name: "Edit", exact: true }).click();
-  const editor = coachOriginal.getByRole("textbox");
+  const editor = coachPage.getByRole("textbox").first();
   await editor.fill(correctedBody);
-  await coachOriginal.getByRole("button", { name: "Save", exact: true }).click();
+  await coachPage.getByRole("button", { name: "Save", exact: true }).click();
   await coachPage.getByText(correctedBody, { exact: true }).waitFor({ timeout: 20_000 });
   await refresh(clientPage);
   await clientPage.getByText(correctedBody, { exact: true }).waitFor({ timeout: 20_000 });
