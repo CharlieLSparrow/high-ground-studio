@@ -12,6 +12,13 @@ export type CaptureTranscriptFollowThroughResult = {
   reusedExistingPacket: boolean;
 };
 
+export function captureTranscriptFollowThroughAuthorId(authority: any): string | null {
+  return authority?.room?.booking?.coachUserId
+    || authority?.requestedBy
+    || authority?.room?.createdByUserId
+    || null;
+}
+
 /**
  * Reconciles durable worker evidence and prepares private, candidate-only
  * follow-through without depending on a particular browser remaining open.
@@ -83,10 +90,7 @@ async function preparePrivateFollowThrough(input: {
   // A booked coaching Session belongs in the assigned coach's private review
   // lane even when the client's phone uploaded or queued the source first.
   // Non-booked production/research Sessions retain the transcript requester.
-  const authorUserId = authority?.room?.booking?.coachUserId
-    || authority?.requestedBy
-    || authority?.room?.createdByUserId
-    || null;
+  const authorUserId = captureTranscriptFollowThroughAuthorId(authority);
   if (!authorUserId) {
     return {
       transcriptJobId: input.transcriptJobId,

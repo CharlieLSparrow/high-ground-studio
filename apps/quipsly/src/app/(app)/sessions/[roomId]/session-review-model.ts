@@ -181,6 +181,11 @@ export type SessionReviewPacket = {
   } | null;
   transcriptProcessingGate?: { allowed: boolean; errorCode?: string; error?: string; explicitReleaseRequired?: boolean };
   packet?: {
+    reviewAccess?: {
+      canReviewPrivatePacket: boolean;
+      role: "CANONICAL_REVIEWER" | "SESSION_PARTICIPANT";
+      boundary: string;
+    };
     status: string;
     build: { packetBuildId: string | null; correlationMode: string } | null;
     summary: { id: string; title: string | null; body: string; source?: Record<string, unknown>; createdAt: string | null } | null;

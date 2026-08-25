@@ -26,7 +26,10 @@ import {
 import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
 import { buildSessionTranscriptConfidence } from "@/lib/session-transcript-confidence";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
-import { reconcileCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through";
+import {
+  captureTranscriptFollowThroughAuthorId,
+  reconcileCaptureTranscriptFollowThrough,
+} from "@/lib/server/capture-transcript-follow-through";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { mobileSessionNoteVisibilityWhere } from "@/lib/server/session-note-access";
 import { readGovernedActionSourceReference } from "@/lib/server/governed-action-runtime";
@@ -407,6 +410,7 @@ function packetSafeActions(input: {
   actionItems: any[];
   transcriptProcessingAllowed: boolean;
   packetStale: boolean;
+  canReviewPrivatePacket: boolean;
 }) {
   const transcriptCompleted = input.transcriptProcessingAllowed && input.latestTranscriptJob?.status === "COMPLETED";
   const transcriptRunning = input.latestTranscriptJob?.status === "RUNNING";
@@ -418,8 +422,10 @@ function packetSafeActions(input: {
       id: "build-review-packet",
       label: "Build review packet",
       risk: "medium",
-      enabled: transcriptCompleted && (!packetReady || input.packetStale),
-      why: input.packetStale
+      enabled: input.canReviewPrivatePacket && transcriptCompleted && (!packetReady || input.packetStale),
+      why: !input.canReviewPrivatePacket
+        ? "Private follow-up review belongs to the canonical coach, transcript requester, or Session creator."
+        : input.packetStale
         ? "Transcript review changed after this packet was built. Build a new append-only packet before reviewing candidates."
         : packetReady
         ? "A packet already exists. Use force only when intentionally creating a new review artifact from the same transcript."
@@ -626,9 +632,21 @@ export async function GET(request: Request) {
   const currentTranscript = await prisma.transcriptJob.findFirst({
     where: { roomId },
     orderBy: { createdAt: "desc" },
-    select: { id: true },
+    select: {
+      id: true,
+      requestedBy: true,
+      room: {
+        select: {
+          createdByUserId: true,
+          booking: { select: { coachUserId: true } },
+        },
+      },
+    },
   });
-  if (currentTranscript?.id) {
+  if (
+    currentTranscript?.id
+    && captureTranscriptFollowThroughAuthorId(currentTranscript) === actor.id
+  ) {
     try {
       await reconcileCaptureTranscriptFollowThrough({
         prisma,
@@ -744,6 +762,12 @@ export async function GET(request: Request) {
       },
       orderBy: { createdAt: "desc" },
       include: {
+        room: {
+          select: {
+            createdByUserId: true,
+            booking: { select: { coachUserId: true } },
+          },
+        },
         asset: {
           select: {
             id: true,
@@ -804,7 +828,11 @@ export async function GET(request: Request) {
     processingAllowed: transcriptProcessingAllowed,
   });
   const transcriptHeld = Boolean(selectedTranscriptAsset) && !transcriptProcessingAllowed;
-  const packetNotes = transcriptProcessingAllowed
+  const packetAuthorUserId = captureTranscriptFollowThroughAuthorId(latestTranscriptJob);
+  const canReviewPrivatePacket = Boolean(
+    packetAuthorUserId && packetAuthorUserId === actor.id,
+  );
+  const packetNotes = transcriptProcessingAllowed && canReviewPrivatePacket
     ? notes.filter((note: any) => {
         const source = sourceJson(note.sourceJson);
         return source.source === "transcript-packet-builder"
@@ -820,7 +848,7 @@ export async function GET(request: Request) {
   const packetStale = Boolean(summary && latestTranscriptJob
     && (!packetTemplateMatches(summary.sourceJson)
       || !packetSnapshotMatchesTranscriptJob(summary.sourceJson, latestTranscriptJob)));
-  const allPacketActionItems = transcriptProcessingAllowed
+  const allPacketActionItems = transcriptProcessingAllowed && canReviewPrivatePacket
     ? actionItems.filter((item: any) => {
         const source = sourceJson(item.sourceJson);
         return source.source === "transcript-packet-builder"
@@ -846,6 +874,7 @@ export async function GET(request: Request) {
     actionItems: packetActionItems,
     transcriptProcessingAllowed,
     packetStale,
+    canReviewPrivatePacket,
   });
   const reviewLanes = transcriptProcessingAllowed
     ? fallbackReviewLanes({ summary, highlights, actionCandidates })
@@ -1030,6 +1059,13 @@ export async function GET(request: Request) {
           explicitReleaseRequired: true,
         },
     packet: {
+      reviewAccess: {
+        canReviewPrivatePacket,
+        role: canReviewPrivatePacket ? "CANONICAL_REVIEWER" : "SESSION_PARTICIPANT",
+        boundary: canReviewPrivatePacket
+          ? "Private transcript follow-up is visible only to its canonical reviewer."
+          : "Session access does not include another participant's private transcript follow-up.",
+      },
       build: summary
         ? {
             packetBuildId: selectedPacketBuild.packetBuildId,
@@ -1038,6 +1074,8 @@ export async function GET(request: Request) {
         : null,
       status: transcriptHeld
         ? "TRANSCRIPT_HELD"
+        : !canReviewPrivatePacket
+          ? "PRIVATE_REVIEWER_ONLY"
         : packetStale
           ? "TRANSCRIPT_REVIEW_CHANGED"
         : summary
@@ -1135,6 +1173,8 @@ export async function GET(request: Request) {
       reviewLanes,
       nextAction: transcriptHeld
         ? "Await reviewed transcript release before building, reading, or reviewing packet projections."
+        : !canReviewPrivatePacket
+          ? "Continue using the Session transcript and shared follow-up. Private review remains with the canonical reviewer."
         : packetStale
           ? "Transcript review changed after this packet was built. Build a new packet before accepting any note, goal, or task candidate."
         : summary
@@ -1176,12 +1216,32 @@ export async function POST(request: Request) {
       id: transcriptJobId,
       room: sessionMutationActorAccessWhere(actor),
     },
-    select: { id: true },
+    select: {
+      id: true,
+      requestedBy: true,
+      room: {
+        select: {
+          createdByUserId: true,
+          booking: { select: { coachUserId: true } },
+        },
+      },
+    },
   });
 
   if (!job) {
     return NextResponse.json(
       { ok: false, error: "You do not have access to this transcript job." },
+      { status: 404 },
+    );
+  }
+  const canonicalAuthorUserId = captureTranscriptFollowThroughAuthorId(job);
+  if (!canonicalAuthorUserId || canonicalAuthorUserId !== userId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        errorCode: "PRIVATE_PACKET_REVIEWER_REQUIRED",
+        error: "Private transcript follow-up belongs to the canonical Session reviewer.",
+      },
       { status: 404 },
     );
   }
@@ -1193,9 +1253,21 @@ export async function POST(request: Request) {
         id: transcriptJobId,
         room: sessionMutationActorAccessWhere(actor),
       },
-      select: { id: true },
+      select: {
+        id: true,
+        requestedBy: true,
+        room: {
+          select: {
+            createdByUserId: true,
+            booking: { select: { coachUserId: true } },
+          },
+        },
+      },
     });
-    if (!authorizedJob) {
+    if (
+      !authorizedJob
+      || captureTranscriptFollowThroughAuthorId(authorizedJob) !== canonicalAuthorUserId
+    ) {
       return {
         ok: false,
         status: 404,
@@ -1206,7 +1278,7 @@ export async function POST(request: Request) {
     return buildCoachingPacketFromTranscriptJob({
       prisma: tx,
       transcriptJobId,
-      authorUserId: userId,
+      authorUserId: canonicalAuthorUserId,
       force,
     });
   }, { isolationLevel: "Serializable" });

@@ -220,8 +220,9 @@ function jsonResponse(value: unknown, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => value } as Response;
 }
 
-function packetReadyToBuild() {
+function packetReadyToBuild(): SessionReviewPacket {
   const value = packet();
+  if (!value.packet) throw new Error("Expected packet fixture.");
   return {
     ...value,
     packet: {
@@ -239,6 +240,25 @@ function packetReadyToBuild() {
         why: "Completed transcript evidence is ready.",
         boundary: "Creates internal review artifacts only.",
       }],
+    },
+  };
+}
+
+function participantPacket(): SessionReviewPacket {
+  const value = packetReadyToBuild();
+  if (!value.packet) throw new Error("Expected packet fixture.");
+  return {
+    ...value,
+    packet: {
+      ...value.packet,
+      reviewAccess: {
+        canReviewPrivatePacket: false,
+        role: "SESSION_PARTICIPANT",
+        boundary: "Session access does not include another participant's private transcript follow-up.",
+      },
+      status: "PRIVATE_REVIEWER_ONLY",
+      safeActions: [],
+      nextAction: "Continue using the shared transcript and Session workspaces.",
     },
   };
 }
@@ -527,6 +547,26 @@ describe("Session review goal candidates", () => {
         String(url).includes("/transcripts/run"),
       ),
     ).toBe(false);
+  });
+
+  it("keeps the coach's private review out of the participant workflow and never auto-builds it", async () => {
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse(participantPacket()));
+    global.fetch = fetchMock as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+
+    expect(await screen.findByRole("heading", { name: "Nothing shared yet" })).toBeInTheDocument();
+    expect(screen.getByText(/A coach's private review stays private/)).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Review transcript" })).toEqual(
+      expect.arrayContaining([expect.objectContaining({ hash: "#transcript-correction-review" })]),
+    );
+    expect(screen.queryByText("Internal editorial decisions")).not.toBeInTheDocument();
+    expect(screen.queryByText("Preparing your follow-up")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/mobile/capture/transcripts/packet?callRoomId=room-1",
+      { cache: "no-store" },
+    );
   });
 
   it("summarizes source, timing, speaker, and human-review confidence without exposing diagnostics by default", async () => {

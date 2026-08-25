@@ -159,6 +159,7 @@ function SessionPostCallPath({
   hasRecording,
   transcriptStatus,
   transcriptSegmentCount,
+  canReviewPrivatePacket,
   reviewMaterialReady,
   packetStale,
   preparingReviewMaterial,
@@ -169,6 +170,7 @@ function SessionPostCallPath({
   hasRecording: boolean;
   transcriptStatus: string;
   transcriptSegmentCount: number;
+  canReviewPrivatePacket: boolean;
   reviewMaterialReady: boolean;
   packetStale: boolean;
   preparingReviewMaterial: boolean;
@@ -180,7 +182,7 @@ function SessionPostCallPath({
   const steps = [
     { label: "Recording", ready: hasRecording },
     { label: "Transcript", ready: transcriptReady },
-    { label: "Review", ready: reviewReady },
+    ...(canReviewPrivatePacket ? [{ label: "Review", ready: reviewReady }] : []),
     { label: "Follow-up", ready: followUpReady },
   ];
   const running = ["QUEUED", "RUNNING", "PROCESSING"].includes(transcriptStatus);
@@ -190,6 +192,10 @@ function SessionPostCallPath({
       ? { label: "Check recording permission", href: sessionWorkspaceHref(roomId, "prepare"), detail: "The transcript is waiting for a participant to allow recording or transcription." }
       : !transcriptReady
         ? { label: running ? "Transcription is running" : "Start or retry transcription", href: "#transcript-status", detail: running ? "Quipsly is processing the source in the background; this page refreshes automatically." : "Use the verified recording to create the timed transcript." }
+        : !canReviewPrivatePacket
+          ? followUpReady
+            ? { label: "Open shared follow-up", href: sessionWorkspaceHref(roomId, "outputs"), detail: "The follow-up deliberately shared with you is ready." }
+            : { label: "Review transcript", href: "#transcript-correction-review", detail: "Your timed transcript is ready. Shared follow-up will appear here only after the coach deliberately shares it." }
         : !reviewReady
           ? preparingReviewMaterial
             ? { label: "Preparing your follow-up", href: "#review-material", detail: "Quipsly is turning the completed transcript into editable suggestions. Nothing is assigned, sent, or shared automatically." }
@@ -6018,8 +6024,10 @@ export function SessionReviewClient({
   const packetBuildAction = packet?.packet?.safeActions?.find(
     (action) => action.id === "build-review-packet" && action.enabled,
   );
+  const canReviewPrivatePacket = packet?.packet?.reviewAccess?.canReviewPrivatePacket !== false;
   const canPrepareReviewMaterial = Boolean(
     mode === "transcript" &&
+      canReviewPrivatePacket &&
       packet?.transcriptJob?.status === "COMPLETED" &&
       (packet?.transcriptJob?.segmentCount ?? 0) > 0 &&
       !held &&
@@ -6030,8 +6038,15 @@ export function SessionReviewClient({
     ? `${packet.transcriptJob.id}:${packet.packet?.transcriptReview?.snapshotSha256 || "missing"}`
     : null;
   const transcriptPermissionReady = packet?.transcriptProcessingGate?.allowed === true;
-  const followUpReadyForReview = Boolean(packet?.packet?.summary) && !packetStale;
-  const followUpStatusLabel = followUpReadyForReview
+  const clientFollowUpReady = finishingEvidence.outputs.some(
+    (output) => output.kind === "CLIENT_FOLLOW_UP" && output.status === "RELEASED",
+  );
+  const followUpReadyForReview = canReviewPrivatePacket && Boolean(packet?.packet?.summary) && !packetStale;
+  const followUpStatusLabel = !canReviewPrivatePacket
+    ? clientFollowUpReady
+      ? "Shared with you"
+      : "Not shared yet"
+    : followUpReadyForReview
     ? "Ready to review"
     : buildingPacket && canPrepareReviewMaterial
       ? "Preparing"
@@ -6052,9 +6067,6 @@ export function SessionReviewClient({
     void buildPacket({ automatic: true });
   }, [buildPacket, buildingPacket, canPrepareReviewMaterial, packetAttemptKey]);
 
-  const clientFollowUpReady = finishingEvidence.outputs.some(
-    (output) => output.kind === "CLIENT_FOLLOW_UP" && output.status === "RELEASED",
-  );
   const reviewLanes = packet?.packet?.reviewLanes ?? [];
   const actionableReviewLanes = reviewLanes.filter(
     (lane) => lane.itemCount > 0,
@@ -6475,6 +6487,7 @@ export function SessionReviewClient({
               hasRecording={Boolean(packet.selectedRecordingAsset || packet.transcriptJob?.asset)}
               transcriptStatus={packet.transcriptJob?.status || "NOT_STARTED"}
               transcriptSegmentCount={packet.transcriptJob?.segmentCount ?? 0}
+              canReviewPrivatePacket={canReviewPrivatePacket}
               reviewMaterialReady={Boolean(packet.packet?.summary)}
               packetStale={packetStale}
               preparingReviewMaterial={buildingPacket && canPrepareReviewMaterial}
@@ -6613,7 +6626,11 @@ export function SessionReviewClient({
                   {followUpStatusLabel}
                 </p>
                 <p className="mt-3 text-sm font-semibold text-[#765f40]">
-                  {followUpReadyForReview
+                  {!canReviewPrivatePacket
+                    ? clientFollowUpReady
+                      ? "A reviewed follow-up has been shared with you in this Session."
+                      : "Nothing has been shared yet. Your transcript remains available while the coach prepares any private review."
+                    : followUpReadyForReview
                     ? "Your summary and suggested notes, tasks, and goals are ready to review."
                     : buildingPacket && canPrepareReviewMaterial
                       ? "Quipsly is preparing editable suggestions from the transcript."
@@ -6622,6 +6639,7 @@ export function SessionReviewClient({
               </div>
             </section>
 
+            {canReviewPrivatePacket ? <>
             <section
               id="review-material"
               aria-labelledby="summary-heading"
@@ -6847,6 +6865,22 @@ export function SessionReviewClient({
                 </div>
               )}
             </section>
+
+            </> : (
+              <section className="rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
+                  Shared follow-up
+                </p>
+                <h2 className="mt-2 font-serif text-3xl font-black text-[#3d3122]">
+                  {clientFollowUpReady ? "Your follow-up is ready" : "Nothing shared yet"}
+                </h2>
+                <p className="mt-3 max-w-2xl text-sm font-semibold leading-relaxed text-[#765f40]">
+                  {clientFollowUpReady
+                    ? "Open Client follow-up to review the recap deliberately shared with you."
+                    : "You can keep using the transcript, Conversation, Notes, and Work. A coach's private review stays private unless they deliberately share a client follow-up."}
+                </p>
+              </section>
+            )}
 
             {audibleEventSources.length ? (
               <section

@@ -30,6 +30,11 @@ const actor = {
 const roomId = "room-1";
 const transcriptJobId = "transcript-1";
 const summaryNoteId = "summary-1";
+const actorOwnedTranscript = {
+  id: transcriptJobId,
+  requestedBy: actor.id,
+  room: { createdByUserId: actor.id, booking: null },
+};
 
 function activeGrantWhere() {
   return expect.objectContaining({
@@ -71,8 +76,8 @@ describe("packet mutation Session access", () => {
   it("uses the canonical active Nest grant before and inside packet build", async () => {
     const transcriptJobFindFirst = jest
       .fn()
-      .mockResolvedValueOnce({ id: transcriptJobId })
-      .mockResolvedValueOnce({ id: transcriptJobId });
+      .mockResolvedValueOnce(actorOwnedTranscript)
+      .mockResolvedValueOnce(actorOwnedTranscript);
     const prisma: any = {
       transcriptJob: { findFirst: transcriptJobFindFirst },
     };
@@ -108,7 +113,7 @@ describe("packet mutation Session access", () => {
   it("does not build a packet when the active Nest grant is revoked before the transaction", async () => {
     const transcriptJobFindFirst = jest
       .fn()
-      .mockResolvedValueOnce({ id: transcriptJobId })
+      .mockResolvedValueOnce(actorOwnedTranscript)
       .mockResolvedValueOnce(null);
     const prisma: any = {
       transcriptJob: { findFirst: transcriptJobFindFirst },
@@ -123,6 +128,31 @@ describe("packet mutation Session access", () => {
 
     expect(response.status).toBe(404);
     expect(payload.errorCode).toBe("SESSION_ACCESS_REVOKED");
+    expect(buildCoachingPacketFromTranscriptJob).not.toHaveBeenCalled();
+  });
+
+  it("does not let a booked client build a second copy of the coach-private packet", async () => {
+    const prisma: any = {
+      transcriptJob: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: transcriptJobId,
+          requestedBy: actor.id,
+          room: {
+            createdByUserId: "coach-1",
+            booking: { coachUserId: "coach-1" },
+          },
+        }),
+      },
+    };
+    prisma.$transaction = jest.fn();
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+
+    const response = await POST(packetBuildRequest());
+    const payload = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(payload.errorCode).toBe("PRIVATE_PACKET_REVIEWER_REQUIRED");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(buildCoachingPacketFromTranscriptJob).not.toHaveBeenCalled();
   });
 
