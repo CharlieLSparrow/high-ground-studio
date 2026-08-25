@@ -2,7 +2,7 @@
 
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
-import { stat } from "node:fs/promises";
+import { chmod, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   clearRenderedSession,
@@ -924,63 +924,75 @@ try {
     );
   }
 
-  console.log(
-    JSON.stringify(
-      {
-        ok: true,
-        localOnly: true,
-        testLane,
-        fixtureIdentifiersUsed,
-        humanAcceptanceSatisfied: false,
-        contextPath: freshContext?.contextPath || null,
-        roomId: ROOM_ID,
-        providerRoomId: PROVIDER_ROOM_ID,
-        participantsConnected: journeys.length,
-        retainedSourceStarted: true,
-        providerRecordingStarted: false,
-        chatRoundTrip: "passed",
-        browserToBrowserLiveKit: "passed",
-        conventionalLobbyOperated: true,
-        advancedDeviceSettingsCollapsedBeforeJoin: true,
-        technicalDeviceDetailsCollapsedBeforeJoin: true,
-        prejoinRecordingActionAbsent: true,
-        savedConsentRestoredAfterReentry: true,
-        postCallRecordingRecoveryStayedMounted: true,
-        verifiedRecordingSafeToCloseRendered: true,
-        independentBrowserSourcesVerified: 2,
-        independentParticipantSourcesVerified: new Set(
-          verifiedSources.map((source) => source.participantId),
-        ).size,
-        interruptedCoachUploadRecoveredAfterReload: interruptCoachUpload,
-        crashedCoachRecorderRecoveredAfterReload: crashCoachRecorder,
-        interruptedSourceProfilesVerified: recoveredSources.length,
-        coordinatedRecordingDirective: "passed",
-        allExpectedParticipantsRecordingVisible: true,
-        coordinatedEndpointBoundaries: directiveReceipts.length,
-        verifiedSourceIds: verifiedSources.map((source) => source.id),
-        browserSourceOverlapMilliseconds: overlapMilliseconds,
-        allPartyConsentReceipts: "passed",
-        allPartyTranscriptionConsentReceipts: "passed",
-        roomLeftOpenForInterop: keepRoomOpenForInterop,
-        controlledAudibleSpeechUsed: Boolean(syntheticSpeechSources),
-        controlledAudibleSpeechSources: syntheticSpeechSources
-          ? Object.keys(syntheticSpeechSources)
-          : [],
-        recordingWindowRequestedMilliseconds: requestedRecordingMilliseconds,
-        naturalHumanSpeechProven: false,
-        secretsPrinted: false,
-        freshContextMutatedOutsideProduct: false,
-      },
-      null,
-      2,
-    ),
-  );
+  const receiptPath = freshContext
+    ? path.join(
+        path.dirname(freshContext.contextPath),
+        "browser-live-room-receipt.json",
+      )
+    : null;
+  const receipt = {
+    ok: true,
+    localOnly: true,
+    testLane,
+    fixtureIdentifiersUsed,
+    humanAcceptanceSatisfied: false,
+    contextPath: freshContext?.contextPath || null,
+    roomId: ROOM_ID,
+    providerRoomId: PROVIDER_ROOM_ID,
+    participantsConnected: journeys.length,
+    retainedSourceStarted: true,
+    providerRecordingStarted: false,
+    chatRoundTrip: "passed",
+    browserToBrowserLiveKit: "passed",
+    conventionalLobbyOperated: true,
+    advancedDeviceSettingsCollapsedBeforeJoin: true,
+    technicalDeviceDetailsCollapsedBeforeJoin: true,
+    prejoinRecordingActionAbsent: true,
+    savedConsentRestoredAfterReentry: true,
+    postCallRecordingRecoveryStayedMounted: true,
+    verifiedRecordingSafeToCloseRendered: true,
+    independentBrowserSourcesVerified: 2,
+    independentParticipantSourcesVerified: new Set(
+      verifiedSources.map((source) => source.participantId),
+    ).size,
+    interruptedCoachUploadRecoveredAfterReload: interruptCoachUpload,
+    crashedCoachRecorderRecoveredAfterReload: crashCoachRecorder,
+    interruptedSourceProfilesVerified: recoveredSources.length,
+    coordinatedRecordingDirective: "passed",
+    allExpectedParticipantsRecordingVisible: true,
+    coordinatedEndpointBoundaries: directiveReceipts.length,
+    verifiedSourceIds: verifiedSources.map((source) => source.id),
+    browserSourceOverlapMilliseconds: overlapMilliseconds,
+    allPartyConsentReceipts: "passed",
+    allPartyTranscriptionConsentReceipts: "passed",
+    roomLeftOpenForInterop: keepRoomOpenForInterop,
+    controlledAudibleSpeechUsed: Boolean(syntheticSpeechSources),
+    controlledAudibleSpeechSources: syntheticSpeechSources
+      ? Object.keys(syntheticSpeechSources)
+      : [],
+    recordingWindowRequestedMilliseconds: requestedRecordingMilliseconds,
+    naturalHumanSpeechProven: false,
+    secretsPrinted: false,
+    freshContextMutatedOutsideProduct: false,
+    receiptPath,
+  };
+  if (receiptPath) {
+    await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await chmod(receiptPath, 0o600);
+  }
+  console.log(JSON.stringify(receipt, null, 2));
 } finally {
   for (const journey of journeys) {
-    await journey.page
-      .getByRole("button", { name: "Leave", exact: true })
-      .click()
-      .catch(() => undefined);
+    const leave = journey.page.getByRole("button", {
+      name: "Leave",
+      exact: true,
+    });
+    if (await leave.isVisible().catch(() => false)) {
+      await leave.click({ timeout: 2_000 }).catch(() => undefined);
+    }
     await clearRenderedSession(
       journey.page,
       baseURL,
