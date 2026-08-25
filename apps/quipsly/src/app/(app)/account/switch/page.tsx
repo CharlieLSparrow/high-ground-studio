@@ -1,15 +1,8 @@
 import { auth } from "@/auth";
+import { cleanQuipslyCallbackUrl } from "@/lib/firebase/quipsly-auth-input";
 import { AccountSwitchClient } from "./account-switch-client";
 
 export const dynamic = "force-dynamic";
-
-function safeCallbackUrl(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return "/projects";
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("/")) return "/projects";
-  if (trimmed.startsWith("//")) return "/projects";
-  return trimmed;
-}
 
 export default async function AccountSwitchPage({
   searchParams,
@@ -29,7 +22,7 @@ export default async function AccountSwitchPage({
 
   return (
     <AccountSwitchClient
-      callbackUrl={safeCallbackUrl(params?.callbackUrl)}
+      callbackUrl={cleanQuipslyCallbackUrl(params?.callbackUrl)}
       currentUser={user}
     />
   );

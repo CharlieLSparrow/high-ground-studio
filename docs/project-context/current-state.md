@@ -4064,3 +4064,18 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   webview attachment timed out again, so rendered phone-width and physical-iOS
   handoff evidence remain deferred rather than inferred. Detailed record:
   `docs/sessions/session-capture-app-handoff-recovery-2026-08-25.md`.
+
+### 2026-08-25 exact invitation identity return
+
+- Session invitation return now uses the same hardened internal-callback
+  boundary during account switching as ordinary sign-in. External, scheme-
+  relative, backslash-normalized, and control-character callback values fail
+  closed to `/projects`; exact safe Session invitation paths retain their
+  opaque token and query string.
+- The critical identity journey now has direct regression coverage for a
+  signed-out invitee, a wrong-account switch, canonical-primary-email
+  acceptance, accepted-invitation reentry, and typed invitation failure. The
+  tests prove which route and identity are passed to the authorization layer;
+  they do not claim mailbox delivery or minimally instructed human success.
+- Twenty-one focused invitation, account-switch, and Firebase-session tests,
+  strict TypeScript, and the 196-page production build pass locally.
