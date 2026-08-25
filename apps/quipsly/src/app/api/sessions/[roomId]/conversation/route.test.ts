@@ -293,6 +293,55 @@ describe("Session conversation route", () => {
     expect(prisma.sessionConversationMessage.create).not.toHaveBeenCalled();
   });
 
+  it("recovers an overlapping identical retry after the deterministic message wins the unique race", async () => {
+    const prisma = prismaBase();
+    const created = row();
+    prisma.sessionConversationMessage.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(created);
+    prisma.$transaction.mockRejectedValueOnce(
+      Object.assign(new Error("Unique constraint"), { code: "P2002" }),
+    );
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+
+    const response = await POST(
+      request("POST", {
+        clientRequestId,
+        body: created.body,
+      }),
+      context(),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      message: { id: created.id, body: created.body },
+      boundaries: {
+        concurrentRetryRecovered: true,
+        noExternalDelivery: true,
+      },
+    });
+  });
+
+  it("rejects oversized message bodies instead of silently truncating them", async () => {
+    const prisma = prismaBase();
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+
+    const response = await POST(
+      request("POST", {
+        clientRequestId,
+        body: "a".repeat(6_001),
+      }),
+      context(),
+    );
+
+    expect(response.status).toBe(400);
+    expect(prisma.sessionConversationMessage.findUnique).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("rejects a reply target from another Session", async () => {
     const prisma = prismaBase();
     prisma.sessionConversationMessage.findFirst.mockResolvedValue(null);

@@ -21,6 +21,11 @@ function record(value: unknown): Record<string, unknown> {
 function text(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
+function boundedText(value: unknown, max: number) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized && normalized.length <= max ? normalized : null;
+}
 async function requestBody(request: Request) {
   try {
     return record(await request.json());
@@ -30,6 +35,14 @@ async function requestBody(request: Request) {
 }
 function messageId(userId: string, clientRequestId: string) {
   return `session-message-${createHash("sha256").update(`${userId}|${clientRequestId}`).digest("hex").slice(0, 36)}`;
+}
+function isUniqueConflict(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2002",
+  );
 }
 const SELECT = {
   id: true,
@@ -271,8 +284,8 @@ export async function POST(
       },
     });
   }
-  const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
-  const body = text(input.body, 6_000);
+  const clientRequestId = (boundedText(input.clientRequestId, 80) || "").toLowerCase();
+  const body = boundedText(input.body, 6_000);
   const replyToId = text(input.replyToId, 240) || null;
   if (!UUID.test(clientRequestId) || !body)
     return NextResponse.json(
@@ -323,34 +336,66 @@ export async function POST(
       message: serialize(existing, access.session.user.id),
     });
   }
-  const created = await access.prisma.$transaction(async (tx: any) => {
-    const currentRoom = await tx.callRoom.findFirst({
-      where: sessionMutationAccessWhere(roomId, access.session.user),
-      select: { id: true },
+  let created: any;
+  try {
+    created = await access.prisma.$transaction(async (tx: any) => {
+      const currentRoom = await tx.callRoom.findFirst({
+        where: sessionMutationAccessWhere(roomId, access.session.user),
+        select: { id: true },
+      });
+      if (!currentRoom) return null;
+      const row = await tx.sessionConversationMessage.create({
+        data: {
+          id,
+          roomId,
+          authorUserId: access.session.user.id,
+          clientRequestId,
+          replyToId,
+          body,
+        },
+        select: SELECT,
+      });
+      await tx.sessionConversationMessageRevision.create({
+        data: {
+          messageId: id,
+          revision: 1,
+          operation: "CREATED",
+          actorUserId: access.session.user.id,
+          bodyAfter: body,
+        },
+      });
+      return row;
     });
-    if (!currentRoom) return null;
-    const row = await tx.sessionConversationMessage.create({
-      data: {
-        id,
-        roomId,
-        authorUserId: access.session.user.id,
-        clientRequestId,
-        replyToId,
-        body,
-      },
+  } catch (error) {
+    if (!isUniqueConflict(error)) throw error;
+    const raced = await access.prisma.sessionConversationMessage.findUnique({
+      where: { id },
       select: SELECT,
     });
-    await tx.sessionConversationMessageRevision.create({
-      data: {
-        messageId: id,
-        revision: 1,
-        operation: "CREATED",
-        actorUserId: access.session.user.id,
-        bodyAfter: body,
+    if (!raced) throw error;
+    if (
+      raced.roomId !== roomId ||
+      raced.body !== body ||
+      raced.replyToId !== replyToId
+    )
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "REQUEST_ID_CONFLICT",
+          error: "This send identity already belongs to different content.",
+        },
+        { status: 409 },
+      );
+    return NextResponse.json({
+      ok: true,
+      idempotentReplay: true,
+      message: serialize(raced, access.session.user.id),
+      boundaries: {
+        concurrentRetryRecovered: true,
+        noExternalDelivery: true,
       },
     });
-    return row;
-  });
+  }
   if (!created)
     return NextResponse.json(
       {
@@ -380,7 +425,7 @@ export async function PATCH(
   if (!access.ok) return access.response;
   const input = await requestBody(request);
   const messageIdValue = text(input.messageId, 240);
-  const body = text(input.body, 6_000);
+  const body = boundedText(input.body, 6_000);
   const expectedRevision = Number(input.expectedRevision);
   if (
     !messageIdValue ||
