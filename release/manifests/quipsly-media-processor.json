@@ -30,7 +30,9 @@
         "scripts/quipsly-audio-mastery",
         "scripts/quipsly-audio-signal-profile",
         "scripts/quipsly-audio-spectral",
-        "scripts/release/quipsly-media-processor"
+        "scripts/release/quipsly-media-processor",
+        "scripts/release/quipsly-session-audio-audition",
+        "scripts/release/quipsly-session-recording-share"
       ],
       "files": []
     },
