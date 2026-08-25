@@ -49,11 +49,9 @@ const request = (range?: string) =>
 describe("Session audio audition media", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest
-      .mocked(getQuipslySessionFromRequest)
-      .mockResolvedValue({
-        user: { id: "coach-12345678", primaryEmail: "coach@example.com" },
-      } as never);
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "coach-12345678", primaryEmail: "coach@example.com" },
+    } as never);
     jest
       .mocked(requireMediaBucketName)
       .mockReturnValue("quipsly-private-media");
@@ -64,7 +62,7 @@ describe("Session audio audition media", () => {
         output: {
           bucketName: "quipsly-private-media",
           objectName:
-            "media-vault/proxy/session-audition/room/recording/job.m4a",
+            "media-vault/derived/session-audio-audition/room/recording/job.m4a",
           generation: "202",
           sizeBytes: bytes.length,
           sha256: outputSha,
@@ -108,7 +106,7 @@ describe("Session audio audition media", () => {
     expect(response.headers.get("etag")).toBe(`"sha256-${outputSha}"`);
     expect(response.headers.get("x-quipsly-source-sha256")).toBe(sourceSha);
     expect(bucket.file).toHaveBeenCalledWith(
-      "media-vault/proxy/session-audition/room/recording/job.m4a",
+      "media-vault/derived/session-audio-audition/room/recording/job.m4a",
       { generation: "202" },
     );
   });

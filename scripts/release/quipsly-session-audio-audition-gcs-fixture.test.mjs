@@ -10,6 +10,7 @@ test("audition fixture is opt-in, synthetic, generation-bound, and self-cleaning
   assert.match(source, /ALLOW_GCS_FIXTURE/);
   assert.match(source, /testsrc2=size=1280x720:rate=24:duration=8/);
   assert.match(source, /media-vault\/recordings\/processor-fixtures/);
+  assert.match(source, /buildSessionAudioAuditionTargetObjectName/);
   assert.match(source, /\{ generation: sourceGeneration \}/);
   assert.match(source, /ifGenerationMatch: 0/);
   assert.match(source, /syntheticMediaOnly: true/);

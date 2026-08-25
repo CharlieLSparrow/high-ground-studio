@@ -22,7 +22,7 @@ const SAFE_ID = /^[A-Za-z0-9_-]{8,240}$/;
 const SAFE_BUCKET = /^[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]$/;
 const SOURCE_OBJECT = /^media-vault\/recordings\/[A-Za-z0-9/_\-.]+$/;
 const TARGET_OBJECT =
-  /^media-vault\/proxy\/session-audition\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.m4a$/;
+  /^media-vault\/derived\/session-audio-audition\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.m4a$/;
 const GENERATION = /^[1-9][0-9]*$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 
@@ -151,7 +151,7 @@ export function buildSessionAudioAuditionTargetObjectName(input: {
   jobId: string;
 }) {
   return [
-    "media-vault/proxy/session-audition",
+    "media-vault/derived/session-audio-audition",
     requiredId(input.roomId, "room"),
     requiredId(input.recordingAssetId, "recording asset"),
     `${requiredJobId(input.jobId)}.m4a`,

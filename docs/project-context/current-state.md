@@ -51,6 +51,10 @@ Date: 2026-08-24
   generated 24 fps video-with-audio source. It proves the exact-generation
   extraction, compact complete-decode AAC receipt, immutable source readback,
   replay, and job-confined cleanup without touching real Session media.
+- Compact audition outputs now live in their own derivative managed folder.
+  The processor has create/read only and Nest has read only, so the cloud
+  identity cannot overwrite a completed audition even though unrelated proxy
+  workers retain update authority in their separate folder.
 
 ## Conventional call progression checkpoint
 

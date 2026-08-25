@@ -20,6 +20,7 @@ test("media processor access declares every worker control and derivative bounda
     "media-vault/mastering/",
     "media-vault/spectral/",
     "media-vault/derived/session-recording-share/",
+    "media-vault/derived/session-audio-audition/",
   ])
     assert.match(script, new RegExp(prefix.replaceAll("/", "\\/")));
 });
@@ -60,6 +61,18 @@ test("mastering output is create-and-read only while control records stay update
   assert.doesNotMatch(
     script,
     /"\$\{session_recording_share_folder\}"[\s\S]{0,140}roles\/storage\.objectUser/,
+  );
+  assert.match(
+    script,
+    /"\$\{session_audio_audition_folder\}"[\s\S]+roles\/storage\.objectCreator/,
+  );
+  assert.match(
+    script,
+    /"\$\{session_audio_audition_folder\}"[\s\S]+roles\/storage\.objectViewer/,
+  );
+  assert.doesNotMatch(
+    script,
+    /"\$\{session_audio_audition_folder\}"[\s\S]{0,140}roles\/storage\.objectUser/,
   );
   for (const variable of [
     "alignment_control_folder",

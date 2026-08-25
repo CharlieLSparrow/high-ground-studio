@@ -153,6 +153,7 @@ proxy_folder="media-vault/proxy/"
 mastering_folder="media-vault/mastering/"
 spectral_folder="media-vault/spectral/"
 session_recording_share_folder="media-vault/derived/session-recording-share/"
+session_audio_audition_folder="media-vault/derived/session-audio-audition/"
 for folder in \
   "${recordings_folder}" \
   "${raw_folder}" \
@@ -166,7 +167,8 @@ for folder in \
   "${proxy_folder}" \
   "${mastering_folder}" \
   "${spectral_folder}" \
-  "${session_recording_share_folder}"; do
+  "${session_recording_share_folder}" \
+  "${session_audio_audition_folder}"; do
   ensure_managed_folder "${folder}"
 done
 
@@ -223,6 +225,14 @@ ensure_binding \
   "serviceAccount:${processor_service_account}" \
   "roles/storage.objectViewer"
 ensure_binding \
+  "${session_audio_audition_folder}" \
+  "serviceAccount:${processor_service_account}" \
+  "roles/storage.objectCreator"
+ensure_binding \
+  "${session_audio_audition_folder}" \
+  "serviceAccount:${processor_service_account}" \
+  "roles/storage.objectViewer"
+ensure_binding \
   "${control_folder}" \
   "serviceAccount:${nest_service_account}" \
   "roles/storage.objectUser"
@@ -252,6 +262,10 @@ ensure_binding \
   "roles/storage.objectViewer"
 ensure_binding \
   "${session_recording_share_folder}" \
+  "serviceAccount:${nest_service_account}" \
+  "roles/storage.objectViewer"
+ensure_binding \
+  "${session_audio_audition_folder}" \
   "serviceAccount:${nest_service_account}" \
   "roles/storage.objectViewer"
 

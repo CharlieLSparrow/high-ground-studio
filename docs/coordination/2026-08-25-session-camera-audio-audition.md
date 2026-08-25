@@ -29,7 +29,7 @@ The database row commits before the create-once GCS outbox. The private media
 worker receives only a generation-bound manifest, materializes and hashes the
 exact source, extracts the first audio stream to 48 kHz AAC-LC, decodes the
 complete output, and writes a new immutable object under
-`media-vault/proxy/session-audition/`. The result records its own generation,
+`media-vault/derived/session-audio-audition/`. The result records its own generation,
 byte count, SHA-256, CRC32C, duration, codec, sample rate, channel count,
 bitrate, worker execution, build, and attempt. Originals are never overwritten.
 
