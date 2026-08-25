@@ -39,6 +39,7 @@ never be substituted for the evidence requested here.
 
 | State | Validation still required | Evidence that closes it |
 | --- | --- | --- |
+| Environment retry | On 2026-08-24 the clean 29-commit train passed the complete local release conductor, but the selected `charlie@highgroundodyssey.com` gcloud user and Application Default Credentials could no longer mint tokens. Project, Firebase Admin, preview, and live readback were therefore not attempted or inferred. | Run `gcloud auth login --update-adc --brief`, then `gcloud auth application-default set-quota-project quipsly-reef`, and capture a passing `bash scripts/release/quipsly-gcloud-auth-check.sh` before preview or promotion. |
 | Pending | A deliberately batched Nest deployment and matching TestFlight build expose the same compatible mastery review plan and receipt contract. | Deployed commit/build IDs, authenticated live smoke, TestFlight processing status, and rollback coordinates. |
 
 ## Episode package review
