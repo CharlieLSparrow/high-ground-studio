@@ -4329,7 +4329,7 @@ struct CaptureTranscriptReviewView: View {
             }
         }
         .reviewCard()
-        .accessibilityElement(children: .contain)
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("CaptureTranscriptParticipantFollowUpBoundary")
     }
 
