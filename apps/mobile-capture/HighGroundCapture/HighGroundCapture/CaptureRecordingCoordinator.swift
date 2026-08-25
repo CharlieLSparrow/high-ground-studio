@@ -77,6 +77,13 @@ private struct CaptureRecordingDirectiveResponse: Decodable {
 private struct CaptureRecordingEndpointResponse: Decodable {
     let ok: Bool
     let error: String?
+    let errorCode: String?
+}
+
+private enum CaptureRecordingReceiptDelivery {
+    case acknowledged
+    case retry(String)
+    case rejected(String)
 }
 
 /// Coordinates a room-level Record/Stop intent without confusing it with media
@@ -90,6 +97,8 @@ final class CaptureRecordingCoordinator: ObservableObject {
     @Published private(set) var isSending = false
     @Published private(set) var statusMessage: String?
 
+    let receiptOutbox: CaptureRecordingReceiptOutbox
+
     private let baseURL = normalizedNestBaseURL(
         ProcessInfo.processInfo.environment["QUIPSLY_API_BASE_URL"]
             ?? (Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String)
@@ -98,6 +107,45 @@ final class CaptureRecordingCoordinator: ObservableObject {
     private var observedRoomID: String?
     private var baselineEstablished = false
     private var handledStates: [String: CaptureRecordingEndpointState] = [:]
+    private var isFlushingReceipts = false
+    private var retryTask: Task<Void, Never>?
+    private var outboxObservation: AnyCancellable?
+
+    init(receiptOutbox: CaptureRecordingReceiptOutbox? = nil) {
+        let receiptOutbox = receiptOutbox ?? .shared
+        self.receiptOutbox = receiptOutbox
+        outboxObservation = receiptOutbox.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    #if DEBUG && targetEnvironment(simulator)
+    /// Stages one network-disabled receipt through the shipping protected
+    /// store so an operated relaunch can prove identity and account isolation.
+    func stageRecordingReceiptOutboxUITestReceipt(
+        roomID: String,
+        ownerAccountID: String
+    ) throws -> PendingCaptureRecordingReceipt {
+        if let existing = receiptOutbox.latest(roomID: roomID) {
+            return existing
+        }
+        let payload = CaptureRecordingReceiptPayload(
+            receiptId: UUID(),
+            directiveId: "operated-recording-directive",
+            state: .started,
+            captureId: UUID(),
+            clientInstanceId: "ios-operated-outbox",
+            clientKind: "ios",
+            deviceLabel: "Quipsly Capture · operated simulator",
+            detail: "Protected recording-status outbox relaunch evidence."
+        )
+        return try receiptOutbox.enqueue(
+            roomID: roomID,
+            ownerAccountID: ownerAccountID,
+            payload: payload
+        )
+    }
+    #endif
 
     func reset(roomID: String?) {
         guard observedRoomID != roomID else { return }
@@ -120,6 +168,7 @@ final class CaptureRecordingCoordinator: ObservableObject {
         localRecordingReady: Bool
     ) async -> CaptureRecordingDirective? {
         reset(roomID: roomID)
+        await flushPendingReceipts()
         do {
             let directive = try await read(roomID: roomID)
             if !baselineEstablished {
@@ -214,14 +263,12 @@ final class CaptureRecordingCoordinator: ObservableObject {
         handledStates[directive.id] = state
         if state == .started {
             joinConfirmationRequired = false
-            statusMessage = "Recording on this iPhone"
         } else if state == .startFailed {
             joinConfirmationRequired = true
-            statusMessage = "Recording couldn’t start on this iPhone. Your call is still connected; try again."
         } else if state == .stopped {
             joinConfirmationRequired = false
-            statusMessage = "Recording stopped · source stays protected on this iPhone"
         }
+        statusMessage = handledStatusMessage(for: state)
     }
 
     func acknowledge(
@@ -231,33 +278,125 @@ final class CaptureRecordingCoordinator: ObservableObject {
         captureID: UUID? = nil,
         detail: String? = nil
     ) async {
+        guard let ownerAccountID = AuthManager.currentStoredOwnerID() else {
+            statusMessage = "Recording is safe locally, but Quipsly could not bind its room status to the signed-in account."
+            return
+        }
+        let payload = CaptureRecordingReceiptPayload(
+            receiptId: receiptID(
+                ownerAccountID: ownerAccountID,
+                roomID: roomID,
+                directiveID: directive.id,
+                state: state
+            ),
+            directiveId: directive.id,
+            state: state,
+            captureId: captureID,
+            clientInstanceId: CaptureClientInstallation.id,
+            clientKind: "ios",
+            deviceLabel: deviceLabel,
+            detail: normalizedDetail(detail)
+        )
         do {
-            var request = try request(roomID: roomID)
+            _ = try receiptOutbox.enqueue(
+                roomID: roomID,
+                ownerAccountID: ownerAccountID,
+                payload: payload
+            )
+        } catch {
+            statusMessage = "Recording is safe locally, but its protected room-status receipt could not be queued. \(error.localizedDescription)"
+            return
+        }
+        await flushPendingReceipts()
+    }
+
+    /// Delivers every status transition for the current account with its
+    /// original idempotency identity. Process death or a short network outage
+    /// can delay collaboration truth, but cannot fabricate or lose a local
+    /// capture result.
+    func flushPendingReceipts() async {
+        guard !isFlushingReceipts else { return }
+        guard AuthManager.shared.networkActionsAllowed else {
+            if receiptOutbox.pendingCount > 0 {
+                statusMessage = "Recording is safe locally; room status is waiting securely on this iPhone."
+            }
+            return
+        }
+        isFlushingReceipts = true
+        defer { isFlushingReceipts = false }
+
+        for receipt in receiptOutbox.pendingReceipts {
+            guard receipt.ownerAccountID == AuthManager.currentStoredOwnerID() else {
+                return
+            }
+            switch await deliver(receipt) {
+            case .acknowledged:
+                receiptOutbox.markAcknowledged(receipt.id)
+            case .retry(let message):
+                statusMessage = "Recording is safe locally; room status is waiting securely on this iPhone. \(message)"
+                scheduleRetry()
+                return
+            case .rejected(let message):
+                receiptOutbox.markRejected(receipt.id, message: message)
+                statusMessage = "Recording is safe locally; Nest rejected one coordination status. \(message)"
+            }
+        }
+        if receiptOutbox.pendingCount == 0 {
+            retryTask?.cancel()
+            retryTask = nil
+            if statusMessage?.hasPrefix(
+                "Recording is safe locally; room status is waiting securely"
+            ) == true {
+                if let directive = currentDirective,
+                   let state = handledStates[directive.id] {
+                    statusMessage = handledStatusMessage(for: state)
+                } else {
+                    statusMessage = "Room recording status synchronized."
+                }
+            }
+        }
+    }
+
+    private func deliver(
+        _ receipt: PendingCaptureRecordingReceipt
+    ) async -> CaptureRecordingReceiptDelivery {
+        do {
+            var request = try request(roomID: receipt.roomID)
             request.httpMethod = "PATCH"
             request.setValue("application/json", forHTTPHeaderField: "content-type")
-            var body: [String: Any] = [
-                "receiptId": receiptID(
-                    roomID: roomID,
-                    directiveID: directive.id,
-                    state: state
-                ),
-                "directiveId": directive.id,
-                "state": state.rawValue,
-                "clientInstanceId": CaptureClientInstallation.id,
-                "clientKind": "ios",
-                "deviceLabel": deviceLabel,
-            ]
-            if let captureID { body["captureId"] = captureID.uuidString.lowercased() }
-            if let detail, !detail.isEmpty { body["detail"] = detail }
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let response: CaptureRecordingEndpointResponse = try await send(request)
-            guard response.ok else {
-                throw CoordinatorError.server(response.error ?? "The recording status receipt needs a retry.")
+            let encoder = JSONEncoder()
+            request.httpBody = try encoder.encode(receipt.payload)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request
+            )
+            let packet = try JSONDecoder().decode(
+                CaptureRecordingEndpointResponse.self,
+                from: data
+            )
+            if (200..<300).contains(response.statusCode), packet.ok {
+                return .acknowledged
             }
+            let message = packet.error
+                ?? "Recording coordination returned \(response.statusCode)."
+            if response.statusCode == 400
+                || response.statusCode == 404
+                || (response.statusCode == 409
+                    && packet.errorCode == "RECEIPT_ID_CONFLICT")
+                || response.statusCode == 422 {
+                return .rejected(message)
+            }
+            return .retry(message)
         } catch {
-            // The local media state remains authoritative and protected. A
-            // receipt failure is visible, but never rewrites capture success.
-            statusMessage = "Recording is safe locally; room status will retry. \(error.localizedDescription)"
+            return .retry(error.localizedDescription)
+        }
+    }
+
+    private func scheduleRetry() {
+        retryTask?.cancel()
+        retryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            guard !Task.isCancelled else { return }
+            await self?.flushPendingReceipts()
         }
     }
 
@@ -298,22 +437,48 @@ final class CaptureRecordingCoordinator: ObservableObject {
     }
 
     private func receiptID(
+        ownerAccountID: String,
         roomID: String,
         directiveID: String,
         state: CaptureRecordingEndpointState
-    ) -> String {
-        let key = "quipsly.capture.recording-directive-receipt.v1.\(roomID).\(directiveID).\(state.rawValue)"
-        if let existing = UserDefaults.standard.string(forKey: key), UUID(uuidString: existing) != nil {
-            return existing.lowercased()
+    ) -> UUID {
+        let key = "quipsly.capture.recording-directive-receipt.v1.\(ownerAccountID).\(roomID).\(directiveID).\(state.rawValue)"
+        if let existing = UserDefaults.standard.string(forKey: key),
+           let id = UUID(uuidString: existing) {
+            return id
         }
-        let created = UUID().uuidString.lowercased()
-        UserDefaults.standard.set(created, forKey: key)
+        let created = UUID()
+        UserDefaults.standard.set(created.uuidString.lowercased(), forKey: key)
         return created
     }
 
     private var deviceLabel: String {
         let name = UIDevice.current.name.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? "Quipsly Capture · iPhone" : "Quipsly Capture · \(name)"
+    }
+
+    private func normalizedDetail(_ value: String?) -> String? {
+        let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized?.isEmpty == false ? normalized : nil
+    }
+
+    private func handledStatusMessage(
+        for state: CaptureRecordingEndpointState
+    ) -> String {
+        switch state {
+        case .observed:
+            "Starting this iPhone's recording…"
+        case .started:
+            "Recording on this iPhone"
+        case .startFailed:
+            "Recording couldn’t start on this iPhone. Your call is still connected; try again."
+        case .stopping:
+            "Saving this iPhone's recording…"
+        case .stopped:
+            "Recording stopped · source stays protected on this iPhone"
+        case .stopFailed:
+            "This iPhone is still protecting its recording. Keep Quipsly open and try again."
+        }
     }
 }
 

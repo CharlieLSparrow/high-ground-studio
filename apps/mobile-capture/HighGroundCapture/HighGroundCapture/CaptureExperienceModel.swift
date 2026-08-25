@@ -219,6 +219,17 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesRecordingReceiptOutboxUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-recording-receipt-outbox-ui-test"
+            )
+        #else
+        false
+        #endif
+    }
+
     static var usesWaitingForHostDeterministicUITest: Bool {
         #if DEBUG && targetEnvironment(simulator)
         usesPreviewData
@@ -637,6 +648,8 @@ final class CaptureExperienceModel: ObservableObject {
         async let sourceInboxLoad: Void = sourceInboxClient.load()
         async let readinessLoad: Void = readinessClient.load()
         async let reviewDigestLoad: Void = reviewDigestClient.load()
+        async let recordingReceiptFlush: Void = recordingCoordinator
+            .flushPendingReceipts()
         _ = await (
             sessionLoad,
             todayLoad,
@@ -645,7 +658,8 @@ final class CaptureExperienceModel: ObservableObject {
             coachingLoad,
             sourceInboxLoad,
             readinessLoad,
-            reviewDigestLoad
+            reviewDigestLoad,
+            recordingReceiptFlush
         )
         // The Library can finish crash validation before Nest has restored
         // network authority. Re-evaluate recovered sources after the signed-in

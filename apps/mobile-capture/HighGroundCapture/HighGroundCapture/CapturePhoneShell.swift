@@ -6588,6 +6588,24 @@ private struct CaptureRecorderView: View {
                         )
                     }
 
+                    #if DEBUG && targetEnvironment(simulator)
+                    if CaptureLaunchConfiguration.usesRecordingReceiptOutboxUITest,
+                       let receipt = recordingCoordinator.receiptOutbox.latest(
+                            roomID: session.callRoomId
+                       ) {
+                        Text(receipt.id.uuidString.lowercased())
+                            .font(.caption.monospaced())
+                            .accessibilityIdentifier(
+                                "CaptureRecordingReceiptOutboxReceiptID"
+                            )
+                        Text(receipt.deliveryState.rawValue)
+                            .font(.caption)
+                            .accessibilityIdentifier(
+                                "CaptureRecordingReceiptOutboxDeliveryState"
+                            )
+                    }
+                    #endif
+
                     VStack(alignment: .leading, spacing: 0) {
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) {
@@ -7347,6 +7365,15 @@ private struct CaptureRecorderView: View {
                     routeName: staged.payload.microphoneLabel,
                     outputRouteName: staged.payload.outputLabel
                 )
+            }
+            if CaptureLaunchConfiguration.usesRecordingReceiptOutboxUITest,
+               let session = model.selectedSession,
+               let owner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
+                _ = try? recordingCoordinator
+                    .stageRecordingReceiptOutboxUITestReceipt(
+                        roomID: session.callRoomId,
+                        ownerAccountID: owner
+                    )
             }
             #endif
             await sessionPreflight.flushPending()

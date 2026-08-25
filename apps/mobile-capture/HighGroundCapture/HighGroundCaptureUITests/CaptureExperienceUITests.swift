@@ -20,6 +20,12 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testReadyParticipantSeesWaitingStatusInsteadOfDisabledRecord") {
             app.launchArguments.append("--capture-waiting-for-host-ui-test")
         }
+        if name.contains("testRecordingReceiptOutboxSurvivesRelaunchAndStaysAccountPartitioned") {
+            app.launchArguments += [
+                "--capture-share-owner-ui-preview=recording-receipt-owner",
+                "--capture-recording-receipt-outbox-ui-test",
+            ]
+        }
         let launchesWatchPreview: Bool
         if name.contains(
             "testEpisodeWatchKeepsExactCurrentPassVisibleWithoutALocalClip"
@@ -2302,6 +2308,71 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["CaptureRehearsalReadinessDisclosure"].tap()
         XCTAssertEqual(
             app.staticTexts["CaptureSessionPreflightOutboxReceiptID"].label,
+            receiptID
+        )
+    }
+
+    func testRecordingReceiptOutboxSurvivesRelaunchAndStaysAccountPartitioned() {
+        let ownerArguments = app.launchArguments
+
+        app.tabBars.buttons["Record"].tap()
+        openLocalRecorderIfNeeded()
+        let firstIdentity = app.staticTexts[
+            "CaptureRecordingReceiptOutboxReceiptID"
+        ]
+        XCTAssertTrue(firstIdentity.waitForExistence(timeout: 8))
+        let receiptID = firstIdentity.label
+        XCTAssertFalse(receiptID.isEmpty)
+        XCTAssertEqual(
+            app.staticTexts["CaptureRecordingReceiptOutboxDeliveryState"].label,
+            "pending"
+        )
+
+        app.terminate()
+        app.launchArguments = ownerArguments
+        app.launch()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePreviewModeBadge"]
+                .waitForExistence(timeout: 12)
+        )
+        app.tabBars.buttons["Record"].tap()
+        openLocalRecorderIfNeeded()
+        XCTAssertEqual(
+            app.staticTexts["CaptureRecordingReceiptOutboxReceiptID"].label,
+            receiptID,
+            "Process restart must recover the exact random recording-status receipt identity."
+        )
+
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-share-owner-ui-preview=recording-receipt-other-owner",
+            "--capture-recording-receipt-outbox-ui-test",
+        ]
+        app.launch()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePreviewModeBadge"]
+                .waitForExistence(timeout: 12)
+        )
+        app.tabBars.buttons["Record"].tap()
+        openLocalRecorderIfNeeded()
+        XCTAssertNotEqual(
+            app.staticTexts["CaptureRecordingReceiptOutboxReceiptID"].label,
+            receiptID,
+            "Another account must never see or replay the prior account's endpoint status."
+        )
+
+        app.terminate()
+        app.launchArguments = ownerArguments
+        app.launch()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePreviewModeBadge"]
+                .waitForExistence(timeout: 12)
+        )
+        app.tabBars.buttons["Record"].tap()
+        openLocalRecorderIfNeeded()
+        XCTAssertEqual(
+            app.staticTexts["CaptureRecordingReceiptOutboxReceiptID"].label,
             receiptID
         )
     }

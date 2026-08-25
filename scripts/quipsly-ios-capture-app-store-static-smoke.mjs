@@ -66,6 +66,8 @@ const files = {
   sourceAnnotationDraftOutbox: path.join(sourceRoot, "SourceAnnotationDraftOutbox.swift"),
   sessionNoteEditOutbox: path.join(sourceRoot, "SessionNoteEditOutbox.swift"),
   captureReceiptStore: path.join(sourceRoot, "CaptureRoomReceiptStore.swift"),
+  captureRecordingCoordinator: path.join(sourceRoot, "CaptureRecordingCoordinator.swift"),
+  captureRecordingReceiptOutbox: path.join(sourceRoot, "CaptureRecordingReceiptOutbox.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
@@ -218,6 +220,8 @@ const sourceInboxFilingText = read(files.sourceInboxFiling);
 const sourceAnnotationDraftOutboxText = read(files.sourceAnnotationDraftOutbox);
 const sessionNoteEditOutboxText = read(files.sessionNoteEditOutbox);
 const captureReceiptStoreText = read(files.captureReceiptStore);
+const captureRecordingCoordinatorText = read(files.captureRecordingCoordinator);
+const captureRecordingReceiptOutboxText = read(files.captureRecordingReceiptOutbox);
 const capturePhoneShellText = read(files.capturePhoneShell);
 const audioSoundCheckText = read(files.audioSoundCheck);
 const audioSoundCheckModelText = read(files.audioSoundCheckModel);
@@ -1796,6 +1800,16 @@ assert(
 );
 requireIncludes(mobileCaptureConsentRouteText, "sessionInvitationAccessWhere", "browser recording readiness reuses the canonical Session control boundary");
 requireIncludes(mobileCaptureConsentRouteText, "const canControlRoom = await actorCanControlRoom", "browser consent response cannot drift from recording-command authority");
+requireIncludes(captureRecordingReceiptOutboxText, "FileProtectionType.completeUntilFirstUserAuthentication", "coordinated endpoint receipts survive process death in protected storage");
+requireIncludes(captureRecordingReceiptOutboxText, "ownerAccountID == activeOwnerAccountID", "coordinated endpoint receipts fail closed across account changes");
+requireIncludes(captureRecordingReceiptOutboxText, "$0.deliveryState == .pending || $0.createdAt >= cutoff", "unacknowledged endpoint receipts cannot age out of the outbox");
+requireIncludes(captureRecordingCoordinatorText, "_ = try receiptOutbox.enqueue", "iPhone persists endpoint status before attempting network delivery");
+requireIncludes(captureRecordingCoordinatorText, "await flushPendingReceipts()", "iPhone immediately attempts its protected recording-status outbox");
+requireIncludes(captureRecordingCoordinatorText, "scheduleRetry()", "retryable endpoint receipt failures schedule real recovery");
+requireIncludes(captureRecordingCoordinatorText, "receipt.ownerAccountID == AuthManager.currentStoredOwnerID()", "recording-status delivery stays bound to the active account");
+requireIncludes(captureRecordingCoordinatorText, "v1.\\(ownerAccountID).\\(roomID)", "recording-status idempotency identities stay partitioned by account");
+requireIncludes(captureRecordingCoordinatorText, 'packet.errorCode == "RECEIPT_ID_CONFLICT"', "iPhone recognizes Nest's terminal immutable-receipt conflict contract");
+requireIncludes(captureExperienceModelText, ".flushPendingReceipts()", "app load resumes recording-status delivery without requiring another call");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleSpeakerButton"', "shipping persistent provider speaker action is addressable");
 requireIncludes(capturePhoneShellText, "joinMuted = model.providerRoom.isMuted", "manual Rejoin remembers the person's latest successful in-call microphone state");

@@ -3913,3 +3913,17 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   synchronization, upload, playback, and minimally instructed comprehension
   remain in the deferred validation ledger. Detailed decision record:
   `docs/sessions/coordinated-recording-control-recovery-2026-08-25.md`.
+
+### 2026-08-25 coordinated recording receipt recovery
+
+- Every iPhone coordinated endpoint transition is now persisted before network
+  delivery in a protected, installation-scoped, account-partitioned outbox.
+- Retryable failures schedule real recovery; ordinary app load and active room
+  polling also resume pending delivery with the original idempotency identity.
+- Pending status receipts never age out, and the outbox remains collaboration
+  evidence rather than media, upload, or `RecordingAsset` truth.
+- The 1,253-check Capture static gate, dual-architecture Simulator build, and
+  focused operated relaunch/account-switch journey pass. Physical outage,
+  process-death, server convergence, and exact-source playback remain in the
+  deferred validation ledger. Detailed decision record:
+  `docs/sessions/coordinated-recording-receipt-outbox-2026-08-25.md`.
