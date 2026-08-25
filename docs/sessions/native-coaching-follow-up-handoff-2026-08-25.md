@@ -47,3 +47,21 @@ The first client run visibly reached `Viewed` and the API accepted the open rece
 ## Evidence limit
 
 This is authenticated local-service and iOS Simulator evidence. It does not claim physical-device, TestFlight, weak-network, minimally instructed coach/client, notification-delivery, or production-environment proof. Those remain release validation work, not blockers for continuing independent product development.
+
+## Native file-sharing parity
+
+The same checkpoint continued into the next independent lane after the initial handoff commit. Capture now prepares the exact client-safe snapshot as a protected Markdown file and exposes the standard iPhone share sheet to both the coach and intended client. The file carries the recipient label, immutable revision, content SHA-256, selected notes, goals, commitments, next-Session focus, and permitted exact-source ranges. It explicitly states that private notes and unreviewed transcript candidates are excluded.
+
+The system share completion is separate from Quipsly delivery claims. Canceling changes no source record and writes no receipt. A completed system share records one deterministic, idempotent `EXPORT` receipt bound to the actor, output, revision, and content hash; Quipsly still does not claim who received the file. If Nest is unavailable, the protected local file remains shareable and the UI accurately reports that its receipt is pending.
+
+Verification after this addition:
+
+- universal unsigned iOS Simulator build — passed for arm64 and x86_64;
+- Capture App Store static smoke — 1,183 of 1,183 checks passed;
+- retained coach authoring/revision/release XCTest — passed;
+- retained distinct-client exact readback/open XCTest — passed and found the exact `Share follow-up file` action;
+- coach result bundle: `/private/tmp/quipsly-native-coach-follow-up-20260825T070018091Z-29095.xcresult`;
+- client result bundle: `/private/tmp/quipsly-native-client-follow-up-20260825T070018091Z-29095.xcresult`;
+- operation cleanup again removed the exact QA output and restored the baseline.
+
+The automation deliberately did not choose a destination in the system share sheet. A physical-device flight must still inspect the generated file in Files/Mail/Messages or another real destination and read back the `EXPORTED` receipt. Reachability and compilation are not represented as completed human sharing.

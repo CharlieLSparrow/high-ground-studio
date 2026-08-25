@@ -544,6 +544,12 @@ requireIncludes(deterministicUITestsText, "testTodayOpensTheExactNewClientFollow
 requireIncludes(bridgeText, "/client-follow-up", "the native bridge reads and acknowledges the relationship-authorized follow-up route");
 requireIncludes(bridgeText, "ACKNOWLEDGE_OPEN", "the native bridge uses the bounded follow-up acknowledgement action");
 requireIncludes(bridgeText, '"action": action', "the native bridge uses canonical create-or-revise follow-up actions");
+requireIncludes(mobileText, "CaptureClientFollowUpShareFile_", "the native follow-up exposes a standard iPhone file-share action");
+requireIncludes(mobileText, "UIActivityViewController", "the native follow-up uses the standard system share sheet");
+requireIncludes(mobileText, ".completeFileProtection", "the prepared native follow-up file uses complete file protection");
+requireIncludes(mobileText, "Prepared from a reviewed Quipsly client-safe snapshot", "the native export states its reviewed client-safe boundary");
+requireIncludes(bridgeText, '"action": "EXPORT"', "the native bridge records a revision-bound client follow-up export receipt");
+requireIncludes(bridgeText, '"expectedContentSha256": output.contentSha256', "the native export receipt is bound to the exact client-safe content hash");
 requireIncludes(bridgeText, '"action": "RELEASE"', "the native bridge uses the canonical bounded release action");
 requireIncludes(bridgeText, '"expectedRevision"', "the native bridge binds revisions and release to current canonical truth");
 requireIncludes(bridgeText, '"callRoomId": session.callRoomId', "packet lane review targets the canonical call-room identity rather than the local session row ID");

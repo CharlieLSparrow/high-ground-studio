@@ -4763,6 +4763,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts["Run one protected rehearsal"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts["Use a sustainable boundary"].firstMatch.exists)
+        let shareFile = app.buttons["CaptureClientFollowUpShareFile_\(outputID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(shareFile, in: app, timeout: 12, swipeAttempts: 10),
+            "The intended client should be able to open the standard iPhone share sheet for the exact client-safe revision without leaving Capture."
+        )
         attachRecordingIdentity(
             "\(sessionID)|\(outputID)|\(contentSHA256)",
             name: "Retained iPhone client follow-up readback"

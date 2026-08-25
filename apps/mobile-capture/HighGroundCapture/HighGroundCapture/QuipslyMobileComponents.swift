@@ -1,4 +1,6 @@
+import Foundation
 import SwiftUI
+import UIKit
 
 struct MobileStudioBackground: View {
     var body: some View {
@@ -476,6 +478,285 @@ private func mobileFollowUpTime(_ value: TimeInterval) -> String {
         : String(format: "%02d:%02d", minutes, seconds)
 }
 
+private func mobileClientFollowUpExportFileName(
+    _ followUp: MobileCaptureClientFollowUp
+) -> String {
+    let normalized = followUp.title
+        .applyingTransform(.stripDiacritics, reverse: false)?
+        .lowercased() ?? followUp.title.lowercased()
+    let parts = normalized.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        .filter { !$0.isEmpty }
+    let slug = String(parts.joined(separator: "-").prefix(80))
+    return "\(slug.isEmpty ? "quipsly-coaching-follow-up" : slug)-r\(followUp.revision).md"
+}
+
+private func mobileClientFollowUpSpeakerEvidence(
+    _ anchor: MobileCaptureTodayTranscriptSourceAnchor
+) -> String {
+    let label: String? = switch anchor.speakerAuthority {
+    case "correction": "Name reviewed"
+    case "attribution": "Speaker reviewed"
+    case "source-binding": "Participant recording"
+    case "provider": "Automatic speaker label"
+    case "unresolved": "Speaker needs review"
+    default: nil
+    }
+    return label.map { " · Speaker evidence: \($0)" } ?? ""
+}
+
+private func mobileClientFollowUpSourceLine(
+    _ anchor: MobileCaptureTodayTranscriptSourceAnchor
+) -> String {
+    "Source: \(mobileFollowUpTime(anchor.startSeconds))-\(mobileFollowUpTime(anchor.endSeconds))\(mobileClientFollowUpSpeakerEvidence(anchor))"
+}
+
+private func mobileClientFollowUpMarkdown(
+    _ followUp: MobileCaptureClientFollowUp
+) -> String {
+    let clean: (String?) -> String = {
+        ($0 ?? "")
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    var lines = [
+        "# \(clean(followUp.title))",
+        "",
+        "For: \(clean(followUp.recipientLabel))",
+        "Revision: \(followUp.revision)",
+        "Status: \(followUp.status)",
+        "Content SHA-256: \(followUp.contentSha256)",
+    ]
+    if let releasedAt = followUp.releasedAt, !clean(releasedAt).isEmpty {
+        lines.append("Released: \(clean(releasedAt))")
+    }
+    if !clean(followUp.intro).isEmpty {
+        lines.append(contentsOf: ["", clean(followUp.intro)])
+    }
+    if !followUp.notes.isEmpty {
+        lines.append(contentsOf: ["", "## Notes"])
+        for note in followUp.notes {
+            lines.append(contentsOf: [
+                "",
+                "### \(clean(note.title).isEmpty ? "Session note" : clean(note.title))",
+                "",
+                clean(note.body),
+            ])
+            if let source = note.sourceAnchor {
+                lines.append(mobileClientFollowUpSourceLine(source))
+            }
+        }
+    }
+    if !followUp.goals.isEmpty {
+        lines.append(contentsOf: ["", "## Goals"])
+        for goal in followUp.goals {
+            let target = clean(goal.targetAt).isEmpty ? "" : " (target \(clean(goal.targetAt)))"
+            lines.append(contentsOf: [
+                "",
+                "- [\(goal.status == "ACHIEVED" ? "x" : " ")] \(clean(goal.title))\(target)",
+            ])
+            if !clean(goal.description).isEmpty {
+                lines.append("  \(clean(goal.description))")
+            }
+            if let source = goal.sourceAnchor {
+                lines.append("  \(mobileClientFollowUpSourceLine(source))")
+            }
+        }
+    }
+    if !followUp.tasks.isEmpty {
+        lines.append(contentsOf: ["", "## Commitments"])
+        for task in followUp.tasks {
+            let due = clean(task.dueAt).isEmpty ? "" : " (due \(clean(task.dueAt)))"
+            lines.append(contentsOf: [
+                "",
+                "- [\(task.status == "DONE" ? "x" : " ")] \(clean(task.title))\(due)",
+            ])
+            if !clean(task.detail).isEmpty {
+                lines.append("  \(clean(task.detail))")
+            }
+            if let source = task.sourceAnchor {
+                lines.append("  \(mobileClientFollowUpSourceLine(source))")
+            }
+        }
+    }
+    if !clean(followUp.nextSessionFocus).isEmpty {
+        lines.append(contentsOf: [
+            "",
+            "## Bring into the next session",
+            "",
+            clean(followUp.nextSessionFocus),
+        ])
+    }
+    lines.append(contentsOf: [
+        "",
+        "---",
+        "Prepared from a reviewed Quipsly client-safe snapshot. Private notes and unreviewed transcript candidates are excluded.",
+        "",
+    ])
+    return lines.joined(separator: "\n")
+}
+
+private func prepareMobileClientFollowUpFile(
+    _ followUp: MobileCaptureClientFollowUp
+) throws -> URL {
+    guard followUp.contentSha256.range(
+        of: "^[a-f0-9]{64}$",
+        options: .regularExpression
+    ) != nil else {
+        throw NSError(
+            domain: "QuipslyClientFollowUpExport",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "The client-safe snapshot is missing its exact content identity."]
+        )
+    }
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "quipsly-client-follow-up-\(UUID().uuidString.lowercased())",
+        isDirectory: true
+    )
+    try FileManager.default.createDirectory(
+        at: directory,
+        withIntermediateDirectories: true,
+        attributes: [.protectionKey: FileProtectionType.complete]
+    )
+    let url = directory.appendingPathComponent(mobileClientFollowUpExportFileName(followUp))
+    try Data(mobileClientFollowUpMarkdown(followUp).utf8).write(
+        to: url,
+        options: [.atomic, .completeFileProtection]
+    )
+    return url
+}
+
+private struct MobileClientFollowUpShareSheet: UIViewControllerRepresentable {
+    let fileURL: URL
+    let title: String
+    let completion: (Bool, Error?) -> Void
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: [title, fileURL],
+            applicationActivities: nil
+        )
+        controller.completionWithItemsHandler = { _, completed, _, error in
+            completion(completed, error)
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+private struct MobileClientFollowUpExportControl: View {
+    let followUp: MobileCaptureClientFollowUp
+    let session: MobileCaptureSession
+    @ObservedObject var sessionClient: CaptureSessionClient
+    let previewOnly: Bool
+
+    @State private var fileURL: URL?
+    @State private var fileError: String?
+    @State private var isPresentingShare = false
+    @State private var notice: String?
+    @State private var isSavingReceipt = false
+
+    private var identity: String {
+        "\(followUp.id)|\(followUp.revision)|\(followUp.contentSha256)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let fileURL {
+                Button {
+                    isPresentingShare = true
+                } label: {
+                    Label("Share follow-up file", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSavingReceipt)
+                .accessibilityIdentifier("CaptureClientFollowUpShareFile_\(followUp.id)")
+                .accessibilityHint("Opens the standard iPhone share sheet for this exact client-safe revision. Quipsly does not choose or claim a recipient.")
+                .sheet(isPresented: $isPresentingShare) {
+                    MobileClientFollowUpShareSheet(
+                        fileURL: fileURL,
+                        title: "Quipsly coaching follow-up for \(followUp.recipientLabel)"
+                    ) { completed, error in
+                        isPresentingShare = false
+                        if let error {
+                            notice = "The system share sheet could not finish: \(error.localizedDescription)"
+                        } else if !completed {
+                            notice = "Sharing canceled. The follow-up and its source records are unchanged."
+                        } else if previewOnly {
+                            notice = "The preview file left the share sheet. No Nest receipt was written."
+                        } else {
+                            isSavingReceipt = true
+                            Task {
+                                let saved = await sessionClient.recordClientFollowUpExport(
+                                    for: session,
+                                    output: followUp
+                                )
+                                notice = saved
+                                    ? "The system share finished. Quipsly recorded the exact revision, but does not claim who received it."
+                                    : sessionClient.errorMessage
+                                isSavingReceipt = false
+                            }
+                        }
+                    }
+                }
+            } else if let fileError {
+                Button {
+                    prepareFile()
+                } label: {
+                    Label("Try preparing file again", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureClientFollowUpExportRetry_\(followUp.id)")
+                Text(fileError)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Preparing exact follow-up file")
+                        .font(.caption.bold())
+                }
+                .frame(minHeight: 44)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("CaptureClientFollowUpExportPreparing_\(followUp.id)")
+            }
+
+            if let notice {
+                Text(notice)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureClientFollowUpExportNotice_\(followUp.id)")
+            }
+        }
+        .task(id: identity) {
+            prepareFile()
+        }
+        .onDisappear {
+            removePreparedFile()
+        }
+    }
+
+    private func prepareFile() {
+        removePreparedFile()
+        fileError = nil
+        do {
+            fileURL = try prepareMobileClientFollowUpFile(followUp)
+        } catch {
+            fileError = error.localizedDescription
+        }
+    }
+
+    private func removePreparedFile() {
+        guard let fileURL else { return }
+        try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
+        self.fileURL = nil
+    }
+}
+
 private struct MobileClientFollowUpSnapshot: View {
     let followUp: MobileCaptureClientFollowUp
     let session: MobileCaptureSession
@@ -686,6 +967,12 @@ struct MobileClientFollowUpCard: View {
                         session: session,
                         previewOnly: previewOnly
                     )
+                    MobileClientFollowUpExportControl(
+                        followUp: followUp,
+                        session: session,
+                        sessionClient: sessionClient,
+                        previewOnly: previewOnly
+                    )
 
                     Text("Shared only with you and your coach.")
                         .font(.caption2)
@@ -860,6 +1147,12 @@ struct MobileCoachClientFollowUpCard: View {
                             MobileClientFollowUpSnapshot(
                                 followUp: output,
                                 session: session,
+                                previewOnly: previewOnly
+                            )
+                            MobileClientFollowUpExportControl(
+                                followUp: output,
+                                session: session,
+                                sessionClient: sessionClient,
                                 previewOnly: previewOnly
                             )
                         }

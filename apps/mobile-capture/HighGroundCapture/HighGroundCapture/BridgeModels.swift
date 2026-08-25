@@ -8333,6 +8333,62 @@ final class CaptureSessionClient: ObservableObject {
         }
     }
 
+    func recordClientFollowUpExport(
+        for session: MobileCaptureSession,
+        output: MobileCaptureClientFollowUp
+    ) async -> Bool {
+        guard AuthManager.shared.networkActionsAllowed else {
+            status = "Export receipt pending"
+            errorMessage = "The exact follow-up file can still use the iPhone share sheet, but reconnect to Nest to record its revision-bound export receipt."
+            return false
+        }
+        guard let encodedRoomID = session.callRoomId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(
+                string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/sessions/\(encodedRoomID)/client-follow-up"
+              ) else {
+            status = "Bad Nest URL"
+            errorMessage = "The configured Nest URL is not valid."
+            return false
+        }
+
+        status = "Recording file receipt"
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "action": "EXPORT",
+                "outputId": output.id,
+                "expectedRevision": output.revision,
+                "expectedContentSha256": output.contentSha256,
+                "clientRequestId": Self.clientFollowUpExportRequestID(output: output),
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureSessions",
+                    code: 39,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            payload.error ?? "The exact follow-up file receipt was not confirmed.",
+                    ]
+                )
+            }
+            status = payload.idempotentReplay == true
+                ? "Follow-up file already recorded"
+                : "Follow-up file recorded"
+            errorMessage = nil
+            await refreshClientFollowUp(forSessionID: session.id)
+            return true
+        } catch {
+            status = "Export receipt pending"
+            errorMessage = "The system share completed, but Quipsly could not record the exact revision receipt: \(error.localizedDescription)"
+            return false
+        }
+    }
+
     func saveClientFollowUpDraft(
         for session: MobileCaptureSession,
         draft: MobileCaptureClientFollowUpDraft
@@ -8591,6 +8647,17 @@ final class CaptureSessionClient: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? "signed-in-account"
         return clientFollowUpStableUUID("client-follow-up-visibility-v1|\(owner)|\(action)|\(outputID)|\(revision)")
+    }
+
+    private static func clientFollowUpExportRequestID(
+        output: MobileCaptureClientFollowUp
+    ) -> String {
+        let owner = AuthManager.shared.userEmail?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? "signed-in-account"
+        return clientFollowUpStableUUID(
+            "client-follow-up-export-v1|\(owner)|\(output.id)|\(output.revision)|\(output.contentSha256)"
+        )
     }
 
     private static func clientFollowUpStableUUID(_ material: String) -> String {
