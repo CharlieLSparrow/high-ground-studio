@@ -2263,17 +2263,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         let exactSource = app.descendants(matching: .any)["CaptureTranscriptExactSourceMatch"].firstMatch
         let reviewOnly = app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].firstMatch
-        let sourceTruthAvailable = waitForRuntimeElementAbove(
-            exactSource,
-            in: app,
-            timeout: 8,
-            swipeAttempts: 6
-        ) || waitForRuntimeElementAbove(
-            reviewOnly,
-            in: app,
-            timeout: 8,
-            swipeAttempts: 6
-        )
+        let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
+        XCTAssertTrue(jumpMenu.waitForExistence(timeout: 12))
+        jumpMenu.tap()
+        let sourceTruthJump = app.buttons["CaptureTranscriptJumpToSourceTruth"].firstMatch
+        XCTAssertTrue(sourceTruthJump.waitForExistence(timeout: 8))
+        sourceTruthJump.tap()
+        let sourceTruthAvailable = exactSource.waitForExistence(timeout: 12)
+            || reviewOnly.waitForExistence(timeout: 12)
         XCTAssertTrue(
             sourceTruthAvailable,
             "Transcript review must state whether this installation holds the exact local recording."

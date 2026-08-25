@@ -3125,6 +3125,17 @@ struct CaptureTranscriptReviewView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        if client.desk != nil {
+                            Button {
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                                    scrollTargetSegmentID = nil
+                                    scrollProxy.scrollTo("source-truth", anchor: .top)
+                                }
+                            } label: {
+                                Label("Recording source", systemImage: "waveform.badge.magnifyingglass")
+                            }
+                            .accessibilityIdentifier("CaptureTranscriptJumpToSourceTruth")
+                        }
                         if !(client.desk?.speakerGroups ?? []).isEmpty {
                             Button {
                                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
