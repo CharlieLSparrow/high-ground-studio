@@ -4,6 +4,18 @@ Date: 2026-08-24
 
 ## Cloud coaching recording render checkpoint
 
+- The clean release train passed the complete local HGO/Quipsly conductor and
+  the Capture release-source contract. A disposable detached worktree at
+  `f81fd0470b4bde6b3dec5dd2bea6197b3373516f` then recreated the locked 28-package
+  dependency graph, passed the full Capture preflight, resolved pinned LiveKit
+  `2.15.1`, and produced the real arm64/x86_64 iOS simulator app with its share
+  extension. This is committed-source build evidence, not TestFlight or
+  physical-device acceptance.
+- Live cloud readiness is deferred because both gcloud user and Application
+  Default Credentials had expired at the read-only auth check. No project,
+  Firebase, preview, deployment, or promotion result is inferred from the local
+  pass.
+
 - The built-in coaching recording editor no longer depends on a Mac-local
   renderer in production. Exact released participant generations now queue a
   create-once private GCS render through the existing media Cloud Run Job.
