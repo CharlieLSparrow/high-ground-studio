@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getMediaBucket, requireMediaBucketName } from "@/lib/server/gcs";
+import { privateMediaByteRange } from "@/lib/server/private-media-byte-range";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionAccessWhere } from "@/lib/server/session-access";
 import {
@@ -11,8 +12,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type ByteRange = { start: number; end: number };
 
 function privateJson(status: number, code: string, error: string) {
   return Response.json(
@@ -37,31 +36,6 @@ function cleanIdentifier(value: unknown) {
 function positiveSafeInteger(value: unknown) {
   const parsed = typeof value === "bigint" ? Number(value) : Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function byteRange(
-  header: string | null,
-  size: number,
-): ByteRange | "invalid" | null {
-  if (!header) return null;
-  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
-  if (!match || (!match[1] && !match[2])) return "invalid";
-  if (!match[1]) {
-    const suffix = Number(match[2]);
-    if (!Number.isSafeInteger(suffix) || suffix <= 0) return "invalid";
-    return { start: Math.max(0, size - suffix), end: size - 1 };
-  }
-  const start = Number(match[1]);
-  const end = match[2] ? Number(match[2]) : size - 1;
-  if (
-    !Number.isSafeInteger(start) ||
-    !Number.isSafeInteger(end) ||
-    start < 0 ||
-    end < start ||
-    start >= size
-  )
-    return "invalid";
-  return { start, end: Math.min(end, size - 1) };
 }
 
 function mediaHeaders(args: {
@@ -151,11 +125,13 @@ async function protectedSessionMediaResponse(
         metadataJson: true,
       },
     });
-    if (!sessionProtectedPlaybackReceiptReleased({
-      roomId: room.id,
-      recordingAssetId: asset.id,
-      receipt,
-    })) {
+    if (
+      !sessionProtectedPlaybackReceiptReleased({
+        roomId: room.id,
+        recordingAssetId: asset.id,
+        receipt,
+      })
+    ) {
       return privateJson(
         409,
         "SOURCE_NOT_RELEASED",
@@ -206,14 +182,20 @@ async function protectedSessionMediaResponse(
       sha256: binding.sha256,
       size: binding.byteSize,
     });
-    const range = byteRange(request.headers.get("range"), binding.byteSize);
+    const range = privateMediaByteRange(
+      request.headers.get("range"),
+      binding.byteSize,
+    );
     if (range === "invalid") {
       headers.set("Content-Range", `bytes */${binding.byteSize}`);
       return new Response(null, { status: 416, headers });
     }
     if (range) {
       headers.set("Content-Length", String(range.end - range.start + 1));
-      headers.set("Content-Range", `bytes ${range.start}-${range.end}/${binding.byteSize}`);
+      headers.set(
+        "Content-Range",
+        `bytes ${range.start}-${range.end}/${binding.byteSize}`,
+      );
       const body = headOnly
         ? null
         : (Readable.toWeb(

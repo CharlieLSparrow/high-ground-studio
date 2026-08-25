@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getMediaBucket, requireMediaBucketName } from "@/lib/server/gcs";
+import { privateMediaByteRange } from "@/lib/server/private-media-byte-range";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
   SessionAudioAuditionError,
@@ -10,8 +11,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type Range = { start: number; end: number };
 
 function json(status: number, code: string, error: string) {
   return Response.json(
@@ -25,27 +24,6 @@ function json(status: number, code: string, error: string) {
       },
     },
   );
-}
-
-function range(header: string | null, size: number): Range | "invalid" | null {
-  if (!header) return null;
-  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
-  if (!match || (!match[1] && !match[2])) return "invalid";
-  if (!match[1]) {
-    const suffix = Number(match[2]);
-    return Number.isSafeInteger(suffix) && suffix > 0
-      ? { start: Math.max(0, size - suffix), end: size - 1 }
-      : "invalid";
-  }
-  const start = Number(match[1]);
-  const end = match[2] ? Number(match[2]) : size - 1;
-  return Number.isSafeInteger(start) &&
-    Number.isSafeInteger(end) &&
-    start >= 0 &&
-    end >= start &&
-    start < size
-    ? { start, end: Math.min(end, size - 1) }
-    : "invalid";
 }
 
 async function response(
@@ -110,7 +88,7 @@ async function response(
       "X-Quipsly-Verified-Bytes": String(result.output.sizeBytes),
       "X-Quipsly-Source-Sha256": result.source.sha256,
     });
-    const requested = range(
+    const requested = privateMediaByteRange(
       request.headers.get("range"),
       result.output.sizeBytes,
     );
