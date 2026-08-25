@@ -23,6 +23,7 @@ assert.match(subject, /transcript-task-isolation/);
 assert.match(subject, /QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH/);
 assert.match(subject, /taskMutated: false/);
 assert.match(subject, /duplicateTaskCreated: false/);
+assert.match(subject, /explicitLocalSourceAvailabilityBoundaryProven: true/);
 assert.match(subject, /mode: 0o600/);
 assert.match(subject, /secretsPrinted: false/);
 assert.match(runner, /testReviewedTranscriptTaskAppearsInTodayAndReturnsToExactSourceOnIPhone/);
@@ -30,4 +31,4 @@ assert.match(runner, /testReviewedTranscriptTaskStaysPrivateFromOtherSessionPart
 assert.match(uiTests, /CaptureTodayTaskSourceLink_/);
 assert.match(uiTests, /CaptureTodayFollowThroughBoundary/);
 
-console.log(JSON.stringify({ ok: true, assertions: 13 }));
+console.log(JSON.stringify({ ok: true, assertions: 14 }));

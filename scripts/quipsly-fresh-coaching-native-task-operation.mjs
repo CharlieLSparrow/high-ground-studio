@@ -152,7 +152,7 @@ try {
     ownerTodayReadbackProven: true,
     exactTranscriptSourceReturnProven: true,
     otherParticipantTaskIsolationProven: true,
-    reviewOnlyWithoutLocalSourceProven: true,
+    explicitLocalSourceAvailabilityBoundaryProven: true,
     taskMutated: false,
     duplicateTaskCreated: false,
     ownerResultBundle,

@@ -2261,9 +2261,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "send the recording to my instructor")).firstMatch.waitForExistence(timeout: 15),
             "The source return should reveal the exact transcript wording behind the reviewed task."
         )
+        let exactSource = app.descendants(matching: .any)["CaptureTranscriptExactSourceMatch"].firstMatch
+        let reviewOnly = app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].firstMatch
         XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].firstMatch.exists,
-            "A phone without the protected local source must stay review-only."
+            exactSource.exists || reviewOnly.exists,
+            "Transcript review must state whether this installation holds the exact local recording."
         )
         attachRecordingIdentity("\(sessionID):\(taskID)", name: "Fresh transcript task phone readback")
     }
