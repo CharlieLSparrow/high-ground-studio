@@ -195,59 +195,47 @@ struct CaptureSourceEvidenceView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    GeometryReader { geometry in
-                        let points = compactSignalPoints(signal.waveform, maximum: 120)
-                        Canvas { context, size in
-                            guard !points.isEmpty else { return }
-                            let barWidth = max(size.width / CGFloat(points.count), 1)
-                            for (index, point) in points.enumerated() {
-                                let normalized = max(0.04, min((point.rmsDbfs + 72) / 72, 1))
-                                let height = size.height * normalized
-                                let rect = CGRect(
-                                    x: CGFloat(index) * barWidth,
-                                    y: (size.height - height) / 2,
-                                    width: max(barWidth - 1, 1),
-                                    height: height
-                                )
-                                let color: Color = point.clippedFrameCount > 0
-                                    ? .red
-                                    : point.rmsDbfs <= signal.thresholds.nearSilenceDbfs
-                                        ? .gray.opacity(0.4)
-                                        : .blue
-                                context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(color))
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .gesture(
-                            SpatialTapGesture().onEnded { tap in
-                                let fraction = geometry.size.width > 0
-                                    ? min(max(tap.location.x / geometry.size.width, 0), 1)
-                                    : 0
-                                selectedAudioSeconds = signal.durationSeconds * fraction
-                                mastery.stop()
-                                delivery.stop()
-                                playback.play(
-                                    recording: recording,
-                                    library: library,
-                                    from: selectedAudioSeconds
-                                )
-                            }
+                    let signalMarkers = signal.observations.map {
+                        CaptureAudioReviewMarker(
+                            seconds: $0.startSeconds,
+                            kind: .signalWarning
                         )
                     }
-                    .frame(height: 96)
-                    .accessibilityElement()
-                    .accessibilityLabel("Decoded audio waveform")
-                    .accessibilityHint("Use the time slider below to choose an exact position with VoiceOver")
-
-                    HStack {
-                        Text("0:00")
-                        Spacer()
-                        Text("Tap waveform to listen")
-                        Spacer()
-                        Text(durationLabel(signal.durationSeconds))
+                    let boundaryMarkers = captureTimelineEvents(recording).map {
+                        CaptureAudioReviewMarker(
+                            seconds: $0.startSeconds,
+                            kind: .captureBoundary
+                        )
                     }
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    let detectedMarkers = (recording.sourceProfile?.audibleEventAnalysis?.suggestions ?? []).map {
+                        CaptureAudioReviewMarker(
+                            seconds: $0.startSeconds,
+                            kind: .detectedSound
+                        )
+                    }
+                    CaptureAudioReviewTimeline(
+                        points: compactSignalPoints(signal.waveform, maximum: 120).map {
+                            CaptureAudioReviewPoint(
+                                level: max(0.04, min(($0.rmsDbfs + 72) / 72, 1)),
+                                isClipped: $0.clippedFrameCount > 0,
+                                isNearSilent: $0.rmsDbfs <= signal.thresholds.nearSilenceDbfs
+                            )
+                        },
+                        durationSeconds: signal.durationSeconds,
+                        selectedSeconds: $selectedAudioSeconds,
+                        playbackSeconds: playback.currentTime,
+                        isPlaying: playback.playingRecordingID == recording.id,
+                        markers: signalMarkers + boundaryMarkers + detectedMarkers
+                    ) { seconds in
+                        selectedAudioSeconds = seconds
+                        mastery.stop()
+                        delivery.stop()
+                        playback.play(
+                            recording: recording,
+                            library: library,
+                            from: seconds
+                        )
+                    }
 
                     VStack(alignment: .leading, spacing: 8) {
                         Slider(
@@ -1860,6 +1848,173 @@ private struct CaptureAudioTimelineEvent {
     let detail: String
 }
 
+private struct CaptureAudioReviewPoint {
+    let level: Double
+    let isClipped: Bool
+    let isNearSilent: Bool
+}
+
+private struct CaptureAudioReviewMarker: Identifiable {
+    enum Kind: String, CaseIterable {
+        case signalWarning
+        case captureBoundary
+        case detectedSound
+
+        var label: String {
+            switch self {
+            case .signalWarning: "Signal warning"
+            case .captureBoundary: "Capture boundary"
+            case .detectedSound: "Sound suggestion"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .signalWarning: .orange
+            case .captureBoundary: .purple
+            case .detectedSound: .teal
+            }
+        }
+    }
+
+    let id = UUID()
+    let seconds: TimeInterval
+    let kind: Kind
+}
+
+private struct CaptureAudioReviewTimeline: View {
+    let points: [CaptureAudioReviewPoint]
+    let durationSeconds: TimeInterval
+    @Binding var selectedSeconds: TimeInterval
+    let playbackSeconds: TimeInterval
+    let isPlaying: Bool
+    let markers: [CaptureAudioReviewMarker]
+    let onSeek: (TimeInterval) -> Void
+
+    private var visiblePlayheadSeconds: TimeInterval {
+        min(max(isPlaying ? playbackSeconds : selectedSeconds, 0), max(durationSeconds, 0))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { geometry in
+                ZStack {
+                    Canvas { context, size in
+                        guard !points.isEmpty else { return }
+                        let barWidth = max(size.width / CGFloat(points.count), 1)
+                        for (index, point) in points.enumerated() {
+                            let height = size.height * min(max(point.level, 0.04), 1)
+                            let rect = CGRect(
+                                x: CGFloat(index) * barWidth,
+                                y: (size.height - height) / 2,
+                                width: max(barWidth - 1, 1),
+                                height: height
+                            )
+                            let color: Color = point.isClipped
+                                ? .red
+                                : point.isNearSilent ? .gray.opacity(0.4) : .blue
+                            context.fill(
+                                Path(roundedRect: rect, cornerRadius: 1),
+                                with: .color(color)
+                            )
+                        }
+
+                        guard durationSeconds > 0 else { return }
+                        for marker in markers {
+                            let fraction = min(max(marker.seconds / durationSeconds, 0), 1)
+                            let x = size.width * fraction
+                            let path = Path(
+                                CGRect(x: x - 1, y: 0, width: 2, height: size.height)
+                            )
+                            context.fill(path, with: .color(marker.kind.color.opacity(0.9)))
+                        }
+                    }
+
+                    if durationSeconds > 0 {
+                        let fraction = min(max(visiblePlayheadSeconds / durationSeconds, 0), 1)
+                        Rectangle()
+                            .fill(Color.primary)
+                            .frame(width: 2)
+                            .overlay(alignment: .top) {
+                                Circle()
+                                    .fill(Color.primary)
+                                    .frame(width: 8, height: 8)
+                                    .offset(y: -3)
+                            }
+                            .position(
+                                x: min(max(geometry.size.width * fraction, 1), max(geometry.size.width - 1, 1)),
+                                y: geometry.size.height / 2
+                            )
+                            .allowsHitTesting(false)
+                    }
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    SpatialTapGesture().onEnded { tap in
+                        let fraction = geometry.size.width > 0
+                            ? min(max(tap.location.x / geometry.size.width, 0), 1)
+                            : 0
+                        let seconds = durationSeconds * fraction
+                        selectedSeconds = seconds
+                        onSeek(seconds)
+                    }
+                )
+            }
+            .frame(height: 96)
+            .accessibilityElement()
+            .accessibilityLabel("Decoded audio waveform with review markers")
+            .accessibilityValue(
+                "\(isPlaying ? "Playing" : "Selected") at \(durationLabel(visiblePlayheadSeconds)) of \(durationLabel(durationSeconds))"
+            )
+            .accessibilityHint("Use the time slider below to choose an exact position with VoiceOver")
+            .accessibilityIdentifier("CaptureAudioReviewTimeline")
+
+            HStack {
+                Text(durationLabel(visiblePlayheadSeconds))
+                    .monospacedDigit()
+                Spacer()
+                Label(
+                    isPlaying ? "Playing original" : "Selected position",
+                    systemImage: isPlaying ? "speaker.wave.2.fill" : "scope"
+                )
+                Spacer()
+                Text(durationLabel(durationSeconds))
+                    .monospacedDigit()
+            }
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("CaptureAudioReviewPlayheadStatus")
+
+            HStack(spacing: 12) {
+                ForEach(CaptureAudioReviewMarker.Kind.allCases, id: \.rawValue) { kind in
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(kind.color)
+                            .frame(width: 7, height: 7)
+                        Text(kind.label)
+                    }
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("CaptureAudioReviewLegend")
+        }
+    }
+
+    private func durationLabel(_ duration: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(duration.rounded()))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
+            : String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
 private struct EvidenceRow: View {
     let label: String
     let value: String
@@ -1896,6 +2051,7 @@ private extension View {
 struct CaptureSourceEvidencePreviewView: View {
     @State private var showsTechnicalAudioDetails = false
     @State private var showsTechnicalSoundDetails = false
+    @State private var selectedAudioSeconds = 8.0
 
     var body: some View {
         ScrollView {
@@ -1945,6 +2101,30 @@ struct CaptureSourceEvidencePreviewView: View {
                     Text("Tap a marked moment to hear it in the original. Quipsly never removes or repairs audio without your review.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    CaptureAudioReviewTimeline(
+                        points: [
+                            0.24, 0.48, 0.38, 0.64, 0.52, 0.73, 0.42, 0.28,
+                            0.05, 0.04, 0.06, 0.46, 0.62, 0.34, 0.78, 0.58,
+                            0.31, 0.49, 0.67, 0.41, 0.55, 0.36, 0.61, 0.44,
+                        ].enumerated().map { index, level in
+                            CaptureAudioReviewPoint(
+                                level: level,
+                                isClipped: index == 14,
+                                isNearSilent: (8...10).contains(index)
+                            )
+                        },
+                        durationSeconds: 24,
+                        selectedSeconds: $selectedAudioSeconds,
+                        playbackSeconds: 0,
+                        isPlaying: false,
+                        markers: [
+                            CaptureAudioReviewMarker(seconds: 8, kind: .signalWarning),
+                            CaptureAudioReviewMarker(seconds: 12, kind: .detectedSound),
+                            CaptureAudioReviewMarker(seconds: 18, kind: .captureBoundary),
+                        ]
+                    ) { seconds in
+                        selectedAudioSeconds = seconds
+                    }
                     Label("00:08 · Possible dropout · listen before classifying", systemImage: "play.circle")
                         .font(.caption.weight(.semibold))
                     DisclosureGroup(

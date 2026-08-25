@@ -261,6 +261,17 @@ check(
     && playback.includes("toleranceAfter: .zero"),
 );
 check(
+  "audio review keeps signal warnings, capture boundaries, detected sounds, and playhead on one visible clock",
+  evidenceView.includes("CaptureAudioReviewTimeline")
+    && evidenceView.includes("case signalWarning")
+    && evidenceView.includes("case captureBoundary")
+    && evidenceView.includes("case detectedSound")
+    && evidenceView.includes('accessibilityIdentifier("CaptureAudioReviewPlayheadStatus")')
+    && uiTests.includes('XCTAssertTrue(reviewLegend.label.contains("Signal warning"))')
+    && uiTests.includes('XCTAssertTrue(reviewLegend.label.contains("Capture boundary"))')
+    && uiTests.includes('XCTAssertTrue(reviewLegend.label.contains("Sound suggestion"))'),
+);
+check(
   "share action appears only after full byte verification succeeds",
   evidenceView.includes("if let evidenceFileURL")
     && evidenceView.includes('Label("Share evidence receipt"')
