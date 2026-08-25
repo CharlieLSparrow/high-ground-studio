@@ -60,6 +60,12 @@ after Session release. Quipsly does not choose a destination or claim who
 received a file, and canceling the sheet changes neither the output nor any
 original recording.
 
+Capture keeps the normal card compact, but a collapsed **Verified copy
+details** disclosure exposes the format, duration, file size, exact source
+count, selected picture source, revision, and SHA-256 digest. This gives coaches
+and support staff a concrete receipt when investigating a file or proving which
+copy was reviewed without turning routine export into an administrative form.
+
 Local-development playback uses the same byte-range behavior as cloud playback.
 It validates the confined local object's generation, size, content type,
 expected SHA-256 receipt, and Session-share lineage before opening a file
@@ -78,6 +84,8 @@ development-only path; production continues to stream the exact GCS generation.
 - Quipsly Capture dual-architecture Simulator build: passing.
 - The native export control, account/release gate, exact-byte preparation, and
   standard share-sheet integration compile for both Simulator architectures.
+- The collapsed native verification receipt compiles for both Simulator
+  architectures while leaving the default review/export path unchanged.
 - Four private-media route tests prove authentication, local byte-range video
   streaming, stale receipt rejection, and metadata-only HEAD behavior; strict
   Quipsly TypeScript passes.

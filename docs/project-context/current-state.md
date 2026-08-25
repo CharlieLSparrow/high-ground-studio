@@ -4044,3 +4044,7 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   expected digest metadata, and Session-share lineage. The prior whole-file
   buffer and 1 GiB ceiling no longer prevent realistic long-video local tests;
   the production GCS exact-generation path is unchanged.
+- Capture now exposes the same supportable media receipt as a collapsed
+  **Verified copy details** disclosure: format, duration, size, exact source
+  count, selected camera, revision, and SHA-256. Routine review and export stay
+  visually simple; the evidence is available without leaving the Session.

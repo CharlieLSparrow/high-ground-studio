@@ -1270,6 +1270,11 @@ struct CaptureRecordingShareEditor: View {
 
     @ViewBuilder
     private func outputCard(_ output: CaptureRecordingShareOutput, coach: Bool) -> some View {
+        let mediaKind = output.render.mediaKind == "video" ? "video" : "audio"
+        let sourceIDs = output.sourceManifest?.sources?.compactMap(\.recordingAssetId) ?? []
+        let primaryCamera = client.snapshot?.available?.sources.first {
+            $0.id == output.render.primaryVideoSourceId
+        }
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -1337,6 +1342,47 @@ struct CaptureRecordingShareEditor: View {
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CaptureRecordingShareExportNotice")
                 }
+
+                DisclosureGroup("Verified copy details") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        LabeledContent("Format") {
+                            Text(mediaKind == "video" ? "1080p · 24 fps · H.264/AAC · MP4" : "AAC · 48 kHz · stereo · M4A")
+                        }
+                        if let duration = output.render.durationSeconds, duration > 0 {
+                            LabeledContent("Duration", value: captureRecordingShareTime(duration))
+                        }
+                        if let size = output.render.sizeBytes, size > 0 {
+                            LabeledContent("File size", value: captureRecordingShareFileSize(size))
+                        }
+                        if !sourceIDs.isEmpty {
+                            LabeledContent("Exact sources", value: "\(sourceIDs.count)")
+                        }
+                        if mediaKind == "video" {
+                            LabeledContent("Picture") {
+                                if let primaryCamera {
+                                    Text("\(primaryCamera.participantLabel) · \(primaryCamera.fileName ?? "Camera")")
+                                } else {
+                                    Text("Selected camera retained in render receipt")
+                                }
+                            }
+                        }
+                        if let sha256 = output.render.sha256, !sha256.isEmpty {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("SHA-256")
+                                    .fontWeight(.semibold)
+                                Text(sha256)
+                                    .font(.caption2.monospaced())
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        Text("Revision \(output.revision) · Originals remain unchanged")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 8)
+                }
+                .font(.caption)
+                .accessibilityIdentifier("CaptureRecordingShareVerifiedDetails")
             } else if output.render.status == "QUEUED" || output.render.status == "PROCESSING" {
                 ProgressView(output.render.mediaKind == "video"
                     ? "Aligning picture and sound, leveling, decoding, and verifying…"
@@ -1615,4 +1661,8 @@ private func captureRecordingShareTime(_ value: TimeInterval) -> String {
         return "\(hours):\(String(format: "%02d", minutes)):\(String(format: "%02d", remainder))"
     }
     return "\(minutes):\(String(format: "%02d", remainder))"
+}
+
+private func captureRecordingShareFileSize(_ value: Int64) -> String {
+    ByteCountFormatter.string(fromByteCount: value, countStyle: .file)
 }
