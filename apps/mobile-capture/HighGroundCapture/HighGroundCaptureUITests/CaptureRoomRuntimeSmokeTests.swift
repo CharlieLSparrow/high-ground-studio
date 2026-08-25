@@ -1493,13 +1493,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "Record should retain the ordinary app navigation after exact Session entry."
         )
         todayTab.tap()
+        let returnedCoachingHome = app.scrollViews["CaptureCoachingHome"].firstMatch
         let reopenCoaching = app.buttons["CaptureOpenCoachingHome"].firstMatch
-        XCTAssertTrue(
-            waitForRuntimeElement(reopenCoaching, in: app, timeout: 20, swipeAttempts: 10),
-            "The coach should be able to return to appointment management through Today."
-        )
-        reopenCoaching.tap()
-        XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 15))
+        if !returnedCoachingHome.waitForExistence(timeout: 3) {
+            XCTAssertTrue(
+                waitForRuntimeElement(reopenCoaching, in: app, timeout: 20, swipeAttempts: 10),
+                "The coach should be able to return to appointment management through Today."
+            )
+            reopenCoaching.tap()
+            XCTAssertTrue(returnedCoachingHome.waitForExistence(timeout: 15))
+        }
 
         let manageAfterSession = app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingManage_")
