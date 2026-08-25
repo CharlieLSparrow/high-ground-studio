@@ -31,7 +31,7 @@ export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testVideoOnlyConsentDoesNotAccidentallyAuthorizeAudioCapture",
   "CaptureExperienceUITests/testAccountOffersPrivacyBoundedSupportSnapshot",
   "CaptureExperienceUITests/testPrimaryRecordSurfacePassesAccessibilityAudit",
-  "CaptureLoginExperienceUITests/testLoginLeadsWithNativeGoogleContinuityAndKeepsPasswordRecoveryReachableAtAccessibilityTextSize",
+  "CaptureLoginExperienceUITests/testLoginLeadsWithStandardFederatedContinuityAndKeepsPasswordRecoveryReachableAtAccessibilityTextSize",
   "ShareCaptureExtensionUITests/testSafariShareSheetSurfacesQuipslyButKeepsPostingLockedWithoutVerifiedAccount",
 ]);
 

@@ -12622,13 +12622,14 @@ private struct CapturePersistentRecorderDock: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(statusTitle)
                     .font(.subheadline.weight(.bold))
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(statusDetail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
 
             Button(action: onPrimaryAction) {
                 Label(actionTitle, systemImage: actionSystemImage)
@@ -12742,12 +12743,14 @@ private struct CapturePersistentRecorderDock: View {
 
     private var actionIdentifier: String {
         if mode == .audio {
-            return captureIsActive ? "CaptureStopButton" : "CaptureStartButton"
+            return captureIsActive
+                ? "CapturePersistentRecorderStopButton"
+                : "CapturePersistentRecorderStartButton"
         }
-        if captureIsActive { return "CaptureVideoStopButton" }
+        if captureIsActive { return "CapturePersistentRecorderVideoStopButton" }
         return videoState == .ready
-            ? "CaptureVideoStartButton"
-            : "CaptureVideoPrepareButton"
+            ? "CapturePersistentRecorderVideoStartButton"
+            : "CapturePersistentRecorderVideoPrepareButton"
     }
 
     private var actionAccessibilityLabel: String {

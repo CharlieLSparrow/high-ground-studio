@@ -232,6 +232,16 @@ final class CaptureExperienceUITests: XCTestCase {
     func testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation() {
         app.tabBars.buttons["Record"].tap()
 
+        let chooser = app.buttons["CaptureSessionChooser"]
+        XCTAssertTrue(chooser.waitForExistence(timeout: 5))
+        chooser.tap()
+        let episodeSession = app.staticTexts["High Ground pre-show"]
+        XCTAssertTrue(
+            episodeSession.waitForExistence(timeout: 5),
+            "The Watch scenario must explicitly enter an episode rather than inheriting the default coaching session."
+        )
+        episodeSession.tap()
+
         let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
         reveal(card)
         XCTAssertTrue(
