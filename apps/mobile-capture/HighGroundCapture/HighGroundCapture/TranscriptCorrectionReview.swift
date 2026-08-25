@@ -3128,7 +3128,11 @@ struct CaptureTranscriptReviewView: View {
                         if client.desk != nil {
                             Button {
                                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    scrollTargetSegmentID = nil
+                                    // Keep the bound scroll position and the imperative jump
+                                    // pointed at the same stable target. Clearing the binding
+                                    // lets the deeply focused transcript segment immediately
+                                    // reclaim the position before the lazy source card is built.
+                                    scrollTargetSegmentID = "source-truth"
                                     scrollProxy.scrollTo("source-truth", anchor: .top)
                                 }
                             } label: {
