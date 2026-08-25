@@ -86,6 +86,7 @@ TRANSCRIPT_WORKER_PROJECT_ID="${TRANSCRIPT_WORKER_PROJECT_ID:-${PROJECT_ID}}"
 TRANSCRIPT_WORKER_REGION="${TRANSCRIPT_WORKER_REGION:-${REGION}}"
 TRANSCRIPT_WORKER_JOB="${TRANSCRIPT_WORKER_JOB:-quipsly-transcript-worker}"
 TRANSCRIPT_WORKER_SERVICE_ACCOUNT="${TRANSCRIPT_WORKER_SERVICE_ACCOUNT:-quipsly-transcript-worker@${TRANSCRIPT_WORKER_PROJECT_ID}.iam.gserviceaccount.com}"
+TRANSCRIPT_FOLLOW_THROUGH_SCHEDULER_SERVICE_ACCOUNT="${TRANSCRIPT_FOLLOW_THROUGH_SCHEDULER_SERVICE_ACCOUNT:-quipsly-transcript-follow-through@${PROJECT_ID}.iam.gserviceaccount.com}"
 TRANSCRIPT_WORKER_MEDIA_BUCKET="${TRANSCRIPT_WORKER_MEDIA_BUCKET:-high-ground-odyssey-media}"
 TRANSCRIPT_WORKER_SECRET_NAME="${TRANSCRIPT_WORKER_SECRET_NAME:-quipsly-deepgram-api-key}"
 TRANSCRIPT_PROVIDER="${TRANSCRIPT_PROVIDER:-deepgram}"
@@ -196,6 +197,7 @@ if [[ "${ENABLE_TRANSCRIPT_WORKER}" == "1" ]] && {
     || [[ ! "${TRANSCRIPT_WORKER_REGION}" =~ ^[a-z][a-z0-9-]{0,62}$ ]] \
     || [[ ! "${TRANSCRIPT_WORKER_JOB}" =~ ^[a-z][a-z0-9-]{0,62}$ ]] \
     || [[ ! "${TRANSCRIPT_WORKER_SERVICE_ACCOUNT}" =~ ^[a-z0-9][a-z0-9-]{4,28}@[a-z][a-z0-9-]{4,62}\.iam\.gserviceaccount\.com$ ]] \
+    || [[ ! "${TRANSCRIPT_FOLLOW_THROUGH_SCHEDULER_SERVICE_ACCOUNT}" =~ ^[a-z0-9][a-z0-9-]{4,28}@[a-z][a-z0-9-]{4,62}\.iam\.gserviceaccount\.com$ ]] \
     || [[ ! "${TRANSCRIPT_WORKER_MEDIA_BUCKET}" =~ ^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$ ]] \
     || [[ ! "${TRANSCRIPT_WORKER_SECRET_NAME}" =~ ^[A-Za-z][A-Za-z0-9_-]{0,254}$ ]];
 }; then
@@ -247,6 +249,7 @@ echo "Release-smoke signing key passed private byte validation."
 
 google_calendar_oauth_secrets=""
 google_calendar_push_env_vars=""
+transcript_follow_through_env_vars=""
 google_drive_oauth_secrets=""
 session_invitation_email_secret=""
 session_invitation_email_env_vars=""
@@ -481,6 +484,17 @@ if (!hasRole("roles/run.jobsExecutor") || hasRole("roles/run.jobsExecutorWithOve
 NODE
 
   transcript_worker_env_vars=",QUIPSLY_TRANSCRIPT_WORKER_ENABLED=1,QUIPSLY_TRANSCRIPT_WORKER_PROJECT_ID=${TRANSCRIPT_WORKER_PROJECT_ID},QUIPSLY_TRANSCRIPT_WORKER_REGION=${TRANSCRIPT_WORKER_REGION},QUIPSLY_TRANSCRIPT_WORKER_JOB=${TRANSCRIPT_WORKER_JOB},QUIPSLY_TRANSCRIPT_PROVIDER=${TRANSCRIPT_PROVIDER},GOOGLE_SPEECH_MODEL=${GOOGLE_SPEECH_MODEL},GOOGLE_SPEECH_LOCATION=${GOOGLE_SPEECH_LOCATION}"
+  transcript_follow_through_audience="$(
+    gcloud run services describe "${SERVICE_NAME}" \
+      --project="${PROJECT_ID}" \
+      --region="${REGION}" \
+      --format='value(status.url)'
+  )"
+  if [[ ! "${transcript_follow_through_audience}" =~ ^https://[a-z0-9-]+-[a-z0-9]+\.[a-z0-9-]+\.run\.app$ ]]; then
+    echo "Could not resolve a safe Cloud Run audience for transcript follow-through maintenance." >&2
+    exit 2
+  fi
+  transcript_follow_through_env_vars=",CAPTURE_TRANSCRIPT_FOLLOW_THROUGH_SERVICE_ACCOUNT=${TRANSCRIPT_FOLLOW_THROUGH_SCHEDULER_SERVICE_ACCOUNT},CAPTURE_TRANSCRIPT_FOLLOW_THROUGH_AUDIENCE=${transcript_follow_through_audience}"
   echo "Transcript worker passed immutable job, provider identity, and Nest executor readback."
 fi
 
@@ -740,7 +754,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \
   --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${livekit_secret_mounts}${google_calendar_oauth_secrets}${google_drive_oauth_secrets}${account_deletion_worker_secret}${session_invitation_email_secret}" \
-  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,PRISMA_PG_POOL_MAX=${PRISMA_PG_POOL_MAX},QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=${livekit_egress_enabled_value}${google_calendar_push_env_vars}${transcript_worker_env_vars}${account_deletion_worker_env_vars}${session_invitation_email_env_vars}" \
+  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,PRISMA_PG_POOL_MAX=${PRISMA_PG_POOL_MAX},QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=${livekit_egress_enabled_value}${google_calendar_push_env_vars}${transcript_worker_env_vars}${transcript_follow_through_env_vars}${account_deletion_worker_env_vars}${session_invitation_email_env_vars}" \
   --quiet
 
 echo "Preview revision deployed."

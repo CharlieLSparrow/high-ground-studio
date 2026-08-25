@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const scheduler = readFileSync(new URL("./quipsly-transcript-follow-through-scheduler.sh", import.meta.url), "utf8");
+const deploy = readFileSync(new URL("./quipsly-deploy-preview.sh", import.meta.url), "utf8");
+
+test("Transcript follow-through scheduler uses short-lived OIDC identity without an embedded bearer secret", () => {
+  assert.match(scheduler, /--oidc-service-account-email=/);
+  assert.match(scheduler, /--oidc-token-audience=/);
+  assert.match(scheduler, /roles\/run\.invoker/);
+  assert.match(scheduler, /capture-transcript-follow-through/);
+  assert.doesNotMatch(scheduler, /--headers=.*Authorization/);
+  assert.doesNotMatch(scheduler, /secret versions access/);
+});
+
+test("Transcript-enabled Nest revisions receive the exact scheduler identity and Cloud Run audience", () => {
+  assert.match(deploy, /CAPTURE_TRANSCRIPT_FOLLOW_THROUGH_SERVICE_ACCOUNT=/);
+  assert.match(deploy, /CAPTURE_TRANSCRIPT_FOLLOW_THROUGH_AUDIENCE=/);
+  assert.match(deploy, /transcript_follow_through_env_vars/);
+  assert.match(deploy, /value\(status\.url\)/);
+  assert.doesNotMatch(deploy, /CAPTURE_TRANSCRIPT_FOLLOW_THROUGH_SECRET/);
+});
