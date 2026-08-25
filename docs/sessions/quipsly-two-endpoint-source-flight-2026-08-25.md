@@ -19,6 +19,7 @@ This is regression evidence, not human acceptance. It uses retained `.test` iden
 - Authenticated playback: beginning, middle, and ending byte ranges returned `206` for each source
 - Source-bound transcripts: 2 completed with matching source SHA-256 and at least one segment each
 - Automatic alignment suggestion: exact newest source from each participant, coach/host-preferred spine, capture-clock authority, no acoustic processing or edit applied
+- Comparative source overview: responsive timing envelopes, shared-window shading, and complete-decode waveforms when available; desktop and 390 px mobile visual checks have no horizontal overflow
 - Saved consent restored after re-entry: passed
 - Post-call recorder remained mounted and safe to close: passed
 

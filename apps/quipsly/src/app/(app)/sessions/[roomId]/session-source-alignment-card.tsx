@@ -90,6 +90,142 @@ function milliseconds(value: number) {
   return `${value >= 0 ? "+" : ""}${(value * 1_000).toFixed(1)} ms`;
 }
 
+function compactSignalWaveform(
+  source: SessionSourceEvidence["sources"][number] | undefined,
+  maximumPoints = 120,
+) {
+  const signal = source?.analysis?.completeDecode
+    ? source.analysis.signal
+    : source?.captureRuntime.audioFormat?.signal;
+  if (!signal?.waveform.length) return [];
+  const bucketSize = Math.max(
+    1,
+    Math.ceil(signal.waveform.length / maximumPoints),
+  );
+  const result = [];
+  for (let index = 0; index < signal.waveform.length; index += bucketSize) {
+    const bucket = signal.waveform.slice(index, index + bucketSize);
+    result.push(Math.max(...bucket.map((point) => point.rmsDbfs)));
+  }
+  return result;
+}
+
+function waveformHeight(dbfs: number) {
+  return Math.max(6, Math.min(100, ((dbfs + 72) / 72) * 100));
+}
+
+function SourceClockOverview({
+  sources,
+  suggestion,
+}: {
+  sources: SessionSourceEvidence["sources"];
+  suggestion: Extract<AlignmentSuggestion, { status: "ready" }>;
+}) {
+  const spine = sources.find(
+    (source) =>
+      source.recordingAssetId === suggestion.spineRecordingAssetId,
+  );
+  const target = sources.find(
+    (source) =>
+      source.recordingAssetId === suggestion.targetRecordingAssetId,
+  );
+  const spineDuration = spine?.protectedPlayback?.durationSeconds ?? 0;
+  const targetDuration = target?.protectedPlayback?.durationSeconds ?? 0;
+  const targetStart = suggestion.initialOffsetSeconds;
+  const timelineStart = Math.min(0, targetStart);
+  const timelineEnd = Math.max(spineDuration, targetStart + targetDuration);
+  const timelineDuration = Math.max(0.001, timelineEnd - timelineStart);
+  const percentage = (value: number) =>
+    `${Math.max(0, Math.min(100, (value / timelineDuration) * 100))}%`;
+  const spineWaveform = compactSignalWaveform(spine);
+  const targetWaveform = compactSignalWaveform(target);
+  const overlapStart = targetStart + suggestion.overlapStartSeconds;
+  const overlapEnd = targetStart + suggestion.overlapEndSeconds;
+  const overlapLeft = overlapStart - timelineStart;
+  const overlapWidth = Math.max(0, overlapEnd - overlapStart);
+  const rows = [
+    {
+      key: "spine",
+      label: spine ? sourceLabel(spine) : "Timeline spine",
+      start: -timelineStart,
+      duration: spineDuration,
+      waveform: spineWaveform,
+      trackTone: "bg-cyan-300/25",
+      barTone: "bg-cyan-300",
+    },
+    {
+      key: "target",
+      label: target ? sourceLabel(target) : "Source to place",
+      start: targetStart - timelineStart,
+      duration: targetDuration,
+      waveform: targetWaveform,
+      trackTone: "bg-fuchsia-300/25",
+      barTone: "bg-fuchsia-300",
+    },
+  ];
+  return (
+    <div
+      className="mt-4 rounded-xl border border-sky-800 bg-slate-950/80 p-3"
+      role="img"
+      aria-label="Two-source clock and waveform overview"
+    >
+      <div className="flex items-center justify-between gap-3 text-[9px] font-black uppercase tracking-wide text-slate-400">
+        <span>Earliest retained start</span>
+        <span>{timelineDuration.toFixed(2)} s visible</span>
+        <span>Latest retained end</span>
+      </div>
+      <div className="relative mt-2 space-y-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900 p-2">
+        <div
+          className="pointer-events-none absolute inset-y-0 bg-emerald-300/10 ring-1 ring-inset ring-emerald-300/30"
+          style={{
+            left: percentage(overlapLeft),
+            width: percentage(overlapWidth),
+          }}
+          aria-hidden="true"
+        />
+        {rows.map((row) => (
+          <div key={row.key} className="relative grid grid-cols-1 items-center gap-1.5 sm:grid-cols-[7rem_1fr] sm:gap-2">
+            <p className="truncate text-[9px] font-black text-slate-300" title={row.label}>
+              {row.label}
+            </p>
+            <div className="relative h-9 overflow-hidden rounded-md bg-slate-950">
+              <div
+                className={`absolute inset-y-1 flex items-end gap-px overflow-hidden rounded ${row.trackTone} ring-1 ring-inset ring-white/10`}
+                style={{
+                  left: percentage(row.start),
+                  width: percentage(row.duration),
+                }}
+              >
+                {row.waveform.length ? (
+                  row.waveform.map((point, index) => (
+                    <span
+                      key={`${row.key}-${index}`}
+                      className={`min-w-px flex-1 rounded-t-sm ${row.barTone}`}
+                      style={{ height: `${waveformHeight(point)}%` }}
+                    />
+                  ))
+                ) : (
+                  <span className={`m-auto h-1 w-full ${row.barTone} opacity-70`} />
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[9px] font-bold text-slate-400">
+        <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-cyan-300" />Spine</span>
+        <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-fuchsia-300" />Source to place</span>
+        <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-300/40" />Shared window</span>
+        <span>
+          {spineWaveform.length && targetWaveform.length
+            ? "Complete-decode waveforms shown"
+            : "Timing envelopes shown; waveforms appear after complete decode"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function SessionSourceAlignmentCard({
   roomId,
   evidence,
@@ -430,6 +566,7 @@ export function SessionSourceAlignmentCard({
             waveforms to measure the opening offset and later drift from the
             exact source bytes.
           </p>
+          <SourceClockOverview sources={sources} suggestion={suggestion} />
         </div>
       ) : suggestion?.status === "waiting" && sources.length >= 2 ? (
         <p className="mt-5 rounded-2xl border border-amber-700 bg-amber-950/40 p-4 text-sm font-bold text-amber-100">

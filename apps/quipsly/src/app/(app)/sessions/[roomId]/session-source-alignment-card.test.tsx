@@ -200,6 +200,14 @@ describe("SessionSourceAlignmentCard", () => {
     expect(
       screen.getByText(/not an acoustic match or an applied edit/i),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: /two-source clock and waveform overview/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/timing envelopes shown; waveforms appear after complete decode/i),
+    ).toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });
