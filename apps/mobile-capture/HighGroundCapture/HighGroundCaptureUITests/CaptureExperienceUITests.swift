@@ -197,6 +197,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let join = app.buttons["ProviderJoinRoomButton"]
         let useCallAudio = app.switches["CaptureUseCallAudioToggle"]
         let microphone = app.switches["CaptureJoinMicrophoneToggle"]
+        let camera = app.switches["CaptureJoinCameraToggle"]
         let route = app.descendants(matching: .any)["CaptureCallInputRoute"]
         let consent = app.descendants(matching: .any)["CaptureConsentStrip"]
         let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"]
@@ -204,6 +205,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(call.waitForExistence(timeout: 5))
         XCTAssertTrue(join.exists, "The green room should expose one obvious Join call action.")
         XCTAssertTrue(useCallAudio.exists, "The familiar pre-join surface should make second-device audio routing obvious.")
+        XCTAssertTrue(camera.exists, "The familiar pre-join surface should expose one ordinary camera choice.")
+        turnOff(camera)
+        XCTAssertTrue(
+            camera.label.localizedCaseInsensitiveContains("Camera off"),
+            "A privacy-safe camera-off choice should remain obvious before Join."
+        )
         turnOn(useCallAudio)
         XCTAssertTrue(microphone.exists, "Using this iPhone for call audio should expose the standard pre-join microphone choice.")
         turnOff(microphone)

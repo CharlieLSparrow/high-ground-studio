@@ -286,6 +286,7 @@ final class CaptureExperienceModel: ObservableObject {
     @Published private(set) var activeCoordinatedCaptureGroupID: UUID?
     @Published private(set) var isCoordinatingPodcastCapture = false
     @Published private(set) var activeRoomSession: MobileCaptureSession?
+    @Published private(set) var ownsRoomCameraPreview = false
     @Published private(set) var captureReceiptNotice: String?
     @Published private(set) var captureSafetyNotice: String?
     @Published private(set) var isSyncingQuickEntries = false
@@ -1372,6 +1373,9 @@ final class CaptureExperienceModel: ObservableObject {
         }
 
         isChangingCapture = true
+        if !providerRoom.isConnected {
+            ownsRoomCameraPreview = false
+        }
         errorMessage = nil
         message = nil
         await videoCapture.prepare(
@@ -2398,6 +2402,44 @@ final class CaptureExperienceModel: ObservableObject {
         await providerRoom.setMuted(!providerRoom.isMuted)
     }
 
+    func prepareRoomCameraPreview(
+        using videoCapture: VideoCaptureController,
+        position: VideoCaptureCameraPosition,
+        qualityIntent: VideoCaptureQualityIntent = .production4K24
+    ) async {
+        await prepareVideoCapture(
+            using: videoCapture,
+            mode: .podcastCamera,
+            position: position,
+            qualityIntent: qualityIntent
+        )
+        ownsRoomCameraPreview = videoCapture.state == .ready
+            && videoCapture.resolvedProfile?.includesAudio == false
+        if ownsRoomCameraPreview {
+            message = "Camera ready. Recording still starts separately."
+        }
+    }
+
+    /// Closes a pre-join camera preview without creating, deleting, or
+    /// finalizing a retained source. An active movie or published call camera
+    /// remains owned by its explicit recording/call controls instead.
+    func dismissRoomCameraPreview(
+        using videoCapture: VideoCaptureController
+    ) async {
+        guard !providerRoom.isLocalVideoPublished,
+              !videoCapture.state.isActive,
+              !isChangingCapture,
+              !isChangingRoom else { return }
+        isChangingCapture = true
+        await videoCapture.shutdownPreview()
+        ownsRoomCameraPreview = false
+        isChangingCapture = false
+        if videoCapture.state == .idle {
+            errorMessage = nil
+            message = "Camera off."
+        }
+    }
+
     /// A conventional call-camera toggle backed by Quipsly's existing camera
     /// owner. Preparing the source starts preview/live frames only; retained
     /// recording remains a separate, explicit action with its own consent and
@@ -2410,6 +2452,9 @@ final class CaptureExperienceModel: ObservableObject {
         guard providerRoom.isConnected, !isChangingRoom else { return }
         if providerRoom.isLocalVideoPublished {
             await providerRoom.unpublishSharedCamera()
+            if !providerRoom.isLocalVideoPublished {
+                await dismissRoomCameraPreview(using: videoCapture)
+            }
             errorMessage = providerRoom.lastError
             return
         }
@@ -2439,6 +2484,9 @@ final class CaptureExperienceModel: ObservableObject {
             from: videoCapture,
             profile: profile
         )
+        if providerRoom.isLocalVideoPublished {
+            ownsRoomCameraPreview = true
+        }
         errorMessage = providerRoom.lastError
     }
 

@@ -3841,3 +3841,23 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   permission timing, remote mute visibility, echo behavior, and retained-source
   survival remain in the deferred validation ledger. Detailed decision record:
   `docs/sessions/native-join-muted-lobby-2026-08-25.md`.
+
+### 2026-08-25 native pre-join camera lobby
+
+- Capture's outer room now includes a remembered privacy-safe camera choice, a
+  real prepared self-preview, and front/back switching before Join. Camera
+  permission begins only from Camera on, and camera failure never blocks the
+  audio call path.
+- A prepared camera-on choice publishes only after room connection. Preview,
+  provider video, and a later retained 4K/24 movie share Quipsly's one
+  authoritative AVFoundation graph instead of competing camera sessions;
+  recording remains a separate deliberate action.
+- The model tracks ownership of the call preview. Turning it off or leaving
+  Record before joining closes that preview without touching an active call or
+  retained source.
+- The 1,213-check Capture static gate, a dual-architecture Simulator build, and
+  the focused operated outer-room journey pass. Physical camera permission,
+  framing, rotation, provider transport, simultaneous 4K source survival, and
+  second-participant observations remain in the deferred validation ledger.
+  Detailed decision record:
+  `docs/sessions/native-prejoin-camera-lobby-2026-08-25.md`.

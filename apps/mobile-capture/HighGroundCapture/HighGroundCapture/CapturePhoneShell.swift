@@ -6460,6 +6460,8 @@ private struct CaptureRecorderView: View {
                         model: model,
                         session: session,
                         inputRoute: audioCapture.inputRouteName,
+                        cameraPosition: $cameraPosition,
+                        videoQualityIntent: videoQualityIntent,
                         localRecordingWorkspaceOpen:
                             model.providerRoom.isConnected
                             || localOnlyRecordingSessionID == session.id
@@ -7272,9 +7274,11 @@ private struct CaptureRecorderView: View {
             guard oldMode != newMode else { return }
             CaptureCallPreferences.recordingMode = newMode
             if newMode == .audio {
-                guard !model.providerRoom.isLocalVideoPublished else { return }
+                guard !model.providerRoom.isLocalVideoPublished,
+                      !model.ownsRoomCameraPreview else { return }
                 Task { await videoCapture.shutdownPreview() }
-            } else if videoCapture.state == .ready,
+            } else if !model.ownsRoomCameraPreview,
+                      videoCapture.state == .ready,
                       videoCapture.resolvedProfile?.includesAudio != newMode.movieIncludesAudio {
                 Task {
                     await model.prepareVideoCapture(
@@ -7291,6 +7295,7 @@ private struct CaptureRecorderView: View {
             CaptureCallPreferences.cameraPosition = newPosition
             guard
                   recordingMode.recordsVideo,
+                  !model.ownsRoomCameraPreview,
                   videoCapture.state == .ready else { return }
             Task {
                 await model.prepareVideoCapture(
@@ -7306,6 +7311,7 @@ private struct CaptureRecorderView: View {
             CaptureCallPreferences.videoQualityIntent = newQuality
             guard
                   recordingMode.recordsVideo,
+                  !model.ownsRoomCameraPreview,
                   videoCapture.state == .ready else { return }
             Task {
                 await model.prepareVideoCapture(
@@ -7315,6 +7321,14 @@ private struct CaptureRecorderView: View {
                     qualityIntent: newQuality
                 )
             }
+        }
+        .onChange(of: visibleTab) { oldTab, newTab in
+            guard oldTab == .record,
+                  newTab != .record,
+                  model.ownsRoomCameraPreview,
+                  !model.providerRoom.isConnected,
+                  !videoCapture.state.isActive else { return }
+            Task { await model.dismissRoomCameraPreview(using: videoCapture) }
         }
         .onChange(of: videoCapture.cameraPosition) { _, position in
             cameraPosition = position
@@ -12328,11 +12342,14 @@ private struct ProviderRoomControls: View {
     @EnvironmentObject private var videoCapture: VideoCaptureController
     let session: MobileCaptureSession
     let inputRoute: String
+    @Binding var cameraPosition: VideoCaptureCameraPosition
+    let videoQualityIntent: VideoCaptureQualityIntent
     let localRecordingWorkspaceOpen: Bool
     let onToggleLocalRecordingWorkspace: () -> Void
     // Keep the existing storage key so upgrades preserve the person's choice.
     @AppStorage("quipsly.call.join-muted.v1") private var callAudioOnAnotherDevice = false
     @AppStorage("quipsly.call.microphone-muted.v1") private var joinMuted = false
+    @AppStorage("quipsly.call.camera-off.v1") private var joinCameraOff = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -12353,7 +12370,7 @@ private struct ProviderRoomControls: View {
                 )
                     .font(.headline)
                 Spacer()
-                Text("Audio call")
+                Text("Call")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(model.providerRoom.isConnected ? Color.green : Color.secondary)
             }
@@ -12455,6 +12472,45 @@ private struct ProviderRoomControls: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("CaptureCallClosedStatus")
                 } else {
+                    if !joinCameraOff,
+                       videoCapture.state == .ready,
+                       videoCapture.resolvedProfile?.includesAudio == false {
+                        ZStack(alignment: .bottomTrailing) {
+                            CaptureVideoPreview(
+                                session: videoCapture.captureSession,
+                                cameraDeviceUniqueID: videoCapture.resolvedProfile?.cameraDeviceUniqueID
+                            )
+                                .frame(maxWidth: .infinity)
+                                .aspectRatio(16 / 10, contentMode: .fit)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .accessibilityIdentifier("CaptureJoinCameraPreview")
+
+                            Button {
+                                Task {
+                                    let nextPosition = cameraPosition.opposite
+                                    await model.prepareRoomCameraPreview(
+                                        using: videoCapture,
+                                        position: nextPosition,
+                                        qualityIntent: videoQualityIntent
+                                    )
+                                    if videoCapture.state == .ready {
+                                        cameraPosition = videoCapture.cameraPosition
+                                    }
+                                }
+                            } label: {
+                                Label("Switch camera", systemImage: "arrow.triangle.2.circlepath.camera.fill")
+                                    .labelStyle(.iconOnly)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .clipShape(Circle())
+                            .padding(10)
+                            .disabled(model.isChangingCapture || model.isChangingRoom)
+                            .accessibilityLabel("Switch camera")
+                            .accessibilityIdentifier("CaptureJoinSwitchCameraButton")
+                        }
+                    }
+
                     Toggle(isOn: Binding(
                         get: { !callAudioOnAnotherDevice },
                         set: { callAudioOnAnotherDevice = !$0 }
@@ -12468,6 +12524,43 @@ private struct ProviderRoomControls: View {
                     .toggleStyle(.switch)
                     .disabled(providerControlsLocked || model.isChangingRoom)
                     .accessibilityIdentifier("CaptureUseCallAudioToggle")
+
+                    Toggle(isOn: Binding(
+                        get: { !joinCameraOff },
+                        set: { cameraOn in
+                            joinCameraOff = !cameraOn
+                            Task {
+                                if cameraOn {
+                                    await model.prepareRoomCameraPreview(
+                                        using: videoCapture,
+                                        position: cameraPosition,
+                                        qualityIntent: videoQualityIntent
+                                    )
+                                    if videoCapture.state == .ready {
+                                        cameraPosition = videoCapture.cameraPosition
+                                    }
+                                } else {
+                                    if !localRecordingWorkspaceOpen {
+                                        await model.dismissRoomCameraPreview(using: videoCapture)
+                                    }
+                                }
+                            }
+                        }
+                    )) {
+                        Label(
+                            joinCameraOff ? "Camera off" : cameraLobbyLabel,
+                            systemImage: joinCameraOff ? "video.slash.fill" : "video.fill"
+                        )
+                            .font(.subheadline)
+                    }
+                    .toggleStyle(.switch)
+                    .disabled(
+                        providerControlsLocked
+                        || model.isChangingRoom
+                        || model.isChangingCapture
+                        || localRecordingWorkspaceOpen
+                    )
+                    .accessibilityIdentifier("CaptureJoinCameraToggle")
 
                     if !callAudioOnAnotherDevice {
                         Toggle(isOn: Binding(
@@ -12499,6 +12592,15 @@ private struct ProviderRoomControls: View {
                                 useCallAudio: !callAudioOnAnotherDevice,
                                 joinMuted: callAudioOnAnotherDevice || joinMuted
                             )
+                            if model.providerRoom.isConnected,
+                               !joinCameraOff,
+                               videoCapture.state == .ready {
+                                await model.toggleRoomCamera(
+                                    using: videoCapture,
+                                    position: cameraPosition,
+                                    qualityIntent: videoQualityIntent
+                                )
+                            }
                         }
                     } label: {
                         HStack {
@@ -12557,9 +12659,34 @@ private struct ProviderRoomControls: View {
                         : "Microphone access is off. Turn it on once, then return and join with your microphone on."
                 )
             }
+
+            if !joinCameraOff,
+               AVCaptureDevice.authorizationStatus(for: .video) == .denied {
+                CapturePermissionRecoveryButton(
+                    title: "Allow camera in Settings",
+                    detail: "Camera access is off. You can still join the call, or allow it once to use video."
+                )
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureProviderRoomControls")
+        .task(id: session.id) {
+            guard !model.providerRoom.isConnected,
+                  !joinCameraOff,
+                  !localRecordingWorkspaceOpen,
+                  videoCapture.state == .idle,
+                  AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+                return
+            }
+            await model.prepareRoomCameraPreview(
+                using: videoCapture,
+                position: cameraPosition,
+                qualityIntent: videoQualityIntent
+            )
+            if videoCapture.state == .ready {
+                cameraPosition = videoCapture.cameraPosition
+            }
+        }
     }
 
     private var providerControlsLocked: Bool {
@@ -12583,6 +12710,27 @@ private struct ProviderRoomControls: View {
 
     private var callPermanentlyClosed: Bool {
         model.providerRoom.isPermanentlyClosed(callRoomID: session.callRoomId)
+    }
+
+    private var cameraLobbyLabel: String {
+        let permission = AVCaptureDevice.authorizationStatus(for: .video)
+        if permission == .denied || permission == .restricted {
+            return "Camera needs attention"
+        }
+        switch videoCapture.state {
+        case .ready:
+            return "Camera on"
+        case .preparing:
+            return "Starting camera"
+        case .failed:
+            return "Camera needs attention"
+        case .idle:
+            return permission == .notDetermined
+                ? "Camera needs confirmation"
+                : "Starting camera"
+        case .arming, .recording, .finalizing, .paused, .saved:
+            return "Camera on"
+        }
     }
 
     private var usesCallAudioForPresentation: Bool {

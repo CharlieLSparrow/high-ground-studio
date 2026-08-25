@@ -967,6 +967,7 @@ for (const needle of [
   "CaptureCallInputRoute",
   "CaptureUseCallAudioToggle",
   "CaptureJoinMicrophoneToggle",
+  "CaptureJoinCameraToggle",
   "Join call",
   "CaptureStudioHandoffCard_",
   "CaptureSourceTruthFootnote",
@@ -1021,6 +1022,7 @@ for (const needle of [
   "videoCapture.activeSessionID == session.id",
   "CaptureUseCallAudioToggle",
   "CaptureJoinMicrophoneToggle",
+  "CaptureJoinCameraToggle",
   "Finish or stop the current take first.",
   ".disabled(providerControlsLocked",
   "CaptureRecordingModePicker",
@@ -1670,9 +1672,21 @@ requireIncludes(capturePhoneShellText, "ProviderRoomControls(", "shipping record
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureProviderRoomControls")', "shipping provider controls have a stable automation identity");
 requireIncludes(capturePhoneShellText, '@AppStorage("quipsly.call.join-muted.v1")', "shipping call entry remembers whether call audio belongs on this iPhone");
 requireIncludes(capturePhoneShellText, '@AppStorage("quipsly.call.microphone-muted.v1")', "shipping call entry remembers the conventional pre-join microphone choice separately");
+requireIncludes(capturePhoneShellText, '@AppStorage("quipsly.call.camera-off.v1")', "shipping call entry remembers the conventional pre-join camera choice separately");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCallInputRoute")', "shipping call entry names the current microphone route");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureUseCallAudioToggle")', "shipping call entry exposes an addressable audio-device control");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinMicrophoneToggle")', "shipping call entry exposes an addressable pre-join microphone control");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinCameraToggle")', "shipping call entry exposes an addressable pre-join camera control");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinCameraPreview")', "shipping call entry exposes a real pre-join camera preview after explicit preparation");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinSwitchCameraButton")', "shipping call entry can switch front and back cameras before joining");
+requireIncludes(capturePhoneShellText, "await model.dismissRoomCameraPreview(using: videoCapture)", "turning the call camera off releases an unowned pre-join preview");
+requireIncludes(capturePhoneShellText, "if model.providerRoom.isConnected,", "the remembered camera-on choice is published only after provider-room connection succeeds");
+requireIncludes(captureExperienceModelText, "func dismissRoomCameraPreview(", "native call-camera preview has an explicit privacy shutdown boundary");
+requireIncludes(captureExperienceModelText, "func prepareRoomCameraPreview(", "native call-camera preview has a first-class owner separate from retained recording preparation");
+requireIncludes(captureExperienceModelText, "ownsRoomCameraPreview = false", "native call-camera preview releases its ownership when dismissed or replaced");
+requireIncludes(captureExperienceModelText, "await dismissRoomCameraPreview(using: videoCapture)", "turning call video off releases camera hardware unless a retained source still owns it");
+requireIncludes(capturePhoneShellText, ".onChange(of: visibleTab)", "leaving Record closes an unjoined call-camera preview instead of leaving hidden capture active");
+requireIncludes(capturePhoneShellText, "!model.ownsRoomCameraPreview", "recording-mode preferences do not silently repurpose the active call-lobby camera graph");
 requireIncludes(capturePhoneShellText, "if microphonePermissionNeedsRecovery", "shipping call entry does not lead a valid muted join with microphone Settings paperwork");
 requireIncludes(capturePhoneShellText, '.localizedCaseInsensitiveContains("microphone access") == true', "a connected muted participant sees Settings recovery only after an explicit blocked microphone action");
 requireIncludes(captureExperienceModelText, "if useCallAudio && !joinMuted", "a muted iPhone join defers microphone permission until the person chooses to speak");

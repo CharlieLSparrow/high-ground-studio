@@ -5008,6 +5008,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "A consented LiveKit-ready Session should expose an explicit Join room action."
         )
         XCTAssertTrue(join.isEnabled)
+        XCTAssertTrue(
+            app.switches["CaptureJoinCameraToggle"].firstMatch.exists,
+            "The real signed-in call lobby should expose its ordinary camera choice before joining."
+        )
         let microphone = app.switches["CaptureJoinMicrophoneToggle"].firstMatch
         XCTAssertTrue(
             microphone.exists,
