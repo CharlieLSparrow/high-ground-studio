@@ -19,6 +19,7 @@ export const SESSION_RECORDING_SHARE_CLOUD_RESULT_PREFIX =
   `${SESSION_RECORDING_SHARE_CLOUD_CONTROL_PREFIX}/results` as const;
 export const SESSION_RECORDING_SHARE_CLOUD_DEAD_LETTER_PREFIX =
   `${SESSION_RECORDING_SHARE_CLOUD_CONTROL_PREFIX}/dead-letter` as const;
+export const SESSION_RECORDING_SHARE_CLOUD_MAX_ATTEMPTS = 5;
 
 type Status = "queued" | "processing" | "completed" | "failed-terminal";
 type Lease = {
@@ -36,6 +37,7 @@ export type SessionRecordingShareCloudManifest = {
   status: Status;
   queuedAt: string;
   updatedAt: string;
+  attemptCount: number;
   lease: Lease | null;
   resultObjectName: string | null;
   failure: { code: string; message: string; failedAt: string } | null;
@@ -81,6 +83,7 @@ export function newSessionRecordingShareCloudManifest(jobValue: unknown) {
       status: "queued",
       queuedAt: now,
       updatedAt: now,
+      attemptCount: 0,
       lease: null,
       resultObjectName: null,
       failure: null,
@@ -97,6 +100,9 @@ export function parseSessionRecordingShareCloudManifest(
   const job = requireCloudJob(row.job);
   const status = text(row.status) as Status;
   const lease = row.lease == null ? null : parseLease(row.lease);
+  const attemptCount = row.attemptCount == null
+    ? (lease?.attempt ?? 0)
+    : Number(row.attemptCount);
   const resultObjectName =
     row.resultObjectName == null ? null : text(row.resultObjectName);
   const failure = row.failure == null ? null : parseFailure(row.failure);
@@ -107,6 +113,7 @@ export function parseSessionRecordingShareCloudManifest(
     status,
     queuedAt: text(row.queuedAt),
     updatedAt: text(row.updatedAt),
+    attemptCount,
     lease,
     resultObjectName,
     failure,
@@ -120,6 +127,9 @@ export function parseSessionRecordingShareCloudManifest(
     ) ||
     !iso(parsed.queuedAt) ||
     !iso(parsed.updatedAt) ||
+    !Number.isSafeInteger(attemptCount) ||
+    attemptCount < 0 ||
+    (lease !== null && lease.attempt !== attemptCount) ||
     (status === "processing") !== Boolean(lease) ||
     (status === "completed") !== Boolean(resultObjectName) ||
     (status === "failed-terminal") !== Boolean(failure) ||
@@ -170,11 +180,13 @@ export function claimSessionRecordingShareCloudManifest(input: {
     Date.parse(input.manifest.lease.expiresAt) > input.now.getTime()
   )
     return null;
+  const attempt = input.manifest.attemptCount + 1;
   return parseSessionRecordingShareCloudManifest(
     {
       ...input.manifest,
       status: "processing",
       updatedAt: input.now.toISOString(),
+      attemptCount: attempt,
       lease: {
         id: input.leaseId,
         executionId: input.executionId,
@@ -182,7 +194,7 @@ export function claimSessionRecordingShareCloudManifest(input: {
         expiresAt: new Date(
           input.now.getTime() + input.leaseDurationMs,
         ).toISOString(),
-        attempt: (input.manifest.lease?.attempt ?? 0) + 1,
+        attempt,
       },
     },
     input.manifest.job.jobId,

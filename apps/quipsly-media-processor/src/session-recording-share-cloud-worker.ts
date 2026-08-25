@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   SESSION_RECORDING_SHARE_CLOUD_QUEUE_PREFIX,
+  SESSION_RECORDING_SHARE_CLOUD_MAX_ATTEMPTS,
   assertSessionRecordingShareCloudResult,
   buildSessionRecordingShareCloudDeadLetterObjectName,
   buildSessionRecordingShareCloudManifestObjectName,
@@ -187,6 +188,31 @@ export async function processSessionRecordingShareCloudQueueObject(
     if (Number((error as { code?: unknown })?.code) === 412)
       return { disposition: "claim-lost" as const, jobId: manifest.job.jobId };
     throw error;
+  }
+
+  if (manifest.attemptCount > SESSION_RECORDING_SHARE_CLOUD_MAX_ATTEMPTS) {
+    const failed = failSessionRecordingShareCloudManifest({
+      manifest,
+      leaseId,
+      code: "session-share-retry-exhausted",
+      message: `Private preview preparation stopped after ${SESSION_RECORDING_SHARE_CLOUD_MAX_ATTEMPTS} unsuccessful attempts. The immutable participant sources and edit decision remain available for a fresh retry.`,
+      now: options.now(),
+    });
+    const stored = await storage.saveJson(
+      receipt.manifestObjectName,
+      failed,
+      storedManifest.generation,
+    );
+    const canonical = parseSessionRecordingShareCloudManifest(
+      stored.value,
+      manifest.job.jobId,
+    );
+    await deadLetter(storage, queueObject, canonical);
+    return {
+      disposition: "terminal" as const,
+      jobId: manifest.job.jobId,
+      code: "session-share-retry-exhausted",
+    };
   }
 
   const scratch = await mkdtemp(

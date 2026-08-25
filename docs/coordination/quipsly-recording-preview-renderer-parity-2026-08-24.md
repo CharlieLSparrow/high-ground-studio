@@ -25,6 +25,18 @@ operational detail, not a choice the coach must understand.
 - Authorization, source verification, immutable render inputs, private review,
   explicit release, and revocation boundaries are unchanged.
 
+## Bounded worker recovery
+
+The cloud control manifest now retains an append-forward attempt count outside
+its renewable worker lease. A transient failure can release the lease for a
+safe retry without resetting that evidence. After five unsuccessful attempts,
+the next claimant terminalizes and dead-letters the exact immutable job instead
+of rendering again forever. The clients then leave the spinner, show the safe
+failure state, and let the coach reopen the retained edit as a fresh request.
+
+This protects both user trust and Cloud Run cost. It does not delete, rewrite,
+or promote any participant master.
+
 ## Automated evidence
 
 ```text
@@ -45,6 +57,12 @@ PASS: Next route types generated; TypeScript clean
 ```text
 node scripts/quipsly-mobile-capture-contract-smoke.mjs --source-only
 PASS: native contract requires local-or-cloud renderer capability
+```
+
+```text
+pnpm quipsly:session-recording-share:test
+PASS: 10 tests, including FFmpeg render, legacy-manifest upgrade, retained
+attempt count, and bounded retry exhaustion without another renderer invocation
 ```
 
 ```text

@@ -8,6 +8,8 @@ import {
   newSessionRecordingShareCloudManifest,
   newSessionRecordingShareJob,
   newSessionRecordingShareResult,
+  parseSessionRecordingShareCloudManifest,
+  releaseSessionRecordingShareCloudLease,
 } from "./index.js";
 
 const bucket = "quipsly-private-media";
@@ -112,4 +114,42 @@ test("cloud result refuses a locator that is not bound to its output generation"
     },
   };
   assert.throws(() => assertSessionRecordingShareCloudResult(mismatched, job));
+});
+
+test("cloud manifest retains its attempt count after a transient lease release", () => {
+  const queued = newSessionRecordingShareCloudManifest(job);
+  const first = claimSessionRecordingShareCloudManifest({
+    manifest: queued,
+    leaseId: "lease-one",
+    executionId: "worker-one",
+    now: new Date("2026-08-25T02:00:10.000Z"),
+    leaseDurationMs: 60_000,
+  })!;
+  const released = releaseSessionRecordingShareCloudLease({
+    manifest: first,
+    leaseId: "lease-one",
+    now: new Date("2026-08-25T02:00:20.000Z"),
+  });
+  const second = claimSessionRecordingShareCloudManifest({
+    manifest: released,
+    leaseId: "lease-two",
+    executionId: "worker-two",
+    now: new Date("2026-08-25T02:00:30.000Z"),
+    leaseDurationMs: 60_000,
+  })!;
+
+  assert.equal(first.attemptCount, 1);
+  assert.equal(released.attemptCount, 1);
+  assert.equal(second.attemptCount, 2);
+  assert.equal(second.lease?.attempt, 2);
+});
+
+test("cloud manifest upgrades queued manifests written before durable attempt counts", () => {
+  const current = newSessionRecordingShareCloudManifest(job);
+  const { attemptCount: _attemptCount, ...legacy } = current;
+
+  assert.equal(
+    parseSessionRecordingShareCloudManifest(legacy, job.jobId).attemptCount,
+    0,
+  );
 });

@@ -5,6 +5,7 @@ import test from "node:test";
 
 import {
   SESSION_RECORDING_SHARE_CLOUD_QUEUE_KIND,
+  SESSION_RECORDING_SHARE_CLOUD_MAX_ATTEMPTS,
   assertSessionRecordingShareCloudResult,
   buildSessionRecordingShareCloudManifestObjectName,
   buildSessionRecordingShareCloudQueueObjectName,
@@ -70,6 +71,7 @@ class MemoryStorage implements CaptureProxyWorkerStorage {
   json = new Map<string, { value: unknown; generation: string }>();
   objects = new Map<string, { bytes: Buffer; evidence: ObjectEvidence }>();
   deleted: string[] = [];
+  deadLetters: Array<{ name: string; value: unknown; generation: string }> = [];
   constructor() {
     const manifest = newSessionRecordingShareCloudManifest(job);
     const manifestName = buildSessionRecordingShareCloudManifestObjectName(
@@ -164,8 +166,8 @@ class MemoryStorage implements CaptureProxyWorkerStorage {
   async deleteObject(name: string) {
     this.deleted.push(name);
   }
-  async writeDeadLetter() {
-    throw new Error("unexpected dead letter");
+  async writeDeadLetter(name: string, value: unknown, generation: string) {
+    this.deadLetters.push({ name, value, generation });
   }
 }
 
@@ -218,5 +220,52 @@ test("cloud worker verifies every source and installs one private exact-generati
     ).status,
     "completed",
   );
+  assert.deepEqual(storage.deleted, [queueName]);
+  assert.deepEqual(storage.deadLetters, []);
+});
+
+test("cloud worker terminalizes a preview after bounded transient attempts", async () => {
+  const storage = new MemoryStorage();
+  const manifestName = buildSessionRecordingShareCloudManifestObjectName(job.jobId);
+  const queued = newSessionRecordingShareCloudManifest(job);
+  storage.json.set(manifestName, {
+    value: { ...queued, attemptCount: SESSION_RECORDING_SHARE_CLOUD_MAX_ATTEMPTS },
+    generation: "11",
+  });
+  let renderCalls = 0;
+  const renderer = {
+    async render() {
+      renderCalls += 1;
+      throw new Error("renderer must not run after retry exhaustion");
+    },
+  };
+  const queueName = buildSessionRecordingShareCloudQueueObjectName(job.jobId);
+  const result = await processSessionRecordingShareCloudQueueObject(
+    storage,
+    renderer as never,
+    {
+      executionId: "execution_worker_retry_exhausted",
+      buildId: "build-test",
+      imageDigest: null,
+      leaseDurationMs: 60_000,
+      now: () => new Date("2026-08-25T03:02:00.000Z"),
+    },
+    { name: queueName, generation: "12" },
+  );
+
+  assert.deepEqual(result, {
+    disposition: "terminal",
+    jobId: job.jobId,
+    code: "session-share-retry-exhausted",
+  });
+  assert.equal(renderCalls, 0);
+  const terminal = parseSessionRecordingShareCloudManifest(
+    storage.json.get(manifestName)!.value,
+    job.jobId,
+  );
+  assert.equal(terminal.status, "failed-terminal");
+  assert.equal(terminal.attemptCount, SESSION_RECORDING_SHARE_CLOUD_MAX_ATTEMPTS + 1);
+  assert.equal(terminal.failure?.code, "session-share-retry-exhausted");
+  assert.equal(storage.deadLetters.length, 1);
   assert.deepEqual(storage.deleted, [queueName]);
 });
