@@ -2654,11 +2654,15 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioMasteryMonitorExplanation"].exists)
         XCTAssertTrue(app.buttons["CaptureAudioMasteryPlayOriginal"].exists)
         XCTAssertTrue(app.buttons["CaptureAudioMasteryPlay"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioMasteryReview"].exists)
+        let masteryReview = app.descendants(matching: .any)["CaptureAudioMasteryReview"]
+        reveal(masteryReview, searchAboveFirst: false)
+        XCTAssertTrue(masteryReview.exists)
         XCTAssertTrue(app.textFields["CaptureAudioMasteryReviewNote"].exists)
         XCTAssertTrue(app.buttons["CaptureAudioMasteryReject"].exists)
         XCTAssertTrue(app.buttons["CaptureAudioMasteryApprove"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioMasteryPromotion"].exists)
+        let masteryPromotion = app.descendants(matching: .any)["CaptureAudioMasteryPromotion"]
+        reveal(masteryPromotion, searchAboveFirst: false)
+        XCTAssertTrue(masteryPromotion.exists)
         XCTAssertTrue(app.buttons["CaptureAudioMasteryPromote"].exists)
         let masteryBoundary = app.descendants(matching: .any)["CaptureAudioMasteryPreviewBoundary"]
         XCTAssertTrue(masteryBoundary.exists)
@@ -2669,7 +2673,9 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["CaptureAudioDeliveryPrepare"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioDeliveryOutput"].exists)
         XCTAssertTrue(app.buttons["CaptureAudioDeliveryPlay"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioDeliveryReview"].exists)
+        let deliveryReview = app.descendants(matching: .any)["CaptureAudioDeliveryReview"]
+        reveal(deliveryReview, searchAboveFirst: false)
+        XCTAssertTrue(deliveryReview.exists)
         XCTAssertTrue(app.textFields["CaptureAudioDeliveryReviewNote"].exists)
         XCTAssertTrue(app.buttons["CaptureAudioDeliveryReject"].exists)
         XCTAssertTrue(app.buttons["CaptureAudioDeliveryApprove"].exists)

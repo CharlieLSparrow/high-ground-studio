@@ -545,6 +545,7 @@ struct CaptureSourceEvidenceView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Choose the version you trust")
                             .font(.subheadline.weight(.bold))
+                            .accessibilityIdentifier("CaptureAudioMasteryReview")
                         Text("Hear each suggested moment in both versions. Compare once fairly and once at final volume before approving.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -674,7 +675,6 @@ struct CaptureSourceEvidenceView: View {
                 masteryPromotionSection(recording: recording, status: status)
             }
             .padding(.top, 8)
-            .accessibilityIdentifier("CaptureAudioMasteryReview")
         }
     }
 
@@ -692,6 +692,7 @@ struct CaptureSourceEvidenceView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Delivery version")
                         .font(.subheadline.weight(.bold))
+                        .accessibilityIdentifier("CaptureAudioMasteryPromotion")
                     Text("Selecting a version records which approved audio should be used later. It does not encode, share, or publish anything.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -782,7 +783,6 @@ struct CaptureSourceEvidenceView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
-        .accessibilityIdentifier("CaptureAudioMasteryPromotion")
     }
 
     @ViewBuilder
@@ -797,6 +797,7 @@ struct CaptureSourceEvidenceView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Share-ready audio")
                         .font(.subheadline.weight(.bold))
+                        .accessibilityIdentifier("CaptureAudioDelivery")
                     Text("Create the exact AAC file people will receive, then hear that encoded file before allowing any later delivery step.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -894,7 +895,6 @@ struct CaptureSourceEvidenceView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .accessibilityIdentifier("CaptureAudioDelivery")
         }
     }
 
@@ -970,6 +970,7 @@ struct CaptureSourceEvidenceView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Proof-listen the delivered bytes")
                     .font(.caption.weight(.bold))
+                    .accessibilityIdentifier("CaptureAudioDeliveryReview")
                 Text("Hear a short section at the beginning, middle, and end. These controls play the downloaded AAC—not the source or improved WAV.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -1087,7 +1088,6 @@ struct CaptureSourceEvidenceView: View {
             .font(.caption2.weight(.semibold))
             .foregroundStyle(coverage.approvalReady ? .green : .secondary)
         }
-        .accessibilityIdentifier("CaptureAudioDeliveryReview")
     }
 
     private func audioDeliveryMomentButton(
@@ -2006,6 +2006,7 @@ struct CaptureSourceEvidencePreviewView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Choose the version you trust")
                             .font(.subheadline.weight(.bold))
+                            .accessibilityIdentifier("CaptureAudioMasteryReview")
                         Text("A real review guides you through server-selected moments in both versions and requires fair-comparison plus final-volume listening before approval.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -2027,10 +2028,10 @@ struct CaptureSourceEvidencePreviewView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                    .accessibilityIdentifier("CaptureAudioMasteryReview")
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Delivery version")
                             .font(.subheadline.weight(.bold))
+                            .accessibilityIdentifier("CaptureAudioMasteryPromotion")
                         Text("A real approved copy can be deliberately selected for later delivery without encoding, sharing, publishing, or replacing the original.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -2042,11 +2043,11 @@ struct CaptureSourceEvidencePreviewView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                    .accessibilityIdentifier("CaptureAudioMasteryPromotion")
                     VStack(alignment: .leading, spacing: 8) {
                         Divider()
                         Text("Share-ready audio")
                             .font(.subheadline.weight(.bold))
+                            .accessibilityIdentifier("CaptureAudioDelivery")
                         Text("A real selected improvement is encoded to a completely decoded, measured AAC artifact. Capture then downloads the authenticated bytes and verifies their SHA-256 and byte count before playback.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -2068,6 +2069,7 @@ struct CaptureSourceEvidencePreviewView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Proof-listen the delivered bytes")
                                 .font(.caption.weight(.bold))
+                                .accessibilityIdentifier("CaptureAudioDeliveryReview")
                             Text("Beginning · Middle · Ending")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -2089,15 +2091,13 @@ struct CaptureSourceEvidencePreviewView: View {
                                     .accessibilityIdentifier("CaptureAudioDeliveryApprove")
                             }
                         }
-                        .accessibilityIdentifier("CaptureAudioDeliveryReview")
                         Label(
-                            "Preview only · no network, artifact, playback evidence, or review receipt",
+                            "Preview only · no network, no artifact, no playback evidence, and no review receipt",
                             systemImage: "eye"
                         )
                         .font(.caption2.weight(.semibold))
                         .accessibilityIdentifier("CaptureAudioDeliveryPreviewBoundary")
                     }
-                    .accessibilityIdentifier("CaptureAudioDelivery")
                     Label("Preview only · no audio downloaded", systemImage: "eye")
                         .font(.caption.weight(.semibold))
                         .accessibilityIdentifier("CaptureAudioMasteryPreviewBoundary")

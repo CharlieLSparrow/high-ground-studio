@@ -12691,16 +12691,26 @@ private struct ProviderRoomControls: View {
             if usesCallAudioForPresentation {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Label(inputRoute, systemImage: "mic.fill")
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Image(systemName: "mic.fill")
+                            Text(inputRoute)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel(inputRoute)
                             .accessibilityIdentifier("CaptureCallInputRoute")
-                        Text("Listening on \(callAudioSession.currentOutputRouteName)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .accessibilityIdentifier("CaptureCallOutputRoute")
+                        HStack {
+                            Text("Listening on \(callAudioSession.currentOutputRouteName)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.vertical, 3)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Listening on \(callAudioSession.currentOutputRouteName)")
+                        .accessibilityIdentifier("CaptureCallOutputRoute")
                     }
                     Spacer(minLength: 8)
                     CaptureSystemAudioRoutePicker()

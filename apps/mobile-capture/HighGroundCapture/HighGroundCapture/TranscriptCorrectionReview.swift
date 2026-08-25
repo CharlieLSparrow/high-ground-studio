@@ -4447,6 +4447,7 @@ struct CaptureTranscriptSpeakerEvidenceBadge: View {
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
                 .background(Color.blue.opacity(0.09), in: Capsule())
+                .accessibilityElement(children: .combine)
                 .accessibilityLabel("Speaker evidence: \(evidence.label)")
                 .accessibilityHint(evidence.detail)
                 .accessibilityIdentifier(identifier ?? "CapturePacketSpeakerEvidence_\(authority ?? "unknown")")
