@@ -65,15 +65,16 @@ function job() {
 
 test("Session recording share contract preserves exact source, edit, and target bindings", () => {
   const value = job();
-  assert.equal(value.kind, "quipsly-session-recording-share-job-v2");
+  assert.equal(value.kind, "quipsly-session-recording-share-job-v3");
   assert.equal(value.edit.keptRanges.length, 2);
   assert.equal(value.edit.transcriptExclusions[0]?.segmentId, "transcript_segment_0001");
   assert.equal(value.edit.transcriptExclusions[0]?.timingFingerprint, "e".repeat(64));
   assert.equal(value.edit.transcriptExclusions[0]?.timingBasis, "provider-words");
   assert.equal(value.sources[0]?.recordingAssetId, "recording_asset_0001");
   assert.equal(value.sources[0]?.programOffsetSeconds, 0.125);
+  assert.equal(value.target.mediaKind, "audio");
   assert.deepEqual(
-    { contentType: value.target.contentType, codec: value.target.codec, sampleRateHz: value.target.sampleRateHz, channels: value.target.channels },
+    { contentType: value.target.contentType, codec: value.target.mediaKind === "audio" ? value.target.codec : null, sampleRateHz: value.target.sampleRateHz, channels: value.target.channels },
     { contentType: "audio/mp4", codec: "aac-lc", sampleRateHz: 48_000, channels: 2 },
   );
 });
@@ -88,6 +89,41 @@ test("Session recording share contract rejects duplicate sources and unsafe time
       ...value,
       edit: { ...value.edit, startSeconds: 9, endSeconds: 8 },
     }), /edit range is invalid/i);
+});
+
+test("Session recording share contract binds a video output to one selected exact camera", () => {
+  const audio = job();
+  const video = newSessionRecordingShareJob({
+    ...audio,
+    jobId: "session_share_video_0001",
+    outputId: "session_output_video_0001",
+    sources: [
+      { ...audio.sources[0]!, recordingAssetId: "recording_video_0001", contentType: "video/mp4", includeInAudioMix: false },
+      { ...audio.sources[0]!, recordingAssetId: "recording_audio_0001", includeInAudioMix: true },
+    ],
+    target: {
+      provider: "local",
+      bucketName: "local-media",
+      objectName: "session-exports/session_room_0001/session_share_video_0001.mp4",
+      locator: "/tmp/quipsly/session_share_video_0001.mp4",
+      mediaKind: "video",
+      contentType: "video/mp4",
+      videoCodec: "h264",
+      audioCodec: "aac-lc",
+      widthPixels: 1920,
+      heightPixels: 1080,
+      frameRate: 24,
+      sampleRateHz: 48_000,
+      channels: 2,
+      primaryVideoRecordingAssetId: "recording_video_0001",
+    },
+  });
+  assert.equal(video.target.mediaKind, "video");
+  assert.equal(video.sources.filter((source) => source.includeInAudioMix).length, 1);
+  assert.throws(() => parseSessionRecordingShareJob({
+    ...video,
+    target: { ...video.target, primaryVideoRecordingAssetId: "recording_audio_0001" },
+  }), /primary video/i);
 });
 
 test("Session recording share contract rejects overlapping edits and stale transcript hashes", () => {
@@ -126,7 +162,7 @@ test("Session recording share parser upgrades queued v1 jobs without changing th
     version: 1,
     edit: { startSeconds: 2.25, endSeconds: 42.5 },
   });
-  assert.equal(upgraded.kind, "quipsly-session-recording-share-job-v2");
+  assert.equal(upgraded.kind, "quipsly-session-recording-share-job-v3");
   assert.deepEqual(upgraded.edit.keptRanges, [{ id: "legacy_full_range", startSeconds: 2.25, endSeconds: 42.5 }]);
   assert.equal(upgraded.edit.joinCrossfadeSeconds, 0);
 });
@@ -147,4 +183,51 @@ test("Session recording share result parser requires complete-decode and privacy
   });
   assert.equal(parseSessionRecordingShareResult(result).boundaries.outputRemainsPrivateUntilRelease, true);
   assert.throws(() => parseSessionRecordingShareResult({ ...result, output: { ...result.output, completeDecode: false } }), /result is invalid/i);
+});
+
+test("Session recording share video result binds its primary camera to an exact source", () => {
+  const audio = job();
+  const video = newSessionRecordingShareJob({
+    ...audio,
+    jobId: "session_share_video_result_0001",
+    outputId: "session_output_video_result_0001",
+    sources: [
+      { ...audio.sources[0]!, recordingAssetId: "recording_video_result_0001", contentType: "video/mp4", includeInAudioMix: false },
+      { ...audio.sources[0]!, recordingAssetId: "recording_audio_result_0001", includeInAudioMix: true },
+    ],
+    target: {
+      provider: "local",
+      bucketName: "local-media",
+      objectName: "session-exports/session_room_0001/session_share_video_result_0001.mp4",
+      locator: "/tmp/quipsly/session_share_video_result_0001.mp4",
+      mediaKind: "video",
+      contentType: "video/mp4",
+      videoCodec: "h264",
+      audioCodec: "aac-lc",
+      widthPixels: 1920,
+      heightPixels: 1080,
+      frameRate: 24,
+      sampleRateHz: 48_000,
+      channels: 2,
+      primaryVideoRecordingAssetId: "recording_video_result_0001",
+    },
+  });
+  const result = newSessionRecordingShareResult({
+    jobId: video.jobId,
+    roomId: video.roomId,
+    outputId: video.outputId,
+    outputRevision: video.outputRevision,
+    sourceSetSha256: video.sourceSetSha256,
+    edit: video.edit,
+    sourceRecordingAssetIds: video.sources.map((source) => source.recordingAssetId),
+    output: { ...video.target, generation: "3", sha256: "f".repeat(64), sizeBytes: 180_000, durationSeconds: 36.24, completeDecode: true },
+    worker: { executionId: "execution_video_0001", buildId: "test", imageDigest: null, ffmpegVersion: "ffmpeg test" },
+    completedAt: "2026-08-19T23:47:00.000Z",
+  });
+
+  assert.equal(parseSessionRecordingShareResult(result).output.mediaKind, "video");
+  assert.throws(() => parseSessionRecordingShareResult({
+    ...result,
+    sourceRecordingAssetIds: ["recording_audio_result_0001"],
+  }), /primary video must be one of its exact sources/i);
 });

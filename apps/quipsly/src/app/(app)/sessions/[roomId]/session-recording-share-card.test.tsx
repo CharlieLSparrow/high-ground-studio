@@ -352,7 +352,7 @@ describe("SessionRecordingShareCard", () => {
       revision: 3,
       contentSha256: "d".repeat(64),
       recipient: { id: "client_user_0001", label: "Client" },
-      render: { status: "VERIFIED", durationSeconds: 26, sizeBytes: 4_000, sha256: "e".repeat(64) },
+      render: { status: "VERIFIED", durationSeconds: 26, sizeBytes: 4_000, sha256: "e".repeat(64), mediaKind: "video", contentType: "video/mp4", primaryVideoSourceId: cameraSource.id },
       mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_exact_sources_0001",
       body: { edit: { startSeconds: 2, endSeconds: 28, transcriptExclusions: [cameraSegment] } },
       sourceManifest: { sources: [{ recordingAssetId: cameraSource.id }] },
@@ -380,6 +380,7 @@ describe("SessionRecordingShareCard", () => {
     const cameraAudio = screen.getByText(/camera master audio/i).closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
     expect(localAudio).not.toBeChecked();
     expect(cameraAudio).toBeChecked();
+    expect(screen.getByRole("radio", { name: "video" })).toHaveAttribute("aria-checked", "true");
     const passage = screen.getByText(cameraSegment.text).closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
     expect(passage).not.toBeChecked();
 
@@ -388,6 +389,8 @@ describe("SessionRecordingShareCard", () => {
     expect(requests[0]).toEqual(expect.objectContaining({
       action: "PREPARE",
       sourceIds: [cameraSource.id],
+      outputMediaKind: "video",
+      primaryVideoSourceId: cameraSource.id,
       excludedTranscriptSegments: [expect.objectContaining({ segmentId: cameraSegment.segmentId })],
     }));
   });

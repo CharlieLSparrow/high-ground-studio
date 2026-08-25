@@ -1,8 +1,10 @@
-export const SESSION_RECORDING_SHARE_JOB_KIND = "quipsly-session-recording-share-job-v2" as const;
-export const SESSION_RECORDING_SHARE_RESULT_KIND = "quipsly-session-recording-share-result-v2" as const;
+export const SESSION_RECORDING_SHARE_JOB_KIND = "quipsly-session-recording-share-job-v3" as const;
+export const SESSION_RECORDING_SHARE_RESULT_KIND = "quipsly-session-recording-share-result-v3" as const;
 
 const LEGACY_SESSION_RECORDING_SHARE_JOB_KIND = "quipsly-session-recording-share-job-v1";
 const LEGACY_SESSION_RECORDING_SHARE_RESULT_KIND = "quipsly-session-recording-share-result-v1";
+const AUDIO_SESSION_RECORDING_SHARE_JOB_KIND = "quipsly-session-recording-share-job-v2";
+const AUDIO_SESSION_RECORDING_SHARE_RESULT_KIND = "quipsly-session-recording-share-result-v2";
 
 export type SessionRecordingShareTranscriptExclusion = {
   transcriptJobId: string;
@@ -43,11 +45,44 @@ export type SessionRecordingShareSource = {
   sizeBytes: number;
   contentType: string;
   programOffsetSeconds: number;
+  includeInAudioMix: boolean;
 };
+
+type SessionRecordingShareTargetStorage = {
+  provider: "local" | "gcs";
+  bucketName: string;
+  objectName: string;
+  locator: string;
+};
+
+export type SessionRecordingShareAudioTarget = SessionRecordingShareTargetStorage & {
+  mediaKind: "audio";
+  contentType: "audio/mp4";
+  codec: "aac-lc";
+  sampleRateHz: 48_000;
+  channels: 2;
+};
+
+export type SessionRecordingShareVideoTarget = SessionRecordingShareTargetStorage & {
+  mediaKind: "video";
+  contentType: "video/mp4";
+  videoCodec: "h264";
+  audioCodec: "aac-lc";
+  widthPixels: 1920;
+  heightPixels: 1080;
+  frameRate: 24;
+  sampleRateHz: 48_000;
+  channels: 2;
+  primaryVideoRecordingAssetId: string;
+};
+
+export type SessionRecordingShareTarget =
+  | SessionRecordingShareAudioTarget
+  | SessionRecordingShareVideoTarget;
 
 export type SessionRecordingShareJob = {
   kind: typeof SESSION_RECORDING_SHARE_JOB_KIND;
-  version: 2;
+  version: 3;
   jobId: string;
   roomId: string;
   outputId: string;
@@ -56,21 +91,12 @@ export type SessionRecordingShareJob = {
   sourceSetSha256: string;
   edit: SessionRecordingShareEdit;
   sources: SessionRecordingShareSource[];
-  target: {
-    provider: "local" | "gcs";
-    bucketName: string;
-    objectName: string;
-    locator: string;
-    contentType: "audio/mp4";
-    codec: "aac-lc";
-    sampleRateHz: 48_000;
-    channels: 2;
-  };
+  target: SessionRecordingShareTarget;
 };
 
 export type SessionRecordingShareResult = {
   kind: typeof SESSION_RECORDING_SHARE_RESULT_KIND;
-  version: 2;
+  version: 3;
   jobId: string;
   roomId: string;
   outputId: string;
@@ -230,7 +256,8 @@ export function sessionRecordingShareOutputDuration(edit: SessionRecordingShareE
 export function parseSessionRecordingShareJob(value: unknown): SessionRecordingShareJob {
   const row = object(value);
   const legacy = row.kind === LEGACY_SESSION_RECORDING_SHARE_JOB_KIND && row.version === 1;
-  if (!legacy && (row.kind !== SESSION_RECORDING_SHARE_JOB_KIND || row.version !== 2)) {
+  const audioV2 = row.kind === AUDIO_SESSION_RECORDING_SHARE_JOB_KIND && row.version === 2;
+  if (!legacy && !audioV2 && (row.kind !== SESSION_RECORDING_SHARE_JOB_KIND || row.version !== 3)) {
     throw new Error("Session recording share job kind or version is unsupported.");
   }
   const edit = parseEdit(row.edit, legacy);
@@ -265,6 +292,7 @@ export function parseSessionRecordingShareJob(value: unknown): SessionRecordingS
       sizeBytes,
       contentType,
       programOffsetSeconds,
+      includeInAudioMix: legacy || audioV2 ? true : source.includeInAudioMix !== false,
     } satisfies SessionRecordingShareSource;
   });
   if (new Set(sources.map((source) => source.recordingAssetId)).size !== sources.length) {
@@ -272,23 +300,45 @@ export function parseSessionRecordingShareJob(value: unknown): SessionRecordingS
   }
   const target = object(row.target);
   const targetProvider = target.provider === "gcs" ? "gcs" : target.provider === "local" ? "local" : null;
-  if (
-    !targetProvider ||
-    target.contentType !== "audio/mp4" ||
-    target.codec !== "aac-lc" ||
-    target.sampleRateHz !== 48_000 ||
-    target.channels !== 2 ||
-    !text(target.bucketName) ||
-    !text(target.objectName) ||
-    !text(target.locator)
-  ) {
+  const storageValid = targetProvider
+    && text(target.bucketName)
+    && text(target.objectName)
+    && text(target.locator);
+  const mediaKind = legacy || audioV2 ? "audio" : text(target.mediaKind);
+  const audioTargetValid = mediaKind === "audio"
+    && target.contentType === "audio/mp4"
+    && target.codec === "aac-lc"
+    && target.sampleRateHz === 48_000
+    && target.channels === 2;
+  const primaryVideoRecordingAssetId = mediaKind === "video"
+    ? requiredId(target.primaryVideoRecordingAssetId, "Session recording share primary video")
+    : "";
+  const videoTargetValid = mediaKind === "video"
+    && target.contentType === "video/mp4"
+    && target.videoCodec === "h264"
+    && target.audioCodec === "aac-lc"
+    && target.widthPixels === 1920
+    && target.heightPixels === 1080
+    && target.frameRate === 24
+    && target.sampleRateHz === 48_000
+    && target.channels === 2;
+  if (!storageValid || (!audioTargetValid && !videoTargetValid)) {
     throw new Error("Session recording share target is invalid.");
+  }
+  if (!sources.some((source) => source.includeInAudioMix)) {
+    throw new Error("Session recording share requires at least one audio-program source.");
+  }
+  if (videoTargetValid) {
+    const primary = sources.find((source) => source.recordingAssetId === primaryVideoRecordingAssetId);
+    if (!primary || !primary.contentType.startsWith("video/")) {
+      throw new Error("Session recording share primary video must be an exact selected video source.");
+    }
   }
   const outputRevision = integer(row.outputRevision);
   if (outputRevision < 1) throw new Error("Session recording share output revision is invalid.");
   return {
     kind: SESSION_RECORDING_SHARE_JOB_KIND,
-    version: 2,
+    version: 3,
     jobId: requiredId(row.jobId, "Session recording share job"),
     roomId: requiredId(row.roomId, "Session"),
     outputId: requiredId(row.outputId, "Session output"),
@@ -297,11 +347,27 @@ export function parseSessionRecordingShareJob(value: unknown): SessionRecordingS
     sourceSetSha256: requiredSha(row.sourceSetSha256, "Session recording source set"),
     edit,
     sources,
-    target: {
+    target: videoTargetValid ? {
       provider: targetProvider,
       bucketName: text(target.bucketName),
       objectName: text(target.objectName),
       locator: text(target.locator),
+      mediaKind: "video",
+      contentType: "video/mp4",
+      videoCodec: "h264",
+      audioCodec: "aac-lc",
+      widthPixels: 1920,
+      heightPixels: 1080,
+      frameRate: 24,
+      sampleRateHz: 48_000,
+      channels: 2,
+      primaryVideoRecordingAssetId,
+    } : {
+      provider: targetProvider,
+      bucketName: text(target.bucketName),
+      objectName: text(target.objectName),
+      locator: text(target.locator),
+      mediaKind: "audio",
       contentType: "audio/mp4",
       codec: "aac-lc",
       sampleRateHz: 48_000,
@@ -310,14 +376,28 @@ export function parseSessionRecordingShareJob(value: unknown): SessionRecordingS
   };
 }
 
-export function newSessionRecordingShareJob(input: Omit<SessionRecordingShareJob, "kind" | "version">) {
-  return parseSessionRecordingShareJob({ kind: SESSION_RECORDING_SHARE_JOB_KIND, version: 2, ...input });
+type NewSessionRecordingShareJobInput = Omit<
+  SessionRecordingShareJob,
+  "kind" | "version" | "sources" | "target"
+> & {
+  sources: Array<Omit<SessionRecordingShareSource, "includeInAudioMix"> & { includeInAudioMix?: boolean }>;
+  target: SessionRecordingShareTarget | Omit<SessionRecordingShareAudioTarget, "mediaKind">;
+};
+
+export function newSessionRecordingShareJob(input: NewSessionRecordingShareJobInput) {
+  return parseSessionRecordingShareJob({
+    kind: SESSION_RECORDING_SHARE_JOB_KIND,
+    version: 3,
+    ...input,
+    sources: input.sources.map((source) => ({ includeInAudioMix: true, ...source })),
+    target: { mediaKind: "audio", ...input.target },
+  });
 }
 
 export function newSessionRecordingShareResult(input: Omit<SessionRecordingShareResult, "kind" | "version" | "boundaries">): SessionRecordingShareResult {
   return {
     kind: SESSION_RECORDING_SHARE_RESULT_KIND,
-    version: 2,
+    version: 3,
     ...input,
     boundaries: {
       originalSourcesRemainImmutable: true,
@@ -333,12 +413,13 @@ export function parseSessionRecordingShareResult(value: unknown): SessionRecordi
   const output = object(row.output);
   const worker = object(row.worker);
   const legacy = row.kind === LEGACY_SESSION_RECORDING_SHARE_RESULT_KIND && row.version === 1;
+  const audioV2 = row.kind === AUDIO_SESSION_RECORDING_SHARE_RESULT_KIND && row.version === 2;
   const boundaries = object(row.boundaries);
   const durationSeconds = finite(output.durationSeconds);
   const sizeBytes = integer(output.sizeBytes);
   const outputRevision = integer(row.outputRevision);
   if (
-    (!legacy && (row.kind !== SESSION_RECORDING_SHARE_RESULT_KIND || row.version !== 2))
+    (!legacy && !audioV2 && (row.kind !== SESSION_RECORDING_SHARE_RESULT_KIND || row.version !== 3))
     || outputRevision < 1
     || !Array.isArray(row.sourceRecordingAssetIds)
     || row.sourceRecordingAssetIds.length < 1
@@ -353,18 +434,40 @@ export function parseSessionRecordingShareResult(value: unknown): SessionRecordi
     throw new Error("Session recording share result is invalid.");
   }
   const provider = output.provider === "local" ? "local" : output.provider === "gcs" ? "gcs" : null;
+  const mediaKind = legacy || audioV2 ? "audio" : text(output.mediaKind);
+  const audioTargetValid = mediaKind === "audio"
+    && output.contentType === "audio/mp4"
+    && output.codec === "aac-lc"
+    && output.sampleRateHz === 48_000
+    && output.channels === 2;
+  const videoTargetValid = mediaKind === "video"
+    && output.contentType === "video/mp4"
+    && output.videoCodec === "h264"
+    && output.audioCodec === "aac-lc"
+    && output.widthPixels === 1920
+    && output.heightPixels === 1080
+    && output.frameRate === 24
+    && output.sampleRateHz === 48_000
+    && output.channels === 2
+    && ID.test(text(output.primaryVideoRecordingAssetId));
   if (
-    !provider
-    || output.contentType !== "audio/mp4"
-    || output.codec !== "aac-lc"
-    || output.sampleRateHz !== 48_000
-    || output.channels !== 2
-    || !text(output.bucketName)
-    || !text(output.objectName)
-    || !text(output.locator)
-    || !text(output.generation)
+    !provider || (!audioTargetValid && !videoTargetValid)
+    || !text(output.bucketName) || !text(output.objectName)
+    || !text(output.locator) || !text(output.generation)
   ) {
     throw new Error("Session recording share result target is invalid.");
+  }
+  const sourceRecordingAssetIds = row.sourceRecordingAssetIds.map((id, index) =>
+    requiredId(id, `Result source ${index + 1}`),
+  );
+  if (new Set(sourceRecordingAssetIds).size !== sourceRecordingAssetIds.length) {
+    throw new Error("Session recording share result sources must be unique.");
+  }
+  if (
+    videoTargetValid
+    && !sourceRecordingAssetIds.includes(text(output.primaryVideoRecordingAssetId))
+  ) {
+    throw new Error("Session recording share result primary video must be one of its exact sources.");
   }
   const edit = parseEdit(row.edit, legacy);
   const expectedDuration = sessionRecordingShareOutputDuration(edit);
@@ -373,19 +476,40 @@ export function parseSessionRecordingShareResult(value: unknown): SessionRecordi
   }
   return {
     kind: SESSION_RECORDING_SHARE_RESULT_KIND,
-    version: 2,
+    version: 3,
     jobId: requiredId(row.jobId, "Session recording share result job"),
     roomId: requiredId(row.roomId, "Session recording share result room"),
     outputId: requiredId(row.outputId, "Session recording share result output"),
     outputRevision,
     sourceSetSha256: requiredSha(row.sourceSetSha256, "Session recording share result source set"),
     edit,
-    sourceRecordingAssetIds: row.sourceRecordingAssetIds.map((id, index) => requiredId(id, `Result source ${index + 1}`)),
-    output: {
+    sourceRecordingAssetIds,
+    output: videoTargetValid ? {
       provider,
       bucketName: text(output.bucketName),
       objectName: text(output.objectName),
       locator: text(output.locator),
+      mediaKind: "video",
+      contentType: "video/mp4",
+      videoCodec: "h264",
+      audioCodec: "aac-lc",
+      widthPixels: 1920,
+      heightPixels: 1080,
+      frameRate: 24,
+      sampleRateHz: 48_000,
+      channels: 2,
+      primaryVideoRecordingAssetId: requiredId(output.primaryVideoRecordingAssetId, "Session recording share result primary video"),
+      generation: text(output.generation),
+      sha256: requiredSha(output.sha256, "Session recording share result output"),
+      sizeBytes,
+      durationSeconds,
+      completeDecode: true,
+    } : {
+      provider,
+      bucketName: text(output.bucketName),
+      objectName: text(output.objectName),
+      locator: text(output.locator),
+      mediaKind: "audio",
       contentType: "audio/mp4",
       codec: "aac-lc",
       sampleRateHz: 48_000,

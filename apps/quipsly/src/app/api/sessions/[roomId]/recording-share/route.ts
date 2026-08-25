@@ -71,6 +71,8 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
         clientRequestId,
         title: text(body.title, 500),
         sourceIds: Array.isArray(body.sourceIds) ? body.sourceIds.map((value: unknown) => text(value)).filter(Boolean) : [],
+        outputMediaKind: body.outputMediaKind === "video" ? "video" : "audio",
+        primaryVideoSourceId: text(body.primaryVideoSourceId),
         startSeconds: Number(body.startSeconds),
         endSeconds: Number(body.endSeconds),
         excludedTranscriptSegments: Array.isArray(body.excludedTranscriptSegments)

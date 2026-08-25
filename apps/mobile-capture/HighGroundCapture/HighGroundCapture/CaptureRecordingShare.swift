@@ -1,4 +1,5 @@
 import AVFAudio
+import AVKit
 import Combine
 import CryptoKit
 import Foundation
@@ -71,6 +72,9 @@ struct CaptureRecordingShareOutput: Codable, Identifiable, Equatable {
         let durationSeconds: TimeInterval?
         let sizeBytes: Int64?
         let sha256: String?
+        let mediaKind: String?
+        let contentType: String?
+        let primaryVideoSourceId: String?
     }
 
     struct Body: Codable, Equatable {
@@ -163,6 +167,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     @Published private(set) var busyAction: String?
     @Published private(set) var notice: String?
     @Published private(set) var isPlaying = false
+    @Published private(set) var previewVideoPlayer: AVPlayer?
     @Published private(set) var previewListenedSecondBins = Set<Int>()
     @Published private(set) var previewReviewSaveFailed = false
 
@@ -172,6 +177,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     )
     private var requestIDs: [String: UUID] = [:]
     private var player: AVAudioPlayer?
+    private var videoPlaybackEndObserver: NSObjectProtocol?
     private var protectedPreviewURL: URL?
     private var protectedPreviewOutputID: String?
     private var protectedPreviewSHA256: String?
@@ -183,6 +189,9 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
 
     deinit {
         playbackProgressTask?.cancel()
+        if let videoPlaybackEndObserver {
+            NotificationCenter.default.removeObserver(videoPlaybackEndObserver)
+        }
         if let protectedPreviewURL {
             try? FileManager.default.removeItem(at: protectedPreviewURL)
         }
@@ -224,6 +233,8 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         roomID: String,
         title: String,
         sourceIDs: [String],
+        outputMediaKind: String,
+        primaryVideoSourceID: String?,
         startSeconds: TimeInterval,
         endSeconds: TimeInterval,
         exclusions: [CaptureRecordingShareTranscriptSegment]
@@ -234,6 +245,8 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             payload: [
                 "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
                 "sourceIds": sourceIDs,
+                "outputMediaKind": outputMediaKind,
+                "primaryVideoSourceId": primaryVideoSourceID ?? "",
                 "startSeconds": startSeconds,
                 "endSeconds": endSeconds,
                 "excludedTranscriptSegments": exclusions.map { exclusion in
@@ -281,18 +294,26 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     }
 
     func playNextReviewPoint(roomID: String) async {
-        if player == nil {
+        if player == nil && previewVideoPlayer == nil {
             await togglePreview(roomID: roomID)
         }
-        guard let player,
-              let nextSecond = requiredPreviewSecondBins.first(where: { !previewListenedSecondBins.contains($0) }) else {
+        guard let nextSecond = requiredPreviewSecondBins.first(where: { !previewListenedSecondBins.contains($0) }) else {
             return
         }
-        player.currentTime = max(0, TimeInterval(nextSecond) - 0.1)
-        previewLastPlaybackTime = player.currentTime
-        player.play()
-        isPlaying = true
-        startPreviewProgressTracking(roomID: roomID, player: player)
+        let target = max(0, TimeInterval(nextSecond) - 0.1)
+        if let videoPlayer = previewVideoPlayer {
+            await videoPlayer.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+            previewLastPlaybackTime = target
+            videoPlayer.play()
+            isPlaying = true
+            startVideoPreviewProgressTracking(roomID: roomID, player: videoPlayer)
+        } else if let player {
+            player.currentTime = target
+            previewLastPlaybackTime = player.currentTime
+            player.play()
+            isPlaying = true
+            startPreviewProgressTracking(roomID: roomID, player: player)
+        }
     }
 
     func retryPlaybackReview(roomID: String) async {
@@ -307,6 +328,19 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     }
 
     func togglePreview(roomID: String) async {
+        if let videoPlayer = previewVideoPlayer {
+            if videoPlayer.timeControlStatus == .playing {
+                videoPlayer.pause()
+                isPlaying = false
+                previewLastPlaybackTime = nil
+            } else {
+                videoPlayer.play()
+                isPlaying = true
+                previewLastPlaybackTime = videoPlayer.currentTime().seconds
+                startVideoPreviewProgressTracking(roomID: roomID, player: videoPlayer)
+            }
+            return
+        }
         if let player, player.isPlaying {
             player.pause()
             isPlaying = false
@@ -355,24 +389,43 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
                 )
             }
             clearPlayback()
+            let isVideo = output.render.mediaKind == "video"
             let destination = FileManager.default.temporaryDirectory
-                .appendingPathComponent("quipsly-private-preview-\(UUID().uuidString.lowercased()).m4a")
+                .appendingPathComponent("quipsly-private-preview-\(UUID().uuidString.lowercased()).\(isVideo ? "mp4" : "m4a")")
             try FileManager.default.moveItem(at: temporaryURL, to: destination)
             try FileManager.default.setAttributes(
                 [.protectionKey: FileProtectionType.complete],
                 ofItemAtPath: destination.path
             )
-            let player = try AVAudioPlayer(contentsOf: destination)
-            player.delegate = self
-            player.prepareToPlay()
             self.protectedPreviewURL = destination
             self.protectedPreviewOutputID = output.id
             self.protectedPreviewSHA256 = expectedSHA256
-            self.player = player
-            player.play()
-            isPlaying = true
-            previewLastPlaybackTime = player.currentTime
-            startPreviewProgressTracking(roomID: roomID, player: player)
+            if isVideo {
+                let videoPlayer = AVPlayer(url: destination)
+                previewVideoPlayer = videoPlayer
+                if let item = videoPlayer.currentItem {
+                    videoPlaybackEndObserver = NotificationCenter.default.addObserver(
+                        forName: .AVPlayerItemDidPlayToEndTime,
+                        object: item,
+                        queue: .main
+                    ) { [weak self] _ in
+                        Task { @MainActor [weak self] in self?.videoPlayerDidFinish() }
+                    }
+                }
+                videoPlayer.play()
+                isPlaying = true
+                previewLastPlaybackTime = 0
+                startVideoPreviewProgressTracking(roomID: roomID, player: videoPlayer)
+            } else {
+                let player = try AVAudioPlayer(contentsOf: destination)
+                player.delegate = self
+                player.prepareToPlay()
+                self.player = player
+                player.play()
+                isPlaying = true
+                previewLastPlaybackTime = player.currentTime
+                startPreviewProgressTracking(roomID: roomID, player: player)
+            }
             notice = nil
         } catch {
             notice = error.localizedDescription
@@ -380,7 +433,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     }
 
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        observePreviewPlayback(player: player, ended: true)
+        observePreviewPlayback(currentTime: player.currentTime, duration: player.duration, ended: true)
         playbackProgressTask?.cancel()
         playbackProgressTask = nil
         isPlaying = false
@@ -389,7 +442,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     }
 
     private func reconcilePlaybackAuthorization(with snapshot: CaptureRecordingShareSnapshot) {
-        guard player != nil || protectedPreviewURL != nil else { return }
+        guard player != nil || previewVideoPlayer != nil || protectedPreviewURL != nil else { return }
         guard let output = snapshot.output,
               output.id == protectedPreviewOutputID,
               output.render.status == "VERIFIED",
@@ -430,7 +483,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             while !Task.isCancelled {
                 guard let self, let player, self.player === player else { return }
                 if player.isPlaying {
-                    self.observePreviewPlayback(player: player)
+                    self.observePreviewPlayback(currentTime: player.currentTime, duration: player.duration)
                     await self.savePlaybackReviewIfReady(roomID: roomID)
                 }
                 try? await Task.sleep(for: .milliseconds(250))
@@ -438,10 +491,36 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         }
     }
 
-    private func observePreviewPlayback(player: AVAudioPlayer, ended: Bool = false) {
-        let duration = player.duration
+    private func startVideoPreviewProgressTracking(roomID: String, player: AVPlayer) {
+        playbackProgressTask?.cancel()
+        playbackRoomID = roomID
+        playbackProgressTask = Task { [weak self, weak player] in
+            while !Task.isCancelled {
+                guard let self, let player, self.previewVideoPlayer === player else { return }
+                let duration = player.currentItem?.duration.seconds ?? 0
+                if player.timeControlStatus == .playing, duration.isFinite, duration > 0 {
+                    self.observePreviewPlayback(currentTime: player.currentTime().seconds, duration: duration)
+                    await self.savePlaybackReviewIfReady(roomID: roomID)
+                }
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+    }
+
+    private func videoPlayerDidFinish() {
+        guard let player = previewVideoPlayer else { return }
+        let duration = player.currentItem?.duration.seconds ?? 0
+        observePreviewPlayback(currentTime: player.currentTime().seconds, duration: duration, ended: true)
+        playbackProgressTask?.cancel()
+        playbackProgressTask = nil
+        isPlaying = false
+        guard let playbackRoomID else { return }
+        Task { await savePlaybackReviewIfReady(roomID: playbackRoomID) }
+    }
+
+    private func observePreviewPlayback(currentTime rawCurrentTime: TimeInterval, duration: TimeInterval, ended: Bool = false) {
         guard duration > 0 else { return }
-        let currentTime = ended ? max(0, duration - 0.001) : player.currentTime
+        let currentTime = ended ? max(0, duration - 0.001) : rawCurrentTime
         let finalSecond = max(0, Int(ceil(duration)) - 1)
         let second = max(0, min(finalSecond, Int(floor(currentTime))))
         let contiguous = previewLastPlaybackTime.map {
@@ -487,6 +566,12 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         playbackProgressTask = nil
         player?.stop()
         player = nil
+        previewVideoPlayer?.pause()
+        previewVideoPlayer = nil
+        if let videoPlaybackEndObserver {
+            NotificationCenter.default.removeObserver(videoPlaybackEndObserver)
+            self.videoPlaybackEndObserver = nil
+        }
         isPlaying = false
         previewLastPlaybackTime = nil
         playbackRoomID = nil
@@ -626,6 +711,8 @@ struct CaptureRecordingShareEditor: View {
     @State private var startSeconds: TimeInterval = 0
     @State private var endSeconds: TimeInterval = 0
     @State private var title = ""
+    @State private var outputMediaKind = "audio"
+    @State private var primaryVideoSourceID = ""
     @State private var initializedSnapshot = false
     @State private var editing = false
     @State private var auditionSegmentID: String?
@@ -735,6 +822,7 @@ struct CaptureRecordingShareEditor: View {
             let sources = available?.sources ?? []
             let duration = available?.programDurationSeconds ?? 0
             let transcript = editableTranscript(snapshot)
+            let videoSources = sources.filter { $0.kind == "LOCAL_VIDEO" || ($0.contentType ?? "").hasPrefix("video/") }
 
             if sources.isEmpty {
                 Text("Finish the verified participant uploads before preparing a private copy.")
@@ -789,6 +877,43 @@ struct CaptureRecordingShareEditor: View {
                 }
                 .padding(12)
                 .background(Color.indigo.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+
+                if !videoSources.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Preview format")
+                            .font(.subheadline.weight(.bold))
+                        Picker("Preview format", selection: $outputMediaKind) {
+                            Label("Audio", systemImage: "waveform").tag("audio")
+                            Label("Video", systemImage: "video.fill").tag("video")
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityIdentifier("CaptureRecordingShareMediaKind")
+                        .onChange(of: outputMediaKind) { _, kind in
+                            if kind == "video", primaryVideoSourceID.isEmpty, let camera = videoSources.first {
+                                primaryVideoSourceID = camera.id
+                                selectedSourceIDs.insert(camera.id)
+                            }
+                        }
+
+                        if outputMediaKind == "video" {
+                            Picker("Primary camera", selection: $primaryVideoSourceID) {
+                                ForEach(videoSources) { source in
+                                    Text("\(source.participantLabel) · \(source.fileName ?? "Camera")").tag(source.id)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .accessibilityIdentifier("CaptureRecordingSharePrimaryVideo")
+                            .onChange(of: primaryVideoSourceID) { _, sourceID in
+                                if !sourceID.isEmpty { selectedSourceIDs.insert(sourceID) }
+                            }
+                            Text("Quipsly uses this exact camera for the picture and one preferred local microphone per person for the sound. It never mixes the camera mic over a selected dedicated mic.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.indigo.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+                }
 
                 DisclosureGroup("Name and recording sources (\(selectedSourceIDs.count) selected)") {
                     VStack(alignment: .leading, spacing: 10) {
@@ -905,6 +1030,8 @@ struct CaptureRecordingShareEditor: View {
                             roomID: roomID,
                             title: title,
                             sourceIDs: Array(selectedSourceIDs).sorted(),
+                            outputMediaKind: outputMediaKind,
+                            primaryVideoSourceID: outputMediaKind == "video" ? primaryVideoSourceID : nil,
                             startSeconds: startSeconds,
                             endSeconds: endSeconds,
                             exclusions: transcript.filter { excludedSegmentIDs.contains($0.id) }
@@ -915,7 +1042,7 @@ struct CaptureRecordingShareEditor: View {
                     if client.busyAction == "PREPARE" {
                         ProgressView().frame(maxWidth: .infinity)
                     } else {
-                        Text("3 · Create private preview").frame(maxWidth: .infinity)
+                        Text("3 · Create private \(outputMediaKind) preview").frame(maxWidth: .infinity)
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -923,6 +1050,7 @@ struct CaptureRecordingShareEditor: View {
                 .disabled(
                     client.busyAction != nil
                         || selectedSourceIDs.isEmpty
+                        || (outputMediaKind == "video" && (primaryVideoSourceID.isEmpty || !selectedSourceIDs.contains(primaryVideoSourceID)))
                         || startSeconds < 0
                         || endSeconds <= startSeconds
                         || endSeconds > duration + 0.05
@@ -1071,6 +1199,13 @@ struct CaptureRecordingShareEditor: View {
             }
 
             if output.render.status == "VERIFIED" {
+                if output.render.mediaKind == "video", let videoPlayer = client.previewVideoPlayer {
+                    VideoPlayer(player: videoPlayer)
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .accessibilityLabel("Private video preview")
+                        .accessibilityIdentifier("CaptureRecordingShareVideoPreview")
+                }
                 Button {
                     sourcePlayback.close()
                     auditionSegmentID = nil
@@ -1084,7 +1219,9 @@ struct CaptureRecordingShareEditor: View {
                 .disabled(client.busyAction != nil)
                 .accessibilityIdentifier("CaptureRecordingSharePlay")
             } else if output.render.status == "QUEUED" || output.render.status == "PROCESSING" {
-                ProgressView("Aligning, leveling, decoding, and verifying…")
+                ProgressView(output.render.mediaKind == "video"
+                    ? "Aligning picture and sound, leveling, decoding, and verifying…"
+                    : "Aligning, leveling, decoding, and verifying…")
             } else if output.render.status == "FAILED" {
                 Text("The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.")
                     .font(.caption.weight(.bold)).foregroundStyle(.red)
@@ -1282,6 +1419,8 @@ struct CaptureRecordingShareEditor: View {
         startSeconds = snapshot.output?.body.edit?.startSeconds ?? 0
         endSeconds = snapshot.output?.body.edit?.endSeconds ?? available.programDurationSeconds
         title = snapshot.output?.title ?? "\(snapshot.room?.title ?? "Coaching Session") recording"
+        outputMediaKind = snapshot.output?.render.mediaKind == "video" ? "video" : "audio"
+        primaryVideoSourceID = snapshot.output?.render.primaryVideoSourceId ?? ""
         excludedSegmentIDs = Set(snapshot.output?.body.edit?.transcriptExclusions?.map(\.id) ?? [])
         if focus != nil {
             // Entering from an exact transcript passage is an editing intent,
@@ -1299,6 +1438,8 @@ struct CaptureRecordingShareEditor: View {
         startSeconds = output.body.edit?.startSeconds ?? 0
         endSeconds = output.body.edit?.endSeconds ?? snapshot.available?.programDurationSeconds ?? 0
         title = output.title
+        outputMediaKind = output.render.mediaKind == "video" ? "video" : "audio"
+        primaryVideoSourceID = output.render.primaryVideoSourceId ?? ""
         excludedSegmentIDs = Set(output.body.edit?.transcriptExclusions?.map(\.id) ?? [])
         editing = true
     }

@@ -8,6 +8,7 @@ import {
   classifyRecordingShareTranscriptCutSafety,
   newestCoherentRecordingTake,
   recordSessionRecordingSharePlaybackReview,
+  sessionRecordingShareAudioMixSourceIds,
   sessionRecordingSharePlaybackPlan,
   stableJson,
   transitionSessionRecordingShare,
@@ -36,6 +37,15 @@ describe("Session recording share take selection", () => {
 
   it("canonicalizes object fields independent of insertion order", () => {
     expect(stableJson({ b: 2, a: { d: 4, c: 3 } })).toBe('{"a":{"c":3,"d":4},"b":2}');
+  });
+
+  it("uses one dedicated microphone per participant without double-mixing camera audio", () => {
+    const chosen = sessionRecordingShareAudioMixSourceIds([
+      { id: "coach-camera", participantId: "coach", kind: "LOCAL_VIDEO", contentType: "video/mp4" },
+      { id: "coach-mic", participantId: "coach", kind: "LOCAL_AUDIO", contentType: "audio/mp4" },
+      { id: "client-camera", participantId: "client", kind: "LOCAL_VIDEO", contentType: "video/mp4" },
+    ], "coach-camera");
+    expect([...chosen].sort()).toEqual(["client-camera", "coach-mic"]);
   });
 });
 

@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 
 import { newSessionRecordingShareJob, type SessionRecordingShareResult } from "@high-ground/quipsly-media-processing";
 
-import { buildSessionRecordingShareFilterGraph, FfmpegSessionRecordingShareRenderer } from "./session-recording-share-ffmpeg.js";
+import { buildSessionRecordingShareFilterGraph, buildSessionRecordingShareVideoFilterGraph, FfmpegSessionRecordingShareRenderer } from "./session-recording-share-ffmpeg.js";
 import { runOneLocalSessionRecordingShareJob } from "./local-session-recording-share-worker.js";
 import { sha256File } from "./transcoder.js";
 
@@ -126,6 +126,60 @@ test("FFmpeg renders a verified aligned Session share without mutating sources",
     assert.equal(rendered.technical.completeDecode, true);
     assert.equal(await sha256File(coach), coachSha);
     assert.equal(await sha256File(client), clientSha);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("FFmpeg renders a verified 24 fps video share from one exact camera and one audio source", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-session-video-share-"));
+  try {
+    const camera = path.join(root, "camera.mp4");
+    const microphone = path.join(root, "microphone.wav");
+    const output = path.join(root, "share.mp4");
+    await run("ffmpeg", [
+      "-hide_banner", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=24:duration=3",
+      "-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000:duration=3", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", camera,
+    ]);
+    await run("ffmpeg", ["-hide_banner", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3", "-ac", "1", microphone]);
+    const [cameraStat, microphoneStat, cameraSha, microphoneSha] = await Promise.all([
+      stat(camera), stat(microphone), sha256File(camera), sha256File(microphone),
+    ]);
+    const job = newSessionRecordingShareJob({
+      jobId: "share_video_job_0001",
+      roomId: "share_video_room_0001",
+      outputId: "share_video_output_0001",
+      outputRevision: 1,
+      requestedAt: "2026-08-25T22:00:00.000Z",
+      sourceSetSha256: "f".repeat(64),
+      edit: {
+        startSeconds: 0.25,
+        endSeconds: 2.75,
+        keptRanges: [
+          { id: "share_video_range_0001", startSeconds: 0.25, endSeconds: 1.25 },
+          { id: "share_video_range_0002", startSeconds: 1.75, endSeconds: 2.75 },
+        ],
+        transcriptExclusions: [],
+        joinCrossfadeSeconds: 0.01,
+      },
+      sources: [
+        { provider: "local", bucketName: "local", objectName: "camera.mp4", locator: camera, generation: "1", sha256: cameraSha, sizeBytes: cameraStat.size, contentType: "video/mp4", recordingAssetId: "share_video_camera_0001", participantId: "share_video_participant_0001", participantLabel: "Coach camera", programOffsetSeconds: 0, includeInAudioMix: false },
+        { provider: "local", bucketName: "local", objectName: "microphone.wav", locator: microphone, generation: "1", sha256: microphoneSha, sizeBytes: microphoneStat.size, contentType: "audio/wav", recordingAssetId: "share_video_microphone_0001", participantId: "share_video_participant_0001", participantLabel: "Coach microphone", programOffsetSeconds: 0, includeInAudioMix: true },
+      ],
+      target: { provider: "local", bucketName: "local", objectName: "share.mp4", locator: output, mediaKind: "video", contentType: "video/mp4", videoCodec: "h264", audioCodec: "aac-lc", widthPixels: 1920, heightPixels: 1080, frameRate: 24, sampleRateHz: 48_000, channels: 2, primaryVideoRecordingAssetId: "share_video_camera_0001" },
+    });
+    const graph = buildSessionRecordingShareVideoFilterGraph(job);
+    assert.match(graph, /\[0:v:0\]fps=24/);
+    assert.match(graph, /amix=inputs=1/);
+    assert.doesNotMatch(graph, /\[0:a:0\]aresample/);
+    const rendered = await new FfmpegSessionRecordingShareRenderer().render(job, output);
+    assert.equal(rendered.technical.mediaKind, "video");
+    if (rendered.technical.mediaKind !== "video") assert.fail("Expected video technical evidence.");
+    assert.equal(rendered.technical.videoCodec, "h264");
+    assert.equal(rendered.technical.frameRate, 24);
+    assert.ok(Math.abs(rendered.technical.durationSeconds - 1.99) <= 0.25);
+    assert.equal(await sha256File(camera), cameraSha);
+    assert.equal(await sha256File(microphone), microphoneSha);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

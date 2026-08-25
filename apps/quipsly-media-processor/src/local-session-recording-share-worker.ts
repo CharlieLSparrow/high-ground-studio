@@ -20,7 +20,10 @@ import {
 import type { Pool } from "pg";
 
 import { sha256File } from "./transcoder.js";
-import { FfmpegSessionRecordingShareRenderer } from "./session-recording-share-ffmpeg.js";
+import {
+  FfmpegSessionRecordingShareRenderer,
+  type SessionRecordingShareTechnical,
+} from "./session-recording-share-ffmpeg.js";
 
 const JOB_TYPE = "session-recording-share";
 
@@ -60,16 +63,9 @@ export type LocalSessionRecordingShareOptions = {
 type LocalSessionRecordingShareReceipt = {
   generation: string;
   sizeBytes: number;
-  contentType: "audio/mp4";
+  contentType: "audio/mp4" | "video/mp4";
   customMetadata: Record<string, string>;
-  technical: {
-    durationSeconds: number;
-    codec: "aac";
-    sampleRateHz: 48_000;
-    channels: 2;
-    completeDecode: true;
-    ffmpegVersion: string;
-  };
+  technical: SessionRecordingShareTechnical | (Omit<Extract<SessionRecordingShareTechnical, { mediaKind: "audio" }>, "mediaKind"> & { mediaKind?: undefined });
   createdAt: string;
 };
 
@@ -98,6 +94,7 @@ function authorizedTarget(
   root: string,
   configuredRoot: string,
   locator: string,
+  mediaKind: SessionRecordingShareJob["target"]["mediaKind"],
 ) {
   const configured = path.resolve(configuredRoot);
   const requested = path.resolve(locator);
@@ -110,7 +107,8 @@ function authorizedTarget(
     );
   }
   const target = path.resolve(root, path.relative(configured, requested));
-  if (!inside(root, target) || path.extname(target).toLowerCase() !== ".m4a") {
+  const expectedExtension = mediaKind === "video" ? ".mp4" : ".m4a";
+  if (!inside(root, target) || path.extname(target).toLowerCase() !== expectedExtension) {
     throw Object.assign(
       new Error(
         "Session share target escaped the authorized local media root.",
@@ -157,7 +155,11 @@ function receiptMatchesJob(
     job.edit.joinCrossfadeSeconds === 0;
   return (
     receipt.contentType === job.target.contentType &&
-    ((metadata.quipslyKind === "session-recording-share-v2" &&
+    ((metadata.quipslyKind === "session-recording-share-v3" &&
+      metadata.quipslyMediaKind === job.target.mediaKind &&
+      metadata.quipslyEditSha256 === editSha256) ||
+      (metadata.quipslyKind === "session-recording-share-v2" &&
+      job.target.mediaKind === "audio" &&
       metadata.quipslyEditSha256 === editSha256) ||
       (metadata.quipslyKind === "session-recording-share-v1" &&
         legacyFullRange)) &&
@@ -168,6 +170,33 @@ function receiptMatchesJob(
     metadata.quipslySourceSetSha256 === job.sourceSetSha256 &&
     metadata.quipslyOriginalSourcesRemainImmutable === "true"
   );
+}
+
+function receiptTechnicalMatchesJob(
+  receipt: LocalSessionRecordingShareReceipt,
+  job: SessionRecordingShareJob,
+) {
+  const technical = receipt.technical;
+  if (technical.mediaKind == null) {
+    return job.target.mediaKind === "audio" &&
+      technical.codec === "aac" &&
+      technical.sampleRateHz === 48_000 &&
+      technical.channels === 2 &&
+      technical.completeDecode === true;
+  }
+  if (
+    technical.mediaKind !== job.target.mediaKind ||
+    technical.sampleRateHz !== 48_000 ||
+    technical.channels !== 2 ||
+    technical.completeDecode !== true
+  ) return false;
+  return technical.mediaKind === "video"
+    ? technical.videoCodec === "h264" &&
+      technical.audioCodec === "aac" &&
+      technical.widthPixels === 1920 &&
+      technical.heightPixels === 1080 &&
+      technical.frameRate === 24
+    : technical.codec === "aac";
 }
 
 async function loadReusableRender(
@@ -189,10 +218,7 @@ async function loadReusableRender(
       receipt.customMetadata.quipslyExpectedSizeBytes !==
         String(receipt.sizeBytes) ||
       !receiptMatchesJob(receipt, job) ||
-      receipt.technical.codec !== "aac" ||
-      receipt.technical.sampleRateHz !== 48_000 ||
-      receipt.technical.channels !== 2 ||
-      receipt.technical.completeDecode !== true
+      !receiptTechnicalMatchesJob(receipt, job)
     ) {
       throw Object.assign(
         new Error(
@@ -307,6 +333,7 @@ export async function runOneLocalSessionRecordingShareJob(
       root,
       options.localMediaRoot,
       job.target.locator,
+      job.target.mediaKind,
     );
     await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
     const reusable = await loadReusableRender(target, job);
@@ -332,7 +359,8 @@ export async function runOneLocalSessionRecordingShareJob(
           }
         : { disposition: "claim-lost" as const, jobId: claim.id };
     }
-    const temporary = `${target}.${randomUUID()}.tmp.m4a`;
+    const extension = job.target.mediaKind === "video" ? "mp4" : "m4a";
+    const temporary = `${target}.${randomUUID()}.tmp.${extension}`;
     let rendered: Awaited<
       ReturnType<FfmpegSessionRecordingShareRenderer["render"]>
     >;
@@ -363,7 +391,8 @@ export async function runOneLocalSessionRecordingShareJob(
       sizeBytes: rendered.sizeBytes,
       contentType: job.target.contentType,
       customMetadata: {
-        quipslyKind: "session-recording-share-v2",
+        quipslyKind: "session-recording-share-v3",
+        quipslyMediaKind: job.target.mediaKind,
         quipslyJobId: job.jobId,
         quipslyRoomId: job.roomId,
         quipslyOutputId: job.outputId,

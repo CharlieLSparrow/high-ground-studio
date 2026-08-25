@@ -4014,3 +4014,23 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   projections, strict TypeScript checks, worker builds, and the production Nest
   build all pass locally. Live provider execution and protected playback review
   remain deferred release validation.
+
+### 2026-08-25 private Session video editing and sharing
+
+- The existing reversible Session editor now produces either its qualified
+  audio copy or a shareable 1080p24 H.264/AAC video copy without requiring a
+  separate Studio app. Browser and iPhone expose the same format decision only
+  when a verified camera source exists.
+- Video binds one exact selected camera to the picture and chooses one audio
+  program source per participant, preferring dedicated participant-owned audio
+  over embedded camera sound. This prevents accidental double-mic mixing while
+  retaining all source recordings unchanged.
+- The v3 job/result contract remains backward compatible with v1/v2 audio work.
+  Local and cloud workers verify duration, codecs, dimensions, frame rate,
+  pixel format, full audio/video decode, exact source bytes, output bytes, and
+  cloud generation readback before a private preview becomes releasable.
+- Real-FFmpeg video generation, contract/cloud/local-worker tests, server and
+  browser tests, strict typechecks, the media-processor build, and the Capture
+  Simulator build pass locally. Physical iPhone, live Cloud Run, cross-account,
+  and human sync/listening review remain deferred. Detailed decision record:
+  `docs/sessions/private-video-edit-share-2026-08-25.md`.

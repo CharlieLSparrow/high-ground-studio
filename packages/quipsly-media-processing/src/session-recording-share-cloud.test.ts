@@ -116,6 +116,44 @@ test("cloud result refuses a locator that is not bound to its output generation"
   assert.throws(() => assertSessionRecordingShareCloudResult(mismatched, job));
 });
 
+test("cloud manifest accepts an exact-generation video target and rejects an audio extension", () => {
+  const cameraId = "recording_camera_12345678";
+  const videoJob = newSessionRecordingShareJob({
+    ...job,
+    jobId: "session_share_video_12345678",
+    outputId: "output_video_12345678",
+    sources: [{
+      ...job.sources[0]!,
+      recordingAssetId: cameraId,
+      objectName: "media-vault/recordings/room/camera.mp4",
+      locator: `gcs://${bucket}/media-vault/recordings/room/camera.mp4?generation=102`,
+      generation: "102",
+      contentType: "video/mp4",
+    }],
+    target: {
+      provider: "gcs",
+      bucketName: bucket,
+      objectName: "media-vault/derived/session-recording-share/room_12345678/session_share_video_12345678.mp4",
+      locator: "media-vault/derived/session-recording-share/room_12345678/session_share_video_12345678.mp4",
+      mediaKind: "video",
+      contentType: "video/mp4",
+      videoCodec: "h264",
+      audioCodec: "aac-lc",
+      widthPixels: 1920,
+      heightPixels: 1080,
+      frameRate: 24,
+      sampleRateHz: 48_000,
+      channels: 2,
+      primaryVideoRecordingAssetId: cameraId,
+    },
+  });
+  assert.equal(newSessionRecordingShareCloudManifest(videoJob).job.target.mediaKind, "video");
+  assert.throws(() => newSessionRecordingShareCloudManifest({
+    ...videoJob,
+    target: { ...videoJob.target, objectName: videoJob.target.objectName.replace(/\.mp4$/, ".m4a"), locator: videoJob.target.locator.replace(/\.mp4$/, ".m4a") },
+  }), /generation-bound GCS work/i);
+});
+
 test("cloud manifest retains its attempt count after a transient lease release", () => {
   const queued = newSessionRecordingShareCloudManifest(job);
   const first = claimSessionRecordingShareCloudManifest({

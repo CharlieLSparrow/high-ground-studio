@@ -8,6 +8,7 @@ type Source = {
   participantLabel: string;
   kind: string;
   fileName: string | null;
+  contentType?: string | null;
   sizeBytes: number;
   startedAt: string;
   stoppedAt: string;
@@ -44,6 +45,9 @@ type Output = {
     durationSeconds: number | null;
     sizeBytes: number | null;
     sha256: string | null;
+    mediaKind?: "audio" | "video";
+    contentType?: "audio/mp4" | "video/mp4";
+    primaryVideoSourceId?: string | null;
   };
   mediaUrl: string | null;
   playbackReview?: {
@@ -177,6 +181,8 @@ export function SessionRecordingShareCard({
   const [startSeconds, setStartSeconds] = useState(0);
   const [endSeconds, setEndSeconds] = useState(0);
   const [title, setTitle] = useState("");
+  const [outputMediaKind, setOutputMediaKind] = useState<"audio" | "video">("audio");
+  const [primaryVideoSourceId, setPrimaryVideoSourceId] = useState("");
   const [excludedTranscriptKeys, setExcludedTranscriptKeys] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(false);
   const [audition, setAudition] = useState<PassageAudition | null>(null);
@@ -207,6 +213,8 @@ export function SessionRecordingShareCard({
         setStartSeconds(Number(payload.output.body.edit?.startSeconds) || 0);
         setEndSeconds(Number(payload.output.body.edit?.endSeconds) || 0);
         setExcludedTranscriptKeys(transcriptExclusionKeys(payload.output));
+        setOutputMediaKind(payload.output.render.mediaKind === "video" ? "video" : "audio");
+        setPrimaryVideoSourceId(payload.output.render.primaryVideoSourceId || "");
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Quipsly could not load the recording workspace.");
@@ -229,6 +237,11 @@ export function SessionRecordingShareCard({
   const previewReviewComplete = requiredPreviewSecondBins.length > 0 && observedPreviewSecondBins.length === requiredPreviewSecondBins.length;
   const rangeValid = startSeconds >= 0 && endSeconds > startSeconds && endSeconds <= duration + 0.05;
   const chosen = useMemo(() => snapshot?.available?.sources.filter((source) => selected.has(source.id)) || [], [selected, snapshot?.available?.sources]);
+  const videoSources = useMemo(
+    () => (snapshot?.available?.sources || []).filter((source) => source.kind === "LOCAL_VIDEO" || source.contentType?.startsWith("video/")),
+    [snapshot?.available?.sources],
+  );
+  const videoSelectionValid = outputMediaKind === "audio" || (Boolean(primaryVideoSourceId) && selected.has(primaryVideoSourceId));
   const missingCurrentSources = useMemo(
     () => missingOutputSourceCount(snapshot?.output, snapshot?.available?.sources || []),
     [snapshot?.available?.sources, snapshot?.output],
@@ -387,6 +400,8 @@ export function SessionRecordingShareCard({
       setStartSeconds(Number(snapshot.output.body.edit?.startSeconds) || 0);
       setEndSeconds(Number(snapshot.output.body.edit?.endSeconds) || duration);
       setExcludedTranscriptKeys(transcriptExclusionKeys(snapshot.output));
+      setOutputMediaKind(snapshot.output.render.mediaKind === "video" ? "video" : "audio");
+      setPrimaryVideoSourceId(snapshot.output.render.primaryVideoSourceId || "");
       setEditing(true);
       return;
     }
@@ -411,6 +426,8 @@ export function SessionRecordingShareCard({
       if (action === "PREPARE") Object.assign(body, {
         title,
         sourceIds: [...selected],
+        outputMediaKind,
+        primaryVideoSourceId: outputMediaKind === "video" ? primaryVideoSourceId : null,
         startSeconds,
         endSeconds,
         excludedTranscriptSegments: excludedTranscriptSegments.map((segment) => ({
@@ -463,7 +480,7 @@ export function SessionRecordingShareCard({
 
       {coach && (!output || editing) ? (
         <div className="mt-5 space-y-5">
-          {output && editing ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-white p-3"><p className="text-xs font-bold leading-5 text-sky-900">Editing starts from revision {output.revision}. Your current {output.status === "RELEASED" ? "shared recording stays available" : "private preview stays unchanged"} until a new preview finishes.</p><button type="button" onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setEditing(false); }} disabled={Boolean(busy)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-50">Cancel changes</button></div> : null}
+          {output && editing ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-white p-3"><p className="text-xs font-bold leading-5 text-sky-900">Editing starts from revision {output.revision}. Your current {output.status === "RELEASED" ? "shared recording stays available" : "private preview stays unchanged"} until a new preview finishes.</p><button type="button" onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setOutputMediaKind(output.render.mediaKind === "video" ? "video" : "audio"); setPrimaryVideoSourceId(output.render.primaryVideoSourceId || ""); setEditing(false); }} disabled={Boolean(busy)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-50">Cancel changes</button></div> : null}
           {output && editing && missingCurrentSources ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">{missingCurrentSources} source{missingCurrentSources === 1 ? " is" : "s are"} no longer in the verified Session take. Quipsly kept the remaining exact source selection and will not substitute another track. Restore or deliberately replace the missing source before creating a new preview.</p> : null}
           {!snapshot.readiness?.hasVerifiedParticipantSources ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950">No complete, verified participant masters are ready yet. Finish the Session recording upload first.</p> : null}
           <div className="rounded-2xl border border-sky-200 bg-white p-4 sm:p-5" aria-label="Trim recording">
@@ -478,6 +495,27 @@ export function SessionRecordingShareCard({
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-sky-50 px-3 py-2.5 text-xs font-bold text-sky-900"><span>{time(startSeconds)} – {time(endSeconds)}</span><span>{time(endSeconds - startSeconds)} selected</span></div>
             <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/50 p-3"><summary className="cursor-pointer text-[11px] font-black uppercase tracking-wide text-sky-900">Precise timing</summary><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-black text-sky-900">Start (seconds)<input type="number" min={0} max={duration} step="0.1" value={startSeconds} onChange={(event) => setStartSeconds(trimStart(Number(event.target.value), endSeconds, duration))} className="mt-1 block w-full rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-sm text-sky-950" /></label><label className="text-xs font-black text-sky-900">End (seconds)<input type="number" min={0} max={duration} step="0.1" value={endSeconds} onChange={(event) => setEndSeconds(trimEnd(Number(event.target.value), startSeconds, duration))} className="mt-1 block w-full rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-sm text-sky-950" /></label></div></details>
           </div>
+          {videoSources.length ? <fieldset className="rounded-2xl border border-sky-200 bg-white p-4">
+            <legend className="text-sm font-black text-sky-950">Preview format</legend>
+            <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-sky-50 p-1" role="radiogroup" aria-label="Preview format">
+              {(["audio", "video"] as const).map((kind) => <button key={kind} type="button" role="radio" aria-checked={outputMediaKind === kind} onClick={() => {
+                setOutputMediaKind(kind);
+                if (kind === "video" && !primaryVideoSourceId && videoSources[0]) {
+                  setPrimaryVideoSourceId(videoSources[0].id);
+                  setSelected((current) => new Set(current).add(videoSources[0]!.id));
+                }
+              }} className={`rounded-lg px-3 py-2 text-xs font-black capitalize ${outputMediaKind === kind ? "bg-sky-800 text-white shadow-sm" : "text-sky-900"}`}>{kind}</button>)}
+            </div>
+            {outputMediaKind === "video" ? <label className="mt-4 block text-xs font-black uppercase tracking-wide text-sky-900">Primary camera
+              <select value={primaryVideoSourceId} onChange={(event) => {
+                setPrimaryVideoSourceId(event.target.value);
+                setSelected((current) => new Set(current).add(event.target.value));
+              }} className="mt-1 block w-full rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-sm normal-case tracking-normal text-sky-950">
+                {videoSources.map((source) => <option key={source.id} value={source.id}>{source.participantLabel} · {source.fileName || "Camera"}</option>)}
+              </select>
+              <span className="mt-2 block text-xs font-semibold normal-case leading-5 tracking-normal text-sky-800">This exact camera supplies the picture. Quipsly uses one preferred local microphone per person and does not mix a camera mic over a selected dedicated mic.</span>
+            </label> : null}
+          </fieldset> : null}
           <details className="rounded-2xl border border-sky-200 bg-white p-4"><summary className="cursor-pointer text-sm font-black text-sky-950">Name and recording sources <span className="ml-1 text-xs font-bold text-sky-700">({chosen.length} selected)</span></summary><div className="mt-4 space-y-4"><label className="block text-xs font-black uppercase tracking-wide text-sky-900">Recording name<input value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1 block w-full rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-sm normal-case tracking-normal text-sky-950" /></label>{snapshot.available?.sources.length ? <fieldset><legend className="text-sm font-black text-sky-950">High-quality tracks</legend><p className="mt-1 text-xs font-semibold text-sky-800">The recommended track for each person is selected automatically. Change this only when you need a different master.</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{snapshot.available.sources.map((source) => <label key={source.id} className="flex cursor-pointer gap-3 rounded-xl border border-sky-200 bg-sky-50/40 p-3"><input type="checkbox" className="mt-1 size-4 accent-sky-700" checked={selected.has(source.id)} onChange={() => setSelected((current) => { const next = new Set(current); if (next.has(source.id)) next.delete(source.id); else next.add(source.id); return next; })} /><span><span className="block text-sm font-black text-sky-950">{source.participantLabel}</span><span className="block text-xs font-semibold text-sky-700">{source.kind === "LOCAL_VIDEO" ? "Camera master audio" : "Local audio master"} · starts +{source.programOffsetSeconds.toFixed(2)}s · {megabytes(source.sizeBytes)}</span></span></label>)}</div></fieldset> : null}</div></details>
           {editableTranscript.length ? (
             <fieldset className="rounded-2xl border border-sky-200 bg-white p-4">
@@ -573,25 +611,32 @@ export function SessionRecordingShareCard({
           )}
           {focusTranscriptKey && focusedTranscriptSegment && !focusedSegmentVisible ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">This passage is outside the current trim or source selection. Expand the start/end range or restore its participant track to edit it.</p> : null}
           <p className="text-xs font-bold text-sky-800"><Scissors className="mr-1 inline" size={14} />Prepared range {time(startSeconds)}–{time(endSeconds)} ({time(endSeconds - startSeconds)}) from {chosen.length} participant source{chosen.length === 1 ? "" : "s"}.</p>
-          <button type="button" disabled={Boolean(busy) || !chosen.length || !rangeValid || !verifiedRendererAvailable} onClick={() => void mutate("PREPARE")} className="w-full rounded-xl bg-sky-800 px-4 py-3 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">{busy === "PREPARE" ? "Creating preview…" : "Create private preview"}</button>
+          <button type="button" aria-label="Create private preview" disabled={Boolean(busy) || !chosen.length || !rangeValid || !videoSelectionValid || !verifiedRendererAvailable} onClick={() => void mutate("PREPARE")} className="w-full rounded-xl bg-sky-800 px-4 py-3 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">{busy === "PREPARE" ? "Creating preview…" : `Create private ${outputMediaKind} preview`}</button>
           {!verifiedRendererAvailable ? <p className="text-xs font-bold text-amber-800">Preview preparation is temporarily unavailable. Your trim and transcript choices stay here; try again shortly.</p> : null}
         </div>
       ) : null}
 
       {output ? <div className="mt-5 space-y-4 rounded-2xl border border-sky-200 bg-white p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-black text-sky-950">{output.title}</p><p className="text-xs font-bold text-sky-700">Revision {output.revision} · {output.status === "DRAFT" ? "Private coach draft" : output.status === "RELEASED" ? `Visible to ${output.recipient.label}` : "Access revoked"}</p></div><span className="rounded-full bg-sky-100 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-sky-900">{output.render.status}</span></div>
-        {output.render.status === "VERIFIED" && output.mediaUrl ? <><audio
+        {output.render.status === "VERIFIED" && output.mediaUrl ? <>{output.render.mediaKind === "video" ? <video
           ref={(node) => { previewMediaRef.current = node; }}
-          aria-label="Private recording preview"
-          className="w-full"
-          controls
-          preload="metadata"
-          src={output.mediaUrl}
+          aria-label="Private video preview"
+          className="aspect-video w-full rounded-xl bg-black"
+          controls playsInline preload="metadata" src={output.mediaUrl}
           onPlay={(event) => { previewLastPlaybackTimeRef.current = event.currentTarget.currentTime; }}
           onPause={() => { previewLastPlaybackTimeRef.current = null; }}
           onSeeking={() => { previewLastPlaybackTimeRef.current = null; }}
           onTimeUpdate={(event) => observePreviewPlayback(event.currentTarget)}
           onEnded={(event) => observePreviewPlayback(event.currentTarget, true)}
-        >Your browser cannot play this private recording.</audio><div className="flex flex-wrap gap-2 text-xs font-bold text-sky-800"><span>{time(output.render.durationSeconds || 0)}</span><span>·</span><span>{megabytes(output.render.sizeBytes)}</span><span>·</span><span className="font-mono">SHA-256 {output.render.sha256?.slice(0, 12)}…</span></div><a href={`${output.mediaUrl}?download=1`} className="inline-flex items-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Download className="mr-1.5" size={14} />Download exact reviewed copy</a></> : output.render.status === "FAILED" ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-900">The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.</p> : <p className="text-sm font-bold text-sky-800"><RefreshCw className="mr-2 inline animate-spin" size={15} />Aligning, leveling, decoding, and verifying the private preview…</p>}
+        >Your browser cannot play this private video.</video> : <audio
+          ref={(node) => { previewMediaRef.current = node; }}
+          aria-label="Private recording preview"
+          className="w-full" controls preload="metadata" src={output.mediaUrl}
+          onPlay={(event) => { previewLastPlaybackTimeRef.current = event.currentTarget.currentTime; }}
+          onPause={() => { previewLastPlaybackTimeRef.current = null; }}
+          onSeeking={() => { previewLastPlaybackTimeRef.current = null; }}
+          onTimeUpdate={(event) => observePreviewPlayback(event.currentTarget)}
+          onEnded={(event) => observePreviewPlayback(event.currentTarget, true)}
+        >Your browser cannot play this private recording.</audio>}<div className="flex flex-wrap gap-2 text-xs font-bold text-sky-800"><span>{time(output.render.durationSeconds || 0)}</span><span>·</span><span>{megabytes(output.render.sizeBytes)}</span><span>·</span><span className="font-mono">SHA-256 {output.render.sha256?.slice(0, 12)}…</span></div><a href={`${output.mediaUrl}?download=1`} className="inline-flex items-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Download className="mr-1.5" size={14} />Download exact reviewed copy</a></> : output.render.status === "FAILED" ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-900">The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.</p> : <p className="text-sm font-bold text-sky-800"><RefreshCw className="mr-2 inline animate-spin" size={15} />{output.render.mediaKind === "video" ? "Aligning picture and sound, leveling, decoding, and verifying the private preview…" : "Aligning, leveling, decoding, and verifying the private preview…"}</p>}
         {coach && output.status === "DRAFT" && output.render.status === "VERIFIED" ? <div className={`rounded-xl border p-4 ${output.playbackReview?.reviewed ? "border-emerald-200 bg-emerald-50" : "border-indigo-200 bg-indigo-50"}`}>
           {output.playbackReview?.reviewed ? <p className="text-sm font-bold text-emerald-950"><ShieldCheck className="mr-2 inline" size={16} />Listening review saved for this exact revision. It is ready to share with <strong>{output.recipient.label}</strong>.</p> : <>
             <p className="text-sm font-black text-indigo-950">Listen before sharing</p>
@@ -607,7 +652,7 @@ export function SessionRecordingShareCard({
         </div> : null}
         {coach && output.status === "RELEASED" ? <button type="button" disabled={Boolean(busy)} onClick={() => void mutate("REVOKE")} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-900"><Undo2 className="mr-1.5 inline" size={14} />Revoke client access</button> : null}
         {!coach && output.status === "RELEASED" ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-950"><ShieldCheck className="mr-2 inline" size={16} />Your coach released this reviewed copy to your private Session.</p> : null}
-        {coach && !editing ? <button type="button" disabled={Boolean(busy)} onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setEditing(true); }} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Scissors className="mr-1.5 inline" size={14} />{output.render.status === "FAILED" ? "Review trim and try again" : output.status === "DRAFT" ? "Edit private preview" : "Create new private edit"}</button> : null}
+        {coach && !editing ? <button type="button" disabled={Boolean(busy)} onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setOutputMediaKind(output.render.mediaKind === "video" ? "video" : "audio"); setPrimaryVideoSourceId(output.render.primaryVideoSourceId || ""); setEditing(true); }} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Scissors className="mr-1.5 inline" size={14} />{output.render.status === "FAILED" ? "Review trim and try again" : output.status === "DRAFT" ? "Edit private preview" : "Create new private edit"}</button> : null}
       </div> : null}
 
       <p className="mt-4 text-[11px] font-semibold leading-5 text-sky-800"><LockKeyhole className="mr-1 inline" size={13} />Only you can see the preview. Sharing gives the named client access inside this Session; it does not create a public link or change the original recordings.</p>

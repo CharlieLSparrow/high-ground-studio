@@ -30,7 +30,7 @@ import {
 } from "@/lib/session-transcript-readiness";
 
 export const SESSION_RECORDING_SHARE_SCHEMA =
-  "quipsly-session-recording-share-v2";
+  "quipsly-session-recording-share-v3";
 export const SESSION_RECORDING_SHARE_MANIFEST_SCHEMA =
   "quipsly-session-recording-share-manifest-v1";
 export const SESSION_RECORDING_SHARE_PLAYBACK_REVIEW_SCHEMA =
@@ -268,6 +268,9 @@ function serializeOutput(output: any) {
         ? Number(render.sizeBytes)
         : null,
       sha256: clean(render.sha256, 64) || null,
+      mediaKind: clean(render.mediaKind, 20) === "video" ? "video" : "audio",
+      contentType: clean(render.contentType, 120) || "audio/mp4",
+      primaryVideoSourceId: clean(render.primaryVideoSourceId, 240) || null,
       completedAt: clean(render.completedAt, 80) || null,
     },
     mediaUrl: render.recordingAssetId
@@ -333,6 +336,26 @@ function participantLabel(source: any, index: number) {
     clean(source.participant?.email, 160) ||
     `Participant ${index + 1}`
   );
+}
+
+export function sessionRecordingShareAudioMixSourceIds(
+  sources: Array<{ id: string; participantId: string; kind?: string | null; contentType?: string | null }>,
+  primaryVideoSourceId?: string | null,
+) {
+  const selected = new Set<string>();
+  const byParticipant = new Map<string, typeof sources>();
+  for (const source of sources) {
+    const participantSources = byParticipant.get(source.participantId) || [];
+    participantSources.push(source);
+    byParticipant.set(source.participantId, participantSources);
+  }
+  for (const participantSources of byParticipant.values()) {
+    const preferred = participantSources.find((source) =>
+      source.kind === "LOCAL_AUDIO" || clean(source.contentType, 120).startsWith("audio/"),
+    ) || participantSources.find((source) => source.id === primaryVideoSourceId) || participantSources[0];
+    if (preferred) selected.add(preferred.id);
+  }
+  return selected;
 }
 
 export function newestCoherentRecordingTake<
@@ -993,6 +1016,8 @@ async function reconcileRender(client: RestoreClient, output: any) {
       sha256: result.output.sha256,
       sizeBytes: result.output.sizeBytes,
       durationSeconds: result.output.durationSeconds,
+      mediaKind: result.output.mediaKind,
+      contentType: result.output.contentType,
       completedAt: result.completedAt,
       worker: result.worker,
       completeDecode: true,
@@ -1009,8 +1034,8 @@ async function reconcileRender(client: RestoreClient, output: any) {
           roomId: output.roomId,
           kind: "SERVER_MIX",
           status: "VERIFIED",
-          fileName: `${output.id}.m4a`,
-          contentType: "audio/mp4",
+          fileName: `${output.id}.${result.output.mediaKind === "video" ? "mp4" : "m4a"}`,
+          contentType: result.output.contentType,
           byteSize: BigInt(result.output.sizeBytes),
           durationSeconds: result.output.durationSeconds,
           storageBucket: result.output.bucketName,
@@ -1158,6 +1183,8 @@ export async function prepareSessionRecordingShare(
     actor: SessionAccessActor;
     clientRequestId: string;
     sourceIds: string[];
+    outputMediaKind: "audio" | "video";
+    primaryVideoSourceId: string;
     startSeconds: number;
     endSeconds: number;
     title: string;
@@ -1170,7 +1197,7 @@ export async function prepareSessionRecordingShare(
   },
 ) {
   const room = await loadRoom(client, input.roomId, input.actor, "release");
-  const allSources = await loadSources(client, room.id);
+  const allSources: any[] = await loadSources(client, room.id);
   const requested = [
     ...new Set(input.sourceIds.map((id) => clean(id, 240)).filter(Boolean)),
   ];
@@ -1187,6 +1214,24 @@ export async function prepareSessionRecordingShare(
       "One or more selected participant masters are no longer verified. Refresh before preparing the recording.",
     );
   }
+  const outputMediaKind = input.outputMediaKind === "video" ? "video" : "audio";
+  const primaryVideo = outputMediaKind === "video"
+    ? selected.find((row: any) => row.id === clean(input.primaryVideoSourceId, 240))
+    : null;
+  if (
+    outputMediaKind === "video" &&
+    (!primaryVideo || (
+      primaryVideo.kind !== "LOCAL_VIDEO" &&
+      !clean(primaryVideo.contentType, 120).startsWith("video/")
+    ))
+  ) {
+    throw new SessionRecordingShareError(
+      400,
+      "PRIMARY_VIDEO_REQUIRED",
+      "Choose one exact verified camera recording for the private video preview.",
+    );
+  }
+  const audioMixSourceIds = sessionRecordingShareAudioMixSourceIds(selected, primaryVideo?.id);
   const summary = sourceSummary(selected);
   if (
     !Number.isFinite(input.startSeconds) ||
@@ -1213,7 +1258,14 @@ export async function prepareSessionRecordingShare(
     excludedTranscriptSegments: input.excludedTranscriptSegments,
   });
   const outputId = `recording-share-${createHash("sha256").update(`${input.actor.id}|${room.id}|${input.clientRequestId}`).digest("hex").slice(0, 40)}`;
-  const jobId = `session_share_${sha256({ outputId, edit, sourceIds: selected.map((source: any) => source.id) }).slice(0, 40)}`;
+  const jobId = `session_share_${sha256({
+    outputId,
+    edit,
+    outputMediaKind,
+    primaryVideoSourceId: primaryVideo?.id || null,
+    sourceIds: selected.map((source: any) => source.id),
+    audioMixSourceIds: [...audioMixSourceIds].sort(),
+  }).slice(0, 40)}`;
   const localMode = selected.every(
     (row: any) => row.storageBucket === MOBILE_CAPTURE_LOCAL_VAULT_BUCKET,
   );
@@ -1242,9 +1294,10 @@ export async function prepareSessionRecordingShare(
       "One or more participant masters lack an exact released cloud generation. Refresh after upload verification finishes.",
     );
   }
+  const targetExtension = outputMediaKind === "video" ? "mp4" : "m4a";
   const targetObjectName = localMode
-    ? `session-exports/${room.id}/${jobId}.m4a`
-    : `media-vault/derived/session-recording-share/${room.id}/${jobId}.m4a`;
+    ? `session-exports/${room.id}/${jobId}.${targetExtension}`
+    : `media-vault/derived/session-recording-share/${room.id}/${jobId}.${targetExtension}`;
   const localTarget = localMode ? localRenderTarget(targetObjectName) : null;
   if (localMode && !localTarget)
     throw new SessionRecordingShareError(
@@ -1289,6 +1342,7 @@ export async function prepareSessionRecordingShare(
         (row.kind === "LOCAL_VIDEO" ? "video/mp4" : "audio/webm"),
       programOffsetSeconds:
         (row.recordedStartedAt.getTime() - originMs) / 1_000,
+      includeInAudioMix: audioMixSourceIds.has(row.id),
     };
   });
   const sourceManifest = json({
@@ -1311,7 +1365,14 @@ export async function prepareSessionRecordingShare(
   const body = json({
     schema: SESSION_RECORDING_SHARE_SCHEMA,
     edit,
-    render: { jobId, status: "QUEUED", sourceOutputRevision: 1 },
+    render: {
+      jobId,
+      status: "QUEUED",
+      sourceOutputRevision: 1,
+      mediaKind: outputMediaKind,
+      contentType: outputMediaKind === "video" ? "video/mp4" : "audio/mp4",
+      primaryVideoSourceId: primaryVideo?.id || null,
+    },
     recipient: { userId: room.booking.clientUserId },
     boundaries: {
       originalSourcesRemainImmutable: true,
@@ -1328,11 +1389,27 @@ export async function prepareSessionRecordingShare(
     sourceSetSha256,
     edit: body.edit,
     sources,
-    target: {
+    target: outputMediaKind === "video" ? {
       provider: localMode ? "local" : "gcs",
       bucketName: localMode ? MOBILE_CAPTURE_LOCAL_VAULT_BUCKET : cloudBucket!,
       objectName: targetObjectName,
       locator: localMode ? localTarget! : targetObjectName,
+      mediaKind: "video",
+      contentType: "video/mp4",
+      videoCodec: "h264",
+      audioCodec: "aac-lc",
+      widthPixels: 1920,
+      heightPixels: 1080,
+      frameRate: 24,
+      sampleRateHz: 48_000,
+      channels: 2,
+      primaryVideoRecordingAssetId: primaryVideo!.id,
+    } : {
+      provider: localMode ? "local" : "gcs",
+      bucketName: localMode ? MOBILE_CAPTURE_LOCAL_VAULT_BUCKET : cloudBucket!,
+      objectName: targetObjectName,
+      locator: localMode ? localTarget! : targetObjectName,
+      mediaKind: "audio",
       contentType: "audio/mp4",
       codec: "aac-lc",
       sampleRateHz: 48_000,

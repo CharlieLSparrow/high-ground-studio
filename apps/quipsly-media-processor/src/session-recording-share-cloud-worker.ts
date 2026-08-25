@@ -241,7 +241,8 @@ export async function processSessionRecordingShareCloudQueueObject(
         );
       localSources.push({ ...source, locator: localPath });
     }
-    const outputPath = path.join(scratch, "share.m4a");
+    const extension = manifest.job.target.mediaKind === "video" ? "mp4" : "m4a";
+    const outputPath = path.join(scratch, `share.${extension}`);
     let rendered;
     try {
       rendered = await renderer.render(
@@ -261,7 +262,7 @@ export async function processSessionRecordingShareCloudQueueObject(
     const readback = await storage.materializeObject(
       uploaded.objectName,
       uploaded.generation,
-      path.join(scratch, "share-readback.m4a"),
+      path.join(scratch, `share-readback.${extension}`),
     );
     if (
       readback.sha256 !== rendered.sha256 ||
@@ -405,7 +406,8 @@ function outputMetadata(
   sizeBytes: number,
 ) {
   return {
-    quipslyKind: "session-recording-share-v2",
+    quipslyKind: "session-recording-share-v3",
+    quipslyMediaKind: manifest.job.target.mediaKind,
     quipslyJobId: manifest.job.jobId,
     quipslyRoomId: manifest.job.roomId,
     quipslyOutputId: manifest.job.outputId,
@@ -430,13 +432,14 @@ function assertOutput(
   if (
     evidence.bucketName !== manifest.job.target.bucketName ||
     evidence.objectName !== manifest.job.target.objectName ||
-    evidence.contentType !== "audio/mp4" ||
+    evidence.contentType !== manifest.job.target.contentType ||
     evidence.sizeBytes !== sizeBytes ||
     !evidence.crc32c ||
     metadata.quipslyJobId !== manifest.job.jobId ||
     metadata.quipslySourceSetSha256 !== manifest.job.sourceSetSha256 ||
     metadata.quipslyExpectedSha256 !== sha256 ||
     metadata.quipslyExpectedSizeBytes !== String(sizeBytes) ||
+    metadata.quipslyMediaKind !== manifest.job.target.mediaKind ||
     metadata.quipslyOriginalSourcesRemainImmutable !== "true" ||
     metadata.quipslyOutputPrivateUntilRelease !== "true"
   )

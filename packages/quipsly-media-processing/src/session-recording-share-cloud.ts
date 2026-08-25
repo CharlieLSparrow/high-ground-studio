@@ -277,8 +277,9 @@ export function assertSessionRecordingShareCloudResult(
 
 function requireCloudJob(value: unknown) {
   const job = parseSessionRecordingShareJob(value);
+  const extension = job.target.mediaKind === "video" ? "mp4" : "m4a";
   const targetPattern = new RegExp(
-    `^media-vault/derived/session-recording-share/${escape(job.roomId)}/${escape(job.jobId)}\\.m4a$`,
+    `^media-vault/derived/session-recording-share/${escape(job.roomId)}/${escape(job.jobId)}\\.${extension}$`,
   );
   if (
     job.target.provider !== "gcs" ||
@@ -318,6 +319,8 @@ function assertResultMatchesJob(
     result.output.provider !== "gcs" ||
     result.output.bucketName !== job.target.bucketName ||
     result.output.objectName !== job.target.objectName ||
+    result.output.mediaKind !== job.target.mediaKind ||
+    result.output.contentType !== job.target.contentType ||
     result.output.locator !==
       `gcs://${job.target.bucketName}/${job.target.objectName}?generation=${result.output.generation}`
   )
