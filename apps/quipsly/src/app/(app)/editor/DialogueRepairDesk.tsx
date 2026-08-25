@@ -319,6 +319,7 @@ export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, 
       let experiment = queued.experiment;
       for (let attempt = 0; experiment && attempt < 300 && experiment.status !== "completed"; attempt += 1) {
         if (experiment.status === "failed") throw new Error(experiment.error || "Dialogue Repair rendering failed.");
+        if (experiment.status === "blocked") throw new Error(experiment.error || "Dialogue Repair is retained until media processing is available.");
         await new Promise((resolve) => window.setTimeout(resolve, 2_000));
         const reconciled = await request({ action: "reconcile-experiment", candidateId: activeCandidate.candidateId, jobId: experiment.jobId }) as { experiment?: DialogueExperiment };
         experiment = reconciled.experiment;
