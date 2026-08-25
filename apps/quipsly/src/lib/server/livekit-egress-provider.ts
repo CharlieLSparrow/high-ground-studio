@@ -40,12 +40,33 @@ export type LiveKitEgressProvider = {
   startRoomComposite(input: {
     roomName: string;
     storageObjectPath: string;
+    mode: "audio-reference" | "video-composite";
     webhookUrl?: string | null;
     webhookSigningKey?: string | null;
   }): Promise<LiveKitEgressEvidence>;
   listActive(roomName: string): Promise<LiveKitEgressEvidence[]>;
   stop(egressId: string): Promise<LiveKitEgressEvidence>;
 };
+
+export function liveKitRoomCompositeProfile(
+  mode: "audio-reference" | "video-composite",
+) {
+  return mode === "audio-reference"
+    ? {
+        mode,
+        fileType: EncodedFileType.OGG,
+        audioOnly: true as const,
+        layout: null,
+        purpose: "shared-sync-and-recovery-reference" as const,
+      }
+    : {
+        mode,
+        fileType: EncodedFileType.MP4,
+        audioOnly: false as const,
+        layout: "speaker" as const,
+        purpose: "shareable-room-video-composite" as const,
+      };
+}
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -78,35 +99,42 @@ function jsonSafe(value: unknown): unknown {
 function jsonObject(value: unknown): Record<string, unknown> {
   const safe = jsonSafe(value);
   return safe && typeof safe === "object" && !Array.isArray(safe)
-    ? safe as Record<string, unknown>
+    ? (safe as Record<string, unknown>)
     : {};
 }
 
 function timestamp(value: unknown) {
   if (typeof value === "bigint") {
-    const milliseconds = value > 10_000_000_000_000n
-      ? Number(value / 1_000_000n)
-      : Number(value > 10_000_000_000n ? value / 1_000n : value * 1_000n);
-    return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : null;
+    const milliseconds =
+      value > 10_000_000_000_000n
+        ? Number(value / 1_000_000n)
+        : Number(value > 10_000_000_000n ? value / 1_000n : value * 1_000n);
+    return Number.isFinite(milliseconds)
+      ? new Date(milliseconds).toISOString()
+      : null;
   }
   const number = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(number) || number <= 0) return null;
-  const milliseconds = number > 10_000_000_000_000
-    ? number / 1_000_000
-    : number > 10_000_000_000
-      ? number / 1_000
-      : number * 1_000;
+  const milliseconds =
+    number > 10_000_000_000_000
+      ? number / 1_000_000
+      : number > 10_000_000_000
+        ? number / 1_000
+        : number * 1_000;
   return new Date(milliseconds).toISOString();
 }
 
-function collectOutputPaths(value: unknown, paths = new Set<string>()): Set<string> {
+function collectOutputPaths(
+  value: unknown,
+  paths = new Set<string>(),
+): Set<string> {
   if (typeof value === "string") {
     const candidate = value.trim();
     if (
-      candidate
-      && !candidate.includes("\n")
-      && /(?:file|path|filename|location|url)/i.test(candidate)
-      && candidate.length < 2_048
+      candidate &&
+      !candidate.includes("\n") &&
+      /(?:file|path|filename|location|url)/i.test(candidate) &&
+      candidate.length < 2_048
     ) {
       paths.add(candidate.replace(/^gs:\/\/[^/]+\//, ""));
     }
@@ -118,7 +146,10 @@ function collectOutputPaths(value: unknown, paths = new Set<string>()): Set<stri
   }
   if (!value || typeof value !== "object") return paths;
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof item === "string" && /(?:file|path|filename|location|url)/i.test(key)) {
+    if (
+      typeof item === "string" &&
+      /(?:file|path|filename|location|url)/i.test(key)
+    ) {
       const candidate = item.trim();
       if (candidate && candidate.length < 2_048) {
         paths.add(candidate.replace(/^gs:\/\/[^/]+\//, ""));
@@ -133,12 +164,15 @@ function collectOutputPaths(value: unknown, paths = new Set<string>()): Set<stri
 function egressEvidence(value: any): LiveKitEgressEvidence {
   const raw = jsonObject(value);
   const statusValue = value?.status ?? raw.status;
-  const status = typeof statusValue === "number"
-    ? EgressStatus[statusValue] || String(statusValue)
-    : String(statusValue ?? "UNKNOWN");
+  const status =
+    typeof statusValue === "number"
+      ? EgressStatus[statusValue] || String(statusValue)
+      : String(statusValue ?? "UNKNOWN");
   return {
-    egressId: text(value?.egressId) || text(raw.egressId) || text(raw.egress_id),
-    roomName: text(value?.roomName) || text(raw.roomName) || text(raw.room_name),
+    egressId:
+      text(value?.egressId) || text(raw.egressId) || text(raw.egress_id),
+    roomName:
+      text(value?.roomName) || text(raw.roomName) || text(raw.room_name),
     status,
     startedAt: timestamp(value?.startedAt ?? raw.startedAt ?? raw.started_at),
     endedAt: timestamp(value?.endedAt ?? raw.endedAt ?? raw.ended_at),
@@ -158,8 +192,9 @@ export function createLiveKitEgressProvider(
 
   return {
     async startRoomComposite(input) {
+      const profile = liveKitRoomCompositeProfile(input.mode);
       const output = new EncodedFileOutput({
-        fileType: EncodedFileType.MP4,
+        fileType: profile.fileType,
         filepath: input.storageObjectPath,
         output: {
           case: "gcp",
@@ -169,19 +204,26 @@ export function createLiveKitEgressProvider(
           }),
         },
       });
-      return egressEvidence(await client.startRoomCompositeEgress(
-        input.roomName,
-        { file: output },
-        {
-          layout: "speaker",
-          webhooks: input.webhookUrl && input.webhookSigningKey
-            ? [new WebhookConfig({
-                url: input.webhookUrl,
-                signingKey: input.webhookSigningKey,
-              })]
-            : [],
-        },
-      ));
+      return egressEvidence(
+        await client.startRoomCompositeEgress(
+          input.roomName,
+          { file: output },
+          {
+            ...(profile.audioOnly
+              ? { audioOnly: true }
+              : { layout: profile.layout! }),
+            webhooks:
+              input.webhookUrl && input.webhookSigningKey
+                ? [
+                    new WebhookConfig({
+                      url: input.webhookUrl,
+                      signingKey: input.webhookSigningKey,
+                    }),
+                  ]
+                : [],
+          },
+        ),
+      );
     },
 
     async listActive(roomName) {
@@ -218,8 +260,13 @@ export function liveKitEgressMatchesObject(
   evidence: LiveKitEgressEvidence,
   expectedStorageObjectPath: string,
 ) {
-  const expected = expectedStorageObjectPath.trim().replace(/^gs:\/\/[^/]+\//, "");
-  return Boolean(expected) && evidence.outputPaths.some((path) => (
-    path === expected || path.endsWith(`/${expected}`)
-  ));
+  const expected = expectedStorageObjectPath
+    .trim()
+    .replace(/^gs:\/\/[^/]+\//, "");
+  return (
+    Boolean(expected) &&
+    evidence.outputPaths.some(
+      (path) => path === expected || path.endsWith(`/${expected}`),
+    )
+  );
 }

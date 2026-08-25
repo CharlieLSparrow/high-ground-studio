@@ -179,7 +179,9 @@ describe("SessionSourceAlignmentCard", () => {
       await screen.findByText(/waveform match needs more evidence/i),
     ).toBeInTheDocument();
     expect(screen.getAllByText("Held")).toHaveLength(1);
-    expect(screen.getByText(/kept the capture-clock estimate and changed nothing/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/kept the capture-clock estimate and changed nothing/i),
+    ).toBeInTheDocument();
     expect(screen.getByText(/a \+479\.0 ms difference/i)).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /use measured placement/i }),
@@ -277,8 +279,134 @@ describe("SessionSourceAlignmentCard", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/timing envelopes shown; waveforms appear after complete decode/i),
+      screen.getByText(
+        /timing envelopes shown; waveforms appear after complete decode/i,
+      ),
     ).toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("compares every compatible participant master with an optional shared room reference", async () => {
+    const suggestion = {
+      status: "ready",
+      generatedAutomatically: true,
+      acousticAnalysisStarted: false,
+      spineRecordingAssetId: "recording-coach",
+      targetRecordingAssetId: "recording-client",
+      clockAuthority: "capture-clock-proposal",
+      initialOffsetSeconds: 0.351,
+      overlapStartSeconds: 0,
+      overlapEndSeconds: 119.649,
+      searchRadiusSeconds: 1,
+      sharedReference: {
+        recordingAssetId: "recording-room-reference",
+        mode: "audio-reference",
+        targets: [
+          {
+            recordingAssetId: "recording-coach",
+            initialOffsetSeconds: -0.1,
+            overlapStartSeconds: 0.1,
+            overlapEndSeconds: 120,
+            searchRadiusSeconds: 1,
+            processorCompatible: true,
+          },
+          {
+            recordingAssetId: "recording-client",
+            initialOffsetSeconds: 0.251,
+            overlapStartSeconds: 0,
+            overlapEndSeconds: 119.749,
+            searchRadiusSeconds: 1,
+            processorCompatible: true,
+          },
+        ],
+        boundaries: {
+          participantMastersRemainAuthoritative: true,
+          providerReferenceIsOptionalWitness: true,
+          exactGenerationReadAndHashed: true,
+          referenceCannotReplaceParticipantMaster: true,
+        },
+      },
+    };
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, alignments: [], suggestion }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          alignment: {
+            jobId: "session_alignment_reference_coach",
+            status: "blocked",
+            spineRecordingAssetId: "recording-room-reference",
+            targetRecordingAssetId: "recording-coach",
+            clockAuthority: "capture-clock-proposal",
+            evidence: null,
+            error: "Processor paused for the test.",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          alignment: {
+            jobId: "session_alignment_reference_client",
+            status: "blocked",
+            spineRecordingAssetId: "recording-room-reference",
+            targetRecordingAssetId: "recording-client",
+            clockAuthority: "capture-clock-proposal",
+            evidence: null,
+            error: "Processor paused for the test.",
+          },
+        }),
+      });
+    render(
+      <SessionSourceAlignmentCard
+        roomId="room-1"
+        evidence={evidence}
+        canManage
+      />,
+    );
+    expect(
+      await screen.findByRole("region", {
+        name: /shared room sync reference/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/reference only · never the master/i),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /strengthen sync with room reference/i,
+      }),
+    );
+    await screen.findByText(/2 participant masters are being compared/i);
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/sessions/room-1/source-alignment",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          action: "QUEUE",
+          spineRecordingAssetId: "recording-room-reference",
+          targetRecordingAssetId: "recording-coach",
+        }),
+      }),
+    );
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      3,
+      "/api/sessions/room-1/source-alignment",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          action: "QUEUE",
+          spineRecordingAssetId: "recording-room-reference",
+          targetRecordingAssetId: "recording-client",
+        }),
+      }),
+    );
   });
 });

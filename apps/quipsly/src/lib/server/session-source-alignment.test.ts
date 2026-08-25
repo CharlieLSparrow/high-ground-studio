@@ -63,6 +63,45 @@ function candidate(input: {
   };
 }
 
+function providerReferenceAsset(input: { roomId: string; startedAt?: string }) {
+  return {
+    id: "provider_reference_asset_123",
+    roomId: input.roomId,
+    kind: "SERVER_MIX",
+    status: "VERIFIED",
+    verifiedAt: new Date("2026-08-24T20:02:00.000Z"),
+    recordedStartedAt: new Date(input.startedAt ?? "2026-08-24T20:00:00.100Z"),
+    durationSeconds: 120,
+    contentType: "audio/ogg",
+    byteSize: BigInt(12_000_000),
+    checksum: "c".repeat(64),
+    storageBucket: "quipsly-media-test",
+    storageObjectPath:
+      "media-vault/recordings/livekit/room/commands/request-room-reference.ogg",
+    localManifestJson: {
+      schema: "quipsly-provider-recording-command-v1",
+      source: "provider-recording-command-reservation",
+      provider: "livekit",
+      captureGroupId,
+      providerRecordingMode: "audio-reference",
+      providerRecordingIsOptionalWitness: true,
+      localProtectedMastersRemainAuthoritative: true,
+      providerProcessingDisposition: "RELEASED",
+      exactBytesVerified: true,
+      storageGeneration: "92831",
+      verification: {
+        status: "verified",
+        storageBucket: "quipsly-media-test",
+        storageObjectPath:
+          "media-vault/recordings/livekit/room/commands/request-room-reference.ogg",
+        exactGenerationRead: true,
+        sha256: "c".repeat(64),
+        metadata: { generation: "92831", size: "12000000" },
+      },
+    },
+  };
+}
+
 describe("Session exact-source audio alignment planning", () => {
   beforeEach(() => {
     mockEnsureCloudQueued.mockReset();
@@ -210,6 +249,120 @@ describe("Session exact-source audio alignment planning", () => {
       targetRecordingAssetId: "recording_client_1234",
       clockAuthority: "capture-clock-proposal",
       initialOffsetSeconds: 0.35,
+      sharedReference: null,
+    });
+  });
+
+  it("uses an exact provider room witness as an optional spine for every participant master", async () => {
+    const room = { id: "room_session_12345678", captureGroupId };
+    const participantAsset = (input: {
+      id: string;
+      participantId: string;
+      role: string;
+      startedAt: string;
+      hash: string;
+    }) => ({
+      id: input.id,
+      roomId: room.id,
+      participantId: input.participantId,
+      participant: { role: input.role },
+      durationSeconds: 120,
+      recordedStartedAt: new Date(input.startedAt),
+      localManifestJson: {
+        exactBytesVerified: true,
+        storageGeneration: "123",
+        captureGroupId,
+        alignment: {
+          schema: "quipsly-capture-alignment-proposal-v1",
+          status: "proposal-ready",
+          captureGroupId,
+          estimatedServerStartedAt: input.startedAt,
+          uncertaintyMilliseconds: 24,
+          sampleAccurateClaimed: false,
+          reviewRequired: true,
+        },
+      },
+      status: "VERIFIED",
+      contentType: "audio/mp4",
+      byteSize: BigInt(10_000),
+      checksum: input.hash.repeat(64),
+      storageBucket: "quipsly-media-test",
+      storageObjectPath: `media-vault/${input.id}.m4a`,
+      verifiedAt: new Date("2026-08-24T20:02:00.000Z"),
+    });
+    const participants = [
+      participantAsset({
+        id: "recording_client_1234",
+        participantId: "participant_client_1",
+        role: "CLIENT",
+        startedAt: "2026-08-24T20:00:00.350Z",
+        hash: "b",
+      }),
+      participantAsset({
+        id: "recording_coach_12345",
+        participantId: "participant_coach_1",
+        role: "COACH",
+        startedAt: "2026-08-24T20:00:00.000Z",
+        hash: "a",
+      }),
+    ];
+    const provider = providerReferenceAsset({ roomId: room.id });
+    const receipts = participants.map((asset) => ({
+      uploadSessionId: `upload-${asset.id}`,
+      roomId: room.id,
+      recordingAssetId: asset.id,
+      processingDisposition: "RELEASED",
+      releasedAt: new Date("2026-08-24T20:03:00.000Z"),
+      createdAt: new Date("2026-08-24T20:02:00.000Z"),
+      metadataJson: {
+        immutableUploadBinding: {
+          roomId: room.id,
+          bucketName: asset.storageBucket,
+          objectName: asset.storageObjectPath,
+          generation: "123",
+          sha256: asset.checksum,
+          sizeBytes: 10_000,
+        },
+      },
+    }));
+    const result = await suggestSessionSourceAlignment({
+      prisma: {
+        recordingAsset: {
+          findMany: jest
+            .fn()
+            .mockResolvedValueOnce(participants)
+            .mockResolvedValueOnce([provider]),
+        },
+        mobileCaptureFinalizationReceipt: {
+          findMany: jest.fn().mockResolvedValue(receipts),
+        },
+      },
+      room,
+    });
+    expect(result).toMatchObject({
+      status: "ready",
+      sharedReference: {
+        recordingAssetId: provider.id,
+        mode: "audio-reference",
+        targets: [
+          {
+            recordingAssetId: "recording_coach_12345",
+            initialOffsetSeconds: -0.1,
+            processorCompatible: true,
+          },
+          {
+            recordingAssetId: "recording_client_1234",
+            initialOffsetSeconds: 0.25,
+            processorCompatible: true,
+          },
+        ],
+        boundaries: {
+          participantMastersRemainAuthoritative: true,
+          providerReferenceIsOptionalWitness: true,
+          exactGenerationReadAndHashed: true,
+          referenceCannotReplaceParticipantMaster: true,
+        },
+      },
     });
   });
 
@@ -373,6 +526,103 @@ describe("Session exact-source audio alignment planning", () => {
     expect(result.clockAuthority).toBe("capture-clock-proposal");
   });
 
+  it("queues a generation-bound room reference against a released participant master", async () => {
+    const room = { id: "room_session_12345678", captureGroupId };
+    const provider = providerReferenceAsset({ roomId: room.id });
+    const participant = {
+      id: "recording_participant_123",
+      roomId: room.id,
+      kind: "LOCAL_AUDIO",
+      durationSeconds: 120,
+      recordedStartedAt: new Date("2026-08-24T20:00:00.350Z"),
+      localManifestJson: {
+        exactBytesVerified: true,
+        storageGeneration: "123",
+        captureGroupId,
+        alignment: {
+          schema: "quipsly-capture-alignment-proposal-v1",
+          status: "proposal-ready",
+          captureGroupId,
+          estimatedServerStartedAt: "2026-08-24T20:00:00.350Z",
+          uncertaintyMilliseconds: 24,
+          sampleAccurateClaimed: false,
+          reviewRequired: true,
+        },
+      },
+      status: "VERIFIED",
+      contentType: "audio/mp4",
+      byteSize: BigInt(10_000),
+      checksum: "b".repeat(64),
+      storageBucket: "quipsly-media-test",
+      storageObjectPath: "media-vault/recording_participant_123.m4a",
+      verifiedAt: new Date("2026-08-24T20:02:00.000Z"),
+    };
+    const receipt = {
+      uploadSessionId: "upload-recording-participant-123",
+      roomId: room.id,
+      recordingAssetId: participant.id,
+      processingDisposition: "RELEASED",
+      releasedAt: new Date("2026-08-24T20:03:00.000Z"),
+      createdAt: new Date("2026-08-24T20:02:00.000Z"),
+      metadataJson: {
+        immutableUploadBinding: {
+          roomId: room.id,
+          bucketName: participant.storageBucket,
+          objectName: participant.storageObjectPath,
+          generation: "123",
+          sha256: participant.checksum,
+          sizeBytes: 10_000,
+        },
+      },
+    };
+    let saved: any = null;
+    const prisma = {
+      callRoom: { findFirst: jest.fn().mockResolvedValue(room) },
+      recordingAsset: {
+        findMany: jest.fn().mockResolvedValue([provider, participant]),
+      },
+      mobileCaptureFinalizationReceipt: {
+        findMany: jest.fn().mockResolvedValue([receipt]),
+      },
+      sessionAudioAlignmentJob: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(async ({ data }) => {
+          saved = { ...data, createdAt: new Date(), updatedAt: new Date() };
+          return saved;
+        }),
+        findUnique: jest.fn(async () => saved),
+      },
+    };
+    mockEnsureCloudQueued.mockResolvedValue({
+      status: "configuration-required",
+    });
+    const result = await queueSessionSourceAlignment({
+      prisma,
+      roomId: room.id,
+      spineRecordingAssetId: provider.id,
+      targetRecordingAssetId: participant.id,
+      actor: { id: "user_session_12345678", email: "coach@example.test" },
+    });
+    expect(saved.inputJson.spine).toMatchObject({
+      assetId: provider.id,
+      provider: "gcs",
+      generation: "92831",
+      sha256: "c".repeat(64),
+    });
+    expect(saved.inputJson.target).toMatchObject({
+      assetId: participant.id,
+      provider: "gcs",
+      generation: "123",
+      sha256: "b".repeat(64),
+    });
+    expect(mockEnsureCloudQueued).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      status: "blocked",
+      spineRecordingAssetId: provider.id,
+      targetRecordingAssetId: participant.id,
+    });
+  });
+
   it("routes two local-vault exact sources to the local worker without cloud control", async () => {
     const room = { id: "room_session_local123", captureGroupId };
     const asset = (id: string, hash: string, offsetMs: number) => ({
@@ -389,7 +639,9 @@ describe("Session exact-source audio alignment planning", () => {
           schema: "quipsly-capture-alignment-proposal-v1",
           status: "proposal-ready",
           captureGroupId,
-          estimatedServerStartedAt: new Date(1_787_601_600_000 + offsetMs).toISOString(),
+          estimatedServerStartedAt: new Date(
+            1_787_601_600_000 + offsetMs,
+          ).toISOString(),
           uncertaintyMilliseconds: 24,
           sampleAccurateClaimed: false,
           reviewRequired: true,
@@ -429,7 +681,9 @@ describe("Session exact-source audio alignment planning", () => {
     const prisma = {
       callRoom: { findFirst: jest.fn().mockResolvedValue(room) },
       recordingAsset: { findMany: jest.fn().mockResolvedValue(assets) },
-      mobileCaptureFinalizationReceipt: { findMany: jest.fn().mockResolvedValue(receipts) },
+      mobileCaptureFinalizationReceipt: {
+        findMany: jest.fn().mockResolvedValue(receipts),
+      },
       sessionAudioAlignmentJob: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(async ({ data }) => {
@@ -451,7 +705,10 @@ describe("Session exact-source audio alignment planning", () => {
     });
     expect(saved.inputJson.target.provider).toBe("local");
     expect(mockEnsureCloudQueued).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ status: "queued", clockAuthority: "capture-clock-proposal" });
+    expect(result).toMatchObject({
+      status: "queued",
+      clockAuthority: "capture-clock-proposal",
+    });
   });
 
   it("normalizes a negative measured offset into a reversible source trim", () => {

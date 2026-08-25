@@ -23,12 +23,13 @@ import {
   type ProviderRecordingEnvironment,
 } from "@/lib/server/provider-recording-command";
 
-const runLocalDatabaseSmoke = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1"
-  ? describe
-  : describe.skip;
+const runLocalDatabaseSmoke =
+  process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
 if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {
   if (!process.env.QUIPSLY_LOCAL_DATABASE_URL) {
-    throw new Error("QUIPSLY_LOCAL_DATABASE_URL is required for the provider recording command smoke.");
+    throw new Error(
+      "QUIPSLY_LOCAL_DATABASE_URL is required for the provider recording command smoke.",
+    );
   }
   process.env.DATABASE_URL = process.env.QUIPSLY_LOCAL_DATABASE_URL;
 }
@@ -49,13 +50,16 @@ function evidence(input: {
     outputPaths: [input.objectPath],
     raw: {
       roomName: input.roomName,
-      status: input.status || (input.ended ? "EGRESS_COMPLETE" : "EGRESS_ACTIVE"),
+      status:
+        input.status || (input.ended ? "EGRESS_COMPLETE" : "EGRESS_ACTIVE"),
       fileResults: [{ filename: input.objectPath }],
     },
   };
 }
 
-function environment(overrides: Partial<ProviderRecordingEnvironment> = {}): ProviderRecordingEnvironment {
+function environment(
+  overrides: Partial<ProviderRecordingEnvironment> = {},
+): ProviderRecordingEnvironment {
   return {
     livekitUrl: "https://provider.example.test",
     apiKey: "test-key",
@@ -64,6 +68,7 @@ function environment(overrides: Partial<ProviderRecordingEnvironment> = {}): Pro
     bucketEnvName: "QUIPSLY_MEDIA_BUCKET",
     credentials: "",
     webhookUrl: "https://nest.example.test/api/providers/livekit/webhook",
+    egressMode: "audio-reference",
     egressRequested: true,
     egressEnabled: true,
     liveKitControlConfigured: true,
@@ -83,12 +88,21 @@ class FakeProvider implements LiveKitEgressProvider {
   failStartWithoutEvidence = false;
   startDelayMilliseconds = 0;
 
-  async startRoomComposite(input: { roomName: string; storageObjectPath: string }) {
+  async startRoomComposite(input: {
+    roomName: string;
+    storageObjectPath: string;
+    mode: "audio-reference" | "video-composite";
+  }) {
     this.startCalls += 1;
     if (this.startDelayMilliseconds) {
-      await new Promise((resolve) => setTimeout(resolve, this.startDelayMilliseconds));
+      await new Promise((resolve) =>
+        setTimeout(resolve, this.startDelayMilliseconds),
+      );
     }
-    const accepted = evidence({ roomName: input.roomName, objectPath: input.storageObjectPath });
+    const accepted = evidence({
+      roomName: input.roomName,
+      objectPath: input.storageObjectPath,
+    });
     if (this.failStartAfterAccept) {
       this.active = [accepted];
       throw new Error("connection reset after provider accepted START");
@@ -109,7 +123,11 @@ class FakeProvider implements LiveKitEgressProvider {
     const active = this.active.find((item) => item.egressId === egressId);
     if (!active) throw new Error("provider egress is not active");
     this.active = this.active.filter((item) => item.egressId !== egressId);
-    return { ...active, status: "EGRESS_COMPLETE", endedAt: "2026-08-05T20:30:00.000Z" };
+    return {
+      ...active,
+      status: "EGRESS_COMPLETE",
+      endedAt: "2026-08-05T20:30:00.000Z",
+    };
   }
 }
 
@@ -138,72 +156,76 @@ runLocalDatabaseSmoke("durable optional provider recording commands", () => {
     }
   });
 
-  async function createRoom(options: { consent?: boolean; localMaster?: boolean } = {}) {
+  async function createRoom(
+    options: { consent?: boolean; localMaster?: boolean } = {},
+  ) {
     const roomId = `provider-command-room-${nonce}-${roomIds.length}`;
     roomIds.push(roomId);
-    return prisma.callRoom.create({
-      data: {
-        id: roomId,
-        createdByUserId: userId,
-        purpose: "PODCAST",
-        status: "OPEN",
-        provider: "livekit",
-        providerRoomId: `provider-room-${nonce}-${roomIds.length}`,
-        title: "Optional provider witness test",
-        participants: {
-          create: {
-            id: `provider-participant-${nonce}-${roomIds.length}`,
-            userId,
-            role: "HOST",
-            accessStatus: "ACTIVE",
-            displayName: "Provider command operator",
-          },
-        },
-        ...(options.localMaster
-          ? {
-              recordingAssets: {
-                create: {
-                  kind: "LOCAL_AUDIO",
-                  status: "VERIFIED",
-                  fileName: "protected-local-master.wav",
-                  checksum: "a".repeat(64),
-                  localManifestJson: { source: "protected-local-master" },
-                },
-              },
-            }
-          : {}),
-      },
-      include: { participants: true },
-    }).then(async (room) => {
-      if (options.consent !== false) {
-        await prisma.recordingConsent.create({
-          data: {
-            roomId: room.id,
-            participantId: room.participants[0].id,
-            userId,
-            status: "GRANTED",
-            consentText: MOBILE_CAPTURE_CONSENT_TEXT,
-            policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
-            canRecordAudio: true,
-            canRecordVideo: true,
-            canTranscribe: true,
-            consentedAt: new Date(),
-            metadataJson: {
-              consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
-              consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
-              recordingChoiceExplicit: true,
-              transcriptionChoiceExplicit: true,
-              allAudibleParticipantsNotifiedAndAgreed: true,
-              presentationEvidence: {
-                surface: "quipsly-capture-consent-v2",
-                version: 1,
-              },
+    return prisma.callRoom
+      .create({
+        data: {
+          id: roomId,
+          createdByUserId: userId,
+          purpose: "PODCAST",
+          status: "OPEN",
+          provider: "livekit",
+          providerRoomId: `provider-room-${nonce}-${roomIds.length}`,
+          title: "Optional provider witness test",
+          participants: {
+            create: {
+              id: `provider-participant-${nonce}-${roomIds.length}`,
+              userId,
+              role: "HOST",
+              accessStatus: "ACTIVE",
+              displayName: "Provider command operator",
             },
           },
-        });
-      }
-      return room;
-    });
+          ...(options.localMaster
+            ? {
+                recordingAssets: {
+                  create: {
+                    kind: "LOCAL_AUDIO",
+                    status: "VERIFIED",
+                    fileName: "protected-local-master.wav",
+                    checksum: "a".repeat(64),
+                    localManifestJson: { source: "protected-local-master" },
+                  },
+                },
+              }
+            : {}),
+        },
+        include: { participants: true },
+      })
+      .then(async (room) => {
+        if (options.consent !== false) {
+          await prisma.recordingConsent.create({
+            data: {
+              roomId: room.id,
+              participantId: room.participants[0].id,
+              userId,
+              status: "GRANTED",
+              consentText: MOBILE_CAPTURE_CONSENT_TEXT,
+              policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+              canRecordAudio: true,
+              canRecordVideo: true,
+              canTranscribe: true,
+              consentedAt: new Date(),
+              metadataJson: {
+                consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+                consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+                recordingChoiceExplicit: true,
+                transcriptionChoiceExplicit: true,
+                allAudibleParticipantsNotifiedAndAgreed: true,
+                presentationEvidence: {
+                  surface: "quipsly-capture-consent-v2",
+                  version: 1,
+                },
+              },
+            },
+          });
+        }
+        return room;
+      });
   }
 
   it("deduplicates a repeated START request and preserves the provider mix as an optional witness", async () => {
@@ -223,21 +245,29 @@ runLocalDatabaseSmoke("durable optional provider recording commands", () => {
       requestProviderRecordingStart(input),
       requestProviderRecordingStart(input),
     ]);
-    const settled = first.status === "started"
-      ? first
-      : await requestProviderRecordingStart(input);
-    expect([first.status, concurrentReplay.status]).toEqual(expect.arrayContaining(["started"]));
+    const settled =
+      first.status === "started"
+        ? first
+        : await requestProviderRecordingStart(input);
+    expect([first.status, concurrentReplay.status]).toEqual(
+      expect.arrayContaining(["started"]),
+    );
     expect(settled).toMatchObject({ status: "started", requestId });
     expect(provider.startCalls).toBe(1);
 
-    const commandCount = await prisma.providerRecordingCommand.count({ where: { requestId } });
+    const commandCount = await prisma.providerRecordingCommand.count({
+      where: { requestId },
+    });
     const storedRoom = await prisma.callRoom.findUnique({
       where: { id: room.id },
       include: { recordingAssets: true, providerRecordingCommands: true },
     });
     expect(commandCount).toBe(1);
     expect(storedRoom?.status).toBe("RECORDING");
-    expect(storedRoom?.recordingAssets[0]).toMatchObject({ kind: "SERVER_MIX", status: "UPLOADING" });
+    expect(storedRoom?.recordingAssets[0]).toMatchObject({
+      kind: "SERVER_MIX",
+      status: "UPLOADING",
+    });
     expect(storedRoom?.recordingAssets[0].localManifestJson).toMatchObject({
       providerRecordingIsOptionalWitness: true,
       localProtectedMastersRemainAuthoritative: true,
@@ -323,7 +353,9 @@ runLocalDatabaseSmoke("durable optional provider recording commands", () => {
     expect(first.status).toBe("stopped");
     expect(replay).toMatchObject({ status: "stopped", idempotentReplay: true });
     expect(provider.stopCalls).toBe(1);
-    const asset = await prisma.recordingAsset.findUnique({ where: { id: start.recordingAssetId } });
+    const asset = await prisma.recordingAsset.findUnique({
+      where: { id: start.recordingAssetId },
+    });
     expect(asset).toMatchObject({ status: "UPLOADED", verifiedAt: null });
   });
 
@@ -341,7 +373,9 @@ runLocalDatabaseSmoke("durable optional provider recording commands", () => {
       environment: environment(),
     });
     expect(uncertain.status).toBe("reconcile-required");
-    const command = await prisma.providerRecordingCommand.findUnique({ where: { requestId } });
+    const command = await prisma.providerRecordingCommand.findUnique({
+      where: { requestId },
+    });
     const egress = evidence({
       roomName: room.providerRoomId!,
       objectPath: command!.expectedStorageObjectPath!,
@@ -351,15 +385,42 @@ runLocalDatabaseSmoke("durable optional provider recording commands", () => {
       eventType: "egress_started",
       createdAt: "2026-08-05T20:00:01.000Z",
       egress,
-      raw: { id: "signed-event", event: "egress_started", egressInfo: egress.raw },
+      raw: {
+        id: "signed-event",
+        event: "egress_started",
+        egressInfo: egress.raw,
+      },
     };
-    const first = await applyLiveKitProviderWebhook({ evidence: webhook, prisma });
-    const replay = await applyLiveKitProviderWebhook({ evidence: webhook, prisma });
-    expect(first).toMatchObject({ ok: true, applied: true, idempotentReplay: false });
-    if (!("receiptId" in first)) throw new Error("Expected an applied provider webhook receipt.");
-    expect(replay).toMatchObject({ ok: true, idempotentReplay: true, receiptId: first.receiptId });
-    expect(await prisma.providerRecordingEventReceipt.count({ where: { providerEventId: webhook.eventId } })).toBe(1);
-    expect(await prisma.providerRecordingCommand.findUnique({ where: { requestId } })).toMatchObject({
+    const first = await applyLiveKitProviderWebhook({
+      evidence: webhook,
+      prisma,
+    });
+    const replay = await applyLiveKitProviderWebhook({
+      evidence: webhook,
+      prisma,
+    });
+    expect(first).toMatchObject({
+      ok: true,
+      applied: true,
+      idempotentReplay: false,
+    });
+    if (!("receiptId" in first))
+      throw new Error("Expected an applied provider webhook receipt.");
+    expect(replay).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      receiptId: first.receiptId,
+    });
+    expect(
+      await prisma.providerRecordingEventReceipt.count({
+        where: { providerEventId: webhook.eventId },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.providerRecordingCommand.findUnique({
+        where: { requestId },
+      }),
+    ).toMatchObject({
       status: "APPLIED",
       providerEgressId: egress.egressId,
     });
@@ -377,9 +438,14 @@ runLocalDatabaseSmoke("durable optional provider recording commands", () => {
       requestId: randomUUID(),
       prisma,
       provider,
-      environment: environment({ egressRequested: false, egressEnabled: false }),
+      environment: environment({
+        egressRequested: false,
+        egressEnabled: false,
+      }),
     });
-    const localAfter = await prisma.recordingAsset.findUnique({ where: { id: localBefore!.id } });
+    const localAfter = await prisma.recordingAsset.findUnique({
+      where: { id: localBefore!.id },
+    });
     expect(result).toMatchObject({ status: "held" });
     expect(result.message).toContain("deliberately disabled");
     expect(provider.startCalls).toBe(0);
@@ -435,7 +501,10 @@ runLocalDatabaseSmoke("durable optional provider recording commands", () => {
         expectedStorageBucket: asset.storageBucket,
         expectedStorageObjectPath: asset.storageObjectPath,
         consentVersion: "queued-before-revocation",
-        consentSnapshotJson: { allPartiesAudioReady: true, allPartiesVideoReady: true },
+        consentSnapshotJson: {
+          allPartiesAudioReady: true,
+          allPartiesVideoReady: true,
+        },
         requestJson: { test: "queued-consent-drift" },
       },
     });
@@ -454,7 +523,11 @@ runLocalDatabaseSmoke("durable optional provider recording commands", () => {
     expect(result).toMatchObject({ status: "held" });
     expect(result.message).toContain("requires every signed-in");
     expect(provider.startCalls).toBe(0);
-    expect(await prisma.providerRecordingCommand.findUnique({ where: { id: command.id } })).toMatchObject({
+    expect(
+      await prisma.providerRecordingCommand.findUnique({
+        where: { id: command.id },
+      }),
+    ).toMatchObject({
       status: "HELD",
       dispatchedAt: null,
       errorCode: "PROVIDER_RECORDING_CONSENT_HOLD",

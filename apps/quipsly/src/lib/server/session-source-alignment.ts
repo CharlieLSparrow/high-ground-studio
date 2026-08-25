@@ -11,6 +11,7 @@ import {
   parseAudioAlignmentResult,
   parseSessionAudioAlignmentJob,
   type AudioAlignmentEvidence,
+  type AudioMasterySourceBinding,
   type SessionAudioAlignmentJob,
 } from "@high-ground/quipsly-media-processing";
 
@@ -21,6 +22,10 @@ import {
 } from "@/lib/server/session-access";
 import { ensureSessionAudioSourceAlignmentCloudQueued } from "@/lib/server/audio-source-alignment-cloud";
 import { MOBILE_CAPTURE_LOCAL_VAULT_BUCKET } from "@/lib/server/mobile-capture-local-vault";
+import {
+  sessionProviderReferenceBinding,
+  type SessionProviderReferenceBinding,
+} from "@/lib/server/session-provider-reference";
 import {
   sessionProtectedPlaybackBinding,
   type SessionProtectedPlaybackBinding,
@@ -74,6 +79,19 @@ export type SessionSourceAlignmentSuggestion =
       overlapStartSeconds: number;
       overlapEndSeconds: number;
       searchRadiusSeconds: number;
+      sharedReference: null | {
+        recordingAssetId: string;
+        mode: "audio-reference" | "video-composite";
+        targets: Array<{
+          recordingAssetId: string;
+          initialOffsetSeconds: number;
+          overlapStartSeconds: number;
+          overlapEndSeconds: number;
+          searchRadiusSeconds: number;
+          processorCompatible: boolean;
+        }>;
+        boundaries: SessionProviderReferenceBinding["boundaries"];
+      };
       boundaries: SessionSourceAlignmentPlan["boundaries"];
     }
   | {
@@ -134,7 +152,9 @@ type Candidate = {
   durationSeconds: number | null;
   recordedStartedAt: Date | string | null;
   localManifestJson: unknown;
-  playback: SessionProtectedPlaybackBinding;
+  playback?: SessionProtectedPlaybackBinding | null;
+  processorBinding?: AudioMasterySourceBinding | null;
+  providerReference?: SessionProviderReferenceBinding | null;
 };
 
 export function buildSessionSourceAlignmentPlan(input: {
@@ -294,33 +314,59 @@ export async function suggestSessionSourceAlignment(input: {
   prisma: any;
   room: { id: string; captureGroupId: string };
 }): Promise<SessionSourceAlignmentSuggestion> {
-  const assets = await input.prisma.recordingAsset.findMany({
-    where: {
-      roomId: input.room.id,
-      kind: "LOCAL_AUDIO",
-      status: "VERIFIED",
-      participantId: { not: null },
-      durationSeconds: { gt: 0 },
-    },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    select: {
-      id: true,
-      createdAt: true,
-      roomId: true,
-      participantId: true,
-      durationSeconds: true,
-      recordedStartedAt: true,
-      localManifestJson: true,
-      status: true,
-      contentType: true,
-      byteSize: true,
-      checksum: true,
-      storageBucket: true,
-      storageObjectPath: true,
-      verifiedAt: true,
-      participant: { select: { role: true } },
-    },
-  });
+  const [assets, providerAssets] = await Promise.all([
+    input.prisma.recordingAsset.findMany({
+      where: {
+        roomId: input.room.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        participantId: { not: null },
+        durationSeconds: { gt: 0 },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        createdAt: true,
+        roomId: true,
+        participantId: true,
+        durationSeconds: true,
+        recordedStartedAt: true,
+        localManifestJson: true,
+        status: true,
+        contentType: true,
+        byteSize: true,
+        checksum: true,
+        storageBucket: true,
+        storageObjectPath: true,
+        verifiedAt: true,
+        participant: { select: { role: true } },
+      },
+    }),
+    input.prisma.recordingAsset.findMany({
+      where: {
+        roomId: input.room.id,
+        kind: "SERVER_MIX",
+        status: "VERIFIED",
+        durationSeconds: { gt: 0 },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        roomId: true,
+        kind: true,
+        status: true,
+        durationSeconds: true,
+        recordedStartedAt: true,
+        localManifestJson: true,
+        contentType: true,
+        byteSize: true,
+        checksum: true,
+        storageBucket: true,
+        storageObjectPath: true,
+        verifiedAt: true,
+      },
+    }),
+  ]);
   const receipts = assets.length
     ? await input.prisma.mobileCaptureFinalizationReceipt.findMany({
         where: {
@@ -367,6 +413,17 @@ export async function suggestSessionSourceAlignment(input: {
     const rightPriority = rolePriority.get(text(right.participant?.role)) ?? 99;
     return leftPriority - rightPriority || left.id.localeCompare(right.id);
   });
+  const sharedReferenceBinding =
+    providerAssets
+      .map((asset: any) => ({
+        asset,
+        binding: sessionProviderReferenceBinding({
+          roomId: input.room.id,
+          captureGroupId: input.room.captureGroupId,
+          asset,
+        }),
+      }))
+      .find((candidate: any) => candidate.binding)?.binding ?? null;
   if (distinctParticipants.length < 2) {
     return {
       status: "waiting",
@@ -383,6 +440,13 @@ export async function suggestSessionSourceAlignment(input: {
       spine: distinctParticipants[0],
       target: distinctParticipants[1],
     });
+    const sharedReference = sharedReferenceBinding
+      ? buildSharedReferenceSuggestion(
+          input.room.captureGroupId,
+          sharedReferenceBinding,
+          distinctParticipants,
+        )
+      : null;
     return {
       status: "ready",
       generatedAutomatically: true,
@@ -394,6 +458,7 @@ export async function suggestSessionSourceAlignment(input: {
       overlapStartSeconds: plan.overlapStartSeconds,
       overlapEndSeconds: plan.overlapEndSeconds,
       searchRadiusSeconds: plan.proposal.searchRadiusSeconds,
+      sharedReference,
       boundaries: plan.boundaries,
     };
   } catch (error) {
@@ -408,6 +473,55 @@ export async function suggestSessionSourceAlignment(input: {
     }
     throw error;
   }
+}
+
+function buildSharedReferenceSuggestion(
+  captureGroupId: string,
+  reference: SessionProviderReferenceBinding,
+  participants: Candidate[],
+): Extract<
+  SessionSourceAlignmentSuggestion,
+  { status: "ready" }
+>["sharedReference"] {
+  const spine: Candidate = {
+    id: reference.source.assetId,
+    roomId: reference.roomId,
+    durationSeconds: reference.durationSeconds,
+    recordedStartedAt: reference.recordedStartedAt,
+    localManifestJson: { captureGroupId },
+    playback: null,
+    processorBinding: reference.source,
+    providerReference: reference,
+  };
+  const targets = participants.flatMap((target) => {
+    try {
+      const plan = buildSessionSourceAlignmentPlan({
+        captureGroupId,
+        spine,
+        target,
+      });
+      return [
+        {
+          recordingAssetId: target.id,
+          initialOffsetSeconds: plan.initialOffsetSeconds,
+          overlapStartSeconds: plan.overlapStartSeconds,
+          overlapEndSeconds: plan.overlapEndSeconds,
+          searchRadiusSeconds: plan.proposal.searchRadiusSeconds,
+          processorCompatible:
+            reference.source.provider === sourceBinding(target).provider,
+        },
+      ];
+    } catch {
+      return [];
+    }
+  });
+  if (!targets.length) return null;
+  return {
+    recordingAssetId: reference.source.assetId,
+    mode: reference.mode,
+    targets,
+    boundaries: reference.boundaries,
+  };
 }
 
 export async function decideSessionSourceAlignment(input: {
@@ -836,6 +950,7 @@ async function loadContext(input: {
       select: {
         id: true,
         roomId: true,
+        kind: true,
         durationSeconds: true,
         recordedStartedAt: true,
         localManifestJson: true,
@@ -861,10 +976,17 @@ async function loadContext(input: {
     const receipt = receipts.find(
       (row: any) => row.recordingAssetId === assetId,
     );
+    const providerReference = asset
+      ? sessionProviderReferenceBinding({
+          roomId: room.id,
+          captureGroupId: room.captureGroupId,
+          asset,
+        })
+      : null;
     const playback = asset
       ? sessionProtectedPlaybackBinding({ roomId: room.id, asset, receipt })
       : null;
-    if (!asset || !playback) {
+    if (!asset || (!playback && !providerReference)) {
       throw new SessionSourceAlignmentError(
         409,
         "ALIGNMENT_SOURCE_UNVERIFIED",
@@ -882,7 +1004,12 @@ async function loadContext(input: {
         "Both recordings must belong to this exact Session take before waveform alignment.",
       );
     }
-    return { ...asset, playback };
+    return {
+      ...asset,
+      playback,
+      processorBinding: providerReference?.source ?? null,
+      providerReference,
+    };
   };
   return {
     room,
@@ -1021,7 +1148,15 @@ export function buildSessionReviewedPlacement(
 }
 
 function sourceBinding(candidate: Candidate) {
+  if (candidate.processorBinding) return candidate.processorBinding;
   const binding = candidate.playback;
+  if (!binding) {
+    throw new SessionSourceAlignmentError(
+      409,
+      "ALIGNMENT_PROCESSOR_SOURCE_UNAVAILABLE",
+      "The exact Session source is not available to an authorized media processor.",
+    );
+  }
   const promotion = object(object(candidate.localManifestJson).promotion);
   const localPath = text(promotion.providerSourceId);
   if (

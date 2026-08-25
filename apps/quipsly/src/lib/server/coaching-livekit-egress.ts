@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { Storage } from "@google-cloud/storage";
 
 import { getPrismaClient } from "@/lib/prisma";
@@ -70,7 +72,8 @@ export function getQuipslyLiveKitEgressReadiness(): QuipslyLiveKitEgressReadines
     config.mediaVaultBucketConfigured &&
     config.storageCredentialConfigured &&
     config.webhookConfigured;
-  const liveKitEgressStartEnabled = liveKitEgressConfigured && config.egressEnabled;
+  const liveKitEgressStartEnabled =
+    liveKitEgressConfigured && config.egressEnabled;
 
   return {
     preferredProvider: "livekit",
@@ -106,8 +109,7 @@ export function getQuipslyLiveKitEgressReadiness(): QuipslyLiveKitEgressReadines
 }
 
 function getStorageConfig() {
-  const bucket =
-    chooseConfiguredMediaVaultBucket().bucketName;
+  const bucket = chooseConfiguredMediaVaultBucket().bucketName;
   const credentials =
     text(process.env.LIVEKIT_EGRESS_GCP_CREDENTIALS_JSON) ||
     text(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) ||
@@ -121,6 +123,31 @@ function getStorageClient(credentialsJson: string) {
   return credentials ? new Storage({ credentials }) : new Storage();
 }
 
+async function sha256GenerationBoundObject(input: {
+  file: ReturnType<ReturnType<Storage["bucket"]>["file"]>;
+  expectedBytes: number;
+}) {
+  const hash = createHash("sha256");
+  let bytes = 0;
+  const stream = input.file.createReadStream({ validation: true });
+  for await (const chunk of stream) {
+    bytes += chunk.length;
+    if (bytes > input.expectedBytes) {
+      stream.destroy();
+      throw new Error(
+        "Provider recording grew while its exact generation was being verified.",
+      );
+    }
+    hash.update(chunk);
+  }
+  if (bytes !== input.expectedBytes) {
+    throw new Error(
+      "Provider recording byte count changed during exact-generation verification.",
+    );
+  }
+  return hash.digest("hex");
+}
+
 function readManifestObject(asset: any) {
   const manifest = asset?.localManifestJson;
   return manifest && typeof manifest === "object" && !Array.isArray(manifest)
@@ -129,9 +156,16 @@ function readManifestObject(asset: any) {
 }
 
 export function providerCompositeConsentReadiness(room: any) {
-  const participants = Array.isArray(room.participants) ? room.participants : [];
-  const consents = Array.isArray(room.recordingConsents) ? room.recordingConsents : [];
-  return buildMobileCaptureProviderCompositeReadiness({ participants, consents });
+  const participants = Array.isArray(room.participants)
+    ? room.participants
+    : [];
+  const consents = Array.isArray(room.recordingConsents)
+    ? room.recordingConsents
+    : [];
+  return buildMobileCaptureProviderCompositeReadiness({
+    participants,
+    consents,
+  });
 }
 
 // Public control always enters through the durable command ledger. The legacy
@@ -155,19 +189,21 @@ export async function stopQuipslyLiveKitRoomCompositeEgress(input: {
 
 function providerConsentBindingDecision(asset: any) {
   const manifest = readManifestObject(asset);
-  const binding = manifest.providerConsentBinding && typeof manifest.providerConsentBinding === "object"
-    && !Array.isArray(manifest.providerConsentBinding)
-    ? manifest.providerConsentBinding as Record<string, any>
-    : {};
+  const binding =
+    manifest.providerConsentBinding &&
+    typeof manifest.providerConsentBinding === "object" &&
+    !Array.isArray(manifest.providerConsentBinding)
+      ? (manifest.providerConsentBinding as Record<string, any>)
+      : {};
   const readiness = providerCompositeConsentReadiness(asset.room);
   const snapshotVersions = Array.isArray(binding.consentVersions)
     ? binding.consentVersions
     : [];
   const bindingMatches =
-    binding.version === 1
-    && snapshotVersions.length > 0
-    && binding.consentVersion === mobileCaptureConsentVersion(snapshotVersions)
-    && binding.consentVersion === readiness.consentVersion;
+    binding.version === 1 &&
+    snapshotVersions.length > 0 &&
+    binding.consentVersion === mobileCaptureConsentVersion(snapshotVersions) &&
+    binding.consentVersion === readiness.consentVersion;
   return {
     readiness,
     bindingMatches,
@@ -193,16 +229,21 @@ async function reconcileProviderTranscriptJob(args: {
 }) {
   const existing = args.asset.transcriptJobs?.[0] ?? null;
   const resultJson = {
-    ...(existing?.resultJson && typeof existing.resultJson === "object" ? existing.resultJson : {}),
+    ...(existing?.resultJson && typeof existing.resultJson === "object"
+      ? existing.resultJson
+      : {}),
     source: "livekit-egress-reconciliation",
     storageBucket: args.storageBucket,
     storageObjectPath: args.storageObjectPath,
     providerConsentVersion: args.consentVersion,
-    providerTranscriptDisposition: args.allowTranscription ? "RELEASED" : "HELD",
+    providerTranscriptDisposition: args.allowTranscription
+      ? "RELEASED"
+      : "HELD",
     reconciledAt: args.now.toISOString(),
   };
   if (!args.allowTranscription) {
-    const message = "Provider transcript held until the unchanged START_EGRESS snapshot and current all-party transcription consent both authorize it.";
+    const message =
+      "Provider transcript held until the unchanged START_EGRESS snapshot and current all-party transcription consent both authorize it.";
     if (existing) {
       if (existing.status === "COMPLETED") return existing;
       return args.prisma.transcriptJob.update({
@@ -280,13 +321,17 @@ export async function reconcileQuipslyLiveKitEgressRecording(input: {
   });
 
   if (!asset) throw new Error("Recording asset was not found.");
-  if (asset.kind !== "SERVER_MIX") throw new Error("Only provider/server-mix recordings can be reconciled by this action.");
+  if (asset.kind !== "SERVER_MIX")
+    throw new Error(
+      "Only provider/server-mix recordings can be reconciled by this action.",
+    );
 
   const storageObjectPath = text(asset.storageObjectPath);
   const storageBucket = text(asset.storageBucket) || getStorageConfig().bucket;
 
   if (!storageBucket || !storageObjectPath) {
-    const message = "Provider recording cannot be verified until storage bucket and object path are known.";
+    const message =
+      "Provider recording cannot be verified until storage bucket and object path are known.";
     await prisma.recordingAsset.update({
       where: { id: asset.id },
       data: {
@@ -303,7 +348,12 @@ export async function reconcileQuipslyLiveKitEgressRecording(input: {
         },
       },
     });
-    return { status: "held", callRoomId: asset.roomId, recordingAssetId: asset.id, message };
+    return {
+      status: "held",
+      callRoomId: asset.roomId,
+      recordingAssetId: asset.id,
+      message,
+    };
   }
 
   const storageConfig = getStorageConfig();
@@ -313,7 +363,8 @@ export async function reconcileQuipslyLiveKitEgressRecording(input: {
   try {
     const [exists] = await file.exists();
     if (!exists) {
-      const message = "Provider recording object is not visible in storage yet. Keep it held and retry reconciliation.";
+      const message =
+        "Provider recording object is not visible in storage yet. Keep it held and retry reconciliation.";
       await prisma.recordingAsset.update({
         where: { id: asset.id },
         data: {
@@ -332,13 +383,19 @@ export async function reconcileQuipslyLiveKitEgressRecording(input: {
           },
         },
       });
-      return { status: "held", callRoomId: asset.roomId, recordingAssetId: asset.id, message };
+      return {
+        status: "held",
+        callRoomId: asset.roomId,
+        recordingAssetId: asset.id,
+        message,
+      };
     }
 
     const [metadata] = await file.getMetadata();
     const byteSize = Number(metadata.size || 0);
     if (!Number.isFinite(byteSize) || byteSize <= 0) {
-      const message = "Provider recording object exists but has no bytes yet. Keep it held and retry reconciliation.";
+      const message =
+        "Provider recording object exists but has no bytes yet. Keep it held and retry reconciliation.";
       await prisma.recordingAsset.update({
         where: { id: asset.id },
         data: {
@@ -358,8 +415,27 @@ export async function reconcileQuipslyLiveKitEgressRecording(input: {
           },
         },
       });
-      return { status: "held", callRoomId: asset.roomId, recordingAssetId: asset.id, message };
+      return {
+        status: "held",
+        callRoomId: asset.roomId,
+        recordingAssetId: asset.id,
+        message,
+      };
     }
+
+    const storageGeneration = text(metadata.generation);
+    if (!/^[1-9][0-9]*$/.test(storageGeneration)) {
+      throw new Error(
+        "Provider recording storage metadata is missing an immutable generation.",
+      );
+    }
+    const exactFile = storage.bucket(storageBucket).file(storageObjectPath, {
+      generation: storageGeneration,
+    });
+    const sha256 = await sha256GenerationBoundObject({
+      file: exactFile,
+      expectedBytes: Math.round(byteSize),
+    });
 
     const now = new Date();
     const consentDecision = providerConsentBindingDecision(asset);
@@ -378,20 +454,45 @@ export async function reconcileQuipslyLiveKitEgressRecording(input: {
         md5Hash: metadata.md5Hash,
         crc32c: metadata.crc32c,
       },
+      sha256,
+      exactGenerationRead: true,
     };
-    const allowTranscription = consentDecision.sourceReleased
-      && consentDecision.readiness.allPartiesAllowTranscription;
+    const allowTranscription =
+      consentDecision.sourceReleased &&
+      consentDecision.readiness.allPartiesAllowTranscription;
+    const recordedStart = asset.recordedStartedAt
+      ? new Date(asset.recordedStartedAt).getTime()
+      : Number.NaN;
+    const recordedStop = asset.recordedStoppedAt
+      ? new Date(asset.recordedStoppedAt).getTime()
+      : Number.NaN;
+    const recordedDurationSeconds =
+      Number.isFinite(recordedStart) &&
+      Number.isFinite(recordedStop) &&
+      recordedStop >= recordedStart
+        ? (recordedStop - recordedStart) / 1_000
+        : null;
+    const manifest = readManifestObject(asset);
     const verifiedAsset = await prisma.recordingAsset.update({
       where: { id: asset.id },
       data: {
         status: consentDecision.sourceReleased ? "VERIFIED" : "HELD",
-        contentType: text(metadata.contentType) || asset.contentType || "video/mp4",
+        contentType:
+          text(metadata.contentType) ||
+          asset.contentType ||
+          (manifest.providerRecordingMode === "audio-reference"
+            ? "audio/ogg"
+            : "video/mp4"),
         byteSize: BigInt(Math.round(byteSize)),
+        durationSeconds: recordedDurationSeconds ?? asset.durationSeconds,
+        checksum: sha256,
         uploadedAt: asset.uploadedAt || now,
         verifiedAt: now,
         errorMessage: consentDecision.reason,
         localManifestJson: {
-          ...readManifestObject(asset),
+          ...manifest,
+          exactBytesVerified: true,
+          storageGeneration,
           verification,
           providerProcessingDisposition: consentDecision.sourceReleased
             ? "RELEASED"
@@ -407,8 +508,10 @@ export async function reconcileQuipslyLiveKitEgressRecording(input: {
             evaluatedAt: now.toISOString(),
             consentVersion: consentDecision.readiness.consentVersion,
             bindingMatches: consentDecision.bindingMatches,
-            allPartiesAudioReady: consentDecision.readiness.allPartiesAudioReady,
-            allPartiesVideoReady: consentDecision.readiness.allPartiesVideoReady,
+            allPartiesAudioReady:
+              consentDecision.readiness.allPartiesAudioReady,
+            allPartiesVideoReady:
+              consentDecision.readiness.allPartiesVideoReady,
             allPartiesAllowTranscription:
               consentDecision.readiness.allPartiesAllowTranscription,
           },
@@ -434,8 +537,9 @@ export async function reconcileQuipslyLiveKitEgressRecording(input: {
         callRoomId: asset.roomId,
         recordingAssetId: asset.id,
         transcriptJobId: transcriptJob.id,
-        message: consentDecision.reason
-          || "Provider recording bytes verified, but media processing remains held.",
+        message:
+          consentDecision.reason ||
+          "Provider recording bytes verified, but media processing remains held.",
       };
     }
     return {
@@ -448,7 +552,10 @@ export async function reconcileQuipslyLiveKitEgressRecording(input: {
         : "Provider recording verified for media use. Transcript remains HELD because separate all-party transcription consent is incomplete.",
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to verify provider recording object.";
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to verify provider recording object.";
     await prisma.recordingAsset.update({
       where: { id: asset.id },
       data: {
@@ -468,6 +575,11 @@ export async function reconcileQuipslyLiveKitEgressRecording(input: {
       },
     });
 
-    return { status: "failed", callRoomId: asset.roomId, recordingAssetId: asset.id, message };
+    return {
+      status: "failed",
+      callRoomId: asset.roomId,
+      recordingAssetId: asset.id,
+      message,
+    };
   }
 }

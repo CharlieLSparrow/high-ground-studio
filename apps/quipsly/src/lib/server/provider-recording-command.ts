@@ -6,9 +6,7 @@ import { Storage } from "@google-cloud/storage";
 import { Prisma } from "@prisma/client";
 
 import { getPrismaClient } from "@/lib/prisma";
-import {
-  buildMobileCaptureProviderCompositeReadiness,
-} from "@/lib/server/mobile-capture-consent-readiness";
+import { buildMobileCaptureProviderCompositeReadiness } from "@/lib/server/mobile-capture-consent-readiness";
 import {
   buildLiveKitRecordingObjectNameForRequest,
   chooseConfiguredMediaVaultBucket,
@@ -24,7 +22,8 @@ import {
 } from "@/lib/server/livekit-egress-provider";
 
 const COMMAND_SCHEMA = "quipsly-provider-recording-command-v1";
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LEASE_MILLISECONDS = 45_000;
 
 type ProviderCommandAction = "START" | "STOP";
@@ -37,6 +36,7 @@ export type ProviderRecordingEnvironment = {
   bucketEnvName: string;
   credentials: string;
   webhookUrl: string;
+  egressMode: "audio-reference" | "video-composite";
   egressRequested: boolean;
   egressEnabled: boolean;
   liveKitControlConfigured: boolean;
@@ -47,7 +47,14 @@ export type ProviderRecordingEnvironment = {
 };
 
 export type ProviderRecordingCommandResult = {
-  status: "queued" | "processing" | "started" | "stopped" | "reconcile-required" | "held" | "failed";
+  status:
+    | "queued"
+    | "processing"
+    | "started"
+    | "stopped"
+    | "reconcile-required"
+    | "held"
+    | "failed";
   callRoomId: string;
   commandId: string;
   requestId: string;
@@ -73,7 +80,7 @@ function text(value: unknown) {
 
 function object(value: unknown): Record<string, any> {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, any>
+    ? (value as Record<string, any>)
     : {};
 }
 
@@ -122,10 +129,11 @@ async function serializableTransaction<T>(
 function publicOrigin() {
   const explicit = text(process.env.LIVEKIT_EGRESS_WEBHOOK_URL);
   if (explicit) return explicit;
-  const configuredOrigin = text(process.env.QUIPSLY_PUBLIC_ORIGIN)
-    || text(process.env.NEXTAUTH_URL)
-    || text(process.env.AUTH_URL)
-    || text(process.env.QUIPSLY_APP_HOST);
+  const configuredOrigin =
+    text(process.env.QUIPSLY_PUBLIC_ORIGIN) ||
+    text(process.env.NEXTAUTH_URL) ||
+    text(process.env.AUTH_URL) ||
+    text(process.env.QUIPSLY_APP_HOST);
   if (!configuredOrigin) return "";
   try {
     const origin = configuredOrigin.includes("://")
@@ -142,16 +150,23 @@ export function getProviderRecordingEnvironment(): ProviderRecordingEnvironment 
   const apiKey = text(process.env.LIVEKIT_API_KEY);
   const apiSecret = text(process.env.LIVEKIT_API_SECRET);
   const configuredBucket = chooseConfiguredMediaVaultBucket();
-  const credentials = text(process.env.LIVEKIT_EGRESS_GCP_CREDENTIALS_JSON)
-    || text(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON)
-    || text(process.env.GCP_SERVICE_ACCOUNT_JSON);
+  const credentials =
+    text(process.env.LIVEKIT_EGRESS_GCP_CREDENTIALS_JSON) ||
+    text(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) ||
+    text(process.env.GCP_SERVICE_ACCOUNT_JSON);
   const webhookUrl = publicOrigin();
   const liveKitControlConfigured = Boolean(livekitUrl && apiKey && apiSecret);
   const mediaVaultBucketConfigured = Boolean(configuredBucket.bucketName);
   const storageCredentialConfigured = Boolean(credentials);
-  const webhookConfigured = Boolean(webhookUrl)
-    && (process.env.NODE_ENV !== "production" || webhookUrl.startsWith("https://"));
+  const webhookConfigured =
+    Boolean(webhookUrl) &&
+    (process.env.NODE_ENV !== "production" ||
+      webhookUrl.startsWith("https://"));
   const egressRequested = process.env.LIVEKIT_EGRESS_ENABLED === "true";
+  const egressMode =
+    process.env.LIVEKIT_EGRESS_MODE === "video-composite"
+      ? ("video-composite" as const)
+      : ("audio-reference" as const);
   const missing = [
     livekitUrl ? null : "LIVEKIT_URL",
     apiKey ? null : "LIVEKIT_API_KEY",
@@ -175,6 +190,7 @@ export function getProviderRecordingEnvironment(): ProviderRecordingEnvironment 
     bucketEnvName: configuredBucket.envName,
     credentials,
     webhookUrl,
+    egressMode,
     egressRequested,
     egressEnabled: egressRequested && missing.length === 0,
     liveKitControlConfigured,
@@ -203,12 +219,15 @@ function commandIntent(command: any) {
   return object(command.requestJson).intent;
 }
 
-function assertReplay(command: any, input: {
-  requestId: string;
-  roomId: string;
-  actorUserId: string;
-  action: ProviderCommandAction;
-}) {
+function assertReplay(
+  command: any,
+  input: {
+    requestId: string;
+    roomId: string;
+    actorUserId: string;
+    action: ProviderCommandAction;
+  },
+) {
   const expected = digest({
     schema: COMMAND_SCHEMA,
     requestId: input.requestId,
@@ -217,10 +236,10 @@ function assertReplay(command: any, input: {
     action: input.action,
   });
   if (
-    command.roomId !== input.roomId
-    || command.actorUserId !== input.actorUserId
-    || command.action !== input.action
-    || commandIntent(command) !== expected
+    command.roomId !== input.roomId ||
+    command.actorUserId !== input.actorUserId ||
+    command.action !== input.action ||
+    commandIntent(command) !== expected
   ) {
     throw new ProviderRecordingCommandError(
       "That request ID is already bound to a different provider recording action.",
@@ -233,11 +252,15 @@ function assertReplay(command: any, input: {
 function providerReadiness(room: any) {
   return buildMobileCaptureProviderCompositeReadiness({
     participants: Array.isArray(room.participants) ? room.participants : [],
-    consents: Array.isArray(room.recordingConsents) ? room.recordingConsents : [],
+    consents: Array.isArray(room.recordingConsents)
+      ? room.recordingConsents
+      : [],
   });
 }
 
-function providerConsentReason(readiness: ReturnType<typeof providerReadiness>) {
+function providerConsentReason(
+  readiness: ReturnType<typeof providerReadiness>,
+) {
   if (readiness.consentVersions.length === 0) {
     return "No signed-in, non-observer participants are attached to this room yet.";
   }
@@ -251,45 +274,57 @@ function paymentHoldReason(room: any) {
   const paymentPolicy = text(room.booking?.paymentPolicy).toUpperCase();
   const paymentStatus = text(room.booking?.paymentRecord?.status).toUpperCase();
   const bookingStatus = text(room.booking?.status).toUpperCase();
-  return paymentPolicy === "PAID_ONE_TO_ONE"
-    && paymentStatus !== "PAID"
-    && ["HOLDING_PAYMENT", "REQUESTED", "CONFIRMED"].includes(
+  return paymentPolicy === "PAID_ONE_TO_ONE" &&
+    paymentStatus !== "PAID" &&
+    ["HOLDING_PAYMENT", "REQUESTED", "CONFIRMED"].includes(
       bookingStatus || "HOLDING_PAYMENT",
     )
     ? "Provider recording cannot start for a paid one-to-one coaching session until payment evidence is resolved."
     : "";
 }
 
-function asResult(command: any, idempotentReplay: boolean): ProviderRecordingCommandResult {
-  const status = command.status === "APPLIED"
-    ? command.action === "START" ? "started" : "stopped"
-    : command.status === "PROCESSING"
-      ? "processing"
-      : command.status === "QUEUED"
-        ? "queued"
-        : command.status === "RECONCILE_REQUIRED"
-          ? "reconcile-required"
-          : command.status === "FAILED"
-            ? "failed"
-            : "held";
-  const fallback = status === "started"
-    ? "Provider safety recording started. Local protected masters remain the synchronization and production sources."
-    : status === "stopped"
-      ? "Provider safety recording stopped. Its file remains untrusted until storage reconciliation."
-      : status === "reconcile-required"
-        ? "Provider outcome is uncertain. Quipsly will not retry START blindly; reconcile the durable command first."
-        : status === "held"
-          ? "Provider recording is held. Local protected recording remains available and independent."
-          : "Provider recording command is queued for safe processing.";
+function asResult(
+  command: any,
+  idempotentReplay: boolean,
+): ProviderRecordingCommandResult {
+  const status =
+    command.status === "APPLIED"
+      ? command.action === "START"
+        ? "started"
+        : "stopped"
+      : command.status === "PROCESSING"
+        ? "processing"
+        : command.status === "QUEUED"
+          ? "queued"
+          : command.status === "RECONCILE_REQUIRED"
+            ? "reconcile-required"
+            : command.status === "FAILED"
+              ? "failed"
+              : "held";
+  const fallback =
+    status === "started"
+      ? "Provider safety recording started. Local protected masters remain the synchronization and production sources."
+      : status === "stopped"
+        ? "Provider safety recording stopped. Its file remains untrusted until storage reconciliation."
+        : status === "reconcile-required"
+          ? "Provider outcome is uncertain. Quipsly will not retry START blindly; reconcile the durable command first."
+          : status === "held"
+            ? "Provider recording is held. Local protected recording remains available and independent."
+            : "Provider recording command is queued for safe processing.";
   return {
     status,
     callRoomId: command.roomId,
     commandId: command.id,
     requestId: command.requestId,
     idempotentReplay,
-    ...(command.recordingAssetId ? { recordingAssetId: command.recordingAssetId } : {}),
+    ...(command.recordingAssetId
+      ? { recordingAssetId: command.recordingAssetId }
+      : {}),
     ...(command.providerEgressId ? { egressId: command.providerEgressId } : {}),
-    message: command.errorMessage || object(command.providerResponseJson).message || fallback,
+    message:
+      command.errorMessage ||
+      object(command.providerResponseJson).message ||
+      fallback,
   };
 }
 
@@ -314,20 +349,23 @@ async function loadRoom(prisma: any, roomId: string) {
   return room;
 }
 
-async function createHeldCommand(tx: any, input: {
-  requestId: string;
-  room: any;
-  actorUserId: string;
-  action: ProviderCommandAction;
-  reason: string;
-  errorCode: string;
-  recordingAssetId?: string | null;
-  providerEgressId?: string | null;
-  expectedStorageBucket?: string | null;
-  expectedStorageObjectPath?: string | null;
-  consentVersion?: string | null;
-  consentSnapshot?: unknown;
-}) {
+async function createHeldCommand(
+  tx: any,
+  input: {
+    requestId: string;
+    room: any;
+    actorUserId: string;
+    action: ProviderCommandAction;
+    reason: string;
+    errorCode: string;
+    recordingAssetId?: string | null;
+    providerEgressId?: string | null;
+    expectedStorageBucket?: string | null;
+    expectedStorageObjectPath?: string | null;
+    consentVersion?: string | null;
+    consentSnapshot?: unknown;
+  },
+) {
   return tx.providerRecordingCommand.create({
     data: {
       requestId: input.requestId,
@@ -383,7 +421,7 @@ export async function requestProviderRecordingStart(input: {
   environment?: ProviderRecordingEnvironment;
 }): Promise<ProviderRecordingCommandResult> {
   validateRequestId(input.requestId);
-  const prisma = input.prisma || getPrismaClient() as any;
+  const prisma = input.prisma || (getPrismaClient() as any);
   const environment = input.environment || getProviderRecordingEnvironment();
   const existing = await prisma.providerRecordingCommand.findUnique({
     where: { requestId: input.requestId },
@@ -395,7 +433,9 @@ export async function requestProviderRecordingStart(input: {
       actorUserId: input.operatorUserId,
       action: "START",
     });
-    if (["QUEUED", "PROCESSING", "RECONCILE_REQUIRED"].includes(existing.status)) {
+    if (
+      ["QUEUED", "PROCESSING", "RECONCILE_REQUIRED"].includes(existing.status)
+    ) {
       return processProviderRecordingCommand({
         commandId: existing.id,
         prisma,
@@ -408,7 +448,10 @@ export async function requestProviderRecordingStart(input: {
   }
 
   const command = await serializableTransaction(prisma, async (tx: any) => {
-    await acquirePrismaAdvisoryTransactionLock(tx, `provider-recording:${input.callRoomId}`);
+    await acquirePrismaAdvisoryTransactionLock(
+      tx,
+      `provider-recording:${input.callRoomId}`,
+    );
     const replay = await tx.providerRecordingCommand.findUnique({
       where: { requestId: input.requestId },
     });
@@ -427,41 +470,56 @@ export async function requestProviderRecordingStart(input: {
     const consentReason = providerConsentReason(readiness);
     const paymentReason = paymentHoldReason(room);
     const closed = ["CANCELED", "ENDED", "FAILED"].includes(room.status);
-    const activeAsset = room.recordingAssets.find((asset: any) => (
-      asset.kind === "SERVER_MIX"
-      && asset.status === "UPLOADING"
-      && text(object(object(asset.localManifestJson).livekit).egressId)
-    ));
+    const activeAsset = room.recordingAssets.find(
+      (asset: any) =>
+        asset.kind === "SERVER_MIX" &&
+        asset.status === "UPLOADING" &&
+        text(object(object(asset.localManifestJson).livekit).egressId),
+    );
     const roomMetadata = object(room.metadataJson);
-    const activeCommand = room.providerRecordingCommands.find((candidate: any) => (
-      candidate.action === "START"
-      && (
-        ["QUEUED", "PROCESSING", "RECONCILE_REQUIRED"].includes(candidate.status)
-        || (
-          candidate.status === "APPLIED"
-          && (
-            roomMetadata.activeProviderRecordingCommandId === candidate.id
-            || roomMetadata.activeLiveKitEgressId === candidate.providerEgressId
-          )
-        )
-      )
-      && candidate.recordingAssetId !== null
-    ));
-    const hold = provider !== "livekit"
-      ? ["PROVIDER_NOT_LIVEKIT", "Prepare this room for LiveKit before starting provider egress."]
-      : closed
-        ? ["PROVIDER_RECORDING_ROOM_CLOSED", "Closed rooms cannot start provider recording."]
-        : paymentReason
-          ? ["PROVIDER_RECORDING_PAYMENT_HOLD", paymentReason]
-          : consentReason
-            ? ["PROVIDER_RECORDING_CONSENT_HOLD", consentReason]
-            : activeAsset || activeCommand
-              ? ["PROVIDER_RECORDING_ALREADY_ACTIVE", "This room already has an active or unresolved provider START command. Stop or reconcile it before starting another."]
-              : environment.missing.length > 0
-                ? ["PROVIDER_RECORDING_NOT_CONFIGURED", `Provider recording is not configured: missing ${environment.missing.join(", ")}.`]
-                : !environment.egressEnabled
-                  ? ["PROVIDER_RECORDING_DISABLED", "Provider recording is configured but deliberately disabled. Local protected masters remain available."]
-                  : null;
+    const activeCommand = room.providerRecordingCommands.find(
+      (candidate: any) =>
+        candidate.action === "START" &&
+        (["QUEUED", "PROCESSING", "RECONCILE_REQUIRED"].includes(
+          candidate.status,
+        ) ||
+          (candidate.status === "APPLIED" &&
+            (roomMetadata.activeProviderRecordingCommandId === candidate.id ||
+              roomMetadata.activeLiveKitEgressId ===
+                candidate.providerEgressId))) &&
+        candidate.recordingAssetId !== null,
+    );
+    const hold =
+      provider !== "livekit"
+        ? [
+            "PROVIDER_NOT_LIVEKIT",
+            "Prepare this room for LiveKit before starting provider egress.",
+          ]
+        : closed
+          ? [
+              "PROVIDER_RECORDING_ROOM_CLOSED",
+              "Closed rooms cannot start provider recording.",
+            ]
+          : paymentReason
+            ? ["PROVIDER_RECORDING_PAYMENT_HOLD", paymentReason]
+            : consentReason
+              ? ["PROVIDER_RECORDING_CONSENT_HOLD", consentReason]
+              : activeAsset || activeCommand
+                ? [
+                    "PROVIDER_RECORDING_ALREADY_ACTIVE",
+                    "This room already has an active or unresolved provider START command. Stop or reconcile it before starting another.",
+                  ]
+                : environment.missing.length > 0
+                  ? [
+                      "PROVIDER_RECORDING_NOT_CONFIGURED",
+                      `Provider recording is not configured: missing ${environment.missing.join(", ")}.`,
+                    ]
+                  : !environment.egressEnabled
+                    ? [
+                        "PROVIDER_RECORDING_DISABLED",
+                        "Provider recording is configured but deliberately disabled. Local protected masters remain available.",
+                      ]
+                    : null;
     if (hold) {
       return createHeldCommand(tx, {
         requestId: input.requestId,
@@ -478,6 +536,7 @@ export async function requestProviderRecordingStart(input: {
     const storageObjectPath = buildLiveKitRecordingObjectNameForRequest(
       room.id,
       input.requestId,
+      environment.egressMode,
     );
     const now = new Date();
     const asset = await tx.recordingAsset.create({
@@ -486,10 +545,14 @@ export async function requestProviderRecordingStart(input: {
         kind: "SERVER_MIX",
         status: "HELD",
         fileName: storageObjectPath.split("/").pop(),
-        contentType: "video/mp4",
+        contentType:
+          environment.egressMode === "audio-reference"
+            ? "audio/ogg"
+            : "video/mp4",
         storageBucket: environment.bucket,
         storageObjectPath,
-        errorMessage: "Provider START is durably queued; no provider media is claimed yet.",
+        errorMessage:
+          "Provider START is durably queued; no provider media is claimed yet.",
         localManifestJson: json({
           schema: COMMAND_SCHEMA,
           source: "provider-recording-command-reservation",
@@ -502,6 +565,7 @@ export async function requestProviderRecordingStart(input: {
           providerTranscriptDisposition: "HELD",
           localProtectedMastersRemainAuthoritative: true,
           providerRecordingIsOptionalWitness: true,
+          providerRecordingMode: environment.egressMode,
           reservedAt: now.toISOString(),
         }),
       },
@@ -531,6 +595,7 @@ export async function requestProviderRecordingStart(input: {
             action: "START",
           }),
           webhookUrl: environment.webhookUrl,
+          providerRecordingMode: environment.egressMode,
           providerRecordingIsOptionalWitness: true,
           localProtectedMastersRemainAuthoritative: true,
           noImplicitTranscript: true,
@@ -559,7 +624,7 @@ export async function requestProviderRecordingStop(input: {
   environment?: ProviderRecordingEnvironment;
 }): Promise<ProviderRecordingCommandResult> {
   validateRequestId(input.requestId);
-  const prisma = input.prisma || getPrismaClient() as any;
+  const prisma = input.prisma || (getPrismaClient() as any);
   const environment = input.environment || getProviderRecordingEnvironment();
   const existing = await prisma.providerRecordingCommand.findUnique({
     where: { requestId: input.requestId },
@@ -571,7 +636,9 @@ export async function requestProviderRecordingStop(input: {
       actorUserId: input.operatorUserId,
       action: "STOP",
     });
-    if (["QUEUED", "PROCESSING", "RECONCILE_REQUIRED"].includes(existing.status)) {
+    if (
+      ["QUEUED", "PROCESSING", "RECONCILE_REQUIRED"].includes(existing.status)
+    ) {
       return processProviderRecordingCommand({
         commandId: existing.id,
         prisma,
@@ -584,29 +651,36 @@ export async function requestProviderRecordingStop(input: {
   }
 
   const command = await serializableTransaction(prisma, async (tx: any) => {
-    await acquirePrismaAdvisoryTransactionLock(tx, `provider-recording:${input.callRoomId}`);
-    const replay = await tx.providerRecordingCommand.findUnique({ where: { requestId: input.requestId } });
+    await acquirePrismaAdvisoryTransactionLock(
+      tx,
+      `provider-recording:${input.callRoomId}`,
+    );
+    const replay = await tx.providerRecordingCommand.findUnique({
+      where: { requestId: input.requestId },
+    });
     if (replay) return replay;
     const room = await loadRoom(tx, input.callRoomId);
-    const activeAsset = room.recordingAssets.find((asset: any) => (
-      asset.kind === "SERVER_MIX"
-      && asset.status === "UPLOADING"
-      && text(object(object(asset.localManifestJson).livekit).egressId)
-    ));
+    const activeAsset = room.recordingAssets.find(
+      (asset: any) =>
+        asset.kind === "SERVER_MIX" &&
+        asset.status === "UPLOADING" &&
+        text(object(object(asset.localManifestJson).livekit).egressId),
+    );
     const roomMetadata = object(room.metadataJson);
-    const activeStart = room.providerRecordingCommands.find((candidate: any) => (
-      candidate.action === "START"
-      && candidate.status === "APPLIED"
-      && candidate.providerEgressId
-      && candidate.recordingAssetId
-      && (
-        roomMetadata.activeProviderRecordingCommandId === candidate.id
-        || roomMetadata.activeLiveKitEgressId === candidate.providerEgressId
-      )
-    ));
-    const recordingAssetId = activeAsset?.id || activeStart?.recordingAssetId || null;
-    const providerEgressId = text(object(object(activeAsset?.localManifestJson).livekit).egressId)
-      || text(activeStart?.providerEgressId);
+    const activeStart = room.providerRecordingCommands.find(
+      (candidate: any) =>
+        candidate.action === "START" &&
+        candidate.status === "APPLIED" &&
+        candidate.providerEgressId &&
+        candidate.recordingAssetId &&
+        (roomMetadata.activeProviderRecordingCommandId === candidate.id ||
+          roomMetadata.activeLiveKitEgressId === candidate.providerEgressId),
+    );
+    const recordingAssetId =
+      activeAsset?.id || activeStart?.recordingAssetId || null;
+    const providerEgressId =
+      text(object(object(activeAsset?.localManifestJson).livekit).egressId) ||
+      text(activeStart?.providerEgressId);
     if (!recordingAssetId || !providerEgressId) {
       return createHeldCommand(tx, {
         requestId: input.requestId,
@@ -623,7 +697,8 @@ export async function requestProviderRecordingStop(input: {
         room,
         actorUserId: input.operatorUserId,
         action: "STOP",
-        reason: "LiveKit control credentials are unavailable. Preserve the active egress ID and stop it from an authorized operator surface.",
+        reason:
+          "LiveKit control credentials are unavailable. Preserve the active egress ID and stop it from an authorized operator surface.",
         errorCode: "PROVIDER_RECORDING_STOP_NOT_CONFIGURED",
         recordingAssetId,
         providerEgressId,
@@ -641,8 +716,11 @@ export async function requestProviderRecordingStop(input: {
         captureGroupId: room.captureGroupId,
         recordingAssetId,
         providerEgressId,
-        expectedStorageBucket: activeAsset?.storageBucket || activeStart?.expectedStorageBucket,
-        expectedStorageObjectPath: activeAsset?.storageObjectPath || activeStart?.expectedStorageObjectPath,
+        expectedStorageBucket:
+          activeAsset?.storageBucket || activeStart?.expectedStorageBucket,
+        expectedStorageObjectPath:
+          activeAsset?.storageObjectPath ||
+          activeStart?.expectedStorageObjectPath,
         requestJson: json({
           schema: COMMAND_SCHEMA,
           intent: digest({
@@ -672,20 +750,38 @@ export async function requestProviderRecordingStop(input: {
 async function claimCommand(prisma: any, commandId: string) {
   const leaseToken = randomUUID();
   return serializableTransaction(prisma, async (tx: any) => {
-    const current = await tx.providerRecordingCommand.findUnique({ where: { id: commandId } });
-    if (!current) throw new ProviderRecordingCommandError("Provider command was not found.", 404, "PROVIDER_RECORDING_COMMAND_NOT_FOUND");
-    await acquirePrismaAdvisoryTransactionLock(tx, `provider-recording:${current.roomId}`);
-    const command = await tx.providerRecordingCommand.findUnique({ where: { id: commandId } });
-    if (!command) throw new ProviderRecordingCommandError("Provider command was not found.", 404, "PROVIDER_RECORDING_COMMAND_NOT_FOUND");
+    const current = await tx.providerRecordingCommand.findUnique({
+      where: { id: commandId },
+    });
+    if (!current)
+      throw new ProviderRecordingCommandError(
+        "Provider command was not found.",
+        404,
+        "PROVIDER_RECORDING_COMMAND_NOT_FOUND",
+      );
+    await acquirePrismaAdvisoryTransactionLock(
+      tx,
+      `provider-recording:${current.roomId}`,
+    );
+    const command = await tx.providerRecordingCommand.findUnique({
+      where: { id: commandId },
+    });
+    if (!command)
+      throw new ProviderRecordingCommandError(
+        "Provider command was not found.",
+        404,
+        "PROVIDER_RECORDING_COMMAND_NOT_FOUND",
+      );
     if (["APPLIED", "HELD", "FAILED"].includes(command.status)) {
       return { command, claimed: false };
     }
     const now = new Date();
     if (
-      command.status === "PROCESSING"
-      && command.leaseExpiresAt
-      && command.leaseExpiresAt.getTime() > now.getTime()
-    ) return { command, claimed: false };
+      command.status === "PROCESSING" &&
+      command.leaseExpiresAt &&
+      command.leaseExpiresAt.getTime() > now.getTime()
+    )
+      return { command, claimed: false };
     const claimed = await tx.providerRecordingCommand.update({
       where: { id: command.id },
       data: {
@@ -702,12 +798,16 @@ async function claimCommand(prisma: any, commandId: string) {
   });
 }
 
-async function markCommand(prisma: any, command: any, input: {
-  status: "RECONCILE_REQUIRED" | "HELD" | "FAILED";
-  code: string;
-  message: string;
-  providerResponse?: unknown;
-}) {
+async function markCommand(
+  prisma: any,
+  command: any,
+  input: {
+    status: "RECONCILE_REQUIRED" | "HELD" | "FAILED";
+    code: string;
+    message: string;
+    providerResponse?: unknown;
+  },
+) {
   const now = new Date();
   return prisma.providerRecordingCommand.update({
     where: { id: command.id },
@@ -715,7 +815,7 @@ async function markCommand(prisma: any, command: any, input: {
       status: input.status,
       providerResponseJson: json({
         ...object(command.providerResponseJson),
-        ...(object(input.providerResponse)),
+        ...object(input.providerResponse),
         message: input.message,
       }),
       leaseToken: null,
@@ -724,12 +824,16 @@ async function markCommand(prisma: any, command: any, input: {
       errorMessage: input.message,
       ...(input.status === "HELD" ? { heldAt: now } : {}),
       ...(input.status === "FAILED" ? { failedAt: now } : {}),
-      reconciledAt: input.status === "RECONCILE_REQUIRED" ? now : command.reconciledAt,
+      reconciledAt:
+        input.status === "RECONCILE_REQUIRED" ? now : command.reconciledAt,
     },
   });
 }
 
-async function expectedObjectEvidence(command: any, environment: ProviderRecordingEnvironment) {
+async function expectedObjectEvidence(
+  command: any,
+  environment: ProviderRecordingEnvironment,
+) {
   const bucketName = text(command.expectedStorageBucket);
   const objectPath = text(command.expectedStorageObjectPath);
   if (!bucketName || !objectPath || !environment.credentials) return null;
@@ -757,19 +861,35 @@ async function expectedObjectEvidence(command: any, environment: ProviderRecordi
   }
 }
 
-async function finalizeStart(prisma: any, command: any, evidence: LiveKitEgressEvidence, source: string) {
+async function finalizeStart(
+  prisma: any,
+  command: any,
+  evidence: LiveKitEgressEvidence,
+  source: string,
+) {
   if (!evidence.egressId) {
     return markCommand(prisma, command, {
       status: "RECONCILE_REQUIRED",
       code: "PROVIDER_START_MISSING_EGRESS_ID",
-      message: "LiveKit evidence did not include an immutable egress ID. START will not be retried blindly.",
+      message:
+        "LiveKit evidence did not include an immutable egress ID. START will not be retried blindly.",
       providerResponse: { source, evidence: evidence.raw },
     });
   }
   return serializableTransaction(prisma, async (tx: any) => {
-    await acquirePrismaAdvisoryTransactionLock(tx, `provider-recording:${command.roomId}`);
-    const current = await tx.providerRecordingCommand.findUnique({ where: { id: command.id } });
-    if (!current) throw new ProviderRecordingCommandError("Provider command disappeared during reconciliation.", 409, "PROVIDER_RECORDING_COMMAND_DRIFT");
+    await acquirePrismaAdvisoryTransactionLock(
+      tx,
+      `provider-recording:${command.roomId}`,
+    );
+    const current = await tx.providerRecordingCommand.findUnique({
+      where: { id: command.id },
+    });
+    if (!current)
+      throw new ProviderRecordingCommandError(
+        "Provider command disappeared during reconciliation.",
+        409,
+        "PROVIDER_RECORDING_COMMAND_DRIFT",
+      );
     if (current.status === "APPLIED") return current;
     const conflicting = await tx.providerRecordingCommand.findFirst({
       where: {
@@ -785,7 +905,8 @@ async function finalizeStart(prisma: any, command: any, evidence: LiveKitEgressE
           status: "HELD",
           heldAt: new Date(),
           errorCode: "PROVIDER_EGRESS_ID_CONFLICT",
-          errorMessage: "The provider egress ID is already bound to another durable command.",
+          errorMessage:
+            "The provider egress ID is already bound to another durable command.",
           leaseToken: null,
           leaseExpiresAt: null,
         },
@@ -793,9 +914,16 @@ async function finalizeStart(prisma: any, command: any, evidence: LiveKitEgressE
     }
     const now = new Date();
     const asset = current.recordingAssetId
-      ? await tx.recordingAsset.findUnique({ where: { id: current.recordingAssetId } })
+      ? await tx.recordingAsset.findUnique({
+          where: { id: current.recordingAssetId },
+        })
       : null;
-    if (!asset) throw new ProviderRecordingCommandError("The reserved provider recording asset was not found.", 409, "PROVIDER_RECORDING_ASSET_MISSING");
+    if (!asset)
+      throw new ProviderRecordingCommandError(
+        "The reserved provider recording asset was not found.",
+        409,
+        "PROVIDER_RECORDING_ASSET_MISSING",
+      );
     await tx.recordingAsset.update({
       where: { id: asset.id },
       data: {
@@ -807,14 +935,18 @@ async function finalizeStart(prisma: any, command: any, evidence: LiveKitEgressE
           provider: "livekit",
           captureGroupId: current.captureGroupId,
           providerProcessingDisposition: "PENDING",
-          providerTranscriptDisposition: object(current.consentSnapshotJson).allPartiesAllowTranscription
+          providerTranscriptDisposition: object(current.consentSnapshotJson)
+            .allPartiesAllowTranscription
             ? "PENDING"
             : "HELD",
           providerConsentBinding: {
             version: 1,
             consentVersion: current.consentVersion,
-            consentVersions: object(current.consentSnapshotJson).consentVersions || [],
-            allPartiesAllowTranscriptionAtStart: Boolean(object(current.consentSnapshotJson).allPartiesAllowTranscription),
+            consentVersions:
+              object(current.consentSnapshotJson).consentVersions || [],
+            allPartiesAllowTranscriptionAtStart: Boolean(
+              object(current.consentSnapshotJson).allPartiesAllowTranscription,
+            ),
             capturedAt: current.createdAt.toISOString(),
             capturedByUserId: current.actorUserId,
           },
@@ -830,7 +962,9 @@ async function finalizeStart(prisma: any, command: any, evidence: LiveKitEgressE
         }),
       },
     });
-    const room = await tx.callRoom.findUnique({ where: { id: current.roomId } });
+    const room = await tx.callRoom.findUnique({
+      where: { id: current.roomId },
+    });
     await tx.callRoom.update({
       where: { id: current.roomId },
       data: {
@@ -852,7 +986,11 @@ async function finalizeStart(prisma: any, command: any, evidence: LiveKitEgressE
       data: {
         status: "APPLIED",
         providerEgressId: evidence.egressId,
-        providerResponseJson: json({ source, evidence: evidence.raw, message: "Provider safety recording started." }),
+        providerResponseJson: json({
+          source,
+          evidence: evidence.raw,
+          message: "Provider safety recording started.",
+        }),
         appliedAt: now,
         reconciledAt: source === "start-response" ? null : now,
         leaseToken: null,
@@ -864,15 +1002,32 @@ async function finalizeStart(prisma: any, command: any, evidence: LiveKitEgressE
   });
 }
 
-async function finalizeStop(prisma: any, command: any, evidence: LiveKitEgressEvidence | null, source: string) {
+async function finalizeStop(
+  prisma: any,
+  command: any,
+  evidence: LiveKitEgressEvidence | null,
+  source: string,
+) {
   return serializableTransaction(prisma, async (tx: any) => {
-    await acquirePrismaAdvisoryTransactionLock(tx, `provider-recording:${command.roomId}`);
-    const current = await tx.providerRecordingCommand.findUnique({ where: { id: command.id } });
-    if (!current) throw new ProviderRecordingCommandError("Provider command disappeared during STOP.", 409, "PROVIDER_RECORDING_COMMAND_DRIFT");
+    await acquirePrismaAdvisoryTransactionLock(
+      tx,
+      `provider-recording:${command.roomId}`,
+    );
+    const current = await tx.providerRecordingCommand.findUnique({
+      where: { id: command.id },
+    });
+    if (!current)
+      throw new ProviderRecordingCommandError(
+        "Provider command disappeared during STOP.",
+        409,
+        "PROVIDER_RECORDING_COMMAND_DRIFT",
+      );
     if (current.status === "APPLIED") return current;
     const now = new Date();
     const asset = current.recordingAssetId
-      ? await tx.recordingAsset.findUnique({ where: { id: current.recordingAssetId } })
+      ? await tx.recordingAsset.findUnique({
+          where: { id: current.recordingAssetId },
+        })
       : null;
     if (asset) {
       await tx.recordingAsset.update({
@@ -881,7 +1036,8 @@ async function finalizeStop(prisma: any, command: any, evidence: LiveKitEgressEv
           status: "UPLOADED",
           recordedStoppedAt: asset.recordedStoppedAt || now,
           uploadedAt: asset.uploadedAt || now,
-          errorMessage: "Provider egress stopped; storage bytes still require verification.",
+          errorMessage:
+            "Provider egress stopped; storage bytes still require verification.",
           localManifestJson: json({
             ...object(asset.localManifestJson),
             livekit: {
@@ -895,7 +1051,9 @@ async function finalizeStop(prisma: any, command: any, evidence: LiveKitEgressEv
         },
       });
     }
-    const room = await tx.callRoom.findUnique({ where: { id: current.roomId } });
+    const room = await tx.callRoom.findUnique({
+      where: { id: current.roomId },
+    });
     await tx.callRoom.update({
       where: { id: current.roomId },
       data: {
@@ -916,7 +1074,11 @@ async function finalizeStop(prisma: any, command: any, evidence: LiveKitEgressEv
       where: { id: current.id },
       data: {
         status: "APPLIED",
-        providerResponseJson: json({ source, evidence: evidence?.raw || {}, message: "Provider safety recording stopped." }),
+        providerResponseJson: json({
+          source,
+          evidence: evidence?.raw || {},
+          message: "Provider safety recording stopped.",
+        }),
         appliedAt: now,
         reconciledAt: source === "stop-response" ? null : now,
         leaseToken: null,
@@ -935,23 +1097,31 @@ async function reconcileStart(input: {
   environment: ProviderRecordingEnvironment;
 }) {
   const active = await input.provider.listActive(input.command.providerRoomId);
-  const match = active.find((item) => liveKitEgressMatchesObject(
-    item,
-    input.command.expectedStorageObjectPath,
-  ));
-  if (match) return finalizeStart(input.prisma, input.command, match, "active-provider-reconciliation");
+  const match = active.find((item) =>
+    liveKitEgressMatchesObject(item, input.command.expectedStorageObjectPath),
+  );
+  if (match)
+    return finalizeStart(
+      input.prisma,
+      input.command,
+      match,
+      "active-provider-reconciliation",
+    );
   if (active.length > 0) {
     return markCommand(input.prisma, input.command, {
       status: "HELD",
       code: "PROVIDER_ACTIVE_EGRESS_MISMATCH",
-      message: "LiveKit reports an active room recording with a different durable output path. Quipsly will not start another.",
+      message:
+        "LiveKit reports an active room recording with a different durable output path. Quipsly will not start another.",
       providerResponse: { active: active.map((item) => item.raw) },
     });
   }
   const stored = await expectedObjectEvidence(input.command, input.environment);
   if (stored) {
     if (input.command.recordingAssetId) {
-      const asset = await input.prisma.recordingAsset.findUnique({ where: { id: input.command.recordingAssetId } });
+      const asset = await input.prisma.recordingAsset.findUnique({
+        where: { id: input.command.recordingAssetId },
+      });
       if (asset) {
         await input.prisma.recordingAsset.update({
           where: { id: asset.id },
@@ -959,7 +1129,8 @@ async function reconcileStart(input: {
             status: "UPLOADED",
             byteSize: BigInt(stored.size),
             uploadedAt: new Date(),
-            errorMessage: "Provider bytes were recovered after a lost START response. Egress identity still requires webhook/operator reconciliation.",
+            errorMessage:
+              "Provider bytes were recovered after a lost START response. Egress identity still requires webhook/operator reconciliation.",
             localManifestJson: json({
               ...object(asset.localManifestJson),
               lostStartResponseRecovery: stored,
@@ -971,7 +1142,8 @@ async function reconcileStart(input: {
     return markCommand(input.prisma, input.command, {
       status: "RECONCILE_REQUIRED",
       code: "PROVIDER_START_RESPONSE_LOST_OBJECT_RECOVERED",
-      message: "Provider bytes exist at the deterministic path, so START will not be retried. Await the authenticated webhook or reconcile the exact file.",
+      message:
+        "Provider bytes exist at the deterministic path, so START will not be retried. Await the authenticated webhook or reconcile the exact file.",
       providerResponse: { stored },
     });
   }
@@ -979,7 +1151,8 @@ async function reconcileStart(input: {
     return markCommand(input.prisma, input.command, {
       status: "RECONCILE_REQUIRED",
       code: "PROVIDER_START_OUTCOME_UNKNOWN",
-      message: "START may have reached LiveKit, but no matching active egress or completed object is visible yet. Quipsly will not risk a duplicate retry.",
+      message:
+        "START may have reached LiveKit, but no matching active egress or completed object is visible yet. Quipsly will not risk a duplicate retry.",
       providerResponse: { active: active.map((item) => item.raw) },
     });
   }
@@ -999,23 +1172,37 @@ async function holdUndispatchedStartIfReadinessDrifted(input: {
   const closed = ["CANCELED", "ENDED", "FAILED"].includes(room.status);
   const consentReason = providerConsentReason(readiness);
   const paymentReason = paymentHoldReason(room);
-  const consentDrifted = Boolean(input.command.consentVersion)
-    && readiness.consentVersion !== input.command.consentVersion;
-  const hold = text(room.provider).toLowerCase() !== "livekit"
-    ? ["PROVIDER_NOT_LIVEKIT", "The room provider changed before START dispatch."]
-    : closed
-      ? ["PROVIDER_RECORDING_ROOM_CLOSED", "The room closed before provider START dispatch."]
-      : paymentReason
-        ? ["PROVIDER_RECORDING_PAYMENT_HOLD", paymentReason]
-        : consentReason
-          ? ["PROVIDER_RECORDING_CONSENT_HOLD", consentReason]
-          : consentDrifted
-            ? ["PROVIDER_RECORDING_CONSENT_DRIFT", "Participant consent evidence changed after this START command was queued. Review the current consent and issue a new explicit request."]
-            : !input.environment.egressEnabled
-              ? ["PROVIDER_RECORDING_DISABLED", input.environment.missing.length
-                  ? `Provider recording became unavailable before dispatch: missing ${input.environment.missing.join(", ")}.`
-                  : "Provider recording was deliberately disabled before dispatch. Local protected masters remain available."]
-              : null;
+  const consentDrifted =
+    Boolean(input.command.consentVersion) &&
+    readiness.consentVersion !== input.command.consentVersion;
+  const hold =
+    text(room.provider).toLowerCase() !== "livekit"
+      ? [
+          "PROVIDER_NOT_LIVEKIT",
+          "The room provider changed before START dispatch.",
+        ]
+      : closed
+        ? [
+            "PROVIDER_RECORDING_ROOM_CLOSED",
+            "The room closed before provider START dispatch.",
+          ]
+        : paymentReason
+          ? ["PROVIDER_RECORDING_PAYMENT_HOLD", paymentReason]
+          : consentReason
+            ? ["PROVIDER_RECORDING_CONSENT_HOLD", consentReason]
+            : consentDrifted
+              ? [
+                  "PROVIDER_RECORDING_CONSENT_DRIFT",
+                  "Participant consent evidence changed after this START command was queued. Review the current consent and issue a new explicit request.",
+                ]
+              : !input.environment.egressEnabled
+                ? [
+                    "PROVIDER_RECORDING_DISABLED",
+                    input.environment.missing.length
+                      ? `Provider recording became unavailable before dispatch: missing ${input.environment.missing.join(", ")}.`
+                      : "Provider recording was deliberately disabled before dispatch. Local protected masters remain available.",
+                  ]
+                : null;
   if (!hold) return input.command;
   return markCommand(input.prisma, input.command, {
     status: "HELD",
@@ -1037,7 +1224,7 @@ export async function processProviderRecordingCommand(input: {
   environment?: ProviderRecordingEnvironment;
   idempotentReplay?: boolean;
 }): Promise<ProviderRecordingCommandResult> {
-  const prisma = input.prisma || getPrismaClient() as any;
+  const prisma = input.prisma || (getPrismaClient() as any);
   const environment = input.environment || getProviderRecordingEnvironment();
   const claim = await claimCommand(prisma, input.commandId);
   let command = claim.command;
@@ -1059,7 +1246,8 @@ export async function processProviderRecordingCommand(input: {
     command = await markCommand(prisma, command, {
       status: "HELD",
       code: "PROVIDER_RECORDING_CONTROL_NOT_CONFIGURED",
-      message: "LiveKit control credentials are unavailable. The durable command remains visible and local protected masters are unaffected.",
+      message:
+        "LiveKit control credentials are unavailable. The durable command remains visible and local protected masters are unaffected.",
     });
     return asResult(command, Boolean(input.idempotentReplay));
   }
@@ -1068,7 +1256,12 @@ export async function processProviderRecordingCommand(input: {
   if (command.action === "START") {
     if (command.dispatchedAt || command.status === "RECONCILE_REQUIRED") {
       try {
-        command = await reconcileStart({ prisma, command, provider, environment });
+        command = await reconcileStart({
+          prisma,
+          command,
+          provider,
+          environment,
+        });
       } catch (error) {
         command = await markCommand(prisma, command, {
           status: "RECONCILE_REQUIRED",
@@ -1080,7 +1273,12 @@ export async function processProviderRecordingCommand(input: {
     }
     let preflight;
     try {
-      preflight = await reconcileStart({ prisma, command, provider, environment });
+      preflight = await reconcileStart({
+        prisma,
+        command,
+        provider,
+        environment,
+      });
     } catch (error) {
       preflight = await markCommand(prisma, command, {
         status: "HELD",
@@ -1099,13 +1297,28 @@ export async function processProviderRecordingCommand(input: {
       const evidence = await provider.startRoomComposite({
         roomName: command.providerRoomId,
         storageObjectPath: command.expectedStorageObjectPath,
+        mode:
+          object(command.requestJson).providerRecordingMode ===
+          "video-composite"
+            ? "video-composite"
+            : "audio-reference",
         webhookUrl: environment.webhookUrl,
         webhookSigningKey: environment.apiKey,
       });
-      command = await finalizeStart(prisma, command, evidence, "start-response");
+      command = await finalizeStart(
+        prisma,
+        command,
+        evidence,
+        "start-response",
+      );
     } catch (error) {
       try {
-        command = await reconcileStart({ prisma, command, provider, environment });
+        command = await reconcileStart({
+          prisma,
+          command,
+          provider,
+          environment,
+        });
       } catch {
         command = await markCommand(prisma, command, {
           status: "RECONCILE_REQUIRED",
@@ -1135,9 +1348,16 @@ export async function processProviderRecordingCommand(input: {
     });
     return asResult(command, Boolean(input.idempotentReplay));
   }
-  const matching = active.find((item) => item.egressId === command.providerEgressId);
+  const matching = active.find(
+    (item) => item.egressId === command.providerEgressId,
+  );
   if (!matching) {
-    command = await finalizeStop(prisma, command, null, "provider-no-longer-active");
+    command = await finalizeStop(
+      prisma,
+      command,
+      null,
+      "provider-no-longer-active",
+    );
     return asResult(command, Boolean(input.idempotentReplay));
   }
   command = await prisma.providerRecordingCommand.update({
@@ -1161,8 +1381,15 @@ export async function processProviderRecordingCommand(input: {
         code: "PROVIDER_STOP_RECONCILIATION_UNAVAILABLE",
         message: `LiveKit STOP and follow-up reconciliation were unavailable: ${error instanceof Error ? error.message : "unknown error"}. Do not assume recording ended.`,
       });
-    } else if (!after.some((item) => item.egressId === command.providerEgressId)) {
-      command = await finalizeStop(prisma, command, null, "stop-transport-reconciled-inactive");
+    } else if (
+      !after.some((item) => item.egressId === command.providerEgressId)
+    ) {
+      command = await finalizeStop(
+        prisma,
+        command,
+        null,
+        "stop-transport-reconciled-inactive",
+      );
     } else {
       command = await markCommand(prisma, command, {
         status: "RECONCILE_REQUIRED",
@@ -1178,10 +1405,19 @@ export async function applyLiveKitProviderWebhook(input: {
   evidence: LiveKitWebhookEvidence;
   prisma?: any;
 }) {
-  const prisma = input.prisma || getPrismaClient() as any;
+  const prisma = input.prisma || (getPrismaClient() as any);
   const evidence = input.evidence;
-  if (!evidence.eventId || !evidence.eventType.startsWith("egress_") || !evidence.egress?.egressId) {
-    return { ok: true, ignored: true, idempotentReplay: false, message: "Authenticated non-egress webhook acknowledged." };
+  if (
+    !evidence.eventId ||
+    !evidence.eventType.startsWith("egress_") ||
+    !evidence.egress?.egressId
+  ) {
+    return {
+      ok: true,
+      ignored: true,
+      idempotentReplay: false,
+      message: "Authenticated non-egress webhook acknowledged.",
+    };
   }
   const room = await prisma.callRoom.findFirst({
     where: {
@@ -1200,17 +1436,27 @@ export async function applyLiveKitProviderWebhook(input: {
   }
 
   return serializableTransaction(prisma, async (tx: any) => {
-    await acquirePrismaAdvisoryTransactionLock(tx, `provider-recording:${room.id}`);
+    await acquirePrismaAdvisoryTransactionLock(
+      tx,
+      `provider-recording:${room.id}`,
+    );
     const replay = await tx.providerRecordingEventReceipt.findUnique({
       where: { providerEventId: evidence.eventId },
     });
     if (replay) {
-      return { ok: true, ignored: false, idempotentReplay: true, receiptId: replay.id, message: replay.applyMessage };
+      return {
+        ok: true,
+        ignored: false,
+        idempotentReplay: true,
+        receiptId: replay.id,
+        message: replay.applyMessage,
+      };
     }
     let command = await tx.providerRecordingCommand.findFirst({
       where: {
         providerEgressId: evidence.egress!.egressId,
-        ...(evidence.eventType === "egress_started" || evidence.eventType === "egress_updated"
+        ...(evidence.eventType === "egress_started" ||
+        evidence.eventType === "egress_updated"
           ? { action: "START" }
           : {}),
       },
@@ -1226,25 +1472,39 @@ export async function applyLiveKitProviderWebhook(input: {
         orderBy: { createdAt: "desc" },
         take: 20,
       });
-      command = candidates.find((candidate: any) => liveKitEgressMatchesObject(
-        evidence.egress!,
-        candidate.expectedStorageObjectPath,
-      )) || null;
+      command =
+        candidates.find((candidate: any) =>
+          liveKitEgressMatchesObject(
+            evidence.egress!,
+            candidate.expectedStorageObjectPath,
+          ),
+        ) || null;
     }
     const asset = command?.recordingAssetId
-      ? await tx.recordingAsset.findUnique({ where: { id: command.recordingAssetId } })
+      ? await tx.recordingAsset.findUnique({
+          where: { id: command.recordingAssetId },
+        })
       : null;
     let applied = false;
-    let message = "Authenticated provider event retained; no durable Quipsly command matched it.";
+    let message =
+      "Authenticated provider event retained; no durable Quipsly command matched it.";
     const now = new Date();
     if (command && asset) {
-      if (evidence.eventType === "egress_started" || evidence.eventType === "egress_updated") {
+      if (
+        evidence.eventType === "egress_started" ||
+        evidence.eventType === "egress_updated"
+      ) {
         await tx.providerRecordingCommand.update({
           where: { id: command.id },
           data: {
             status: "APPLIED",
             providerEgressId: evidence.egress!.egressId,
-            providerResponseJson: json({ source: "authenticated-webhook", evidence: evidence.egress!.raw, message: "Provider safety recording acknowledged by authenticated webhook." }),
+            providerResponseJson: json({
+              source: "authenticated-webhook",
+              evidence: evidence.egress!.raw,
+              message:
+                "Provider safety recording acknowledged by authenticated webhook.",
+            }),
             appliedAt: command.appliedAt || now,
             reconciledAt: now,
             leaseToken: null,
@@ -1257,7 +1517,11 @@ export async function applyLiveKitProviderWebhook(input: {
           where: { id: asset.id },
           data: {
             status: "UPLOADING",
-            recordedStartedAt: asset.recordedStartedAt || (evidence.egress!.startedAt ? new Date(evidence.egress!.startedAt) : now),
+            recordedStartedAt:
+              asset.recordedStartedAt ||
+              (evidence.egress!.startedAt
+                ? new Date(evidence.egress!.startedAt)
+                : now),
             errorMessage: null,
             localManifestJson: json({
               ...object(asset.localManifestJson),
@@ -1277,7 +1541,11 @@ export async function applyLiveKitProviderWebhook(input: {
           where: { id: room.id },
           data: {
             status: "RECORDING",
-            recordingStartedAt: room.recordingStartedAt || (evidence.egress!.startedAt ? new Date(evidence.egress!.startedAt) : now),
+            recordingStartedAt:
+              room.recordingStartedAt ||
+              (evidence.egress!.startedAt
+                ? new Date(evidence.egress!.startedAt)
+                : now),
             metadataJson: json({
               ...object(room.metadataJson),
               activeLiveKitEgressId: evidence.egress!.egressId,
@@ -1288,7 +1556,8 @@ export async function applyLiveKitProviderWebhook(input: {
           },
         });
         applied = true;
-        message = "Provider START evidence reconciled from an authenticated webhook.";
+        message =
+          "Provider START evidence reconciled from an authenticated webhook.";
       } else if (evidence.eventType === "egress_ended") {
         const providerError = text(evidence.egress!.raw.error);
         await tx.providerRecordingCommand.update({
@@ -1307,7 +1576,9 @@ export async function applyLiveKitProviderWebhook(input: {
             reconciledAt: now,
             leaseToken: null,
             leaseExpiresAt: null,
-            errorCode: providerError ? "PROVIDER_EGRESS_ENDED_WITH_ERROR" : null,
+            errorCode: providerError
+              ? "PROVIDER_EGRESS_ENDED_WITH_ERROR"
+              : null,
             errorMessage: providerError || null,
           },
         });
@@ -1315,9 +1586,15 @@ export async function applyLiveKitProviderWebhook(input: {
           where: { id: asset.id },
           data: {
             status: providerError ? "HELD" : "UPLOADED",
-            recordedStoppedAt: evidence.egress!.endedAt ? new Date(evidence.egress!.endedAt) : now,
-            uploadedAt: providerError ? asset.uploadedAt : asset.uploadedAt || now,
-            errorMessage: providerError || "Provider egress ended; exact storage bytes still require reconciliation.",
+            recordedStoppedAt: evidence.egress!.endedAt
+              ? new Date(evidence.egress!.endedAt)
+              : now,
+            uploadedAt: providerError
+              ? asset.uploadedAt
+              : asset.uploadedAt || now,
+            errorMessage:
+              providerError ||
+              "Provider egress ended; exact storage bytes still require reconciliation.",
             localManifestJson: json({
               ...object(asset.localManifestJson),
               livekit: {
@@ -1337,7 +1614,8 @@ export async function applyLiveKitProviderWebhook(input: {
               ...object(room.metadataJson),
               lastLiveKitEgressId: evidence.egress!.egressId,
               lastProviderRecordingAssetId: asset.id,
-              providerRecordingStoppedAt: evidence.egress!.endedAt || now.toISOString(),
+              providerRecordingStoppedAt:
+                evidence.egress!.endedAt || now.toISOString(),
               activeLiveKitEgressId: null,
               activeProviderRecordingAssetId: null,
               activeProviderRecordingCommandId: null,
@@ -1359,13 +1637,22 @@ export async function applyLiveKitProviderWebhook(input: {
         commandId: command?.id || null,
         recordingAssetId: asset?.id || null,
         providerEgressId: evidence.egress!.egressId,
-        providerCreatedAt: evidence.createdAt ? new Date(evidence.createdAt) : null,
+        providerCreatedAt: evidence.createdAt
+          ? new Date(evidence.createdAt)
+          : null,
         payloadJson: json(evidence.raw),
         applied,
         applyMessage: message,
         appliedAt: applied ? now : null,
       },
     });
-    return { ok: true, ignored: false, idempotentReplay: false, receiptId: receipt.id, applied, message };
+    return {
+      ok: true,
+      ignored: false,
+      idempotentReplay: false,
+      receiptId: receipt.id,
+      applied,
+      message,
+    };
   });
 }

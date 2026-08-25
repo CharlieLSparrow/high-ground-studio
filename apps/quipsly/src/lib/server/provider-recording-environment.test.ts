@@ -14,6 +14,7 @@ const keys = [
   "AUTH_URL",
   "QUIPSLY_APP_HOST",
   "LIVEKIT_EGRESS_ENABLED",
+  "LIVEKIT_EGRESS_MODE",
 ] as const;
 
 const original = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
@@ -45,6 +46,7 @@ describe("provider recording environment", () => {
       webhookUrl: "https://nest.quipsly.com/api/providers/livekit/webhook",
       webhookConfigured: true,
       egressRequested: true,
+      egressMode: "audio-reference",
       egressEnabled: true,
       missing: [],
     });

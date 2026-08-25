@@ -69,13 +69,29 @@ type AlignmentSuggestion =
       acousticAnalysisStarted: false;
       spineRecordingAssetId: string;
       targetRecordingAssetId: string;
-      clockAuthority:
-        | "capture-clock-proposal"
-        | "reported-wall-clock-fallback";
+      clockAuthority: "capture-clock-proposal" | "reported-wall-clock-fallback";
       initialOffsetSeconds: number;
       overlapStartSeconds: number;
       overlapEndSeconds: number;
       searchRadiusSeconds: number;
+      sharedReference?: null | {
+        recordingAssetId: string;
+        mode: "audio-reference" | "video-composite";
+        targets: Array<{
+          recordingAssetId: string;
+          initialOffsetSeconds: number;
+          overlapStartSeconds: number;
+          overlapEndSeconds: number;
+          searchRadiusSeconds: number;
+          processorCompatible: boolean;
+        }>;
+        boundaries: {
+          participantMastersRemainAuthoritative: true;
+          providerReferenceIsOptionalWitness: true;
+          exactGenerationReadAndHashed: true;
+          referenceCannotReplaceParticipantMaster: true;
+        };
+      };
     }
   | {
       status: "waiting";
@@ -136,8 +152,7 @@ function EvidenceQuality({
           window.value.normalizedCorrelation >=
           evidence.qualification.minimumCorrelation;
         const marginPass =
-          window.value.peakMargin >=
-          evidence.qualification.minimumPeakMargin;
+          window.value.peakMargin >= evidence.qualification.minimumPeakMargin;
         return (
           <div
             key={window.label}
@@ -223,12 +238,10 @@ function SourceClockOverview({
   suggestion: Extract<AlignmentSuggestion, { status: "ready" }>;
 }) {
   const spine = sources.find(
-    (source) =>
-      source.recordingAssetId === suggestion.spineRecordingAssetId,
+    (source) => source.recordingAssetId === suggestion.spineRecordingAssetId,
   );
   const target = sources.find(
-    (source) =>
-      source.recordingAssetId === suggestion.targetRecordingAssetId,
+    (source) => source.recordingAssetId === suggestion.targetRecordingAssetId,
   );
   const spineDuration = spine?.protectedPlayback?.durationSeconds ?? 0;
   const targetDuration = target?.protectedPlayback?.durationSeconds ?? 0;
@@ -285,8 +298,14 @@ function SourceClockOverview({
           aria-hidden="true"
         />
         {rows.map((row) => (
-          <div key={row.key} className="relative grid grid-cols-1 items-center gap-1.5 sm:grid-cols-[7rem_1fr] sm:gap-2">
-            <p className="truncate text-[9px] font-black text-slate-300" title={row.label}>
+          <div
+            key={row.key}
+            className="relative grid grid-cols-1 items-center gap-1.5 sm:grid-cols-[7rem_1fr] sm:gap-2"
+          >
+            <p
+              className="truncate text-[9px] font-black text-slate-300"
+              title={row.label}
+            >
               {row.label}
             </p>
             <div className="relative h-9 overflow-hidden rounded-md bg-slate-950">
@@ -306,7 +325,9 @@ function SourceClockOverview({
                     />
                   ))
                 ) : (
-                  <span className={`m-auto h-1 w-full ${row.barTone} opacity-70`} />
+                  <span
+                    className={`m-auto h-1 w-full ${row.barTone} opacity-70`}
+                  />
                 )}
               </div>
             </div>
@@ -314,9 +335,18 @@ function SourceClockOverview({
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[9px] font-bold text-slate-400">
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-cyan-300" />Spine</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-fuchsia-300" />Source to place</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-300/40" />Shared window</span>
+        <span>
+          <i className="mr-1 inline-block h-2 w-2 rounded-sm bg-cyan-300" />
+          Spine
+        </span>
+        <span>
+          <i className="mr-1 inline-block h-2 w-2 rounded-sm bg-fuchsia-300" />
+          Source to place
+        </span>
+        <span>
+          <i className="mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-300/40" />
+          Shared window
+        </span>
         <span>
           {spineWaveform.length && targetWaveform.length
             ? "Complete-decode waveforms shown"
@@ -352,8 +382,9 @@ export function SessionSourceAlignmentCard({
       ?.recordingAssetId ?? "",
   );
   const [alignments, setAlignments] = useState<Alignment[]>([]);
-  const [suggestion, setSuggestion] =
-    useState<AlignmentSuggestion | null>(null);
+  const [suggestion, setSuggestion] = useState<AlignmentSuggestion | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [revokeReason, setRevokeReason] = useState("");
@@ -399,10 +430,35 @@ export function SessionSourceAlignmentCard({
         alignment.targetRecordingAssetId === targetId,
     ) ?? null;
 
+  const pendingAlignment =
+    alignments.find((alignment) =>
+      ["queued", "processing", "output-ready"].includes(alignment.status),
+    ) ?? null;
+
+  const sharedReference =
+    suggestion?.status === "ready" ? suggestion.sharedReference : null;
+  const sharedReferenceAlignments = sharedReference
+    ? alignments.filter(
+        (alignment) =>
+          alignment.spineRecordingAssetId === sharedReference.recordingAssetId,
+      )
+    : [];
+  const compatibleReferenceTargets =
+    sharedReference?.targets.filter((target) => target.processorCompatible) ??
+    [];
+  const completedReferenceAlignments = sharedReferenceAlignments.filter(
+    (alignment) => alignment.status === "completed",
+  );
+  const referenceAnalysisPending = sharedReferenceAlignments.some((alignment) =>
+    ["queued", "processing", "output-ready"].includes(alignment.status),
+  );
+
   useEffect(() => {
     if (
-      !current ||
-      !["queued", "processing", "output-ready"].includes(current.status)
+      !pendingAlignment ||
+      !["queued", "processing", "output-ready"].includes(
+        pendingAlignment.status,
+      )
     )
       return;
     const timer = window.setTimeout(async () => {
@@ -412,7 +468,10 @@ export function SessionSourceAlignmentCard({
           {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ action: "RECONCILE", jobId: current.jobId }),
+            body: JSON.stringify({
+              action: "RECONCILE",
+              jobId: pendingAlignment.jobId,
+            }),
           },
         );
         const payload = (await response.json()) as {
@@ -437,7 +496,7 @@ export function SessionSourceAlignmentCard({
       }
     }, 1_500);
     return () => window.clearTimeout(timer);
-  }, [current, roomId]);
+  }, [pendingAlignment, roomId]);
 
   async function analyze() {
     if (!spineId || !targetId || spineId === targetId) return;
@@ -479,6 +538,59 @@ export function SessionSourceAlignmentCard({
         error instanceof Error
           ? error.message
           : "Could not start exact-source sync analysis.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function analyzeSharedReference() {
+    if (!sharedReference) return;
+    const targets = sharedReference.targets.filter(
+      (target) => target.processorCompatible,
+    );
+    if (!targets.length) return;
+    setBusy(true);
+    setMessage("");
+    let queued = 0;
+    try {
+      for (const target of targets) {
+        const response = await fetch(
+          `/api/sessions/${encodeURIComponent(roomId)}/source-alignment`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "QUEUE",
+              spineRecordingAssetId: sharedReference.recordingAssetId,
+              targetRecordingAssetId: target.recordingAssetId,
+            }),
+          },
+        );
+        const payload = (await response.json()) as {
+          ok?: boolean;
+          alignment?: Alignment;
+          error?: string;
+        };
+        if (!response.ok || !payload.ok || !payload.alignment)
+          throw new Error(
+            payload.error ||
+              "Could not compare a participant master with the shared room reference.",
+          );
+        queued += 1;
+        setAlignments((existing) => [
+          payload.alignment!,
+          ...existing.filter((item) => item.jobId !== payload.alignment!.jobId),
+        ]);
+      }
+      setMessage(
+        `${queued} participant ${queued === 1 ? "master is" : "masters are"} being compared with the shared room reference. The originals remain authoritative.`,
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not compare the participant masters with the shared room reference.",
       );
     } finally {
       setBusy(false);
@@ -674,6 +786,111 @@ export function SessionSourceAlignmentCard({
           {suggestion.reason}
         </p>
       ) : null}
+      {sharedReference ? (
+        <div
+          className="mt-5 rounded-2xl border border-violet-700 bg-violet-950/35 p-4"
+          role="region"
+          aria-label="Shared room sync reference"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-black text-violet-100">
+                Shared room reference ready
+              </p>
+              <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-violet-100/80">
+                Quipsly also retained lightweight room audio heard by everyone.
+                It can help each isolated high-quality master find the same
+                moment when direct master-to-master audio is too different.
+              </p>
+            </div>
+            <span className="rounded-full border border-violet-700 px-2.5 py-1 text-[9px] font-black uppercase text-violet-200">
+              Reference only · never the master
+            </span>
+          </div>
+          <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+            <Metric
+              label="Reference"
+              value={
+                sharedReference.mode === "audio-reference"
+                  ? "Room audio"
+                  : "Room video mix"
+              }
+            />
+            <Metric
+              label="Masters compared"
+              value={`${completedReferenceAlignments.length}/${compatibleReferenceTargets.length}`}
+            />
+            <Metric label="Integrity" value="Generation + SHA bound" />
+          </dl>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {sharedReference.targets.map((target) => {
+              const source = sources.find(
+                (candidate) =>
+                  candidate.recordingAssetId === target.recordingAssetId,
+              );
+              const alignment = sharedReferenceAlignments.find(
+                (candidate) =>
+                  candidate.targetRecordingAssetId === target.recordingAssetId,
+              );
+              return (
+                <div
+                  key={target.recordingAssetId}
+                  className="rounded-xl border border-violet-900 bg-slate-950/50 p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-xs font-black text-violet-100">
+                      {source ? sourceLabel(source) : target.recordingAssetId}
+                    </p>
+                    <span className="text-[9px] font-black uppercase text-violet-300">
+                      {alignment?.status ??
+                        (target.processorCompatible
+                          ? "ready"
+                          : "materialization needed")}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                    Clock estimate {milliseconds(target.initialOffsetSeconds)} ·
+                    shared window {target.overlapStartSeconds.toFixed(1)}–
+                    {target.overlapEndSeconds.toFixed(1)}s
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          {compatibleReferenceTargets.length ? (
+            <button
+              type="button"
+              disabled={!canManage || busy || referenceAnalysisPending}
+              onClick={() => void analyzeSharedReference()}
+              className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full bg-violet-200 px-4 text-[10px] font-black text-violet-950 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy || referenceAnalysisPending ? (
+                <LoaderCircle
+                  size={15}
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <AudioWaveform size={15} aria-hidden="true" />
+              )}
+              {completedReferenceAlignments.length
+                ? "Compare with room reference again"
+                : "Strengthen sync with room reference"}
+            </button>
+          ) : (
+            <p className="mt-3 rounded-xl border border-amber-800 bg-amber-950/40 p-3 text-xs font-semibold text-amber-100">
+              The reference is safely retained, but these sources must be
+              materialized in one processor before waveform comparison can run.
+              Capture-clock placement remains active.
+            </p>
+          )}
+          <p className="mt-3 text-[10px] font-semibold leading-4 text-violet-200/70">
+            This produces review evidence only. Participant originals remain
+            unchanged and authoritative, and no timeline placement is applied
+            automatically.
+          </p>
+        </div>
+      ) : null}
       {current?.evidence ? (
         <div className="mt-5 rounded-2xl border border-cyan-700 bg-slate-950/80 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -734,8 +951,7 @@ export function SessionSourceAlignmentCard({
           <p className="mt-3 text-xs font-semibold leading-5 text-slate-300">
             {current.evidence.qualification.reason}
           </p>
-          {!current.evidence.qualification
-            .qualifiedForAuthorizedAgentReview ? (
+          {!current.evidence.qualification.qualifiedForAuthorizedAgentReview ? (
             <div className="mt-3 flex gap-3 rounded-xl border border-amber-800 bg-amber-950/40 p-3 text-xs font-semibold leading-5 text-amber-100">
               <CircleAlert
                 className="mt-0.5 shrink-0"
