@@ -83,6 +83,7 @@ final class MobileSessionConversationClient: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var accountCancellable: AnyCancellable?
     private var lastReceivedLiveMessageID: String?
+    private var loadGeneration = 0
 
     init() {
         let rawBaseURL = normalizedNestBaseURL(
@@ -180,8 +181,14 @@ final class MobileSessionConversationClient: ObservableObject {
             return
         }
 
+        loadGeneration += 1
+        let generation = loadGeneration
         if !quietly { isLoading = true }
-        defer { if !quietly { isLoading = false } }
+        defer {
+            if generation == loadGeneration {
+                isLoading = false
+            }
+        }
         do {
             var request = URLRequest(url: context.endpoint)
             request.httpMethod = "GET"
@@ -204,6 +211,8 @@ final class MobileSessionConversationClient: ObservableObject {
                     code: response.statusCode
                 )
             }
+            guard generation == loadGeneration,
+                  currentRoomID == context.roomID else { return }
             messages = Array(loaded.suffix(200))
             let roomTitle = payload.room?.title?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -219,6 +228,8 @@ final class MobileSessionConversationClient: ObservableObject {
                 await markRead(context: context, messageID: latest.id)
             }
         } catch {
+            guard generation == loadGeneration,
+                  currentRoomID == context.roomID else { return }
             if messages.isEmpty {
                 _ = restoreProtectedCache(context: context)
             }
@@ -290,6 +301,7 @@ final class MobileSessionConversationClient: ObservableObject {
             guard let message = payload.message else {
                 throw Self.error("The message was not returned after saving.", code: 500)
             }
+            invalidateLoads()
             upsert(message)
             pendingSend = nil
             outboundLiveHint = MobileChatPersistedLiveHint(
@@ -334,6 +346,7 @@ final class MobileSessionConversationClient: ObservableObject {
                 ]
             )
             if let updated = payload.message {
+                invalidateLoads()
                 upsert(updated)
             } else {
                 await load(session: session, forceRefresh: true)
@@ -369,6 +382,7 @@ final class MobileSessionConversationClient: ObservableObject {
             guard let removed = payload.message else {
                 throw Self.error("The removed message was not returned.", code: 500)
             }
+            invalidateLoads()
             upsert(removed)
             persist(context: context)
             return true
@@ -463,6 +477,11 @@ final class MobileSessionConversationClient: ObservableObject {
         messages = Array(messages.suffix(200))
     }
 
+    private func invalidateLoads() {
+        loadGeneration += 1
+        isLoading = false
+    }
+
     private func validateOrigin(_ candidate: URL?) throws {
         guard candidate?.scheme?.lowercased() == baseURL.scheme?.lowercased(),
               candidate?.host?.lowercased() == baseURL.host?.lowercased(),
@@ -478,6 +497,7 @@ final class MobileSessionConversationClient: ObservableObject {
 
     private func reset() {
         stopPolling()
+        loadGeneration += 1
         currentRoomID = nil
         messages = []
         title = "Session conversation"

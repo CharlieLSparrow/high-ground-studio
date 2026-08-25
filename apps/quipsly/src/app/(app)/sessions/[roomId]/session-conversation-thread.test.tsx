@@ -48,6 +48,14 @@ function response(value: unknown, status = 200) {
   } as Response;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
 describe("SessionConversationThread", () => {
   const originalFetch = global.fetch;
 
@@ -216,5 +224,95 @@ describe("SessionConversationThread", () => {
       screen.getByRole("textbox", { name: "View-only conversation" }),
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  });
+
+  it("does not let a slower refresh replace a newer conversation snapshot", async () => {
+    const older = message({ body: "Older agenda" });
+    const newer = message({
+      id: "message-2",
+      body: "Newer agenda and next step",
+      createdAt: "2026-08-24T19:01:00.000Z",
+      updatedAt: "2026-08-24T19:01:00.000Z",
+    });
+    const first = deferred<Response>();
+    global.fetch = jest
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockResolvedValueOnce(
+        response({
+          ok: true,
+          messages: [older, newer],
+          unreadCount: 0,
+          capabilities: { canWrite: true, canEditOwnMessages: true },
+        }),
+      ) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionConversationThread roomId={roomId} />);
+    window.dispatchEvent(new Event("focus"));
+
+    expect(await screen.findByText(newer.body)).toBeInTheDocument();
+    first.resolve(
+      response({
+        ok: true,
+        messages: [older],
+        unreadCount: 0,
+        capabilities: { canWrite: true, canEditOwnMessages: true },
+      }),
+    );
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(newer.body)).toBeInTheDocument();
+    expect(screen.getByText(older.body)).toBeInTheDocument();
+  });
+
+  it("does not let an in-flight refresh roll back a confirmed edit", async () => {
+    const own = message({ isCurrentActor: true, canEdit: true });
+    const edited = message({
+      isCurrentActor: true,
+      canEdit: true,
+      body: "Confirmed agenda",
+      revision: 2,
+      editedAt: "2026-08-24T19:02:00.000Z",
+      updatedAt: "2026-08-24T19:02:00.000Z",
+    });
+    const staleRefresh = deferred<Response>();
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        response({
+          ok: true,
+          messages: [own],
+          unreadCount: 0,
+          capabilities: { canWrite: true, canEditOwnMessages: true },
+        }),
+      )
+      .mockImplementationOnce(() => staleRefresh.promise)
+      .mockResolvedValueOnce(response({ ok: true, message: edited })) as jest.MockedFunction<
+      typeof fetch
+    >;
+    const user = userEvent.setup();
+
+    render(<SessionConversationThread roomId={roomId} />);
+    expect(await screen.findByText(own.body)).toBeInTheDocument();
+    window.dispatchEvent(new Event("focus"));
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const editor = screen.getAllByRole("textbox")[0];
+    await user.clear(editor);
+    await user.type(editor, edited.body);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(edited.body)).toBeInTheDocument();
+
+    staleRefresh.resolve(
+      response({
+        ok: true,
+        messages: [own],
+        unreadCount: 0,
+        capabilities: { canWrite: true, canEditOwnMessages: true },
+      }),
+    );
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(3));
+    expect(screen.getByText(edited.body)).toBeInTheDocument();
+    expect(screen.queryByText(own.body)).not.toBeInTheDocument();
   });
 });

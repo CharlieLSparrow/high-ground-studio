@@ -99,6 +99,7 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const pendingSend = useRef<PendingSend | null>(null);
   const markedReadMessageId = useRef<string | null>(null);
+  const loadGeneration = useRef(0);
   const scrollArea = useRef<HTMLDivElement>(null);
   const initialScrollComplete = useRef(false);
 
@@ -129,6 +130,7 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
 
   const load = useCallback(
     async (silent = false) => {
+      const generation = ++loadGeneration.current;
       if (!silent) setLoading(true);
       try {
         const response = await fetch(
@@ -141,6 +143,7 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
             payload.error || "The conversation could not be loaded.",
           );
         }
+        if (generation !== loadGeneration.current) return;
         setMessages(payload.messages);
         setUnreadCount(payload.unreadCount || 0);
         setCanWrite(payload.capabilities?.canWrite === true);
@@ -150,7 +153,7 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
           void markRead(latest.id);
         }
       } catch (error) {
-        if (!silent) {
+        if (!silent && generation === loadGeneration.current) {
           setNotice(
             error instanceof Error
               ? error.message
@@ -158,7 +161,7 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
           );
         }
       } finally {
-        if (!silent) setLoading(false);
+        if (generation === loadGeneration.current) setLoading(false);
       }
     },
     [markRead, roomId],
@@ -173,6 +176,7 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
     return () => {
+      loadGeneration.current += 1;
       window.clearInterval(interval);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
@@ -224,6 +228,8 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
       if (!response.ok || !payload.ok || !payload.message) {
         throw new Error(payload.error || "The message was not sent.");
       }
+      loadGeneration.current += 1;
+      setLoading(false);
       setMessages((current) => upsertMessage(current, payload.message!));
       setDraft("");
       setReplyTo(null);
@@ -259,6 +265,8 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
         throw new Error(payload.error || "The message was not updated.");
       }
       if (payload.message) {
+        loadGeneration.current += 1;
+        setLoading(false);
         setMessages((current) => upsertMessage(current, payload.message!));
       } else {
         await load(true);
@@ -294,6 +302,8 @@ export function SessionConversationThread({ roomId }: { roomId: string }) {
       if (!response.ok || !payload.ok || !payload.message) {
         throw new Error(payload.error || "The message was not removed.");
       }
+      loadGeneration.current += 1;
+      setLoading(false);
       setMessages((current) => upsertMessage(current, payload.message!));
       setConfirmRemoveId(null);
       if (replyTo?.id === message.id) setReplyTo(null);
