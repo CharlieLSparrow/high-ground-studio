@@ -10967,7 +10967,7 @@ private struct ConsentStrip: View {
             }
         }
         guard session.hasCurrentRecordingConsent else {
-            return "Review what this Session will record, then agree once."
+            return "Everyone agrees once. Recording starts only when the coach or host presses Record."
         }
         let sources = [
             session.recordingConsentCanRecordAudio == true ? "audio" : nil,
@@ -10984,6 +10984,7 @@ private struct ConsentStrip: View {
 
 struct CaptureConsentConfirmationSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let session: MobileCaptureSession
     let requiresStableOwner: Bool
     let onSave: @MainActor @Sendable (Bool, Bool, Bool, Bool, Date) async -> Bool
@@ -11036,7 +11037,7 @@ struct CaptureConsentConfirmationSheet: View {
                             .font(.title3.weight(.semibold))
                         Text(defaultConsentSummary)
                             .font(.subheadline.weight(.semibold))
-                        Text("Your choice is saved for this Session. Recording only starts when someone taps Record.")
+                        Text("Everyone agrees once. Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -11079,7 +11080,7 @@ struct CaptureConsentConfirmationSheet: View {
                 }
 
                 Section {
-                    Text("Each signed-in person chooses for themselves. If anyone else is nearby, let them know before recording.")
+                    Text("Everyone chooses for themselves. If anyone else is nearby, let them know before recording.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -11109,7 +11110,7 @@ struct CaptureConsentConfirmationSheet: View {
             }
             .interactiveDismissDisabled(isSubmitting)
         }
-        .presentationDetents([.large])
+        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
         .accessibilityIdentifier("CaptureConsentConfirmationSheet")
     }
 

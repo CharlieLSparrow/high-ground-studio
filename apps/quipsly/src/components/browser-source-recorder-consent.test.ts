@@ -32,10 +32,12 @@ describe("browser retained-source consent", () => {
     expect(source).not.toContain('open={status === "recording"}');
     expect(source).toContain("Recording settings ·");
     expect(source).toContain(
-      "Quipsly waits for each signed-in person to choose.",
+      "Everyone agrees once. Quipsly remembers your choice for this",
     );
-    expect(source).toContain("Record still");
-    expect(source).toContain("starts separately.");
+    expect(source).toContain(
+      "Recording starts only when the coach or host presses",
+    );
+    expect(source).toContain("If anyone else is nearby, let");
     expect(source).toContain("Create a transcript and suggested notes/tasks");
     expect(source).toContain("conversationConnected = true");
     expect(source).toContain(
