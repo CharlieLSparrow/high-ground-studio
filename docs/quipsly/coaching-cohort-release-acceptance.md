@@ -2217,3 +2217,31 @@ an explicit retry. Static contracts and a generic Simulator build are the local
 acceptance target for this parity slice. They do not replace a physical-iPhone
 headset/speaker listen, real-dialogue join judgment, cross-device readback, or
 named-client delivery flight, all of which remain in the ledger above.
+
+## Operated iPhone appointment-management flight — 2026-08-25
+
+The compiled Capture workflow now owns the ordinary appointment lifecycle on
+the phone instead of sending the coach to a separate web or staff surface. A
+fresh verified account enabled Coaching, scheduled a canonical Session using
+only a client email, opened the resulting private relationship, sent a
+relationship-wide message, and created a shared note, task, goal, and a
+coach-private note. From the same Coaching home it rescheduled the appointment
+to 45 minutes, entered the exact Session through Record, returned through the
+persistent Today tab, and canceled the appointment with a destructive
+confirmation. Cancellation removed the appointment from Upcoming while
+retaining the durable client relationship and existing work.
+
+Independent API readback verified the exact booking as `CANCELED`, the retained
+45-minute interval, the relationship message and work identities, client edit
+authority over shared work, coach authority over the private note, and denial
+of the private note to the invited client. A third unrelated account received
+404 for both the relationship conversation and workspace. The operation made
+no direct acceptance writes to the database.
+
+Receipt:
+`artifacts/coaching-acceptance/phone-start-80772abd/phone-start-receipt.json`.
+The compiled UI test passed 1/1 in 126.399 seconds with no unexpected runtime
+warnings. This remains simulator and local-adapter evidence, not physical
+iPhone, external mailbox, production deployment, minimally instructed human,
+or 50-coach load proof; those validations stay on the continuous ledger and do
+not stop the next independent product lane.
