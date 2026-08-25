@@ -3948,3 +3948,45 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   full Quipsly typecheck passes. Real navigation, outage, account-switch,
   server convergence, and exact-source playback remain deferred. Detailed
   record: `docs/sessions/browser-recording-receipt-outbox-2026-08-25.md`.
+
+### 2026-08-25 shared-clock review and cloud audio experiments
+
+- Capture recording quality now uses one shared-clock waveform rail with an
+  explicit playhead and visually distinct signal warnings, capture boundaries,
+  and audible-event suggestions. Tapping seeks the immutable source; it does
+  not edit, confirm, repair, master, share, or publish anything.
+- Dialogue Repair and the narrowly qualified DC/rumble treatment now accept
+  exact generation-bound GCS sources as well as local media. Each uses a
+  create-once control manifest and queue receipt, an expiring optimistic lease,
+  a deterministic output object, exact-generation readback, independent
+  measurement and diagnosis, and a terminal dead-letter path.
+- Nest registers a cloud preview only after the worker result, source binding,
+  output bytes, object metadata, duration/channel gates, and complete-decode
+  evidence agree. Missing processor configuration retains the job as a visible
+  blocked state instead of misreporting failure. Originals remain source truth;
+  both outputs remain unpromoted experiments with separate listening and
+  promotion authority.
+- Focused worker, outbox, route, contract, real-FFmpeg, and media-vault checks
+  pass, alongside strict package/app typechecks and production Quipsly builds.
+  Live Cloud Run operation, protected listening, and human A/B judgments remain
+  release-bound validation rather than inferred proof.
+
+### 2026-08-25 Capture Build 35 exact-candidate qualification
+
+- Detached committed source `d51651fffbef5e87ae406b7a4abcec32302eea7e`
+  passed all four deterministic iPhone UI shards: 83/83 selected tests, zero
+  failures, zero skips, and source-bound native result bundles.
+- Quipsly Capture 1.0 (35) then archived and exported with Apple Distribution
+  signing for team `585GUXMY5M`. App and Share extension metadata, privacy
+  manifests, iPhone-only device family, background audio/VoIP modes,
+  entitlements, provisioning profiles, and strict nested signatures passed
+  packaged-artifact inspection.
+- The qualified IPA is 27,856,831 bytes with SHA-256
+  `f99ab738b23ce7a8325dd55ed9b8a4808ecc93b4884d0b859323a3578101d188`.
+  Receipt and UI evidence are retained under the run-scoped
+  `/tmp/quipsly-capture-release/d51651fffbef/20260825T213036Z-90342` and
+  `/tmp/quipsly-capture-ui-tests/d51651fffbef/20260825T213036Z-90342`
+  directories.
+- Candidate qualification deliberately did not upload, assign testers, wait
+  for App Store processing, or claim a physical TestFlight install. Those
+  remain separate authenticated and human/device validation boundaries.
