@@ -163,8 +163,8 @@ case "$TEST_MODE" in
     ;;
   transcript-task-isolation)
     TEST_CASE="testReviewedTranscriptTaskStaysPrivateFromOtherSessionParticipant"
-    if [[ -z "$TEST_TASK_ID" || -z "$TEST_EXPECTED_PACKET_TASK_TITLE" ]]; then
-      echo "Transcript task isolation mode requires exact task and title identities." >&2
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TASK_ID" || -z "$TEST_EXPECTED_PACKET_TASK_TITLE" ]]; then
+      echo "Transcript isolation mode requires exact Session, task, and title identities." >&2
       exit 2
     fi
     ;;

@@ -827,6 +827,11 @@ private struct CapturePacketGoalReviewContext: Equatable {
 
 private struct CapturePacketGoalReviewEnvelope: Codable {
     struct Packet: Codable {
+        struct ReviewAccess: Codable {
+            let canReviewPrivatePacket: Bool
+            let role: String?
+            let boundary: String?
+        }
         struct TranscriptReview: Codable {
             let snapshotSha256: String?
             let segmentCount: Int
@@ -845,6 +850,7 @@ private struct CapturePacketGoalReviewEnvelope: Codable {
             let boundary: String
         }
         let build: Build?
+        let reviewAccess: ReviewAccess?
         let status: String?
         let transcriptReview: TranscriptReview?
         let summary: Summary?
@@ -881,6 +887,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var packetTaskProjectName: String?
     @Published private(set) var packetReviewError: String?
     @Published private(set) var packetStatus: String?
+    @Published private(set) var canReviewPrivatePacket = true
+    @Published private(set) var privatePacketBoundary: String?
     @Published private(set) var packetSegmentCount = 0
     @Published private(set) var packetReviewedSegmentCount = 0
     @Published private(set) var packetProviderOnlySegmentCount = 0
@@ -975,6 +983,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetGoalReviewContext = .init(summaryNoteId: "preview-summary", packetBuildId: "preview-build")
             packetReviewError = nil
             packetStatus = "READY_FOR_REVIEW"
+            canReviewPrivatePacket = true
+            privatePacketBoundary = nil
             packetSegmentCount = 0
             packetReviewedSegmentCount = 0
             packetProviderOnlySegmentCount = 0
@@ -998,6 +1008,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskProjectName = nil
             packetGoalReviewContext = nil
             packetStatus = nil
+            canReviewPrivatePacket = true
+            privatePacketBoundary = nil
             resetPacketReviewState()
             if restoreProtectedCache(roomID: roomID) {
                 errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; exact local playback-reviewed word decisions and voice identities can be queued safely, while packet and AI decisions stay locked until authority is verified."
@@ -1794,6 +1806,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskTags = payload.packet?.taskMaterialization?.tags ?? []
             packetTaskProjectName = payload.packet?.taskMaterialization?.project?.name
             packetStatus = payload.packet?.status
+            canReviewPrivatePacket = payload.packet?.reviewAccess?.canReviewPrivatePacket
+                ?? (payload.packet?.status?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() != "PRIVATE_REVIEWER_ONLY")
+            privatePacketBoundary = payload.packet?.reviewAccess?.boundary
             packetSegmentCount = payload.packet?.transcriptReview?.segmentCount ?? 0
             packetReviewedSegmentCount = payload.packet?.transcriptReview?.humanReviewedSegmentCount ?? 0
             packetProviderOnlySegmentCount = payload.packet?.transcriptReview?.providerOnlySegmentCount ?? 0
@@ -1823,12 +1838,18 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskProjectName = nil
             packetGoalReviewContext = nil
             packetStatus = nil
+            canReviewPrivatePacket = true
+            privatePacketBoundary = nil
             resetPacketReviewState()
             packetReviewError = error.localizedDescription
         }
     }
 
     func buildCurrentPacket(roomID: String, previewOnly: Bool) async -> Bool {
+        guard canReviewPrivatePacket else {
+            errorMessage = "Private follow-up review stays with this Session's coach. You can keep reviewing the shared transcript."
+            return false
+        }
         guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
             errorMessage = previewOnly
                 ? "Preview packet builds are intentionally disabled."
@@ -1840,7 +1861,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     private func prepareFollowUpIfNeeded(roomID: String) async {
         let status = packetStatus?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() ?? ""
-        guard status == "PACKET_READY_TO_BUILD" || packetNeedsRebuild,
+        guard canReviewPrivatePacket,
+              status == "PACKET_READY_TO_BUILD" || packetNeedsRebuild,
               let transcriptJobID = desk?.transcriptJobId?.nonemptyTranscriptValue else {
             return
         }
@@ -1891,6 +1913,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     private func resetPacketReviewState() {
         packetStatus = nil
+        canReviewPrivatePacket = true
+        privatePacketBoundary = nil
         packetSegmentCount = 0
         packetReviewedSegmentCount = 0
         packetProviderOnlySegmentCount = 0
@@ -2997,7 +3021,7 @@ struct CaptureTranscriptReviewView: View {
                                 icon: "target"
                             )
                             .accessibilityIdentifier("CaptureTranscriptPacketErrorBoundary")
-                        } else if client.followUpPreparationFailed && !client.packetNeedsRebuild {
+                        } else if client.canReviewPrivatePacket && client.followUpPreparationFailed && !client.packetNeedsRebuild {
                             followUpRetryNotice
                         } else if packetCandidateCount > 0 {
                             reviewNotice(
@@ -3008,7 +3032,9 @@ struct CaptureTranscriptReviewView: View {
                             )
                             .accessibilityIdentifier("CaptureTranscriptPacketLoadedBoundary")
                         }
-                        if client.packetSegmentCount > 0 {
+                        if !client.canReviewPrivatePacket {
+                            participantFollowUpBoundary
+                        } else if client.packetSegmentCount > 0 {
                             packetTranscriptReviewBoundary
                         }
                         speakerIdentitySection(desk)
@@ -4237,6 +4263,30 @@ struct CaptureTranscriptReviewView: View {
         .accessibilityIdentifier(client.packetNeedsRebuild
             ? "CaptureTranscriptPacketStaleBoundary"
             : "CaptureTranscriptPacketReviewProgress")
+    }
+
+    private var participantFollowUpBoundary: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Shared follow-up", systemImage: "person.2.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Color.indigo)
+            Text("Nothing has been shared yet")
+                .font(.headline)
+            Text("Your timed transcript remains available here. The coach's private review stays private unless they deliberately share a follow-up with you.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let boundary = client.privatePacketBoundary?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !boundary.isEmpty {
+                Text(boundary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .reviewCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptParticipantFollowUpBoundary")
     }
 
     private var followUpRetryNotice: some View {
