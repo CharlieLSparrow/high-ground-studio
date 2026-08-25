@@ -1,7 +1,12 @@
+import { Readable } from "node:stream";
+
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { getMediaBucket, requireMediaBucketName } from "@/lib/server/gcs";
 import { readMobileCaptureObjectBytes } from "@/lib/server/mobile-capture-object-reader";
+import { MOBILE_CAPTURE_LOCAL_VAULT_BUCKET } from "@/lib/server/mobile-capture-local-vault";
+import { privateMediaByteRange } from "@/lib/server/private-media-byte-range";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
   authorizeSessionRecordingShareMedia,
@@ -9,6 +14,7 @@ import {
 } from "@/lib/server/session-recording-share";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const MAX_AUDIO_BYTES = 1024 * 1024 * 1024;
 const PRIVATE = {
@@ -39,9 +45,10 @@ function errorResponse(error: unknown) {
   );
 }
 
-export async function GET(
+async function response(
   request: Request,
   context: { params: Promise<{ roomId: string; outputId: string }> },
+  headOnly: boolean,
 ) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user?.id)
@@ -61,30 +68,125 @@ export async function GET(
       getPrismaClient() as any,
       { roomId, outputId, actor: session.user },
     );
-    const bytes = await readMobileCaptureObjectBytes({
-      bucketName: asset.storageBucket,
-      objectName: asset.storageObjectPath,
-      expectedByteSize: Number(asset.byteSize),
-      expectedSha256: asset.checksum,
-      expectedGeneration: asset.storageGeneration,
-      maxBytes: MAX_AUDIO_BYTES,
-    });
     const url = new URL(request.url);
     const download = url.searchParams.get("download") === "1";
     const safeName = String(asset.fileName || "coaching-session.m4a").replace(
       /[^a-zA-Z0-9._-]+/g,
       "-",
     );
-    return new NextResponse(new Uint8Array(bytes), {
-      headers: {
-        ...PRIVATE,
-        "Content-Type": asset.contentType || "audio/mp4",
-        "Content-Length": String(bytes.byteLength),
-        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${safeName}"`,
-        "X-Content-Type-Options": "nosniff",
-      },
+    const size = Number(asset.byteSize);
+    const headers = new Headers({
+      ...PRIVATE,
+      "Accept-Ranges": "bytes",
+      "Content-Type": asset.contentType || "audio/mp4",
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${safeName}"`,
+      ETag: `"sha256-${asset.checksum}"`,
+      "X-Content-Type-Options": "nosniff",
+      "X-Quipsly-Verified-Bytes": String(size),
+    });
+    const requested = privateMediaByteRange(request.headers.get("range"), size);
+    if (requested === "invalid") {
+      headers.set("Content-Range", `bytes */${size}`);
+      return new Response(null, { status: 416, headers });
+    }
+
+    if (asset.storageBucket !== MOBILE_CAPTURE_LOCAL_VAULT_BUCKET) {
+      if (asset.storageBucket !== requireMediaBucketName()) {
+        throw new SessionRecordingShareError(
+          409,
+          "RECORDING_SHARE_VAULT_MISMATCH",
+          "This private preview is outside the configured media vault.",
+        );
+      }
+      const file = getMediaBucket(asset.storageBucket).file(
+        asset.storageObjectPath,
+        { generation: asset.storageGeneration as any },
+      );
+      const [metadata] = await file.getMetadata();
+      const custom = metadata.metadata ?? {};
+      if (
+        String(metadata.generation) !== asset.storageGeneration ||
+        Number(metadata.size) !== size ||
+        String(metadata.contentType) !== (asset.contentType || "audio/mp4") ||
+        String(custom.quipslyExpectedSha256) !== asset.checksum ||
+        String(custom.quipslyExpectedSizeBytes) !== String(size) ||
+        String(custom.quipslyOutputPrivateUntilRelease) !== "true"
+      ) {
+        throw new SessionRecordingShareError(
+          409,
+          "RECORDING_SHARE_OBJECT_MISMATCH",
+          "This private preview no longer matches its immutable render receipt.",
+        );
+      }
+      if (requested) {
+        headers.set(
+          "Content-Length",
+          String(requested.end - requested.start + 1),
+        );
+        headers.set(
+          "Content-Range",
+          `bytes ${requested.start}-${requested.end}/${size}`,
+        );
+        const body = headOnly
+          ? null
+          : (Readable.toWeb(
+              file.createReadStream(requested) as Readable,
+            ) as ReadableStream);
+        return new Response(body, { status: 206, headers });
+      }
+      headers.set("Content-Length", String(size));
+      const body = headOnly
+        ? null
+        : (Readable.toWeb(
+            file.createReadStream() as Readable,
+          ) as ReadableStream);
+      return new Response(body, { status: 200, headers });
+    }
+
+    const bytes = await readMobileCaptureObjectBytes({
+      bucketName: asset.storageBucket,
+      objectName: asset.storageObjectPath,
+      expectedByteSize: size,
+      expectedSha256: asset.checksum,
+      expectedGeneration: asset.storageGeneration,
+      maxBytes: MAX_AUDIO_BYTES,
+    });
+    if (requested) {
+      headers.set(
+        "Content-Length",
+        String(requested.end - requested.start + 1),
+      );
+      headers.set(
+        "Content-Range",
+        `bytes ${requested.start}-${requested.end}/${size}`,
+      );
+      return new Response(
+        headOnly
+          ? null
+          : new Uint8Array(bytes.subarray(requested.start, requested.end + 1)),
+        { status: 206, headers },
+      );
+    }
+    headers.set("Content-Length", String(size));
+    return new Response(headOnly ? null : new Uint8Array(bytes), {
+      status: 200,
+      headers,
     });
   } catch (error) {
     return errorResponse(error);
   }
+}
+
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ roomId: string; outputId: string }> },
+) {
+  return response(request, context, false);
+}
+
+export async function HEAD(
+  request: Request,
+  context: { params: Promise<{ roomId: string; outputId: string }> },
+) {
+  return response(request, context, true);
 }

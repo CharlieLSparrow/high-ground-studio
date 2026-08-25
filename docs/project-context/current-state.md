@@ -16,8 +16,11 @@ Date: 2026-08-24
   the result stays coach-private until the existing proof-listen and explicit
   release gate is satisfied.
 - Derived Session playback now pins its registered GCS generation in addition
-  to byte count and SHA-256. The renderer hashes files incrementally rather than
-  retaining an entire long recording in Node memory.
+  to byte count and SHA-256. Private previews and downloads now verify that
+  receipt and stream range requests from the exact generation, so timeline
+  seeking does not buffer a whole long recording through Nest. The renderer
+  also hashes files incrementally rather than retaining an entire export in
+  Node memory.
 - Focused contract, worker, outbox, object-reader, recording-share service, and
   UI tests plus strict shared, worker, and Quipsly TypeScript pass. Live
   two-source rendering, proof listening, recipient readback, revocation, and

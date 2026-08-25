@@ -47,6 +47,10 @@ cloud outbox rather than creating another render.
 - Playback now pins the registered GCS generation as well as byte count and
   SHA-256, preventing a later object version from inheriting old review
   authority.
+- Authenticated preview and download requests verify the worker metadata, then
+  stream the exact GCS generation with standard single-byte range and `HEAD`
+  support. Long coaching recordings can seek without buffering the complete
+  file through Nest memory.
 - The renderer streams output hashing instead of reading an eight-hour export
   into process memory.
 
