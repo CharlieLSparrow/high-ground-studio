@@ -599,6 +599,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
         let offlineSnapshotPreview = ProcessInfo.processInfo.arguments.contains(
             "--capture-coaching-offline-preview"
         )
+        let confirmedRequestPreview = ProcessInfo.processInfo.arguments.contains(
+            "--capture-confirmed-request-preview"
+        )
         let start = Date().addingTimeInterval((conflictPreview ? 55 : 35) * 60)
         let previewIsCoach = !clientRequestPreview
         let previewUserID = previewIsCoach ? "preview-coach" : "preview-client"
@@ -631,7 +634,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 invitationEmailConfigured: true,
                 invitationEmailStatus: "AVAILABLE"
             ),
-            upcomingBookings: (availabilityPreview || clientRequestPreview || coachRequestPreview) ? [] : [
+            upcomingBookings: (availabilityPreview || clientRequestPreview || coachRequestPreview) && !confirmedRequestPreview ? [] : [
                 MobileCoachingBooking(
                     id: "preview-booking",
                     coachingEngagementId: "preview-engagement",
@@ -690,6 +693,10 @@ final class MobileCoachingRunwayClient: ObservableObject {
         ] : []
         isUsingProtectedCache = offlineSnapshotPreview
         cachedSnapshotSavedAt = offlineSnapshotPreview ? Date().addingTimeInterval(-8 * 60) : nil
+        if confirmedRequestPreview,
+           let booking = response?.upcomingBookings?.first {
+            latestHandoff = appointmentResult(for: booking)
+        }
         status = offlineSnapshotPreview ? "Offline · saved coaching" : "Coaching ready"
         errorMessage = offlineSnapshotPreview ? cachedSnapshotStatusLine : nil
     }
@@ -878,7 +885,15 @@ final class MobileCoachingRunwayClient: ObservableObject {
             guard payload.ok else {
                 throw coachingClientError(payload.error ?? "That time request could not be updated.")
             }
+            if action == "convert-booking-hold" {
+                latestHandoff = payload.result
+            }
             await load()
+            if action == "convert-booking-hold",
+               let bookingID = payload.result?.bookingId ?? hold.convertedBookingId,
+               let booking = upcomingBookings.first(where: { $0.id == bookingID }) {
+                latestHandoff = appointmentResult(for: booking)
+            }
             status = completeStatus
             return true
         } catch {
@@ -1254,6 +1269,22 @@ final class MobileCoachingRunwayClient: ObservableObject {
             return false
         }
         return true
+    }
+
+    private func appointmentResult(for booking: MobileCoachingBooking) -> MobileCoachingAppointmentResult {
+        MobileCoachingAppointmentResult(
+            appointmentId: nil,
+            bookingId: booking.id,
+            callRoomId: booking.callRoomId,
+            engagementId: booking.coachingEngagementId,
+            clientEntryPath: booking.clientEntryPath,
+            engagementPath: booking.engagementPath,
+            liveSessionPath: booking.liveSessionPath,
+            sessionWorkspacePath: booking.sessionWorkspacePath,
+            clientUserId: booking.client?.id,
+            status: booking.status,
+            nextAction: "Open the confirmed Session, review devices, then join when ready. Nothing starts automatically."
+        )
     }
 
     private func useProtectedSnapshotIfAvailable(fallbackMessage: String) {
@@ -1992,6 +2023,7 @@ struct CaptureCoachingHomeView: View {
         }
         .captureCard()
         .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCoachingConfirmedHandoff")
     }
 
     private var upcomingSection: some View {

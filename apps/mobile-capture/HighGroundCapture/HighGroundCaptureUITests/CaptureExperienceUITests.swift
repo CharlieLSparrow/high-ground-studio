@@ -36,6 +36,9 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testCoachCanReviewIncomingTimeRequest") {
             app.launchArguments.append("--capture-coach-requests-preview")
         }
+        if name.contains("testConfirmedRequestHasImmediateSessionHandoff") {
+            app.launchArguments.append("--capture-confirmed-request-preview")
+        }
         if name.contains("testRecordingReceiptOutboxSurvivesRelaunchAndStaysAccountPartitioned") {
             app.launchArguments += [
                 "--capture-share-owner-ui-preview=recording-receipt-owner",
@@ -274,6 +277,30 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(
             cancel.isEnabled,
             "Cached scheduling must never issue a mutation until authoritative Nest state returns."
+        )
+    }
+
+    func testConfirmedRequestHasImmediateSessionHandoff() {
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+
+        let handoff = app.descendants(matching: .any)[
+            "CaptureCoachingConfirmedHandoff"
+        ]
+        reveal(handoff)
+        XCTAssertTrue(
+            handoff.waitForExistence(timeout: 5),
+            "Confirming a requested time should produce the same obvious Session handoff as direct scheduling."
+        )
+        XCTAssertTrue(app.staticTexts["Appointment ready"].exists)
+        XCTAssertTrue(
+            app.buttons["Open Session"].exists,
+            "The coach should not have to hunt through scheduling after confirmation."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["Share coaching invitation"].exists,
+            "The confirmed Session should retain the conventional system share fallback."
         )
     }
 

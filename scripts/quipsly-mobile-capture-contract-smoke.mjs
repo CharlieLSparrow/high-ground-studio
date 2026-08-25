@@ -435,6 +435,15 @@ function checkMeetingSpineContractSources() {
     "Capture preserves an account-partitioned, file-protected request snapshot across relaunch while clearly marking it stale and refusing scheduling mutations until authoritative Nest state returns.",
   );
   expect(
+    coachingHomeText.includes('if action == "convert-booking-hold"')
+      && coachingHomeText.includes("latestHandoff = payload.result")
+      && coachingHomeText.includes("appointmentResult(for: booking)")
+      && coachingHomeText.includes("CaptureCoachingConfirmedHandoff")
+      && captureExperienceUITestText.includes("testConfirmedRequestHasImmediateSessionHandoff"),
+    "nativeConfirmedRequestHasImmediateSessionHandoff",
+    "After an assigned coach confirms a requested time, Capture preserves the idempotent booking receipt and immediately presents the same explicit Open Session and share handoff as direct scheduling.",
+  );
+  expect(
     coachingHomeText.includes("var coachLabel: String")
       && coachingHomeText.includes("CaptureCoachingRequestChange_")
       && coachingHomeText.includes("MobileCoachingScheduleRequestSheet")
