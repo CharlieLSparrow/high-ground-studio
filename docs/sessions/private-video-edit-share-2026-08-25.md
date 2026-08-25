@@ -53,6 +53,13 @@ explicit release, and revocation boundaries. The iPhone downloads the verified
 bytes, checks SHA-256 and size, stores the temporary copy with complete file
 protection, and uses the native video player.
 
+Once the exact copy has passed its guided review, Capture also offers Export
+reviewed video/audio. It reuses only those already verified protected bytes and
+then opens the standard iPhone share sheet. A recipient sees that action only
+after Session release. Quipsly does not choose a destination or claim who
+received a file, and canceling the sheet changes neither the output nor any
+original recording.
+
 ## Local evidence
 
 - Shared contract and cloud policy tests: 11 passing.
@@ -62,8 +69,10 @@ protection, and uses the native video player.
 - Media processor typecheck and production bundle: passing.
 - Quipsly typecheck: passing.
 - Quipsly Capture dual-architecture Simulator build: passing.
+- The native export control, account/release gate, exact-byte preparation, and
+  standard share-sheet integration compile for both Simulator architectures.
 
 These checks prove deterministic contracts and local executable behavior. They
-do not prove physical-iPhone playback, live Cloud Run execution, human judgment
-of picture/sound sync, or cross-account release. Those remain in the deferred
-validation ledger.
+do not prove physical-iPhone playback or share-sheet delivery, live Cloud Run
+execution, human judgment of picture/sound sync, or cross-account release.
+Those remain in the deferred validation ledger.

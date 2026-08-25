@@ -327,6 +327,10 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         clearPlayback()
     }
 
+    func preparePreviewExport(roomID: String) async -> URL? {
+        await verifiedPreviewFile(roomID: roomID, busyAction: "EXPORT")
+    }
+
     func togglePreview(roomID: String) async {
         if let videoPlayer = previewVideoPlayer {
             if videoPlayer.timeControlStatus == .playing {
@@ -354,69 +358,27 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             startPreviewProgressTracking(roomID: roomID, player: player)
             return
         }
-        guard let output = snapshot?.output,
-              output.render.status == "VERIFIED",
-              output.mediaUrl != nil,
-              let expectedSHA256 = Self.normalizedSHA256(output.render.sha256),
-              let expectedSizeBytes = output.render.sizeBytes,
-              expectedSizeBytes > 0,
-              let owner = AuthManager.shared.stableOwnerSnapshot(),
-              let url = mediaEndpoint(roomID: roomID, outputID: output.id) else {
-            notice = "The private preview has not finished verification yet."
-            return
-        }
-        busyAction = "PLAY"
-        defer { busyAction = nil }
-        do {
-            var request = URLRequest(url: url)
-            request.cachePolicy = .reloadIgnoringLocalCacheData
-            let (temporaryURL, response) = try await AuthManager.shared.authenticatedDownload(
-                for: request,
-                expectedOwnerAccountID: owner.ownerAccountID
-            )
-            guard response.statusCode < 400 else {
-                try? FileManager.default.removeItem(at: temporaryURL)
-                throw CaptureRecordingShareClientError.message("The private preview is not available to this account.")
-            }
-            let digest = try await Task.detached(priority: .userInitiated) {
-                try Self.computeFileDigest(at: temporaryURL)
-            }.value
-            guard digest.sha256 == expectedSHA256,
-                  digest.sizeBytes == expectedSizeBytes else {
-                try? FileManager.default.removeItem(at: temporaryURL)
-                throw CaptureRecordingShareClientError.message(
-                    "The downloaded preview did not match Quipsly's verified receipt, so it was not opened."
-                )
-            }
-            clearPlayback()
-            let isVideo = output.render.mediaKind == "video"
-            let destination = FileManager.default.temporaryDirectory
-                .appendingPathComponent("quipsly-private-preview-\(UUID().uuidString.lowercased()).\(isVideo ? "mp4" : "m4a")")
-            try FileManager.default.moveItem(at: temporaryURL, to: destination)
-            try FileManager.default.setAttributes(
-                [.protectionKey: FileProtectionType.complete],
-                ofItemAtPath: destination.path
-            )
-            self.protectedPreviewURL = destination
-            self.protectedPreviewOutputID = output.id
-            self.protectedPreviewSHA256 = expectedSHA256
-            if isVideo {
-                let videoPlayer = AVPlayer(url: destination)
-                previewVideoPlayer = videoPlayer
-                if let item = videoPlayer.currentItem {
-                    videoPlaybackEndObserver = NotificationCenter.default.addObserver(
-                        forName: .AVPlayerItemDidPlayToEndTime,
-                        object: item,
-                        queue: .main
-                    ) { [weak self] _ in
-                        Task { @MainActor [weak self] in self?.videoPlayerDidFinish() }
-                    }
+        guard let destination = await verifiedPreviewFile(roomID: roomID, busyAction: "PLAY"),
+              let output = snapshot?.output else { return }
+        let isVideo = output.render.mediaKind == "video"
+        if isVideo {
+            let videoPlayer = AVPlayer(url: destination)
+            previewVideoPlayer = videoPlayer
+            if let item = videoPlayer.currentItem {
+                videoPlaybackEndObserver = NotificationCenter.default.addObserver(
+                    forName: .AVPlayerItemDidPlayToEndTime,
+                    object: item,
+                    queue: .main
+                ) { [weak self] _ in
+                    Task { @MainActor [weak self] in self?.videoPlayerDidFinish() }
                 }
-                videoPlayer.play()
-                isPlaying = true
-                previewLastPlaybackTime = 0
-                startVideoPreviewProgressTracking(roomID: roomID, player: videoPlayer)
-            } else {
+            }
+            videoPlayer.play()
+            isPlaying = true
+            previewLastPlaybackTime = 0
+            startVideoPreviewProgressTracking(roomID: roomID, player: videoPlayer)
+        } else {
+            do {
                 let player = try AVAudioPlayer(contentsOf: destination)
                 player.delegate = self
                 player.prepareToPlay()
@@ -425,10 +387,10 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
                 isPlaying = true
                 previewLastPlaybackTime = player.currentTime
                 startPreviewProgressTracking(roomID: roomID, player: player)
+            } catch {
+                clearPlayback()
+                notice = "The verified audio copy could not be opened on this iPhone: \(error.localizedDescription)"
             }
-            notice = nil
-        } catch {
-            notice = error.localizedDescription
         }
     }
 
@@ -473,6 +435,71 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         }
         if output.playbackReview?.reviewed == true {
             previewReviewSaveFailed = false
+        }
+    }
+
+    private func verifiedPreviewFile(roomID: String, busyAction action: String) async -> URL? {
+        guard let output = snapshot?.output,
+              output.render.status == "VERIFIED",
+              output.mediaUrl != nil,
+              snapshot?.role == "COACH" || output.status == "RELEASED",
+              let expectedSHA256 = Self.normalizedSHA256(output.render.sha256),
+              let expectedSizeBytes = output.render.sizeBytes,
+              expectedSizeBytes > 0 else {
+            notice = "The private preview has not finished verification or is not available to this account."
+            return nil
+        }
+        if let protectedPreviewURL,
+           protectedPreviewOutputID == output.id,
+           protectedPreviewSHA256 == expectedSHA256,
+           FileManager.default.fileExists(atPath: protectedPreviewURL.path) {
+            return protectedPreviewURL
+        }
+        guard busyAction == nil else { return nil }
+        guard let owner = AuthManager.shared.stableOwnerSnapshot(),
+              let url = mediaEndpoint(roomID: roomID, outputID: output.id) else {
+            notice = "The verified preview address is unavailable."
+            return nil
+        }
+        busyAction = action
+        defer { busyAction = nil }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            let (temporaryURL, response) = try await AuthManager.shared.authenticatedDownload(
+                for: request,
+                expectedOwnerAccountID: owner.ownerAccountID
+            )
+            guard response.statusCode < 400 else {
+                try? FileManager.default.removeItem(at: temporaryURL)
+                throw CaptureRecordingShareClientError.message("The private preview is not available to this account.")
+            }
+            let digest = try await Task.detached(priority: .userInitiated) {
+                try Self.computeFileDigest(at: temporaryURL)
+            }.value
+            guard digest.sha256 == expectedSHA256,
+                  digest.sizeBytes == expectedSizeBytes else {
+                try? FileManager.default.removeItem(at: temporaryURL)
+                throw CaptureRecordingShareClientError.message(
+                    "The downloaded preview did not match Quipsly's verified receipt, so it was not opened or exported."
+                )
+            }
+            clearPlayback()
+            let destination = FileManager.default.temporaryDirectory
+                .appendingPathComponent(Self.reviewedExportFileName(output))
+            try FileManager.default.moveItem(at: temporaryURL, to: destination)
+            try FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.complete],
+                ofItemAtPath: destination.path
+            )
+            protectedPreviewURL = destination
+            protectedPreviewOutputID = output.id
+            protectedPreviewSHA256 = expectedSHA256
+            notice = nil
+            return destination
+        } catch {
+            notice = error.localizedDescription
+            return nil
         }
     }
 
@@ -674,6 +701,19 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         return normalized
     }
 
+    private nonisolated static func reviewedExportFileName(_ output: CaptureRecordingShareOutput) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_ "))
+        let filtered = output.title.unicodeScalars.map { allowed.contains($0) ? String($0) : "-" }.joined()
+        let collapsed = filtered
+            .replacingOccurrences(of: "\\s+", with: "-", options: .regularExpression)
+            .replacingOccurrences(of: "-+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
+        let stem = collapsed.isEmpty ? "Quipsly-session" : String(collapsed.prefix(80))
+        let fileExtension = output.render.mediaKind == "video" ? "mp4" : "m4a"
+        let uniqueSuffix = UUID().uuidString.lowercased().prefix(8)
+        return "\(stem)-reviewed-r\(output.revision)-\(uniqueSuffix).\(fileExtension)"
+    }
+
     private nonisolated static func encodedPathComponent(_ value: String) -> String? {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
         return value.addingPercentEncoding(withAllowedCharacters: allowed)
@@ -693,6 +733,25 @@ private enum CaptureRecordingShareClientError: LocalizedError {
         case .message(let message): message
         }
     }
+}
+
+private struct CaptureRecordingShareSheet: UIViewControllerRepresentable {
+    let fileURL: URL
+    let title: String
+    let completion: (Bool, Error?) -> Void
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: [title, fileURL],
+            applicationActivities: nil
+        )
+        controller.completionWithItemsHandler = { _, completed, _, error in
+            completion(completed, error)
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 struct CaptureRecordingEditorFocus: Equatable, Hashable {
@@ -717,6 +776,9 @@ struct CaptureRecordingShareEditor: View {
     @State private var editing = false
     @State private var auditionSegmentID: String?
     @State private var auditionNotice: String?
+    @State private var exportURL: URL?
+    @State private var isPresentingExport = false
+    @State private var exportNotice: String?
 
     init(roomID: String, focus: CaptureRecordingEditorFocus? = nil) {
         self.roomID = roomID
@@ -803,6 +865,23 @@ struct CaptureRecordingShareEditor: View {
         .onDisappear {
             client.stopPreviewPlayback()
             sourcePlayback.close()
+        }
+        .sheet(isPresented: $isPresentingExport) {
+            if let exportURL {
+                CaptureRecordingShareSheet(
+                    fileURL: exportURL,
+                    title: "Quipsly reviewed \(client.snapshot?.output?.render.mediaKind == "video" ? "video" : "audio") copy"
+                ) { completed, error in
+                    isPresentingExport = false
+                    if let error {
+                        exportNotice = "The system share sheet could not finish: \(error.localizedDescription)"
+                    } else if completed {
+                        exportNotice = "The system share sheet finished. Quipsly does not claim who received the file."
+                    } else {
+                        exportNotice = "Export canceled. The reviewed copy and original recordings are unchanged."
+                    }
+                }
+            }
         }
     }
 
@@ -1218,6 +1297,40 @@ struct CaptureRecordingShareEditor: View {
                 .buttonStyle(.bordered)
                 .disabled(client.busyAction != nil)
                 .accessibilityIdentifier("CaptureRecordingSharePlay")
+
+                if !coach || output.playbackReview?.reviewed == true {
+                    Button {
+                        Task {
+                            exportNotice = nil
+                            guard let url = await client.preparePreviewExport(roomID: roomID) else { return }
+                            exportURL = url
+                            isPresentingExport = true
+                        }
+                    } label: {
+                        if client.busyAction == "EXPORT" {
+                            ProgressView().frame(maxWidth: .infinity)
+                        } else {
+                            Label(
+                                output.render.mediaKind == "video"
+                                    ? "Export reviewed video"
+                                    : "Export reviewed audio",
+                                systemImage: "square.and.arrow.up"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(client.busyAction != nil)
+                    .accessibilityIdentifier("CaptureRecordingShareExport")
+                    .accessibilityHint("Verifies the exact reviewed bytes, then opens the standard iPhone share sheet. Quipsly does not choose or claim a recipient.")
+                }
+
+                if let exportNotice {
+                    Text(exportNotice)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureRecordingShareExportNotice")
+                }
             } else if output.render.status == "QUEUED" || output.render.status == "PROCESSING" {
                 ProgressView(output.render.mediaKind == "video"
                     ? "Aligning picture and sound, leveling, decoding, and verifying…"

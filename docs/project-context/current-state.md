@@ -4034,3 +4034,8 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   Simulator build pass locally. Physical iPhone, live Cloud Run, cross-account,
   and human sync/listening review remain deferred. Detailed decision record:
   `docs/sessions/private-video-edit-share-2026-08-25.md`.
+- Capture can now hand off the exact reviewed MP4/M4A through the standard iOS
+  share sheet without exposing a server URL. It authenticates, downloads,
+  hashes, byte-checks, and file-protects the copy first. Coaches cannot export
+  an unreviewed draft; clients cannot export before Session release. The system
+  completion callback is reported without claiming a particular recipient.
