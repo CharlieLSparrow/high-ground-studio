@@ -2,17 +2,17 @@
 
 ## Outcome
 
-A clean two-account iPhone simulator flight proved that an explicitly reviewed transcript suggestion becomes one private coach task, appears in the coach's native Today surface, and returns to its exact protected transcript source. The other active participant in the same coaching Session did not receive the coach-owned task.
+A clean two-account iPhone simulator flight proved that an explicitly reviewed transcript suggestion becomes one private coach task, appears in the coach's native Today surface, and returns to its exact protected transcript source. The other active participant in the same coaching Session retained the shared transcript without receiving the coach-owned task or any private packet controls or output.
 
 ## Durable evidence
 
-- Source revision: `1b19d7cc27ac907c0965bb738974d97ae755dc85`
+- Source revision: `c6bb01aa0b54597dcdb0327f953fcef9b0690879`
 - Fresh context: `artifacts/coaching-acceptance/8c3c105e/fresh-start-context.json`
 - Operation receipt: `artifacts/coaching-acceptance/8c3c105e/native-task-readback-receipt.json`
 - Canonical task: `cmt85hhcb00f5nxxls3axkyoe`
 - Session: `cmt85591s00c2nxxllzv8y81g`
-- Coach readback result: `/private/tmp/quipsly-fresh-transcript-task-readback-20260825T043702804Z-69195.xcresult`
-- Participant isolation result: `/private/tmp/quipsly-fresh-transcript-task-isolation-20260825T043733459Z-69195.xcresult`
+- Coach readback result: `/private/tmp/quipsly-fresh-transcript-task-readback-20260825T060944604Z-6406.xcresult`
+- Participant isolation result: `/private/tmp/quipsly-fresh-transcript-task-isolation-20260825T061032144Z-6406.xcresult`
 
 ## Product truth proved
 
@@ -21,6 +21,9 @@ A clean two-account iPhone simulator flight proved that an explicitly reviewed t
 - The source control opened the protected transcript review for the exact Session and segment rather than substituting a room-level approximation.
 - The native source view exposed the recorded wording and an honest local-source availability boundary.
 - A fresh client account with active access to the same Session loaded Today without receiving the coach-owned task.
+- The client opened the same Session's timed transcript in Capture without receiving private packet candidates, private packet progress, or a packet-build action.
+- The client instead received a prominent **Shared follow-up** boundary with the ordinary unreleased state, **Nothing has been shared yet**.
+- The shared-follow-up boundary is one coherent VoiceOver announcement rather than a visually correct but fragmented accessibility container.
 - The operation confirmed the canonical task was not mutated and no duplicate task was created.
 - Both selected UI tests passed with zero unexpected runtime warnings.
 
@@ -35,6 +38,15 @@ The repair is covered by:
 - strict Quipsly TypeScript checking;
 - a PostgreSQL integration flight proving another assignee's task is absent from project Work and search while an unassigned Session task remains visible; and
 - the clean coach/client native simulator operation that originally detected the leak.
+
+## Native source and privacy UX repair
+
+The authenticated flight also exposed two navigation defects that ordinary component tests did not reveal:
+
+- a deep source link could push the linked-work context and recording-source truth outside SwiftUI's instantiated lazy region; and
+- the participant's shared-follow-up boundary originally appeared after the full transcript, making an important privacy state practically undiscoverable.
+
+Capture now pins the linked-work context, presents recording-source truth in a deterministic sheet, and places the participant's shared-follow-up state before the transcript. The acceptance operation verifies the rendered result under both authenticated identities rather than inferring it from API policy.
 
 ## Honest boundary
 
