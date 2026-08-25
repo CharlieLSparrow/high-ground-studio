@@ -13,6 +13,8 @@ const files = {
   customerPortalRoute: "apps/web/src/app/api/coaching/customer-portal/route.ts",
   stripeWebhookRoute: "apps/web/src/app/api/coaching/webhooks/stripe/route.ts",
   quipslyPublicPacket: "apps/quipsly/src/app/api/coaching/public/route.ts",
+  quipslyPublicOfferings: "apps/quipsly/src/lib/server/public-coaching-offerings.ts",
+  quipslyBookingRequests: "apps/quipsly/src/app/api/coaching/booking-requests/route.ts",
   quipslyPublicContract: "packages/quipsly-domain/src/coaching-public.ts",
   quipslyLifecycleContract: "packages/quipsly-domain/src/coaching-lifecycle.ts",
   quipslyCheckoutRoute: "apps/quipsly/src/app/api/coaching/checkout/route.ts",
@@ -219,6 +221,7 @@ for (const [label, needle] of [
   ["action item model", "model ActionItem"],
   ["one-to-one offering enum", "ONE_TO_ONE_COACHING"],
   ["paid one-to-one payment policy", "PAID_ONE_TO_ONE"],
+  ["public booking safe default", "publicBookingEnabled Boolean"],
 ]) {
   requireIncludes(texts.prismaSchema, needle, label, files.prismaSchema);
 }
@@ -295,9 +298,6 @@ for (const [label, needle] of [
   ["quipsly shared native capture import", "QUIPSLY_NATIVE_CAPTURE_CONTRACT"],
   ["free account boundary", "free Quipsly account"],
   ["public offerings", "offerings"],
-  ["public offerings database source", "quipsly-database"],
-  ["public offerings safe fallback", "unavailable"],
-  ["public offerings sign-in action", "Sign in to Quipsly"],
   ["public handoff action import", "QUIPSLY_PUBLIC_COACHING_HANDOFF_ACTIONS"],
   ["public loop status import", "QUIPSLY_PUBLIC_LOOP_STATUS"],
   ["public handoff actions packet", "handoffActions"],
@@ -311,6 +311,37 @@ for (const [label, needle] of [
   ["public loop packet", "publicLoop: QUIPSLY_PUBLIC_LOOP_STATUS"],
 ]) {
   requireIncludes(texts.quipslyPublicPacket, needle, label, files.quipslyPublicPacket);
+}
+
+for (const [label, needle] of [
+  ["public offerings database source", "quipsly-database"],
+  ["public offerings safe fallback", "unavailable"],
+  ["public offerings safe slot derivation", "deriveCoachingBookableSlots"],
+  ["public offerings booking path", "/coaching/book/"],
+  ["public offerings explicit publish filter", "publicBookingEnabled: true"],
+]) {
+  requireIncludes(texts.quipslyPublicOfferings, needle, label, files.quipslyPublicOfferings);
+}
+
+for (const [label, needle] of [
+  ["client request auth", "getQuipslySessionFromRequest"],
+  ["client request role", 'role: "CLIENT"'],
+  ["client request canonical availability", "assertCoachingScheduleAvailable"],
+  ["client request retry safety", "repeated: true"],
+  ["client request limit", "COACHING_REQUEST_LIMIT"],
+  ["client request no calendar side effect", "externalCalendarCreated: false"],
+  ["client request no invite side effect", "externalInviteSent: false"],
+  ["client request no payment side effect", "paymentCreated: false"],
+]) {
+  requireIncludes(texts.quipslyBookingRequests, needle, label, files.quipslyBookingRequests);
+}
+
+for (const [label, needle] of [
+  ["runway public booking action", '"update-public-booking"'],
+  ["runway public booking owner scope", "coachProfileId: actingCoachProfile?.id"],
+  ["runway public booking explicit flag", "publicBookingEnabled: enabled"],
+]) {
+  requireIncludes(texts.quipslyCoachingRunway, needle, label, files.quipslyCoachingRunway);
 }
 
 for (const [label, needle] of [

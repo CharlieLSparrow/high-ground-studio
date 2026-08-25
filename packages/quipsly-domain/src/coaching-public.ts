@@ -21,6 +21,14 @@ export type QuipslyPublicCoachingOffering = {
   priceLabel?: string | null;
   coachName: string;
   nextAction: string;
+  bookingPath: string;
+  bookableSlots: QuipslyPublicCoachingBookableSlot[];
+};
+
+export type QuipslyPublicCoachingBookableSlot = {
+  instant: string;
+  timezone: string;
+  label: string;
 };
 
 export type QuipslyPublicCoachingLinkKey =
@@ -585,6 +593,18 @@ export function normalizeQuipslyPublicCoachingOfferings(
         priceLabel: text(item.priceLabel) || null,
         coachName: text(item.coachName, "High Ground coach"),
         nextAction: text(item.nextAction, "Sign in to Quipsly to continue."),
+        bookingPath: text(item.bookingPath, `/coaching/book/${encodeURIComponent(slug)}`),
+        bookableSlots: Array.isArray(item.bookableSlots)
+          ? item.bookableSlots.flatMap((slot) => {
+              if (!isRecord(slot)) return [];
+              const instant = text(slot.instant);
+              const timezone = text(slot.timezone);
+              const label = text(slot.label);
+              return instant && timezone && label
+                ? [{ instant, timezone, label }]
+                : [];
+            })
+          : [],
       },
     ];
   });

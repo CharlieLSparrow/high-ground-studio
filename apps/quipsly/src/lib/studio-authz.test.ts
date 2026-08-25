@@ -6,6 +6,11 @@ describe("Quipsly role boundaries", () => {
     expect(canAccessStudio(["COACH"])).toBe(false);
   });
 
+  it("lets coaching clients enter their own product surfaces without staff authority", () => {
+    expect(canAccessQuipslyProduct(["CLIENT"])).toBe(true);
+    expect(canAccessStudio(["CLIENT"])).toBe(false);
+  });
+
   it.each(["OWNER", "TEAM_SCHEDULER"] as const)(
     "keeps %s as explicit Studio staff authority",
     (role) => {

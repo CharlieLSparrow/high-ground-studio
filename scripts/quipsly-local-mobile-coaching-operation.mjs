@@ -211,6 +211,25 @@ async function api(origin, token, path, { method = "GET", body } = {}) {
   };
 }
 
+async function publicApi(origin, path) {
+  const response = await fetch(`${origin}${path}`, {
+    signal: AbortSignal.timeout(30_000),
+    headers: { accept: "application/json" },
+  });
+  return {
+    status: response.status,
+    body: await response.json().catch(() => null),
+  };
+}
+
+async function publicPage(origin, path) {
+  const response = await fetch(`${origin}${path}`, {
+    signal: AbortSignal.timeout(30_000),
+    headers: { accept: "text/html" },
+  });
+  return { status: response.status, body: await response.text() };
+}
+
 async function main() {
   assert(
     process.env.QUIPSLY_LOCAL_MOBILE_COACHING_OPERATION === "1",
@@ -288,6 +307,60 @@ async function main() {
     assert(
       availability.status === 200 && availability.body?.ok === true,
       `Working-hours update failed (${availability.status}: ${String(availability.body?.error || "unknown")}).`,
+    );
+
+    const publicBooking = await api(origin, coachToken, "/api/coaching/runway", {
+      method: "POST",
+      body: {
+        action: "update-public-booking",
+        offeringId: coachSetup.body.result.offeringId,
+        enabled: true,
+      },
+    });
+    assert(
+      publicBooking.status === 200 && publicBooking.body?.result?.publicBookingEnabled === true,
+      `Public booking could not be enabled (${publicBooking.status}: ${String(publicBooking.body?.error || "unknown")}).`,
+    );
+    const publicPacket = await publicApi(origin, "/api/coaching/public?source=local-operation");
+    const publicOffering = publicPacket.body?.offerings?.items?.find(
+      (offering) => offering.id === coachSetup.body.result.offeringId,
+    );
+    assert(publicPacket.status === 200 && publicOffering, "The explicitly published offering was not public.");
+    assert(publicOffering.bookableSlots?.length > 0, "The public offering did not project safe open times.");
+    const [bookingPage, publicCoachingPage] = await Promise.all([
+      publicPage(origin, publicOffering.bookingPath),
+      publicPage(origin, "/public/coaching"),
+    ]);
+    assert(
+      bookingPage.status === 200 && bookingPage.body.includes(publicOffering.title),
+      "The shareable booking page did not render the published offering.",
+    );
+    assert(
+      publicCoachingPage.status === 200 && publicCoachingPage.body.includes(publicOffering.title),
+      "The coaching doorway did not render the published offering.",
+    );
+    const requestedSlot = publicOffering.bookableSlots[0];
+    const clientRequest = await api(origin, clientToken, "/api/coaching/booking-requests", {
+      method: "POST",
+      body: {
+        offeringId: publicOffering.id,
+        scheduledStart: requestedSlot.instant,
+      },
+    });
+    assert(
+      clientRequest.status === 201 && clientRequest.body?.request?.status === "ACTIVE",
+      `Client self-scheduling failed (${clientRequest.status}: ${String(clientRequest.body?.error || "unknown")}).`,
+    );
+    const repeatedClientRequest = await api(origin, clientToken, "/api/coaching/booking-requests", {
+      method: "POST",
+      body: {
+        offeringId: publicOffering.id,
+        scheduledStart: requestedSlot.instant,
+      },
+    });
+    assert(
+      repeatedClientRequest.status === 200 && repeatedClientRequest.body?.request?.repeated === true,
+      "Repeating a client booking request did not return the same safe hold.",
     );
 
     const appointment = await api(origin, coachToken, "/api/coaching/runway", {
@@ -412,6 +485,18 @@ async function main() {
       clientRunway.body.upcomingBookings?.some((booking) => booking.id === result.bookingId),
       "The client's private runway omitted the invited appointment.",
     );
+    assert(
+      coachRunway.body.bookingHolds?.some(
+        (hold) => hold.id === clientRequest.body.request.holdId,
+      ),
+      "The coach's private runway omitted the client's booking request.",
+    );
+    assert(
+      clientRunway.body.bookingHolds?.some(
+        (hold) => hold.id === clientRequest.body.request.holdId,
+      ),
+      "The client's private runway omitted their own booking request.",
+    );
 
     const [coachJoin, clientJoin] = await Promise.all([
       api(origin, coachToken, "/api/mobile/capture/rooms/join", {
@@ -442,6 +527,26 @@ async function main() {
 
     const providerProof = await proveProviderRoom({ origin, coachJoin, clientJoin });
 
+    const hidePublicBooking = await api(origin, coachToken, "/api/coaching/runway", {
+      method: "POST",
+      body: {
+        action: "update-public-booking",
+        offeringId: coachSetup.body.result.offeringId,
+        enabled: false,
+      },
+    });
+    assert(
+      hidePublicBooking.status === 200 && hidePublicBooking.body?.result?.publicBookingEnabled === false,
+      "The local test offering could not be returned to private state.",
+    );
+    const hiddenPacket = await publicApi(origin, "/api/coaching/public?source=local-operation-cleanup");
+    assert(
+      !hiddenPacket.body?.offerings?.items?.some(
+        (offering) => offering.id === coachSetup.body.result.offeringId,
+      ),
+      "The private test offering remained visible after public booking was turned off.",
+    );
+
     console.log(JSON.stringify({
       ok: true,
       localOnly: true,
@@ -463,6 +568,13 @@ async function main() {
       browserWallClockPreservedInCoachTimezone: true,
       outsideWorkingHoursRejected:
         outsideWorkingHours.body?.code === "COACHING_OUTSIDE_AVAILABILITY",
+      publicBookingExplicitlyEnabled: true,
+      publicBookingPageRendered: true,
+      publicCoachingDoorwayRendered: true,
+      clientSelfSchedulingCreatedHold: clientRequest.body?.request?.status === "ACTIVE",
+      repeatedClientRequestWasIdempotent: repeatedClientRequest.body?.request?.repeated === true,
+      clientAndCoachHoldReadback: true,
+      testOfferingReturnedPrivate: true,
       providerProof,
       consentStarted: false,
       recordingStarted: false,

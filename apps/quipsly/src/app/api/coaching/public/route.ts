@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  QUIPSLY_PUBLIC_COACHING_OFFERING_KINDS,
   QUIPSLY_NATIVE_CAPTURE_CONTRACT,
   QUIPSLY_PUBLIC_COACHING_HANDOFF_ACTIONS,
   QUIPSLY_PUBLIC_LOOP_STATUS,
@@ -9,12 +8,11 @@ import {
   QUIPSLY_PUBLIC_COACHING_PACKET_KIND,
   QUIPSLY_COACHING_CLIENT_JOURNEY,
   QUIPSLY_COACHING_OPERATOR_JOURNEY,
-  type QuipslyPublicCoachingOfferings,
   type QuipslyPublicCoachingPacket,
 } from "@high-ground/quipsly-domain/coaching-public";
 
-import { getPrismaClient } from "@/lib/prisma";
 import { getCoachingCalendarReadiness } from "@/lib/server/coaching-google-calendar";
+import { loadPublicCoachingOfferings } from "@/lib/server/public-coaching-offerings";
 
 export const runtime = "nodejs";
 
@@ -36,68 +34,6 @@ function absoluteUrl(origin: string, path: string) {
   return new URL(sameSitePath(path), origin).toString();
 }
 
-function moneyLabel(cents: number | null | undefined, currency: string | null | undefined) {
-  if (typeof cents !== "number" || cents <= 0) return null;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-    maximumFractionDigits: cents % 100 === 0 ? 0 : 2,
-  }).format(cents / 100);
-}
-
-async function loadPublicOfferings(): Promise<QuipslyPublicCoachingOfferings> {
-  try {
-    const prisma = getPrismaClient() as any;
-    const offerings = await prisma.serviceOffering.findMany({
-      where: {
-        isActive: true,
-        kind: { in: [...QUIPSLY_PUBLIC_COACHING_OFFERING_KINDS] },
-      },
-      orderBy: [{ kind: "asc" }, { updatedAt: "desc" }],
-      take: 12,
-      include: {
-        coachProfile: {
-          include: {
-            user: { select: { name: true, image: true } },
-          },
-        },
-      },
-    });
-
-    return {
-      source: "quipsly-database",
-      unavailable: false,
-      items: offerings.map((offering: any) => ({
-        id: offering.id,
-        slug: offering.slug,
-        title: offering.title,
-        description: offering.description,
-        kind: offering.kind,
-        paymentPolicy: offering.paymentPolicy,
-        durationMinutes: offering.durationMinutes,
-        priceLabel:
-          moneyLabel(offering.priceCents, offering.currency) ||
-          (offering.paymentPolicy === "PAID_ONE_TO_ONE" ? "Custom quote" : null),
-        coachName: offering.coachProfile?.user?.name || "High Ground coach",
-        nextAction:
-          offering.paymentPolicy === "PAID_ONE_TO_ONE"
-            ? "Sign in to Quipsly to request a booking hold or custom checkout link."
-            : "Sign in to Quipsly to request or schedule this session.",
-      })),
-    };
-  } catch (error) {
-    return {
-      source: "unavailable",
-      unavailable: true,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Offerings are unavailable right now.",
-      items: [],
-    };
-  }
-}
-
 export async function GET(request: Request) {
   const origin = requestOrigin(request);
   const url = new URL(request.url);
@@ -105,7 +41,7 @@ export async function GET(request: Request) {
   const callbackPath = `/coaching?source=${encodeURIComponent(source)}&intent=coaching`;
   const loginUrl = new URL("/login", origin);
   loginUrl.searchParams.set("callbackUrl", callbackPath);
-  const offerings = await loadPublicOfferings();
+  const offerings = await loadPublicCoachingOfferings();
   const calendarReadiness = getCoachingCalendarReadiness();
   const links = {
     signInOrCreateFreeAccount: loginUrl.toString(),

@@ -19,6 +19,9 @@ import {
   QUIPSLY_PUBLIC_LOOP_STATUS,
   QUIPSLY_PUBLIC_COACHING_POSITIONING,
 } from "@high-ground/quipsly-domain/coaching-public";
+import { loadPublicCoachingOfferings } from "@/lib/server/public-coaching-offerings";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Quipsly for Coaches - Capture, Consent, Notes, and Follow-Up",
@@ -88,7 +91,8 @@ const publicLoopCards = QUIPSLY_PUBLIC_LOOP_STATUS.owners.map((owner) => ({
   sourceOfTruth: owner.sourceOfTruth,
 }));
 
-export default function QuipslyCoachingPage() {
+export default async function QuipslyCoachingPage() {
+  const publicOfferings = await loadPublicCoachingOfferings();
   return (
     <main className="min-h-screen overflow-hidden bg-[#f8efe0] text-[#332316] selection:bg-[#d9b66b]/40">
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_8%_12%,rgba(91,125,87,0.26),transparent_32%),radial-gradient(circle_at_82%_0%,rgba(215,168,83,0.18),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,255,255,0))]" />
@@ -263,6 +267,61 @@ export default function QuipslyCoachingPage() {
             </Link>
           ))}
         </div>
+      </section>
+
+      <section className="relative z-10 mx-auto max-w-7xl px-5 py-10 md:px-8">
+        <div className="mb-8 max-w-3xl">
+          <p className="font-sans text-xs font-black uppercase tracking-[0.2em] text-[#8a6a39]">
+            Book coaching
+          </p>
+          <h2 className="mt-3 font-serif text-4xl font-black leading-tight md:text-6xl">
+            Choose a real open time without the calendar scavenger hunt.
+          </h2>
+          <p className="mt-4 font-sans text-base leading-8 text-[#745b3c]">
+            Quipsly shows only the times a coach has made available. Pick one,
+            sign in or create a free account, and request it. The coach confirms
+            before any calendar invitation, payment, call, or recording begins.
+          </p>
+        </div>
+        {publicOfferings.items.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {publicOfferings.items.map((offering) => (
+              <article
+                key={offering.id}
+                className="rounded-[2rem] border border-[#dbc295] bg-[#fffaf1]/92 p-6 shadow-sm"
+              >
+                <p className="font-sans text-xs font-black uppercase tracking-[0.16em] text-[#315d4f]">
+                  {offering.coachName}
+                </p>
+                <h3 className="mt-3 font-serif text-2xl font-black">
+                  {offering.title}
+                </h3>
+                {offering.description ? (
+                  <p className="mt-3 font-sans text-sm leading-7 text-[#745b3c]">
+                    {offering.description}
+                  </p>
+                ) : null}
+                <p className="mt-4 font-sans text-sm font-bold text-[#6d5637]">
+                  {offering.durationMinutes} minutes
+                  {offering.priceLabel ? ` · ${offering.priceLabel}` : ""}
+                </p>
+                <Link
+                  href={offering.bookingPath}
+                  className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-[#315d4f] px-5 py-3.5 font-sans text-sm font-black text-white no-underline"
+                >
+                  {offering.bookableSlots.length
+                    ? `Choose from ${offering.bookableSlots.length} open times`
+                    : "Check for times"}
+                </Link>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-[2rem] border border-[#dbc295] bg-[#fffaf1]/92 p-6 font-sans text-sm leading-7 text-[#745b3c]">
+            Coaching times are not published yet. Check back soon or contact your
+            coach directly.
+          </div>
+        )}
       </section>
 
       <section className="relative z-10 mx-auto max-w-7xl px-5 py-12 md:px-8">

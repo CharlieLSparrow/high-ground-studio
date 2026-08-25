@@ -1414,21 +1414,22 @@ model CoachProfile {
 }
 
 model ServiceOffering {
-  id              String                @id @default(cuid())
-  coachProfileId  String?
-  slug            String                @unique
-  title           String
-  description     String?
-  kind            CoachingServiceKind   @default(ONE_TO_ONE_COACHING)
-  paymentPolicy   CoachingPaymentPolicy @default(DONATION_SUPPORTED)
-  durationMinutes Int                   @default(60)
-  priceCents      Int?
-  currency        String                @default("USD")
-  stripePriceId   String?
-  isActive        Boolean               @default(true)
-  metadataJson    Json                  @default("{}")
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  id                   String                @id @default(cuid())
+  coachProfileId       String?
+  slug                 String                @unique
+  title                String
+  description          String?
+  kind                 CoachingServiceKind   @default(ONE_TO_ONE_COACHING)
+  paymentPolicy        CoachingPaymentPolicy @default(DONATION_SUPPORTED)
+  durationMinutes      Int                   @default(60)
+  priceCents           Int?
+  currency             String                @default("USD")
+  stripePriceId        String?
+  isActive             Boolean               @default(true)
+  publicBookingEnabled Boolean               @default(false)
+  metadataJson         Json                  @default("{}")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   coachProfile CoachProfile?     @relation(fields: [coachProfileId], references: [id], onDelete: SetNull)
   bookingHolds BookingHold[]
@@ -1437,6 +1438,7 @@ model ServiceOffering {
   @@index([coachProfileId, isActive])
   @@index([kind, isActive])
   @@index([paymentPolicy, isActive])
+  @@index([publicBookingEnabled, isActive])
 }
 
 model AvailabilityWindow {

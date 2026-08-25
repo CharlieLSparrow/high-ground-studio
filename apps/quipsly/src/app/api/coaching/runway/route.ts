@@ -1245,6 +1245,7 @@ export async function GET(request: Request) {
       priceCents: offering.priceCents,
       currency: offering.currency,
       stripePriceConfigured: Boolean(offering.stripePriceId),
+      publicBookingEnabled: offering.publicBookingEnabled === true,
       coach: person(offering.coachProfile?.user),
     })),
     availabilityWindows: mappedAvailabilityWindows,
@@ -1288,6 +1289,7 @@ export async function POST(request: Request) {
   if (![
     "setup-coach-profile",
     "update-weekly-availability",
+    "update-public-booking",
     "create-booking-room",
     "create-booking-hold",
     "release-booking-hold",
@@ -1652,6 +1654,50 @@ export async function POST(request: Request) {
       };
     });
     return NextResponse.json({ ok: true, action, result });
+  }
+
+  if (action === "update-public-booking") {
+    const offeringId = text(body.offeringId);
+    const enabled = body.enabled === true;
+    if (!offeringId) {
+      return NextResponse.json(
+        { ok: false, error: "Choose an offering before changing public booking." },
+        { status: 400 },
+      );
+    }
+    const offering = await prisma.serviceOffering.findFirst({
+      where: session.user.isStaff
+        ? { id: offeringId, isActive: true }
+        : {
+            id: offeringId,
+            isActive: true,
+            coachProfileId: actingCoachProfile?.id,
+          },
+      select: { id: true, slug: true },
+    });
+    if (!offering) {
+      return NextResponse.json(
+        { ok: false, error: "That coaching offering was not found." },
+        { status: 404 },
+      );
+    }
+    const updated = await prisma.serviceOffering.update({
+      where: { id: offering.id },
+      data: { publicBookingEnabled: enabled },
+      select: { id: true, slug: true },
+    });
+    return NextResponse.json({
+      ok: true,
+      action,
+      result: {
+        offeringId: updated.id,
+        publicBookingEnabled: enabled,
+        bookingPath: `/coaching/book/${encodeURIComponent(updated.slug)}`,
+        nextAction: enabled
+          ? "Public booking is on. Clients can see only your published open times."
+          : "Public booking is off. Existing private holds remain visible to their participants.",
+      },
+    });
   }
 
   if (action === "attach-calendar-receipt") {

@@ -8,6 +8,7 @@ export const STUDIO_ACCESS_ROLES: readonly AppRole[] = [
 export const QUIPSLY_PRODUCT_ACCESS_ROLES: readonly AppRole[] = [
   ...STUDIO_ACCESS_ROLES,
   "COACH",
+  "CLIENT",
 ];
 
 export function canAccessStudio(
@@ -21,7 +22,7 @@ export function canAccessStudio(
 
 /**
  * Product entry is intentionally broader than Studio/staff authority. A coach
- * may enter their own Coaching and Session surfaces, but must not inherit the
+ * or client may enter their own Coaching and Session surfaces, but must not inherit the
  * global data bypasses guarded by `isStaff` / `canAccessStudio`.
  */
 export function canAccessQuipslyProduct(

@@ -209,6 +209,7 @@ type CoachingRunway = {
     priceCents: number | null;
     currency: string;
     stripePriceConfigured: boolean;
+    publicBookingEnabled: boolean;
     coach: Person;
   }>;
   availabilityWindows?: Array<{
@@ -923,6 +924,8 @@ export default function CoachingPage() {
   const [isSettingUpCoach, setIsSettingUpCoach] = useState(false);
   const [availabilityStatus, setAvailabilityStatus] = useState<string | null>(null);
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
+  const [publicBookingStatus, setPublicBookingStatus] = useState<string | null>(null);
+  const [publicBookingBusy, setPublicBookingBusy] = useState(false);
   const [availabilityForm, setAvailabilityForm] = useState({
     days: [1, 2, 3, 4, 5],
     startTime: "09:00",
@@ -1877,6 +1880,37 @@ export default function CoachingPage() {
       setAvailabilityStatus(cause instanceof Error ? cause.message : "Working hours could not be saved.");
     } finally {
       setIsSavingAvailability(false);
+    }
+  }
+
+  async function setPublicBooking(
+    offering: NonNullable<CoachingRunway["offerings"]>[number],
+    enabled: boolean,
+  ) {
+    setPublicBookingBusy(true);
+    setPublicBookingStatus(enabled ? "Publishing your open times…" : "Hiding public booking…");
+    try {
+      const response = await fetch("/api/coaching/runway", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update-public-booking",
+          offeringId: offering.id,
+          enabled,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Public booking could not be updated.");
+      }
+      setPublicBookingStatus(payload.result?.nextAction || "Public booking updated.");
+      await loadRunway();
+    } catch (cause) {
+      setPublicBookingStatus(
+        cause instanceof Error ? cause.message : "Public booking could not be updated.",
+      );
+    } finally {
+      setPublicBookingBusy(false);
     }
   }
 
@@ -3620,6 +3654,57 @@ export default function CoachingPage() {
                       </p>
                     )}
                   </div>
+                  {offerings[0] ? (
+                    <div className="rounded-xl border border-emerald-200 bg-white/80 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-wide text-[#315641]">
+                            Let clients choose a time
+                          </p>
+                          <p className="mt-1 text-[11px] font-semibold normal-case tracking-normal text-[#315641]">
+                            Shows only your open times on a shareable Quipsly page. Test offerings stay private by default.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={offerings[0].publicBookingEnabled}
+                          aria-label="Let clients choose a time"
+                          disabled={publicBookingBusy || !canManageCoaching}
+                          onClick={() =>
+                            void setPublicBooking(
+                              offerings[0],
+                              !offerings[0].publicBookingEnabled,
+                            )
+                          }
+                          className={`relative h-7 w-12 shrink-0 rounded-full transition disabled:opacity-50 ${
+                            offerings[0].publicBookingEnabled
+                              ? "bg-emerald-700"
+                              : "bg-stone-300"
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${
+                              offerings[0].publicBookingEnabled ? "left-6" : "left-1"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      {offerings[0].publicBookingEnabled ? (
+                        <a
+                          href={`/coaching/book/${encodeURIComponent(offerings[0].slug)}`}
+                          className="mt-3 inline-flex text-xs font-black text-emerald-800 underline"
+                        >
+                          Open my booking page
+                        </a>
+                      ) : null}
+                      {publicBookingStatus ? (
+                        <p role="status" className="mt-2 text-xs font-bold text-[#315641]">
+                          {publicBookingStatus}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <details className="rounded-xl border border-emerald-200 bg-white/80 p-3">
                     <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#315641]">
                       Offer and pricing defaults
