@@ -862,6 +862,8 @@ requireIncludes(captureUniversalLinkRouteText, "585GUXMY5M.com.highgroundodyssey
 requireIncludes(captureUniversalLinkRouteText, '\"/\": \"/sessions/*\"', "Universal Links are bounded to Session paths");
 requireIncludes(captureUniversalLinkRouteText, '\"?\": { open: \"capture\" }', "Universal Links require an explicit Capture handoff query");
 requireIncludes(captureUniversalLinkBuilderText, "https://nest.quipsly.com", "Capture handoffs use the canonical HTTPS Nest origin");
+requireIncludes(captureUniversalLinkBuilderText, "quipsly://session/", "Same-site Open Capture actions use the registered app scheme");
+requireIncludes(appInfoText, "<string>quipsly</string>", "Capture registers the explicit same-site launch scheme");
 requireIncludes(appleSignInCoordinatorText, "SecRandomCopyBytes", "Apple sign-in uses a cryptographically random replay nonce");
 requireIncludes(appleSignInCoordinatorText, "request.nonce = Self.sha256(nonce)", "Apple receives only the SHA-256 nonce challenge");
 requireIncludes(authText, 'URLQueryItem(name: "providerId", value: "apple.com")', "Firebase exchanges the native Apple credential with the canonical provider");
@@ -1073,7 +1075,7 @@ for (const needle of [
 for (const needle of [
   "1 · Trim the beginning and end",
   "2 · Remove any passages",
-  "3 · Create private preview",
+  "3 · Create private \\(outputMediaKind) preview",
   "Name and recording sources",
   "sourceManifest",
   "restoreEditorFromCurrentOutput",

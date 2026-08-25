@@ -5423,6 +5423,7 @@ export function SessionReviewClient({
   mode = "overview",
   notesView = "all",
   joinedFromInvitation = false,
+  captureOpenFallback = false,
   preparation = null,
   consentSnapshot,
   contentReadiness = null,
@@ -5463,6 +5464,7 @@ export function SessionReviewClient({
   mode?: SessionWorkspaceMode;
   notesView?: SessionNoteView;
   joinedFromInvitation?: boolean;
+  captureOpenFallback?: boolean;
   preparation?: SessionPreparation | null;
   consentSnapshot: {
     total: number;
@@ -6155,6 +6157,7 @@ export function SessionReviewClient({
           <CaptureAppHandoff
             roomId={roomId}
             joinedFromInvitation={joinedFromInvitation}
+            captureOpenFallback={captureOpenFallback}
             canViewChoiceMetrics={canViewEntryChoiceMetrics}
             onContinueInBrowser={() => liveDock.open(liveDockConfig)}
           />

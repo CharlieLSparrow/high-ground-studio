@@ -9,3 +9,13 @@ export function captureUniversalLink(
   url.searchParams.set("mode", "live");
   return url.toString();
 }
+
+/**
+ * Use the registered app scheme for a deliberate "Open Capture" action that
+ * begins on nest.quipsly.com. iOS intentionally keeps same-domain Universal
+ * Links in Safari, so the HTTPS form remains the safe external/share link while
+ * this scheme is the explicit installed-app launch action.
+ */
+export function captureAppDeepLink(roomId: string) {
+  return `quipsly://session/${encodeURIComponent(roomId)}?mode=live`;
+}

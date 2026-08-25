@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  CircleAlert,
   Download,
   ExternalLink,
   MonitorSmartphone,
@@ -10,7 +11,7 @@ import {
 } from "lucide-react";
 
 import type { SessionEntryChoice } from "@/lib/session-entry-choice";
-import { captureUniversalLink } from "@/lib/capture-universal-link";
+import { captureAppDeepLink } from "@/lib/capture-universal-link";
 
 const CAPTURE_TESTFLIGHT_URL = "https://testflight.apple.com/join/XwRRcYUm";
 const SESSION_ENTRY_PREFERENCE_KEY = "quipsly.session-entry-preference.v1";
@@ -29,19 +30,22 @@ function prefersCaptureOnThisDevice() {
 export function CaptureAppHandoff({
   roomId,
   joinedFromInvitation = false,
+  captureOpenFallback = false,
   canViewChoiceMetrics = false,
   onContinueInBrowser,
 }: {
   roomId: string;
   joinedFromInvitation?: boolean;
+  captureOpenFallback?: boolean;
   canViewChoiceMetrics?: boolean;
   onContinueInBrowser?: () => void;
 }) {
-  const captureURL = captureUniversalLink(roomId);
+  const captureURL = captureAppDeepLink(roomId);
   const [metrics, setMetrics] = useState<EntryChoiceMetrics | null>(null);
   const [step, setStep] = useState<"choose" | "preferred">("choose");
   const [preferredEntry, setPreferredEntry] = useState<"BROWSER" | "CAPTURE_APP" | null>(null);
   const [captureRecommended, setCaptureRecommended] = useState(false);
+  const [captureFallbackActive, setCaptureFallbackActive] = useState(captureOpenFallback);
   const [interactive, setInteractive] = useState(false);
   const continueInBrowserRef = useRef(onContinueInBrowser);
   const openedRememberedBrowserRef = useRef(false);
@@ -56,8 +60,10 @@ export function CaptureAppHandoff({
 
   function continueInBrowser() {
     const current = new URL(window.location.href);
+    current.searchParams.delete("open");
     current.searchParams.set("entry", "browser");
     window.history.replaceState(window.history.state, "", current);
+    setCaptureFallbackActive(false);
     recordChoice("BROWSER");
     rememberEntry("BROWSER");
     onContinueInBrowser?.();
@@ -91,12 +97,20 @@ export function CaptureAppHandoff({
   useEffect(() => {
     setCaptureRecommended(prefersCaptureOnThisDevice());
     const saved = window.localStorage.getItem(SESSION_ENTRY_PREFERENCE_KEY);
+    if (captureOpenFallback) {
+      window.localStorage.removeItem(SESSION_ENTRY_PREFERENCE_KEY);
+      setPreferredEntry(null);
+      setStep("choose");
+      setCaptureFallbackActive(true);
+      setInteractive(true);
+      return;
+    }
     if (saved === "BROWSER" || saved === "CAPTURE_APP") {
       setPreferredEntry(saved);
       setStep("preferred");
     }
     setInteractive(true);
-  }, []);
+  }, [captureOpenFallback]);
 
   useEffect(() => {
     if (!canViewChoiceMetrics) return;
@@ -171,7 +185,49 @@ export function CaptureAppHandoff({
       </div>
 
       <div className="mt-5 min-h-44 rounded-2xl border border-white/90 bg-white p-3 shadow-sm sm:p-4">
-        {step === "preferred" && preferredEntry ? (
+        {captureFallbackActive ? (
+          <div aria-live="polite" aria-label="Capture app recovery">
+            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+              <CircleAlert className="mt-0.5 shrink-0" size={20} aria-hidden="true" />
+              <div>
+                <p className="font-black">Capture didn’t open</p>
+                <p className="mt-1 text-xs font-semibold leading-5">
+                  You can join here now. If you want the iPhone app, install or
+                  update the beta, then try opening Capture again.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={!interactive}
+              onClick={continueInBrowser}
+              className="mt-3 flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-violet-800 px-5 text-sm font-black text-white disabled:cursor-wait disabled:opacity-60"
+            >
+              <MonitorSmartphone size={18} aria-hidden="true" /> Join in this browser
+            </button>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <a
+                href={CAPTURE_TESTFLIGHT_URL}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => recordChoice("TESTFLIGHT")}
+                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-200 bg-white px-4 text-xs font-black text-violet-950"
+              >
+                <Download size={15} aria-hidden="true" /> Install or update Capture
+              </a>
+              <a
+                href={captureURL}
+                onClick={() => {
+                  rememberEntry("CAPTURE_APP");
+                  recordChoice("CAPTURE_APP");
+                }}
+                className="inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-xs font-black text-[#5b472f]"
+              >
+                <ExternalLink size={15} aria-hidden="true" /> Try Capture again
+              </a>
+            </div>
+          </div>
+        ) : step === "preferred" && preferredEntry ? (
           <div aria-label="Your usual Session device">
             <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
               Remembered on this device

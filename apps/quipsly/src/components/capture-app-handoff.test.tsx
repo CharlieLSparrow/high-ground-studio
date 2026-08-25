@@ -39,7 +39,7 @@ describe("CaptureAppHandoff", () => {
     expect(screen.getByText(/recommended on this device/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Use Quipsly Capture on iPhone/i })).toHaveAttribute(
       "href",
-      "https://nest.quipsly.com/sessions/room-safe_42?open=capture&mode=live",
+      "quipsly://session/room-safe_42?mode=live",
     );
     expect(
       screen.getByRole("link", { name: /Get the beta/i }),
@@ -63,7 +63,7 @@ describe("CaptureAppHandoff", () => {
     expect(screen.getByText("Recommended on this iPhone")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Quipsly Capture" })).toHaveAttribute(
       "href",
-      "https://nest.quipsly.com/sessions/room-iphone?open=capture&mode=live",
+      "quipsly://session/room-iphone?mode=live",
     );
     expect(screen.getByRole("button", { name: "Join in browser" })).toBeInTheDocument();
   });
@@ -109,9 +109,41 @@ describe("CaptureAppHandoff", () => {
     expect(await screen.findByText("Open Quipsly Capture")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Capture" })).toHaveAttribute(
       "href",
-      "https://nest.quipsly.com/sessions/room-phone?open=capture&mode=live",
+      "quipsly://session/room-phone?mode=live",
     );
     expect(onContinueInBrowser).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Use another device" })).toBeInTheDocument();
+  });
+
+  it("recovers in place when an iPhone app handoff falls back to the browser", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, "", "/sessions/room-fallback?open=capture&mode=live");
+    window.localStorage.setItem("quipsly.session-entry-preference.v1", "CAPTURE_APP");
+    globalThis.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) }) as typeof fetch;
+    const onContinueInBrowser = jest.fn();
+
+    render(
+      <CaptureAppHandoff
+        roomId="room-fallback"
+        captureOpenFallback
+        onContinueInBrowser={onContinueInBrowser}
+      />,
+    );
+
+    expect(screen.getByText("Capture didn’t open")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Install or update Capture" })).toHaveAttribute(
+      "href",
+      "https://testflight.apple.com/join/XwRRcYUm",
+    );
+    expect(screen.getByRole("link", { name: "Try Capture again" })).toHaveAttribute(
+      "href",
+      "quipsly://session/room-fallback?mode=live",
+    );
+    expect(window.localStorage.getItem("quipsly.session-entry-preference.v1")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Join in this browser" }));
+    expect(onContinueInBrowser).toHaveBeenCalledTimes(1);
+    expect(new URL(window.location.href).searchParams.has("open")).toBe(false);
+    expect(window.localStorage.getItem("quipsly.session-entry-preference.v1")).toBe("BROWSER");
   });
 });

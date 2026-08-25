@@ -4048,3 +4048,19 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   **Verified copy details** disclosure: format, duration, size, exact source
   count, selected camera, revision, and SHA-256. Routine review and export stay
   visually simple; the evidence is available without leaving the Session.
+
+### 2026-08-25 Session Capture app handoff recovery
+
+- The Session lobby no longer asks iOS Safari to open a same-domain Universal
+  Link for its explicit **Open Capture** action. That action now uses Capture's
+  registered, authority-free `quipsly://session/...` scheme; canonical HTTPS
+  Universal Links remain the external and shared fallback.
+- If an HTTPS Capture handoff returns to Nest, the lobby detects
+  `open=capture`, clears the failed remembered preference, and leads with
+  **Join in this browser**. Install/update and retry remain visible secondary
+  choices instead of repeating the same apparent app-open loop.
+- Sixty-seven focused tests, strict TypeScript, the 196-page production build,
+  and the Capture/App Store static contract pass. The local in-app browser
+  webview attachment timed out again, so rendered phone-width and physical-iOS
+  handoff evidence remain deferred rather than inferred. Detailed record:
+  `docs/sessions/session-capture-app-handoff-recovery-2026-08-25.md`.
