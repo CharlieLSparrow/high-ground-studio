@@ -7,6 +7,13 @@ export const AUDIO_TREATMENT_VERSION = 1 as const;
 export const AUDIO_TREATMENT_JOB_KIND = "quipsly-audio-treatment-job-v1" as const;
 export const AUDIO_TREATMENT_PROPOSAL_KIND = "quipsly-audio-treatment-proposal-v1" as const;
 export const AUDIO_TREATMENT_RESULT_KIND = "quipsly-audio-treatment-result-v1" as const;
+export const AUDIO_TREATMENT_CLOUD_MANIFEST_KIND = "quipsly-audio-treatment-cloud-manifest-v1" as const;
+export const AUDIO_TREATMENT_CLOUD_QUEUE_KIND = "quipsly-audio-treatment-cloud-queue-v1" as const;
+export const AUDIO_TREATMENT_CLOUD_CONTROL_PREFIX = "media-vault/control/audio-treatment" as const;
+export const AUDIO_TREATMENT_CLOUD_MANIFEST_PREFIX = `${AUDIO_TREATMENT_CLOUD_CONTROL_PREFIX}/manifests` as const;
+export const AUDIO_TREATMENT_CLOUD_QUEUE_PREFIX = `${AUDIO_TREATMENT_CLOUD_CONTROL_PREFIX}/queue` as const;
+export const AUDIO_TREATMENT_CLOUD_RESULT_PREFIX = `${AUDIO_TREATMENT_CLOUD_CONTROL_PREFIX}/results` as const;
+export const AUDIO_TREATMENT_CLOUD_DEAD_LETTER_PREFIX = `${AUDIO_TREATMENT_CLOUD_CONTROL_PREFIX}/dead-letter` as const;
 
 export type AudioTreatmentProfileId = "dc-rumble-correction-v1";
 
@@ -106,6 +113,33 @@ export type AudioTreatmentResult = {
   };
 };
 
+export type AudioTreatmentCloudManifest = {
+  kind: typeof AUDIO_TREATMENT_CLOUD_MANIFEST_KIND;
+  version: 1;
+  job: AudioTreatmentJob;
+  status: "queued" | "processing" | "completed" | "failed-terminal";
+  queuedAt: string;
+  updatedAt: string;
+  lease: null | {
+    id: string;
+    executionId: string;
+    claimedAt: string;
+    expiresAt: string;
+    attempt: number;
+  };
+  resultObjectName: string | null;
+  failure: null | { code: string; message: string; failedAt: string };
+};
+
+export type AudioTreatmentCloudQueueReceipt = {
+  kind: typeof AUDIO_TREATMENT_CLOUD_QUEUE_KIND;
+  version: 1;
+  jobId: string;
+  manifestObjectName: string;
+  manifestGeneration: string;
+  enqueuedAt: string;
+};
+
 const SAFE_ID = /^[A-Za-z0-9_-]{8,160}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 
@@ -122,6 +156,161 @@ export function buildAudioTreatmentTargetLocator(input: {
 
 export function newAudioTreatmentJob(input: Omit<AudioTreatmentJob, "kind" | "version">) {
   return parseAudioTreatmentJob({ ...input, kind: AUDIO_TREATMENT_JOB_KIND, version: AUDIO_TREATMENT_VERSION });
+}
+
+export function buildAudioTreatmentCloudManifestObjectName(jobId: string) { return `${AUDIO_TREATMENT_CLOUD_MANIFEST_PREFIX}/${id(jobId, "jobId")}.json`; }
+export function buildAudioTreatmentCloudQueueObjectName(jobId: string) { return `${AUDIO_TREATMENT_CLOUD_QUEUE_PREFIX}/${id(jobId, "jobId")}.json`; }
+export function buildAudioTreatmentCloudResultObjectName(jobId: string) { return `${AUDIO_TREATMENT_CLOUD_RESULT_PREFIX}/${id(jobId, "jobId")}.json`; }
+export function buildAudioTreatmentCloudDeadLetterObjectName(jobId: string) { return `${AUDIO_TREATMENT_CLOUD_DEAD_LETTER_PREFIX}/${id(jobId, "jobId")}.json`; }
+
+export function newAudioTreatmentCloudManifest(jobValue: AudioTreatmentJob | unknown): AudioTreatmentCloudManifest {
+  const job = parseAudioTreatmentJob(jobValue);
+  if (job.source.provider !== "gcs" || job.target.provider !== "gcs" || !validGenerationBoundGcsSource(job.source)) {
+    throw new Error("Cloud audio treatment requires one generation-bound GCS source and target.");
+  }
+  return parseAudioTreatmentCloudManifest({
+    kind: AUDIO_TREATMENT_CLOUD_MANIFEST_KIND,
+    version: 1,
+    job,
+    status: "queued",
+    queuedAt: job.queuedAt,
+    updatedAt: job.queuedAt,
+    lease: null,
+    resultObjectName: null,
+    failure: null,
+  }, job.jobId);
+}
+
+export function parseAudioTreatmentCloudQueueReceipt(value: unknown): AudioTreatmentCloudQueueReceipt {
+  const row = record(value);
+  const jobId = id(row.jobId, "jobId");
+  const receipt: AudioTreatmentCloudQueueReceipt = {
+    kind: row.kind as AudioTreatmentCloudQueueReceipt["kind"],
+    version: row.version as 1,
+    jobId,
+    manifestObjectName: text(row.manifestObjectName, "manifestObjectName"),
+    manifestGeneration: text(row.manifestGeneration, "manifestGeneration"),
+    enqueuedAt: date(row.enqueuedAt, "enqueuedAt"),
+  };
+  if (
+    receipt.kind !== AUDIO_TREATMENT_CLOUD_QUEUE_KIND
+    || receipt.version !== 1
+    || receipt.manifestObjectName !== buildAudioTreatmentCloudManifestObjectName(jobId)
+    || !/^[1-9][0-9]*$/.test(receipt.manifestGeneration)
+  ) throw new Error("Audio treatment cloud queue receipt is invalid.");
+  return receipt;
+}
+
+export function parseAudioTreatmentCloudManifest(value: unknown, expectedJobId?: string): AudioTreatmentCloudManifest {
+  const row = record(value);
+  const job = parseAudioTreatmentJob(row.job, expectedJobId);
+  const status = row.status as AudioTreatmentCloudManifest["status"];
+  if (!["queued", "processing", "completed", "failed-terminal"].includes(status)) throw new Error("Audio treatment cloud manifest status is invalid.");
+  const leaseRow = row.lease === null ? null : record(row.lease);
+  const lease = leaseRow ? {
+    id: id(leaseRow.id, "lease.id"),
+    executionId: id(leaseRow.executionId, "lease.executionId"),
+    claimedAt: date(leaseRow.claimedAt, "lease.claimedAt"),
+    expiresAt: date(leaseRow.expiresAt, "lease.expiresAt"),
+    attempt: integer(leaseRow.attempt, "lease.attempt"),
+  } : null;
+  const failureRow = row.failure === null ? null : record(row.failure);
+  const failure = failureRow ? {
+    code: id(failureRow.code, "failure.code"),
+    message: text(failureRow.message, "failure.message").slice(0, 4_000),
+    failedAt: date(failureRow.failedAt, "failure.failedAt"),
+  } : null;
+  const resultObjectName = row.resultObjectName === null ? null : text(row.resultObjectName, "resultObjectName");
+  if (
+    row.kind !== AUDIO_TREATMENT_CLOUD_MANIFEST_KIND
+    || row.version !== 1
+    || (status === "processing") !== Boolean(lease)
+    || (status === "failed-terminal") !== Boolean(failure)
+    || (status === "completed") !== Boolean(resultObjectName)
+    || (resultObjectName && resultObjectName !== buildAudioTreatmentCloudResultObjectName(job.jobId))
+  ) throw new Error("Audio treatment cloud manifest is invalid.");
+  return {
+    kind: AUDIO_TREATMENT_CLOUD_MANIFEST_KIND,
+    version: 1,
+    job,
+    status,
+    queuedAt: date(row.queuedAt, "queuedAt"),
+    updatedAt: date(row.updatedAt, "updatedAt"),
+    lease,
+    resultObjectName,
+    failure,
+  };
+}
+
+export function claimAudioTreatmentCloudManifest(input: {
+  manifest: AudioTreatmentCloudManifest;
+  leaseId: string;
+  executionId: string;
+  now: Date;
+  leaseDurationMs: number;
+}) {
+  const manifest = parseAudioTreatmentCloudManifest(input.manifest);
+  if (manifest.status === "completed" || manifest.status === "failed-terminal") return null;
+  if (manifest.status === "processing" && Date.parse(manifest.lease!.expiresAt) > input.now.getTime()) return null;
+  if (!Number.isSafeInteger(input.leaseDurationMs) || input.leaseDurationMs < 60_000) throw new Error("Audio treatment cloud lease duration is invalid.");
+  return parseAudioTreatmentCloudManifest({
+    ...manifest,
+    status: "processing",
+    updatedAt: input.now.toISOString(),
+    lease: {
+      id: id(input.leaseId, "leaseId"),
+      executionId: id(input.executionId, "executionId"),
+      claimedAt: input.now.toISOString(),
+      expiresAt: new Date(input.now.getTime() + input.leaseDurationMs).toISOString(),
+      attempt: (manifest.lease?.attempt ?? 0) + 1,
+    },
+    resultObjectName: null,
+    failure: null,
+  }, manifest.job.jobId);
+}
+
+export function releaseAudioTreatmentCloudLease(input: { manifest: AudioTreatmentCloudManifest; leaseId: string; now: Date }) {
+  const manifest = parseAudioTreatmentCloudManifest(input.manifest);
+  assertAudioTreatmentLease(manifest, input.leaseId);
+  return parseAudioTreatmentCloudManifest({ ...manifest, status: "queued", updatedAt: input.now.toISOString(), lease: null }, manifest.job.jobId);
+}
+
+export function completeAudioTreatmentCloudManifest(input: {
+  manifest: AudioTreatmentCloudManifest;
+  leaseId: string;
+  result: AudioTreatmentResult;
+  now: Date;
+}) {
+  const manifest = parseAudioTreatmentCloudManifest(input.manifest);
+  assertAudioTreatmentLease(manifest, input.leaseId);
+  parseAudioTreatmentResult(input.result, manifest.job);
+  return parseAudioTreatmentCloudManifest({
+    ...manifest,
+    status: "completed",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+    resultObjectName: buildAudioTreatmentCloudResultObjectName(manifest.job.jobId),
+    failure: null,
+  }, manifest.job.jobId);
+}
+
+export function failAudioTreatmentCloudManifest(input: {
+  manifest: AudioTreatmentCloudManifest;
+  leaseId: string;
+  code: string;
+  message: string;
+  now: Date;
+}) {
+  const manifest = parseAudioTreatmentCloudManifest(input.manifest);
+  assertAudioTreatmentLease(manifest, input.leaseId);
+  return parseAudioTreatmentCloudManifest({
+    ...manifest,
+    status: "failed-terminal",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+    resultObjectName: null,
+    failure: { code: id(input.code, "failure.code"), message: text(input.message, "failure.message").slice(0, 4_000), failedAt: input.now.toISOString() },
+  }, manifest.job.jobId);
 }
 
 export function parseAudioTreatmentJob(value: unknown, expectedJobId?: string): AudioTreatmentJob {
@@ -309,6 +498,21 @@ function audioTreatmentDerivativeMatchesTarget(
     );
   }
   return locator === targetLocator;
+}
+
+function validGenerationBoundGcsSource(source: AudioMasterySourceBinding) {
+  const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(source.locator);
+  return Boolean(
+    match
+    && match[3] === source.generation
+    && !match[2].split("/").some((part) => !part || part === "." || part === ".."),
+  );
+}
+
+function assertAudioTreatmentLease(manifest: AudioTreatmentCloudManifest, leaseId: string) {
+  if (manifest.status !== "processing" || manifest.lease?.id !== leaseId) {
+    throw new Error("Audio treatment cloud lease is no longer authoritative.");
+  }
 }
 
 function profile(value: unknown): AudioTreatmentProfileId {
