@@ -389,6 +389,10 @@ const clientEntryResultBundlePath = path.join(
   artifactDirectory,
   "native-client-entry.xcresult",
 );
+const roomJoinResultBundlePath = path.join(
+  artifactDirectory,
+  "native-room-join.xcresult",
+);
 const resultBundlePath = path.join(
   artifactDirectory,
   "native-capture-recovery.xcresult",
@@ -454,6 +458,69 @@ assert.equal(clientEntrySummary.failedTests, 0);
 assert.equal(clientEntrySummary.skippedTests, 0);
 
 process.stderr.write(
+  `[fresh native recovery] joining and leaving provider room ${context.roomId} as the consented client\n`,
+);
+const roomJoinStatus = await runInherited(
+  "bash",
+  [
+    "apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh",
+  ],
+  {
+    env: {
+      ...process.env,
+      QUIPSLY_CAPTURE_UI_TEST_BASE_URL: baseURL,
+      QUIPSLY_CAPTURE_UI_TEST_EMAIL: context.identities.client.email,
+      QUIPSLY_CAPTURE_UI_TEST_PASSWORD: clientPassword,
+      QUIPSLY_CAPTURE_UI_TEST_SESSION_ID: context.roomId,
+      QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE: context.sessionTitle,
+      QUIPSLY_CAPTURE_UI_TEST_MODE: "room-join",
+      QUIPSLY_CAPTURE_UI_TEST_SIMULATOR_APP_STATE_MODE: "preserve",
+      QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH: derivedDataPath,
+      QUIPSLY_CAPTURE_UI_TEST_DESTINATION: destination,
+      QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH: roomJoinResultBundlePath,
+      QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:
+        process.env.QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS || "900",
+    },
+  },
+);
+const roomJoinSummary = await readJSONCommand("xcrun", [
+  "xcresulttool",
+  "get",
+  "test-results",
+  "summary",
+  "--path",
+  roomJoinResultBundlePath,
+]);
+const roomJoinPassed = (
+  roomJoinStatus === 0
+  && roomJoinSummary.result === "Passed"
+  && roomJoinSummary.passedTests === 1
+  && roomJoinSummary.failedTests === 0
+  && roomJoinSummary.skippedTests === 0
+);
+const simulatorCallKitFailClosed = (
+  destination.includes("Simulator")
+  && roomJoinSummary.failedTests === 0
+  && roomJoinSummary.passedTests === 0
+  && roomJoinSummary.skippedTests === 1
+  && roomJoinSummary.totalTestCount === 1
+);
+assert(
+  roomJoinPassed || simulatorCallKitFailClosed,
+  `Native provider room proof failed with exit ${String(roomJoinStatus)}: ${JSON.stringify({
+    result: roomJoinSummary.result,
+    passedTests: roomJoinSummary.passedTests,
+    failedTests: roomJoinSummary.failedTests,
+    skippedTests: roomJoinSummary.skippedTests,
+  })}`,
+);
+if (simulatorCallKitFailClosed) {
+  process.stderr.write(
+    "[fresh native recovery] Simulator CallKit failed closed; physical-iPhone provider media proof remains required\n",
+  );
+}
+
+process.stderr.write(
   `[fresh native recovery] operating isolated Session ${context.roomId}\n`,
 );
 const status = await runInherited(
@@ -511,6 +578,7 @@ const receipt = {
   trackedWorktreeCleanAtStart: releaseIdentity.trackedWorktreeCleanAtStart,
   contextPath: context.contextPath,
   clientEntryResultBundlePath,
+  roomJoinResultBundlePath,
   resultBundlePath,
   roomId: context.roomId,
   bookingId: context.bookingId,
@@ -532,12 +600,22 @@ const receipt = {
     skippedTests: clientEntrySummary.skippedTests,
     totalTestCount: clientEntrySummary.totalTestCount,
   },
+  roomJoinXcode: {
+    result: roomJoinSummary.result,
+    passedTests: roomJoinSummary.passedTests,
+    failedTests: roomJoinSummary.failedTests,
+    skippedTests: roomJoinSummary.skippedTests,
+    totalTestCount: roomJoinSummary.totalTestCount,
+  },
   studioHandoff,
   operated: {
     publicRenderedFreshStart: true,
     acceptedClientInvitationOpenedInFreshNativeApp: true,
     exactClientAccountAndCanonicalSessionReauthorized: true,
     clientEntryDidNotJoinOrRecordAutomatically: true,
+    providerRoomJoinedAndLeft: roomJoinPassed,
+    providerRoomJoinFailClosedOnSimulator: simulatorCallKitFailClosed,
+    providerJoinStartedRecording: false,
     clientConsentThroughRenderedUI: true,
     coachConsentThroughNativeUI: true,
     actualAVAudioRecorderTake: true,
@@ -560,10 +638,12 @@ const receipt = {
     credentialsTransferredByPrivateChildIPC: true,
     keychainReadRequiredForAutomatedFlight: false,
     simulatorUsed: destination.includes("Simulator"),
-    simulatorMicrophonePermissionPregrantedByHarness: true,
+    simulatorMicrophonePermissionPregrantedByHarness:
+      destination.includes("Simulator"),
     simulatorAppContainerStartedFreshByHarness: true,
     firstRunMicrophonePermissionUXProven: false,
     physicalDeviceProven: false,
+    realProviderRoomMediaProven: roomJoinPassed,
     naturalHumanSpeechProven: false,
     humanListeningProven: false,
     noviceHumanAcceptanceProven: false,
