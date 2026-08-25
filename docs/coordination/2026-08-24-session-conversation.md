@@ -92,7 +92,17 @@ this migration. The resulting database contains all three conversation tables,
 the typed `CREATED`/`EDITED`/`DELETED` operation enum, and seven intended
 foreign keys. The disposable qualification database was removed afterward.
 
-It does not prove that two minimally instructed humans understand the
-Conversation/Notes/Work separation or that message readback is satisfactory on
-browser and iPhone. Those observations remain in the deferred validation
-ledger.
+On 2026-08-25, the retained fresh-identity operation also proved the real
+browser-to-native-to-browser loop against one exact private coaching Session:
+the rendered coach thread authored a message, the signed-in Capture client
+rendered it, the native composer authored a reply, and the rendered browser
+thread read that reply back. PostgreSQL bound the two messages to the two
+distinct authorized actors. The native operation additionally asserted that
+opening and using Conversation neither joined provider media nor started or
+implied a local recording. The code-signed Simulator result and private receipt
+are retained under the matching `artifacts/coaching-acceptance` run directory.
+
+This does not prove that two minimally instructed humans understand the
+Conversation/Notes/Work separation, a physical iPhone behaves identically, or
+the native retry UX survives a forced real disconnect. Those observations
+remain in the deferred validation ledger.

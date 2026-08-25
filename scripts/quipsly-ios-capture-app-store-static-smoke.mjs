@@ -696,6 +696,11 @@ requireIncludes(sessionConversationText, "AuthManager.shared.authenticatedData",
 requireIncludes(sessionConversationText, "FileProtectionType.complete", "Session conversation cache is protected while the iPhone is locked");
 requireIncludes(sessionConversationText, "stableOwnerSnapshot()", "Session conversation cache is partitioned by stable account owner");
 requireIncludes(sessionConversationText, "await load(session: session, forceRefresh: true, quietly: true)", "a Session live hint triggers an authenticated durable read instead of applying provider payload");
+requireIncludes(runtimeUISmokeRunnerText, "session-conversation)", "the native runtime harness retains an explicit Session conversation qualification mode");
+requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testSessionConversationRoundTripsBetweenBrowserAndIPhone"', "the Session conversation qualification mode selects exactly one cross-device native test");
+requireIncludes(runtimeUISmokeTestsText, "testSessionConversationRoundTripsBetweenBrowserAndIPhone", "the compiled native suite reads a browser message and authors an iPhone reply");
+requireIncludes(runtimeUISmokeTestsText, 'app.otherElements["GlobalCaptureBanner"].exists', "native conversation qualification proves messaging does not imply retained recording");
+requireIncludes(runtimeUISmokeTestsText, 'app.buttons["ProviderLeaveRoomButton"].exists', "native conversation qualification proves messaging does not join provider media");
 requireIncludes(episodeChatText, 'static let topic = "quipsly.chat.persisted.v1"', "episode chat shares the bounded durable-message hint topic with Nest");
 requireIncludes(episodeChatText, "Set(dictionary.keys) == allowedKeys", "episode chat rejects transient packets with undeclared content fields");
 requireIncludes(episodeChatText, "await load(session: session, forceRefresh: true, quietly: true)", "a live chat hint triggers an authenticated durable read instead of applying provider payload as chat");
