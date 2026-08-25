@@ -328,7 +328,13 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     }
 
     func preparePreviewExport(roomID: String) async -> URL? {
-        await verifiedPreviewFile(roomID: roomID, busyAction: "EXPORT")
+        playbackProgressTask?.cancel()
+        playbackProgressTask = nil
+        player?.pause()
+        previewVideoPlayer?.pause()
+        isPlaying = false
+        previewLastPlaybackTime = nil
+        return await verifiedPreviewFile(roomID: roomID, busyAction: "EXPORT")
     }
 
     func togglePreview(roomID: String) async {
