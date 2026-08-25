@@ -6,6 +6,7 @@ import { FfmpegAudioAlignmentAnalyzer } from "./audio-alignment-ffmpeg.js";
 import { runAudioAlignmentCloudWorker } from "./audio-alignment-cloud-worker.js";
 import { FfmpegAudioMasteringEngine } from "./audio-mastering-ffmpeg.js";
 import { runAudioMasteryCloudWorker } from "./audio-mastery-cloud-worker.js";
+import { runDialogueRepairCloudWorker } from "./dialogue-repair-cloud-worker.js";
 import { FfmpegAudioSignalProfiler } from "./audio-signal-profile-ffmpeg.js";
 import { runAudioSignalProfileCloudWorker } from "./audio-signal-profile-cloud-worker.js";
 import { FfmpegAudioSpectralAnalyzer } from "./audio-spectral-evidence-ffmpeg.js";
@@ -85,6 +86,14 @@ try {
       jobLimit,
     ),
   );
+  const dialogueRepairResults = await runLane("dialogue-repair", () =>
+    runDialogueRepairCloudWorker(
+      storage,
+      new FfmpegAudioMasteringEngine(),
+      workerOptions,
+      jobLimit,
+    ),
+  );
   const signalProfileResults = await runLane("audio-signal-profile", () =>
     runAudioSignalProfileCloudWorker(
       storage,
@@ -143,6 +152,7 @@ try {
         episodeResults.length +
         alignmentResults.length +
         masteryResults.length +
+        dialogueRepairResults.length +
         signalProfileResults.length +
         spectralResults.length +
         interruptionRepairResults.length +
@@ -152,6 +162,7 @@ try {
       episodeResults,
       alignmentResults,
       masteryResults,
+      dialogueRepairResults,
       signalProfileResults,
       spectralResults,
       interruptionRepairResults,

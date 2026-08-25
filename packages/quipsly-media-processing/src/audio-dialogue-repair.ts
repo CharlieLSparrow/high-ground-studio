@@ -9,6 +9,13 @@ export const DIALOGUE_REPAIR_PROPOSAL_KIND = "quipsly-dialogue-repair-proposal-v
 export const DIALOGUE_REPAIR_JOB_KIND = "quipsly-dialogue-repair-job-v1" as const;
 export const DIALOGUE_REPAIR_RESULT_KIND = "quipsly-dialogue-repair-result-v1" as const;
 export const DIALOGUE_REPAIR_PROFILE_ID = "dialogue-declick-conservative-v1" as const;
+export const DIALOGUE_REPAIR_CLOUD_MANIFEST_KIND = "quipsly-dialogue-repair-cloud-manifest-v1" as const;
+export const DIALOGUE_REPAIR_CLOUD_QUEUE_KIND = "quipsly-dialogue-repair-cloud-queue-v1" as const;
+export const DIALOGUE_REPAIR_CLOUD_CONTROL_PREFIX = "media-vault/control/dialogue-repair" as const;
+export const DIALOGUE_REPAIR_CLOUD_MANIFEST_PREFIX = `${DIALOGUE_REPAIR_CLOUD_CONTROL_PREFIX}/manifests` as const;
+export const DIALOGUE_REPAIR_CLOUD_QUEUE_PREFIX = `${DIALOGUE_REPAIR_CLOUD_CONTROL_PREFIX}/queue` as const;
+export const DIALOGUE_REPAIR_CLOUD_RESULT_PREFIX = `${DIALOGUE_REPAIR_CLOUD_CONTROL_PREFIX}/results` as const;
+export const DIALOGUE_REPAIR_CLOUD_DEAD_LETTER_PREFIX = `${DIALOGUE_REPAIR_CLOUD_CONTROL_PREFIX}/dead-letter` as const;
 
 export type DialogueRepairLabel = "mouth-click" | "plosive" | "sibilance" | "breath" | "clipping" | "noise-event";
 
@@ -232,6 +239,33 @@ export type DialogueRepairResult = {
     matchedAuditionRequired: true;
     promotionRequiresSeparateApproval: true;
   };
+};
+
+export type DialogueRepairCloudManifest = {
+  kind: typeof DIALOGUE_REPAIR_CLOUD_MANIFEST_KIND;
+  version: 1;
+  job: DialogueRepairJob;
+  status: "queued" | "processing" | "completed" | "failed-terminal";
+  queuedAt: string;
+  updatedAt: string;
+  lease: null | {
+    id: string;
+    executionId: string;
+    claimedAt: string;
+    expiresAt: string;
+    attempt: number;
+  };
+  resultObjectName: string | null;
+  failure: null | { code: string; message: string; failedAt: string };
+};
+
+export type DialogueRepairCloudQueueReceipt = {
+  kind: typeof DIALOGUE_REPAIR_CLOUD_QUEUE_KIND;
+  version: 1;
+  jobId: string;
+  manifestObjectName: string;
+  manifestGeneration: string;
+  enqueuedAt: string;
 };
 
 const SAFE_ID = /^[A-Za-z0-9_-]{8,160}$/;
@@ -630,6 +664,195 @@ export function newDialogueRepairJob(input: Omit<DialogueRepairJob, "kind" | "ve
   return parseDialogueRepairJob({ ...input, kind: DIALOGUE_REPAIR_JOB_KIND, version: DIALOGUE_REPAIR_CONTRACT_VERSION });
 }
 
+export function buildDialogueRepairCloudManifestObjectName(jobId: string) {
+  return `${DIALOGUE_REPAIR_CLOUD_MANIFEST_PREFIX}/${identifier(jobId, "jobId")}.json`;
+}
+
+export function buildDialogueRepairCloudQueueObjectName(jobId: string) {
+  return `${DIALOGUE_REPAIR_CLOUD_QUEUE_PREFIX}/${identifier(jobId, "jobId")}.json`;
+}
+
+export function buildDialogueRepairCloudResultObjectName(jobId: string) {
+  return `${DIALOGUE_REPAIR_CLOUD_RESULT_PREFIX}/${identifier(jobId, "jobId")}.json`;
+}
+
+export function buildDialogueRepairCloudDeadLetterObjectName(jobId: string) {
+  return `${DIALOGUE_REPAIR_CLOUD_DEAD_LETTER_PREFIX}/${identifier(jobId, "jobId")}.json`;
+}
+
+export function newDialogueRepairCloudManifest(jobValue: DialogueRepairJob | unknown): DialogueRepairCloudManifest {
+  const job = parseDialogueRepairJob(jobValue);
+  if (job.source.provider !== "gcs" || job.target.provider !== "gcs" || !validGenerationBoundGcsSource(job.source)) {
+    throw new Error("Cloud Dialogue Repair requires one generation-bound GCS source and target.");
+  }
+  return parseDialogueRepairCloudManifest({
+    kind: DIALOGUE_REPAIR_CLOUD_MANIFEST_KIND,
+    version: 1,
+    job,
+    status: "queued",
+    queuedAt: job.queuedAt,
+    updatedAt: job.queuedAt,
+    lease: null,
+    resultObjectName: null,
+    failure: null,
+  }, job.jobId);
+}
+
+export function parseDialogueRepairCloudQueueReceipt(value: unknown): DialogueRepairCloudQueueReceipt {
+  const row = record(value);
+  const jobId = identifier(row.jobId, "jobId");
+  const receipt: DialogueRepairCloudQueueReceipt = {
+    kind: row.kind as DialogueRepairCloudQueueReceipt["kind"],
+    version: Number(row.version) as 1,
+    jobId,
+    manifestObjectName: boundedText(row.manifestObjectName, "manifestObjectName", 2_000),
+    manifestGeneration: boundedText(row.manifestGeneration, "manifestGeneration", 200),
+    enqueuedAt: date(row.enqueuedAt, "enqueuedAt"),
+  };
+  if (
+    receipt.kind !== DIALOGUE_REPAIR_CLOUD_QUEUE_KIND
+    || receipt.version !== 1
+    || receipt.manifestObjectName !== buildDialogueRepairCloudManifestObjectName(jobId)
+    || !/^[1-9][0-9]*$/.test(receipt.manifestGeneration)
+  ) throw new Error("Dialogue Repair cloud queue receipt is invalid.");
+  return receipt;
+}
+
+export function parseDialogueRepairCloudManifest(value: unknown, expectedJobId?: string): DialogueRepairCloudManifest {
+  const row = record(value);
+  const job = parseDialogueRepairJob(row.job, expectedJobId);
+  const status = boundedText(row.status, "status", 40) as DialogueRepairCloudManifest["status"];
+  const leaseRow = row.lease === null ? null : record(row.lease);
+  const lease = leaseRow === null ? null : {
+    id: identifier(leaseRow.id, "lease.id"),
+    executionId: identifier(leaseRow.executionId, "lease.executionId"),
+    claimedAt: date(leaseRow.claimedAt, "lease.claimedAt"),
+    expiresAt: date(leaseRow.expiresAt, "lease.expiresAt"),
+    attempt: positiveInteger(leaseRow.attempt, "lease.attempt"),
+  };
+  const failureRow = row.failure === null ? null : record(row.failure);
+  const failure = failureRow === null ? null : {
+    code: identifier(failureRow.code, "failure.code"),
+    message: boundedText(failureRow.message, "failure.message", 4_000),
+    failedAt: date(failureRow.failedAt, "failure.failedAt"),
+  };
+  const resultObjectName = row.resultObjectName === null
+    ? null
+    : boundedText(row.resultObjectName, "resultObjectName", 2_000);
+  const manifest: DialogueRepairCloudManifest = {
+    kind: row.kind as DialogueRepairCloudManifest["kind"],
+    version: Number(row.version) as 1,
+    job,
+    status,
+    queuedAt: date(row.queuedAt, "queuedAt"),
+    updatedAt: date(row.updatedAt, "updatedAt"),
+    lease,
+    resultObjectName,
+    failure,
+  };
+  if (
+    manifest.kind !== DIALOGUE_REPAIR_CLOUD_MANIFEST_KIND
+    || manifest.version !== 1
+    || job.source.provider !== "gcs"
+    || job.target.provider !== "gcs"
+    || !validGenerationBoundGcsSource(job.source)
+    || manifest.queuedAt !== job.queuedAt
+    || !["queued", "processing", "completed", "failed-terminal"].includes(status)
+    || (status === "processing") !== Boolean(lease)
+    || (status === "completed"
+      ? resultObjectName !== buildDialogueRepairCloudResultObjectName(job.jobId)
+      : resultObjectName !== null)
+    || (status === "failed-terminal") !== Boolean(failure)
+  ) throw new Error("Dialogue Repair cloud manifest is invalid.");
+  return manifest;
+}
+
+export function claimDialogueRepairCloudManifest(input: {
+  manifest: DialogueRepairCloudManifest;
+  leaseId: string;
+  executionId: string;
+  now: Date;
+  leaseDurationMs: number;
+}) {
+  if (input.manifest.status === "completed" || input.manifest.status === "failed-terminal") return null;
+  if (
+    input.manifest.status === "processing"
+    && input.manifest.lease
+    && Date.parse(input.manifest.lease.expiresAt) > input.now.getTime()
+  ) return null;
+  if (!Number.isSafeInteger(input.leaseDurationMs) || input.leaseDurationMs < 60_000) {
+    throw new Error("Dialogue Repair cloud lease duration is invalid.");
+  }
+  return parseDialogueRepairCloudManifest({
+    ...input.manifest,
+    status: "processing",
+    updatedAt: input.now.toISOString(),
+    lease: {
+      id: identifier(input.leaseId, "leaseId"),
+      executionId: identifier(input.executionId, "executionId"),
+      claimedAt: input.now.toISOString(),
+      expiresAt: new Date(input.now.getTime() + input.leaseDurationMs).toISOString(),
+      attempt: (input.manifest.lease?.attempt ?? 0) + 1,
+    },
+    resultObjectName: null,
+    failure: null,
+  }, input.manifest.job.jobId);
+}
+
+export function releaseDialogueRepairCloudLease(input: {
+  manifest: DialogueRepairCloudManifest;
+  leaseId: string;
+  now: Date;
+}) {
+  assertDialogueRepairLease(input.manifest, input.leaseId);
+  return parseDialogueRepairCloudManifest({
+    ...input.manifest,
+    status: "queued",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+  }, input.manifest.job.jobId);
+}
+
+export function completeDialogueRepairCloudManifest(input: {
+  manifest: DialogueRepairCloudManifest;
+  leaseId: string;
+  result: DialogueRepairResult;
+  now: Date;
+}) {
+  assertDialogueRepairLease(input.manifest, input.leaseId);
+  parseDialogueRepairResult(input.result, input.manifest.job);
+  return parseDialogueRepairCloudManifest({
+    ...input.manifest,
+    status: "completed",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+    resultObjectName: buildDialogueRepairCloudResultObjectName(input.manifest.job.jobId),
+    failure: null,
+  }, input.manifest.job.jobId);
+}
+
+export function failDialogueRepairCloudManifest(input: {
+  manifest: DialogueRepairCloudManifest;
+  leaseId: string;
+  code: string;
+  message: string;
+  now: Date;
+}) {
+  assertDialogueRepairLease(input.manifest, input.leaseId);
+  return parseDialogueRepairCloudManifest({
+    ...input.manifest,
+    status: "failed-terminal",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+    resultObjectName: null,
+    failure: {
+      code: identifier(input.code, "failure.code"),
+      message: boundedText(input.message, "failure.message", 4_000),
+      failedAt: input.now.toISOString(),
+    },
+  }, input.manifest.job.jobId);
+}
+
 export function parseDialogueRepairJob(value: unknown, expectedJobId?: string): DialogueRepairJob {
   const row = record(value);
   const jobId = identifier(row.jobId, "jobId");
@@ -690,7 +913,11 @@ export function parseDialogueRepairResult(value: unknown, expectedJob?: Dialogue
     row.kind !== DIALOGUE_REPAIR_RESULT_KIND || row.version !== DIALOGUE_REPAIR_CONTRACT_VERSION
     || (job && row.jobId !== job.jobId) || !sameSource(source, proposal.source)
     || !sameSource(source, sourceMeasurement.source) || !sameSource(source, sourceDiagnosis.source)
-    || (job && (!sameSource(job.source, source) || !sameJson(job.proposal, proposal) || job.target.locator !== derivativeSource.locator))
+    || (job && (
+      !sameSource(job.source, source)
+      || !sameJson(job.proposal, proposal)
+      || !dialogueRepairDerivativeMatchesTarget(derivativeSource.provider, derivativeSource.locator, job.target.locator)
+    ))
     || derivativeSource.provider !== source.provider || derivative.contentType !== "audio/wav"
     || derivative.codec !== "pcm_s24le" || derivative.sampleRateHz !== 48_000 || derivative.variantKind !== "dialogue-repair-preview"
     || !sameSource(derivativeSource, outputMeasurement.source) || !sameSource(derivativeSource, outputDiagnosis.source)
@@ -776,6 +1003,37 @@ function sourceBinding(value: unknown): AudioMasterySourceBinding {
 
 function sameSource(left: AudioMasterySourceBinding, right: AudioMasterySourceBinding) {
   return left.assetId === right.assetId && left.provider === right.provider && left.locator === right.locator && left.generation === right.generation && left.sha256 === right.sha256 && left.sizeBytes === right.sizeBytes && left.contentType === right.contentType;
+}
+
+function validGenerationBoundGcsSource(source: AudioMasterySourceBinding) {
+  const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(source.locator);
+  return Boolean(
+    match
+    && match[3] === source.generation
+    && !match[2].split("/").some((part) => !part || part === "." || part === "..")
+  );
+}
+
+function assertDialogueRepairLease(manifest: DialogueRepairCloudManifest, leaseId: string) {
+  if (manifest.status !== "processing" || manifest.lease?.id !== leaseId) {
+    throw new Error("Dialogue Repair cloud lease is no longer authoritative.");
+  }
+}
+
+function dialogueRepairDerivativeMatchesTarget(
+  provider: "local" | "gcs",
+  locator: string,
+  targetLocator: string,
+) {
+  if (provider === "gcs") {
+    const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(locator);
+    return Boolean(
+      match
+      && match[2] === targetLocator
+      && !match[2].split("/").some((part) => !part || part === "." || part === ".."),
+    );
+  }
+  return locator === targetLocator;
 }
 
 function sameJson(left: unknown, right: unknown) { return JSON.stringify(sortObject(left)) === JSON.stringify(sortObject(right)); }
