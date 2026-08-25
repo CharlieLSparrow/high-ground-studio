@@ -1549,6 +1549,10 @@ final class CaptureExperienceUITests: XCTestCase {
         openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
         let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
+        XCTAssertFalse(
+            followUp.isHittable,
+            "Opening the recording workspace should keep consent and the recorder in front of coaching follow-through."
+        )
         reveal(followUp, searchAboveFirst: false)
         XCTAssertTrue(
             followUp.waitForExistence(timeout: 5),

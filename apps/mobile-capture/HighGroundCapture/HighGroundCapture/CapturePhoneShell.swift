@@ -6484,77 +6484,6 @@ private struct CaptureRecorderView: View {
                     )
                     .captureCard()
 
-                    // The shared coaching outcome is a primary Session action,
-                    // not a diagnostic buried beneath capture recovery details.
-                    // Keep a stable near-field slot while the focused request
-                    // resolves so the card cannot jump out from under a person
-                    // (or an assistive-technology cursor) after selection.
-                    if session.clientFollowUpWorkspace?.isCoach == true {
-                        MobileCoachClientFollowUpCard(
-                            session: session,
-                            sessionClient: model.sessionClient,
-                            previewOnly: model.usesPreviewData,
-                            onOpenTask: { task in
-                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
-                                model.requestWorkNavigation(
-                                    kind: .task,
-                                    entityID: task.id,
-                                    title: task.title,
-                                    projectID: projectID
-                                )
-                                visibleTab = .work
-                            },
-                            onOpenGoal: { goal in
-                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
-                                model.requestWorkNavigation(
-                                    kind: .goal,
-                                    entityID: goal.id,
-                                    title: goal.title,
-                                    projectID: projectID
-                                )
-                                visibleTab = .work
-                            }
-                        )
-                    } else if session.clientFollowUp != nil {
-                        MobileClientFollowUpCard(
-                            session: session,
-                            sessionClient: model.sessionClient,
-                            previewOnly: model.usesPreviewData,
-                            onOpenTask: { task in
-                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
-                                model.requestWorkNavigation(
-                                    kind: .task,
-                                    entityID: task.id,
-                                    title: task.title,
-                                    projectID: projectID
-                                )
-                                visibleTab = .work
-                            },
-                            onOpenGoal: { goal in
-                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
-                                model.requestWorkNavigation(
-                                    kind: .goal,
-                                    entityID: goal.id,
-                                    title: goal.title,
-                                    projectID: projectID
-                                )
-                                visibleTab = .work
-                            }
-                        )
-                    } else if session.isCoachingSession {
-                        MobileClientFollowUpLoadingCard(
-                            state: model.sessionClient.clientFollowUpLoadState(
-                                forSessionID: session.id
-                            )
-                        ) {
-                            Task {
-                                await model.sessionClient.refreshClientFollowUp(
-                                    forSessionID: session.id
-                                )
-                            }
-                        }
-                    }
-
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
                         || audioCapture.activeSessionID == session.id
@@ -6829,6 +6758,77 @@ private struct CaptureRecorderView: View {
                         episodeManuscript.loadPreview(session: session)
                         episodeWatch.loadPreview(session: session)
                     }
+                        }
+                    }
+
+                    // Follow-through remains a primary Session outcome, but it
+                    // must never sit between the live call and the controls that
+                    // grant consent or preserve the participant-owned source.
+                    // Outside an active/local recording workspace it remains
+                    // directly beneath the ordinary call lobby.
+                    if session.clientFollowUpWorkspace?.isCoach == true {
+                        MobileCoachClientFollowUpCard(
+                            session: session,
+                            sessionClient: model.sessionClient,
+                            previewOnly: model.usesPreviewData,
+                            onOpenTask: { task in
+                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
+                                model.requestWorkNavigation(
+                                    kind: .task,
+                                    entityID: task.id,
+                                    title: task.title,
+                                    projectID: projectID
+                                )
+                                visibleTab = .work
+                            },
+                            onOpenGoal: { goal in
+                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
+                                model.requestWorkNavigation(
+                                    kind: .goal,
+                                    entityID: goal.id,
+                                    title: goal.title,
+                                    projectID: projectID
+                                )
+                                visibleTab = .work
+                            }
+                        )
+                    } else if session.clientFollowUp != nil {
+                        MobileClientFollowUpCard(
+                            session: session,
+                            sessionClient: model.sessionClient,
+                            previewOnly: model.usesPreviewData,
+                            onOpenTask: { task in
+                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
+                                model.requestWorkNavigation(
+                                    kind: .task,
+                                    entityID: task.id,
+                                    title: task.title,
+                                    projectID: projectID
+                                )
+                                visibleTab = .work
+                            },
+                            onOpenGoal: { goal in
+                                guard let projectID = session.currentFollowThrough?.sourceRoom.projectId else { return }
+                                model.requestWorkNavigation(
+                                    kind: .goal,
+                                    entityID: goal.id,
+                                    title: goal.title,
+                                    projectID: projectID
+                                )
+                                visibleTab = .work
+                            }
+                        )
+                    } else if session.isCoachingSession {
+                        MobileClientFollowUpLoadingCard(
+                            state: model.sessionClient.clientFollowUpLoadState(
+                                forSessionID: session.id
+                            )
+                        ) {
+                            Task {
+                                await model.sessionClient.refreshClientFollowUp(
+                                    forSessionID: session.id
+                                )
+                            }
                         }
                     }
 

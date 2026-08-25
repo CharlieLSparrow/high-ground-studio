@@ -759,9 +759,10 @@ function checkMeetingSpineContractSources() {
   expect(
     captureRecorderViewText.indexOf("ConsentStrip(") >= 0
       && captureRecorderViewText.indexOf("RecorderHero(") > captureRecorderViewText.indexOf("ConsentStrip(")
+      && captureRecorderViewText.indexOf("MobileCoachClientFollowUpCard(") > captureRecorderViewText.indexOf("RecorderHero(")
       && captureRecorderViewText.indexOf("CaptureQuickEntryBar(") > captureRecorderViewText.indexOf("RecorderHero("),
     "nativeRecordHierarchyKeepsCapturePrimary",
-    "The shipping Record hierarchy keeps consent and the local recorder ahead of quick entry and follow-through tools.",
+    "The shipping Record hierarchy keeps consent and the local recorder ahead of coaching follow-through, quick entry, and other collaboration tools.",
   );
   expect(
     bridgeText.includes("struct ProviderJoin: Codable")
