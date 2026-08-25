@@ -8,24 +8,29 @@ import path from "node:path";
 import type { Prisma } from "@prisma/client";
 import {
   buildAudioTreatmentTargetLocator,
+  buildAudioTreatmentCloudManifestObjectName,
+  buildAudioTreatmentCloudResultObjectName,
   newAudioTreatmentJob,
   parseAudioMasteryJob,
   parseAudioMasteryResult,
   parseAudioTreatmentJob,
+  parseAudioTreatmentCloudManifest,
   parseAudioTreatmentResult,
 } from "@high-ground/quipsly-media-processing";
 
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
+import { getMediaBucket } from "@/lib/server/gcs";
 import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
 
 import { publicSignalDiagnosis } from "./audio-mastery";
+import { ensureAudioTreatmentCloudQueued } from "./audio-treatment-cloud";
 
 const JOB_TYPE = "audio-treatment";
 const MASTERY_JOB_TYPE = "audio-mastery";
 
 export type PublicAudioTreatmentStatus = {
   jobId: string | null;
-  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
   profileId: "dc-rumble-correction-v1" | null;
   sourceMeasurement: null | ReturnType<typeof publicMeasurement>;
   sourceDiagnosis: null | ReturnType<typeof publicSignalDiagnosis>;
@@ -61,7 +66,6 @@ export async function queueAudioTreatment(input: {
 }) {
   const context = await loadContext(input);
   const evidence = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
-  if (evidence.provider !== "local") throw new Error("Cloud audio treatment is not qualified yet. This release accepts local Nest media only.");
 
   const masteryRow = await input.prisma.studioAssetProcessingJob.findFirst({
     where: { projectId: context.project.id, assetId: context.asset.id, type: MASTERY_JOB_TYPE, status: { in: ["output-ready", "completed"] } },
@@ -87,7 +91,11 @@ export async function queueAudioTreatment(input: {
     try {
       const current = parseAudioTreatmentJob(existing.inputJson, existing.id);
       if (current.source.sha256 === evidence.sha256 && current.triggerDiagnosisId === diagnosis.diagnosisId && existing.status !== "failed") {
-        return toPublicAudioTreatmentStatus(existing);
+        if (current.source.provider !== "gcs") return toPublicAudioTreatmentStatus(existing);
+        const cloud = await ensureAudioTreatmentCloudQueued({ prisma: input.prisma, processingJob: existing });
+        const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: existing.id } }) ?? existing;
+        const status = toPublicAudioTreatmentStatus(refreshed);
+        return cloud.status === "configuration-required" ? { ...status, status: "blocked" as const, error: "Cloud audio treatment is retained, but media processing is not configured." } : status;
       }
     } catch {
       // Malformed or legacy rows do not own this source-bound request.
@@ -104,7 +112,7 @@ export async function queueAudioTreatment(input: {
     triggerDiagnosisId: diagnosis.diagnosisId,
     profileId: "dc-rumble-correction-v1",
     target: {
-      provider: "local",
+      provider: evidence.provider,
       locator: buildAudioTreatmentTargetLocator({ assetId: context.asset.id, sourceSha256: evidence.sha256, profileId: "dc-rumble-correction-v1" }),
       contentType: "audio/wav",
       codec: "pcm_s24le",
@@ -115,6 +123,12 @@ export async function queueAudioTreatment(input: {
   const saved = await input.prisma.studioAssetProcessingJob.create({
     data: { id: job.jobId, projectId: context.project.id, assetId: context.asset.id, type: JOB_TYPE, status: "queued", requestedByEmail: input.actorEmail, inputJson: toPrismaJson(job) },
   });
+  if (evidence.provider === "gcs") {
+    const cloud = await ensureAudioTreatmentCloudQueued({ prisma: input.prisma, processingJob: saved });
+    const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: saved.id } }) ?? saved;
+    const status = toPublicAudioTreatmentStatus(refreshed);
+    return cloud.status === "configuration-required" ? { ...status, status: "blocked" as const, error: "Cloud audio treatment is retained, but media processing is not configured." } : status;
+  }
   return toPublicAudioTreatmentStatus(saved);
 }
 
@@ -130,8 +144,10 @@ export async function readAudioTreatmentStatus(input: { prisma: any; projectSlug
 export async function reconcileAudioTreatment(input: { prisma: any; projectSlug: string; assetId: string; sourceId: string }) {
   const context = await loadContext(input);
   const row = await input.prisma.studioAssetProcessingJob.findFirst({ where: { projectId: context.project.id, assetId: context.asset.id, type: JOB_TYPE }, orderBy: { createdAt: "desc" } });
-  if (!row || row.status !== "output-ready") return row ? toPublicAudioTreatmentStatus(row) : emptyStatus();
+  if (!row) return emptyStatus();
   const job = parseAudioTreatmentJob(row.inputJson, row.id);
+  if (job.source.provider === "gcs") return reconcileCloudAudioTreatment(input.prisma, row, job, context);
+  if (row.status !== "output-ready") return toPublicAudioTreatmentStatus(row);
   const result = parseAudioTreatmentResult(jsonObject(row.resultJson).receipt, job);
   const current = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
   if (current.sha256 !== job.source.sha256 || current.generation !== job.source.generation || current.sizeBytes !== job.source.sizeBytes) {
@@ -168,13 +184,73 @@ export async function reconcileAudioTreatment(input: { prisma: any; projectSlug:
   return toPublicAudioTreatmentStatus(updated);
 }
 
+async function reconcileCloudAudioTreatment(
+  prisma: any,
+  row: any,
+  job: ReturnType<typeof parseAudioTreatmentJob>,
+  context: Awaited<ReturnType<typeof loadContext>>,
+) {
+  const cloud = await ensureAudioTreatmentCloudQueued({ prisma, processingJob: row });
+  const refreshed = await prisma.studioAssetProcessingJob.findUnique({ where: { id: row.id } });
+  const currentRow = refreshed ?? row;
+  if (cloud.status === "configuration-required") return { ...toPublicAudioTreatmentStatus(currentRow), status: "blocked" as const, error: "Cloud audio treatment is retained, but media processing is not configured." };
+  if (cloud.status === "failed") return toPublicAudioTreatmentStatus(currentRow);
+  const bucket = getMediaBucket(cloud.bucketName);
+  const storedManifest = await loadGcsJsonIfPresent(bucket, buildAudioTreatmentCloudManifestObjectName(job.jobId));
+  if (!storedManifest) return toPublicAudioTreatmentStatus(currentRow);
+  const manifest = parseAudioTreatmentCloudManifest(storedManifest.value, job.jobId);
+  if (manifest.status === "failed-terminal") {
+    const failed = await prisma.studioAssetProcessingJob.update({ where: { id: job.jobId }, data: { status: "failed", error: `${manifest.failure?.code || "audio-treatment-worker-failed"}: ${manifest.failure?.message || "Cloud audio treatment failed terminal."}`.slice(0, 4_000), completedAt: new Date(manifest.failure?.failedAt || manifest.updatedAt) } });
+    return toPublicAudioTreatmentStatus(failed);
+  }
+  if (manifest.status !== "completed") return toPublicAudioTreatmentStatus(currentRow);
+  const storedResult = await loadGcsJsonIfPresent(bucket, buildAudioTreatmentCloudResultObjectName(job.jobId));
+  if (!storedResult) return toPublicAudioTreatmentStatus(currentRow);
+  const result = parseAudioTreatmentResult(storedResult.value, job);
+  const currentSource = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
+  if (currentSource.provider !== "gcs" || currentSource.locator !== job.source.locator || currentSource.sha256 !== job.source.sha256 || currentSource.generation !== job.source.generation || currentSource.sizeBytes !== job.source.sizeBytes) throw new Error("The immutable cloud source changed before audio treatment registration.");
+  const output = exactGcsLocation(result.derivative.locator, result.derivative.generation);
+  if (output.bucketName !== cloud.bucketName || output.objectName !== job.target.locator) throw new Error("Cloud audio treatment output escaped its deterministic target binding.");
+  const outputEvidence = await inspectImmutableStudioMediaSource(result.derivative.locator, "audio/wav");
+  const [metadata] = await bucket.file(output.objectName, { generation: output.generation }).getMetadata();
+  const custom = Object.fromEntries(Object.entries(metadata.metadata ?? {}).map(([key, value]) => [key, String(value)]));
+  if (
+    outputEvidence.provider !== "gcs"
+    || outputEvidence.locator !== result.derivative.locator
+    || outputEvidence.generation !== result.derivative.generation
+    || outputEvidence.sha256 !== result.derivative.sha256
+    || outputEvidence.sizeBytes !== result.derivative.sizeBytes
+    || custom.quipslyKind !== "audio-treatment-preview-v1"
+    || custom.quipslyTreatmentJobId !== job.jobId
+    || custom.quipslySourceGeneration !== job.source.generation
+    || custom.quipslySourceSha256 !== job.source.sha256
+    || custom.quipslyTriggerDiagnosisId !== job.triggerDiagnosisId
+    || custom.quipslyOutputSha256 !== result.derivative.sha256
+    || custom.quipslyOutputSizeBytes !== String(result.derivative.sizeBytes)
+    || custom.quipslyOriginalRemainsSourceTruth !== "true"
+    || custom.quipslyPromotionRequiresExplicitApproval !== "true"
+  ) throw new Error("Cloud audio treatment output no longer matches its worker and object receipts.");
+  const providerSourceId = result.derivative.locator;
+  let derivedSource = await prisma.studioVideoSource.findFirst({ where: { providerSourceId } });
+  if (!derivedSource) derivedSource = await prisma.studioVideoSource.create({ data: { provider: "audio-treatment-worker", providerSourceId, url: "/api/ingest/media/pending", title: `${context.asset.filename} treatment experiment` } });
+  const playbackUrl = `/api/ingest/media/${derivedSource.id}`;
+  if (derivedSource.url !== playbackUrl) await prisma.studioVideoSource.update({ where: { id: derivedSource.id }, data: { url: playbackUrl } });
+  await prisma.studioAssetVariant.upsert({
+    where: { assetId_kind_url: { assetId: context.asset.id, kind: "audio-treatment-preview", url: playbackUrl } },
+    create: { assetId: context.asset.id, kind: "audio-treatment-preview", url: playbackUrl, mimeType: "audio/wav", duration: result.derivative.diagnosis.durationSeconds, sizeBytes: BigInt(result.derivative.sizeBytes), metadataJson: toPrismaJson(registrationMetadata(result, derivedSource.id, providerSourceId)) },
+    update: { duration: result.derivative.diagnosis.durationSeconds, sizeBytes: BigInt(result.derivative.sizeBytes), metadataJson: toPrismaJson(registrationMetadata(result, derivedSource.id, providerSourceId)) },
+  });
+  const completed = await prisma.studioAssetProcessingJob.update({ where: { id: job.jobId }, data: { status: "completed", error: null, completedAt: new Date(result.completedAt), resultJson: toPrismaJson({ state: "completed", receipt: result, registration: { playbackUrl, providerSourceId, originalRemainsSourceTruth: true, outputIsUnpromotedExperiment: true, cloudManifestObjectName: cloud.manifestObjectName, cloudManifestGeneration: storedManifest.generation, cloudResultObjectName: cloud.resultObjectName, cloudResultGeneration: storedResult.generation } }) } });
+  return toPublicAudioTreatmentStatus(completed);
+}
+
 export function toPublicAudioTreatmentStatus(job: any): PublicAudioTreatmentStatus {
   let contract: ReturnType<typeof parseAudioTreatmentJob> | null = null;
   let result: ReturnType<typeof parseAudioTreatmentResult> | null = null;
   try { contract = parseAudioTreatmentJob(job.inputJson, job.id); } catch { /* visible integrity failure below */ }
   try { const envelope = jsonObject(job.resultJson); if (envelope.receipt && contract) result = parseAudioTreatmentResult(envelope.receipt, contract); } catch { /* visible integrity failure below */ }
   const registration = jsonObject(jsonObject(job.resultJson).registration);
-  const declaredStatus = ["queued", "processing", "output-ready", "completed", "failed"].includes(job.status) ? job.status as PublicAudioTreatmentStatus["status"] : "failed";
+  const declaredStatus = ["queued", "processing", "output-ready", "completed", "blocked", "failed"].includes(job.status) ? job.status as PublicAudioTreatmentStatus["status"] : "failed";
   const integrityFailure = !contract || ((declaredStatus === "output-ready" || declaredStatus === "completed") && !result);
   const treatment = result?.proposal.graph.find((node) => node.id === "dc-rumble-filter");
   const before = result?.verification.maximumAbsoluteDcBefore ?? 0;
@@ -218,6 +294,25 @@ function emptyStatus(): PublicAudioTreatmentStatus {
 
 function publicMeasurement(value: ReturnType<typeof parseAudioTreatmentResult>["sourceMeasurement"]) {
   return { measuredAt: value.measuredAt, durationSeconds: value.durationSeconds, integratedLufs: value.integratedLufs, truePeakDbtp: value.truePeakDbtp, loudnessRangeLu: value.loudnessRangeLu, thresholdLufs: value.thresholdLufs, seriesResolutionMs: value.seriesResolutionMs, series: value.series };
+}
+
+async function loadGcsJsonIfPresent(bucket: any, objectName: string) {
+  try {
+    const [metadata] = await bucket.file(objectName).getMetadata();
+    const generation = String(metadata.generation ?? "");
+    if (!/^[1-9][0-9]*$/.test(generation)) throw new Error("Audio treatment cloud object lacks an immutable generation.");
+    const [raw] = await bucket.file(objectName, { generation }).download({ validation: "crc32c" });
+    return { value: JSON.parse(raw.toString("utf8")) as unknown, generation };
+  } catch (error) {
+    if (Number((error as { code?: unknown }).code) === 404) return null;
+    throw error;
+  }
+}
+
+function exactGcsLocation(locator: string, generation: string) {
+  const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(locator);
+  if (!match || match[3] !== generation || match[2].split("/").some((part) => !part || part === "." || part === "..")) throw new Error("Audio treatment output is not generation-bound to the media vault.");
+  return { bucketName: match[1], objectName: match[2], generation: match[3] };
 }
 
 function jsonObject(value: unknown): Record<string, any> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {}; }
