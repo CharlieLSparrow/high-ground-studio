@@ -47,6 +47,10 @@ Date: 2026-08-24
   readback, create-once replay, and cleanup confined to its random job identity.
   Its credentialed run remains deferred; the static guard, manifest audit, and
   worker/FFmpeg suites pass locally.
+- Camera-audition qualification has the same guarded fixture boundary using a
+  generated 24 fps video-with-audio source. It proves the exact-generation
+  extraction, compact complete-decode AAC receipt, immutable source readback,
+  replay, and job-confined cleanup without touching real Session media.
 
 ## Conventional call progression checkpoint
 

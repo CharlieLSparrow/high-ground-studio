@@ -78,6 +78,10 @@ compact derivative is used only for transcript and text-edit audition.
   HEAD, and stored object drift refusal.
 - Prisma validation and generation, strict Quipsly TypeScript, the full Capture
   release-source gate, and a dual-architecture iOS Simulator preflight pass.
+- An explicit opt-in GCS fixture generates a 24 fps video-with-audio source,
+  runs the real storage adapter and FFmpeg extractor, verifies the compact AAC
+  and immutable camera generation, proves create-once replay, and cleans up only
+  objects containing its random job identity. It never reads application data.
 
 Automated evidence does not prove a real 4K source contains usable audio, a
 live Cloud Run execution, authenticated iPhone download, audible timestamp
