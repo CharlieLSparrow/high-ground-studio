@@ -12796,8 +12796,8 @@ private struct ProviderRoomControls: View {
     }
 
     /// A denied system choice should not turn a valid listen-only join into
-    /// permission paperwork. Recovery appears before a microphone-on join or
-    /// after an explicit Unmute attempt reports that the microphone is blocked.
+    /// permission paperwork. A microphone-on request falls back to a muted
+    /// join, while a deliberately muted join stays quiet until Unmute.
     private var microphonePermissionNeedsRecovery: Bool {
         guard !callAudioOnAnotherDevice,
               AVAudioApplication.shared.recordPermission == .denied else {
@@ -12806,8 +12806,7 @@ private struct ProviderRoomControls: View {
         if !model.providerRoom.isConnected {
             return !joinMuted
         }
-        return model.providerRoom.lastError?
-            .localizedCaseInsensitiveContains("microphone access") == true
+        return !joinMuted && model.providerRoom.isMuted
     }
 
     private var callPermanentlyClosed: Bool {

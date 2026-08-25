@@ -2283,10 +2283,14 @@ final class CaptureExperienceModel: ObservableObject {
             message = "Room join is disabled in preview mode."
             return
         }
+        var effectiveJoinMuted = joinMuted
         if useCallAudio && !joinMuted {
-            guard await providerRoom.prepareMicrophonePermissionForJoin() else {
-                errorMessage = providerRoom.lastError
-                return
+            // A declined or previously denied microphone choice must not lock
+            // someone out of the conversation. iOS retains the permission;
+            // Quipsly joins muted and lets the ordinary Unmute/Settings path
+            // recover it without a second pre-join ritual.
+            if !(await providerRoom.prepareMicrophonePermissionForJoin()) {
+                effectiveJoinMuted = true
             }
         }
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
@@ -2328,7 +2332,7 @@ final class CaptureExperienceModel: ObservableObject {
             session: session,
             expectedOwnerSnapshot: ownerSnapshot,
             useCallAudio: useCallAudio,
-            joinMuted: joinMuted
+            joinMuted: effectiveJoinMuted
         )
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
             await providerRoom.disconnect()
