@@ -69,6 +69,9 @@ const sourceBefore = JSON.stringify(taskBefore.sourceJson);
 assert.match(sourceBefore, /transcript/i);
 assert.match(sourceBefore, /segment/i);
 const roomTaskCountBefore = await prisma.actionItem.count({ where: { roomId: freshContext.roomId } });
+const derivedDataPath =
+  process.env.QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH ||
+  `/private/tmp/quipsly-fresh-coaching-native-task-${process.pid}-derived`;
 
 function passwordFor(identity) {
   const password = readRetainedQAPassword({
@@ -102,6 +105,7 @@ async function runJourney(mode, identity) {
       QUIPSLY_CAPTURE_UI_TEST_TASK_ID: taskBefore.id,
       QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_TASK_TITLE: taskBefore.title,
       QUIPSLY_CAPTURE_UI_TEST_SIMULATOR_APP_STATE_MODE: "fresh",
+      QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH: derivedDataPath,
       QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH: resultBundle,
     },
     stdio: "inherit",
@@ -153,6 +157,7 @@ try {
     duplicateTaskCreated: false,
     ownerResultBundle,
     participantIsolationResultBundle,
+    derivedDataPath,
     secretsPrinted: false,
     receiptPath,
   };
