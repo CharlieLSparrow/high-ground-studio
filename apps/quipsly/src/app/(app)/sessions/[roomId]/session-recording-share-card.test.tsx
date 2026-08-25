@@ -75,6 +75,32 @@ describe("SessionRecordingShareCard", () => {
     }));
   });
 
+  it("prepares through the verified cloud renderer when no local renderer is available", async () => {
+    const cloudOnlySnapshot = { ...snapshot, readiness: { ...snapshot.readiness, localRendererAvailable: false, cloudRendererAvailable: true } };
+    const requests: Array<Record<string, unknown>> = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(cloudOnlySnapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const prepare = await screen.findByRole("button", { name: "Create private preview" });
+    expect(prepare).toBeEnabled();
+    expect(screen.queryByText(/temporarily unavailable/i)).not.toBeInTheDocument();
+    await userEvent.click(prepare);
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({ action: "PREPARE" }));
+  });
+
+  it("holds preview preparation only when no verified renderer is available", async () => {
+    const noRendererSnapshot = { ...snapshot, readiness: { ...snapshot.readiness, localRendererAvailable: false, cloudRendererAvailable: false } };
+    global.fetch = jest.fn(async (_input: RequestInfo | URL) => response(noRendererSnapshot)) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(await screen.findByRole("button", { name: "Create private preview" })).toBeDisabled();
+    expect(screen.getByText(/preview preparation is temporarily unavailable/i)).toBeInTheDocument();
+  });
+
   it("focuses the exact transcript cut requested by the review surface", async () => {
     global.fetch = jest.fn(async (_input: RequestInfo | URL) => response(snapshot)) as jest.MockedFunction<typeof fetch>;
     const focusTranscriptKey = `${transcriptSegment.transcriptJobId}:${transcriptSegment.segmentId}`;

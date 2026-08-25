@@ -137,6 +137,10 @@ struct CaptureRecordingShareSnapshot: Codable, Equatable {
         let hasVerifiedParticipantSources: Bool
         let localRendererAvailable: Bool
         let cloudRendererAvailable: Bool
+
+        var verifiedRendererAvailable: Bool {
+            localRendererAvailable || cloudRendererAvailable
+        }
     }
 
     let ok: Bool
@@ -922,12 +926,12 @@ struct CaptureRecordingShareEditor: View {
                         || startSeconds < 0
                         || endSeconds <= startSeconds
                         || endSeconds > duration + 0.05
-                        || snapshot.readiness?.localRendererAvailable != true
+                        || snapshot.readiness?.verifiedRendererAvailable != true
                 )
                 .accessibilityIdentifier("CaptureRecordingSharePrepare")
 
-                if snapshot.readiness?.localRendererAvailable != true {
-                    Text("The verified renderer is unavailable here, so Quipsly will not create a misleading draft.")
+                if snapshot.readiness?.verifiedRendererAvailable != true {
+                    Text("Preview preparation is temporarily unavailable. Your trim and transcript choices stay here; try again shortly.")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                 }

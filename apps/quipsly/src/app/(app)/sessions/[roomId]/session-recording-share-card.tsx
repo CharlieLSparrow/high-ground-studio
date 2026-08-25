@@ -448,6 +448,7 @@ export function SessionRecordingShareCard({
 
   const output = snapshot.output;
   const coach = snapshot.role === "COACH";
+  const verifiedRendererAvailable = Boolean(snapshot.readiness?.localRendererAvailable || snapshot.readiness?.cloudRendererAvailable);
   return (
     <section id="recording-share" className="rounded-3xl border border-sky-200 bg-sky-50/40 p-5 shadow-sm sm:p-6" aria-labelledby="recording-share-heading">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -572,8 +573,8 @@ export function SessionRecordingShareCard({
           )}
           {focusTranscriptKey && focusedTranscriptSegment && !focusedSegmentVisible ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">This passage is outside the current trim or source selection. Expand the start/end range or restore its participant track to edit it.</p> : null}
           <p className="text-xs font-bold text-sky-800"><Scissors className="mr-1 inline" size={14} />Prepared range {time(startSeconds)}–{time(endSeconds)} ({time(endSeconds - startSeconds)}) from {chosen.length} participant source{chosen.length === 1 ? "" : "s"}.</p>
-          <button type="button" disabled={Boolean(busy) || !chosen.length || !rangeValid || !snapshot.readiness?.localRendererAvailable} onClick={() => void mutate("PREPARE")} className="w-full rounded-xl bg-sky-800 px-4 py-3 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">{busy === "PREPARE" ? "Creating preview…" : "Create private preview"}</button>
-          {!snapshot.readiness?.localRendererAvailable ? <p className="text-xs font-bold text-amber-800">The verified renderer is not available in this environment. Quipsly will not create a misleading draft.</p> : null}
+          <button type="button" disabled={Boolean(busy) || !chosen.length || !rangeValid || !verifiedRendererAvailable} onClick={() => void mutate("PREPARE")} className="w-full rounded-xl bg-sky-800 px-4 py-3 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">{busy === "PREPARE" ? "Creating preview…" : "Create private preview"}</button>
+          {!verifiedRendererAvailable ? <p className="text-xs font-bold text-amber-800">Preview preparation is temporarily unavailable. Your trim and transcript choices stay here; try again shortly.</p> : null}
         </div>
       ) : null}
 
