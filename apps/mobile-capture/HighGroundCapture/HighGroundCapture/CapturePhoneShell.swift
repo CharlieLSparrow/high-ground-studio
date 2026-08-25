@@ -6834,6 +6834,7 @@ private struct CaptureRecorderView: View {
 
                     CaptureSessionTranscriptReviewCard(
                         session: session,
+                        sessionClient: model.sessionClient,
                         previewOnly: model.usesPreviewData
                     )
 
@@ -8638,8 +8639,11 @@ private struct CaptureSessionTruthPanel: View {
 
 private struct CaptureSessionTranscriptReviewCard: View {
     let session: MobileCaptureSession
+    @ObservedObject var sessionClient: CaptureSessionClient
     let previewOnly: Bool
     @StateObject private var library = LocalRecordingLibrary.shared
+    @State private var isRunningTranscript = false
+    @State private var actionMessage: String?
 
     var body: some View {
         if transcriptReviewAvailable {
@@ -8683,6 +8687,66 @@ private struct CaptureSessionTranscriptReviewCard: View {
             .captureCard()
             .accessibilityHint("Opens the transcript and suggested follow-up. It does not start playback or keep any suggestion.")
             .accessibilityIdentifier("CaptureSessionTranscriptReviewLink_\(session.callRoomId)")
+        } else if transcriptLifecycleVisible {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: transcriptLifecycleSystemImage)
+                        .font(.title3)
+                        .foregroundStyle(transcriptLifecycleTint)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(transcriptLifecycleTitle)
+                            .font(.subheadline.weight(.bold))
+                        Text(transcriptLifecycleDetail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    if transcriptIsAutomaticWorkInProgress {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Transcript processing")
+                    }
+                }
+
+                if transcriptRecoveryAvailable {
+                    Button {
+                        Task { await runTranscript() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if isRunningTranscript {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Label(transcriptRecoveryLabel, systemImage: "arrow.clockwise")
+                            }
+                            Spacer()
+                        }
+                        .frame(minHeight: 26)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(
+                        isRunningTranscript
+                            || previewOnly
+                            || sessionClient.sessionsAreStale
+                    )
+                    .accessibilityHint("Rechecks the exact verified recording and current transcription consent. It never changes the original recording.")
+                    .accessibilityIdentifier("CaptureSessionTranscriptRecovery_\(session.callRoomId)")
+                }
+
+                if let actionMessage {
+                    Text(actionMessage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(actionMessage.hasPrefix("Couldn’t") ? Color.orange : Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("CaptureSessionTranscriptRecoveryStatus")
+                }
+            }
+            .captureCard()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("CaptureSessionTranscriptLifecycle_\(session.callRoomId)")
         }
     }
 
@@ -8700,6 +8764,84 @@ private struct CaptureSessionTranscriptReviewCard: View {
             ? "Completed transcript · \(segmentCount) \(segmentCount == 1 ? "passage" : "passages")"
             : session.transcriptBadgeLabel
         return "\(transcript) · \(session.packetBadgeLabel)"
+    }
+
+    private var normalizedTranscriptStatus: String {
+        session.latestTranscriptStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() ?? ""
+    }
+
+    private var transcriptLifecycleVisible: Bool {
+        session.recordingCount > 0 || session.latestTranscriptJobId != nil
+    }
+
+    private var transcriptIsAutomaticWorkInProgress: Bool {
+        ["QUEUED", "RUNNING"].contains(normalizedTranscriptStatus)
+    }
+
+    private var transcriptRecoveryAvailable: Bool {
+        session.canRunTranscript
+            && !transcriptIsAutomaticWorkInProgress
+            && normalizedTranscriptStatus != "COMPLETED"
+    }
+
+    private var transcriptRecoveryLabel: String {
+        ["HELD", "FAILED"].contains(normalizedTranscriptStatus)
+            ? "Retry transcript"
+            : "Start transcript"
+    }
+
+    private var transcriptLifecycleTitle: String {
+        switch normalizedTranscriptStatus {
+        case "QUEUED":
+            "Transcript queued"
+        case "RUNNING":
+            "Creating transcript"
+        case "HELD", "FAILED":
+            "Transcript needs attention"
+        default:
+            "Transcript is getting ready"
+        }
+    }
+
+    private var transcriptLifecycleDetail: String {
+        switch normalizedTranscriptStatus {
+        case "QUEUED", "RUNNING":
+            "Quipsly is processing the verified recording automatically. You can leave this screen and return later."
+        case "HELD":
+            "The original recording is safe. Retry after resolving the current source or consent requirement."
+        case "FAILED":
+            "The original recording is safe. Retry transcription from the exact verified source."
+        default:
+            session.canRunTranscript
+                ? "The verified recording is ready. Quipsly normally starts automatically; Start transcript is the recovery action."
+                : "Your recording is still being verified. The transcript will start automatically when its source is ready."
+        }
+    }
+
+    private var transcriptLifecycleSystemImage: String {
+        ["HELD", "FAILED"].contains(normalizedTranscriptStatus)
+            ? "exclamationmark.bubble.fill"
+            : "text.bubble.fill"
+    }
+
+    private var transcriptLifecycleTint: Color {
+        ["HELD", "FAILED"].contains(normalizedTranscriptStatus)
+            ? .orange
+            : .purple
+    }
+
+    @MainActor
+    private func runTranscript() async {
+        guard !isRunningTranscript else { return }
+        isRunningTranscript = true
+        actionMessage = nil
+        let succeeded = await sessionClient.runTranscript(for: session)
+        actionMessage = succeeded
+            ? "Transcript processing started. Quipsly will keep updating this Session."
+            : "Couldn’t start the transcript. \(sessionClient.errorMessage ?? "Try again after refreshing the Session.")"
+        isRunningTranscript = false
     }
 
     private var matchingTranscriptRecording: LocalRecording? {

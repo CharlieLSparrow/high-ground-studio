@@ -2865,6 +2865,35 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testVerifiedSourceShowsTranscriptLifecycleBeforeReviewIsReady() {
+        app.tabBars.buttons["Record"].tap()
+        let chooser = app.buttons["CaptureSessionChooser"]
+        XCTAssertTrue(chooser.waitForExistence(timeout: 5))
+        chooser.tap()
+        let completeSession = app.staticTexts["Studio group complete"]
+        XCTAssertTrue(completeSession.waitForExistence(timeout: 5))
+        completeSession.tap()
+
+        let lifecycle = app.descendants(matching: .any)[
+            "CaptureSessionTranscriptLifecycle_room-preview-studio-group-complete"
+        ]
+        reveal(lifecycle)
+        XCTAssertTrue(
+            lifecycle.waitForExistence(timeout: 5),
+            "A verified recording should not disappear while its transcript is still being prepared."
+        )
+        XCTAssertTrue(app.staticTexts["Transcript is getting ready"].exists)
+        let recovery = app.buttons[
+            "CaptureSessionTranscriptRecovery_room-preview-studio-group-complete"
+        ]
+        XCTAssertTrue(recovery.exists)
+        XCTAssertEqual(recovery.label, "Start transcript")
+        XCTAssertFalse(
+            recovery.isEnabled,
+            "Deterministic preview should expose the real recovery affordance without starting synthetic transcription."
+        )
+    }
+
     func testConsentActionRemainsReachableAtLargestAccessibilityTextSize() throws {
         app.terminate()
         app.launchArguments = [

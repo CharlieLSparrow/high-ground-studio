@@ -765,6 +765,17 @@ function checkMeetingSpineContractSources() {
     "The shipping Record hierarchy keeps consent and the local recorder ahead of coaching follow-through, quick entry, and other collaboration tools.",
   );
   expect(
+    capturePhoneShellText.includes("CaptureSessionTranscriptLifecycle_")
+      && capturePhoneShellText.includes('case "QUEUED"')
+      && capturePhoneShellText.includes('case "RUNNING"')
+      && capturePhoneShellText.includes('case "HELD", "FAILED"')
+      && capturePhoneShellText.includes("sessionClient.runTranscript(for: session)")
+      && capturePhoneShellText.includes("The original recording is safe")
+      && captureExperienceUITestText.includes("testVerifiedSourceShowsTranscriptLifecycleBeforeReviewIsReady"),
+    "nativeTranscriptLifecycleNeverDisappearsBetweenRecordingAndReview",
+    "Capture keeps verified recording-to-transcript progress visible before review exists, treats queued work as automatic, and offers an explicit exact-source recovery action only when useful.",
+  );
+  expect(
     bridgeText.includes("struct ProviderJoin: Codable")
       && bridgeText.includes("struct RecordingBoundary: Codable")
       && bridgeText.includes("struct ProviderRecording: Codable")
