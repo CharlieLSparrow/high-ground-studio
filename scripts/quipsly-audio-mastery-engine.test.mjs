@@ -625,6 +625,7 @@ test("real FFmpeg DC and rumble experiment is source-bound, reversible, and inde
   assert.equal(result.verification.passes, true);
   assert.equal(result.boundaries.outputIsNotAMasteredDeliveryFile, true);
   assert.throws(() => parseAudioTreatmentResult({ ...result, verification: { ...result.verification, maximumAbsoluteDcAfter: 0.02 } }, job), /verification is invalid/);
+  assert.throws(() => parseAudioTreatmentResult({ ...result, sourceMeasurement: { ...result.sourceMeasurement, source: { ...result.sourceMeasurement.source, generation: `sha256:${"f".repeat(64)}` } } }, job), /verification is invalid/);
 });
 
 test("dialogue repair requires source-bound listening evidence before it can authorize a range-scoped experiment", () => {

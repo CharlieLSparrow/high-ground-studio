@@ -216,13 +216,16 @@ export function parseAudioTreatmentResult(value: unknown, expectedJob?: AudioTre
     && diagnosis.analyzer.completeDecode && diagnosis.channelCount === sourceDiagnosis.channelCount;
   if (
     row.kind !== AUDIO_TREATMENT_RESULT_KIND || row.version !== AUDIO_TREATMENT_VERSION
-    || (job && row.jobId !== job.jobId) || source.sha256 !== sourceMeasurement.source.sha256
-    || source.sha256 !== sourceDiagnosis.source.sha256 || proposal.source.sha256 !== source.sha256
-    || (job && (job.source.sha256 !== source.sha256 || job.triggerDiagnosisId !== sourceDiagnosis.diagnosisId || job.target.locator !== derivative.locator))
-    || derivative.provider !== source.provider || derivative.contentType !== "audio/wav"
+    || (job && row.jobId !== job.jobId) || !sameSource(source, sourceMeasurement.source)
+    || !sameSource(source, sourceDiagnosis.source) || !sameSource(proposal.source, source)
+    || (job && (
+      !sameSource(job.source, source)
+      || job.triggerDiagnosisId !== sourceDiagnosis.diagnosisId
+      || !audioTreatmentDerivativeMatchesTarget(derivativeSource.provider, derivativeSource.locator, job.target.locator)
+    ))
+    || derivativeSource.provider !== source.provider || derivative.contentType !== "audio/wav"
     || derivative.codec !== "pcm_s24le" || derivative.sampleRateHz !== 48_000 || derivative.variantKind !== "audio-treatment-preview"
-    || measurement.source.sha256 !== derivativeSource.sha256 || diagnosis.source.sha256 !== derivativeSource.sha256
-    || measurement.source.locator !== derivativeSource.locator || diagnosis.source.locator !== derivativeSource.locator
+    || !sameSource(measurement.source, derivativeSource) || !sameSource(diagnosis.source, derivativeSource)
     || measurement.sampleRateHz !== 48_000 || diagnosis.sampleRateHz !== 48_000
     || measurement.channels !== diagnosis.channelCount || !passes
     || number(verification.maximumAbsoluteDcBefore, "verification.maximumAbsoluteDcBefore") !== before
@@ -280,6 +283,32 @@ function sourceBinding(value: unknown): AudioMasterySourceBinding {
   const sha256 = text(row.sha256, "source.sha256");
   if (!SHA256.test(sha256)) throw new Error("Audio treatment source SHA-256 is invalid.");
   return { assetId: id(row.assetId, "source.assetId"), provider: row.provider === "local" || row.provider === "gcs" ? row.provider : invalid("source.provider"), locator: text(row.locator, "source.locator"), generation: text(row.generation, "source.generation"), sha256, sizeBytes: integer(row.sizeBytes, "source.sizeBytes"), contentType: text(row.contentType, "source.contentType") };
+}
+
+function sameSource(left: AudioMasterySourceBinding, right: AudioMasterySourceBinding) {
+  return left.assetId === right.assetId
+    && left.provider === right.provider
+    && left.locator === right.locator
+    && left.generation === right.generation
+    && left.sha256 === right.sha256
+    && left.sizeBytes === right.sizeBytes
+    && left.contentType === right.contentType;
+}
+
+function audioTreatmentDerivativeMatchesTarget(
+  provider: "local" | "gcs",
+  locator: string,
+  targetLocator: string,
+) {
+  if (provider === "gcs") {
+    const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(locator);
+    return Boolean(
+      match
+      && match[2] === targetLocator
+      && !match[2].split("/").some((part) => !part || part === "." || part === ".."),
+    );
+  }
+  return locator === targetLocator;
 }
 
 function profile(value: unknown): AudioTreatmentProfileId {
