@@ -37,17 +37,28 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
     };
   }
 
-  return input.prisma.$transaction(async (tx: any) => {
-    await acquirePrismaAdvisoryTransactionLock(
-      tx,
-      `capture-transcript-follow-through:${input.transcriptJobId}`,
-    );
-    return preparePrivateFollowThrough({
-      prisma: tx,
-      transcriptJobId: input.transcriptJobId,
-      refreshExistingPacket: input.refreshExistingPacket,
-    });
-  }, { maxWait: 5_000, timeout: 30_000, isolationLevel: "Serializable" });
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await input.prisma.$transaction(async (tx: any) => {
+        await acquirePrismaAdvisoryTransactionLock(
+          tx,
+          `capture-transcript-follow-through:${input.transcriptJobId}`,
+        );
+        return preparePrivateFollowThrough({
+          prisma: tx,
+          transcriptJobId: input.transcriptJobId,
+          refreshExistingPacket: input.refreshExistingPacket,
+        });
+      }, { maxWait: 5_000, timeout: 30_000, isolationLevel: "Serializable" });
+    } catch (error) {
+      if (attempt >= 3 || !isSerializableWriteConflict(error)) throw error;
+    }
+  }
+  throw new Error("Capture transcript follow-through exhausted its serializable retry boundary.");
+}
+
+function isSerializableWriteConflict(error: unknown) {
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2034");
 }
 
 async function preparePrivateFollowThrough(input: {

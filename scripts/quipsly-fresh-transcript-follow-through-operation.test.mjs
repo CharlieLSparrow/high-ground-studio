@@ -24,4 +24,7 @@ assert.match(subject, /externalSideEffects: false/);
 assert.match(subject, /mode: 0o600/);
 assert.match(subject, /secretsPrinted: false/);
 
-console.log(JSON.stringify({ ok: true, assertions: 15 }));
+const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+assert.match(packageJson.scripts["quipsly:fresh:transcript-follow-through"], /--import tsx/);
+
+console.log(JSON.stringify({ ok: true, assertions: 16 }));

@@ -231,4 +231,28 @@ describe("automatic transcript follow-through", () => {
       }) },
     }));
   });
+
+  it("retries the complete locked transaction after a serializable write conflict", async () => {
+    const prisma = transactionalPrisma({
+      coachingNote: { findFirst: jest.fn().mockResolvedValue({ id: "summary-1", sourceJson: { packetBuildId: "packet-1" } }) },
+      transcriptJob: {
+        findUnique: jest.fn().mockResolvedValue({
+          roomId: "room-1",
+          requestedBy: "recording-owner",
+          resultJson: {},
+          room: { createdByUserId: "room-owner", booking: null },
+        }),
+        update: jest.fn().mockResolvedValue({ id: "job-1" }),
+      },
+    });
+    const conflict = Object.assign(new Error("serialization conflict"), { code: "P2034" });
+    prisma.$transaction
+      .mockRejectedValueOnce(conflict)
+      .mockImplementationOnce(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
+
+    await expect(reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId: "job-1" }))
+      .resolves.toMatchObject({ packetStatus: "ready", packetBuildId: "packet-1" });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(prisma.transcriptJob.update).toHaveBeenCalledTimes(1);
+  });
 });
