@@ -1187,12 +1187,6 @@ struct MobileCoachClientFollowUpCard: View {
 
     private func dismissKeyboard() {
         focusedField = nil
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder),
-            to: nil,
-            from: nil,
-            for: nil
-        )
     }
 
     private func readinessDetail(_ change: MobileCaptureClientFollowUpReadinessChange) -> String {

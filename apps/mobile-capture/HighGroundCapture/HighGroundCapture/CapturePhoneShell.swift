@@ -11238,6 +11238,10 @@ struct CaptureConsentConfirmationSheet: View {
             Form {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
+                        Text(session.displayTitle)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                         Label("Record this Session?", systemImage: "checkmark.shield.fill")
                             .font(.title3.weight(.semibold))
                         Text(defaultConsentSummary)
@@ -11247,8 +11251,6 @@ struct CaptureConsentConfirmationSheet: View {
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
-                } header: {
-                    Text(session.displayTitle)
                 }
 
                 Section {
@@ -11309,7 +11311,12 @@ struct CaptureConsentConfirmationSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                    }
+                        .accessibilityLabel("Cancel")
                         .disabled(isSubmitting)
                 }
             }
@@ -11346,10 +11353,11 @@ struct CaptureConsentConfirmationSheet: View {
                     } else {
                         Text("Allow recording")
                             .fontWeight(.semibold)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
                 }
-                .frame(minHeight: 30)
+                .frame(minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
