@@ -214,6 +214,11 @@ assert(booking.coachingEngagementId, "The phone-created booking lacks its canoni
 assert(booking.callRoomId, "The phone-created booking lacks its canonical Session room.");
 assert(booking.clientEntryPath, "The phone-created booking lacks its verified-email client entry.");
 assert.equal(
+  booking.status,
+  "CANCELED",
+  "The iPhone cancellation did not persist to canonical booking truth.",
+);
+assert.equal(
   Math.round((new Date(booking.scheduledEnd).getTime() - new Date(booking.scheduledStart).getTime()) / 60_000),
   45,
   "The iPhone reschedule did not persist the operated 45-minute duration to canonical booking truth.",
@@ -359,6 +364,7 @@ const receipt = {
     clientIdentityAndRelationshipCreation: true,
     appointmentCreation: true,
     appointmentReschedule: true,
+    appointmentCancellation: true,
     invitationAttemptWithVisibleOutcome: true,
     systemShareFallbackPresent: true,
     relationshipWorkspaceEntry: true,
@@ -382,6 +388,7 @@ const receipt = {
     scheduledStart: booking.scheduledStart,
     scheduledEnd: booking.scheduledEnd,
     durationMinutes: 45,
+    finalBookingStatus: booking.status,
     clientEntryPath: booking.clientEntryPath,
     invitationDelivery: booking.clientInvitationDelivery || null,
     relationshipWork: {

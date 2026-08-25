@@ -1487,6 +1487,37 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.staticTexts[defaultSessionTitle].firstMatch.waitForExistence(timeout: 20),
             "The iPhone must enter the exact Session it just scheduled, not a fixture or generic room."
         )
+        let backToCoaching = app.navigationBars.buttons.firstMatch
+        XCTAssertTrue(backToCoaching.waitForExistence(timeout: 5))
+        backToCoaching.tap()
+        XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 15))
+
+        let manageAfterSession = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingManage_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(manageAfterSession, in: app, timeout: 20, swipeAttempts: 12),
+            "The same appointment should remain manageable after an ordinary Session visit."
+        )
+        manageAfterSession.tap()
+        let cancelAppointment = app.buttons["Cancel Session"].firstMatch
+        XCTAssertTrue(cancelAppointment.waitForExistence(timeout: 5))
+        cancelAppointment.tap()
+        let confirmCancellation = app.alerts.buttons["Cancel Session"].firstMatch
+        XCTAssertTrue(confirmCancellation.waitForExistence(timeout: 5))
+        confirmCancellation.tap()
+        XCTAssertTrue(
+            manageAfterSession.waitForNonExistence(timeout: 30),
+            "A canceled appointment must leave Upcoming instead of presenting a dead Session as active."
+        )
+        let retainedRelationship = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingRelationship_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(retainedRelationship, in: app, timeout: 15, swipeAttempts: 12),
+            "Canceling one appointment must preserve the client relationship and its existing work."
+        )
+        attachRuntimeScreenshot(app, name: "Phone-first cancellation preserved client relationship")
         attachRecordingIdentity(
             "\(credentials.email)|\(clientEmail)|\(defaultSessionTitle)",
             name: "Fresh phone-first coaching identity"

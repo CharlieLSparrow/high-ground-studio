@@ -400,6 +400,7 @@ function checkMeetingSpineContractSources() {
       && coachingHomeText.includes("CaptureCoachingManage_")
       && coachingHomeText.includes("CaptureCoachingRescheduleSheet")
       && coachingHomeText.includes("CaptureCoachingSaveReschedule")
+      && coachingHomeText.includes('["CANCELED", "COMPLETED", "NO_SHOW"]')
       && coachingHomeText.includes("The client space and its existing work stay available."),
     "nativeCoachingSchedulingManagementParity",
     "Capture lets an authorized coach reschedule or cancel a canonical appointment from the iPhone while preserving the client relationship and existing work.",

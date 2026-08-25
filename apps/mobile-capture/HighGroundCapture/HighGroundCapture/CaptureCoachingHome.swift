@@ -342,10 +342,15 @@ final class MobileCoachingRunwayClient: ObservableObject {
     var invitationEmailAvailable: Bool {
         response?.readiness?.invitationEmailConfigured == true
     }
-    var upcomingBookings: [MobileCoachingBooking] { response?.upcomingBookings ?? [] }
+    private var allBookings: [MobileCoachingBooking] { response?.upcomingBookings ?? [] }
+    var upcomingBookings: [MobileCoachingBooking] {
+        allBookings.filter {
+            !["CANCELED", "COMPLETED", "NO_SHOW"].contains($0.status.uppercased())
+        }
+    }
     var isCoachingClient: Bool {
         guard let userID = response?.user?.id else { return false }
-        return upcomingBookings.contains { $0.client?.id == userID }
+        return allBookings.contains { $0.client?.id == userID }
     }
 
     func loadPreview() {
@@ -413,7 +418,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
             }
             response = payload
             invitationDeliveries = Dictionary(
-                uniqueKeysWithValues: (payload.upcomingBookings ?? []).compactMap { booking in
+                uniqueKeysWithValues: upcomingBookings.compactMap { booking in
                     guard let roomID = booking.callRoomId,
                           let delivery = booking.clientInvitationDelivery else { return nil }
                     return (roomID, delivery)
