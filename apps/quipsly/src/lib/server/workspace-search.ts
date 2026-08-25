@@ -6,6 +6,7 @@ import {
   workspaceNoteVisibilityWhere,
 } from "@/lib/server/session-note-access";
 import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
+import { personalOrSharedWorkspaceTaskAccessWhere } from "@/lib/server/task-access";
 
 const RESULT_LIMIT = 10;
 const TAG_RESULT_SELECT = {
@@ -24,21 +25,6 @@ const TAG_RESULT_SELECT = {
   },
   project: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.StudioTagSelect;
-
-function taskAccessWhere(userId: string, projectIds: string[] = []) {
-  return [
-    { assignedUserId: userId },
-    ...(projectIds.length ? [{ projectId: { in: projectIds } }] : []),
-    { room: { OR: [
-      { createdByUserId: userId },
-      { participants: { some: { userId, accessStatus: "ACTIVE" as const } } },
-      { booking: { clientUserId: userId } },
-      { booking: { coachUserId: userId } },
-      ...(projectIds.length ? [{ projectId: { in: projectIds } }] : []),
-    ] } },
-    { booking: { OR: [{ clientUserId: userId }, { coachUserId: userId }] } },
-  ];
-}
 
 function roomAccessWhere(userId: string, projectIds: string[] = []) {
   return [
@@ -106,6 +92,8 @@ function emptyWorkspaceResult({
       : null,
     boundaries: {
       actorScoped: true,
+      assignedTasksOwnerOnly: true,
+      unassignedSessionTasksShared: true,
       exactTagIdentity: Boolean(exactTagId),
       minimumQueryLength: 2,
       perKindLimit: RESULT_LIMIT,
@@ -235,7 +223,7 @@ export async function searchWorkspace(
   };
   const [taskRows, goals, sessions, noteRows, sources, documents, annotations, mediaClips, tags] = await Promise.all([
     prisma.actionItem.findMany({
-      where: { AND: [{ OR: taskAccessWhere(input.actorUserId, projectIds) }, { OR: taskContentMatches }] },
+      where: { AND: [{ OR: personalOrSharedWorkspaceTaskAccessWhere(input.actorUserId, projectIds) }, { OR: taskContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT + 10,
       select: {
         id: true, title: true, detail: true, status: true, dueAt: true, sourceJson: true,
@@ -410,6 +398,8 @@ export async function searchWorkspace(
     tagFocus,
     boundaries: {
       actorScoped: true,
+      assignedTasksOwnerOnly: true,
+      unassignedSessionTasksShared: true,
       exactTagIdentity: Boolean(focusedTagId),
       minimumQueryLength: 2,
       perKindLimit: RESULT_LIMIT,

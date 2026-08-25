@@ -64,13 +64,15 @@ runLocalDatabaseSmoke("Nest project follow-through local database smoke", () => 
       recordingAssetId: "asset-smoke",
       playbackSourceId: "source-smoke",
     };
-    const [actorRoomTask, goalTask, candidate, otherTask] = await Promise.all([
+    const [actorRoomTask, goalTask, candidate, otherTask, otherAssignedInActorRoom, sharedActorRoomTask] = await Promise.all([
       prisma.actionItem.create({ data: { roomId: actorRoom.id, assignedUserId: actorUserId, title: "Actor exact-source task", sourceJson: exactSource } }),
       prisma.actionItem.create({ data: { assignedUserId: actorUserId, title: "Actor goal-linked task" } }),
       prisma.actionItem.create({ data: { roomId: actorRoom.id, assignedUserId: actorUserId, title: "Unreviewed candidate", sourceJson: { source: "transcript-packet-builder", candidate: true } } }),
       prisma.actionItem.create({ data: { roomId: otherRoom.id, assignedUserId: otherUserId, title: "Other private task" } }),
+      prisma.actionItem.create({ data: { roomId: actorRoom.id, assignedUserId: otherUserId, title: "Other assignee in actor room" } }),
+      prisma.actionItem.create({ data: { roomId: actorRoom.id, assignedUserId: null, title: "Shared unassigned session task" } }),
     ]);
-    taskIds.push(actorRoomTask.id, goalTask.id, candidate.id, otherTask.id);
+    taskIds.push(actorRoomTask.id, goalTask.id, candidate.id, otherTask.id, otherAssignedInActorRoom.id, sharedActorRoomTask.id);
     await prisma.goalTaskLink.create({ data: { goalId: actorGoal.id, actionItemId: goalTask.id, createdByUserId: actorUserId } });
   });
 
@@ -90,14 +92,17 @@ runLocalDatabaseSmoke("Nest project follow-through local database smoke", () => 
   it("returns only the actor's owned goals and accepted actor-visible project tasks", async () => {
     const result = await readNestProjectFollowThrough(prisma, { projectId, projectSlug, actorUserId });
     expect(result.goals.map((goal) => goal.title)).toEqual(["Actor project goal"]);
-    expect(result.tasks.map((task) => task.title).sort()).toEqual(["Actor exact-source task", "Actor goal-linked task"]);
+    expect(result.tasks.map((task) => task.title).sort()).toEqual(["Actor exact-source task", "Actor goal-linked task", "Shared unassigned session task"]);
     expect(result.tasks.find((task) => task.title === "Actor exact-source task")?.sourceAnchor).toMatchObject({ roomId: roomIds[0], segmentId: "segment-smoke", startSeconds: 3.66 });
-    expect(result.boundaries).toEqual({ actorScoped: true, ownedGoalsOnly: true, unreviewedTranscriptCandidatesExcluded: true, sourceMutated: false, canonicalProjectPreferredWithLegacySlugFallback: true, externalSideEffects: false });
+    expect(result.boundaries).toEqual({ actorScoped: true, assignedTasksOwnerOnly: true, unassignedSessionTasksShared: true, ownedGoalsOnly: true, unreviewedTranscriptCandidatesExcluded: true, sourceMutated: false, canonicalProjectPreferredWithLegacySlugFallback: true, externalSideEffects: false });
     await expect(prisma.actionItem.count({ where: { title: "Other private task", assignedUserId: otherUserId } })).resolves.toBe(1);
+    expect(result.tasks.some((task) => task.title === "Other assignee in actor room")).toBe(false);
     const search = await searchWorkspace(prisma, { actorUserId, query: "Actor exact-source", visibleProjects: [{ id: projectId, slug: projectSlug, name: "Project follow-through smoke" }] });
     expect(search.tasks.map((task) => task.title)).toEqual(["Actor exact-source task"]);
     expect(search.goals).toEqual([]);
     expect(search.projectCount).toBe(1);
+    const privateAssignmentSearch = await searchWorkspace(prisma, { actorUserId, query: "Other assignee", visibleProjects: [{ id: projectId, slug: projectSlug, name: "Project follow-through smoke" }] });
+    expect(privateAssignmentSearch.tasks).toEqual([]);
     const tagSearch = await searchWorkspace(prisma, { actorUserId, query: "Episode workflow", visibleProjects: [{ id: projectId, slug: projectSlug, name: "Project follow-through smoke" }] });
     expect(tagSearch.tags).toEqual([expect.objectContaining({ label: "Episode workflow", isPrivate: true, project: expect.objectContaining({ slug: projectSlug }) })]);
   });

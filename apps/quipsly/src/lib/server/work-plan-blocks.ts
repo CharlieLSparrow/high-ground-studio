@@ -1,4 +1,5 @@
 import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets";
+import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
 import { parseRecurrenceStart } from "@/lib/task-recurrence";
 
 const MOBILE_REQUEST_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -37,16 +38,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 export function workPlanTaskAccessWhere(userId: string) {
-  return [
-    { assignedUserId: userId },
-    { room: { OR: [
-      { createdByUserId: userId },
-      { participants: { some: { userId, accessStatus: "ACTIVE" } } },
-      { booking: { clientUserId: userId } },
-      { booking: { coachUserId: userId } },
-    ] } },
-    { booking: { OR: [{ clientUserId: userId }, { coachUserId: userId }] } },
-  ];
+  return personalOrSharedSessionTaskAccessWhere(userId);
 }
 
 export function parseWorkPlanWindow(

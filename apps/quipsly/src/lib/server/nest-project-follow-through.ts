@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { readTranscriptDerivedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
+import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
 
 export function nestProjectGoalWhere(projectId: string, actorUserId: string): Prisma.GoalWhereInput {
   return { projectId, ownerUserId: actorUserId };
@@ -16,15 +17,7 @@ export function nestProjectTaskWhere(projectId: string, projectSlug: string, act
         { room: { OR: [{ nestSlug: projectSlug }, { projectSlug }] } },
         { goalLinks: { some: { goal: { projectId, ownerUserId: actorUserId } } } },
       ] },
-      { OR: [
-        { assignedUserId: actorUserId },
-        { room: { OR: [
-          { createdByUserId: actorUserId },
-          { participants: { some: { userId: actorUserId, accessStatus: "ACTIVE" } } },
-          { booking: { clientUserId: actorUserId } },
-          { booking: { coachUserId: actorUserId } },
-        ] } },
-      ] },
+      { OR: personalOrSharedSessionTaskAccessWhere(actorUserId) },
     ],
   };
 }
@@ -76,6 +69,8 @@ export async function readNestProjectFollowThrough(
     tasks,
     boundaries: {
       actorScoped: true,
+      assignedTasksOwnerOnly: true,
+      unassignedSessionTasksShared: true,
       ownedGoalsOnly: true,
       unreviewedTranscriptCandidatesExcluded: true,
       sourceMutated: false,

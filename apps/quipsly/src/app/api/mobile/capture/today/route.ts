@@ -20,6 +20,7 @@ import {
 } from "@/lib/server/source-annotations";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { setTaskReminderInTransaction } from "@/lib/server/task-reminders";
+import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
 import {
   editTaskRecurrenceOccurrenceInTransaction,
   replaceTaskRecurrenceFromOccurrenceInTransaction,
@@ -63,19 +64,6 @@ async function body(request: Request) {
   try { return record(await request.json()); } catch { return {}; }
 }
 
-function taskAccessWhere(userId: string) {
-  return [
-    { assignedUserId: userId },
-    { room: { OR: [
-      { createdByUserId: userId },
-      { participants: { some: { userId, accessStatus: "ACTIVE" } } },
-      { booking: { clientUserId: userId } },
-      { booking: { coachUserId: userId } },
-    ] } },
-    { booking: { OR: [{ clientUserId: userId }, { coachUserId: userId }] } },
-  ];
-}
-
 function roomAccessWhere(userId: string, isStaff: boolean) {
   if (isStaff) return {};
   return { OR: [
@@ -95,6 +83,8 @@ function receipts(source: Record<string, unknown>, key: string) {
 function responseBoundaries(taskReminderIntentProjectionComplete = false) {
   return {
     appOwnedRecords: true,
+    assignedTasksOwnerOnly: true,
+    unassignedSessionTasksShared: true,
     transcriptCandidatesExcluded: true,
     externalCalendarMutated: false,
     providerMutated: false,
@@ -158,7 +148,7 @@ export async function GET(request: Request) {
     const [clientFollowUpAttention, taskRows, goalRows, blockRows, weeklyPlan, annotationRows, transcriptReviewRooms, reminderRows, tagRows, reviewTaskRows, reviewGoalRows] = await Promise.all([
       loadClientFollowUpAttention(prisma, userId),
       prisma.actionItem.findMany({
-        where: { status: "OPEN", OR: taskAccessWhere(userId) },
+        where: { status: "OPEN", OR: personalOrSharedSessionTaskAccessWhere(userId) },
         orderBy: [{ dueAt: "asc" }, { updatedAt: "desc" }],
         take: 200,
         select: {
@@ -971,7 +961,7 @@ export async function POST(request: Request) {
         tx,
         taskId: id,
         actorUserId: userId,
-        accessOr: taskAccessWhere(userId),
+        accessOr: personalOrSharedSessionTaskAccessWhere(userId),
         expectedUpdatedAt: expected,
         nextStatus: nextStatus as "OPEN" | "DONE" | "CANCELED",
         decisionReason: decisionReason === "MISSED_OCCURRENCE_SKIPPED" ? decisionReason : undefined,
