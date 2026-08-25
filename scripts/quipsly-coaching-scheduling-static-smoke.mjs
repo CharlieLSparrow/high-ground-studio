@@ -31,6 +31,7 @@ const files = {
   runwayRoute: "apps/quipsly/src/app/api/coaching/runway/route.ts",
   scheduleAvailability: "apps/quipsly/src/lib/server/coaching-schedule-availability.ts",
   scheduleTime: "apps/quipsly/src/lib/server/coaching-schedule-time.ts",
+  bookableSlots: "apps/quipsly/src/lib/coaching-bookable-slots.ts",
   runwayPage: "apps/quipsly/src/app/(app)/coaching/page.tsx",
   calendarAdapter: "apps/quipsly/src/lib/server/coaching-google-calendar.ts",
   lifecycle: "packages/quipsly-domain/src/coaching-lifecycle.ts",
@@ -54,6 +55,7 @@ const schema = texts.schema || "";
 const route = texts.runwayRoute || "";
 const scheduleAvailability = texts.scheduleAvailability || "";
 const scheduleTime = texts.scheduleTime || "";
+const bookableSlots = texts.bookableSlots || "";
 const page = texts.runwayPage || "";
 const calendarAdapter = texts.calendarAdapter || "";
 const lifecycle = texts.lifecycle || "";
@@ -137,6 +139,23 @@ addCheck(
     "EXPLICIT_OFFSET",
   ]),
   "Browser datetime-local values are interpreted in the coach's explicit IANA timezone, exact instants remain exact, and ambiguous or nonexistent DST wall times fail closed.",
+);
+
+addCheck(
+  "webProjectsSafeSchedulingChoices",
+  includesAll(page, [
+    "Save working hours",
+    "Suggested open times",
+    "selectedSlotIssue",
+    "That time overlaps another Quipsly Session",
+    "That time is outside your working hours",
+  ]) && includesAll(bookableSlots, [
+    "deriveCoachingBookableSlots",
+    "coachingSlotIssue",
+    'disambiguation: "reject"',
+    "start < interval.end && end > interval.start",
+  ]),
+  "Nest gives coaches one ordinary working-hours editor, suggests open timezone-aware choices, warns before manual conflicts, and still rechecks every mutation at the server.",
 );
 
 addCheck(

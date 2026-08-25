@@ -20,6 +20,10 @@ import {
   Users,
   Video,
 } from "lucide-react";
+import {
+  coachingSlotIssue,
+  deriveCoachingBookableSlots,
+} from "@/lib/coaching-bookable-slots";
 
 type Person = {
   id: string;
@@ -41,6 +45,8 @@ type CoachingCreatedHandoff = {
   title: string;
   scheduledStart: string;
 };
+
+const COACHING_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type JourneySummary = {
   stage?: string | null;
@@ -405,6 +411,18 @@ function dollarsToCents(value: string) {
 function localDateTimeInputValue(date: Date) {
   const offsetMs = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function coachingTimeInputValue(minute: number | null | undefined, fallback: string) {
+  if (typeof minute !== "number" || minute < 0 || minute > 24 * 60) return fallback;
+  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+}
+
+function coachingTimeInputMinutes(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+  const total = hour * 60 + minute;
+  return total >= 0 && total <= 24 * 60 ? total : null;
 }
 
 function durationMinutesFromRange(start?: string | null, end?: string | null) {
@@ -903,6 +921,14 @@ export default function CoachingPage() {
   });
   const [setupStatus, setSetupStatus] = useState<string | null>(null);
   const [isSettingUpCoach, setIsSettingUpCoach] = useState(false);
+  const [availabilityStatus, setAvailabilityStatus] = useState<string | null>(null);
+  const [isSavingAvailability, setIsSavingAvailability] = useState(false);
+  const [availabilityForm, setAvailabilityForm] = useState({
+    days: [1, 2, 3, 4, 5],
+    startTime: "09:00",
+    endTime: "17:00",
+    timezone: "",
+  });
   const [setupForm, setSetupForm] = useState({
     coachEmail: "",
     coachName: "",
@@ -942,6 +968,22 @@ export default function CoachingPage() {
           current.durationMinutes === "60"
             ? String(payload.offerings?.[0]?.durationMinutes || 60)
             : current.durationMinutes,
+      }));
+      const ownWindows = (payload.availabilityWindows ?? []).filter(
+        (window) =>
+          window.kind === "recurring" &&
+          window.coach?.id === payload.user?.id &&
+          window.dayOfWeek !== null &&
+          window.startMinute !== null &&
+          window.endMinute !== null,
+      );
+      setAvailabilityForm((current) => ({
+        days: ownWindows.length
+          ? [...new Set(ownWindows.map((window) => window.dayOfWeek as number))].sort()
+          : current.days,
+        startTime: coachingTimeInputValue(ownWindows[0]?.startMinute, current.startTime),
+        endTime: coachingTimeInputValue(ownWindows[0]?.endMinute, current.endTime),
+        timezone: ownWindows[0]?.timezone || payload.coaches?.[0]?.timezone || current.timezone,
       }));
       setStatus("Coaching runway ready");
     } catch (cause) {
@@ -1737,6 +1779,10 @@ export default function CoachingPage() {
         ...current,
         timezone: current.timezone || detectedTimezone,
       }));
+      setAvailabilityForm((current) => ({
+        ...current,
+        timezone: current.timezone || detectedTimezone,
+      }));
     }
     const nextStart = new Date();
     nextStart.setDate(nextStart.getDate() + 1);
@@ -1794,6 +1840,43 @@ export default function CoachingPage() {
       );
     } finally {
       setIsSettingUpCoach(false);
+    }
+  }
+
+  async function saveWeeklyAvailability() {
+    const startMinute = coachingTimeInputMinutes(availabilityForm.startTime);
+    const endMinute = coachingTimeInputMinutes(availabilityForm.endTime);
+    if (!availabilityForm.days.length || startMinute === null || endMinute === null || endMinute <= startMinute) {
+      setAvailabilityStatus("Choose at least one day and an end time after the start time.");
+      return;
+    }
+    setIsSavingAvailability(true);
+    setAvailabilityStatus("Saving working hours...");
+    try {
+      const response = await fetch("/api/coaching/runway", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update-weekly-availability",
+          timezone:
+            setupForm.timezone ||
+            availabilityForm.timezone ||
+            Intl.DateTimeFormat().resolvedOptions().timeZone,
+          windows: availabilityForm.days.map((dayOfWeek) => ({
+            dayOfWeek,
+            startMinute,
+            endMinute,
+          })),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Working hours could not be saved.");
+      setAvailabilityStatus("Working hours saved. Suggested times now use this schedule.");
+      await loadRunway();
+    } catch (cause) {
+      setAvailabilityStatus(cause instanceof Error ? cause.message : "Working hours could not be saved.");
+    } finally {
+      setIsSavingAvailability(false);
     }
   }
 
@@ -1896,6 +1979,26 @@ export default function CoachingPage() {
   );
   const isClientOnly = isCoachingClient && !canManageCoaching;
   const canScheduleCoaching = Boolean(runway?.user) && !isClientOnly;
+  const actorAvailabilityWindows = availabilityWindows.filter(
+    (window) => !runway?.user?.id || window.coach?.id === runway.user.id,
+  );
+  const actorBookings = bookings.filter(
+    (booking) => !runway?.user?.id || booking.coach?.id === runway.user.id,
+  );
+  const suggestedSlots = deriveCoachingBookableSlots({
+    windows: actorAvailabilityWindows,
+    bookings: actorBookings,
+    durationMinutes: Number.parseInt(createForm.durationMinutes, 10) || 60,
+  });
+  const selectedSlotIssue = createForm.scheduledStart
+    ? coachingSlotIssue({
+        localValue: createForm.scheduledStart,
+        timezone: createForm.timezone,
+        durationMinutes: Number.parseInt(createForm.durationMinutes, 10) || 60,
+        windows: actorAvailabilityWindows,
+        bookings: actorBookings,
+      })
+    : null;
   const nextBooking = bookings.find(
     (booking) => !["CANCELED", "COMPLETED", "NO_SHOW"].includes(booking.status),
   );
@@ -3401,12 +3504,17 @@ export default function CoachingPage() {
                       type="text"
                       aria-label="Timezone"
                       value={setupForm.timezone}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const timezone = event.target.value;
                         setSetupForm((current) => ({
                           ...current,
-                          timezone: event.target.value,
-                        }))
-                      }
+                          timezone,
+                        }));
+                        setAvailabilityForm((current) => ({
+                          ...current,
+                          timezone,
+                        }));
+                      }}
                       placeholder="America/Denver"
                       className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
                       required
@@ -3432,6 +3540,86 @@ export default function CoachingPage() {
                       className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#214531] outline-none focus:border-emerald-600"
                     />
                   </label>
+                  <div className="rounded-xl border border-emerald-200 bg-white/80 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wide text-[#315641]">
+                          Working hours
+                        </p>
+                        <p className="mt-1 text-[11px] font-semibold normal-case tracking-normal text-[#315641]">
+                          Used for suggested times and checked again when a Session is saved.
+                        </p>
+                      </div>
+                      <Clock size={18} className="text-emerald-700" aria-hidden="true" />
+                    </div>
+                    <div className="mt-3 grid grid-cols-7 gap-1" aria-label="Working days">
+                      {COACHING_DAY_LABELS.map((label, day) => {
+                        const selected = availabilityForm.days.includes(day);
+                        return (
+                          <button
+                            key={label}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() =>
+                              setAvailabilityForm((current) => ({
+                                ...current,
+                                days: selected
+                                  ? current.days.filter((value) => value !== day)
+                                  : [...current.days, day].sort(),
+                              }))
+                            }
+                            className={`min-h-9 rounded-full px-1 text-[10px] font-black ${
+                              selected
+                                ? "bg-emerald-700 text-white"
+                                : "bg-emerald-50 text-[#315641]"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="text-xs font-black uppercase tracking-wide text-[#315641]">
+                        Start
+                        <input
+                          type="time"
+                          step="1800"
+                          value={availabilityForm.startTime}
+                          onChange={(event) =>
+                            setAvailabilityForm((current) => ({ ...current, startTime: event.target.value }))
+                          }
+                          className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal"
+                        />
+                      </label>
+                      <label className="text-xs font-black uppercase tracking-wide text-[#315641]">
+                        End
+                        <input
+                          type="time"
+                          step="1800"
+                          value={availabilityForm.endTime}
+                          onChange={(event) =>
+                            setAvailabilityForm((current) => ({ ...current, endTime: event.target.value }))
+                          }
+                          className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isSavingAvailability || !canManageCoaching}
+                      onClick={() => void saveWeeklyAvailability()}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Clock size={14} />
+                      {isSavingAvailability ? "Saving..." : "Save working hours"}
+                    </button>
+                    {availabilityStatus && (
+                      <p role="status" className="mt-2 text-xs font-bold text-[#315641]">
+                        {availabilityStatus}
+                      </p>
+                    )}
+                  </div>
                   <details className="rounded-xl border border-emerald-200 bg-white/80 p-3">
                     <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#315641]">
                       Offer and pricing defaults
@@ -3566,6 +3754,46 @@ export default function CoachingPage() {
                       />
                     </label>
                   </div>
+                  {suggestedSlots.length > 0 && (
+                    <div className="rounded-xl border border-[#d6c5a5] bg-[#fffaf1] p-3">
+                      <p className="text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                        Suggested open times
+                      </p>
+                      <p className="mt-1 text-[11px] font-semibold text-[#7b5c3b]">
+                        Based on your working hours and current Quipsly Sessions. Availability is checked again when you save.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {suggestedSlots.map((slot) => (
+                          <button
+                            key={slot.instant}
+                            type="button"
+                            onClick={() =>
+                              setCreateForm((current) => ({
+                                ...current,
+                                scheduledStart: slot.localValue,
+                                timezone: slot.timezone,
+                              }))
+                            }
+                            className="rounded-full border border-[#c9ad79] bg-white px-3 py-2 text-xs font-black text-[#5e4528] hover:border-[#8d672f]"
+                          >
+                            {slot.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {selectedSlotIssue && (
+                    <p
+                      role="alert"
+                      className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800"
+                    >
+                      {selectedSlotIssue === "conflict"
+                        ? "That time overlaps another Quipsly Session. Choose another time."
+                        : selectedSlotIssue === "outside-working-hours"
+                          ? "That time is outside your working hours. Choose a suggested time or update Working hours."
+                          : "That local time is not valid in the selected timezone. Choose another time."}
+                    </p>
+                  )}
                   <p className="px-1 text-xs font-semibold text-[#7b5c3b]">
                     {createForm.durationMinutes} minutes ·{" "}
                     {createForm.timezone || "your detected timezone"}
@@ -3723,7 +3951,7 @@ export default function CoachingPage() {
                     )}
                   <button
                     type="submit"
-                    disabled={isCreating || !canScheduleCoaching}
+                    disabled={isCreating || !canScheduleCoaching || selectedSlotIssue !== null}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#3d3122] px-4 py-3 text-sm font-black text-white transition hover:bg-[#5a472f] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <CalendarIcon size={16} />{" "}
