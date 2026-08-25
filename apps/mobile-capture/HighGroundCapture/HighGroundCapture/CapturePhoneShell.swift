@@ -12337,8 +12337,31 @@ struct InputLevelMeter: View {
     }
 }
 
+/// Uses Apple's route UI so Bluetooth, wired, USB, receiver, and speaker
+/// choices stay governed by the active system audio session and CallKit. Quipsly
+/// observes the resulting route; it does not invent a second routing model.
+private struct CaptureSystemAudioRoutePicker: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let picker = AVRoutePickerView(frame: .zero)
+        picker.prioritizesVideoDevices = false
+        picker.tintColor = UIColor.secondaryLabel
+        picker.activeTintColor = UIColor.systemBlue
+        picker.isAccessibilityElement = true
+        picker.accessibilityLabel = "Choose call audio device"
+        picker.accessibilityHint = "Opens the standard iPhone audio route menu."
+        picker.accessibilityIdentifier = "CaptureCallAudioRoutePicker"
+        return picker
+    }
+
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
+        uiView.tintColor = UIColor.secondaryLabel
+        uiView.activeTintColor = UIColor.systemBlue
+    }
+}
+
 private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
+    @ObservedObject private var callAudioSession = CaptureAudioSessionCoordinator.shared
     @EnvironmentObject private var videoCapture: VideoCaptureController
     let session: MobileCaptureSession
     let inputRoute: String
@@ -12375,16 +12398,32 @@ private struct ProviderRoomControls: View {
                     .foregroundStyle(model.providerRoom.isConnected ? Color.green : Color.secondary)
             }
 
-            Label(
-                usesCallAudioForPresentation
-                    ? inputRoute
-                    : "Call audio on another device",
-                systemImage: usesCallAudioForPresentation ? "mic.fill" : "iphone.and.arrow.forward"
-            )
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .accessibilityIdentifier("CaptureCallInputRoute")
+            if usesCallAudioForPresentation {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(inputRoute, systemImage: "mic.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .accessibilityIdentifier("CaptureCallInputRoute")
+                        Text("Listening on \(callAudioSession.currentOutputRouteName)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .accessibilityIdentifier("CaptureCallOutputRoute")
+                    }
+                    Spacer(minLength: 8)
+                    CaptureSystemAudioRoutePicker()
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureCallAudioRouteSummary")
+            } else {
+                Label("Call audio on another device", systemImage: "iphone.and.arrow.forward")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureCallInputRoute")
+            }
 
             if model.providerRoom.isConnected {
                 if model.providerRoom.hasRemoteVideo
@@ -13010,6 +13049,7 @@ private struct CapturePersistentRecorderDock: View {
 /// recording, notes, and transcript workspace scrolls independently above.
 private struct ProviderRoomDock: View {
     @ObservedObject var model: CaptureExperienceModel
+    @ObservedObject private var callAudioSession = CaptureAudioSessionCoordinator.shared
     @EnvironmentObject private var videoCapture: VideoCaptureController
     let localRecordingActive: Bool
     let isSafelyLeaving: Bool
@@ -13032,6 +13072,20 @@ private struct ProviderRoomDock: View {
                     accessibilityIdentifier: "ProviderToggleMuteButton"
                 ) {
                     Task { await model.toggleRoomMute() }
+                }
+
+                dockButton(
+                    title: "Speaker",
+                    systemImage: callAudioSession.isBuiltInSpeakerActive
+                        ? "speaker.wave.2.fill"
+                        : "speaker.wave.2",
+                    tint: callAudioSession.isBuiltInSpeakerActive ? .blue : .primary,
+                    disabled:
+                        model.isChangingRoom
+                        || model.providerRoom.isReconnecting,
+                    accessibilityIdentifier: "ProviderToggleSpeakerButton"
+                ) {
+                    model.toggleRoomSpeaker()
                 }
             } else {
                 Label("Audio on other device", systemImage: "speaker.slash.fill")

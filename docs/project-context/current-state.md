@@ -3861,3 +3861,19 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   second-participant observations remain in the deferred validation ledger.
   Detailed decision record:
   `docs/sessions/native-prejoin-camera-lobby-2026-08-25.md`.
+
+### 2026-08-25 native call audio routing
+
+- Capture's outer room now renders microphone and listening destination as
+  separate route facts and exposes Apple's system audio-route picker whenever
+  this iPhone owns call audio. Companion mode removes that control rather than
+  implying local route ownership.
+- The shared audio-session coordinator observes actual route changes and
+  publishes the current output and built-in-speaker state. A persistent in-call
+  Speaker action uses the supported audio-port override while external routes
+  remain under CallKit and iOS authority.
+- The 1,226-check Capture static gate, a dual-architecture Simulator build, and
+  the focused operated outer-room journey pass. Physical audibility, Bluetooth
+  profile behavior, wired/USB routing, route-loss recovery, echo, and retained
+  source survival remain in the deferred validation ledger. Detailed decision
+  record: `docs/sessions/native-call-audio-routing-2026-08-25.md`.

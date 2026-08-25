@@ -199,6 +199,8 @@ final class CaptureExperienceUITests: XCTestCase {
         let microphone = app.switches["CaptureJoinMicrophoneToggle"]
         let camera = app.switches["CaptureJoinCameraToggle"]
         let route = app.descendants(matching: .any)["CaptureCallInputRoute"]
+        let outputRoute = app.descendants(matching: .any)["CaptureCallOutputRoute"]
+        let routePicker = app.descendants(matching: .any)["CaptureCallAudioRoutePicker"]
         let consent = app.descendants(matching: .any)["CaptureConsentStrip"]
         let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"]
 
@@ -212,6 +214,8 @@ final class CaptureExperienceUITests: XCTestCase {
             "A privacy-safe camera-off choice should remain obvious before Join."
         )
         turnOn(useCallAudio)
+        XCTAssertTrue(outputRoute.exists, "The listening route should be visible separately from the microphone before joining.")
+        XCTAssertTrue(routePicker.exists, "The lobby should expose Apple's familiar system audio-route control.")
         XCTAssertTrue(microphone.exists, "Using this iPhone for call audio should expose the standard pre-join microphone choice.")
         turnOff(microphone)
         XCTAssertTrue(
@@ -224,8 +228,13 @@ final class CaptureExperienceUITests: XCTestCase {
             app.switches["CaptureJoinMicrophoneToggle"].exists,
             "Second-device mode should remove the irrelevant local microphone publication choice."
         )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureCallAudioRoutePicker"].exists,
+            "Second-device mode should not imply that this iPhone owns the call's listening route."
+        )
         turnOn(useCallAudio)
         XCTAssertTrue(app.switches["CaptureJoinMicrophoneToggle"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCallAudioRoutePicker"].exists)
         XCTAssertTrue(route.exists, "The current microphone route should be visible before joining.")
         XCTAssertTrue(localOnly.exists, "Local-only recording should remain one secondary escape hatch.")
         XCTAssertFalse(

@@ -2402,6 +2402,16 @@ final class CaptureExperienceModel: ObservableObject {
         await providerRoom.setMuted(!providerRoom.isMuted)
     }
 
+    func toggleRoomSpeaker() {
+        guard providerControlsAreAvailable(), providerRoom.usesCallAudio else { return }
+        do {
+            try CaptureAudioSessionCoordinator.shared.toggleBuiltInSpeaker()
+            errorMessage = nil
+        } catch {
+            errorMessage = "The iPhone audio route couldn't change. Use Audio to choose another device, then try again."
+        }
+    }
+
     func prepareRoomCameraPreview(
         using videoCapture: VideoCaptureController,
         position: VideoCaptureCameraPosition,

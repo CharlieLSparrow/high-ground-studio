@@ -968,6 +968,8 @@ for (const needle of [
   "CaptureUseCallAudioToggle",
   "CaptureJoinMicrophoneToggle",
   "CaptureJoinCameraToggle",
+  "CaptureCallAudioRoutePicker",
+  "CaptureCallOutputRoute",
   "Join call",
   "CaptureStudioHandoffCard_",
   "CaptureSourceTruthFootnote",
@@ -1023,6 +1025,8 @@ for (const needle of [
   "CaptureUseCallAudioToggle",
   "CaptureJoinMicrophoneToggle",
   "CaptureJoinCameraToggle",
+  "CaptureCallAudioRoutePicker",
+  "CaptureCallOutputRoute",
   "Finish or stop the current take first.",
   ".disabled(providerControlsLocked",
   "CaptureRecordingModePicker",
@@ -1677,6 +1681,14 @@ requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCallInpu
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureUseCallAudioToggle")', "shipping call entry exposes an addressable audio-device control");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinMicrophoneToggle")', "shipping call entry exposes an addressable pre-join microphone control");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinCameraToggle")', "shipping call entry exposes an addressable pre-join camera control");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier = "CaptureCallAudioRoutePicker"', "shipping call entry exposes Apple's system audio-route control");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCallOutputRoute")', "shipping call entry names its listening route separately from the microphone");
+requireIncludes(capturePhoneShellText, "AVRoutePickerView", "native call routing delegates speaker, wired, USB, and Bluetooth choices to the system route UI");
+requireIncludes(captureAudioSessionCoordinatorText, '@Published private(set) var currentOutputRouteName', "shared native audio policy publishes the actual current listening route");
+requireIncludes(captureAudioSessionCoordinatorText, "AVAudioSession.routeChangeNotification", "shared native audio policy refreshes route truth after hardware or system changes");
+requireIncludes(captureAudioSessionCoordinatorText, "private func refreshRouteSnapshot()", "shared native audio policy derives display routes from the active AVAudioSession");
+requireIncludes(captureAudioSessionCoordinatorText, "func toggleBuiltInSpeaker() throws", "shared native audio policy owns the conventional in-call speaker override");
+requireIncludes(captureAudioSessionCoordinatorText, "overrideOutputAudioPort(", "in-call speaker control uses the supported AVAudioSession override boundary");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinCameraPreview")', "shipping call entry exposes a real pre-join camera preview after explicit preparation");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinSwitchCameraButton")', "shipping call entry can switch front and back cameras before joining");
 requireIncludes(capturePhoneShellText, "await model.dismissRoomCameraPreview(using: videoCapture)", "turning the call camera off releases an unowned pre-join preview");
@@ -1746,6 +1758,7 @@ requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePersiste
 requireIncludes(capturePhoneShellText, "Waiting for participant", "persistent iPhone Record row explains participant readiness without extra administration");
 requireIncludes(capturePhoneShellText, "Waiting for host", "persistent iPhone Record row explains host-controlled recording without hiding the primary action");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleSpeakerButton"', "shipping persistent provider speaker action is addressable");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderLeaveRoomButton"', "shipping persistent provider leave action is addressable");
 requireIncludes(capturePhoneShellText, "Finish or stop the current take first.", "shipping room controls cannot reconfigure active local capture");
 requireIncludes(capturePhoneShellText, "Joins the conversation. Recording starts only when someone taps Record.", "shipping call control hint preserves explicit recording start");

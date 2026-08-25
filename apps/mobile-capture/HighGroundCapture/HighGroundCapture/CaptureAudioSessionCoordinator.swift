@@ -22,6 +22,9 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     @Published private(set) var isSharedWatchPlaybackActive = false
     @Published private(set) var sharedWatchRouteFailureMessage: String?
     @Published private(set) var privateListeningRouteAvailable = false
+    @Published private(set) var currentInputRouteName = "No microphone active"
+    @Published private(set) var currentOutputRouteName = "iPhone audio"
+    @Published private(set) var isBuiltInSpeakerActive = false
 
     private let audioSession = AVAudioSession.sharedInstance()
     private var routeChangeObserver: NSObjectProtocol?
@@ -40,11 +43,11 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             queue: .main
         ) { _ in
             Task { @MainActor [weak self] in
-                self?.refreshPrivateListeningRoute()
+                self?.refreshRouteSnapshot()
                 self?.holdSharedWatchForUnsafeRoute()
             }
         }
-        refreshPrivateListeningRoute()
+        refreshRouteSnapshot()
     }
 
     /// A connected room already owns the hardware microphone through
@@ -121,6 +124,7 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         try AudioManager.shared.setEngineAvailability(.default)
         #endif
         isCallKitAudioActive = true
+        refreshRouteSnapshot()
         // providerWillConnect already required a private route. If the route
         // changed during CallKit activation, preserve the call and hold Watch
         // immediately instead of allowing reference audio onto the microphone.
@@ -244,9 +248,75 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         }
     }
 
+    private func refreshRouteSnapshot() {
+        refreshPrivateListeningRoute()
+        isBuiltInSpeakerActive = audioSession.currentRoute.outputs.contains {
+            $0.portType == .builtInSpeaker
+        }
+        currentInputRouteName = routeNames(
+            audioSession.currentRoute.inputs,
+            fallback: "No microphone active",
+            builtInFallback: "iPhone microphone"
+        )
+        currentOutputRouteName = routeNames(
+            audioSession.currentRoute.outputs,
+            fallback: "iPhone audio",
+            builtInFallback: "iPhone speaker"
+        )
+    }
+
+    private func routeNames(
+        _ ports: [AVAudioSessionPortDescription],
+        fallback: String,
+        builtInFallback: String
+    ) -> String {
+        let names = ports.map { port -> String in
+            let systemName = port.portName.trimmingCharacters(in: .whitespacesAndNewlines)
+            switch port.portType {
+            case .builtInMic, .builtInReceiver, .builtInSpeaker:
+                return systemName.isEmpty || systemName == port.portType.rawValue
+                    ? builtInFallback
+                    : systemName
+            case .headphones, .headsetMic:
+                return systemName.isEmpty || systemName == port.portType.rawValue
+                    ? "Headphones"
+                    : systemName
+            case .bluetoothA2DP, .bluetoothHFP, .bluetoothLE:
+                return systemName.isEmpty || systemName == port.portType.rawValue
+                    ? "Bluetooth audio"
+                    : systemName
+            case .usbAudio:
+                return systemName.isEmpty || systemName == port.portType.rawValue
+                    ? "USB audio"
+                    : systemName
+            default:
+                return systemName.isEmpty ? port.portType.rawValue : systemName
+            }
+        }
+        .filter { !$0.isEmpty }
+        return names.isEmpty ? fallback : names.joined(separator: " + ")
+    }
+
     func endSharedWatchPlayback() {
         isSharedWatchPlaybackActive = false
         reconcileAfterLeaseChange()
+    }
+
+    /// The system route picker owns external destinations. This conventional
+    /// call control only toggles the iPhone speaker override; clearing it lets
+    /// iOS restore the receiver or the selected wired/Bluetooth route.
+    func toggleBuiltInSpeaker() throws {
+        guard isProviderRoomActive || isCallKitAudioActive else {
+            throw NSError(
+                domain: "CaptureAudioSession",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Join the call before changing the iPhone speaker."]
+            )
+        }
+        try audioSession.overrideOutputAudioPort(
+            isBuiltInSpeakerActive ? .none : .speaker
+        )
+        refreshRouteSnapshot()
     }
 
     private func requirePrivateRouteDuringCapture() throws {

@@ -805,6 +805,27 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 3), .completed)
     }
 
+    private func turnOff(_ toggle: XCUIElement, in app: XCUIApplication) {
+        guard (toggle.value as? String) != "0" else { return }
+        let visibleBottom = app.windows.firstMatch.frame.maxY - 24
+        var scrollAttempts = 0
+        while toggle.frame.maxY > visibleBottom, scrollAttempts < 4 {
+            let consentForm = app.collectionViews.firstMatch
+            if consentForm.exists {
+                consentForm.swipeUp()
+            } else {
+                app.swipeUp()
+            }
+            scrollAttempts += 1
+        }
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        let disabled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == '0'"),
+            object: toggle
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [disabled], timeout: 3), .completed)
+    }
+
     private func recordingIdentifiers(in app: XCUIApplication, prefix: String) -> Set<String> {
         Set(
             app.descendants(matching: .any)
@@ -5008,10 +5029,26 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "A consented LiveKit-ready Session should expose an explicit Join room action."
         )
         XCTAssertTrue(join.isEnabled)
+        let useCallAudio = app.switches["CaptureUseCallAudioToggle"].firstMatch
         XCTAssertTrue(
-            app.switches["CaptureJoinCameraToggle"].firstMatch.exists,
+            useCallAudio.exists,
+            "The real signed-in lobby should expose its remembered call-audio endpoint choice."
+        )
+        turnOn(useCallAudio, in: app)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCallOutputRoute"].firstMatch.exists,
+            "The real signed-in lobby should display the active listening route separately from its microphone."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCallAudioRoutePicker"].firstMatch.exists,
+            "The real signed-in lobby should expose the standard system audio-route picker."
+        )
+        let camera = app.switches["CaptureJoinCameraToggle"].firstMatch
+        XCTAssertTrue(
+            camera.exists,
             "The real signed-in call lobby should expose its ordinary camera choice before joining."
         )
+        turnOff(camera, in: app)
         let microphone = app.switches["CaptureJoinMicrophoneToggle"].firstMatch
         XCTAssertTrue(
             microphone.exists,
@@ -5078,6 +5115,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertFalse(
             app.buttons["CaptureStopButton"].exists,
             "Provider-room audio must remain separate from the local source recorder."
+        )
+        XCTAssertTrue(
+            app.buttons["ProviderToggleSpeakerButton"].firstMatch.exists,
+            "A connected primary endpoint should keep the conventional iPhone speaker control in the persistent call dock."
         )
 
         leave.tap()
