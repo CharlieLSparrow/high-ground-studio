@@ -2275,3 +2275,38 @@ could not counterfeit client proof. This remains Simulator and local-adapter
 evidence, not physical-iPhone, real-mailbox, production, natural-language, or
 minimally instructed human proof; those validations remain on the continuous
 ledger while independent development continues.
+
+## Operated coach schedule-request decision flight — 2026-08-25
+
+Scheduling requests now carry a typed, versioned intent inside the existing
+private coaching conversation instead of relying on English-text parsing. Nest
+accepts the intent only from the exact appointment client, requires the booking
+to belong to the same relationship, rejects a stale current-time snapshot, and
+never changes the appointment. Exact message retries replay before a later
+booking-state check, while changed evidence under the same request identity
+conflicts.
+
+The assigned coach sees the pending request directly on the matching iPhone
+appointment. A requested time pre-fills the ordinary Reschedule confirmation;
+a cancellation request leads to the existing destructive confirmation; and
+**Keep current time** appends a typed decision message without changing
+Quipsly or external-calendar truth. Staff cannot impersonate the client request,
+and only the assigned coach or authorized staff can close it.
+
+A fresh two-account compiled flight scheduled and rescheduled the Session,
+switched to the exact client identity, requested the following day, returned to
+the exact coach identity, displayed the pending card, kept the current time,
+opened the exact Session, and canceled it. Independent readback verified the
+request and decision message identities and metadata, retained relationship
+work, denied the coach-private note to the client, and returned 404 to an
+unrelated account.
+
+Receipt:
+`artifacts/coaching-acceptance/phone-start-5046b2d0/phone-start-receipt.json`.
+The compiled UI test passed 1/1 in 194.904 seconds with no unexpected runtime
+warnings. Twenty-one focused Nest-chat authorization and idempotency tests,
+strict Quipsly TypeScript, the Capture source contract, and a dual-architecture
+Simulator test build also pass. This remains local Simulator evidence—not
+physical-iPhone, real-mailbox, production deployment, minimally instructed
+human, or 50-coach concurrency proof—and those validations remain on the
+continuous ledger instead of blocking independent product work.
