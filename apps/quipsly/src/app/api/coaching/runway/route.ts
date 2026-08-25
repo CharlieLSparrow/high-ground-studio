@@ -39,6 +39,7 @@ import {
 } from "@/lib/server/coaching-schedule-availability";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { parseCoachingScheduleDate } from "@/lib/server/coaching-schedule-time";
+import { canManageCoachingBookingHold } from "@/lib/server/coaching-booking-hold-authz";
 
 export const runtime = "nodejs";
 
@@ -2225,13 +2226,30 @@ export async function POST(request: Request) {
 
     const hold = await prisma.bookingHold.findUnique({
       where: { id: holdId },
-      select: { id: true, status: true, convertedBookingId: true, metadataJson: true },
+      select: {
+        id: true,
+        status: true,
+        convertedBookingId: true,
+        metadataJson: true,
+        coachProfile: { select: { userId: true } },
+      },
     });
 
     if (!hold) {
       return NextResponse.json(
         { ok: false, error: "That booking hold was not found." },
         { status: 404 },
+      );
+    }
+
+    if (!canManageCoachingBookingHold({
+      actorUserId: session.user.id,
+      actorIsStaff: session.user.isStaff,
+      assignedCoachUserId: hold.coachProfile?.userId,
+    })) {
+      return NextResponse.json(
+        { ok: false, error: "Only the assigned coach can release this time request." },
+        { status: 403 },
       );
     }
 
@@ -2317,6 +2335,18 @@ export async function POST(request: Request) {
       });
 
       if (!hold) throw new Error("That booking hold was not found.");
+      const assignedCoachUserId =
+        hold.offering?.coachProfile?.userId || hold.coachProfile?.userId || null;
+      if (!canManageCoachingBookingHold({
+        actorUserId: session.user.id,
+        actorIsStaff: session.user.isStaff,
+        assignedCoachUserId,
+      })) {
+        throw new RunwayActionError(
+          "Only the assigned coach can confirm this time request.",
+          403,
+        );
+      }
       if (hold.convertedBookingId || hold.status === "CONVERTED") {
         return {
           holdId: hold.id,
@@ -2340,11 +2370,9 @@ export async function POST(request: Request) {
           prisma: tx,
         }));
       const offering = hold.offering || null;
-      const coachUserId =
-        text(body.coachUserId) ||
-        offering?.coachProfile?.userId ||
-        hold.coachProfile?.userId ||
-        session.user.id;
+      const coachUserId = session.user.isStaff
+        ? text(body.coachUserId) || assignedCoachUserId || session.user.id
+        : session.user.id;
       await assertCoachingScheduleAvailable({
         tx,
         coachUserId,

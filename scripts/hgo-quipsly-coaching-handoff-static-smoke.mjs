@@ -343,6 +343,8 @@ for (const [label, needle] of [
   ["runway public booking owner scope", "coachProfileId: actingCoachProfile?.id"],
   ["runway public booking explicit flag", "publicBookingEnabled: enabled"],
   ["runway client role projection", 'isClient: session.user.roles.includes("CLIENT")'],
+  ["hold conversion coach authorization", "Only the assigned coach can confirm this time request."],
+  ["hold release coach authorization", "Only the assigned coach can release this time request."],
 ]) {
   requireIncludes(texts.quipslyCoachingRunway, needle, label, files.quipslyCoachingRunway);
 }
@@ -351,6 +353,8 @@ for (const [label, needle] of [
   ["client request home", "My time requests"],
   ["client request cancellation affordance", "cancelClientBookingRequest"],
   ["client coaching plain heading", "Your coaching, without the admin maze."],
+  ["coach incoming request home", "Incoming time requests"],
+  ["coach request confirmation affordance", "Confirm Session"],
 ]) {
   requireIncludes(texts.quipslyCoachingPage, needle, label, files.quipslyCoachingPage);
 }

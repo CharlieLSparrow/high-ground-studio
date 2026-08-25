@@ -15,6 +15,7 @@ const livekitBundle = requireFromQuipsly.resolve("livekit-client");
 const identitySuffix = randomBytes(4).toString("hex");
 const COACH_EMAIL = `quipsly-mobile-coach-${identitySuffix}@dev.test`;
 const CLIENT_EMAIL = `quipsly-mobile-client-${identitySuffix}@dev.test`;
+const OTHER_COACH_EMAIL = `quipsly-mobile-other-coach-${identitySuffix}@dev.test`;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -268,6 +269,56 @@ async function proveClientCoachingHome({ origin, idToken, offeringTitle }) {
   }
 }
 
+async function proveCoachIncomingRequest({ origin, idToken, offeringTitle }) {
+  const sessionResponse = await fetch(`${origin}/api/auth/session`, {
+    method: "POST",
+    signal: AbortSignal.timeout(30_000),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ idToken }),
+  });
+  const cookieMatch = sessionResponse.headers.get("set-cookie")?.match(/(?:^|,\s*)session=([^;]+)/);
+  assert(sessionResponse.status === 200 && cookieMatch?.[1], "The coach browser session could not be created.");
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext();
+  try {
+    await context.addCookies([{ name: "session", value: cookieMatch[1], url: origin }]);
+    const page = await context.newPage();
+    await page.goto(`${origin}/coaching`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "Incoming time requests" }).waitFor({ timeout: 15_000 });
+    await page.getByText(offeringTitle, { exact: true }).first().waitFor({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Confirm Session" }).waitFor({ timeout: 15_000 });
+    return { incomingRequestRendered: true, confirmAffordanceRendered: true };
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
+async function proveClientConfirmedSession({ origin, idToken, title }) {
+  const sessionResponse = await fetch(`${origin}/api/auth/session`, {
+    method: "POST",
+    signal: AbortSignal.timeout(30_000),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ idToken }),
+  });
+  const cookieMatch = sessionResponse.headers.get("set-cookie")?.match(/(?:^|,\s*)session=([^;]+)/);
+  assert(sessionResponse.status === 200 && cookieMatch?.[1], "The confirmed client browser session could not be created.");
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext();
+  try {
+    await context.addCookies([{ name: "session", value: cookieMatch[1], url: origin }]);
+    const page = await context.newPage();
+    await page.goto(`${origin}/coaching`, { waitUntil: "domcontentloaded" });
+    await page.getByText("Your coaching, without the admin maze.").waitFor({ timeout: 15_000 });
+    await page.getByText(title, { exact: true }).first().waitFor({ timeout: 15_000 });
+    await page.getByRole("link", { name: "Open my session" }).waitFor({ timeout: 15_000 });
+    return { confirmedSessionRendered: true, privateSessionLinkRendered: true };
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
 async function main() {
   assert(
     process.env.QUIPSLY_LOCAL_MOBILE_COACHING_OPERATION === "1",
@@ -301,10 +352,16 @@ async function main() {
       name: "Quipsly Mobile Client",
       password,
     });
+    await upsertAuthUser(auth, {
+      email: OTHER_COACH_EMAIL,
+      name: "Unassigned Quipsly Coach",
+      password,
+    });
 
-    const [coachToken, clientToken] = await Promise.all([
+    const [coachToken, clientToken, otherCoachToken] = await Promise.all([
       authenticate(authOrigin, COACH_EMAIL, password),
       authenticate(authOrigin, CLIENT_EMAIL, password),
+      authenticate(authOrigin, OTHER_COACH_EMAIL, password),
     ]);
 
     const coachSetup = await api(origin, coachToken, "/api/coaching/runway", {
@@ -401,6 +458,69 @@ async function main() {
       "Repeating a client booking request did not return the same safe hold.",
     );
 
+    const clientHomeProof = await proveClientCoachingHome({
+      origin,
+      idToken: clientToken,
+      offeringTitle: publicOffering.title,
+    });
+    const coachIncomingRequestProof = await proveCoachIncomingRequest({
+      origin,
+      idToken: coachToken,
+      offeringTitle: publicOffering.title,
+    });
+
+    const otherCoachSetup = await api(origin, otherCoachToken, "/api/coaching/runway", {
+      method: "POST",
+      body: {
+        action: "setup-coach-profile",
+        coachEmail: OTHER_COACH_EMAIL,
+        coachName: "Unassigned Quipsly Coach",
+        timezone,
+        defaultDurationMinutes: 60,
+        offeringTitle: "Private isolation fixture",
+        currency: "USD",
+      },
+    });
+    assert(otherCoachSetup.status === 200, "The isolated coach fixture could not be prepared.");
+    const unauthorizedRelease = await api(origin, otherCoachToken, "/api/coaching/runway", {
+      method: "POST",
+      body: {
+        action: "release-booking-hold",
+        holdId: clientRequest.body.request.holdId,
+      },
+    });
+    const unauthorizedConfirm = await api(origin, otherCoachToken, "/api/coaching/runway", {
+      method: "POST",
+      body: {
+        action: "convert-booking-hold",
+        holdId: clientRequest.body.request.holdId,
+      },
+    });
+    assert(
+      unauthorizedRelease.status === 403 && unauthorizedConfirm.status === 403,
+      "An unassigned coach could change another coach's client request.",
+    );
+
+    const confirmedRequest = await api(origin, coachToken, "/api/coaching/runway", {
+      method: "POST",
+      body: {
+        action: "convert-booking-hold",
+        holdId: clientRequest.body.request.holdId,
+      },
+    });
+    const result = confirmedRequest.body?.result;
+    assert(
+      confirmedRequest.status === 200 && confirmedRequest.body?.ok === true,
+      `Coach confirmation failed (${confirmedRequest.status}: ${String(confirmedRequest.body?.error || "unknown")}).`,
+    );
+    assert(typeof result?.bookingId === "string", "Confirmed request did not return its canonical booking ID.");
+    assert(typeof result?.callRoomId === "string", "Confirmed request did not return its canonical room ID.");
+    assert(typeof result?.engagementId === "string", "Confirmed request did not create durable client continuity.");
+    assert(
+      typeof result?.clientEntryPath === "string" && result.clientEntryPath.includes(result.callRoomId),
+      "Confirmed request did not return the exact private client entry.",
+    );
+
     const appointment = await api(origin, coachToken, "/api/coaching/runway", {
       method: "POST",
       body: {
@@ -416,18 +536,12 @@ async function main() {
         currency: "USD",
       },
     });
-    const result = appointment.body?.result;
+    const manualResult = appointment.body?.result;
     assert(
       appointment.status === 200 && appointment.body?.ok === true,
       `Appointment creation failed (${appointment.status}: ${String(appointment.body?.error || "unknown")}).`,
     );
-    assert(typeof result?.bookingId === "string", "Appointment did not return its canonical booking ID.");
-    assert(typeof result?.callRoomId === "string", "Appointment did not return its canonical room ID.");
-    assert(typeof result?.engagementId === "string", "Appointment did not create durable client continuity.");
-    assert(
-      typeof result?.clientEntryPath === "string" && result.clientEntryPath.includes(result.callRoomId),
-      "Appointment did not return the exact private client entry.",
-    );
+    assert(typeof manualResult?.bookingId === "string", "Wall-clock appointment did not return its booking ID.");
 
     const overlappingAppointment = await api(origin, coachToken, "/api/coaching/runway", {
       method: "POST",
@@ -513,7 +627,7 @@ async function main() {
       "The coach's phone runway omitted the new appointment.",
     );
     const operatedBooking = coachRunway.body.upcomingBookings?.find(
-      (booking) => booking.id === result.bookingId,
+      (booking) => booking.id === manualResult.bookingId,
     );
     assert(
       new Date(operatedBooking?.scheduledStart).toISOString() === scheduledStart.toISOString(),
@@ -525,20 +639,26 @@ async function main() {
     );
     assert(
       coachRunway.body.bookingHolds?.some(
-        (hold) => hold.id === clientRequest.body.request.holdId,
+        (hold) =>
+          hold.id === clientRequest.body.request.holdId &&
+          hold.status === "CONVERTED" &&
+          hold.convertedBookingId === result.bookingId,
       ),
-      "The coach's private runway omitted the client's booking request.",
+      "The coach's private runway did not preserve the converted client request.",
     );
     assert(
       clientRunway.body.bookingHolds?.some(
-        (hold) => hold.id === clientRequest.body.request.holdId,
+        (hold) =>
+          hold.id === clientRequest.body.request.holdId &&
+          hold.status === "CONVERTED" &&
+          hold.convertedBookingId === result.bookingId,
       ),
-      "The client's private runway omitted their own booking request.",
+      "The client's private runway did not preserve their converted request.",
     );
-    const clientHomeProof = await proveClientCoachingHome({
+    const clientConfirmedSessionProof = await proveClientConfirmedSession({
       origin,
       idToken: clientToken,
-      offeringTitle: publicOffering.title,
+      title: publicOffering.title,
     });
 
     const [coachJoin, clientJoin] = await Promise.all([
@@ -570,10 +690,38 @@ async function main() {
 
     const providerProof = await proveProviderRoom({ origin, coachJoin, clientJoin });
 
+    const refreshedPublicPacket = await publicApi(
+      origin,
+      "/api/coaching/public?source=local-operation-cancel-proof",
+    );
+    const refreshedOffering = refreshedPublicPacket.body?.offerings?.items?.find(
+      (offering) => offering.id === publicOffering.id,
+    );
+    assert(
+      refreshedOffering?.bookableSlots?.length > 0,
+      "No safe second slot remained for client cancellation proof.",
+    );
+    const cancelableRequest = await api(
+      origin,
+      clientToken,
+      "/api/coaching/booking-requests",
+      {
+        method: "POST",
+        body: {
+          offeringId: refreshedOffering.id,
+          scheduledStart: refreshedOffering.bookableSlots[0].instant,
+        },
+      },
+    );
+    assert(
+      cancelableRequest.status === 201,
+      "The client could not create a second independent request for cancellation proof.",
+    );
+
     const canceledClientRequest = await api(
       origin,
       clientToken,
-      `/api/coaching/booking-requests?holdId=${encodeURIComponent(clientRequest.body.request.holdId)}`,
+      `/api/coaching/booking-requests?holdId=${encodeURIComponent(cancelableRequest.body.request.holdId)}`,
       { method: "DELETE" },
     );
     assert(
@@ -585,7 +733,7 @@ async function main() {
     assert(
       clientAfterCancel.body?.bookingHolds?.some(
         (hold) =>
-          hold.id === clientRequest.body.request.holdId && hold.status === "CANCELED",
+          hold.id === cancelableRequest.body.request.holdId && hold.status === "CANCELED",
       ),
       "The canceled client request did not remain visible as history.",
     );
@@ -614,7 +762,7 @@ async function main() {
       ok: true,
       localOnly: true,
       operatedThroughHTTP: true,
-      testActors: [COACH_EMAIL, CLIENT_EMAIL],
+      testActors: [COACH_EMAIL, CLIENT_EMAIL, OTHER_COACH_EMAIL],
       bookingId: result.bookingId,
       callRoomId: result.callRoomId,
       engagementId: result.engagementId,
@@ -636,11 +784,15 @@ async function main() {
       publicCoachingDoorwayRendered: true,
       clientSelfSchedulingCreatedHold: clientRequest.body?.request?.status === "ACTIVE",
       repeatedClientRequestWasIdempotent: repeatedClientRequest.body?.request?.repeated === true,
-      clientAndCoachHoldReadback: true,
+      clientAndCoachConvertedRequestReadback: true,
+      unassignedCoachRejected: true,
+      coachConfirmedRequestedSession: true,
       clientCouldCancelOwnRequest: true,
       canceledRequestRetainedAsHistory: true,
       testOfferingReturnedPrivate: true,
       clientHomeProof,
+      coachIncomingRequestProof,
+      clientConfirmedSessionProof,
       providerProof,
       consentStarted: false,
       recordingStarted: false,

@@ -2077,6 +2077,10 @@ export default function CoachingPage() {
     (hold) =>
       hold.status === "ACTIVE" && new Date(hold.expiresAt).getTime() > Date.now(),
   );
+  const incomingClientHolds = bookingHolds.filter(
+    (hold) =>
+      hold.status === "ACTIVE" && new Date(hold.expiresAt).getTime() > Date.now(),
+  );
   const journeyAction = (() => {
     if (!canManageCoaching && !isClientOnly) {
       return {
@@ -2104,6 +2108,15 @@ export default function CoachingPage() {
         detail: `${formatDateTime(nextClientHold.scheduledStart)} · ${nextClientHold.timezone}. Your coach confirms next; you do not need to configure anything yet.`,
         label: "View my request",
         href: "#my-time-requests",
+      };
+    }
+    if (canManageCoaching && incomingClientHolds[0]) {
+      return {
+        eyebrow: "Client request",
+        title: incomingClientHolds[0].offeringTitle || "Coaching session",
+        detail: `${incomingClientHolds[0].client?.name || incomingClientHolds[0].contactEmail || "A client"} requested ${formatDateTime(incomingClientHolds[0].scheduledStart)}. Confirm it to create the private Session, or decline it to reopen the time.`,
+        label: "Review request",
+        href: "#incoming-time-requests",
       };
     }
     if (nextRoom?.packetSummaryNoteId) {
@@ -2350,6 +2363,66 @@ export default function CoachingPage() {
                       >
                         {holdBusyById[hold.id] ? "Canceling…" : "Cancel request"}
                       </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {canManageCoaching && incomingClientHolds.length > 0 ? (
+            <div
+              id="incoming-time-requests"
+              className="scroll-mt-6 rounded-[1.7rem] border border-emerald-200 bg-emerald-50/85 p-6 shadow-sm"
+            >
+              <h2 className="flex items-center gap-2 text-2xl font-black text-emerald-950">
+                <CalendarIcon className="text-emerald-700" /> Incoming time requests
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-emerald-900/75">
+                Confirming creates the private Session for both people. Declining
+                reopens the time. Neither action sends email, charges a card, or
+                changes an outside calendar by itself.
+              </p>
+              <div className="mt-4 space-y-3">
+                {incomingClientHolds.slice(0, 8).map((hold) => (
+                  <div
+                    key={hold.id}
+                    className="rounded-2xl border border-emerald-200 bg-white p-4"
+                  >
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <h3 className="font-black text-[#3d3122]">
+                          {hold.offeringTitle || "Coaching session"}
+                        </h3>
+                        <p className="mt-1 text-sm font-semibold text-[#6f5c42]">
+                          {formatDateTime(hold.scheduledStart)} · {hold.timezone}
+                        </p>
+                        <p className="mt-1 text-xs text-[#7b5c3b]">
+                          {hold.client?.name || hold.contactEmail || "Client"}
+                        </p>
+                      </div>
+                      <div className="grid min-w-48 grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void convertBookingHold(hold.id)}
+                          disabled={holdBusyById[hold.id]}
+                          className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50"
+                        >
+                          {holdBusyById[hold.id] ? "Working…" : "Confirm Session"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void releaseBookingHold(hold.id)}
+                          disabled={holdBusyById[hold.id]}
+                          className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-xs font-black text-stone-700 disabled:opacity-50"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                    {holdStatusById[hold.id] ? (
+                      <p role="status" className="mt-3 rounded-xl bg-emerald-100 p-3 text-xs font-bold text-emerald-900">
+                        {holdStatusById[hold.id]}
+                      </p>
                     ) : null}
                   </div>
                 ))}
