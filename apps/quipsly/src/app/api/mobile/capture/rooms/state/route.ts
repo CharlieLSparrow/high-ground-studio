@@ -124,7 +124,7 @@ function sessionPayload(args: {
   };
 }
 
-async function serializableReceiptTransaction<T>(
+async function durableReceiptTransaction<T>(
   prisma: any,
   operation: (transaction: any) => Promise<T>,
 ): Promise<T> {
@@ -132,7 +132,7 @@ async function serializableReceiptTransaction<T>(
   for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
     try {
       return await prisma.$transaction(operation, {
-        isolationLevel: "Serializable",
+        isolationLevel: "ReadCommitted",
         maxWait: 5_000,
         timeout: 15_000,
       });
@@ -206,19 +206,40 @@ export async function POST(request: Request) {
   const staffCrashCompensationReason = text(body.staffCrashCompensationReason).slice(0, 1_000);
 
   try {
-    const result = await serializableReceiptTransaction(prisma, async (transaction) => {
+    const result = await durableReceiptTransaction(prisma, async (transaction) => {
+      const roomAccessWhere = session.user.isStaff
+        ? { id: callRoomId }
+        : {
+            id: callRoomId,
+            OR: [
+              { createdByUserId: userId },
+              { participants: { some: { userId, accessStatus: "ACTIVE" } } },
+              { booking: { clientUserId: userId } },
+              { booking: { coachUserId: userId } },
+            ],
+          };
+      const accessibleRoom = await transaction.callRoom.findFirst({
+        where: roomAccessWhere,
+        select: { id: true },
+      });
+
+      if (!accessibleRoom) {
+        return {
+          status: 404,
+          body: { ok: false, error: "You do not have access to this capture room." },
+        };
+      }
+
+      // Serialize the durable receipt ledger by its canonical room row. Under
+      // Read Committed, a waiter reads the winner's committed receipt state
+      // after acquiring the lock instead of inheriting a stale Serializable
+      // snapshot and surfacing P2034 as expected control flow.
+      await transaction.$queryRawUnsafe(
+        'SELECT "id" FROM "CallRoom" WHERE "id" = $1 FOR UPDATE',
+        callRoomId,
+      );
       const room = await transaction.callRoom.findFirst({
-        where: session.user.isStaff
-          ? { id: callRoomId }
-          : {
-              id: callRoomId,
-              OR: [
-                { createdByUserId: userId },
-                { participants: { some: { userId, accessStatus: "ACTIVE" } } },
-                { booking: { clientUserId: userId } },
-                { booking: { coachUserId: userId } },
-              ],
-            },
+        where: roomAccessWhere,
         include: {
           booking: { include: { paymentRecord: true } },
           participants: { where: { accessStatus: "ACTIVE" } },

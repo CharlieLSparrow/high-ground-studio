@@ -330,7 +330,8 @@ assert.match(additiveSql, /EXCEPTION WHEN OTHERS THEN/);
 assert.match(schemaSync, /"CaptureRoomStateReceipt"/);
 
 assert.match(route, /Capture receiptId is required for every room-state action/);
-assert.match(route, /isolationLevel: "Serializable"/);
+assert.match(route, /isolationLevel: "ReadCommitted"/);
+assert.match(route, /CallRoom" WHERE "id" = \$1 FOR UPDATE/);
 assert.match(route, /captureRoomStateReceipt\.create/);
 assert.match(route, /receiptId is already bound to a different immutable room-state request/);
 assert.match(route, /outcome: "REJECTED"/);
@@ -339,10 +340,15 @@ assert.match(route, /staffCrashCompensationReason\.length < 12/);
 assert.match(route, /allPartyConsentVersions/);
 assert.doesNotMatch(route, /mobileCaptureRoomReceipts:\s*\[\.\.\./);
 assert.doesNotMatch(route, /slice\(-50\)/);
-assert.doesNotMatch(
+assert.match(
   browserRecorder,
-  /postRoomReceipt\(\{\s*callRoomId,\s*action:\s*"OPEN"/,
-  "a participant-local browser recording must not require room-control OPEN authority",
+  /const reopenRoom = useCallback[\s\S]*postRoomReceipt\(\{\s*callRoomId,\s*action:\s*"OPEN"/,
+  "the explicit room-control OPEN receipt must remain inside the named reopen flow",
+);
+assert.match(
+  browserRecorder,
+  /canControlRoom \? \([\s\S]*onClick=\{\(\) => void reopenRoom\(\)\}/,
+  "only a room controller may see the reopen control",
 );
 assert.match(
   browserRecorder,
@@ -358,4 +364,4 @@ assert.match(receiptStore, /case rejectedByNest/);
 assert.match(receiptStore, /func markRejectedByNest/);
 assert.match(captureModel, /case let \.terminallyRejected\(message, errorCode\)/);
 
-console.log("PASS: capture room receipts are required, append-only, serializable, replay-safe, and ordering-safe.");
+console.log("PASS: capture room receipts are required, append-only, room-serialized, replay-safe, and ordering-safe.");

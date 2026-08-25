@@ -11,9 +11,11 @@ const [finalization, schema, additiveSql, releaseRoute, records] = await Promise
   readFile(new URL("../apps/quipsly/src/lib/server/mobile-capture-records.ts", import.meta.url), "utf8"),
 ]);
 
-assert.match(finalization, /isolationLevel: "Serializable"/);
+assert.match(finalization, /isolationLevel: "ReadCommitted"/);
 assert.match(finalization, /SELECT 1 AS locked FROM pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)/,
   "same-upload finalizers must serialize before source creation");
+assert.match(finalization, /CallRoom" WHERE "id" = \$1 FOR UPDATE/,
+  "independent participant finalizers must serialize before updating their shared room projection");
 assert.match(finalization, /StudioEpisodeProduction" WHERE "id" = \$1 FOR UPDATE/,
   "different uploads targeting one episode must lock the projection row");
 assert.ok(
@@ -40,9 +42,9 @@ assert.match(finalization, /async function preserveRecordingCaptureAlignment/,
   "released source clock evidence must survive even when no episode is attached yet");
 assert.match(finalization, /captureId: manifest\.captureId[\s\S]*captureGroupId: manifest\.captureGroupId[\s\S]*startReceiptId: manifest\.startReceiptId[\s\S]*alignment,/,
   "RecordingAsset must preserve the exact source, group, START receipt, and review-only alignment proposal");
-assert.ok(
-  finalization.indexOf("preserveRecordingCaptureAlignment({")
-    < finalization.indexOf("attachEpisodeMediaWithoutLostUpdate({"),
+assert.match(
+  finalization,
+  /await preserveRecordingCaptureAlignment\(\{[\s\S]{0,1200}await attachCaptureMediaWithoutLostUpdate\(\{/,
   "source alignment must be durable before optional episode projection",
 );
 assert.doesNotMatch(
@@ -67,7 +69,7 @@ assert.doesNotMatch(
 
 const heldBranch = finalization.slice(
   finalization.indexOf('if (processingDecision.disposition === "HELD")'),
-  finalization.indexOf("const studioMedia = await createOrReuseStudioMedia"),
+  finalization.indexOf("const interruptionRepairRequired"),
 );
 assert.doesNotMatch(heldBranch, /createOrReuseStudioMedia/,
   "HELD uploads must not create reusable source/media rows");
@@ -86,4 +88,4 @@ assert.match(releaseRoute, /allowedKeys = new Set\(\["uploadSessionId", "reason"
 assert.match(releaseRoute, /computeMobileCaptureObjectSha256/);
 assert.match(releaseRoute, /initialRoomReadiness, startReceiptId, consentVersion/);
 
-console.log("PASS: capture finalization is serializable, normalized, idempotent, hold-safe, and explicitly releasable.");
+console.log("PASS: capture finalization is room-serialized, normalized, idempotent, hold-safe, and explicitly releasable.");

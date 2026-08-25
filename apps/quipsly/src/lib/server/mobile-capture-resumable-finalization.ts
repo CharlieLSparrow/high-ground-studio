@@ -140,7 +140,7 @@ function finalizationReceiptMetadata(args: {
   };
 }
 
-async function serializableFinalizationTransaction<T>(
+async function finalizationTransaction<T>(
   prisma: any,
   operation: (transaction: any) => Promise<T>,
 ): Promise<T> {
@@ -148,7 +148,7 @@ async function serializableFinalizationTransaction<T>(
   for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
     try {
       return await prisma.$transaction(operation, {
-        isolationLevel: "Serializable",
+        isolationLevel: "ReadCommitted",
         maxWait: 10_000,
         timeout: 30_000,
       });
@@ -166,6 +166,17 @@ async function lockUploadFinalization(transaction: any, uploadSessionId: string)
   await transaction.$queryRawUnsafe(
     "SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended($1, 0))",
     uploadSessionId,
+  );
+}
+
+async function lockCaptureRoomFinalization(transaction: any, callRoomId: string) {
+  // Independent participant uploads have different upload locks but converge
+  // on one CallRoom projection. Locking that row before ingestion prevents the
+  // coach and client finalizers from turning a normal simultaneous stop into
+  // Serializable write-conflict retries.
+  await transaction.$queryRawUnsafe(
+    'SELECT "id" FROM "CallRoom" WHERE "id" = $1 FOR UPDATE',
+    callRoomId,
   );
 }
 
@@ -475,8 +486,8 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
   });
   if (!productionKey) return;
 
-  // Serialize all writers to this episode projection. Serializable retry is
-  // still required when a waiter inherited an older transaction snapshot.
+  // Serialize all writers to this episode projection. Read Committed lets a
+  // waiter observe the winner's projection after this row lock is acquired.
   await transaction.$queryRawUnsafe(
     'SELECT "id" FROM "StudioEpisodeProduction" WHERE "id" = $1 FOR UPDATE',
     productionKey.id,
@@ -954,10 +965,11 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
 }): Promise<MobileCaptureResumableFinalizationEvidence> {
   const { prisma, manifest, object, processingDecision } = input;
 
-  const evidence = await serializableFinalizationTransaction(
+  const evidence = await finalizationTransaction(
     prisma,
     async (transaction) => {
       await lockUploadFinalization(transaction, manifest.uploadSessionId);
+      await lockCaptureRoomFinalization(transaction, manifest.callRoomId);
 
     const priorReceipt = await transaction.mobileCaptureFinalizationReceipt.findUnique({
       where: { uploadSessionId: manifest.uploadSessionId },
@@ -1353,8 +1365,9 @@ export async function promoteRepairedMobileCaptureDatabaseEvidence(input: {
     storageBackend,
     localFilePath: input.repairedLocalFilePath || null,
   };
-  const promoted = await serializableFinalizationTransaction(input.prisma, async (transaction) => {
+  const promoted = await finalizationTransaction(input.prisma, async (transaction) => {
     await lockUploadFinalization(transaction, repairedManifest.uploadSessionId);
+    await lockCaptureRoomFinalization(transaction, repairedManifest.callRoomId);
     const currentJob = await transaction.studioWorkflowJob.findUnique({
       where: { id: input.workflow.id },
     });
