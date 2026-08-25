@@ -120,6 +120,7 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
 
 enum CaptureLaunchConfiguration {
     nonisolated private static let shareOwnerPreviewPrefix = "--capture-share-owner-ui-preview="
+    nonisolated private static let previewSessionPrefix = "--capture-ui-preview-session="
 
     static var usesLoginPreview: Bool {
         #if DEBUG
@@ -259,6 +260,24 @@ enum CaptureLaunchConfiguration {
             return nil
         }
         return CaptureRootTab(rawValue: String(argument.dropFirst(prefix.count)))
+        #else
+        return nil
+        #endif
+    }
+
+    /// Selects one explicit deterministic fixture for a simulator acceptance
+    /// flight. Keeping the fixture identity in the launch contract prevents a
+    /// podcast test from silently exercising whichever coaching Session
+    /// happens to sort first as preview dates move forward.
+    static var previewSessionID: String? {
+        #if DEBUG && targetEnvironment(simulator)
+        guard usesPreviewData,
+              let argument = ProcessInfo.processInfo.arguments.first(
+                  where: { $0.hasPrefix(previewSessionPrefix) }
+              ) else { return nil }
+        let value = String(argument.dropFirst(previewSessionPrefix.count))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
         #else
         return nil
         #endif
@@ -625,7 +644,16 @@ final class CaptureExperienceModel: ObservableObject {
             sourceInboxClient.loadPreview()
             reviewDigestClient.loadPreview()
             sessionClient.status = "Preview ready"
-            selectedSessionID = selectedSessionID ?? sessionClient.sessions.first?.id
+            let requestedPreviewSessionID = CaptureLaunchConfiguration
+                .previewSessionID
+                .flatMap { requestedID in
+                    sessionClient.sessions.contains(where: {
+                        $0.id == requestedID
+                    }) ? requestedID : nil
+                }
+            selectedSessionID = selectedSessionID
+                ?? requestedPreviewSessionID
+                ?? sessionClient.sessions.first?.id
             hasCompletedInitialSessionAuthorityLoad = true
             return
         }

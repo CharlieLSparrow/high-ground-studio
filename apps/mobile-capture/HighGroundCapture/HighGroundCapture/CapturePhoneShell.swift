@@ -13182,45 +13182,16 @@ private struct CapturePersistentRecorderDock: View {
     let onPrimaryAction: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(statusTitle)
-                    .font(.subheadline.weight(.bold))
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(statusDetail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                statusCopy
+                actionControl
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .layoutPriority(1)
 
-            if waitingForHost && !captureIsActive {
-                Label("Ready", systemImage: "checkmark.circle.fill")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(CapturePalette.accent)
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 50)
-                    .background(
-                        CapturePalette.accent.opacity(0.12),
-                        in: Capsule()
-                    )
-                    .accessibilityLabel("Ready and waiting for the coach or host")
-                    .accessibilityIdentifier("CapturePersistentRecorderWaitingForHostStatus")
-            } else {
-                Button(action: onPrimaryAction) {
-                    Label(actionTitle, systemImage: actionSystemImage)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .frame(minHeight: 50)
-                        .background(actionTint, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .disabled(actionDisabled)
-                .opacity(actionDisabled ? 0.55 : 1)
-                .accessibilityLabel(actionAccessibilityLabel)
-                .accessibilityIdentifier(actionIdentifier)
+            VStack(alignment: .leading, spacing: 10) {
+                statusCopy
+                actionControl
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .padding(.horizontal, 18)
@@ -13229,6 +13200,53 @@ private struct CapturePersistentRecorderDock: View {
         .overlay(alignment: .top) { Divider() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CapturePersistentRecorderDock")
+    }
+
+    private var statusCopy: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(statusTitle)
+                .font(.subheadline.weight(.bold))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(statusDetail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .layoutPriority(1)
+    }
+
+    @ViewBuilder
+    private var actionControl: some View {
+        if waitingForHost && !captureIsActive {
+            Label("Ready", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(CapturePalette.accent)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 50)
+                .fixedSize(horizontal: true, vertical: true)
+                .background(
+                    CapturePalette.accent.opacity(0.12),
+                    in: Capsule()
+                )
+                .accessibilityLabel("Ready and waiting for the coach or host")
+                .accessibilityIdentifier("CapturePersistentRecorderWaitingForHostStatus")
+        } else {
+            Button(action: onPrimaryAction) {
+                Label(actionTitle, systemImage: actionSystemImage)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 50)
+                    .fixedSize(horizontal: true, vertical: true)
+                    .background(actionTint, in: Capsule())
+                }
+            .buttonStyle(.plain)
+            .disabled(actionDisabled)
+            .opacity(actionDisabled ? 0.55 : 1)
+            .accessibilityLabel(actionAccessibilityLabel)
+            .accessibilityIdentifier(actionIdentifier)
+        }
     }
 
     private var captureIsActive: Bool {

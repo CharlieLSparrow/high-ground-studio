@@ -763,6 +763,7 @@ private struct MobileClientFollowUpSnapshot: View {
     let previewOnly: Bool
     var onOpenTask: ((MobileCaptureFollowThroughTask) -> Void)? = nil
     var onOpenGoal: ((MobileCaptureFollowThroughGoal) -> Void)? = nil
+    var onOpenTranscriptSource: ((MobileCaptureTodayTranscriptSourceAnchor) -> Void)? = nil
     @State private var showsDetails = false
 
     private var currentFollowThrough: MobileCapturePriorFollowThrough? {
@@ -795,28 +796,45 @@ private struct MobileClientFollowUpSnapshot: View {
                 authority: anchor.speakerAuthority,
                 identifier: "CaptureClientFollowUpSpeakerEvidence_\(recordID)"
             )
-            NavigationLink {
-                CaptureTranscriptReviewView(
-                    roomID: anchor.roomId,
-                    sessionTitle: session.displayTitle,
-                    recording: nil,
-                    previewOnly: previewOnly,
-                    focusSegmentID: anchor.segmentId,
-                    canUseProjectTeamNotes: session.canUseProjectTeamNotes == true,
-                    returnLabel: "Client follow-up"
-                )
-            } label: {
-                Label(
-                    "Exact source · \(mobileFollowUpTime(anchor.startSeconds))–\(mobileFollowUpTime(anchor.endSeconds))",
-                    systemImage: "play.fill"
-                )
-                .frame(minHeight: 44)
+            if let onOpenTranscriptSource {
+                Button {
+                    onOpenTranscriptSource(anchor)
+                } label: {
+                    Label(
+                        "Exact source · \(mobileFollowUpTime(anchor.startSeconds))–\(mobileFollowUpTime(anchor.endSeconds))",
+                        systemImage: "play.fill"
+                    )
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("CaptureClientFollowUpSource_\(recordID)")
+                .accessibilityLabel("Return to exact source for \(recordLabel) at \(mobileFollowUpTime(anchor.startSeconds))")
+                .accessibilityHint("Opens the exact transcript segment and permitted Session playback without changing the released snapshot or starting playback.")
+            } else {
+                NavigationLink {
+                    CaptureTranscriptReviewView(
+                        roomID: anchor.roomId,
+                        sessionTitle: session.displayTitle,
+                        recording: nil,
+                        previewOnly: previewOnly,
+                        focusSegmentID: anchor.segmentId,
+                        canUseProjectTeamNotes: session.canUseProjectTeamNotes == true,
+                        returnLabel: "Client follow-up"
+                    )
+                } label: {
+                    Label(
+                        "Exact source · \(mobileFollowUpTime(anchor.startSeconds))–\(mobileFollowUpTime(anchor.endSeconds))",
+                        systemImage: "play.fill"
+                    )
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("CaptureClientFollowUpSource_\(recordID)")
+                .accessibilityLabel("Return to exact source for \(recordLabel) at \(mobileFollowUpTime(anchor.startSeconds))")
+                .accessibilityHint("Opens the exact transcript segment and permitted Session playback without changing the released snapshot or starting playback.")
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .accessibilityIdentifier("CaptureClientFollowUpSource_\(recordID)")
-            .accessibilityLabel("Return to exact source for \(recordLabel) at \(mobileFollowUpTime(anchor.startSeconds))")
-            .accessibilityHint("Opens the exact transcript segment and permitted Session playback without changing the released snapshot or starting playback.")
         }
     }
 
@@ -1138,6 +1156,7 @@ struct MobileCoachClientFollowUpCard: View {
     @State private var isSaving = false
     @State private var isReleasing = false
     @State private var notice: String?
+    @State private var sourceToReview: MobileCaptureTodayTranscriptSourceAnchor?
     @FocusState private var focusedField: FocusedField?
 
     private var workspace: MobileCaptureClientFollowUpWorkspace? {
@@ -1234,7 +1253,21 @@ struct MobileCoachClientFollowUpCard: View {
             .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .sheet(isPresented: $isReviewing) {
                 NavigationStack {
-                    ScrollView {
+                    if let sourceToReview {
+                        CaptureTranscriptReviewView(
+                            roomID: sourceToReview.roomId,
+                            sessionTitle: session.displayTitle,
+                            recording: nil,
+                            previewOnly: previewOnly,
+                            focusSegmentID: sourceToReview.segmentId,
+                            canUseProjectTeamNotes: session.canUseProjectTeamNotes == true,
+                            returnLabel: "Client follow-up",
+                            onReturn: {
+                                self.sourceToReview = nil
+                            }
+                        )
+                    } else {
+                        ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
                     if let notice {
                         Text(notice)
@@ -1257,7 +1290,10 @@ struct MobileCoachClientFollowUpCard: View {
                                 session: session,
                                 previewOnly: previewOnly,
                                 onOpenTask: onOpenTask,
-                                onOpenGoal: onOpenGoal
+                                onOpenGoal: onOpenGoal,
+                                onOpenTranscriptSource: {
+                                    sourceToReview = $0
+                                }
                             )
                             MobileClientFollowUpExportControl(
                                 followUp: output,
@@ -1442,6 +1478,7 @@ struct MobileCoachClientFollowUpCard: View {
                             Button("Done") { dismissKeyboard() }
                                 .accessibilityIdentifier("CaptureCoachFollowUpKeyboardDone")
                         }
+                    }
                     }
                 }
                 .task(id: workspaceVersion) {

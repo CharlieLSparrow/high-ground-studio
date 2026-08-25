@@ -2878,6 +2878,7 @@ struct CaptureTranscriptReviewView: View {
     let focusSegmentID: String?
     let canUseProjectTeamNotes: Bool
     let returnLabel: String?
+    let onReturn: (() -> Void)?
 
     @StateObject private var client = CaptureTranscriptCorrectionClient()
     @StateObject private var playback = CaptureTranscriptPlaybackController()
@@ -2902,7 +2903,8 @@ struct CaptureTranscriptReviewView: View {
         previewOnly: Bool,
         focusSegmentID: String? = nil,
         canUseProjectTeamNotes: Bool = false,
-        returnLabel: String? = nil
+        returnLabel: String? = nil,
+        onReturn: (() -> Void)? = nil
     ) {
         self.roomID = roomID
         self.sessionTitle = sessionTitle
@@ -2911,6 +2913,7 @@ struct CaptureTranscriptReviewView: View {
         self.focusSegmentID = focusSegmentID
         self.canUseProjectTeamNotes = canUseProjectTeamNotes
         self.returnLabel = returnLabel
+        self.onReturn = onReturn
     }
 
     var body: some View {
@@ -3066,21 +3069,8 @@ struct CaptureTranscriptReviewView: View {
             .scrollDismissesKeyboard(.immediately)
             .background(Color(uiColor: .systemGroupedBackground))
             .safeAreaInset(edge: .top, spacing: 0) {
-                if returnLabel != nil || focusSegmentID != nil {
+                if focusSegmentID != nil {
                     VStack(alignment: .leading, spacing: 2) {
-                        if let returnLabel {
-                            HStack {
-                                Button {
-                                    dismiss()
-                                } label: {
-                                    Label("Back to \(returnLabel.lowercased())", systemImage: "chevron.backward")
-                                        .frame(minHeight: 44)
-                                }
-                                .buttonStyle(.bordered)
-                                .accessibilityIdentifier("CaptureTranscriptReturn")
-                                Spacer()
-                            }
-                        }
                         if let focusSegmentID {
                             Label("Opened from linked work", systemImage: "link.circle.fill")
                                 .font(.caption.weight(.semibold))
@@ -3097,6 +3087,19 @@ struct CaptureTranscriptReviewView: View {
             .navigationTitle("Transcript review")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if let returnLabel {
+                        Button {
+                            returnToLinkedWork()
+                        } label: {
+                            Label(
+                                "Back to \(returnLabel.lowercased())",
+                                systemImage: "chevron.backward"
+                            )
+                        }
+                        .accessibilityIdentifier("CaptureTranscriptReturn")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     if totalOutboxCount > 0 {
                         Button {
@@ -3284,6 +3287,14 @@ struct CaptureTranscriptReviewView: View {
             }
             .onDisappear { playback.pause(resetPosition: true) }
             .accessibilityIdentifier("CaptureTranscriptReviewView")
+        }
+    }
+
+    private func returnToLinkedWork() {
+        if let onReturn {
+            onReturn()
+        } else {
+            dismiss()
         }
     }
 
