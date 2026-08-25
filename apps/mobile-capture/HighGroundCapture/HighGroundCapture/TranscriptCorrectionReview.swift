@@ -3063,20 +3063,31 @@ struct CaptureTranscriptReviewView: View {
             .scrollDismissesKeyboard(.immediately)
             .background(Color(uiColor: .systemGroupedBackground))
             .safeAreaInset(edge: .top, spacing: 0) {
-                if let returnLabel {
-                    HStack {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Label("Back to \(returnLabel.lowercased())", systemImage: "chevron.backward")
-                                .frame(minHeight: 44)
+                if returnLabel != nil || focusSegmentID != nil {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let returnLabel {
+                            HStack {
+                                Button {
+                                    dismiss()
+                                } label: {
+                                    Label("Back to \(returnLabel.lowercased())", systemImage: "chevron.backward")
+                                        .frame(minHeight: 44)
+                                }
+                                .buttonStyle(.bordered)
+                                .accessibilityIdentifier("CaptureTranscriptReturn")
+                                Spacer()
+                            }
                         }
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("CaptureTranscriptReturn")
-                        Spacer()
+                        if let focusSegmentID {
+                            Label("Opened from linked work", systemImage: "link.circle.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(minHeight: 28)
+                                .accessibilityIdentifier("CaptureTranscriptSourceBoundary_\(focusSegmentID)")
+                        }
                     }
                     .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 6)
                     .background(.bar)
                 }
             }
