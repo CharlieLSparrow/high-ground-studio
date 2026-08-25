@@ -25,7 +25,9 @@ export function assertCaptureTranscriptManifestBinding(input: {
     && input.stored.source.sha256 === input.desired.source.sha256
     && input.stored.source.contentType === input.desired.source.contentType
     && input.stored.source.roomId === input.desired.source.roomId
-    && input.stored.source.recordingAssetId === input.desired.source.recordingAssetId;
+    && input.stored.source.recordingAssetId === input.desired.source.recordingAssetId
+    && JSON.stringify(input.stored.source.subject || null)
+      === JSON.stringify(input.desired.source.subject || null);
   const sourcePolicyMatches = JSON.stringify(input.stored.source)
     === JSON.stringify(input.desired.source);
   const providerMatches = JSON.stringify(input.stored.provider)

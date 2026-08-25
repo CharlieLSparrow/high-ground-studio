@@ -53,6 +53,7 @@ function fixtureJob(sourcePath, bytes, overrides = {}) {
     provider: {
       name: "openai-whisper-local",
       model: "large-v3-turbo",
+      version: null,
       language: "en",
       wordTimestamps: true,
       speakerDiarization: false,

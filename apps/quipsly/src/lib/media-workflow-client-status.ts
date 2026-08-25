@@ -30,7 +30,7 @@ export type AudioSignalProfileClientStatus = {
 export type StudioSourceTranscriptClientStatus = {
   jobId: string | null;
   transcriptJobId: string | null;
-  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
   provider: string | null;
   language: string | null;
   authorization: null | {
@@ -65,7 +65,7 @@ export type StudioSourceTranscriptClientStatus = {
     wordTiming: "provider";
     wordConfidence: "provider";
     segmentConfidence: "unavailable";
-    speakerDiarization: "unavailable";
+    speakerDiarization: "provider" | "unavailable";
     alternatives: "unavailable";
   };
   terminology: null | {

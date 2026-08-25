@@ -81,6 +81,10 @@ export async function runOneLocalStudioTranscriptJob(
     await store.fail({ claim, code: "studio-transcript-provider-unsupported", message: "The local transcript worker accepts local media only.", now: options.now() });
     return { disposition: "failed", jobId: job.jobId, code: "studio-transcript-provider-unsupported" };
   }
+  if (job.provider.name !== "openai-whisper-local") {
+    await store.fail({ claim, code: "studio-transcript-provider-unsupported", message: "The local transcript worker accepts local Whisper requests only.", now: options.now() });
+    return { disposition: "failed", jobId: job.jobId, code: "studio-transcript-provider-unsupported" };
+  }
   try {
     const root = await authorizedRoot(options.localMediaRoot);
     const sourcePath = await authorizedSource(root, job.source.locator);

@@ -33,7 +33,7 @@ const SAFE_BUCKET = /^[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]$/;
 // repair derivatives produced by Quipsly's interruption-repair worker. Keep
 // this allowlist narrow: arbitrary media-vault derivatives are not transcript
 // authority.
-const SAFE_SOURCE_OBJECT = /^media-vault\/(?:recordings|repair)\/[A-Za-z0-9/_\-.]+$/;
+const SAFE_SOURCE_OBJECT = /^media-vault\/(?:recordings|repair|raw)\/[A-Za-z0-9/_\-.]+$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const GENERATION = /^[1-9][0-9]*$/;
 const LANGUAGE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
@@ -61,6 +61,25 @@ export type CaptureTranscriptSourceBinding = {
   contentType: string;
   roomId: string;
   recordingAssetId: string;
+  /**
+   * Explicit semantic owner for new manifests. The two legacy identity fields
+   * above remain materialized so v1 workers and retained evidence stay
+   * replayable; Studio manifests bind them to episodeProductionId and
+   * studioMediaAssetId respectively.
+   */
+  subject?:
+    | {
+        kind: "capture-recording";
+        roomId: string;
+        recordingAssetId: string;
+      }
+    | {
+        kind: "studio-media";
+        projectId: string;
+        episodeProductionId: string;
+        studioMediaAssetId: string;
+        sourceId: string;
+      };
   /** Missing on historical v1 manifests; parsers materialize `unknown`. */
   topology?: TranscriptSourceTopology;
 };
@@ -501,6 +520,9 @@ export function failCaptureTranscriptManifest(input: {
 
 function parseSource(value: unknown): CaptureTranscriptSourceBinding {
   const row = record(value);
+  const roomId = normalizedText(row.roomId);
+  const recordingAssetId = normalizedText(row.recordingAssetId);
+  const subject = parseTranscriptSubject(row.subject, roomId, recordingAssetId);
   const result: CaptureTranscriptSourceBinding = {
     bucketName: normalizedText(row.bucketName),
     objectName: normalizedText(row.objectName),
@@ -508,8 +530,9 @@ function parseSource(value: unknown): CaptureTranscriptSourceBinding {
     sizeBytes: positiveSafeInteger(row.sizeBytes),
     sha256: normalizedText(row.sha256).toLowerCase(),
     contentType: normalizedText(row.contentType).toLowerCase(),
-    roomId: normalizedText(row.roomId),
-    recordingAssetId: normalizedText(row.recordingAssetId),
+    roomId,
+    recordingAssetId,
+    subject,
     topology: parseTranscriptSourceTopology(row.topology),
   };
   if (
@@ -705,8 +728,57 @@ function sameSource(
     && left.contentType === right.contentType
     && left.roomId === right.roomId
     && left.recordingAssetId === right.recordingAssetId
+    && JSON.stringify(left.subject || null) === JSON.stringify(right.subject || null)
     && JSON.stringify(left.topology || { kind: "unknown" })
       === JSON.stringify(right.topology || { kind: "unknown" });
+}
+
+function parseTranscriptSubject(
+  value: unknown,
+  roomId: string,
+  recordingAssetId: string,
+): CaptureTranscriptSourceBinding["subject"] {
+  if (value == null) {
+    return { kind: "capture-recording", roomId, recordingAssetId };
+  }
+  const row = record(value);
+  if (row.kind === "capture-recording") {
+    const subjectRoomId = normalizedText(row.roomId);
+    const subjectRecordingAssetId = normalizedText(row.recordingAssetId);
+    if (
+      !normalizeCaptureTranscriptJobId(subjectRoomId)
+      || !normalizeCaptureTranscriptJobId(subjectRecordingAssetId)
+      || subjectRoomId !== roomId
+      || subjectRecordingAssetId !== recordingAssetId
+    ) throw new Error("Capture transcript subject binding is invalid.");
+    return {
+      kind: "capture-recording",
+      roomId: subjectRoomId,
+      recordingAssetId: subjectRecordingAssetId,
+    };
+  }
+  if (row.kind === "studio-media") {
+    const projectId = normalizedText(row.projectId);
+    const episodeProductionId = normalizedText(row.episodeProductionId);
+    const studioMediaAssetId = normalizedText(row.studioMediaAssetId);
+    const sourceId = normalizedText(row.sourceId);
+    if (
+      !normalizeCaptureTranscriptJobId(projectId)
+      || !normalizeCaptureTranscriptJobId(episodeProductionId)
+      || !normalizeCaptureTranscriptJobId(studioMediaAssetId)
+      || !normalizeCaptureTranscriptJobId(sourceId)
+      || episodeProductionId !== roomId
+      || studioMediaAssetId !== recordingAssetId
+    ) throw new Error("Studio transcript subject binding is invalid.");
+    return {
+      kind: "studio-media",
+      projectId,
+      episodeProductionId,
+      studioMediaAssetId,
+      sourceId,
+    };
+  }
+  throw new Error("Transcript subject binding is invalid.");
 }
 
 function assertActiveLease(

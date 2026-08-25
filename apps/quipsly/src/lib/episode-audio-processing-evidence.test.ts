@@ -36,7 +36,7 @@ function transcriptFixture() {
       importRole: "phone-audio",
       purpose: "episode-production-transcription-and-review",
     },
-    provider: { name: "openai-whisper-local", model: "small.en", language: "en", wordTimestamps: true, speakerDiarization: false },
+    provider: { name: "openai-whisper-local", model: "small.en", version: null, language: "en", wordTimestamps: true, speakerDiarization: false },
   });
   const receipt = {
     kind: "quipsly-studio-source-transcript-result-v1",

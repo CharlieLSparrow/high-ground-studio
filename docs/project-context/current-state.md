@@ -3990,3 +3990,27 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - Candidate qualification deliberately did not upload, assign testers, wait
   for App Store processing, or claim a physical TestFlight install. Those
   remain separate authenticated and human/device validation boundaries.
+
+### 2026-08-25 unified cloud source transcription
+
+- Exact generation-bound Studio audio/video sources now use the same hardened
+  Cloud Run transcription worker as participant-owned Capture recordings.
+  Studio no longer requires a local Nest media path and no second ASR pipeline
+  was introduced.
+- New manifests carry an explicit `studio-media` subject binding while keeping
+  the historical room/recording projections readable by the v1 worker. The
+  create-once outbox freezes source generation, SHA-256, byte size, media type,
+  provider/model/version, language, topology, authorization, and terminology
+  evidence. Re-entry recreates neither the manifest nor the queue receipt.
+- Cloud provider results are converted into the existing Studio append-only
+  transcript receipt, then registered only after the original source is
+  re-inspected. Word and segment clocks, confidence, speaker labels, raw
+  provider-response identity, worker identity, and deterministic quality
+  warnings remain inspectable. Originals remain source truth and no task,
+  goal, note, edit, share, or publication is implied.
+- Missing worker configuration is a visible recoverable `blocked` state rather
+  than a terminal transcript failure or an indefinite spinner. The adapter,
+  local Whisper path, shared cloud worker, manifest policy, transcript evidence
+  projections, strict TypeScript checks, worker builds, and the production Nest
+  build all pass locally. Live provider execution and protected playback review
+  remain deferred release validation.

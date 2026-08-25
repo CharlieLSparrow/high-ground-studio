@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
         assetId: input.assetId,
         sourceId: input.sourceId,
         actorEmail: access.actor.email,
+        actorUserId: access.actor.id,
         authorizationKind,
         authorizationAccepted: body.authorizationAccepted === true,
         language: text(body.language) || "en",

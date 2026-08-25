@@ -601,7 +601,7 @@ export function AudioMasteryWorkspaceClient({
     try {
       let next = await requestSourceTranscript(selectedAsset, "queue", authorizationKind);
       for (let attempt = 0; attempt < 900 && next.status !== "completed"; attempt += 1) {
-        if (next.status === "failed") throw new Error(next.error || "Source transcription failed.");
+        if (next.status === "failed" || next.status === "blocked") throw new Error(next.error || `Source transcription ${next.status}.`);
         await sleep(2_000);
         if (operationSequence.current !== sequence) return;
         next = await requestSourceTranscript(selectedAsset, "reconcile", authorizationKind);

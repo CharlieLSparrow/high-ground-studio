@@ -6245,7 +6245,7 @@ function CloudEditorContent() {
     try {
       let status = await requestAction("queue");
       for (let attempt = 0; attempt < 900 && status.status !== "completed"; attempt += 1) {
-        if (status.status === "failed") throw new Error(status.error || "Source transcription failed.");
+        if (status.status === "failed" || status.status === "blocked") throw new Error(status.error || `Source transcription ${status.status}.`);
         setMediaImportStatus(status.status === "output-ready"
           ? `Re-hashing ${asset.originalName} and registering immutable timed words...`
           : `Transcribing ${asset.originalName}; original media remains untouched...`);
@@ -6267,7 +6267,7 @@ function CloudEditorContent() {
     const selected = [syncWizardSpineAsset, syncWizardTargetAsset].filter((asset): asset is ImportedMediaAsset => Boolean(asset));
     for (const asset of selected) {
       const status = audioSignalProfileStatusByAsset[asset.id] ?? audioSignalProfileStatusByAsset[asset.sourceId];
-      if (status?.status === "completed" || status?.status === "failed") continue;
+      if (status?.status === "completed" || status?.status === "failed" || status?.status === "blocked") continue;
       const key = `${resolvedProjectSlug}:${asset.id}`;
       if (audioSignalProfileAutoStartedRef.current.has(key)) continue;
       audioSignalProfileAutoStartedRef.current.add(key);

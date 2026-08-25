@@ -15,6 +15,10 @@ import {
 
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 import { compileStudioTranscriptTerminologySnapshot } from "@/lib/server/studio-transcript-terminology";
+import {
+  ensureStudioSourceTranscriptCloudQueued,
+  projectStudioSourceTranscriptCloudResult,
+} from "@/lib/server/studio-source-transcript-cloud";
 
 const ORIGINAL_ROLES = new Set(["spine-audio", "audio-source", "phone-audio", "camera-video", "episode-media"]);
 const REFERENCE_ROLES = new Set(["reference-clip", "b-roll", "source-clip", "youtube-source-clip"]);
@@ -22,7 +26,7 @@ const REFERENCE_ROLES = new Set(["reference-clip", "b-roll", "source-clip", "you
 export type PublicStudioSourceTranscriptStatus = {
   jobId: string | null;
   transcriptJobId: string | null;
-  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
   provider: string | null;
   language: string | null;
   authorization: null | {
@@ -61,7 +65,7 @@ export type PublicStudioSourceTranscriptStatus = {
     wordTiming: "provider";
     wordConfidence: "provider";
     segmentConfidence: "unavailable";
-    speakerDiarization: "unavailable";
+    speakerDiarization: "provider" | "unavailable";
     alternatives: "unavailable";
   };
   terminology: null | {
@@ -92,6 +96,7 @@ export async function queueStudioSourceTranscript(input: {
   assetId: string;
   sourceId: string;
   actorEmail: string;
+  actorUserId: string;
   authorizationKind: StudioSourceTranscriptAuthorizationKind;
   authorizationAccepted: boolean;
   language?: string | null;
@@ -105,7 +110,6 @@ export async function queueStudioSourceTranscript(input: {
       : "Reference material requires confirmation that it is licensed or permitted for transcription and review.");
   }
   const evidence = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
-  if (evidence.provider !== "local") throw new Error("Cloud episode transcription is not qualified yet. This release accepts local Nest media only.");
   const now = new Date();
   const terminology = await compileStudioTranscriptTerminologySnapshot({
     prisma: input.prisma,
@@ -130,7 +134,19 @@ export async function queueStudioSourceTranscript(input: {
         && current.terminology?.termsSha256 === terminology?.termsSha256
         && current.terminology?.providerInput.promptSha256 === terminology?.providerInput.promptSha256
         && current.terminology?.providerInput.mode === terminology?.providerInput.mode
-      ) return toPublicStudioSourceTranscriptStatus(input.prisma, existing);
+      ) {
+        if (evidence.provider === "gcs") {
+          const cloud = await ensureStudioSourceTranscriptCloudQueued({
+            prisma: input.prisma,
+            processingJob: existing,
+            actorUserId: input.actorUserId,
+          });
+          const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: existing.id } });
+          const status = await toPublicStudioSourceTranscriptStatus(input.prisma, refreshed || existing);
+          return cloud.status === "configuration-required" ? { ...status, error: cloud.error } : status;
+        }
+        return toPublicStudioSourceTranscriptStatus(input.prisma, existing);
+      }
     } catch {
       // A malformed or legacy row cannot own a new immutable transcript request.
     }
@@ -138,6 +154,7 @@ export async function queueStudioSourceTranscript(input: {
 
   const jobId = `studio_transcript_${randomUUID().replaceAll("-", "")}`;
   const transcriptJobId = `transcript_${randomUUID().replaceAll("-", "")}`;
+  const provider = studioTranscriptProvider(evidence.provider, language);
   const contract = newStudioSourceTranscriptJob({
     jobId,
     transcriptJobId,
@@ -157,13 +174,7 @@ export async function queueStudioSourceTranscript(input: {
       importRole: context.importRole,
       purpose: "episode-production-transcription-and-review",
     },
-    provider: {
-      name: "openai-whisper-local",
-      model: "large-v3-turbo",
-      language,
-      wordTimestamps: true,
-      speakerDiarization: false,
-    },
+    provider,
     terminology,
   });
   const saved = await input.prisma.$transaction(async (transaction: any) => {
@@ -210,6 +221,18 @@ export async function queueStudioSourceTranscript(input: {
       },
     });
   }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 30_000 });
+  if (evidence.provider === "gcs") {
+    const cloud = await ensureStudioSourceTranscriptCloudQueued({
+      prisma: input.prisma,
+      processingJob: saved,
+      actorUserId: input.actorUserId,
+    });
+    const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: saved.id } });
+    const status = await toPublicStudioSourceTranscriptStatus(input.prisma, refreshed || saved);
+    return cloud.status === "configuration-required"
+      ? { ...status, error: cloud.error }
+      : status;
+  }
   return toPublicStudioSourceTranscriptStatus(input.prisma, saved);
 }
 
@@ -246,10 +269,11 @@ export async function reconcileStudioSourceTranscript(input: {
   sourceId: string;
 }) {
   const context = await loadStudioSourceTranscriptContext(input);
-  const row = await input.prisma.studioAssetProcessingJob.findFirst({
+  let row = await input.prisma.studioAssetProcessingJob.findFirst({
     where: { projectId: context.project.id, assetId: context.asset.id, type: { in: [...STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES] } },
     orderBy: { createdAt: "desc" },
   });
+  if (row) row = await projectStudioSourceTranscriptCloudResult({ prisma: input.prisma, processingJob: row });
   if (!row || row.status !== "output-ready") return row ? toPublicStudioSourceTranscriptStatus(input.prisma, row) : emptyStatus();
   const job = parseStudioSourceTranscriptJob(row.inputJson, row.id);
   const result = parseStudioSourceTranscriptResult(jsonObject(row.resultJson).receipt, job);
@@ -417,6 +441,9 @@ export async function toPublicStudioSourceTranscriptStatus(prisma: any, job: any
   }) : null;
   const declared = ["queued", "processing", "output-ready", "completed", "failed"].includes(job.status)
     ? job.status as PublicStudioSourceTranscriptStatus["status"] : "failed";
+  const cloudControl = jsonObject(job.resultJson).cloudControl;
+  const configurationBlocked = (declared === "queued" || declared === "processing")
+    && jsonObject(cloudControl).configurationRequired === true;
   const integrityFailure = !contract || ((declared === "output-ready" || declared === "completed") && !result);
   const completed = declared === "completed" && transcript?.status === "COMPLETED" && Boolean(result);
   const correctionCount = transcript ? await prisma.transcriptCorrection.count({
@@ -428,7 +455,7 @@ export async function toPublicStudioSourceTranscriptStatus(prisma: any, job: any
   return {
     jobId: String(job.id),
     transcriptJobId: contract?.transcriptJobId ?? null,
-    status: integrityFailure ? "failed" : completed ? "completed" : declared,
+    status: integrityFailure ? "failed" : completed ? "completed" : configurationBlocked ? "blocked" : declared,
     provider: transcript?.provider || result?.provider.name || contract?.provider.name || null,
     language: transcript?.language || result?.language || contract?.provider.language || null,
     authorization: contract ? {
@@ -470,7 +497,11 @@ export async function toPublicStudioSourceTranscriptStatus(prisma: any, job: any
       appliedByProvider: Boolean(result?.provider.terminology),
     } : null,
     quality,
-    error: integrityFailure ? "Transcript evidence failed integrity validation." : typeof job.error === "string" ? job.error : transcript?.errorMessage || null,
+    error: integrityFailure
+      ? "Transcript evidence failed integrity validation."
+      : configurationBlocked
+        ? String(jsonObject(cloudControl).configurationError || "Cloud transcription is queued, but its worker is not configured.")
+        : typeof job.error === "string" ? job.error : transcript?.errorMessage || null,
     updatedAt: job.updatedAt?.toISOString?.() ?? null,
     boundaries: transcriptBoundaries(),
   };
@@ -496,5 +527,30 @@ function emptyStatus(): PublicStudioSourceTranscriptStatus {
   };
 }
 function transcriptBoundaries() { return { originalRemainsSourceTruth: true, confidenceIsNotMeasuredAccuracy: true, correctionsRequirePlaybackReview: true, createsNoTasksGoalsOrEdits: true } as const; }
+function studioTranscriptProvider(provider: "local" | "gcs", language: string) {
+  if (provider === "local") return {
+    name: "openai-whisper-local" as const,
+    model: process.env.QUIPSLY_LOCAL_WHISPER_MODEL?.trim() || "large-v3-turbo",
+    version: null,
+    language,
+    wordTimestamps: true as const,
+    speakerDiarization: false,
+  };
+  const name = process.env.QUIPSLY_TRANSCRIPT_PROVIDER?.trim() === "google-speech-v2"
+    ? "google-speech-v2" as const
+    : "deepgram" as const;
+  return {
+    name,
+    model: name === "google-speech-v2"
+      ? process.env.GOOGLE_SPEECH_MODEL?.trim() || "chirp_3"
+      : process.env.DEEPGRAM_MODEL?.trim() || "nova-3",
+    version: name === "deepgram"
+      ? process.env.DEEPGRAM_MODEL_VERSION?.trim() || "latest"
+      : null,
+    language: language === "en" ? "en-US" : language,
+    wordTimestamps: true as const,
+    speakerDiarization: true,
+  };
+}
 function jsonObject(value: unknown): Record<string, any> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {}; }
 function toPrismaJson(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }

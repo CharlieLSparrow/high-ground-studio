@@ -28,12 +28,18 @@ export type StudioSourceTranscriptAuthorization = {
   purpose: "episode-production-transcription-and-review";
 };
 
+export type StudioSourceTranscriptProviderName =
+  | "openai-whisper-local"
+  | "deepgram"
+  | "google-speech-v2";
+
 export type StudioSourceTranscriptProviderRequest = {
-  name: "openai-whisper-local";
+  name: StudioSourceTranscriptProviderName;
   model: string;
+  version: string | null;
   language: string | null;
   wordTimestamps: true;
-  speakerDiarization: false;
+  speakerDiarization: boolean;
 };
 
 export type StudioSourceTranscriptJob = {
@@ -113,7 +119,7 @@ export type StudioSourceTranscriptResult = {
   source: AudioMasterySourceBinding;
   language: string | null;
   provider: {
-    name: "openai-whisper-local";
+    name: StudioSourceTranscriptProviderName;
     model: string;
     rawEvidenceSha256: string;
     rawEvidenceSizeBytes: number;
@@ -130,7 +136,7 @@ export type StudioSourceTranscriptResult = {
       wordTiming: "provider";
       wordConfidence: "provider";
       segmentConfidence: "unavailable";
-      speakerDiarization: "unavailable";
+      speakerDiarization: "provider" | "unavailable";
       alternatives: "unavailable";
     };
   };
@@ -141,7 +147,7 @@ export type StudioSourceTranscriptResult = {
     wordCount: number;
     timedWordCount: number;
     confidenceWordCount: number;
-    speakerLabeledWordCount: 0;
+    speakerLabeledWordCount: number;
     transcriptStartSeconds: number;
     transcriptEndSeconds: number;
   };
@@ -187,12 +193,13 @@ export function parseStudioSourceTranscriptJob(
     row.kind !== STUDIO_SOURCE_TRANSCRIPT_JOB_KIND
     || row.version !== STUDIO_SOURCE_TRANSCRIPT_CONTRACT_VERSION
     || (expectedJobId && expectedJobId !== jobId)
-    || provider.name !== "openai-whisper-local"
+    || !isProviderName(provider.name)
     || provider.wordTimestamps !== true
-    || provider.speakerDiarization !== false
+    || typeof provider.speakerDiarization !== "boolean"
     || !hasTranscriptBoundaries(boundaries)
   ) throw new Error("Studio source transcript job contract is invalid.");
   const language = provider.language == null ? null : requiredText(provider.language, "provider.language");
+  const version = provider.version == null ? null : requiredText(provider.version, "provider.version");
   if (language && !LANGUAGE.test(language)) throw new Error("provider.language is invalid.");
   return {
     kind: STUDIO_SOURCE_TRANSCRIPT_JOB_KIND,
@@ -208,11 +215,12 @@ export function parseStudioSourceTranscriptJob(
     source: parseSource(row.source),
     authorization: parseAuthorization(row.authorization),
     provider: {
-      name: "openai-whisper-local",
+      name: provider.name,
       model: requiredText(provider.model, "provider.model"),
+      version,
       language,
       wordTimestamps: true,
-      speakerDiarization: false,
+      speakerDiarization: provider.speakerDiarization,
     },
     terminology: row.terminology == null ? null : parseStudioTranscriptTerminologySnapshot(row.terminology),
     boundaries: transcriptBoundaries(),
@@ -238,13 +246,15 @@ export function parseStudioSourceTranscriptResult(
     row.kind !== STUDIO_SOURCE_TRANSCRIPT_RESULT_KIND
     || row.version !== STUDIO_SOURCE_TRANSCRIPT_CONTRACT_VERSION
     || (job && (job.jobId !== jobId || job.transcriptJobId !== transcriptJobId || !sameSource(job.source, source) || provider.model !== job.provider.model))
-    || (job && !sameTerminologyReceipt(job.terminology, providerTerminology))
-    || provider.name !== "openai-whisper-local"
+    || (job && !sameTerminologyReceipt(job.terminology, providerTerminology, job.provider.name))
+    || !isProviderName(provider.name)
+    || (job && provider.name !== job.provider.name)
     || capabilities.segmentTiming !== "provider"
     || capabilities.wordTiming !== "provider"
     || capabilities.wordConfidence !== "provider"
     || capabilities.segmentConfidence !== "unavailable"
-    || capabilities.speakerDiarization !== "unavailable"
+    || !["provider", "unavailable"].includes(String(capabilities.speakerDiarization))
+    || (job && capabilities.speakerDiarization === "provider" && !job.provider.speakerDiarization)
     || capabilities.alternatives !== "unavailable"
     || !hasTranscriptBoundaries(boundaries)
     || boundaries.completeSourceRead !== true
@@ -262,7 +272,7 @@ export function parseStudioSourceTranscriptResult(
     || nonNegativeInteger(coverage.wordCount, "coverage.wordCount") !== words.length
     || nonNegativeInteger(coverage.timedWordCount, "coverage.timedWordCount") !== words.length
     || nonNegativeInteger(coverage.confidenceWordCount, "coverage.confidenceWordCount") !== words.filter((word) => word.confidence != null).length
-    || nonNegativeInteger(coverage.speakerLabeledWordCount, "coverage.speakerLabeledWordCount") !== 0
+    || nonNegativeInteger(coverage.speakerLabeledWordCount, "coverage.speakerLabeledWordCount") !== words.filter((word) => word.speakerLabel != null).length
     || Math.abs(nonNegativeNumber(coverage.transcriptStartSeconds, "coverage.transcriptStartSeconds") - transcriptStartSeconds) > 0.001
     || Math.abs(nonNegativeNumber(coverage.transcriptEndSeconds, "coverage.transcriptEndSeconds") - transcriptEndSeconds) > 0.001
   ) throw new Error("Studio source transcript coverage receipt is inconsistent.");
@@ -277,7 +287,7 @@ export function parseStudioSourceTranscriptResult(
     source,
     language,
     provider: {
-      name: "openai-whisper-local",
+      name: provider.name,
       model: requiredText(provider.model, "provider.model"),
       rawEvidenceSha256: requiredSha256(provider.rawEvidenceSha256, "provider.rawEvidenceSha256"),
       rawEvidenceSizeBytes: positiveInteger(provider.rawEvidenceSizeBytes, "provider.rawEvidenceSizeBytes"),
@@ -296,7 +306,7 @@ export function parseStudioSourceTranscriptResult(
         wordTiming: "provider",
         wordConfidence: "provider",
         segmentConfidence: "unavailable",
-        speakerDiarization: "unavailable",
+        speakerDiarization: capabilities.speakerDiarization as "provider" | "unavailable",
         alternatives: "unavailable",
       },
     },
@@ -307,7 +317,7 @@ export function parseStudioSourceTranscriptResult(
       wordCount: words.length,
       timedWordCount: words.length,
       confidenceWordCount: words.filter((word) => word.confidence != null).length,
-      speakerLabeledWordCount: 0,
+      speakerLabeledWordCount: words.filter((word) => word.speakerLabel != null).length,
       transcriptStartSeconds,
       transcriptEndSeconds,
     },
@@ -461,13 +471,24 @@ function sameSource(left: AudioMasterySourceBinding, right: AudioMasterySourceBi
 function sameTerminologyReceipt(
   snapshot: StudioTranscriptTerminologySnapshot | null,
   receipt: Record<string, unknown> | null,
+  providerName: StudioSourceTranscriptProviderName,
 ) {
   if (!snapshot) return receipt == null;
+  // Cloud providers may not support the frozen terminology projection for the
+  // selected model. Retain the snapshot on the job, but do not claim that it
+  // influenced provider evidence when the receipt is absent.
+  if (providerName !== "openai-whisper-local" && receipt == null) return true;
   return receipt?.snapshotSha256 === snapshot.termsSha256
     && receipt?.promptSha256 === snapshot.providerInput.promptSha256
     && receipt?.termCount === snapshot.providerInput.includedTermIds.length
     && receipt?.promptCharacterCount === snapshot.providerInput.promptText.length
     && receipt?.mode === snapshot.providerInput.mode;
+}
+
+function isProviderName(value: unknown): value is StudioSourceTranscriptProviderName {
+  return value === "openai-whisper-local"
+    || value === "deepgram"
+    || value === "google-speech-v2";
 }
 
 function transcriptBoundaries(): StudioSourceTranscriptJob["boundaries"] {
