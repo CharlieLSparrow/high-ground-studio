@@ -2245,3 +2245,33 @@ warnings. This remains simulator and local-adapter evidence, not physical
 iPhone, external mailbox, production deployment, minimally instructed human,
 or 50-coach load proof; those validations stay on the continuous ledger and do
 not stop the next independent product lane.
+
+## Operated client schedule-change request flight — 2026-08-25
+
+The client side of the compiled Capture workflow now names the coach on an
+upcoming appointment and offers the conventional **Request a change** action.
+The client can propose another time or ask to cancel, add an optional note, and
+send the request into the existing private coaching relationship conversation.
+The acknowledgement explicitly says the appointment has not changed until the
+coach confirms; this avoids bypassing coach availability or presenting a chat
+request as canonical calendar truth.
+
+A fresh two-account operation scheduled the Session as the coach, switched the
+running app to the invited client, read back the exact client identity, opened
+Coaching, verified the coach label, and sent a uniquely marked time-change
+request. It then switched back to the coach, opened the exact Session, and
+canceled the appointment. Independent API readback found the client-authored
+request in the relationship thread, preserved the booking until the coach
+action, retained all shared work, denied the coach-private note to the client,
+and returned 404 for the relationship conversation and workspace to an
+unrelated account.
+
+Receipt:
+`artifacts/coaching-acceptance/phone-start-a9407c27/phone-start-receipt.json`.
+The compiled UI test passed 1/1 in 192.442 seconds with no unexpected runtime
+warnings. The account-switch harness used short-lived mode-0600 credential
+packets and deleted each after exact identity readback so restored coach state
+could not counterfeit client proof. This remains Simulator and local-adapter
+evidence, not physical-iPhone, real-mailbox, production, natural-language, or
+minimally instructed human proof; those validations remain on the continuous
+ledger while independent development continues.
