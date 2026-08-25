@@ -119,9 +119,9 @@ try {
   const editor = coachPage.getByRole("textbox").first();
   await editor.fill(correctedBody);
   await coachPage.getByRole("button", { name: "Save", exact: true }).click();
-  await coachPage.getByText(correctedBody, { exact: true }).waitFor({ timeout: 20_000 });
+  await messageArticle(coachPage, correctedBody).waitFor({ timeout: 20_000 });
   await refresh(clientPage);
-  await clientPage.getByText(correctedBody, { exact: true }).waitFor({ timeout: 20_000 });
+  await messageArticle(clientPage, correctedBody).waitFor({ timeout: 20_000 });
 
   const raceRequestID = crypto.randomUUID();
   const raceResults = await coachPage.evaluate(async ({ roomId, clientRequestId, body }) => {
@@ -141,7 +141,7 @@ try {
   const clientReply = messageArticle(clientPage, replyBody);
   await clientReply.getByRole("button", { name: "Remove", exact: true }).click();
   await clientReply.getByRole("button", { name: "Remove", exact: true }).click();
-  await clientReply.getByText("Message removed", { exact: true }).waitFor({ timeout: 20_000 });
+  await clientPage.getByText("Message removed", { exact: true }).last().waitFor({ timeout: 20_000 });
   await refresh(coachPage);
   await coachPage.locator("article").filter({ hasText: "Message removed" }).waitFor({ timeout: 20_000 });
 
