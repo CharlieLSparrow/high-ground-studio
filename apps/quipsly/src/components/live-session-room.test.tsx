@@ -654,6 +654,18 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByText("You")).toBeInTheDocument();
 
     await act(async () => {
+      mockLiveKitRoom.__emit(livekit.RoomEvent.TrackMuted, { track: remoteTrack });
+    });
+    expect(stage).toHaveAttribute("aria-label", "Your camera preview");
+    expect(screen.getByLabelText("Remote participant media")).not.toContainElement(remoteVideo);
+
+    await act(async () => {
+      mockLiveKitRoom.__emit(livekit.RoomEvent.TrackUnmuted, { track: remoteTrack });
+    });
+    expect(stage).toHaveAttribute("aria-label", "Call video stage with your preview");
+    expect(screen.getByLabelText("Remote participant media")).toContainElement(remoteVideo);
+
+    await act(async () => {
       mockLiveKitRoom.__emit(livekit.RoomEvent.TrackUnsubscribed, remoteTrack);
     });
     expect(stage).toHaveAttribute("aria-label", "Your camera preview");

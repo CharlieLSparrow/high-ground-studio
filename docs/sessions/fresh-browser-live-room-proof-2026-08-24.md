@@ -18,7 +18,7 @@ This is provider and media proof against a fresh product-created Session, not a 
 - Session chat round trip: passed
 - Independent verified browser sources: 2
 - Independent source owners: 2
-- Verified source overlap: 6,141 ms
+- Verified source overlap: 6,247 ms
 - All-party recording consent: passed
 - All-party transcription consent: passed
 - Coordinated recording directive and endpoint boundaries: passed
@@ -32,9 +32,12 @@ This is provider and media proof against a fresh product-created Session, not a 
 - The default path was a conventional ready-to-join lobby.
 - Advanced device settings and technical device evidence stayed collapsed until requested.
 - No recording action appeared before joining.
+- Coaching remained audio-first; both cameras were enabled deliberately.
+- Both LiveKit video tracks were rendered with the remote participant on the main stage and the local camera retained as picture-in-picture.
+- Camera-off removed the stale remote tile without disconnecting either participant; camera-on restored the remote video.
 - Recording recovery stayed mounted after leaving the provider call.
 - The room remained open for native/browser interoperability work.
 
 ## Honest boundary
 
-The headless browsers used controlled fake media devices, not natural human speech or human listening. The result proves two-party provider presence, product state convergence, consent, coordinated local capture ownership, persistence, and recovery. It does not prove physical iPhone media, natural speech intelligibility, acoustic quality, novice acceptance, or production scale.
+The headless browsers used controlled fake media devices, not natural human speech or human listening. The result proves two-party provider presence, browser video publication/subscription and camera toggling, product state convergence, consent, coordinated local capture ownership, persistence, and recovery. It does not prove physical iPhone media, natural speech intelligibility, acoustic quality, novice acceptance, or production scale.

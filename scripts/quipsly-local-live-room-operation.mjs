@@ -60,6 +60,8 @@ const interruptCoachUpload =
   process.env.QUIPSLY_LOCAL_LIVE_ROOM_INTERRUPT_COACH_UPLOAD === "1";
 const crashCoachRecorder =
   process.env.QUIPSLY_LOCAL_LIVE_ROOM_CRASH_COACH_RECORDER === "1";
+const operateTwoPartyVideo =
+  process.env.QUIPSLY_LOCAL_LIVE_ROOM_VIDEO === "1";
 assert(
   !(interruptCoachUpload && crashCoachRecorder),
   "Choose either upload interruption or recorder crash recovery per operation.",
@@ -273,6 +275,9 @@ const sharedBrowser = syntheticSpeechSources
     });
 if (sharedBrowser) browsers.push(sharedBrowser);
 const journeys = [];
+let audioFirstCameraDefaultObserved = true;
+let twoPartyVideoStageProven = false;
+let cameraTogglePreservedCall = false;
 
 const saveRenderedConsent = async (journey) => {
   const consentAction = journey.page.getByRole("button", {
@@ -412,6 +417,19 @@ try {
         .count()) === 0,
       `${identity.role} could see a recording action before joining.`,
     );
+    const prejoinCamera = liveCallDock.getByRole("button", {
+      name: "Camera off",
+      exact: true,
+    });
+    audioFirstCameraDefaultObserved =
+      audioFirstCameraDefaultObserved &&
+      (await prejoinCamera.getAttribute("aria-pressed")) === "false";
+    if (operateTwoPartyVideo) {
+      await prejoinCamera.click();
+      await liveCallDock
+        .getByRole("button", { name: "Camera on", exact: true })
+        .waitFor({ state: "visible", timeout: 10_000 });
+    }
     // A returning browser can already hold system permission and remembered
     // device IDs while LiveKit finishes its asynchronous preflight. Give that
     // standard happy path a brief chance to settle before looking for a
@@ -513,6 +531,87 @@ try {
             `${error instanceof Error ? error.message : ""}`,
         );
       });
+  }
+
+  if (operateTwoPartyVideo) {
+    for (const journey of journeys) {
+      const stage = journey.page.getByTestId("call-video-stage");
+      await stage.waitFor({ state: "visible", timeout: 20_000 });
+      await journey.page.waitForFunction(
+        (element) =>
+          element?.getAttribute("aria-label") ===
+          "Call video stage with your preview",
+        await stage.elementHandle(),
+        { timeout: 20_000 },
+      );
+      const remoteVideos = journey.page
+        .getByLabel("Remote participant media")
+        .locator("video[data-livekit-track-sid]");
+      assert(
+        (await remoteVideos.count()) >= 1,
+        `${journey.identity.role} did not attach a remote LiveKit video element.`,
+      );
+      assert(
+        await journey.page.getByLabel("Your camera").evaluate((element) => {
+          const video = element;
+          return (
+            video instanceof HTMLVideoElement &&
+            video.srcObject instanceof MediaStream &&
+            video.srcObject.getVideoTracks().length === 1 &&
+            !video.classList.contains("invisible")
+          );
+        }),
+        `${journey.identity.role} did not retain its local camera preview.`,
+      );
+      assert(
+        (await stage.getAttribute("aria-label")) ===
+          "Call video stage with your preview",
+        `${journey.identity.role} did not promote remote video while retaining the local preview.`,
+      );
+    }
+    twoPartyVideoStageProven = true;
+
+    const clientJourney = journeys.find(
+      (journey) => journey.identity.role === "client",
+    );
+    const coachJourney = journeys.find(
+      (journey) => journey.identity.role === "coach",
+    );
+    assert(
+      clientJourney && coachJourney,
+      "Video toggle proof needs coach and client journeys.",
+    );
+    await clientJourney.page
+      .getByRole("button", { name: "Stop camera", exact: true })
+      .click();
+    await clientJourney.page
+      .getByRole("button", { name: "Start camera", exact: true })
+      .waitFor({ state: "visible", timeout: 10_000 });
+    const coachRemoteMedia = coachJourney.page.getByLabel(
+      "Remote participant media",
+    );
+    await coachJourney.page.waitForFunction(
+      (element) =>
+        element?.querySelectorAll("video[data-livekit-track-sid]").length === 0,
+      await coachRemoteMedia.elementHandle(),
+      { timeout: 20_000 },
+    );
+    assert(
+      await clientJourney.page
+        .getByText("2 in call", { exact: true })
+        .isVisible(),
+      "Turning the client camera off disconnected the call.",
+    );
+    await clientJourney.page
+      .getByRole("button", { name: "Start camera", exact: true })
+      .click();
+    await coachJourney.page.waitForFunction(
+      (element) =>
+        (element?.querySelectorAll("video[data-livekit-track-sid]").length ?? 0) >= 1,
+      await coachRemoteMedia.elementHandle(),
+      { timeout: 20_000 },
+    );
+    cameraTogglePreservedCall = true;
   }
 
   const receiptText = `Retained local call rehearsal passed for two browser participants on ${new Date().toISOString()}.`;
@@ -948,6 +1047,10 @@ try {
     advancedDeviceSettingsCollapsedBeforeJoin: true,
     technicalDeviceDetailsCollapsedBeforeJoin: true,
     prejoinRecordingActionAbsent: true,
+    audioFirstCameraDefaultObserved,
+    browserVideoOperation: operateTwoPartyVideo ? "passed" : "not-requested",
+    twoPartyVideoStageProven,
+    cameraTogglePreservedCall,
     savedConsentRestoredAfterReentry: true,
     postCallRecordingRecoveryStayedMounted: true,
     verifiedRecordingSafeToCloseRendered: true,

@@ -26,6 +26,7 @@ import {
   Room,
   RoomEvent,
   Track,
+  TrackPublication,
 } from "livekit-client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -519,8 +520,10 @@ export function LiveSessionRoom({
   const suppressPreferenceWriteRef = useRef(false);
   const lastPublishedWatchReceiptRef = useRef("");
   const preflightStreamRef = useRef<MediaStream | null>(null);
+  const localCameraTrackRef = useRef<MediaStreamTrack | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteMediaRef = useRef<HTMLDivElement | null>(null);
+  const remoteTracksRef = useRef(new Map<string, RemoteTrack>());
   const remoteVideoTrackSidsRef = useRef(new Set<string>());
   const meterCleanupRef = useRef<(() => void) | null>(null);
   const audioMeterGenerationRef = useRef(0);
@@ -529,6 +532,25 @@ export function LiveSessionRoom({
     START_EGRESS: undefined,
     STOP_EGRESS: undefined,
   });
+
+  const bindLocalVideoElement = useCallback((element: HTMLVideoElement | null) => {
+    localVideoRef.current = element;
+    if (!element) return;
+    const previewStream = preflightStreamRef.current;
+    const cameraTrack = localCameraTrackRef.current;
+    element.srcObject = previewStream || (cameraTrack ? new MediaStream([cameraTrack]) : null);
+    if (element.srcObject) void element.play().catch(() => undefined);
+  }, []);
+
+  const attachLocalCameraTrack = useCallback(async (
+    mediaTrack: MediaStreamTrack | null | undefined,
+  ) => {
+    localCameraTrackRef.current = mediaTrack ?? null;
+    const element = localVideoRef.current;
+    if (!element) return;
+    element.srcObject = mediaTrack ? new MediaStream([mediaTrack]) : null;
+    if (mediaTrack) await element.play().catch(() => undefined);
+  }, []);
 
   const connected = status === "connected" || status === "reconnecting";
   const statusLabel = useMemo(() => {
@@ -641,6 +663,7 @@ export function LiveSessionRoom({
 
   const clearRemoteMedia = useCallback(() => {
     remoteMediaRef.current?.replaceChildren();
+    remoteTracksRef.current.clear();
     remoteVideoTrackSidsRef.current.clear();
     setRemoteVideoTrackCount(0);
   }, []);
@@ -656,10 +679,10 @@ export function LiveSessionRoom({
     stopAudioMeter();
     stopStream(preflightStreamRef.current);
     preflightStreamRef.current = null;
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    void attachLocalCameraTrack(null);
     setCameraEvidence(null);
     setPreviewTested(false);
-  }, [stopAudioMeter]);
+  }, [attachLocalCameraTrack, stopAudioMeter]);
   const currentPreflightStream = useCallback(() => preflightStreamRef.current, []);
 
   const startAudioMeter = useCallback(async (audioTrack: MediaStreamTrack | null | undefined) => {
@@ -855,9 +878,7 @@ export function LiveSessionRoom({
     });
   }, [outputId]);
 
-  const attachRemoteTrack = useCallback((track: RemoteTrack) => {
-    const container = remoteMediaRef.current;
-    if (!container) return;
+  const mountRemoteTrack = useCallback((track: RemoteTrack, container: HTMLDivElement) => {
     const trackKey = track.sid || track.mediaStreamTrack.id;
     container.querySelectorAll<HTMLElement>("[data-livekit-track-sid]").forEach((element) => {
       if (element.dataset.livekitTrackSid === trackKey) element.remove();
@@ -879,8 +900,23 @@ export function LiveSessionRoom({
     container.appendChild(element);
   }, [routeAudioOutput]);
 
+  const bindRemoteMediaElement = useCallback((element: HTMLDivElement | null) => {
+    remoteMediaRef.current = element;
+    if (!element) return;
+    element.replaceChildren();
+    remoteTracksRef.current.forEach((track) => mountRemoteTrack(track, element));
+  }, [mountRemoteTrack]);
+
+  const attachRemoteTrack = useCallback((track: RemoteTrack) => {
+    const trackKey = track.sid || track.mediaStreamTrack.id;
+    remoteTracksRef.current.set(trackKey, track);
+    const container = remoteMediaRef.current;
+    if (container) mountRemoteTrack(track, container);
+  }, [mountRemoteTrack]);
+
   const detachRemoteTrack = useCallback((track: RemoteTrack) => {
     track.detach().forEach((element) => element.remove());
+    remoteTracksRef.current.delete(track.sid || track.mediaStreamTrack.id);
     if (track.kind !== Track.Kind.Video) return;
     remoteVideoTrackSidsRef.current.delete(track.sid || track.mediaStreamTrack.id);
     setRemoteVideoTrackCount(remoteVideoTrackSidsRef.current.size);
@@ -1042,6 +1078,7 @@ export function LiveSessionRoom({
         if (cameraDisconnected) {
           if (sourceLockedRef.current) {
             await room.localParticipant.setCameraEnabled(false).catch(() => undefined);
+            await attachLocalCameraTrack(null);
             setCameraMuted(true);
             cameraMutedRef.current = true;
             recoveryMessages.push("The call camera disconnected, so Quipsly turned it off. Stop the retained recording before choosing another camera.");
@@ -1051,10 +1088,7 @@ export function LiveSessionRoom({
                 await room.switchActiveDevice("videoinput", nextCameraId);
                 const publication = await room.localParticipant.setCameraEnabled(true, { deviceId: nextCameraId });
                 const mediaTrack = publication?.track?.mediaStreamTrack;
-                if (localVideoRef.current && mediaTrack) {
-                  localVideoRef.current.srcObject = new MediaStream([mediaTrack]);
-                  await localVideoRef.current.play().catch(() => undefined);
-                }
+                await attachLocalCameraTrack(mediaTrack);
               }
               setCameraId(nextCameraId);
               cameraIdRef.current = nextCameraId;
@@ -1062,6 +1096,7 @@ export function LiveSessionRoom({
               recoveryMessages.push(`Camera disconnected. ${cameraWantedRef.current && !cameraMutedRef.current ? "The call moved" : "Camera remains off; its next start will use"} ${nextCameras.find((device) => device.deviceId === nextCameraId)?.label || "an available camera"}.`);
             } catch {
               await room.localParticipant.setCameraEnabled(false).catch(() => undefined);
+              await attachLocalCameraTrack(null);
               setCameraId("");
               cameraIdRef.current = "";
               setCameraMuted(true);
@@ -1070,6 +1105,7 @@ export function LiveSessionRoom({
             }
           } else {
             await room.localParticipant.setCameraEnabled(false).catch(() => undefined);
+            await attachLocalCameraTrack(null);
             setCameraId("");
             cameraIdRef.current = "";
             setCameraMuted(true);
@@ -1139,7 +1175,7 @@ export function LiveSessionRoom({
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a media-device error.");
       setMessage("Device access couldn't be completed. Check this site's microphone and camera permissions, then try again.");
     }
-  }, [clearPreflightPreview, startAudioMeter, stopAudioMeter]);
+  }, [attachLocalCameraTrack, clearPreflightPreview, startAudioMeter, stopAudioMeter]);
 
   useEffect(() => {
     const wasLocked = previousSourceLockedRef.current;
@@ -1256,7 +1292,7 @@ export function LiveSessionRoom({
     roomRef.current?.disconnect(true);
     roomRef.current = null;
     clearRemoteMedia();
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    void attachLocalCameraTrack(null);
     setParticipants([]);
     setSourceStopRequestVersion(0);
     setCallRecoveryAvailable(false);
@@ -1267,7 +1303,7 @@ export function LiveSessionRoom({
         ? "Call ended. Your local recording is protected. Keep Quipsly open until the recording panel says Safe to close."
         : "You left the call.",
     );
-  }, [clearPreflightPreview, clearRemoteMedia]);
+  }, [attachLocalCameraTrack, clearPreflightPreview, clearRemoteMedia]);
 
   const leave = useCallback(async () => {
     if (sourceLocked) {
@@ -1341,6 +1377,16 @@ export function LiveSessionRoom({
       room
         .on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => attachRemoteTrack(track))
         .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => detachRemoteTrack(track))
+        .on(RoomEvent.TrackMuted, (publication: TrackPublication) => {
+          if (publication.track?.kind === Track.Kind.Video) {
+            detachRemoteTrack(publication.track as RemoteTrack);
+          }
+        })
+        .on(RoomEvent.TrackUnmuted, (publication: TrackPublication) => {
+          if (publication.track?.kind === Track.Kind.Video) {
+            attachRemoteTrack(publication.track as RemoteTrack);
+          }
+        })
         .on(RoomEvent.ParticipantConnected, () => updateRoster(room))
         .on(RoomEvent.ParticipantDisconnected, () => updateRoster(room))
         .on(RoomEvent.ActiveSpeakersChanged, () => updateRoster(room))
@@ -1396,7 +1442,7 @@ export function LiveSessionRoom({
             : "The call ended.");
           setParticipants([]);
           clearRemoteMedia();
-          if (localVideoRef.current) localVideoRef.current.srcObject = null;
+          void attachLocalCameraTrack(null);
         });
 
       await room.connect(packet.serverUrl, packet.participantToken);
@@ -1440,10 +1486,7 @@ export function LiveSessionRoom({
             resolution: { width: 1920, height: 1080, frameRate: 30 },
           });
           const mediaTrack = publication?.track?.mediaStreamTrack;
-          if (localVideoRef.current && mediaTrack) {
-            localVideoRef.current.srcObject = new MediaStream([mediaTrack]);
-            await localVideoRef.current.play().catch(() => undefined);
-          }
+          await attachLocalCameraTrack(mediaTrack);
           setCameraMuted(false);
           cameraMutedRef.current = false;
         } catch (error) {
@@ -1493,7 +1536,7 @@ export function LiveSessionRoom({
           ? "Your access to this Session changed. Return to Quipsly Home or ask the host for a new invitation."
           : "The call couldn't connect. Check your internet connection and try again.");
     }
-  }, [attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
+  }, [attachLocalCameraTrack, attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
@@ -1599,7 +1642,8 @@ export function LiveSessionRoom({
       return;
     }
     try {
-      await room.localParticipant.setCameraEnabled(nextEnabled, nextEnabled && cameraId ? { deviceId: cameraId } : undefined);
+      const publication = await room.localParticipant.setCameraEnabled(nextEnabled, nextEnabled && cameraId ? { deviceId: cameraId } : undefined);
+      await attachLocalCameraTrack(nextEnabled ? publication?.track?.mediaStreamTrack : null);
       setCameraWanted(true);
       setCameraMuted(!nextEnabled);
       cameraMutedRef.current = !nextEnabled;
@@ -1610,7 +1654,7 @@ export function LiveSessionRoom({
         : "The camera couldn't stop. Try again or leave the call.");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a camera error.");
     }
-  }, [cameraId, cameraMuted, cameraWanted]);
+  }, [attachLocalCameraTrack, cameraId, cameraMuted, cameraWanted]);
 
   const chooseMicrophone = useCallback(async (nextId: string) => {
     if (!nextId || nextId === microphoneId) return;
@@ -1664,10 +1708,7 @@ export function LiveSessionRoom({
         await room.switchActiveDevice("videoinput", nextId);
         const publication = await room.localParticipant.setCameraEnabled(true, { deviceId: nextId });
         const mediaTrack = publication?.track?.mediaStreamTrack;
-        if (localVideoRef.current && mediaTrack) {
-          localVideoRef.current.srcObject = new MediaStream([mediaTrack]);
-          await localVideoRef.current.play().catch(() => undefined);
-        }
+        await attachLocalCameraTrack(mediaTrack);
       }
       setCameraId(nextId);
       cameraIdRef.current = nextId;
@@ -1684,7 +1725,7 @@ export function LiveSessionRoom({
       cameraIdRef.current = previousId;
       setMessage(error instanceof Error ? `Camera switch failed: ${error.message}` : "Camera switch failed.");
     }
-  }, [cameraId, cameraMuted, cameraWanted, cameras, clearPreflightPreview, connected, sourceLocked]);
+  }, [attachLocalCameraTrack, cameraId, cameraMuted, cameraWanted, cameras, clearPreflightPreview, connected, sourceLocked]);
 
   const chooseOutput = useCallback((nextId: string) => {
     suppressPreferenceWriteRef.current = false;
@@ -1825,12 +1866,12 @@ export function LiveSessionRoom({
       aria-label={remoteVideoTrackCount > 0 ? "Call video stage with your preview" : "Your camera preview"}
     >
       <div
-        ref={remoteMediaRef}
+        ref={bindRemoteMediaElement}
         className={`absolute inset-0 grid overflow-hidden bg-black ${remoteVideoTrackCount > 1 ? "grid-cols-2" : "grid-cols-1"}`}
         aria-label="Remote participant media"
       />
       <video
-        ref={localVideoRef}
+        ref={bindLocalVideoElement}
         muted
         playsInline
         aria-label="Your camera"

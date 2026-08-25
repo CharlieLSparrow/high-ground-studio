@@ -16,13 +16,17 @@ assert.match(subject, /freshContextMutatedOutsideProduct: false/);
 assert.match(subject, /secretsPrinted: false/);
 assert.match(subject, /leave\.isVisible\(\)/);
 assert.match(subject, /leave\.click\(\{ timeout: 2_000 \}\)/);
+assert.match(subject, /QUIPSLY_LOCAL_LIVE_ROOM_VIDEO/);
+assert.match(subject, /Call video stage with your preview/);
+assert.match(subject, /cameraTogglePreservedCall/);
 
 console.log(
   JSON.stringify({
     ok: true,
-    assertions: 8,
+    assertions: 11,
     receiptIsFreshContextScoped: true,
     receiptIsPrivate: true,
     cleanupDoesNotWaitForAnAbsentLeaveAction: true,
+    optionalTwoPartyVideoIsOperated: true,
   }),
 );
