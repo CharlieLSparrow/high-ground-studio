@@ -306,10 +306,24 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let identityPassword = identityPasswordOverride ?? credentials.password
         let app = XCUIApplication()
         app.launchEnvironment["QUIPSLY_API_BASE_URL"] = baseURLOverride ?? credentials.baseURL
-        if identityEmailOverride == nil,
-           identityPasswordOverride == nil,
-           let credentialsPath = credentials.credentialsPath {
+        let ephemeralCredentialsURL: URL?
+        if identityEmailOverride != nil || identityPasswordOverride != nil {
+            ephemeralCredentialsURL = try runtimeIdentityCredentialsFile(
+                baseURL: baseURLOverride ?? credentials.baseURL,
+                email: identityEmail,
+                password: identityPassword
+            )
+            app.launchEnvironment["QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE"] = ephemeralCredentialsURL?.path
+        } else if let credentialsPath = credentials.credentialsPath {
+            ephemeralCredentialsURL = nil
             app.launchEnvironment["QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE"] = credentialsPath
+        } else {
+            ephemeralCredentialsURL = nil
+        }
+        defer {
+            if let ephemeralCredentialsURL {
+                try? FileManager.default.removeItem(at: ephemeralCredentialsURL)
+            }
         }
         app.launchArguments.append("--quipsly-capture-runtime-smoke")
         if credentials.recordingFixtureAssetID?.isEmpty == false {
@@ -360,6 +374,34 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The native auth transaction should finish and load the requested signed-in root surface before workflow navigation begins."
         )
         return app
+    }
+
+    private func runtimeIdentityCredentialsFile(
+        baseURL: String,
+        email: String,
+        password: String
+    ) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("quipsly-capture-runtime-identities", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let url = directory.appendingPathComponent("\(UUID().uuidString.lowercased()).json")
+        let data = try JSONSerialization.data(
+            withJSONObject: [
+                "baseURL": baseURL,
+                "email": email,
+                "password": password,
+            ]
+        )
+        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: url.path
+        )
+        return url
     }
 
     private func signInIfNeeded(
