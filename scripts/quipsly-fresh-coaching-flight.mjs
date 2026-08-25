@@ -92,6 +92,11 @@ const start = await run(
 );
 const continuationEnv = {
   QUIPSLY_COACHING_ACCEPTANCE_CONTEXT: start.contextPath,
+  // The production alignment planner intentionally needs enough shared signal
+  // for two separated waveform checks. Keep the ordinary full-product flight
+  // long enough to exercise that contract instead of weakening it for a
+  // three-second browser smoke capture.
+  QUIPSLY_LOCAL_LIVE_ROOM_RECORDING_MS: "12000",
 };
 const isolation = await run(
   "Fresh coach/client isolation from neighboring Nests, Sessions, and coaching relationships",

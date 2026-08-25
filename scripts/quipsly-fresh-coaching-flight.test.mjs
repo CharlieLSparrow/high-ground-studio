@@ -16,6 +16,11 @@ test("fresh coaching flight retains a private receipt without claiming human acc
   assert.match(source, /sourceContextLane: start\.testLane/);
   assert.match(source, /--experimental-transform-types/);
   assert.match(source, /quipsly-fresh-coaching-isolation-operation\.mjs/);
+  assert.match(
+    source,
+    /QUIPSLY_LOCAL_LIVE_ROOM_RECORDING_MS: "12000"/,
+    "The full flight must retain enough overlapping signal to exercise two-window alignment.",
+  );
   assert.match(source, /coachAndClientTenantIsolationOperated:/);
   assert.match(source, /authorizedListsAndUnauthorizedDirectProbes:/);
   assert.match(source, /neighboringTenantDataPresentDuringIsolationProof:/);
