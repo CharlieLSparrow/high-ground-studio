@@ -30,6 +30,12 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionInvitationEmailReadiness } from "@/lib/server/session-invitation-email";
 import { ensureInvitedStudioUserByEmail } from "@/lib/server/studio-user-identity";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
+import {
+  assertCoachingScheduleAvailable,
+  CoachingScheduleConflictError,
+  CoachingScheduleIntervalError,
+} from "@/lib/server/coaching-schedule-availability";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
 export const runtime = "nodejs";
 
@@ -101,6 +107,27 @@ class RunwayActionError extends Error {
 }
 
 function runwayActionErrorResponse(error: unknown) {
+  if (error instanceof CoachingScheduleConflictError) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error.message,
+        code: error.code,
+        conflicts: error.conflicts.map((conflict) => ({
+          kind: conflict.kind,
+          scheduledStart: conflict.scheduledStart,
+          scheduledEnd: conflict.scheduledEnd,
+        })),
+      },
+      { status: error.status },
+    );
+  }
+  if (error instanceof CoachingScheduleIntervalError) {
+    return NextResponse.json(
+      { ok: false, error: error.message, code: error.code },
+      { status: error.status },
+    );
+  }
   if (error instanceof CoachingEngagementError) {
     return NextResponse.json({ ok: false, error: error.message, code: error.code }, { status: error.status });
   }
@@ -1790,6 +1817,16 @@ export async function POST(request: Request) {
         const timezone = text(body.timezone) || booking.timezone || getCoachingDefaultTimezone();
         const durationMinutes = integer(body.durationMinutes) || minutesBetween(booking.scheduledStart, booking.scheduledEnd);
         const scheduledEnd = parseDate(body.scheduledEnd) || addMinutes(scheduledStart, durationMinutes);
+        if (!booking.coachUserId) {
+          throw new RunwayActionError("Assign a coach before rescheduling this session.", 409);
+        }
+        await assertCoachingScheduleAvailable({
+          tx,
+          coachUserId: booking.coachUserId,
+          scheduledStart,
+          scheduledEnd,
+          excludeBookingId: booking.id,
+        });
         const auditEvent = {
           at: new Date().toISOString(),
           byUserId: session.user.id,
@@ -2110,6 +2147,10 @@ export async function POST(request: Request) {
 
     try {
       const result = await prisma.$transaction(async (tx: any) => {
+      await acquirePrismaAdvisoryTransactionLock(
+        tx,
+        `quipsly:coaching-hold-conversion:${holdId}`,
+      );
       const hold = await tx.bookingHold.findUnique({
         where: { id: holdId },
         include: {
@@ -2148,6 +2189,13 @@ export async function POST(request: Request) {
         offering?.coachProfile?.userId ||
         hold.coachProfile?.userId ||
         session.user.id;
+      await assertCoachingScheduleAvailable({
+        tx,
+        coachUserId,
+        scheduledStart: hold.scheduledStart,
+        scheduledEnd: hold.scheduledEnd,
+        excludeHoldId: hold.id,
+      });
       const title = text(body.title) || offering?.title || "Quipsly coaching session";
       const paymentPolicy = text(body.paymentPolicy) || offering?.paymentPolicy || "MANUAL";
       const amountCents = integer(body.amountCents) ?? offering?.priceCents ?? null;
@@ -2387,7 +2435,8 @@ export async function POST(request: Request) {
   }
 
   if (action === "create-booking-hold") {
-    const result = await prisma.$transaction(async (tx: any) => {
+    try {
+      const result = await prisma.$transaction(async (tx: any) => {
       const offering = offeringId
         ? await tx.serviceOffering.findUnique({
             where: { id: offeringId },
@@ -2412,6 +2461,15 @@ export async function POST(request: Request) {
           where: { userId: text(body.coachUserId) || session.user.id },
           orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
         }));
+      if (!coachProfile?.userId) {
+        throw new RunwayActionError("Choose a coach before holding this time.", 409);
+      }
+      await assertCoachingScheduleAvailable({
+        tx,
+        coachUserId: coachProfile.userId,
+        scheduledStart,
+        scheduledEnd,
+      });
       const expiresMinutes = integer(body.expiresMinutes) || 48 * 60;
       const expiresAt = addMinutes(new Date(), expiresMinutes);
 
@@ -2446,13 +2504,16 @@ export async function POST(request: Request) {
         expiresAt: hold.expiresAt,
         nextAction: "Hold created. Convert to a booking only when the human confirms the session.",
       };
-    });
+      });
 
-    return NextResponse.json({
-      ok: true,
-      action,
-      result,
-    });
+      return NextResponse.json({
+        ok: true,
+        action,
+        result,
+      });
+    } catch (error) {
+      return runwayActionErrorResponse(error);
+    }
   }
 
   let coachingProject;
@@ -2484,6 +2545,12 @@ export async function POST(request: Request) {
     const paymentPolicy = text(body.paymentPolicy) || offering?.paymentPolicy || "MANUAL";
     const amountCents = requestedAmountCents ?? offering?.priceCents ?? null;
     const coachUserId = text(body.coachUserId) || offering?.coachProfile?.userId || session.user.id;
+    await assertCoachingScheduleAvailable({
+      tx,
+      coachUserId,
+      scheduledStart,
+      scheduledEnd,
+    });
     const purpose = normalizePurpose(body.purpose || offering?.kind);
     const client = await ensureInvitedStudioUserByEmail({
       email: clientEmail,

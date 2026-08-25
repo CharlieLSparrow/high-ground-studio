@@ -295,6 +295,29 @@ async function main() {
       "Appointment did not return the exact private client entry.",
     );
 
+    const overlappingAppointment = await api(origin, coachToken, "/api/coaching/runway", {
+      method: "POST",
+      body: {
+        action: "create-booking-room",
+        clientEmail: CLIENT_EMAIL,
+        clientName: "Quipsly Mobile Client",
+        title: "This overlapping Session must not be created",
+        scheduledStart: new Date(scheduledStart.getTime() + 15 * 60 * 1_000).toISOString(),
+        durationMinutes: 30,
+        purpose: "COACHING",
+        paymentPolicy: "MANUAL",
+        timezone: "America/Denver",
+        currency: "USD",
+      },
+    });
+    assert(
+      overlappingAppointment.status === 409
+        && overlappingAppointment.body?.ok === false
+        && overlappingAppointment.body?.code === "COACHING_TIME_CONFLICT"
+        && /overlaps another Quipsly session/i.test(overlappingAppointment.body?.error || ""),
+      `Overlapping appointment was not rejected clearly (${overlappingAppointment.status}: ${String(overlappingAppointment.body?.error || "unknown")}).`,
+    );
+
     const [coachSessions, clientSessions, coachRunway, clientRunway] = await Promise.all([
       api(origin, coachToken, "/api/mobile/capture/sessions"),
       api(origin, clientToken, "/api/mobile/capture/sessions"),
@@ -380,6 +403,7 @@ async function main() {
       joinTokensReturned: Boolean(
         coachJoin.body?.participantToken && clientJoin.body?.participantToken
       ),
+      overlappingAppointmentRejected: overlappingAppointment.body?.code === "COACHING_TIME_CONFLICT",
       providerProof,
       consentStarted: false,
       recordingStarted: false,

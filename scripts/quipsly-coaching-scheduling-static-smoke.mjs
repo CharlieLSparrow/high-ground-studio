@@ -29,6 +29,7 @@ function includesAll(text, markers) {
 const files = {
   schema: "prisma/schema.prisma",
   runwayRoute: "apps/quipsly/src/app/api/coaching/runway/route.ts",
+  scheduleAvailability: "apps/quipsly/src/lib/server/coaching-schedule-availability.ts",
   runwayPage: "apps/quipsly/src/app/(app)/coaching/page.tsx",
   calendarAdapter: "apps/quipsly/src/lib/server/coaching-google-calendar.ts",
   lifecycle: "packages/quipsly-domain/src/coaching-lifecycle.ts",
@@ -50,6 +51,7 @@ for (const [key, value] of Object.entries(texts)) {
 
 const schema = texts.schema || "";
 const route = texts.runwayRoute || "";
+const scheduleAvailability = texts.scheduleAvailability || "";
 const page = texts.runwayPage || "";
 const calendarAdapter = texts.calendarAdapter || "";
 const lifecycle = texts.lifecycle || "";
@@ -85,6 +87,22 @@ addCheck(
     '"cancel-google-calendar-event"',
   ]),
   "Coaching runway supports hold, convert, release, reschedule, cancel, provider calendar receipt attachment, and explicit Google Calendar sync/cancel actions.",
+);
+
+addCheck(
+  "runwaySerializesAndRejectsCoachConflicts",
+  includesAll(route, [
+    "assertCoachingScheduleAvailable",
+    "CoachingScheduleConflictError",
+    'code: error.code',
+  ]) && includesAll(scheduleAvailability, [
+    "acquirePrismaAdvisoryTransactionLock",
+    "COACHING_TIME_CONFLICT",
+    "scheduledStart: { lt: input.scheduledEnd }",
+    "scheduledEnd: { gt: input.scheduledStart }",
+    'status: "ACTIVE"',
+  ]),
+  "Coach schedule mutations serialize by coach and reject overlapping canonical bookings or active holds with a stable 409 contract.",
 );
 
 addCheck(
