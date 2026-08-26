@@ -258,6 +258,45 @@ Date: 2026-08-24
   same Nest, proving either exact derivative Episode metadata or a matching
   canonical Call Room binding before reading approval evidence. Browser packet,
   withdrawal, and encoded-program review retries reuse one exact UUID and body
+
+## Coach practice command and clean cohort checkpoint — 2026-08-26
+
+- Nest and Quipsly Capture now share one deterministic coach-practice command
+  policy. It ranks a live Session, new client time request, late Session,
+  recording/transcript repair, follow-up review/share, near-term preparation,
+  and the next steady Session without creating an inbox table, unread state, or
+  duplicated work.
+- The command is an exact-coach projection over canonical bookings, holds,
+  Session media/transcript/output evidence, and the versioned client-check-in /
+  coach-private preparation record. Clients receive no coach command and no
+  private-preparation material. Staff authority does not silently turn an
+  unrelated staff account into the assigned coach.
+- The ordinary web Coaching page now leads a coach with **Your practice today**
+  and direct canonical actions. Capture shows the same counts and ranked work,
+  opens the exact Session, and scrolls to the exact time-request lane. Both
+  retain a calm caught-up state and keep scheduling or relationship work below.
+- Exact commit `a93ca464654ddaddb48bc7793ee098259a5ca394` recovered all 130
+  committed migrations into an empty disposable database, then passed the
+  complete fresh controlled-speech coaching flight. Receipt:
+  `artifacts/coaching-acceptance/cc1d67e1/fresh-coaching-flight-receipt.json`.
+  The flight proved fresh signup, automatic coach setup, invitation entry,
+  neighbor isolation, shared client check-in, coach-private preparation, the
+  coach command, two connected endpoints, two independent retained sources,
+  26.253 seconds of source overlap, participant-attributed transcription,
+  protected playback, mentor DOCX, shared/private relationship work,
+  cross-account task completion, light editing, release/revoke, and automatic
+  improved-listening-copy preparation.
+- The same commit passed the 50-practice cohort rehearsal with 453 product
+  requests, zero failures, 50 exact own-practice readbacks, 50 deliberate
+  neighboring-practice 404s, an atomic four-Session series plus idempotent
+  retry, and an isolated command center for every coach. Receipt:
+  `artifacts/coaching-capacity/capacity-mt9raxb7-3e2630/capacity-rehearsal-receipt.json`.
+- The cohort rehearsal is local bounded product evidence, not production-scale
+  or novice-human acceptance. It also exposed a useful performance boundary:
+  the heavyweight runway read reached roughly 6 seconds p95 while 50 practices
+  simultaneously exercised five protected reads each. A fast, independently
+  loadable command projection is the next performance/UX lane; the full runway
+  remains available for scheduling administration after first useful paint.
   until acknowledgement. Seventeen focused tests and strict Quipsly TypeScript
   pass; authenticated two-Episode and lost-response browser flight evidence is
   deferred without blocking independent work.

@@ -2450,3 +2450,41 @@ This remains clean local product automation with synthetic speech and browser
 media. It does not claim physical-iPhone behavior, natural human speech,
 external mailbox delivery, production scale, human listening, or minimally
 instructed novice comprehension.
+
+## Coach practice command and 50-practice checkpoint — 2026-08-26
+
+Quipsly now derives one coach-facing **Your practice today** list from
+canonical scheduling, Session, recording, transcript, follow-up, and
+preparation evidence. Its policy orders live work, client time requests, late
+Sessions, recording/transcript repair, follow-up review/share, near-term prep,
+and the next steady Session. It has no separate inbox table, no invented unread
+state, and no mutation or provider side effect.
+
+Nest and Capture consume the same versioned policy. Browser actions open the
+exact canonical Session or time-request lane. Capture opens the exact Session
+or scrolls to the matching native lane. A client receives no coach command
+projection, and a coach command is filtered to the exact assigned coach before
+the shared policy sees any evidence.
+
+The isolated recovery lab was deliberately replaced, deleting only its owned
+disposable database, and all 130 committed migrations were applied from zero.
+Exact clean source `a93ca464654ddaddb48bc7793ee098259a5ca394` then
+passed the complete controlled-speech coaching flight. The new command was
+rendered at 390px width, its action opened the exact Session, the client
+projection was null, and a separately created neighboring coach saw only their
+own Session. Combined receipt:
+`artifacts/coaching-acceptance/cc1d67e1/fresh-coaching-flight-receipt.json`.
+
+The same source then created 50 distinct verified coaches and 50 private
+practices through product APIs. Across 453 requests there were zero failures:
+50 own-booking/session/relationship/invitation readbacks, 50 deliberate foreign
+relationship 404s, a four-Session atomic series with an exact idempotent retry,
+and a canonical command containing the own Session but never the ring-neighbor
+Session for every coach. Receipt:
+`artifacts/coaching-capacity/capacity-mt9raxb7-3e2630/capacity-rehearsal-receipt.json`.
+
+This is strong local cohort and isolation evidence, but not production-scale
+or novice-human proof. The deliberately concurrent read phase also measured a
+roughly 6-second p95 for the heavyweight runway endpoint. The release remains
+held from claiming a fast first-paint coach home until a focused command read
+can load independently of the complete scheduling/operations payload.
