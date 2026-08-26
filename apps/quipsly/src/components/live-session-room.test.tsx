@@ -1464,6 +1464,49 @@ describe("LiveSessionRoom", () => {
     expect(onExitComplete).toHaveBeenCalledTimes(1);
   });
 
+  it("does not resurrect provider media when safe exit wins a pending Join", async () => {
+    let finishConnect!: () => void;
+    mockLiveKitRoom.connect.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      finishConnect = resolve;
+    }));
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => ({
+      ok: true,
+      status: 200,
+      json: async () => String(input).includes("/api/mobile/capture/rooms/join")
+        ? {
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: "pending-join-token",
+            recordingConsentGranted: true,
+          }
+        : { ok: true },
+    })) as unknown as typeof fetch;
+    const onExitComplete = jest.fn();
+    const view = render(<LiveSessionRoom callRoomId="room-pending-join-exit" captureGroupId="55555555-5555-4555-8555-555555555545" sessionTitle="Pending join exit" kind="coaching" onExitComplete={onExitComplete} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    await waitFor(() => expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(1));
+    view.rerender(<LiveSessionRoom callRoomId="room-pending-join-exit" captureGroupId="55555555-5555-4555-8555-555555555545" sessionTitle="Pending join exit" kind="coaching" onExitComplete={onExitComplete} leaveRequestVersion={1} />);
+    expect(await screen.findByText("Call ended")).toBeInTheDocument();
+    expect(onExitComplete).toHaveBeenCalledTimes(1);
+
+    await act(async () => finishConnect());
+    await waitFor(() => expect(mockLiveKitRoom.disconnect).toHaveBeenCalled());
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalledWith(true, expect.anything());
+    expect(screen.queryByRole("button", { name: "Leave" })).not.toBeInTheDocument();
+  });
+
   it("keeps device testing and conversation available while missing capture identity holds retained recording", async () => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,

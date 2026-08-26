@@ -533,6 +533,7 @@ export function LiveSessionRoom({
   const sourceLockedRef = useRef(sourceLocked);
   const previousSourceLockedRef = useRef(sourceLocked);
   const deviceRefreshGenerationRef = useRef(0);
+  const joinAttemptGenerationRef = useRef(0);
   const suppressPreferenceWriteRef = useRef(false);
   const lastPublishedWatchReceiptRef = useRef("");
   const preflightStreamRef = useRef<MediaStream | null>(null);
@@ -973,12 +974,12 @@ export function LiveSessionRoom({
     try {
       if (permission !== "none") {
         clearPreflightPreview();
-        preflightStreamRef.current = await getUserMediaWithTimeout({
+        const permissionStream = await getUserMediaWithTimeout({
           audio: permission === "microphone" || permission === "media",
           video: permission === "camera" || permission === "media",
         });
-        stopStream(preflightStreamRef.current);
-        preflightStreamRef.current = null;
+        stopStream(permissionStream);
+        if (generation !== deviceRefreshGenerationRef.current) return false;
       }
       const devices = await navigator.mediaDevices.enumerateDevices();
       if (generation !== deviceRefreshGenerationRef.current) return false;
@@ -1312,6 +1313,7 @@ export function LiveSessionRoom({
     // Invalidate any device refresh started when the retained source unlocked.
     // A late preflight result must not overwrite the final safe-leave state.
     deviceRefreshGenerationRef.current += 1;
+    joinAttemptGenerationRef.current += 1;
     clearPreflightPreview();
     intentionalDisconnectRef.current = true;
     roomRef.current?.disconnect(true);
@@ -1357,6 +1359,17 @@ export function LiveSessionRoom({
   }, [leave, leaveRequestVersion]);
 
   const join = useCallback(async () => {
+    const joinAttempt = ++joinAttemptGenerationRef.current;
+    const attemptCancelled = () => joinAttempt !== joinAttemptGenerationRef.current;
+    let attemptRoom: Room | null = null;
+    const abandonAttemptRoom = () => {
+      if (!attemptRoom) return;
+      intentionalDisconnectRef.current = true;
+      void attemptRoom.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
+      void attemptRoom.localParticipant.setCameraEnabled(false).catch(() => undefined);
+      if (roomRef.current === attemptRoom) roomRef.current = null;
+      attemptRoom.disconnect(true);
+    };
     const recoveringCall = callRecoveryAvailable;
     const useCallAudioHere = callAudioModeRef.current === "this-device";
     const shouldJoinMuted = recoveringCall ? microphoneMutedRef.current : joinMuted;
@@ -1383,6 +1396,7 @@ export function LiveSessionRoom({
       const permissionStates = await Promise.all(
         requiredPermissions.map((name) => retainedMediaPermissionState(name)),
       );
+      if (attemptCancelled()) return;
       if (permissionStates.some((state) => state !== "granted")) {
         permissionPreparationAttempted = true;
         const requestedPermission = microphoneNeededNow && cameraNeededNow
@@ -1391,12 +1405,14 @@ export function LiveSessionRoom({
             ? "microphone"
             : "camera";
         const prepared = await refreshDevices(requestedPermission, "manual");
+        if (attemptCancelled()) return;
         selectedMicrophoneId = microphoneIdRef.current;
         selectedCameraId = cameraIdRef.current;
         if (!prepared && microphoneNeededNow && cameraNeededNow) {
           // A busy or unavailable camera must not cost the participant their
           // conversation. Retry only the microphone, then join camera-off.
           const microphonePrepared = await refreshDevices("microphone", "manual");
+          if (attemptCancelled()) return;
           selectedMicrophoneId = microphonePrepared ? microphoneIdRef.current : "";
           selectedCameraId = "";
         } else if (!prepared) {
@@ -1413,6 +1429,7 @@ export function LiveSessionRoom({
         microphoneNeededNow ? (cameraNeededNow ? "media" : "microphone") : "camera",
         "manual",
       );
+      if (attemptCancelled()) return;
       selectedMicrophoneId = microphoneIdRef.current;
       selectedCameraId = cameraIdRef.current;
     }
@@ -1436,6 +1453,7 @@ export function LiveSessionRoom({
     if (recoveringCall && !shouldJoinWithCamera && cameraWanted) {
       joinRecoveryMessages.push("Your camera stayed off.");
     }
+    if (attemptCancelled()) return;
     setStatus("joining");
     setMessage("Joining…");
     setLocalRecordingFallback(false);
@@ -1457,6 +1475,7 @@ export function LiveSessionRoom({
         }),
       });
       const packet = await response.json().catch(() => ({})) as JoinPacket;
+      if (attemptCancelled()) return;
       if (
         response.ok &&
         packet.ok &&
@@ -1483,6 +1502,11 @@ export function LiveSessionRoom({
       }
 
       const room = new Room({ adaptiveStream: true, dynacast: true });
+      attemptRoom = room;
+      if (attemptCancelled()) {
+        abandonAttemptRoom();
+        return;
+      }
       roomRef.current = room;
       room
         .on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => attachRemoteTrack(track))
@@ -1556,6 +1580,10 @@ export function LiveSessionRoom({
         });
 
       await room.connect(packet.serverUrl, packet.participantToken);
+      if (attemptCancelled()) {
+        abandonAttemptRoom();
+        return;
+      }
       let microphonePublication;
       if (microphoneNeededNow && selectedMicrophoneId) {
         try {
@@ -1587,6 +1615,10 @@ export function LiveSessionRoom({
         microphoneMutedRef.current = true;
         setMicrophoneRecoveryHeld(recoveringCall ? microphoneRecoveryHeld : joinWithoutMicrophone);
       }
+      if (attemptCancelled()) {
+        abandonAttemptRoom();
+        return;
+      }
       if (shouldJoinWithCamera && selectedCameraId) {
         try {
           await room.switchActiveDevice("videoinput", selectedCameraId);
@@ -1611,6 +1643,10 @@ export function LiveSessionRoom({
         setCameraMuted(true);
         cameraMutedRef.current = true;
       }
+      if (attemptCancelled()) {
+        abandonAttemptRoom();
+        return;
+      }
       suppressPreferenceWriteRef.current = false;
       room.remoteParticipants.forEach((participant: RemoteParticipant) => {
         participant.trackPublications.forEach((publication: RemoteTrackPublication) => {
@@ -1630,6 +1666,10 @@ export function LiveSessionRoom({
             ? "You’re connected. Recording is off."
             : "You’re connected. Recording is off until everyone chooses to allow it.");
     } catch (error) {
+      if (attemptCancelled()) {
+        abandonAttemptRoom();
+        return;
+      }
       intentionalDisconnectRef.current = true;
       roomRef.current?.disconnect(true);
       roomRef.current = null;
@@ -1950,6 +1990,8 @@ export function LiveSessionRoom({
     };
     navigator.mediaDevices?.addEventListener?.("devicechange", changed);
     return () => {
+      deviceRefreshGenerationRef.current += 1;
+      joinAttemptGenerationRef.current += 1;
       if (refreshTimer) clearTimeout(refreshTimer);
       navigator.mediaDevices?.removeEventListener?.("devicechange", changed);
       meterCleanupRef.current?.();

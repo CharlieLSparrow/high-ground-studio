@@ -4329,3 +4329,19 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - The combined room/dock suite passes 40/40 and full Quipsly TypeScript passes.
   Real MediaRecorder finalization, offline recovery, upload, and cross-Session
   navigation remain explicit flight evidence.
+
+### 2026-08-25 cancellable browser Join
+
+- Browser Join now has a generation-scoped lifecycle. Safe leave or component
+  teardown invalidates permission preparation, token fetch, provider connect,
+  microphone start, and camera start before any late result can update the old
+  room.
+- If an exit wins while LiveKit connect is still pending, Quipsly explicitly
+  disables provider media, disconnects that attempt, and refuses to resurrect
+  connected UI after the room has closed or switched. Temporary permission
+  streams are also stopped before cancellation is evaluated, so a late browser
+  grant cannot leak an unowned preview stream.
+- The combined room/dock suite passes 41/41, including a deliberately delayed
+  provider connection resolved only after safe-exit acknowledgement. Full
+  Quipsly TypeScript and the shared Capture contract pass; real delayed network
+  and browser permission behavior remain flight evidence.
