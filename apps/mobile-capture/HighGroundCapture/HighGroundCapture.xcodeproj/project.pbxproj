@@ -687,7 +687,7 @@
 			repositoryURL = "https://github.com/livekit/client-sdk-swift-xcframework.git";
 			requirement = {
 				kind = exactVersion;
-				version = 2.15.1;
+				version = 2.16.0;
 			};
 		};
 		A0C0A0010000000000000005 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {

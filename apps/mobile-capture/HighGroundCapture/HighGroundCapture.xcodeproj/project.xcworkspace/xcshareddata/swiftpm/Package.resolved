@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/livekit/client-sdk-swift-xcframework.git",
       "state" : {
-        "revision" : "1eecf330f0eb4e5276ca1cd35624d79f9b63db58",
-        "version" : "2.15.1"
+        "revision" : "d0119ce55ca515fafd7abeea8e405342fc10e0bb",
+        "version" : "2.16.0"
       }
     },
     {

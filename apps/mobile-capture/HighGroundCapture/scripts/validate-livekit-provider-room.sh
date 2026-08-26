@@ -10,6 +10,7 @@ PACKAGE_CACHE="${QUIPSLY_LIVEKIT_SPM_CACHE:-/tmp/quipsly-livekit-xcframework-spm
 DERIVED_DATA_PATH="${QUIPSLY_CAPTURE_DERIVED_DATA_PATH:-/private/tmp/quipsly-capture-derived-data}"
 RESOLVE_TIMEOUT_SECONDS="${RESOLVE_TIMEOUT_SECONDS:-900}"
 BUILD_TIMEOUT_SECONDS="${BUILD_TIMEOUT_SECONDS:-1200}"
+LIVEKIT_SWIFT_VERSION="${LIVEKIT_SWIFT_VERSION:-2.16.0}"
 RUN_BUILD=0
 BUILD_DESTINATION="${QUIPSLY_CAPTURE_BUILD_DESTINATION:-generic/platform=iOS Simulator}"
 
@@ -107,13 +108,18 @@ if ! grep -q 'productName = LiveKit;' "$PROJECT/project.pbxproj"; then
   exit 1
 fi
 
+if ! grep -q "version = ${LIVEKIT_SWIFT_VERSION};" "$PROJECT/project.pbxproj"; then
+  echo "ERROR: HighGroundCapture is not pinned to reviewed LiveKit ${LIVEKIT_SWIFT_VERSION}." >&2
+  exit 1
+fi
+
 echo "Validating HighGroundCapture LiveKit provider-room linkage"
 echo "Project: $PROJECT"
 echo "Xcode:   $DEVELOPER_DIR_VALUE"
 echo "Cache:   $PACKAGE_CACHE"
 echo "Derived: $DERIVED_DATA_PATH"
 echo "Resolve timeout: ${RESOLVE_TIMEOUT_SECONDS}s"
-echo "Package: https://github.com/livekit/client-sdk-swift-xcframework.git @ 2.15.1"
+echo "Package: https://github.com/livekit/client-sdk-swift-xcframework.git @ ${LIVEKIT_SWIFT_VERSION}"
 if [[ "$RUN_BUILD" == "1" ]]; then
   echo "Build destination: $BUILD_DESTINATION"
   echo "Build timeout: ${BUILD_TIMEOUT_SECONDS}s"

@@ -401,11 +401,14 @@ requireIncludes(
 );
 requireIncludes(projectText, "https://github.com/livekit/client-sdk-swift-xcframework.git", "LiveKit Swift xcframework package reference");
 requireIncludes(projectText, "kind = exactVersion;", "LiveKit Swift package is pinned exactly");
-requireIncludes(projectText, "version = 2.15.1;", "LiveKit Swift package is pinned to the verified release");
+requireIncludes(projectText, "version = 2.16.0;", "LiveKit Swift package is pinned to the reviewed call-reliability release");
+requireIncludes(swiftPackageResolutionText, '"revision" : "d0119ce55ca515fafd7abeea8e405342fc10e0bb"', "Swift package resolution locks the reviewed LiveKit 2.16.0 revision");
+requireIncludes(swiftPackageResolutionText, '"version" : "2.16.0"', "Swift package resolution locks LiveKit 2.16.0");
 requireIncludes(projectText, "productName = LiveKit;", "LiveKit package product linked");
 requireIncludes(projectText, "LiveKit in Frameworks", "LiveKit product linked into app target frameworks");
 requireIncludes(liveKitProviderRoomValidatorText, "-resolvePackageDependencies", "LiveKit provider-room dependency resolver");
 requireIncludes(liveKitProviderRoomValidatorText, "client-sdk-swift-xcframework.git", "LiveKit provider-room validator checks the binary package path");
+requireIncludes(liveKitProviderRoomValidatorText, 'LIVEKIT_SWIFT_VERSION="${LIVEKIT_SWIFT_VERSION:-2.16.0}"', "LiveKit provider-room validator checks the reviewed dependency version");
 requireIncludes(liveKitProviderRoomValidatorText, "DEVELOPER_DIR_VALUE", "LiveKit provider-room validator uses full Xcode without global xcode-select mutation");
 requireIncludes(liveKitProviderRoomValidatorText, "QUIPSLY_CAPTURE_DERIVED_DATA_PATH", "LiveKit provider-room simulator build uses an explicit disposable DerivedData path");
 requireIncludes(liveKitProviderRoomValidatorText, "run_with_timeout", "LiveKit provider-room validator uses bounded external tool runs");

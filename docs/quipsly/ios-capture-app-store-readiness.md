@@ -328,7 +328,7 @@ Optional legacy LiveKit dependency probe, only if the package strategy changes a
 RUN_LIVEKIT_PROBE=1 LIVEKIT_TIMEOUT_SECONDS=900 scripts/quipsly-mobile-capture-preflight.sh
 ```
 
-The old source-SDK probe is intentionally separate from the app build because package metadata can resolve while binary artifact downloads stall. The active app-target decision is the binary package `client-sdk-swift-xcframework.git @ 2.15.1`, validated through the project-level resolver below. Do not reintroduce half-installed source-SDK package references in the Xcode project.
+The old source-SDK probe is intentionally separate from the app build because package metadata can resolve while binary artifact downloads stall. The active app-target decision is the binary package `client-sdk-swift-xcframework.git @ 2.16.0`, validated through the project-level resolver below. Do not reintroduce half-installed source-SDK package references in the Xcode project.
 
 Optional LiveKit artifact doctor before attaching the Swift package:
 

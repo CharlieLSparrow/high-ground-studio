@@ -134,7 +134,7 @@
   "sdkInventory": [
     { "identity": "app-check", "version": "11.3.1", "role": "Google transitive package; not linked into the signed app bundle" },
     { "identity": "appauth-ios", "version": "2.1.0", "role": "Google OAuth authorization support; bundled manifest declares no collected data" },
-    { "identity": "client-sdk-swift-xcframework", "version": "2.15.1", "role": "LiveKit real-time room media; bundled manifests declare required-reason APIs and no retained collected data" },
+    { "identity": "client-sdk-swift-xcframework", "version": "2.16.0", "role": "LiveKit real-time room media; bundled manifests declare required-reason APIs and no retained collected data" },
     { "identity": "googlesignin-ios", "version": "9.1.0", "role": "Google account sign-in; bundled manifest contributes the additional disclosure answers above" },
     { "identity": "googleutilities", "version": "8.1.2", "role": "Google Sign-In support; bundled manifests declare required-reason APIs and no collected data" },
     { "identity": "gtm-session-fetcher", "version": "3.5.0", "role": "Google Sign-In network support; bundled manifest declares required-reason APIs and no collected data" },

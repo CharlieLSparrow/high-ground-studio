@@ -4157,3 +4157,22 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   dual-architecture iOS Simulator build pass. A real network-loss flight must
   still prove that the other participant sees restored video while the exact
   local source remains continuous and playable.
+
+### 2026-08-25 native call SDK reliability update
+
+- Quipsly Capture now pins the binary LiveKit Swift SDK exactly to `2.16.0`
+  (`d0119ce55ca515fafd7abeea8e405342fc10e0bb`) instead of `2.15.1`. This carries
+  the intervening signaling timeout fix that prevents a lost connection from
+  remaining falsely connected, plus the 2.16 media-session correction for
+  quiet remote audio under software voice processing.
+- The App Store privacy questionnaire, project-level resolver, source probe,
+  binary artifact doctor, WebRTC artifact version, lockfile, and static release
+  contract now agree on the reviewed dependency. The artifact doctor verified
+  the 2.16.0, UniFFI 0.0.6, and WebRTC 144.7559.11 release endpoints.
+- The 1,293-check Capture/App Store contract, release-source gate, exact SwiftPM
+  resolution, and dual-architecture iOS Simulator build pass with LiveKit
+  2.16.0 linked. This does not prove real-device audibility: a physical
+  two-person call must still cover muted join, remote listening, mute/unmute,
+  headset routes, participant-owned recording, and reconnect.
+- Primary references: [LiveKit Swift 2.16.0 changelog](https://github.com/livekit/client-sdk-swift/blob/main/CHANGELOG.md#2160---2026-08-04)
+  and [LiveKit CallKit/audio-session guidance](https://github.com/livekit/client-sdk-swift#integration-with-callkit).

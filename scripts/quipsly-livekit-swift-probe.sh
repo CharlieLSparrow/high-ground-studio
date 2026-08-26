@@ -12,13 +12,13 @@ set -euo pipefail
 #   scripts/quipsly-livekit-swift-probe.sh
 #
 # Optional env:
-#   LIVEKIT_SWIFT_VERSION=2.15.1
+#   LIVEKIT_SWIFT_VERSION=2.16.0
 #   TIMEOUT_SECONDS=900
 #   PROBE_DIR=/tmp/quipsly-livekit-probe
 #   RUN_BUILD=1
 #   KEEP_WORKDIR=1
 
-LIVEKIT_SWIFT_VERSION="${LIVEKIT_SWIFT_VERSION:-2.15.1}"
+LIVEKIT_SWIFT_VERSION="${LIVEKIT_SWIFT_VERSION:-2.16.0}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-900}"
 PROBE_DIR="${PROBE_DIR:-${TMPDIR:-/tmp}/quipsly-livekit-probe}"
 RUN_BUILD="${RUN_BUILD:-0}"
