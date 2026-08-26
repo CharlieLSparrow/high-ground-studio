@@ -161,6 +161,11 @@ struct CapturePhoneShell: View {
                 // Another participant may have joined or granted consent while
                 // this phone was elsewhere. Refresh the narrow Session truth as
                 // Record opens; active capture has its own tighter monitor.
+                // A pending app link already owns an exact canonical room read.
+                // Do not start a competing generic refresh before that priority
+                // navigation has resolved and published its entry receipt.
+                guard deepLinkRouter.pendingSession == nil,
+                      !isRoutingSessionLink else { return }
                 Task { await model.refreshSelectedSessionEntryReadiness() }
             default:
                 break
@@ -169,6 +174,8 @@ struct CapturePhoneShell: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active,
                   !model.usesPreviewData,
+                  deepLinkRouter.pendingSession == nil,
+                  !isRoutingSessionLink,
                   AuthManager.shared.networkActionsAllowed else { return }
             // OAuth and participant actions can complete while Capture is in
             // the background. Reconcile both projections on return without
