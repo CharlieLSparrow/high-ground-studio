@@ -41,9 +41,15 @@ const baseURL = requireLoopbackOrigin(
   "Fresh coaching practice command base URL",
 );
 const target = await loadFreshCoachingAcceptanceContext({ baseURL });
-assert(target, "Fresh coaching practice command requires an exact coaching context.");
+assert(
+  target,
+  "Fresh coaching practice command requires an exact coaching context.",
+);
 const neighborPath = process.env.QUIPSLY_COACHING_ACCEPTANCE_NEIGHBOR_CONTEXT;
-assert(neighborPath, "Fresh coaching practice command requires a neighboring control context.");
+assert(
+  neighborPath,
+  "Fresh coaching practice command requires a neighboring control context.",
+);
 const neighbor = await loadFreshCoachingAcceptanceContext({
   baseURL,
   env: {
@@ -97,18 +103,35 @@ async function signIn(page, context, identity, callbackPath = "/coaching") {
 
 async function readCommand(page) {
   return page.evaluate(async () => {
-    const response = await fetch("/api/coaching/runway", { cache: "no-store" });
+    const response = await fetch("/api/coaching/practice-command", {
+      cache: "no-store",
+    });
     return { status: response.status, payload: await response.json() };
   });
 }
 
 try {
+  let firstRunwayResponseReleased = false;
+  let delayedFirstRunway = false;
+  await pages.coach.route("**/api/coaching/runway", async (route) => {
+    if (!delayedFirstRunway) {
+      delayedFirstRunway = true;
+      await new Promise((resolve) => setTimeout(resolve, 8_000));
+      firstRunwayResponseReleased = true;
+    }
+    await route.continue();
+  });
   await signIn(pages.coach, target, target.identities.coach);
   const commandSurface = pages.coach.getByTestId("coaching-practice-command");
   await commandSurface.waitFor({ timeout: 30_000 });
   await commandSurface
     .getByText("Your practice today", { exact: true })
     .waitFor({ timeout: 20_000 });
+  assert.equal(
+    firstRunwayResponseReleased,
+    false,
+    "The practice command waited for the deliberately delayed complete runway.",
+  );
   await assertNoHorizontalOverflow(
     commandSurface,
     "coach practice command at phone width",
@@ -121,14 +144,20 @@ try {
     "quipsly-coaching-practice-command-v1",
   );
   assert.equal(coachReadback.payload?.practiceCommand?.deterministic, true);
-  assert.equal(coachReadback.payload?.practiceCommand?.externalSideEffects, false);
+  assert.equal(
+    coachReadback.payload?.practiceCommand?.externalSideEffects,
+    false,
+  );
   const targetItem = coachReadback.payload.practiceCommand.items.find(
-    (item) => item.roomId === target.roomId || item.bookingId === target.bookingId,
+    (item) =>
+      item.roomId === target.roomId || item.bookingId === target.bookingId,
   );
   assert(targetItem, "The exact coach command omitted the fresh Session.");
   assert.equal(
     coachReadback.payload.practiceCommand.items.some(
-      (item) => item.roomId === neighbor.roomId || item.bookingId === neighbor.bookingId,
+      (item) =>
+        item.roomId === neighbor.roomId ||
+        item.bookingId === neighbor.bookingId,
     ),
     false,
     "The exact coach command included the neighboring practice.",
@@ -160,14 +189,17 @@ try {
   assert.equal(neighborReadback.payload?.user?.isCoach, true);
   assert.equal(
     neighborReadback.payload?.practiceCommand?.items?.some(
-      (item) => item.roomId === target.roomId || item.bookingId === target.bookingId,
+      (item) =>
+        item.roomId === target.roomId || item.bookingId === target.bookingId,
     ),
     false,
     "The neighboring coach command exposed the target practice.",
   );
   assert(
     neighborReadback.payload?.practiceCommand?.items?.some(
-      (item) => item.roomId === neighbor.roomId || item.bookingId === neighbor.bookingId,
+      (item) =>
+        item.roomId === neighbor.roomId ||
+        item.bookingId === neighbor.bookingId,
     ),
     "The neighboring coach command did not preserve its own exact Session.",
   );
@@ -195,6 +227,7 @@ try {
     bookingId: target.bookingId,
     engagementId: target.engagementId,
     renderedPhoneWidthCommand: true,
+    renderedBeforeCompleteRunway: true,
     renderedNextActionOpenedExactSession: true,
     exactCoachProjectionOperated: true,
     clientCoachCommandAbsent: true,
@@ -212,9 +245,15 @@ try {
   console.log(JSON.stringify(receipt, null, 2));
 } finally {
   await Promise.all([
-    clearRenderedSession(pages.coach, baseURL, "fresh coach").catch(() => undefined),
-    clearRenderedSession(pages.client, baseURL, "fresh client").catch(() => undefined),
-    clearRenderedSession(pages.neighbor, baseURL, "neighbor coach").catch(() => undefined),
+    clearRenderedSession(pages.coach, baseURL, "fresh coach").catch(
+      () => undefined,
+    ),
+    clearRenderedSession(pages.client, baseURL, "fresh client").catch(
+      () => undefined,
+    ),
+    clearRenderedSession(pages.neighbor, baseURL, "neighbor coach").catch(
+      () => undefined,
+    ),
   ]);
   await Promise.all(Object.values(contexts).map((context) => context.close()));
   await browser.close();

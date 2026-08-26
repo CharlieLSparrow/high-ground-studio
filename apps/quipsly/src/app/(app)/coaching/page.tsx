@@ -412,7 +412,10 @@ function PracticeCommandCenter({
             <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-200">
               Your practice today
             </p>
-            <h2 id="practice-command-heading" className="mt-2 font-serif text-3xl font-black">
+            <h2
+              id="practice-command-heading"
+              className="mt-2 font-serif text-3xl font-black"
+            >
               {command.headline}
             </h2>
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#f2dfbf]">
@@ -428,16 +431,24 @@ function PracticeCommandCenter({
               ["Prepare", command.counts.prepare],
               ["Follow-up", command.counts.followUp],
             ].map(([label, count]) => (
-              <div key={label} className="min-w-20 rounded-2xl bg-white/10 px-3 py-2">
+              <div
+                key={label}
+                className="min-w-20 rounded-2xl bg-white/10 px-3 py-2"
+              >
                 <p className="text-xl font-black">{count}</p>
-                <p className="text-[10px] font-black uppercase tracking-wide text-[#f2dfbf]">{label}</p>
+                <p className="text-[10px] font-black uppercase tracking-wide text-[#f2dfbf]">
+                  {label}
+                </p>
               </div>
             ))}
           </div>
         </div>
 
         {command.items.length ? (
-          <ol className="grid gap-3 bg-[#fffaf1] p-4 sm:p-6" aria-label="Prioritized coaching work">
+          <ol
+            className="grid gap-3 bg-[#fffaf1] p-4 sm:p-6"
+            aria-label="Prioritized coaching work"
+          >
             {command.items.map((item, index) => (
               <li
                 key={item.id}
@@ -465,7 +476,8 @@ function PracticeCommandCenter({
                     href={item.href}
                     className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#3d3122] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#5a472f]"
                   >
-                    {item.actionLabel} <ExternalLink size={14} aria-hidden="true" />
+                    {item.actionLabel}{" "}
+                    <ExternalLink size={14} aria-hidden="true" />
                   </a>
                 </div>
               </li>
@@ -474,7 +486,8 @@ function PracticeCommandCenter({
         ) : (
           <div className="bg-emerald-50 px-6 py-5 text-emerald-950">
             <p className="flex items-center gap-2 font-black">
-              <CheckCircle2 size={18} aria-hidden="true" /> Nothing needs repair, preparation, or follow-through right now.
+              <CheckCircle2 size={18} aria-hidden="true" /> Nothing needs
+              repair, preparation, or follow-through right now.
             </p>
           </div>
         )}
@@ -546,8 +559,12 @@ function localDateTimeInputValue(date: Date) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function coachingTimeInputValue(minute: number | null | undefined, fallback: string) {
-  if (typeof minute !== "number" || minute < 0 || minute > 24 * 60) return fallback;
+function coachingTimeInputValue(
+  minute: number | null | undefined,
+  fallback: string,
+) {
+  if (typeof minute !== "number" || minute < 0 || minute > 24 * 60)
+    return fallback;
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
 
@@ -978,6 +995,14 @@ function CalendarPacketPanel({
 
 export default function CoachingPage() {
   const [runway, setRunway] = useState<CoachingRunway | null>(null);
+  const [fastPracticeCommand, setFastPracticeCommand] = useState<NonNullable<
+    CoachingRunway["practiceCommand"]
+  > | null>(null);
+  const [fastPracticeActor, setFastPracticeActor] = useState<{
+    id: string;
+    isCoach: boolean;
+    isStaff: boolean;
+  } | null>(null);
   const [status, setStatus] = useState("Loading coaching runway...");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -1021,7 +1046,10 @@ export default function CoachingPage() {
   const [providerRecordingBusyByRoom, setProviderRecordingBusyByRoom] =
     useState<Record<string, boolean>>({});
   const providerRecordingRequestIds = useRef<Record<string, string>>({});
-  const seriesRequestId = useRef<{ fingerprint: string; requestId: string } | null>(null);
+  const seriesRequestId = useRef<{
+    fingerprint: string;
+    requestId: string;
+  } | null>(null);
   const [transcriptStatusByRoom, setTranscriptStatusByRoom] = useState<
     Record<string, string>
   >({});
@@ -1057,9 +1085,13 @@ export default function CoachingPage() {
   });
   const [setupStatus, setSetupStatus] = useState<string | null>(null);
   const [isSettingUpCoach, setIsSettingUpCoach] = useState(false);
-  const [availabilityStatus, setAvailabilityStatus] = useState<string | null>(null);
+  const [availabilityStatus, setAvailabilityStatus] = useState<string | null>(
+    null,
+  );
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
-  const [publicBookingStatus, setPublicBookingStatus] = useState<string | null>(null);
+  const [publicBookingStatus, setPublicBookingStatus] = useState<string | null>(
+    null,
+  );
   const [publicBookingBusy, setPublicBookingBusy] = useState(false);
   const [availabilityForm, setAvailabilityForm] = useState({
     days: [1, 2, 3, 4, 5],
@@ -1079,7 +1111,27 @@ export default function CoachingPage() {
     currency: "USD",
   });
 
-  async function loadRunway() {
+  async function loadPracticeCommand() {
+    try {
+      const response = await fetch("/api/coaching/practice-command", {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        practiceCommand?: CoachingRunway["practiceCommand"];
+        user?: { id: string; isCoach: boolean; isStaff: boolean };
+      };
+      if (response.ok && payload.ok) {
+        setFastPracticeCommand(payload.practiceCommand ?? null);
+        setFastPracticeActor(payload.user ?? null);
+      }
+    } catch {
+      // The complete runway remains the fail-safe projection. A transient fast
+      // read failure must not erase retained scheduling or Session truth.
+    }
+  }
+
+  async function loadRunway({ refreshCommand = true } = {}) {
     setIsLoading(true);
     setError(null);
     try {
@@ -1092,6 +1144,9 @@ export default function CoachingPage() {
           payload.error || `Runway returned HTTP ${response.status}.`,
         );
       setRunway(payload);
+      if (payload.practiceCommand)
+        setFastPracticeCommand(payload.practiceCommand);
+      if (refreshCommand) void loadPracticeCommand();
       setSetupForm((current) => ({
         ...current,
         coachEmail: current.coachEmail || payload.user?.email || "",
@@ -1117,11 +1172,24 @@ export default function CoachingPage() {
       );
       setAvailabilityForm((current) => ({
         days: ownWindows.length
-          ? [...new Set(ownWindows.map((window) => window.dayOfWeek as number))].sort()
+          ? [
+              ...new Set(
+                ownWindows.map((window) => window.dayOfWeek as number),
+              ),
+            ].sort()
           : current.days,
-        startTime: coachingTimeInputValue(ownWindows[0]?.startMinute, current.startTime),
-        endTime: coachingTimeInputValue(ownWindows[0]?.endMinute, current.endTime),
-        timezone: ownWindows[0]?.timezone || payload.coaches?.[0]?.timezone || current.timezone,
+        startTime: coachingTimeInputValue(
+          ownWindows[0]?.startMinute,
+          current.startTime,
+        ),
+        endTime: coachingTimeInputValue(
+          ownWindows[0]?.endMinute,
+          current.endTime,
+        ),
+        timezone:
+          ownWindows[0]?.timezone ||
+          payload.coaches?.[0]?.timezone ||
+          current.timezone,
       }));
       setStatus("Coaching runway ready");
     } catch (cause) {
@@ -1931,7 +1999,8 @@ export default function CoachingPage() {
   }
 
   useEffect(() => {
-    void loadRunway();
+    void loadPracticeCommand();
+    void loadRunway({ refreshCommand: false });
   }, []);
 
   useEffect(() => {
@@ -2018,8 +2087,15 @@ export default function CoachingPage() {
   async function saveWeeklyAvailability() {
     const startMinute = coachingTimeInputMinutes(availabilityForm.startTime);
     const endMinute = coachingTimeInputMinutes(availabilityForm.endTime);
-    if (!availabilityForm.days.length || startMinute === null || endMinute === null || endMinute <= startMinute) {
-      setAvailabilityStatus("Choose at least one day and an end time after the start time.");
+    if (
+      !availabilityForm.days.length ||
+      startMinute === null ||
+      endMinute === null ||
+      endMinute <= startMinute
+    ) {
+      setAvailabilityStatus(
+        "Choose at least one day and an end time after the start time.",
+      );
       return;
     }
     setIsSavingAvailability(true);
@@ -2042,11 +2118,18 @@ export default function CoachingPage() {
         }),
       });
       const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "Working hours could not be saved.");
-      setAvailabilityStatus("Working hours saved. Suggested times now use this schedule.");
+      if (!response.ok || !payload.ok)
+        throw new Error(payload.error || "Working hours could not be saved.");
+      setAvailabilityStatus(
+        "Working hours saved. Suggested times now use this schedule.",
+      );
       await loadRunway();
     } catch (cause) {
-      setAvailabilityStatus(cause instanceof Error ? cause.message : "Working hours could not be saved.");
+      setAvailabilityStatus(
+        cause instanceof Error
+          ? cause.message
+          : "Working hours could not be saved.",
+      );
     } finally {
       setIsSavingAvailability(false);
     }
@@ -2057,7 +2140,9 @@ export default function CoachingPage() {
     enabled: boolean,
   ) {
     setPublicBookingBusy(true);
-    setPublicBookingStatus(enabled ? "Publishing your open times…" : "Hiding public booking…");
+    setPublicBookingStatus(
+      enabled ? "Publishing your open times…" : "Hiding public booking…",
+    );
     try {
       const response = await fetch("/api/coaching/runway", {
         method: "POST",
@@ -2070,13 +2155,19 @@ export default function CoachingPage() {
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Public booking could not be updated.");
+        throw new Error(
+          payload.error || "Public booking could not be updated.",
+        );
       }
-      setPublicBookingStatus(payload.result?.nextAction || "Public booking updated.");
+      setPublicBookingStatus(
+        payload.result?.nextAction || "Public booking updated.",
+      );
       await loadRunway();
     } catch (cause) {
       setPublicBookingStatus(
-        cause instanceof Error ? cause.message : "Public booking could not be updated.",
+        cause instanceof Error
+          ? cause.message
+          : "Public booking could not be updated.",
       );
     } finally {
       setPublicBookingBusy(false);
@@ -2088,11 +2179,13 @@ export default function CoachingPage() {
     setIsCreating(true);
     setCreateStatus(null);
     setCreatedHandoff(null);
-    const effectiveAction = createForm.recurrence === "ONCE"
-      ? createForm.runwayAction
-      : "create-booking-series";
+    const effectiveAction =
+      createForm.recurrence === "ONCE"
+        ? createForm.runwayAction
+        : "create-booking-series";
     const submitted = { ...createForm, runwayAction: effectiveAction };
-    const frequency = createForm.recurrence === "MONTHLY" ? "MONTHLY" : "WEEKLY";
+    const frequency =
+      createForm.recurrence === "MONTHLY" ? "MONTHLY" : "WEEKLY";
     const intervalCount = createForm.recurrence === "BIWEEKLY" ? 2 : 1;
     const seriesFingerprint = JSON.stringify({
       clientEmail: createForm.clientEmail.trim().toLowerCase(),
@@ -2124,9 +2217,10 @@ export default function CoachingPage() {
         body: JSON.stringify({
           action: effectiveAction,
           ...createForm,
-          requestId: effectiveAction === "create-booking-series"
-            ? seriesRequestId.current?.requestId
-            : undefined,
+          requestId:
+            effectiveAction === "create-booking-series"
+              ? seriesRequestId.current?.requestId
+              : undefined,
           frequency,
           intervalCount,
           occurrenceCount: Number.parseInt(createForm.occurrenceCount, 10) || 6,
@@ -2142,7 +2236,9 @@ export default function CoachingPage() {
         );
       setCreateStatus(payload.result?.nextAction || "Session created.");
       if (
-        ["create-booking-room", "create-booking-series"].includes(submitted.runwayAction) &&
+        ["create-booking-room", "create-booking-series"].includes(
+          submitted.runwayAction,
+        ) &&
         payload.result?.bookingId &&
         payload.result?.callRoomId &&
         payload.result?.clientEntryPath
@@ -2201,6 +2297,8 @@ export default function CoachingPage() {
   }
 
   const counts = runway?.counts;
+  const practiceCommand =
+    fastPracticeCommand ?? runway?.practiceCommand ?? null;
   const readiness = runway?.readiness;
   const bookings = runway?.upcomingBookings ?? [];
   const rooms = runway?.captureRooms ?? [];
@@ -2215,13 +2313,17 @@ export default function CoachingPage() {
       ) ?? rooms[0],
     [rooms],
   );
-  const isStaff = runway?.user?.isStaff === true;
-  const canManageCoaching = isStaff || runway?.user?.isCoach === true;
+  const isStaff =
+    runway?.user?.isStaff === true || fastPracticeActor?.isStaff === true;
+  const canManageCoaching =
+    isStaff ||
+    runway?.user?.isCoach === true ||
+    fastPracticeActor?.isCoach === true;
   const isCoachingClient = Boolean(
     runway?.user?.isClient ||
-      (runway?.user?.id &&
-        (bookings.some((booking) => booking.clientUserId === runway.user?.id) ||
-          bookingHolds.some((hold) => hold.client?.id === runway.user?.id))),
+    (runway?.user?.id &&
+      (bookings.some((booking) => booking.clientUserId === runway.user?.id) ||
+        bookingHolds.some((hold) => hold.client?.id === runway.user?.id))),
   );
   const isClientOnly = isCoachingClient && !canManageCoaching;
   const canScheduleCoaching = Boolean(runway?.user) && !isClientOnly;
@@ -2250,11 +2352,13 @@ export default function CoachingPage() {
   );
   const nextClientHold = bookingHolds.find(
     (hold) =>
-      hold.status === "ACTIVE" && new Date(hold.expiresAt).getTime() > Date.now(),
+      hold.status === "ACTIVE" &&
+      new Date(hold.expiresAt).getTime() > Date.now(),
   );
   const incomingClientHolds = bookingHolds.filter(
     (hold) =>
-      hold.status === "ACTIVE" && new Date(hold.expiresAt).getTime() > Date.now(),
+      hold.status === "ACTIVE" &&
+      new Date(hold.expiresAt).getTime() > Date.now(),
   );
   const journeyAction = (() => {
     if (!canManageCoaching && !isClientOnly) {
@@ -2404,7 +2508,7 @@ export default function CoachingPage() {
               product workflow.
             </p>
           ) : null}
-          {!isLoading && runway?.user && (!runway.practiceCommand || isClientOnly) ? (
+          {!isLoading && runway?.user && (!practiceCommand || isClientOnly) ? (
             <div className="mt-5 flex flex-col gap-4 rounded-2xl border border-violet-200 bg-violet-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-700">
@@ -2487,8 +2591,8 @@ export default function CoachingPage() {
         </div>
       </header>
 
-      {canManageCoaching && runway?.practiceCommand ? (
-        <PracticeCommandCenter command={runway.practiceCommand} />
+      {canManageCoaching && practiceCommand ? (
+        <PracticeCommandCenter command={practiceCommand} />
       ) : null}
 
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-8 pb-10 xl:grid-cols-[1.5fr_0.95fr]">
@@ -2502,8 +2606,8 @@ export default function CoachingPage() {
                 <Clock className="text-violet-700" /> My time requests
               </h2>
               <p className="mt-2 text-sm leading-6 text-violet-900/75">
-                Your coach sees the same request. A private Session appears after
-                they confirm it.
+                Your coach sees the same request. A private Session appears
+                after they confirm it.
               </p>
               <div className="mt-4 space-y-3">
                 {bookingHolds.slice(0, 8).map((hold) => (
@@ -2517,19 +2621,26 @@ export default function CoachingPage() {
                           {hold.offeringTitle || "Coaching session"}
                         </h3>
                         <p className="mt-1 text-sm font-semibold text-[#6f5c42]">
-                          {formatDateTime(hold.scheduledStart)} · {hold.timezone}
+                          {formatDateTime(hold.scheduledStart)} ·{" "}
+                          {hold.timezone}
                         </p>
                         <p className="mt-1 text-xs text-[#7b5c3b]">
                           With {hold.coach?.name || "your coach"}
                         </p>
                       </div>
-                      <StatusPill label={normalize(hold.status)} tone={holdTone(hold.status)} />
+                      <StatusPill
+                        label={normalize(hold.status)}
+                        tone={holdTone(hold.status)}
+                      />
                     </div>
                     <p className="mt-3 text-sm font-semibold leading-6 text-[#6f5c42]">
                       {hold.nextAction}
                     </p>
                     {holdStatusById[hold.id] ? (
-                      <p role="status" className="mt-3 rounded-xl bg-violet-100 p-3 text-xs font-bold text-violet-900">
+                      <p
+                        role="status"
+                        className="mt-3 rounded-xl bg-violet-100 p-3 text-xs font-bold text-violet-900"
+                      >
                         {holdStatusById[hold.id]}
                       </p>
                     ) : null}
@@ -2540,7 +2651,9 @@ export default function CoachingPage() {
                         onClick={() => void cancelClientBookingRequest(hold.id)}
                         className="mt-3 text-xs font-black text-rose-700 underline decoration-rose-300 underline-offset-4 disabled:opacity-50"
                       >
-                        {holdBusyById[hold.id] ? "Canceling…" : "Cancel request"}
+                        {holdBusyById[hold.id]
+                          ? "Canceling…"
+                          : "Cancel request"}
                       </button>
                     ) : null}
                   </div>
@@ -2554,12 +2667,13 @@ export default function CoachingPage() {
               className="scroll-mt-6 rounded-[1.7rem] border border-emerald-200 bg-emerald-50/85 p-6 shadow-sm"
             >
               <h2 className="flex items-center gap-2 text-2xl font-black text-emerald-950">
-                <CalendarIcon className="text-emerald-700" /> Incoming time requests
+                <CalendarIcon className="text-emerald-700" /> Incoming time
+                requests
               </h2>
               <p className="mt-2 text-sm leading-6 text-emerald-900/75">
-                Confirming creates the private Session for both people. Declining
-                reopens the time. Neither action sends email, charges a card, or
-                changes an outside calendar by itself.
+                Confirming creates the private Session for both people.
+                Declining reopens the time. Neither action sends email, charges
+                a card, or changes an outside calendar by itself.
               </p>
               <div className="mt-4 space-y-3">
                 {incomingClientHolds.slice(0, 8).map((hold) => (
@@ -2573,7 +2687,8 @@ export default function CoachingPage() {
                           {hold.offeringTitle || "Coaching session"}
                         </h3>
                         <p className="mt-1 text-sm font-semibold text-[#6f5c42]">
-                          {formatDateTime(hold.scheduledStart)} · {hold.timezone}
+                          {formatDateTime(hold.scheduledStart)} ·{" "}
+                          {hold.timezone}
                         </p>
                         <p className="mt-1 text-xs text-[#7b5c3b]">
                           {hold.client?.name || hold.contactEmail || "Client"}
@@ -2586,7 +2701,9 @@ export default function CoachingPage() {
                           disabled={holdBusyById[hold.id]}
                           className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50"
                         >
-                          {holdBusyById[hold.id] ? "Working…" : "Confirm Session"}
+                          {holdBusyById[hold.id]
+                            ? "Working…"
+                            : "Confirm Session"}
                         </button>
                         <button
                           type="button"
@@ -2599,7 +2716,10 @@ export default function CoachingPage() {
                       </div>
                     </div>
                     {holdStatusById[hold.id] ? (
-                      <p role="status" className="mt-3 rounded-xl bg-emerald-100 p-3 text-xs font-bold text-emerald-900">
+                      <p
+                        role="status"
+                        className="mt-3 rounded-xl bg-emerald-100 p-3 text-xs font-bold text-emerald-900"
+                      >
                         {holdStatusById[hold.id]}
                       </p>
                     ) : null}
@@ -3128,232 +3248,238 @@ export default function CoachingPage() {
                                 href={`/api/coaching/bookings/${encodeURIComponent(booking.id)}/calendar`}
                                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-[#fffaf1]"
                               >
-                                <CalendarIcon size={14} /> Add to Apple or Outlook
+                                <CalendarIcon size={14} /> Add to Apple or
+                                Outlook
                               </a>
-                          {canManageCoaching &&
-                            readiness?.calendarReadiness?.accessOk === true && (
-                              <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
-                                <p className="text-[11px] font-black uppercase tracking-wide text-sky-700">
-                                  Google Calendar
-                                </p>
-                                <p className="mt-1 text-xs font-bold text-[#3d3122]">
-                                  {booking.calendarReadyPacket
-                                    ?.externalCalendarUpdated
-                                    ? "This Session is on your connected calendar."
-                                    : "Add this Session to your connected calendar."}
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void syncGoogleCalendar(booking)
-                                  }
-                                  disabled={
-                                    !canSyncCalendar ||
-                                    bookingBusyById[booking.id]
-                                  }
-                                  className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  <CalendarIcon size={14} />{" "}
-                                  {bookingBusyById[booking.id]
-                                    ? "Updating..."
-                                    : booking.calendarReadyPacket
-                                          ?.externalCalendarUpdated
-                                      ? "Update Google Calendar"
-                                      : "Add to Google Calendar"}
-                                </button>
-                                {booking.status === "CANCELED" &&
-                                booking.calendarReadyPacket
-                                  ?.externalCalendarEventExists ? (
+                              {canManageCoaching &&
+                                readiness?.calendarReadiness?.accessOk ===
+                                  true && (
+                                  <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
+                                    <p className="text-[11px] font-black uppercase tracking-wide text-sky-700">
+                                      Google Calendar
+                                    </p>
+                                    <p className="mt-1 text-xs font-bold text-[#3d3122]">
+                                      {booking.calendarReadyPacket
+                                        ?.externalCalendarUpdated
+                                        ? "This Session is on your connected calendar."
+                                        : "Add this Session to your connected calendar."}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void syncGoogleCalendar(booking)
+                                      }
+                                      disabled={
+                                        !canSyncCalendar ||
+                                        bookingBusyById[booking.id]
+                                      }
+                                      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      <CalendarIcon size={14} />{" "}
+                                      {bookingBusyById[booking.id]
+                                        ? "Updating..."
+                                        : booking.calendarReadyPacket
+                                              ?.externalCalendarUpdated
+                                          ? "Update Google Calendar"
+                                          : "Add to Google Calendar"}
+                                    </button>
+                                    {booking.status === "CANCELED" &&
+                                    booking.calendarReadyPacket
+                                      ?.externalCalendarEventExists ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          void cancelGoogleCalendar(booking)
+                                        }
+                                        disabled={bookingBusyById[booking.id]}
+                                        className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        <CalendarIcon size={14} /> Remove from
+                                        Google Calendar
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                )}
+                              {booking.paymentPolicy === "PAID_ONE_TO_ONE" ? (
+                                <div className="mt-3 rounded-2xl border border-[#e8dcc4] bg-[#fffaf1] p-3">
+                                  <p className="text-[11px] font-black uppercase tracking-wide text-[#b98036]">
+                                    Payment request
+                                  </p>
+                                  <p className="mt-1 text-xs font-bold text-[#3d3122]">
+                                    {booking.paymentPolicy !== "PAID_ONE_TO_ONE"
+                                      ? "No Stripe payment is needed for this session."
+                                      : booking.paymentStatus === "PAID"
+                                        ? "Paid. Stripe receipt evidence is attached."
+                                        : booking.latestCheckoutUrl
+                                          ? "Ready for the client to pay in Stripe Checkout."
+                                          : canManageCoaching
+                                            ? "Create a payment link when the appointment details are correct."
+                                            : "Your coach is preparing the payment link for this session."}
+                                  </p>
+                                  <p className="mt-1 text-[11px] text-[#7b5c3b]">
+                                    Stripe handles the card form. Quipsly keeps
+                                    the appointment, room, and receipt trail
+                                    together.
+                                  </p>
+                                </div>
+                              ) : null}
+                              {canManageCoaching &&
+                                booking.paymentPolicy === "PAID_ONE_TO_ONE" &&
+                                booking.paymentStatus !== "PAID" && (
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      void cancelGoogleCalendar(booking)
+                                      void createCheckoutSession(booking.id)
                                     }
-                                    disabled={bookingBusyById[booking.id]}
-                                    className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    disabled={
+                                      checkoutBusyByBooking[booking.id] ||
+                                      readiness?.stripeConfigured !== true
+                                    }
+                                    className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-[#3d3122] px-3 py-2 text-xs font-black uppercase tracking-wide text-white transition hover:bg-[#5a472f] disabled:cursor-not-allowed disabled:opacity-50"
                                   >
-                                    <CalendarIcon size={14} /> Remove from Google
-                                    Calendar
+                                    <Receipt size={14} />{" "}
+                                    {checkoutBusyByBooking[booking.id]
+                                      ? "Creating..."
+                                      : booking.latestCheckoutUrl
+                                        ? "Create fresh payment link"
+                                        : "Create payment link"}
                                   </button>
-                                ) : null}
-                              </div>
-                            )}
-                          {booking.paymentPolicy === "PAID_ONE_TO_ONE" ? (
-                            <div className="mt-3 rounded-2xl border border-[#e8dcc4] bg-[#fffaf1] p-3">
-                              <p className="text-[11px] font-black uppercase tracking-wide text-[#b98036]">
-                                Payment request
-                              </p>
-                              <p className="mt-1 text-xs font-bold text-[#3d3122]">
-                                {booking.paymentPolicy !== "PAID_ONE_TO_ONE"
-                                  ? "No Stripe payment is needed for this session."
-                                  : booking.paymentStatus === "PAID"
-                                    ? "Paid. Stripe receipt evidence is attached."
-                                    : booking.latestCheckoutUrl
-                                      ? "Ready for the client to pay in Stripe Checkout."
-                                      : canManageCoaching
-                                        ? "Create a payment link when the appointment details are correct."
-                                        : "Your coach is preparing the payment link for this session."}
-                              </p>
-                              <p className="mt-1 text-[11px] text-[#7b5c3b]">
-                                Stripe handles the card form. Quipsly keeps the
-                                appointment, room, and receipt trail together.
-                              </p>
-                            </div>
-                          ) : null}
-                          {canManageCoaching &&
-                            booking.paymentPolicy === "PAID_ONE_TO_ONE" &&
-                            booking.paymentStatus !== "PAID" && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void createCheckoutSession(booking.id)
-                                }
-                                disabled={
-                                  checkoutBusyByBooking[booking.id] ||
-                                  readiness?.stripeConfigured !== true
-                                }
-                                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-[#3d3122] px-3 py-2 text-xs font-black uppercase tracking-wide text-white transition hover:bg-[#5a472f] disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Receipt size={14} />{" "}
-                                {checkoutBusyByBooking[booking.id]
-                                  ? "Creating..."
-                                  : booking.latestCheckoutUrl
-                                    ? "Create fresh payment link"
-                                    : "Create payment link"}
-                              </button>
-                            )}
-                          {booking.latestCheckoutUrl && (
-                            <div className="mt-2 grid grid-cols-1 gap-2">
-                              <a
-                                href={booking.latestCheckoutUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-emerald-800 transition hover:bg-emerald-100"
-                              >
-                                <ExternalLink size={14} />{" "}
-                                {booking.paymentStatus === "PAID"
-                                  ? "Open receipt link"
-                                  : "Pay for this session"}
-                              </a>
-                              {canManageCoaching && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void copyCheckoutLink(
-                                      booking.id,
-                                      booking.latestCheckoutUrl || "",
-                                    )
-                                  }
-                                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-[#fffaf1]"
-                                >
-                                  <Copy size={14} /> Copy payment link
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          {canManageCoaching && (
-                            <details className="mt-2 rounded-xl border border-[#e8dcc4] bg-white/80 p-2">
-                              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-lg px-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
-                                <span>
-                                  {booking.clientInvitationDelivery?.status === "SENT"
-                                    ? "Invitation sent"
-                                    : "Invitation options"}
-                                </span>
-                                <ChevronDown size={15} aria-hidden="true" />
-                              </summary>
-                              <div className="mt-2 border-t border-[#e8dcc4] pt-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void sendClientSessionInvitation({
-                                    bookingId: booking.id,
-                                    callRoomId: booking.callRoomId,
-                                    clientEmail: booking.client?.email,
-                                    clientName: booking.client?.name,
-                                  })
-                                }
-                                disabled={
-                                  invitationBusyByBooking[booking.id] ||
-                                  !booking.callRoomId ||
-                                  !booking.client?.email
-                                }
-                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-800 px-3 py-2 text-xs font-black uppercase tracking-wide text-white transition hover:bg-violet-900 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {invitationBusyByBooking[booking.id] ? (
-                                  <RefreshCw
-                                    size={14}
-                                    className="animate-spin"
-                                  />
-                                ) : (
-                                  <Mail size={14} />
                                 )}
-                                {booking.clientInvitationDelivery?.status === "SENT"
-                                  ? "Resend invite"
-                                  : "Send invite"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void copyClientSessionLink(
-                                    booking.id,
-                                    booking.clientEntryPath,
-                                  )
-                                }
-                                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-[#fffaf1] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-white"
-                              >
-                                <Copy size={14} /> Copy invite link
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void shareClientSessionLink({
-                                    bookingId: booking.id,
-                                    title: booking.title,
-                                    clientEmail: booking.client?.email,
-                                    clientEntryPath: booking.clientEntryPath,
-                                  })
-                                }
-                                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-violet-800 transition hover:bg-violet-100"
-                              >
-                                <Share2 size={14} /> Share invite
-                              </button>
-                              <p className="mt-2 text-[11px] font-bold leading-relaxed text-[#7b5c3b]">
-                                Only your client’s signed-in account can open
-                                this private Session.
-                              </p>
-                              </div>
-                            </details>
-                          )}
-                          {runway?.user?.isStaff === true &&
-                            booking.stripeCustomerEvidence && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void createCustomerPortalSession(booking)
-                                }
-                                disabled={
-                                  portalBusyByBooking[booking.id] ||
-                                  readiness?.coachingCustomerPortalEnabled !==
-                                    true
-                                }
-                                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Receipt size={14} />{" "}
-                                {portalBusyByBooking[booking.id]
-                                  ? "Opening..."
-                                  : "Open portal"}
-                              </button>
-                            )}
-                          {isStaff ? (
-                            <p className="mt-2 text-xs font-bold text-[#7b5c3b]">
-                              {booking.portalNextAction}
-                            </p>
-                          ) : null}
-                          {portalStatusByBooking[booking.id] && (
-                            <p className="mt-2 rounded-xl bg-[#f8f3e6] p-3 text-xs font-bold text-[#7b5c3b]">
-                              {portalStatusByBooking[booking.id]}
-                            </p>
-                          )}
+                              {booking.latestCheckoutUrl && (
+                                <div className="mt-2 grid grid-cols-1 gap-2">
+                                  <a
+                                    href={booking.latestCheckoutUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-emerald-800 transition hover:bg-emerald-100"
+                                  >
+                                    <ExternalLink size={14} />{" "}
+                                    {booking.paymentStatus === "PAID"
+                                      ? "Open receipt link"
+                                      : "Pay for this session"}
+                                  </a>
+                                  {canManageCoaching && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void copyCheckoutLink(
+                                          booking.id,
+                                          booking.latestCheckoutUrl || "",
+                                        )
+                                      }
+                                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-[#fffaf1]"
+                                    >
+                                      <Copy size={14} /> Copy payment link
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                              {canManageCoaching && (
+                                <details className="mt-2 rounded-xl border border-[#e8dcc4] bg-white/80 p-2">
+                                  <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-lg px-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                                    <span>
+                                      {booking.clientInvitationDelivery
+                                        ?.status === "SENT"
+                                        ? "Invitation sent"
+                                        : "Invitation options"}
+                                    </span>
+                                    <ChevronDown size={15} aria-hidden="true" />
+                                  </summary>
+                                  <div className="mt-2 border-t border-[#e8dcc4] pt-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void sendClientSessionInvitation({
+                                          bookingId: booking.id,
+                                          callRoomId: booking.callRoomId,
+                                          clientEmail: booking.client?.email,
+                                          clientName: booking.client?.name,
+                                        })
+                                      }
+                                      disabled={
+                                        invitationBusyByBooking[booking.id] ||
+                                        !booking.callRoomId ||
+                                        !booking.client?.email
+                                      }
+                                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-800 px-3 py-2 text-xs font-black uppercase tracking-wide text-white transition hover:bg-violet-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      {invitationBusyByBooking[booking.id] ? (
+                                        <RefreshCw
+                                          size={14}
+                                          className="animate-spin"
+                                        />
+                                      ) : (
+                                        <Mail size={14} />
+                                      )}
+                                      {booking.clientInvitationDelivery
+                                        ?.status === "SENT"
+                                        ? "Resend invite"
+                                        : "Send invite"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void copyClientSessionLink(
+                                          booking.id,
+                                          booking.clientEntryPath,
+                                        )
+                                      }
+                                      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-[#fffaf1] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-white"
+                                    >
+                                      <Copy size={14} /> Copy invite link
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void shareClientSessionLink({
+                                          bookingId: booking.id,
+                                          title: booking.title,
+                                          clientEmail: booking.client?.email,
+                                          clientEntryPath:
+                                            booking.clientEntryPath,
+                                        })
+                                      }
+                                      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-violet-800 transition hover:bg-violet-100"
+                                    >
+                                      <Share2 size={14} /> Share invite
+                                    </button>
+                                    <p className="mt-2 text-[11px] font-bold leading-relaxed text-[#7b5c3b]">
+                                      Only your client’s signed-in account can
+                                      open this private Session.
+                                    </p>
+                                  </div>
+                                </details>
+                              )}
+                              {runway?.user?.isStaff === true &&
+                                booking.stripeCustomerEvidence && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void createCustomerPortalSession(booking)
+                                    }
+                                    disabled={
+                                      portalBusyByBooking[booking.id] ||
+                                      readiness?.coachingCustomerPortalEnabled !==
+                                        true
+                                    }
+                                    className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <Receipt size={14} />{" "}
+                                    {portalBusyByBooking[booking.id]
+                                      ? "Opening..."
+                                      : "Open portal"}
+                                  </button>
+                                )}
+                              {isStaff ? (
+                                <p className="mt-2 text-xs font-bold text-[#7b5c3b]">
+                                  {booking.portalNextAction}
+                                </p>
+                              ) : null}
+                              {portalStatusByBooking[booking.id] && (
+                                <p className="mt-2 rounded-xl bg-[#f8f3e6] p-3 text-xs font-bold text-[#7b5c3b]">
+                                  {portalStatusByBooking[booking.id]}
+                                </p>
+                              )}
                             </div>
                           </details>
                         </div>
@@ -3450,21 +3576,38 @@ export default function CoachingPage() {
                                 <Clock size={14} /> Save new time
                               </button>
                               {cancelArmedById[booking.id] ? (
-                                <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-rose-950 sm:col-span-2">
-                                  <p className="text-sm font-black">Cancel this Session?</p>
-                                  <p className="mt-1 text-xs font-semibold leading-5">The call link will close for everyone. Notes, recordings, and history stay available.</p>
+                                <div
+                                  role="alert"
+                                  className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-rose-950 sm:col-span-2"
+                                >
+                                  <p className="text-sm font-black">
+                                    Cancel this Session?
+                                  </p>
+                                  <p className="mt-1 text-xs font-semibold leading-5">
+                                    The call link will close for everyone.
+                                    Notes, recordings, and history stay
+                                    available.
+                                  </p>
                                   <div className="mt-3 flex flex-wrap gap-2">
                                     <button
                                       type="button"
-                                      onClick={() => void cancelBooking(booking)}
+                                      onClick={() =>
+                                        void cancelBooking(booking)
+                                      }
                                       disabled={bookingBusyById[booking.id]}
                                       className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-rose-900 px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
                                     >
-                                      <AlertCircle size={14} /> Confirm cancellation
+                                      <AlertCircle size={14} /> Confirm
+                                      cancellation
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => setCancelArmedById((current) => ({ ...current, [booking.id]: false }))}
+                                      onClick={() =>
+                                        setCancelArmedById((current) => ({
+                                          ...current,
+                                          [booking.id]: false,
+                                        }))
+                                      }
                                       disabled={bookingBusyById[booking.id]}
                                       className="min-h-10 rounded-full border border-rose-300 bg-white px-4 text-xs font-black uppercase tracking-wide"
                                     >
@@ -3475,7 +3618,12 @@ export default function CoachingPage() {
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() => setCancelArmedById((current) => ({ ...current, [booking.id]: true }))}
+                                  onClick={() =>
+                                    setCancelArmedById((current) => ({
+                                      ...current,
+                                      [booking.id]: true,
+                                    }))
+                                  }
                                   disabled={
                                     !canChangeSchedule ||
                                     bookingBusyById[booking.id]
@@ -3864,7 +4012,8 @@ export default function CoachingPage() {
                 <summary className="mb-3 flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <h2 className="flex items-center gap-2 text-xl font-black text-[#214531]">
-                      <Users className="text-emerald-700" /> Coaching preferences
+                      <Users className="text-emerald-700" /> Coaching
+                      preferences
                     </h2>
                     <p className="mt-1 text-xs font-bold uppercase tracking-wide text-emerald-700">
                       Optional · Quipsly starts with sensible defaults
@@ -3949,12 +4098,20 @@ export default function CoachingPage() {
                           Working hours
                         </p>
                         <p className="mt-1 text-[11px] font-semibold normal-case tracking-normal text-[#315641]">
-                          Used for suggested times and checked again when a Session is saved.
+                          Used for suggested times and checked again when a
+                          Session is saved.
                         </p>
                       </div>
-                      <Clock size={18} className="text-emerald-700" aria-hidden="true" />
+                      <Clock
+                        size={18}
+                        className="text-emerald-700"
+                        aria-hidden="true"
+                      />
                     </div>
-                    <div className="mt-3 grid grid-cols-7 gap-1" aria-label="Working days">
+                    <div
+                      className="mt-3 grid grid-cols-7 gap-1"
+                      aria-label="Working days"
+                    >
                       {COACHING_DAY_LABELS.map((label, day) => {
                         const selected = availabilityForm.days.includes(day);
                         return (
@@ -3966,7 +4123,9 @@ export default function CoachingPage() {
                               setAvailabilityForm((current) => ({
                                 ...current,
                                 days: selected
-                                  ? current.days.filter((value) => value !== day)
+                                  ? current.days.filter(
+                                      (value) => value !== day,
+                                    )
                                   : [...current.days, day].sort(),
                               }))
                             }
@@ -3989,7 +4148,10 @@ export default function CoachingPage() {
                           step="1800"
                           value={availabilityForm.startTime}
                           onChange={(event) =>
-                            setAvailabilityForm((current) => ({ ...current, startTime: event.target.value }))
+                            setAvailabilityForm((current) => ({
+                              ...current,
+                              startTime: event.target.value,
+                            }))
                           }
                           className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal"
                         />
@@ -4001,7 +4163,10 @@ export default function CoachingPage() {
                           step="1800"
                           value={availabilityForm.endTime}
                           onChange={(event) =>
-                            setAvailabilityForm((current) => ({ ...current, endTime: event.target.value }))
+                            setAvailabilityForm((current) => ({
+                              ...current,
+                              endTime: event.target.value,
+                            }))
                           }
                           className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case tracking-normal"
                         />
@@ -4014,10 +4179,15 @@ export default function CoachingPage() {
                       className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Clock size={14} />
-                      {isSavingAvailability ? "Saving..." : "Save working hours"}
+                      {isSavingAvailability
+                        ? "Saving..."
+                        : "Save working hours"}
                     </button>
                     {availabilityStatus && (
-                      <p role="status" className="mt-2 text-xs font-bold text-[#315641]">
+                      <p
+                        role="status"
+                        className="mt-2 text-xs font-bold text-[#315641]"
+                      >
                         {availabilityStatus}
                       </p>
                     )}
@@ -4030,7 +4200,8 @@ export default function CoachingPage() {
                             Let clients choose a time
                           </p>
                           <p className="mt-1 text-[11px] font-semibold normal-case tracking-normal text-[#315641]">
-                            Shows only your open times on a shareable Quipsly page. Test offerings stay private by default.
+                            Shows only your open times on a shareable Quipsly
+                            page. Test offerings stay private by default.
                           </p>
                         </div>
                         <button
@@ -4053,7 +4224,9 @@ export default function CoachingPage() {
                         >
                           <span
                             className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${
-                              offerings[0].publicBookingEnabled ? "left-6" : "left-1"
+                              offerings[0].publicBookingEnabled
+                                ? "left-6"
+                                : "left-1"
                             }`}
                           />
                         </button>
@@ -4067,7 +4240,10 @@ export default function CoachingPage() {
                         </a>
                       ) : null}
                       {publicBookingStatus ? (
-                        <p role="status" className="mt-2 text-xs font-bold text-[#315641]">
+                        <p
+                          role="status"
+                          className="mt-2 text-xs font-bold text-[#315641]"
+                        >
                           {publicBookingStatus}
                         </p>
                       ) : null}
@@ -4134,9 +4310,7 @@ export default function CoachingPage() {
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#214531] px-4 py-3 text-sm font-black text-white transition hover:bg-[#315641] disabled:cursor-wait disabled:opacity-50"
                   >
                     <ShieldCheck size={16} />{" "}
-                    {isSettingUpCoach
-                      ? "Setting up..."
-                      : "Save preferences"}
+                    {isSettingUpCoach ? "Setting up..." : "Save preferences"}
                   </button>
                   {setupStatus && (
                     <p className="rounded-xl bg-white/80 p-3 text-xs font-bold text-[#315641]">
@@ -4243,7 +4417,9 @@ export default function CoachingPage() {
                             className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
                           >
                             {[4, 6, 8, 10, 12, 16, 20, 24].map((count) => (
-                              <option key={count} value={count}>{count} Sessions</option>
+                              <option key={count} value={count}>
+                                {count} Sessions
+                              </option>
                             ))}
                           </select>
                         </label>
@@ -4252,7 +4428,10 @@ export default function CoachingPage() {
                   ) : null}
                   {createForm.recurrence !== "ONCE" ? (
                     <p className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs font-semibold leading-5 text-violet-950">
-                      Quipsly prepares each private Session at the same local time—even across daylight-saving changes. Consent, recording, transcript, and follow-up stay separate for every meeting.
+                      Quipsly prepares each private Session at the same local
+                      time—even across daylight-saving changes. Consent,
+                      recording, transcript, and follow-up stay separate for
+                      every meeting.
                     </p>
                   ) : null}
                   {suggestedSlots.length > 0 && (
@@ -4261,7 +4440,8 @@ export default function CoachingPage() {
                         Suggested open times
                       </p>
                       <p className="mt-1 text-[11px] font-semibold text-[#7b5c3b]">
-                        Based on your working hours and current Quipsly Sessions. Availability is checked again when you save.
+                        Based on your working hours and current Quipsly
+                        Sessions. Availability is checked again when you save.
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {suggestedSlots.map((slot) => (
@@ -4367,9 +4547,10 @@ export default function CoachingPage() {
                             setCreateForm((current) => ({
                               ...current,
                               runwayAction: event.target.value,
-                              recurrence: event.target.value === "create-booking-hold"
-                                ? "ONCE"
-                                : current.recurrence,
+                              recurrence:
+                                event.target.value === "create-booking-hold"
+                                  ? "ONCE"
+                                  : current.recurrence,
                             }))
                           }
                           className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
@@ -4455,7 +4636,11 @@ export default function CoachingPage() {
                     )}
                   <button
                     type="submit"
-                    disabled={isCreating || !canScheduleCoaching || selectedSlotIssue !== null}
+                    disabled={
+                      isCreating ||
+                      !canScheduleCoaching ||
+                      selectedSlotIssue !== null
+                    }
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#3d3122] px-4 py-3 text-sm font-black text-white transition hover:bg-[#5a472f] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <CalendarIcon size={16} />{" "}
@@ -4516,33 +4701,54 @@ export default function CoachingPage() {
                                   clientName: createdHandoff.clientName,
                                 })
                               }
-                              disabled={invitationBusyByBooking[createdHandoff.bookingId]}
+                              disabled={
+                                invitationBusyByBooking[
+                                  createdHandoff.bookingId
+                                ]
+                              }
                               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
                             >
-                              {invitationBusyByBooking[createdHandoff.bookingId] ? <RefreshCw size={14} className="animate-spin" /> : <Mail size={14} />}
+                              {invitationBusyByBooking[
+                                createdHandoff.bookingId
+                              ] ? (
+                                <RefreshCw size={14} className="animate-spin" />
+                              ) : (
+                                <Mail size={14} />
+                              )}
                               Resend email
                             </button>
                             <button
                               type="button"
-                              onClick={() => void copyClientSessionLink(createdHandoff.bookingId, createdHandoff.clientEntryPath)}
+                              onClick={() =>
+                                void copyClientSessionLink(
+                                  createdHandoff.bookingId,
+                                  createdHandoff.clientEntryPath,
+                                )
+                              }
                               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"
                             >
                               <Copy size={14} /> Copy invite link
                             </button>
                             <button
                               type="button"
-                              onClick={() => void shareClientSessionLink({
-                                bookingId: createdHandoff.bookingId,
-                                title: createdHandoff.title,
-                                clientEmail: createdHandoff.clientEmail,
-                                clientEntryPath: createdHandoff.clientEntryPath,
-                              })}
+                              onClick={() =>
+                                void shareClientSessionLink({
+                                  bookingId: createdHandoff.bookingId,
+                                  title: createdHandoff.title,
+                                  clientEmail: createdHandoff.clientEmail,
+                                  clientEntryPath:
+                                    createdHandoff.clientEntryPath,
+                                })
+                              }
                               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900"
                             >
                               <Share2 size={14} /> Share invite
                             </button>
                             {createdHandoff.engagementPath ? (
-                              <a href={createdHandoff.engagementPath} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950">
+                              <a
+                                href={createdHandoff.engagementPath}
+                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"
+                              >
                                 <Users size={14} /> Open client space
                               </a>
                             ) : null}

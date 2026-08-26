@@ -27,10 +27,12 @@ assert(
     ["127.0.0.1", "localhost", "[::1]"].includes(databaseURL.hostname),
   "Coaching capacity rehearsal requires loopback PostgreSQL.",
 );
-const firebaseHost = process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
+const firebaseHost =
+  process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
 const firebaseURL = new URL(`http://${firebaseHost}`);
 assert(
-  ["127.0.0.1", "localhost", "[::1]"].includes(firebaseURL.hostname) && Boolean(firebaseURL.port),
+  ["127.0.0.1", "localhost", "[::1]"].includes(firebaseURL.hostname) &&
+    Boolean(firebaseURL.port),
   "Coaching capacity rehearsal requires the loopback Firebase Auth emulator.",
 );
 const firebaseProject =
@@ -38,8 +40,14 @@ const firebaseProject =
   process.env.FIREBASE_PROJECT_ID ||
   "quipsly-reef";
 assert.match(firebaseProject, /^[a-z][a-z0-9-]{4,60}$/);
-const requestedCount = Number(process.env.QUIPSLY_COACHING_CAPACITY_COUNT || 50);
-assert(Number.isSafeInteger(requestedCount) && requestedCount >= 2 && requestedCount <= 100);
+const requestedCount = Number(
+  process.env.QUIPSLY_COACHING_CAPACITY_COUNT || 50,
+);
+assert(
+  Number.isSafeInteger(requestedCount) &&
+    requestedCount >= 2 &&
+    requestedCount <= 100,
+);
 
 process.env.DATABASE_URL = databaseURL.toString();
 process.env.FIREBASE_AUTH_EMULATOR_HOST = firebaseURL.host;
@@ -56,13 +64,16 @@ const timings = [];
 function percentile(values, value) {
   if (!values.length) return 0;
   const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * value) - 1)];
+  return sorted[
+    Math.min(sorted.length - 1, Math.ceil(sorted.length * value) - 1)
+  ];
 }
 
 function cookieFrom(response) {
-  const values = typeof response.headers.getSetCookie === "function"
-    ? response.headers.getSetCookie()
-    : [response.headers.get("set-cookie")].filter(Boolean);
+  const values =
+    typeof response.headers.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : [response.headers.get("set-cookie")].filter(Boolean);
   for (const value of values) {
     const pair = String(value).split(";", 1)[0];
     if (/^(?:__Secure-)?session=/.test(pair)) return pair;
@@ -79,7 +90,10 @@ async function request(label, url, options = {}, expectedStatuses = [200]) {
       signal: AbortSignal.timeout(45_000),
     });
   } catch (cause) {
-    const reason = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+    const reason =
+      cause instanceof Error
+        ? `${cause.name}: ${cause.message}`
+        : String(cause);
     timings.push({
       label,
       durationMs: Math.round(performance.now() - startedAt),
@@ -103,7 +117,9 @@ async function request(label, url, options = {}, expectedStatuses = [200]) {
     error: accepted ? null : text.slice(0, 240),
   });
   if (!accepted) {
-    throw new Error(`${label} returned HTTP ${response.status}: ${text.slice(0, 600)}`);
+    throw new Error(
+      `${label} returned HTTP ${response.status}: ${text.slice(0, 600)}`,
+    );
   }
   return { response, payload, text };
 }
@@ -152,7 +168,9 @@ async function createPersona(index) {
 }
 
 async function createPractice(persona) {
-  const scheduledStart = new Date(Date.now() + 86_400_000 + persona.index * 120_000).toISOString();
+  const scheduledStart = new Date(
+    Date.now() + 86_400_000 + persona.index * 120_000,
+  ).toISOString();
   const created = await request("create-booking-room", "/api/coaching/runway", {
     method: "POST",
     headers: {
@@ -217,45 +235,71 @@ async function createSeriesProbe(practice) {
     intervalCount: 1,
     occurrenceCount: 4,
   });
-  const create = () => request("create-booking-series", "/api/coaching/runway", {
-    method: "POST",
-    headers: { "content-type": "application/json", cookie: practice.cookie },
-    body,
-  });
+  const create = () =>
+    request("create-booking-series", "/api/coaching/runway", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: practice.cookie },
+      body,
+    });
   const created = await create();
   assert.equal(created.payload?.ok, true);
   assert.equal(created.payload?.result?.occurrenceCount, 4);
   assert.equal(created.payload?.result?.occurrences?.length, 4);
   assert.equal(created.payload?.result?.idempotentReplay, false);
   const replay = await create();
-  assert.equal(replay.payload?.result?.seriesId, created.payload?.result?.seriesId);
+  assert.equal(
+    replay.payload?.result?.seriesId,
+    created.payload?.result?.seriesId,
+  );
   assert.equal(replay.payload?.result?.idempotentReplay, true);
   assert.deepEqual(
-    replay.payload?.result?.occurrences?.map((occurrence) => occurrence.callRoomId),
-    created.payload?.result?.occurrences?.map((occurrence) => occurrence.callRoomId),
+    replay.payload?.result?.occurrences?.map(
+      (occurrence) => occurrence.callRoomId,
+    ),
+    created.payload?.result?.occurrences?.map(
+      (occurrence) => occurrence.callRoomId,
+    ),
   );
   return {
     seriesId: created.payload.result.seriesId,
     occurrenceCount: created.payload.result.occurrenceCount,
-    callRoomIds: created.payload.result.occurrences.map((occurrence) => occurrence.callRoomId),
+    callRoomIds: created.payload.result.occurrences.map(
+      (occurrence) => occurrence.callRoomId,
+    ),
   };
 }
 
 async function verifyPractice(practice, neighbor) {
   const headers = { cookie: practice.cookie };
-  const [runway, sessions, ownWork, foreignWork, invitationRead] = await Promise.all([
-    request("runway-read", "/api/coaching/runway", { headers }),
-    request("session-list-read", "/api/mobile/capture/sessions", { headers }),
-    request("own-engagement-read", `/api/coaching/engagements/${encodeURIComponent(practice.engagementId)}/work`, { headers }),
-    request("foreign-engagement-refusal", `/api/coaching/engagements/${encodeURIComponent(neighbor.engagementId)}/work`, { headers }, [404]),
-    request("invitation-read", `/api/sessions/${encodeURIComponent(practice.callRoomId)}/invitations`, { headers }),
-  ]);
+  const [runway, sessions, ownWork, foreignWork, invitationRead] =
+    await Promise.all([
+      request("runway-read", "/api/coaching/runway", { headers }),
+      request("session-list-read", "/api/mobile/capture/sessions", { headers }),
+      request(
+        "own-engagement-read",
+        `/api/coaching/engagements/${encodeURIComponent(practice.engagementId)}/work`,
+        { headers },
+      ),
+      request(
+        "foreign-engagement-refusal",
+        `/api/coaching/engagements/${encodeURIComponent(neighbor.engagementId)}/work`,
+        { headers },
+        [404],
+      ),
+      request(
+        "invitation-read",
+        `/api/sessions/${encodeURIComponent(practice.callRoomId)}/invitations`,
+        { headers },
+      ),
+    ]);
   assert.equal(runway.payload?.ok, true);
   assert.equal(sessions.payload?.ok, true);
   assert.equal(ownWork.payload?.ok, true);
   assert.equal(invitationRead.payload?.ok, true);
   assert(
-    runway.payload.upcomingBookings?.some((booking) => booking.id === practice.bookingId),
+    runway.payload.upcomingBookings?.some(
+      (booking) => booking.id === practice.bookingId,
+    ),
     "A coach could not read back the booking created through their own product session.",
   );
   assert.equal(
@@ -275,19 +319,25 @@ async function verifyPractice(practice, neighbor) {
   );
   assert(
     runway.payload.practiceCommand.items?.some(
-      (item) => item.bookingId === practice.bookingId || item.roomId === practice.callRoomId,
+      (item) =>
+        item.bookingId === practice.bookingId ||
+        item.roomId === practice.callRoomId,
     ),
     "A coach practice command omitted its own exact Session.",
   );
   assert.equal(
     runway.payload.practiceCommand.items?.some(
-      (item) => item.bookingId === neighbor.bookingId || item.roomId === neighbor.callRoomId,
+      (item) =>
+        item.bookingId === neighbor.bookingId ||
+        item.roomId === neighbor.callRoomId,
     ),
     false,
     "A coach practice command leaked a neighboring practice.",
   );
   assert(
-    sessions.payload.sessions?.some((session) => session.callRoomId === practice.callRoomId),
+    sessions.payload.sessions?.some(
+      (session) => session.callRoomId === practice.callRoomId,
+    ),
     "A coach could not read back the Session created through their own product session.",
   );
   assert.equal(
@@ -302,6 +352,44 @@ async function verifyPractice(practice, neighbor) {
   );
 }
 
+async function verifyFastPracticeCommand(practice, neighbor) {
+  const commandRead = await request(
+    "practice-command-read",
+    "/api/coaching/practice-command",
+    { headers: { cookie: practice.cookie } },
+  );
+  assert.equal(commandRead.payload?.ok, true);
+  assert.equal(commandRead.payload?.user?.isCoach, true);
+  assert.equal(
+    commandRead.payload?.practiceCommand?.schema,
+    "quipsly-coaching-practice-command-v1",
+    "The bounded first-screen read omitted the canonical command.",
+  );
+  assert(
+    commandRead.payload.practiceCommand.items?.some(
+      (item) =>
+        item.bookingId === practice.bookingId ||
+        item.roomId === practice.callRoomId,
+    ),
+    "The bounded first-screen read omitted the coach's own exact Session.",
+  );
+  assert.equal(
+    commandRead.payload.practiceCommand.items?.some(
+      (item) =>
+        item.bookingId === neighbor.bookingId ||
+        item.roomId === neighbor.callRoomId,
+    ),
+    false,
+    "The bounded first-screen read leaked a neighboring practice.",
+  );
+  assert.deepEqual(commandRead.payload?.boundaries, {
+    exactCoachOnly: true,
+    readOnly: true,
+    externalSideEffects: false,
+    completeRunwayLoaded: false,
+  });
+}
+
 async function main() {
   await request("warm-health", "/api/health");
   const startedAt = Date.now();
@@ -311,12 +399,23 @@ async function main() {
   let error = null;
   try {
     const personas = await Promise.all(
-      Array.from({ length: requestedCount }, (_, index) => createPersona(index)),
+      Array.from({ length: requestedCount }, (_, index) =>
+        createPersona(index),
+      ),
     );
     stage = "create-practices";
     practices = await Promise.all(personas.map(createPractice));
     stage = "create-series-probe";
     seriesProbe = await createSeriesProbe(practices[0]);
+    stage = "verify-fast-first-screen";
+    await Promise.all(
+      practices.map((practice, index) =>
+        verifyFastPracticeCommand(
+          practice,
+          practices[(index + 1) % practices.length],
+        ),
+      ),
+    );
     stage = "verify-isolation";
     await Promise.all(
       practices.map((practice, index) =>
@@ -344,17 +443,24 @@ async function main() {
           occurrenceCount: seriesProbe.occurrenceCount,
           callRoomCount: seriesProbe.callRoomIds.length,
         }
-      : { created: false, idempotentReplay: false, occurrenceCount: 0, callRoomCount: 0 },
+      : {
+          created: false,
+          idempotentReplay: false,
+          occurrenceCount: 0,
+          callRoomCount: 0,
+        },
     stage,
     error,
     elapsedMs: Date.now() - startedAt,
     requestCount: timings.length,
     failedRequestCount: timings.filter((timing) => !timing.ok).length,
     statusCounts: Object.fromEntries(
-      [...new Set(timings.map(({ status }) => String(status)))].sort().map((status) => [
-        status,
-        timings.filter((timing) => String(timing.status) === status).length,
-      ]),
+      [...new Set(timings.map(({ status }) => String(status)))]
+        .sort()
+        .map((status) => [
+          status,
+          timings.filter((timing) => String(timing.status) === status).length,
+        ]),
     ),
     latencyMs: {
       p50: percentile(durations, 0.5),
@@ -364,20 +470,28 @@ async function main() {
     },
     requestKinds: Object.fromEntries(
       [...new Set(timings.map(({ label }) => label))].sort().map((label) => {
-        const values = timings.filter((timing) => timing.label === label).map((timing) => timing.durationMs);
+        const values = timings
+          .filter((timing) => timing.label === label)
+          .map((timing) => timing.durationMs);
         const samples = timings.filter((timing) => timing.label === label);
-        return [label, {
-          count: values.length,
-          failed: samples.filter((timing) => !timing.ok).length,
-          statuses: Object.fromEntries(
-            [...new Set(samples.map(({ status }) => String(status)))].sort().map((status) => [
-              status,
-              samples.filter((timing) => String(timing.status) === status).length,
-            ]),
-          ),
-          p95Ms: percentile(values, 0.95),
-          maximumMs: Math.max(...values),
-        }];
+        return [
+          label,
+          {
+            count: values.length,
+            failed: samples.filter((timing) => !timing.ok).length,
+            statuses: Object.fromEntries(
+              [...new Set(samples.map(({ status }) => String(status)))]
+                .sort()
+                .map((status) => [
+                  status,
+                  samples.filter((timing) => String(timing.status) === status)
+                    .length,
+                ]),
+            ),
+            p95Ms: percentile(values, 0.95),
+            maximumMs: Math.max(...values),
+          },
+        ];
       }),
     ),
     failures: timings
@@ -406,14 +520,24 @@ async function main() {
         error === null && practices.length === requestedCount,
       practiceCommandRingNeighborIsolationProven:
         error === null && practices.length === requestedCount,
+      boundedFirstScreenCommandProjectedForEveryCoach:
+        error === null && practices.length === requestedCount,
+      boundedFirstScreenCommandRingNeighborIsolationProven:
+        error === null && practices.length === requestedCount,
     },
   };
   await mkdir(artifactDirectory, { recursive: true, mode: 0o700 });
-  const receiptPath = path.join(artifactDirectory, "capacity-rehearsal-receipt.json");
-  await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
+  const receiptPath = path.join(
+    artifactDirectory,
+    "capacity-rehearsal-receipt.json",
+  );
+  await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, {
+    mode: 0o600,
+  });
   await chmod(receiptPath, 0o600);
   console.log(JSON.stringify({ ...receipt, receiptPath }, null, 2));
-  if (!receipt.ok) throw new Error(error || "Capacity rehearsal was incomplete.");
+  if (!receipt.ok)
+    throw new Error(error || "Capacity rehearsal was incomplete.");
 }
 
 try {

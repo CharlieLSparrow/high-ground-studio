@@ -4,14 +4,19 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const source = readFileSync(
-  fileURLToPath(new URL("./quipsly-coaching-capacity-rehearsal.mjs", import.meta.url)),
+  fileURLToPath(
+    new URL("./quipsly-coaching-capacity-rehearsal.mjs", import.meta.url),
+  ),
   "utf8",
 );
 
 test("coaching capacity rehearsal remains local, adversarial, and non-credentialed", () => {
   assert.match(source, /QUIPSLY_COACHING_CAPACITY_REHEARSAL/);
   assert.match(source, /QUIPSLY_COACHING_CAPACITY_COUNT \|\| 50/);
-  assert.match(source, /requestedCount >= 2 && requestedCount <= 100/);
+  assert.match(
+    source,
+    /requestedCount\s*>=\s*2\s*&&\s*requestedCount\s*<=\s*100/,
+  );
   assert.match(source, /requireLoopbackOrigin/);
   assert.match(source, /requires loopback PostgreSQL/);
   assert.match(source, /requires the loopback Firebase Auth emulator/);
@@ -24,6 +29,10 @@ test("coaching capacity rehearsal remains local, adversarial, and non-credential
   assert.match(source, /quipsly-coaching-practice-command-v1/);
   assert.match(source, /canonicalPracticeCommandProjectedForEveryCoach/);
   assert.match(source, /practiceCommandRingNeighborIsolationProven/);
+  assert.match(source, /practice-command-read/);
+  assert.match(source, /verify-fast-first-screen/);
+  assert.match(source, /boundedFirstScreenCommandProjectedForEveryCoach/);
+  assert.match(source, /boundedFirstScreenCommandRingNeighborIsolationProven/);
   assert.match(source, /productApiWritesOnly: true/);
   assert.match(source, /directDatabaseWrites: false/);
   assert.match(source, /renderedNoviceExperienceProven: false/);
@@ -32,5 +41,8 @@ test("coaching capacity rehearsal remains local, adversarial, and non-credential
   assert.match(source, /failedRequestCount/);
   assert.match(source, /statusCounts/);
   assert.match(source, /mode: 0o600/);
-  assert.doesNotMatch(source, /console\.log\([^\n]*(?:cookie|idToken|customToken)/i);
+  assert.doesNotMatch(
+    source,
+    /console\.log\([^\n]*(?:cookie|idToken|customToken)/i,
+  );
 });

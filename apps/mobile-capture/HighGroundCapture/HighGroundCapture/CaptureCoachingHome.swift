@@ -155,6 +155,12 @@ struct MobileCoachingRunwayResponse: Codable {
     let bookingHolds: [MobileCoachingBookingHold]?
 }
 
+private struct MobileCoachingPracticeCommandResponse: Codable {
+    let ok: Bool
+    let error: String?
+    let practiceCommand: MobileCoachingPracticeCommand?
+}
+
 struct MobileCoachingPracticeCommand: Codable, Hashable {
     let schema: String
     let generatedAt: String
@@ -488,6 +494,7 @@ struct MobileCoachingAppointmentDraft: Equatable {
 @MainActor
 final class MobileCoachingRunwayClient: ObservableObject {
     @Published private(set) var response: MobileCoachingRunwayResponse?
+    @Published private(set) var practiceCommand: MobileCoachingPracticeCommand?
     @Published private(set) var publicOfferings: [MobilePublicCoachingOffering] = []
     @Published private(set) var latestHandoff: MobileCoachingAppointmentResult?
     @Published private(set) var isLoading = false
@@ -752,6 +759,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
             ] : [],
             bookingHolds: (clientRequestPreview || coachRequestPreview) ? [previewHold] : []
         )
+        practiceCommand = response?.practiceCommand
         publicOfferings = clientRequestPreview ? [
             MobilePublicCoachingOffering(
                 id: "preview-offering",
@@ -795,6 +803,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
         defer { isLoading = false }
         status = "Loading coaching"
         errorMessage = nil
+        Task { [weak self] in
+            await self?.loadPracticeCommand()
+        }
 
         do {
             var request = URLRequest(url: url)
@@ -827,6 +838,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 throw coachingClientError(payload?.error ?? "Quipsly coaching could not load.")
             }
             response = payload
+            practiceCommand = payload.practiceCommand ?? practiceCommand
             isUsingProtectedCache = false
             invitationDeliveries = Dictionary(
                 uniqueKeysWithValues: upcomingBookings.compactMap { booking in
@@ -850,6 +862,29 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 status = "Coaching needs attention"
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    /// Loads the coach's bounded first-useful-screen projection independently
+    /// from the complete scheduling runway. Failure is intentionally silent:
+    /// the retained runway and protected snapshot remain authoritative fallbacks.
+    private func loadPracticeCommand() async {
+        guard let url = URL(string: "\(baseURL)/api/coaching/practice-command") else { return }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
+            guard httpResponse.statusCode < 400,
+                  let payload = try? JSONDecoder().decode(
+                    MobileCoachingPracticeCommandResponse.self,
+                    from: data
+                  ),
+                  payload.ok else { return }
+            practiceCommand = payload.practiceCommand
+        } catch {
+            // The full runway load owns user-visible recovery and error state.
         }
     }
 
@@ -1385,6 +1420,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
 
     private func clearAfterAuthorityFailure() {
         response = nil
+        practiceCommand = nil
         publicOfferings = []
         latestHandoff = nil
         invitationDeliveries = [:]
@@ -1619,8 +1655,7 @@ struct CaptureCoachingHomeView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
 
-                    if client.isCoach,
-                       let practiceCommand = client.response?.practiceCommand {
+                    if let practiceCommand = client.practiceCommand ?? client.response?.practiceCommand {
                         practiceCommandSection(practiceCommand) { commandItem in
                             if let roomID = commandItem.roomId {
                                 Task { await refreshAndOpen(roomID: roomID, navigate: true) }
