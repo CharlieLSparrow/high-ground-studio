@@ -95,7 +95,9 @@ async function latestFreshContext() {
 }
 
 async function loadContext() {
-  const contextPath = contextArgument() || await latestFreshContext();
+  const contextPath = contextArgument()
+    || text(process.env.QUIPSLY_COACHING_ACCEPTANCE_CONTEXT)
+    || await latestFreshContext();
   const resolved = path.resolve(contextPath);
   assert(
     resolved.startsWith(`${ACCEPTANCE_ROOT}${path.sep}`),
@@ -118,7 +120,11 @@ async function restoreFreshCoachAuth(context, password) {
   );
   process.env.FIREBASE_AUTH_EMULATOR_HOST = emulator.host;
   const identity = context.identities.coach;
-  const app = initializeApp({ projectId: "quipsly-reef" }, `fresh-session-audio-polish-${Date.now()}`);
+  const firebaseProject = text(process.env.QUIPSLY_LOCAL_FIREBASE_PROJECT)
+    || text(process.env.FIREBASE_PROJECT_ID)
+    || "quipsly-reef";
+  assert(/^[a-z][a-z0-9-]{4,60}$/.test(firebaseProject), "Fresh Session audio polish Firebase project is invalid.");
+  const app = initializeApp({ projectId: firebaseProject }, `fresh-session-audio-polish-${Date.now()}`);
   try {
     const auth = getAuth(app);
     const fields = {

@@ -12,6 +12,9 @@ test("fresh Session audio polish operation protects source truth and acceptance 
   assert.match(subject, /QUIPSLY_FRESH_SESSION_AUDIO_POLISH === "1"/);
   assert.match(subject, /Fresh Session audio polish refuses a non-local PostgreSQL database/);
   assert.match(subject, /Fresh Session audio polish requires the loopback Firebase Auth emulator/);
+  assert.match(subject, /QUIPSLY_COACHING_ACCEPTANCE_CONTEXT/);
+  assert.match(subject, /QUIPSLY_LOCAL_FIREBASE_PROJECT/);
+  assert.match(subject, /Fresh Session audio polish Firebase project is invalid/);
   assert.match(subject, /freshCoachAuthRestoredToEphemeralEmulator: true/);
   assert.match(subject, /Your recordings are safe and ready/);
   assert.match(subject, /name: \/\^\(Check audio now\|Try again\)\$\//);

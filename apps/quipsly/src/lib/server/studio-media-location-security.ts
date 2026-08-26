@@ -45,6 +45,9 @@ export function configuredLocalStudioMediaRoots(extraEnvNames: string[] = []) {
   return [
     ...DEFAULT_LOCAL_STUDIO_MEDIA_ROOTS,
     ...configuredPaths("QUIPSLY_LOCAL_MEDIA_ROOTS"),
+    ...configuredPaths("QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT"),
+    ...configuredPaths("QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT"),
+    ...configuredPaths("QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT"),
     ...configuredJsonPaths("QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON"),
     ...extraEnvNames.flatMap(configuredPaths),
   ]
