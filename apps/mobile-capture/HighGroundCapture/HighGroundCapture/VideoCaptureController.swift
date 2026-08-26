@@ -175,6 +175,7 @@ final class VideoCaptureController: ObservableObject {
     private var pausedCapture: PausedCapture?
     private var pendingSwitchPosition: VideoCaptureCameraPosition?
     private var observers: [NSObjectProtocol] = []
+    private var backgroundFinalizationTaskID: UIBackgroundTaskIdentifier = .invalid
 
     /// Recorder-owned navigation truth survives SwiftUI/model reconstruction
     /// while a protected movie group is active or paused.
@@ -197,7 +198,7 @@ final class VideoCaptureController: ObservableObject {
         }
         observers.append(
             NotificationCenter.default.addObserver(
-                forName: UIApplication.willResignActiveNotification,
+                forName: UIApplication.didEnterBackgroundNotification,
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
@@ -1030,11 +1031,39 @@ final class VideoCaptureController: ObservableObject {
     }
 
     private func handleAppBackgrounding() async {
+        beginBackgroundFinalizationTask()
+        defer { endBackgroundFinalizationTask() }
+
         if state.isActive {
             await stopIfActive(reason: .appBackgrounded)
+            if state == .finalizing {
+                _ = await waitUntilTerminal()
+            }
         } else {
             await shutdownPreviewAndClearProfile()
         }
+    }
+
+    private func beginBackgroundFinalizationTask() {
+        guard backgroundFinalizationTaskID == .invalid else { return }
+        backgroundFinalizationTaskID = UIApplication.shared.beginBackgroundTask(
+            withName: "QuipslyVideoFinalization"
+        ) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.state == .finalizing {
+                    self.safetyMessage = "iOS is closing the app while the movie is still finalizing. The protected source remains in Library for recovery."
+                }
+                self.endBackgroundFinalizationTask()
+            }
+        }
+    }
+
+    private func endBackgroundFinalizationTask() {
+        guard backgroundFinalizationTaskID != .invalid else { return }
+        let taskID = backgroundFinalizationTaskID
+        backgroundFinalizationTaskID = .invalid
+        UIApplication.shared.endBackgroundTask(taskID)
     }
 
     private func handleAccountChange() async {
@@ -1088,7 +1117,12 @@ final class VideoCaptureController: ObservableObject {
         captureSystemPressure = .unknown
         estimatedAvailableMinutes = nil
         if !state.isActive {
-            state = .idle
+            if pausedCapture != nil {
+                state = .paused
+                safetyMessage = "Capture group paused. Return to Quipsly to review the camera and explicitly resume."
+            } else {
+                state = .idle
+            }
         }
     }
 

@@ -4237,3 +4237,22 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   deferred flight still requires a physical CallKit reset plus cross-Session
   navigation to prove the original Session alone offers Rejoin and the retained
   source remains playable.
+
+### 2026-08-25 honest iPhone video lifecycle
+
+- Retained video no longer treats every temporary loss of app focus as actual
+  backgrounding. Control Center and system overlays produce inactive-state
+  transitions, so Quipsly now closes video only after UIKit reports that the
+  app entered the background.
+- Actual background entry obtains a bounded UIKit background task, requests
+  AVFoundation movie closure, and waits for the delegate-confirmed local
+  validation boundary before releasing that execution lease. Expiration stays
+  visible as recovery state rather than claiming a complete source.
+- A paused multi-fragment capture group now remains Paused after its camera
+  preview shuts down in the background. Returning to Quipsly can explicitly
+  re-prepare the camera and resume the same group instead of losing that
+  continuation behind an incorrect Idle state.
+- This follows Apple's distinction between temporary focus loss and actual
+  background entry, plus its bounded background-execution API. Physical proof
+  remains in the deferred ledger because Simulator lifecycle and compilation
+  cannot prove camera hardware closure or recoverable movie bytes.

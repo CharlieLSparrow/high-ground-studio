@@ -1224,6 +1224,22 @@ for (const needle of [
   requireIncludes(videoCaptureControllerText, needle, "durable video controller");
 }
 for (const needle of [
+  "UIApplication.didEnterBackgroundNotification",
+  "beginBackgroundTask(",
+  'withName: "QuipslyVideoFinalization"',
+  "if state == .finalizing",
+  "_ = await waitUntilTerminal()",
+  "if pausedCapture != nil",
+  'state = .paused',
+]) {
+  requireIncludes(videoCaptureControllerText, needle, "background-safe video finalization and paused-group recovery");
+}
+assert(
+  !videoCaptureControllerText.includes("UIApplication.willResignActiveNotification"),
+  "A temporary inactive overlay must not be treated as actual backgrounding and terminate a retained movie.",
+  { forbidden: "UIApplication.willResignActiveNotification" },
+);
+for (const needle of [
   "AVCaptureMovieFileOutput",
   "videoRotationAngleForHorizonLevelCapture",
   "movieFragmentInterval",
