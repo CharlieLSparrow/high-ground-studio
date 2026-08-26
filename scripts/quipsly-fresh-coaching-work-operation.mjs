@@ -74,9 +74,9 @@ try {
   const clientPassword = readRetainedQAPassword({ service: target.keychainService, account: target.identities.client.email });
   assert(clientPassword, "Fresh client Keychain password is unavailable.");
   await signInThroughRenderedLogin({ page: clientPage, baseURL, identity: target.identities.client, password: clientPassword, callbackPath: engagementPath });
-  await clientPage.getByText("Engagement-scoped privacy", { exact: true }).waitFor({ timeout: 30_000 });
-  await clientPage.getByRole("heading", { name: "Sessions", exact: true }).waitFor();
-  await clientPage.getByRole("link", { name: "Open coaching room", exact: true }).waitFor();
+  await clientPage.getByText("Private to the people shown here", { exact: true }).waitFor({ timeout: 30_000 });
+  await clientPage.getByRole("heading", { name: "Session history", exact: true }).waitFor();
+  await clientPage.getByRole("link", { name: /^(Prepare|Join|Review) session$/ }).first().waitFor();
   await assertNoHorizontalOverflow(clientPage.locator("main").last(), "fresh client coaching home at phone width");
 
   const sharedNoteId = await createWork(clientPage, { kind: "NOTE", title: titles.sharedNote, body: "Keep this reflection visible to both people across Sessions." });
@@ -85,9 +85,13 @@ try {
   const goalId = await createWork(clientPage, { kind: "GOAL", title: titles.goal, body: "Keep one durable outcome visible across the relationship." });
 
   const chatMessage = `Fresh relationship message ${nonce}: keep the next step visible.`;
-  await clientPage.getByPlaceholder("Write to everyone here…").fill(chatMessage);
-  await clientPage.getByRole("button", { name: "Send collaboration message", exact: true }).click();
-  await clientPage.getByText(chatMessage, { exact: true }).waitFor({ timeout: 20_000 });
+  const clientConversation = clientPage.getByRole("region", { name: "Conversation" });
+  const clientMessage = clientConversation.locator("article").filter({ hasText: chatMessage });
+  if (!(await clientMessage.count())) {
+    await clientConversation.getByPlaceholder("Write to everyone here…").fill(chatMessage);
+    await clientConversation.getByRole("button", { name: "Send collaboration message", exact: true }).click();
+  }
+  await clientMessage.first().waitFor({ timeout: 20_000 });
 
   const coachPassword = readRetainedQAPassword({ service: target.keychainService, account: target.identities.coach.email });
   assert(coachPassword, "Fresh coach Keychain password is unavailable.");
@@ -98,20 +102,24 @@ try {
   await coachWork.getByText(titles.task, { exact: true }).waitFor();
   await coachWork.getByText(titles.goal, { exact: true }).waitFor();
   assert.equal(await coachWork.getByText(titles.privateNote, { exact: true }).count(), 0, "Coach saw the client's private note.");
-  await coachPage.getByText(chatMessage, { exact: true }).waitFor();
+  await coachPage.getByRole("region", { name: "Conversation" }).locator("article").filter({ hasText: chatMessage }).first().waitFor();
   await assertNoHorizontalOverflow(coachPage.locator("main").last(), "fresh coach coaching home at phone width");
 
   const taskCard = coachWork.locator("article").filter({ hasText: titles.task });
-  const [completeResponse] = await Promise.all([
-    coachPage.waitForResponse((candidate) => candidate.request().method() === "PATCH" && new URL(candidate.url()).pathname === `/api/coaching/engagements/${target.engagementId}/work`),
-    taskCard.getByRole("button", { name: "Complete", exact: true }).click(),
-  ]);
-  const completePacket = await completeResponse.json().catch(() => null);
-  assert(completeResponse.ok() && completePacket?.ok === true, `Cross-account task completion failed: ${JSON.stringify(completePacket)}`);
+  const completeButton = taskCard.getByRole("button", { name: "Complete", exact: true });
+  if (await completeButton.count()) {
+    const [completeResponse] = await Promise.all([
+      coachPage.waitForResponse((candidate) => candidate.request().method() === "PATCH" && new URL(candidate.url()).pathname === `/api/coaching/engagements/${target.engagementId}/work`),
+      completeButton.click(),
+    ]);
+    const completePacket = await completeResponse.json().catch(() => null);
+    assert(completeResponse.ok() && completePacket?.ok === true, `Cross-account task completion failed: ${JSON.stringify(completePacket)}`);
+  }
   await taskCard.getByText("done", { exact: true }).waitFor();
   await clientPage.reload({ waitUntil: "domcontentloaded" });
-  await clientPage.locator("article").filter({ hasText: titles.task }).getByText("done", { exact: true }).waitFor({ timeout: 20_000 });
-  await clientPage.getByText(titles.privateNote, { exact: true }).waitFor();
+  const refreshedClientWork = clientPage.getByRole("region", { name: "Notes, tasks, and goals" });
+  await refreshedClientWork.locator("article").filter({ hasText: titles.task }).getByText("done", { exact: true }).waitFor({ timeout: 20_000 });
+  await refreshedClientWork.getByText(titles.privateNote, { exact: true }).waitFor();
 
   const readback = await prisma.coachingEngagement.findUniqueOrThrow({
     where: { id: target.engagementId },
