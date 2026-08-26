@@ -4366,3 +4366,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   consent, and stop suites pass (27 tests). Full Quipsly TypeScript and the
   shared Capture contract pass. Real browser schema upgrade, account switching,
   OPFS recovery, and exact-source playback remain flight-ledger evidence.
+
+### 2026-08-25 chunk-write failure retains finalization ownership
+
+- A failed durable browser chunk write no longer changes the recorder directly
+  from Recording to Error. Error was not a source-locked state, so the outer
+  dock could previously interpret that intermediate failure as permission to
+  unmount before `MediaRecorder.onstop` closed the writer and hashed the local
+  file.
+- The failure now enters the same explicit Stopping path as device, storage,
+  encoder, consent, and human stop actions. If the failure arrives in the final
+  `dataavailable` event after MediaRecorder is already inactive, it preserves
+  the existing Stopping lock while `onstop` remains the sole owner of writer
+  close, checksum, ledger state, STOP receipt, and recovery presentation.
+- Seven focused recovery/guardian suites pass (39 tests), including the
+  status-ownership source contract, and full Quipsly TypeScript passes. A real
+  induced OPFS failure followed by exact-source recovery and playback remains
+  explicit flight evidence.

@@ -2036,13 +2036,22 @@ export function BrowserSourceRecorder({
             lastDurableChunkAtRef.current = Date.now();
           })
           .catch((error) => {
-            setStatus("error");
-            setMessage(
-              error instanceof Error
-                ? error.message
-                : "A local source chunk could not be persisted.",
-            );
-            if (recorder.state !== "inactive") recorder.stop();
+            const detail = error instanceof Error
+              ? error.message
+              : "A local source chunk could not be persisted.";
+            setOperationalIssue({ kind: "encoder-stalled", detail });
+            if (recorder.state !== "inactive") {
+              stop(
+                `${detail} Quipsly is stopping safely and preserving every committed local chunk.`,
+              );
+            } else {
+              // The final dataavailable event can fail after stop() has already
+              // made MediaRecorder inactive. Keep the existing stopping lock;
+              // onstop still owns writer close, hash, ledger, and recovery UI.
+              setMessage(
+                `${detail} Quipsly is still protecting the committed local source.`,
+              );
+            }
           });
       };
       recorder.onstop = () => {

@@ -25,4 +25,19 @@ describe("browser source stop confidence", () => {
     expect(source).toContain("latestRecordingReviewAction.detail");
     expect(source).toContain("latestRecordingReviewAction.label");
   });
+
+  it("keeps the safe-leave lock through a durable chunk write failure", () => {
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/browser-source-recorder.tsx"),
+      "utf8",
+    );
+    const start = source.indexOf("recorder.ondataavailable =");
+    const end = source.indexOf("recorder.onstop =", start);
+    const handler = source.slice(start, end);
+
+    expect(handler).toContain('setOperationalIssue({ kind: "encoder-stalled", detail })');
+    expect(handler).toContain("Quipsly is stopping safely and preserving every committed local chunk.");
+    expect(handler).toContain("onstop still owns writer close, hash, ledger, and recovery UI");
+    expect(handler).not.toContain('setStatus("error")');
+  });
 });
