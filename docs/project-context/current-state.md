@@ -2,6 +2,23 @@
 
 Date: 2026-08-24
 
+## Finite recurring coaching Session checkpoint
+
+- The ordinary Coaching scheduler can create 2–24 weekly, every-two-weeks, or
+  monthly Sessions as one durable, finite series. Each occurrence retains its
+  own appointment, call room, consent, recording, transcript, and follow-up
+  lifecycle while sharing the exact Coaching relationship.
+- Creation is atomic and idempotent under one intent-bound request identity;
+  exact retry returns the same series and rooms. Timezone-aware local-date
+  calculation preserves wall-clock time through daylight-saving changes, and
+  the database independently enforces series and occurrence integrity.
+- A 50-practice recovery-lab rehearsal created and exactly replayed a four-room
+  series with zero unexpected failures. A separate rendered fresh-user journey
+  selected Weekly / 4 Sessions through the normal form, accepted the first
+  client invitation, and read back all four canonical rooms. This is local
+  operated evidence, not calendar-provider, physical-device, or novice-human
+  acceptance.
+
 ## Cloud coaching recording render checkpoint
 
 - The clean release train passed the complete local HGO/Quipsly conductor and

@@ -19,6 +19,7 @@ import {
 } from "./lib/retained-qa-browser.mjs";
 
 const enabled = process.env.QUIPSLY_FRESH_COACHING_START_OPERATION === "1";
+const seriesMode = process.env.QUIPSLY_FRESH_COACHING_SERIES_OPERATION === "1";
 const baseURL = requireLoopbackOrigin(
   process.env.QUIPSLY_LOCAL_BASE_URL || "http://127.0.0.1:3012",
   "Fresh coaching acceptance base URL",
@@ -235,6 +236,19 @@ try {
   await appointment
     .getByLabel("Duration", { exact: true })
     .selectOption("45");
+  if (seriesMode) {
+    await appointment
+      .locator("label")
+      .filter({ hasText: /^\s*Repeat\s*/ })
+      .locator("select")
+      .selectOption("WEEKLY");
+    await appointment
+      .locator("label")
+      .filter({ hasText: /^\s*Number of Sessions\s*/ })
+      .locator("select")
+      .selectOption("4");
+    evidence.recurringSeriesSelectedThroughRenderedForm = true;
+  }
   const [invitationResponse] = await Promise.all([
     coachPage.waitForResponse(
       (candidate) => {
@@ -247,7 +261,10 @@ try {
       { timeout: 20_000 },
     ).catch(() => null),
     appointment
-      .getByRole("button", { name: "Schedule and send invite", exact: true })
+      .getByRole("button", {
+        name: seriesMode ? "Schedule 4 Sessions" : "Schedule and send invite",
+        exact: true,
+      })
       .click(),
   ]);
   const handoff = coachPage.locator(
@@ -260,6 +277,11 @@ try {
       exact: true,
     })
     .waitFor();
+  if (seriesMode) {
+    await handoff
+      .getByText("4-Session series scheduled", { exact: true })
+      .waitFor();
+  }
   await assertNoHorizontalOverflow(
     handoff,
     "fresh client handoff at phone width",
@@ -461,6 +483,8 @@ try {
           coachUserId: true,
           clientUserId: true,
           timezone: true,
+          seriesId: true,
+          seriesSequence: true,
         },
       },
       participants: {
@@ -510,6 +534,44 @@ try {
     false,
   );
   assert.equal(room.booking.timezone, "America/Denver");
+  if (seriesMode) {
+    assert(room.booking.seriesId, "Rendered recurring scheduling did not bind the first Session to a series.");
+    assert.equal(room.booking.seriesSequence, 1);
+    const series = await prisma.coachingBookingSeries.findUniqueOrThrow({
+      where: { id: room.booking.seriesId },
+      select: {
+        frequency: true,
+        intervalCount: true,
+        occurrenceCount: true,
+        timezone: true,
+        bookings: {
+          orderBy: { seriesSequence: "asc" },
+          select: { id: true, seriesSequence: true, callRoom: { select: { id: true } } },
+        },
+      },
+    });
+    assert.deepEqual(
+      {
+        frequency: series.frequency,
+        intervalCount: series.intervalCount,
+        occurrenceCount: series.occurrenceCount,
+        timezone: series.timezone,
+        sequences: series.bookings.map((booking) => booking.seriesSequence),
+        roomCount: series.bookings.filter((booking) => booking.callRoom).length,
+      },
+      {
+        frequency: "WEEKLY",
+        intervalCount: 1,
+        occurrenceCount: 4,
+        timezone: "America/Denver",
+        sequences: [1, 2, 3, 4],
+        roomCount: 4,
+      },
+    );
+    evidence.recurringSeriesPersistedAtomically = true;
+    evidence.recurringSeriesId = room.booking.seriesId;
+    evidence.recurringSeriesOccurrenceCount = 4;
+  }
   assert.equal(invitationReadback.status, "ACCEPTED");
   assert.equal(invitationReadback.acceptedByUserId, clientUser?.id);
   assert.equal(invitationReadback.tokenHash, null);
@@ -556,6 +618,8 @@ try {
     roomId: evidence.roomId,
     bookingId: evidence.bookingId,
     engagementId: evidence.engagementId,
+    recurringSeriesId: evidence.recurringSeriesId || null,
+    recurringSeriesOccurrenceCount: evidence.recurringSeriesOccurrenceCount || 1,
     clientEntryPath: evidence.clientEntryPath,
     identities: {
       coach: {
@@ -580,6 +644,7 @@ try {
       localMailboxVerificationAdapterUsed: true,
       localInvitationDeliveryBoundaryUsed: true,
       externalInvitationMessageSent: false,
+      recurringSeriesMode: seriesMode,
       invitationTokenWrittenToArtifact: false,
     },
   };

@@ -2348,3 +2348,37 @@ This combined checkpoint remains local automation. It does not prove 50
 simultaneous calls or uploads, production scale, real email delivery, natural
 human speech, physical iPhone behavior, human listening, or minimally
 instructed novice success.
+
+## Finite recurring Session scheduling checkpoint — 2026-08-26
+
+Coaches can now schedule a conventional finite Session series from the ordinary
+Coaching form. The first production slice supports weekly, every-two-weeks, and
+monthly cadence with 2–24 occurrences. Every occurrence is a normal independent
+appointment, booking, call room, participant set, consent decision, recording,
+transcript, follow-up state, and calendar handoff; all occurrences retain one
+durable Coaching relationship instead of creating duplicate clients.
+
+Series creation is one serializable, idempotent transaction. A stable request
+identity and intent checksum make an uncertain network retry return the exact
+same series and rooms, while changed intent fails closed. The database also
+enforces occurrence, duration, and booking-series integrity independently of
+the UI. Local-date recurrence is calculated in the selected IANA timezone, so
+weekly Sessions keep their wall-clock time across daylight-saving changes and
+monthly January 31 does not drift through February.
+
+The isolated cohort rehearsal on exact source `cac8ab17` created a four-Session
+weekly series and replayed the exact request without adding another series or
+room. The complete 50-practice run made 453 requests with zero unexpected
+failures and retained all ring-neighbor 404 isolation checks. Receipt:
+`artifacts/coaching-capacity/capacity-mt9ojq68-5c2ebf/capacity-rehearsal-receipt.json`.
+
+The rendered fresh-user operation then selected **Weekly** and **4** through the
+ordinary form, observed the four-Session handoff, accepted the first invitation
+as the separate client, and independently read back one canonical series with
+sequences 1–4 and four call rooms. Receipt:
+`artifacts/coaching-acceptance/dae96d9d/fresh-start-context.json`.
+
+This proves local production-shaped persistence, retry safety, rendered
+discoverability, and first-invitation client entry. It does not claim real
+calendar-provider recurrence, real mailbox delivery, physical-device use, or
+minimally instructed human comprehension.
