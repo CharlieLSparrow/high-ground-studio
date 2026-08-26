@@ -5642,7 +5642,7 @@ private struct CaptureTaskEditSheet: View {
     @State private var detail: String
     @State private var includesDueDate: Bool
     @State private var dueAt: Date
-    @State private var timezoneID: String
+    @State private var confirmsRemoval = false
 
     init(
         client: CaptureTodayClient,
@@ -5653,7 +5653,6 @@ private struct CaptureTaskEditSheet: View {
         self.task = task
         self.onSaved = onSaved
         let existingDue = captureTaskDate(task.dueAt)
-        let phoneTimezone = TimeZone.autoupdatingCurrent
         let defaultDue = Calendar.current.date(
             bySettingHour: 9,
             minute: 0,
@@ -5664,17 +5663,15 @@ private struct CaptureTaskEditSheet: View {
         _detail = State(initialValue: task.detail ?? "")
         _includesDueDate = State(initialValue: existingDue != nil)
         _dueAt = State(initialValue: existingDue ?? defaultDue)
-        _timezoneID = State(initialValue: phoneTimezone.identifier)
     }
 
-    private var chosenTimeZone: TimeZone? {
-        TimeZone(identifier: timezoneID.trimmingCharacters(in: .whitespacesAndNewlines))
+    private var timezoneID: String {
+        TimeZone.autoupdatingCurrent.identifier
     }
 
     private var canSave: Bool {
         task.recurrence == nil
             && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && chosenTimeZone != nil
             && !client.isMutating
     }
 
@@ -5699,41 +5696,28 @@ private struct CaptureTaskEditSheet: View {
                             selection: $dueAt,
                             displayedComponents: [.date, .hourAndMinute]
                         )
-                        .environment(\.timeZone, chosenTimeZone ?? .autoupdatingCurrent)
+                        .environment(\.timeZone, .autoupdatingCurrent)
                         .accessibilityIdentifier("CaptureTaskEditDueDate")
+                        Text("Times use this iPhone’s \(timezoneID) timezone.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-
-                    TextField("IANA timezone", text: $timezoneID)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .accessibilityIdentifier("CaptureTaskEditTimezone")
-                    Button("Use this iPhone’s timezone") {
-                        timezoneID = TimeZone.autoupdatingCurrent.identifier
-                    }
-                    .accessibilityIdentifier("CaptureTaskEditUsePhoneTimezone")
-                    Label(
-                        chosenTimeZone == nil
-                            ? "Enter a valid IANA timezone, such as America/Denver."
-                            : "The due time will stay at this wall-clock time in \(chosenTimeZone?.identifier ?? timezoneID).",
-                        systemImage: chosenTimeZone == nil ? "exclamationmark.triangle" : "globe.americas"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(chosenTimeZone == nil ? Color.orange : Color.secondary)
                 }
 
-                Section("Boundary") {
-                    Text("This edits only the open one-time task in Quipsly. It does not change its tags, reminder, status, project, source anchor, goal links, provider calendar, messages, delivery, or publishing.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("CaptureTaskEditBoundary")
-                    Text("Task editing requires Nest. Protected offline snapshots remain unchanged until you reconnect.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let error = client.errorMessage {
+                if let error = client.errorMessage {
+                    Section {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
+                }
+
+                Section {
+                    Button("Remove task", role: .destructive) {
+                        confirmsRemoval = true
+                    }
+                    .disabled(client.isMutating)
+                    .accessibilityIdentifier("CaptureTaskEditRemove")
                 }
             }
             .navigationTitle("Edit task")
@@ -5750,7 +5734,7 @@ private struct CaptureTaskEditSheet: View {
                                 title: title,
                                 detail: detail,
                                 dueAt: includesDueDate ? dueAt : nil,
-                                timezone: timezoneID.trimmingCharacters(in: .whitespacesAndNewlines)
+                                timezone: timezoneID
                             )
                             if saved {
                                 dismiss()
@@ -5764,6 +5748,24 @@ private struct CaptureTaskEditSheet: View {
             }
         }
         .accessibilityIdentifier("CaptureTaskEditSheet")
+        .confirmationDialog(
+            "Remove this task?",
+            isPresented: $confirmsRemoval,
+            titleVisibility: .visible
+        ) {
+            Button("Remove task", role: .destructive) {
+                Task {
+                    if await client.setTaskStatus(task, status: "CANCELED") {
+                        dismiss()
+                        onSaved?()
+                    }
+                }
+            }
+            .accessibilityIdentifier("CaptureTaskEditConfirmRemove")
+            Button("Keep task", role: .cancel) {}
+        } message: {
+            Text("It disappears from active work. Its Session and transcript source stay available.")
+        }
     }
 }
 
@@ -5777,7 +5779,7 @@ private struct CaptureGoalEditSheet: View {
     @State private var description: String
     @State private var includesTargetDate: Bool
     @State private var targetAt: Date
-    @State private var timezoneID: String
+    @State private var confirmsRemoval = false
     private let originalTargetAt: Date?
     private let originalTimezoneID: String
 
@@ -5800,19 +5802,17 @@ private struct CaptureGoalEditSheet: View {
         _description = State(initialValue: goal.description ?? "")
         _includesTargetDate = State(initialValue: existingTarget != nil)
         _targetAt = State(initialValue: existingTarget ?? defaultTarget)
-        _timezoneID = State(initialValue: phoneTimezone.identifier)
         originalTargetAt = existingTarget
         originalTimezoneID = phoneTimezone.identifier
     }
 
-    private var chosenTimeZone: TimeZone? {
-        TimeZone(identifier: timezoneID.trimmingCharacters(in: .whitespacesAndNewlines))
+    private var timezoneID: String {
+        TimeZone.autoupdatingCurrent.identifier
     }
 
     private var canSave: Bool {
         (goal.status == "ACTIVE" || goal.status == "PAUSED")
             && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (targetDecision != "SET" || chosenTimeZone != nil)
             && !client.isMutating
     }
 
@@ -5821,8 +5821,7 @@ private struct CaptureGoalEditSheet: View {
             return originalTargetAt == nil ? "KEEP" : "CLEAR"
         }
         guard let originalTargetAt else { return "SET" }
-        let normalizedTimezone = timezoneID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalizedTimezone == originalTimezoneID,
+        guard timezoneID == originalTimezoneID,
               let timezone = TimeZone(identifier: originalTimezoneID) else {
             return "SET"
         }
@@ -5854,41 +5853,28 @@ private struct CaptureGoalEditSheet: View {
                             selection: $targetAt,
                             displayedComponents: [.date]
                         )
-                        .environment(\.timeZone, chosenTimeZone ?? .autoupdatingCurrent)
+                        .environment(\.timeZone, .autoupdatingCurrent)
                         .accessibilityIdentifier("CaptureGoalEditTargetDate")
+                        Text("Dates use this iPhone’s \(timezoneID) timezone.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-
-                    TextField("IANA timezone", text: $timezoneID)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .accessibilityIdentifier("CaptureGoalEditTimezone")
-                    Button("Use this iPhone’s timezone") {
-                        timezoneID = TimeZone.autoupdatingCurrent.identifier
-                    }
-                    .accessibilityIdentifier("CaptureGoalEditUsePhoneTimezone")
-                    Label(
-                        chosenTimeZone == nil
-                            ? "Enter a valid IANA timezone, such as America/Denver."
-                            : "Quipsly will preserve this target as a calendar date in \(chosenTimeZone?.identifier ?? timezoneID).",
-                        systemImage: chosenTimeZone == nil ? "exclamationmark.triangle" : "globe.americas"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(chosenTimeZone == nil ? Color.orange : Color.secondary)
                 }
 
-                Section("Boundary") {
-                    Text("This edits only the goal title, definition of success, and target date. It does not change status, progress evidence, linked tasks, tags, hierarchy, source anchors, provider calendars, messages, delivery, or publishing.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("CaptureGoalEditBoundary")
-                    Text("Goal editing requires Nest. Protected offline snapshots remain unchanged until you reconnect.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let error = client.errorMessage {
+                if let error = client.errorMessage {
+                    Section {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
+                }
+
+                Section {
+                    Button("Remove goal", role: .destructive) {
+                        confirmsRemoval = true
+                    }
+                    .disabled(client.isMutating)
+                    .accessibilityIdentifier("CaptureGoalEditRemove")
                 }
             }
             .navigationTitle("Edit goal")
@@ -5906,7 +5892,7 @@ private struct CaptureGoalEditSheet: View {
                                 description: description,
                                 targetDecision: targetDecision,
                                 targetAt: targetDecision == "SET" ? targetAt : nil,
-                                timezone: timezoneID.trimmingCharacters(in: .whitespacesAndNewlines)
+                                timezone: timezoneID
                             )
                             if saved {
                                 dismiss()
@@ -5920,6 +5906,24 @@ private struct CaptureGoalEditSheet: View {
             }
         }
         .accessibilityIdentifier("CaptureGoalEditSheet")
+        .confirmationDialog(
+            "Remove this goal?",
+            isPresented: $confirmsRemoval,
+            titleVisibility: .visible
+        ) {
+            Button("Remove goal", role: .destructive) {
+                Task {
+                    if await client.setGoalStatus(goal, status: "ARCHIVED") {
+                        dismiss()
+                        onSaved?()
+                    }
+                }
+            }
+            .accessibilityIdentifier("CaptureGoalEditConfirmRemove")
+            Button("Keep goal", role: .cancel) {}
+        } message: {
+            Text("It disappears from active work. Its Session and transcript source stay available.")
+        }
     }
 }
 

@@ -3814,7 +3814,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             field.typeKey("a", modifierFlags: .command)
             field.typeKey(.delete, modifierFlags: [])
             field.typeText(value)
-            XCTAssertTrue(app.descendants(matching: .any)["CaptureTaskEditBoundary"].exists)
+            XCTAssertFalse(app.descendants(matching: .any)["CaptureTaskEditBoundary"].exists)
+            XCTAssertFalse(app.textFields["CaptureTaskEditTimezone"].exists)
+            XCTAssertTrue(app.buttons["CaptureTaskEditRemove"].exists)
             let save = app.buttons["CaptureTaskEditSave"].firstMatch
             XCTAssertTrue(save.isEnabled)
             save.tap()
@@ -3932,7 +3934,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             field.typeKey("a", modifierFlags: .command)
             field.typeKey(.delete, modifierFlags: [])
             field.typeText(value)
-            XCTAssertTrue(app.descendants(matching: .any)["CaptureGoalEditBoundary"].exists)
+            XCTAssertFalse(app.descendants(matching: .any)["CaptureGoalEditBoundary"].exists)
+            XCTAssertFalse(app.textFields["CaptureGoalEditTimezone"].exists)
+            XCTAssertTrue(app.buttons["CaptureGoalEditRemove"].exists)
             let save = app.buttons["CaptureGoalEditSave"].firstMatch
             XCTAssertTrue(save.isEnabled)
             save.tap()

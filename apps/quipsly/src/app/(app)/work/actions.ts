@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { editCanonicalGoalInTransaction } from "@/lib/server/canonical-goal-edit";
+import { updateCanonicalGoalStatusInTransaction } from "@/lib/server/canonical-goal-status";
 import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
@@ -427,49 +428,31 @@ export async function updateWorkGoalStatus(input: {
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
   try {
-    const goal = await prisma.goal.findFirst({ where: { id: goalId, ownerUserId: userId }, select: { id: true, status: true, sourceJson: true, updatedAt: true } });
-    if (!goal) return { ok: false, code: "NOT_FOUND", error: "Only the goal owner can change this goal." };
-    if (goal.updatedAt.getTime() !== expected.getTime()) return { ok: false, code: "CONFLICT", error: "This goal changed elsewhere. The current goal is being refreshed." };
-    const now = new Date();
-    const receiptId = randomUUID();
-    const result = await prisma.$transaction(async (tx: any) => {
-      const current = await tx.goal.findFirst({ where: { id: goalId, ownerUserId: userId }, select: { id: true, status: true, sourceJson: true, updatedAt: true } });
-      if (!current || current.updatedAt.getTime() !== expected.getTime()) return null;
-      const source = safeRecord(current.sourceJson);
-      const receipt = {
-        id: receiptId,
-        kind: "quipsly-goal-status-v1",
-        previousStatus: current.status,
+    const result = await prisma.$transaction(
+      (tx: any) => updateCanonicalGoalStatusInTransaction({
+        tx,
+        goalId,
+        actorUserId: userId,
+        expectedUpdatedAt: expected,
         nextStatus: input.nextStatus,
-        changedAt: now.toISOString(),
-        changedByUserId: userId,
-        externalSideEffects: false,
-      };
-      const updated = await tx.goal.updateMany({
-        where: { id: goalId, ownerUserId: userId, updatedAt: expected },
-        data: {
-          status: input.nextStatus,
-          achievedAt: input.nextStatus === "ACHIEVED" ? now : null,
-          sourceJson: { ...source, lastStatusReceipt: receipt },
-        },
-      });
-      if (updated.count !== 1) return null;
-      await tx.goalProgressReceipt.create({
-        data: {
-          goalId,
-          actorUserId: userId,
-          kind: "STATUS_CHANGED",
-          progressPercent: input.nextStatus === "ACHIEVED" ? 100 : null,
-          note: null,
-          evidenceJson: receipt,
-          occurredAt: now,
-        },
-      });
-      return tx.goal.findUnique({ where: { id: goalId }, select: { updatedAt: true } });
-    });
-    if (!result) return { ok: false, code: "CONFLICT", error: "This goal changed elsewhere. The current goal is being refreshed." };
+        surface: "nest-work",
+      }),
+      { isolationLevel: "Serializable" },
+    );
+    if (result.kind === "not-found") {
+      return { ok: false, code: "NOT_FOUND", error: "Only the goal owner can change this goal." };
+    }
+    if (result.kind === "conflict") {
+      return { ok: false, code: "CONFLICT", error: "This goal changed elsewhere. The current goal is being refreshed." };
+    }
     revalidatePath("/work");
-    return { ok: true, goalId, status: input.nextStatus, updatedAt: result.updatedAt.toISOString(), receiptId };
+    return {
+      ok: true,
+      goalId,
+      status: result.record.status as WorkGoalStatus,
+      updatedAt: result.record.updatedAt.toISOString(),
+      receiptId: result.receiptId,
+    };
   } catch (error) {
     console.error("[work] failed to update goal status", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not save this goal decision. No external action was taken." };

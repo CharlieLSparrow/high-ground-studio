@@ -759,6 +759,79 @@ describe("mobile Capture Today contract", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it("removes an ordinary generated goal from active work while retaining its source", async () => {
+    signedIn();
+    const tx = {
+      goal: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "goal-1",
+          status: "ACTIVE",
+          sourceJson: {
+            schema: "quipsly-transcript-derived-goal-v1",
+            immutableSourceAnchor: { segmentId: "segment-1" },
+          },
+          updatedAt: expected,
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ id: "goal-1", status: "ARCHIVED", updatedAt: persisted }),
+      },
+      goalProgressReceipt: { create: jest.fn().mockResolvedValue({ id: "receipt-1" }) },
+    };
+    const transaction = jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "goal-status",
+        id: "goal-1",
+        nextStatus: "ARCHIVED",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      action: "goal-status",
+      id: "goal-1",
+      status: "ARCHIVED",
+      updatedAt: persisted.toISOString(),
+      boundaries: {
+        ordinaryWorkEditable: true,
+        ordinaryWorkRemovable: true,
+        externalCalendarMutated: false,
+        providerMutated: false,
+      },
+    });
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(tx.goal.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "goal-1", ownerUserId: "user-1", updatedAt: expected },
+      data: {
+        status: "ARCHIVED",
+        achievedAt: null,
+        sourceJson: expect.objectContaining({
+          immutableSourceAnchor: { segmentId: "segment-1" },
+          lastStatusReceipt: expect.objectContaining({
+            kind: "quipsly-goal-status-v1",
+            surface: "ios-capture-work",
+            previousStatus: "ACTIVE",
+            nextStatus: "ARCHIVED",
+            externalSideEffects: false,
+          }),
+        }),
+      },
+    }));
+    expect(tx.goalProgressReceipt.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      goalId: "goal-1",
+      actorUserId: "user-1",
+      kind: "STATUS_CHANGED",
+      progressPercent: null,
+    }) });
+  });
+
   it("creates a DST-safe canonical reminder from the iPhone wall clock without claiming delivery", async () => {
     signedIn();
     const tx = {

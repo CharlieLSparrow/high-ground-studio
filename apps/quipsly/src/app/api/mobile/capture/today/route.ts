@@ -9,6 +9,7 @@ import { readGovernedActionSourceReference } from "@/lib/server/governed-action-
 import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
 import { loadClientFollowUpAttention } from "@/lib/server/client-follow-up-attention";
 import { editCanonicalGoalInTransaction } from "@/lib/server/canonical-goal-edit";
+import { updateCanonicalGoalStatusInTransaction } from "@/lib/server/canonical-goal-status";
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
 import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
 import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets";
@@ -108,6 +109,8 @@ function responseBoundaries(taskReminderIntentProjectionComplete = false) {
     deviceNotificationsReconciled: false,
     reminderDeliveryClaimed: false,
     goalCheckInMutatesStatus: false,
+    ordinaryWorkEditable: true,
+    ordinaryWorkRemovable: true,
     canonicalProjectTags: true,
     tagMutationExternalSideEffects: false,
     annotationResolveReopenAvailable: true,
@@ -853,6 +856,40 @@ export async function POST(request: Request) {
         title: result.record.title,
         description: result.record.description,
         targetAt: result.record.targetAt?.toISOString() ?? null,
+        updatedAt: result.record.updatedAt.toISOString(),
+        receiptId: result.receiptId,
+        boundaries: responseBoundaries(),
+      });
+    }
+    if (action === "goal-status") {
+      const nextStatus = text(input.nextStatus, 20).toUpperCase();
+      if (!["ACTIVE", "PAUSED", "ACHIEVED", "ARCHIVED"].includes(nextStatus)) {
+        return NextResponse.json({ ok: false, error: "Choose a valid goal status." }, { status: 400 });
+      }
+      const result = await prisma.$transaction(
+        (tx: any) => updateCanonicalGoalStatusInTransaction({
+          tx,
+          goalId: id,
+          actorUserId: userId,
+          expectedUpdatedAt: expected,
+          nextStatus: nextStatus as "ACTIVE" | "PAUSED" | "ACHIEVED" | "ARCHIVED",
+          surface: "ios-capture-work",
+          now,
+          receiptId,
+        }),
+        { isolationLevel: "Serializable" },
+      );
+      if (result.kind === "not-found") {
+        return NextResponse.json({ ok: false, error: "Only the goal owner can change this goal." }, { status: 404 });
+      }
+      if (result.kind === "conflict") {
+        return NextResponse.json({ ok: false, code: "CONFLICT", error: "This goal changed elsewhere. Refresh before trying again." }, { status: 409 });
+      }
+      return NextResponse.json({
+        ok: true,
+        action,
+        id,
+        status: result.record.status,
         updatedAt: result.record.updatedAt.toISOString(),
         receiptId: result.receiptId,
         boundaries: responseBoundaries(),

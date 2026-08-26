@@ -1421,12 +1421,15 @@ for (const needle of [
   'accessibilityIdentifier("CaptureWorkTaskEdit_\\(task.id)")',
   'accessibilityIdentifier("CaptureTodayTaskEdit_\\(task.id)")',
   'accessibilityIdentifier("CaptureTaskEditSave")',
-  'accessibilityIdentifier("CaptureTaskEditBoundary")',
-  "This edits only the open one-time task in Quipsly.",
+  'accessibilityIdentifier("CaptureTaskEditRemove")',
+  'accessibilityIdentifier("CaptureTaskEditConfirmRemove")',
+  "Its Session and transcript source stay available.",
   'status: task.status == "OPEN" ? "DONE" : "OPEN"',
 ]) {
-  requireIncludes(capturePhoneShellText, needle, "native one-time task editing and canonical completion UX");
+  requireIncludes(capturePhoneShellText, needle, "native ordinary task editing removal and canonical completion UX");
 }
+requireExcludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureTaskEditTimezone")', "ordinary task editing hides internal timezone machinery");
+requireExcludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureTaskEditBoundary")', "ordinary task editing has no boundary paperwork");
 for (const needle of [
   "func editTask(",
   '"action": "task-edit"',
@@ -1440,12 +1443,14 @@ for (const needle of [
   'accessibilityIdentifier("CaptureWorkGoalEdit_\\(goal.id)")',
   'accessibilityIdentifier("CaptureTodayGoalEdit_\\(goal.id)")',
   'accessibilityIdentifier("CaptureGoalEditSave")',
-  'accessibilityIdentifier("CaptureGoalEditBoundary")',
-  "This edits only the goal title, definition of success, and target date.",
-  "Protected offline snapshots remain unchanged until you reconnect.",
+  'accessibilityIdentifier("CaptureGoalEditRemove")',
+  'accessibilityIdentifier("CaptureGoalEditConfirmRemove")',
+  "Its Session and transcript source stay available.",
 ]) {
-  requireIncludes(capturePhoneShellText, needle, "native canonical goal editing UX and side-effect boundary");
+  requireIncludes(capturePhoneShellText, needle, "native ordinary goal editing and removal UX");
 }
+requireExcludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureGoalEditTimezone")', "ordinary goal editing hides internal timezone machinery");
+requireExcludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureGoalEditBoundary")', "ordinary goal editing has no boundary paperwork");
 for (const needle of [
   "func editGoal(",
   '"action": "goal-edit"',

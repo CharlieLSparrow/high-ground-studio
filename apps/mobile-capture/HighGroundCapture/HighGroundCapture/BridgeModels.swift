@@ -4960,6 +4960,15 @@ final class CaptureTodayClient: ObservableObject {
         )
     }
 
+    func setGoalStatus(_ goal: MobileCaptureTodayGoal, status: String) async -> Bool {
+        await mutate(
+            action: "goal-status",
+            id: goal.id,
+            nextStatus: status,
+            expectedUpdatedAt: goal.updatedAt
+        )
+    }
+
     func editTask(
         _ task: MobileCaptureTodayTask,
         title: String,
