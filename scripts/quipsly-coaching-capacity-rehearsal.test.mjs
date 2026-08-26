@@ -16,6 +16,9 @@ test("coaching capacity rehearsal remains local, adversarial, and non-credential
   assert.match(source, /requires loopback PostgreSQL/);
   assert.match(source, /requires the loopback Firebase Auth emulator/);
   assert.match(source, /create-booking-room/);
+  assert.match(source, /create-booking-series/);
+  assert.match(source, /idempotentReplay/);
+  assert.match(source, /finiteSeriesCreatedAtomically/);
   assert.match(source, /create-session-invitation/);
   assert.match(source, /foreign-engagement-refusal/);
   assert.match(source, /productApiWritesOnly: true/);

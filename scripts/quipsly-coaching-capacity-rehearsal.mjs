@@ -199,6 +199,48 @@ async function createPractice(persona) {
   return { ...persona, ...result };
 }
 
+async function createSeriesProbe(practice) {
+  const requestId = randomUUID();
+  const body = JSON.stringify({
+    action: "create-booking-series",
+    requestId,
+    clientEmail: practice.clientEmail,
+    clientName: practice.clientName,
+    title: "Capacity recurring coaching series",
+    scheduledStart: new Date(Date.now() + 14 * 86_400_000).toISOString(),
+    durationMinutes: 45,
+    timezone: "UTC",
+    purpose: "COACHING",
+    paymentPolicy: "MANUAL",
+    currency: "USD",
+    frequency: "WEEKLY",
+    intervalCount: 1,
+    occurrenceCount: 4,
+  });
+  const create = () => request("create-booking-series", "/api/coaching/runway", {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: practice.cookie },
+    body,
+  });
+  const created = await create();
+  assert.equal(created.payload?.ok, true);
+  assert.equal(created.payload?.result?.occurrenceCount, 4);
+  assert.equal(created.payload?.result?.occurrences?.length, 4);
+  assert.equal(created.payload?.result?.idempotentReplay, false);
+  const replay = await create();
+  assert.equal(replay.payload?.result?.seriesId, created.payload?.result?.seriesId);
+  assert.equal(replay.payload?.result?.idempotentReplay, true);
+  assert.deepEqual(
+    replay.payload?.result?.occurrences?.map((occurrence) => occurrence.callRoomId),
+    created.payload?.result?.occurrences?.map((occurrence) => occurrence.callRoomId),
+  );
+  return {
+    seriesId: created.payload.result.seriesId,
+    occurrenceCount: created.payload.result.occurrenceCount,
+    callRoomIds: created.payload.result.occurrences.map((occurrence) => occurrence.callRoomId),
+  };
+}
+
 async function verifyPractice(practice, neighbor) {
   const headers = { cookie: practice.cookie };
   const [runway, sessions, ownWork, foreignWork, invitationRead] = await Promise.all([
@@ -237,6 +279,7 @@ async function main() {
   const startedAt = Date.now();
   let stage = "create-identities";
   let practices = [];
+  let seriesProbe = null;
   let error = null;
   try {
     const personas = await Promise.all(
@@ -244,6 +287,8 @@ async function main() {
     );
     stage = "create-practices";
     practices = await Promise.all(personas.map(createPractice));
+    stage = "create-series-probe";
+    seriesProbe = await createSeriesProbe(practices[0]);
     stage = "verify-isolation";
     await Promise.all(
       practices.map((practice, index) =>
@@ -264,6 +309,14 @@ async function main() {
     batchId,
     requestedCoachCount: requestedCount,
     completedPracticeCount: practices.length,
+    recurringSeriesProbe: seriesProbe
+      ? {
+          created: true,
+          idempotentReplay: true,
+          occurrenceCount: seriesProbe.occurrenceCount,
+          callRoomCount: seriesProbe.callRoomIds.length,
+        }
+      : { created: false, idempotentReplay: false, occurrenceCount: 0, callRoomCount: 0 },
     stage,
     error,
     elapsedMs: Date.now() - startedAt,
@@ -319,6 +372,8 @@ async function main() {
       customTokensWrittenToArtifact: false,
       renderedNoviceExperienceProven: false,
       productionScaleProven: false,
+      finiteSeriesCreatedAtomically: seriesProbe?.occurrenceCount === 4,
+      finiteSeriesRetryWasIdempotent: Boolean(seriesProbe),
     },
   };
   await mkdir(artifactDirectory, { recursive: true, mode: 0o700 });

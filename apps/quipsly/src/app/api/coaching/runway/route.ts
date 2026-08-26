@@ -20,6 +20,11 @@ import {
 } from "@/lib/server/coaching-google-calendar";
 import { getQuipslyLiveKitEgressReadiness } from "@/lib/server/coaching-livekit-egress";
 import { ensureCoachingEngagement, CoachingEngagementError } from "@/lib/server/coaching-engagement";
+import {
+  CoachingBookingSeriesInputError,
+  normalizeCoachingBookingSeriesIntent,
+} from "@/lib/server/coaching-booking-series";
+import { createCoachingBookingSeriesInTransaction } from "@/lib/server/coaching-booking-series-operation";
 import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import { projectClientInvitationDeliveryForViewer } from "@/lib/server/coaching-invitation-delivery-projection";
 import {
@@ -140,6 +145,12 @@ function runwayActionErrorResponse(error: unknown) {
   }
   if (error instanceof CoachingEngagementError) {
     return NextResponse.json({ ok: false, error: error.message, code: error.code }, { status: error.status });
+  }
+  if (error instanceof CoachingBookingSeriesInputError) {
+    return NextResponse.json(
+      { ok: false, error: error.message, code: error.code },
+      { status: 400 },
+    );
   }
   if (error instanceof RunwayActionError) {
     return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
@@ -1295,6 +1306,7 @@ export async function POST(request: Request) {
     "update-weekly-availability",
     "update-public-booking",
     "create-booking-room",
+    "create-booking-series",
     "create-booking-hold",
     "release-booking-hold",
     "convert-booking-hold",
@@ -1480,7 +1492,7 @@ export async function POST(request: Request) {
       });
 
   if (!session.user.isStaff && !actingCoachProfile) {
-    if (!["create-booking-room", "create-booking-hold"].includes(action)) {
+    if (!["create-booking-room", "create-booking-series", "create-booking-hold"].includes(action)) {
       return NextResponse.json(
         { ok: false, error: "Schedule your first Session before changing coaching preferences." },
         { status: 403 },
@@ -2711,6 +2723,71 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     return runwayActionErrorResponse(error);
+  }
+
+  if (action === "create-booking-series") {
+    try {
+      if (normalizePurpose(body.purpose) !== "COACHING") {
+        throw new RunwayActionError(
+          "Recurring Session series are currently available for coaching relationships.",
+          409,
+        );
+      }
+      const requestId = text(body.requestId);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+        throw new CoachingBookingSeriesInputError(
+          "A stable Session-series request identity is required. Refresh and try again.",
+        );
+      }
+      const durationMinutes = requestedDuration || 60;
+      if (durationMinutes < 15 || durationMinutes > 480) {
+        throw new CoachingBookingSeriesInputError(
+          "A Session series duration must be between 15 minutes and 8 hours.",
+        );
+      }
+      const intent = normalizeCoachingBookingSeriesIntent({
+        frequency: body.frequency,
+        intervalCount: body.intervalCount,
+        occurrenceCount: body.occurrenceCount,
+      });
+      const result = await prisma.$transaction(
+        (tx: any) => createCoachingBookingSeriesInTransaction(tx, {
+          requestId,
+          actor: {
+            id: session.user.id,
+            name: session.user.name,
+            primaryEmail: session.user.primaryEmail,
+            isStaff: session.user.isStaff,
+          },
+          project: coachingProject,
+          clientEmail,
+          clientName,
+          title,
+          offeringId,
+          timezone,
+          firstScheduledStart: scheduledStart,
+          durationMinutes,
+          paymentPolicy: text(body.paymentPolicy) || "MANUAL",
+          amountCents: requestedAmountCents,
+          currency: text(body.currency) || "USD",
+          notes,
+          requestedEngagementId: text(body.engagementId) || null,
+          requestedCoachUserId: text(body.coachUserId) || null,
+          intent,
+        }),
+        { timeout: 30_000 },
+      );
+      return NextResponse.json({
+        ok: true,
+        action,
+        result: {
+          ...result,
+          ...(result.firstOccurrence || {}),
+        },
+      });
+    } catch (error) {
+      return runwayActionErrorResponse(error);
+    }
   }
 
   try {

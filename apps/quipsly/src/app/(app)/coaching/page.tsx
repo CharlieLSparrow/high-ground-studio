@@ -44,6 +44,8 @@ type CoachingCreatedHandoff = {
   clientName: string | null;
   title: string;
   scheduledStart: string;
+  seriesCount: number;
+  recurrenceLabel: string | null;
 };
 
 const COACHING_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -890,6 +892,7 @@ export default function CoachingPage() {
   const [providerRecordingBusyByRoom, setProviderRecordingBusyByRoom] =
     useState<Record<string, boolean>>({});
   const providerRecordingRequestIds = useRef<Record<string, string>>({});
+  const seriesRequestId = useRef<{ fingerprint: string; requestId: string } | null>(null);
   const [transcriptStatusByRoom, setTranscriptStatusByRoom] = useState<
     Record<string, string>
   >({});
@@ -920,6 +923,8 @@ export default function CoachingPage() {
     paymentPolicy: "MANUAL",
     amountDollars: "",
     currency: "USD",
+    recurrence: "ONCE",
+    occurrenceCount: "6",
   });
   const [setupStatus, setSetupStatus] = useState<string | null>(null);
   const [isSettingUpCoach, setIsSettingUpCoach] = useState(false);
@@ -1954,14 +1959,48 @@ export default function CoachingPage() {
     setIsCreating(true);
     setCreateStatus(null);
     setCreatedHandoff(null);
-    const submitted = { ...createForm };
+    const effectiveAction = createForm.recurrence === "ONCE"
+      ? createForm.runwayAction
+      : "create-booking-series";
+    const submitted = { ...createForm, runwayAction: effectiveAction };
+    const frequency = createForm.recurrence === "MONTHLY" ? "MONTHLY" : "WEEKLY";
+    const intervalCount = createForm.recurrence === "BIWEEKLY" ? 2 : 1;
+    const seriesFingerprint = JSON.stringify({
+      clientEmail: createForm.clientEmail.trim().toLowerCase(),
+      clientName: createForm.clientName.trim(),
+      title: createForm.title.trim(),
+      scheduledStart: createForm.scheduledStart,
+      durationMinutes: createForm.durationMinutes,
+      timezone: createForm.timezone,
+      paymentPolicy: createForm.paymentPolicy,
+      amountDollars: createForm.amountDollars,
+      currency: createForm.currency,
+      frequency,
+      intervalCount,
+      occurrenceCount: createForm.occurrenceCount,
+    });
+    if (
+      effectiveAction === "create-booking-series" &&
+      seriesRequestId.current?.fingerprint !== seriesFingerprint
+    ) {
+      seriesRequestId.current = {
+        fingerprint: seriesFingerprint,
+        requestId: crypto.randomUUID(),
+      };
+    }
     try {
       const response = await fetch("/api/coaching/runway", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: createForm.runwayAction,
+          action: effectiveAction,
           ...createForm,
+          requestId: effectiveAction === "create-booking-series"
+            ? seriesRequestId.current?.requestId
+            : undefined,
+          frequency,
+          intervalCount,
+          occurrenceCount: Number.parseInt(createForm.occurrenceCount, 10) || 6,
           durationMinutes:
             Number.parseInt(createForm.durationMinutes, 10) || 60,
           amountCents: dollarsToCents(createForm.amountDollars),
@@ -1974,7 +2013,7 @@ export default function CoachingPage() {
         );
       setCreateStatus(payload.result?.nextAction || "Session created.");
       if (
-        submitted.runwayAction === "create-booking-room" &&
+        ["create-booking-room", "create-booking-series"].includes(submitted.runwayAction) &&
         payload.result?.bookingId &&
         payload.result?.callRoomId &&
         payload.result?.clientEntryPath
@@ -1994,6 +2033,11 @@ export default function CoachingPage() {
           clientName: submitted.clientName.trim() || null,
           title: submitted.title,
           scheduledStart: submitted.scheduledStart,
+          seriesCount: Number(payload.result.occurrenceCount) || 1,
+          recurrenceLabel:
+            typeof payload.result.recurrenceLabel === "string"
+              ? payload.result.recurrenceLabel
+              : null,
         };
         setCreatedHandoff(handoff);
         await sendClientSessionInvitation({
@@ -2008,11 +2052,13 @@ export default function CoachingPage() {
         clientEmail: "",
         clientName: "",
         scheduledStart: "",
+        recurrence: "ONCE",
         amountDollars:
           current.paymentPolicy === "PAID_ONE_TO_ONE"
             ? current.amountDollars
             : "",
       }));
+      seriesRequestId.current = null;
       await loadRunway();
     } catch (cause) {
       setCreateStatus(
@@ -4028,6 +4074,54 @@ export default function CoachingPage() {
                       />
                     </label>
                   </div>
+                  {createForm.runwayAction !== "create-booking-hold" ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                        Repeat
+                        <select
+                          value={createForm.recurrence}
+                          onChange={(event) => {
+                            seriesRequestId.current = null;
+                            setCreateForm((current) => ({
+                              ...current,
+                              recurrence: event.target.value,
+                            }));
+                          }}
+                          className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                        >
+                          <option value="ONCE">Does not repeat</option>
+                          <option value="WEEKLY">Every week</option>
+                          <option value="BIWEEKLY">Every two weeks</option>
+                          <option value="MONTHLY">Every month</option>
+                        </select>
+                      </label>
+                      {createForm.recurrence !== "ONCE" ? (
+                        <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
+                          Number of Sessions
+                          <select
+                            value={createForm.occurrenceCount}
+                            onChange={(event) => {
+                              seriesRequestId.current = null;
+                              setCreateForm((current) => ({
+                                ...current,
+                                occurrenceCount: event.target.value,
+                              }));
+                            }}
+                            className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
+                          >
+                            {[4, 6, 8, 10, 12, 16, 20, 24].map((count) => (
+                              <option key={count} value={count}>{count} Sessions</option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {createForm.recurrence !== "ONCE" ? (
+                    <p className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs font-semibold leading-5 text-violet-950">
+                      Quipsly prepares each private Session at the same local time—even across daylight-saving changes. Consent, recording, transcript, and follow-up stay separate for every meeting.
+                    </p>
+                  ) : null}
                   {suggestedSlots.length > 0 && (
                     <div className="rounded-xl border border-[#d6c5a5] bg-[#fffaf1] p-3">
                       <p className="text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
@@ -4140,6 +4234,9 @@ export default function CoachingPage() {
                             setCreateForm((current) => ({
                               ...current,
                               runwayAction: event.target.value,
+                              recurrence: event.target.value === "create-booking-hold"
+                                ? "ONCE"
+                                : current.recurrence,
                             }))
                           }
                           className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036]"
@@ -4233,7 +4330,9 @@ export default function CoachingPage() {
                       ? "Creating..."
                       : createForm.runwayAction === "create-booking-hold"
                         ? "Hold slot"
-                        : "Schedule and send invite"}
+                        : createForm.recurrence !== "ONCE"
+                          ? `Schedule ${createForm.occurrenceCount} Sessions`
+                          : "Schedule and send invite"}
                   </button>
                   {createStatus && (
                     <p className="rounded-xl bg-[#f8f3e6] p-3 text-xs font-bold text-[#7b5c3b]">
@@ -4246,7 +4345,9 @@ export default function CoachingPage() {
                       aria-labelledby="created-coaching-handoff-heading"
                     >
                       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
-                        Session scheduled
+                        {createdHandoff.seriesCount > 1
+                          ? `${createdHandoff.seriesCount}-Session series scheduled`
+                          : "Session scheduled"}
                       </p>
                       <h3
                         id="created-coaching-handoff-heading"
@@ -4256,8 +4357,9 @@ export default function CoachingPage() {
                           createdHandoff.clientEmail}
                       </h3>
                       <p className="mt-2 text-xs font-bold leading-5 text-emerald-950">
-                        The private Session is ready. Invitation delivery to{" "}
-                        {createdHandoff.clientEmail} is shown below.
+                        {createdHandoff.seriesCount > 1
+                          ? `${createdHandoff.recurrenceLabel || "Recurring"} Sessions are ready in the same private client space. The invitation below opens the first Session for ${createdHandoff.clientEmail}.`
+                          : `The private Session is ready. Invitation delivery to ${createdHandoff.clientEmail} is shown below.`}
                       </p>
                       <div className="mt-3 grid gap-2">
                         <a

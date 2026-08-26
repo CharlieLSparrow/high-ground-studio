@@ -231,6 +231,17 @@ enum CoachingBookingStatus {
   NO_SHOW
 }
 
+enum CoachingBookingSeriesFrequency {
+  WEEKLY
+  MONTHLY
+}
+
+enum CoachingBookingSeriesStatus {
+  ACTIVE
+  COMPLETED
+  CANCELED
+}
+
 enum CoachingEngagementStatus {
   ACTIVE
   PAUSED
@@ -825,6 +836,9 @@ model User {
   bookingHolds                      BookingHold[]                               @relation("BookingHoldClient")
   coachingBookingsAsClient          CoachingBooking[]                           @relation("CoachingBookingClient")
   coachingBookingsAsCoach           CoachingBooking[]                           @relation("CoachingBookingCoach")
+  coachingBookingSeriesAsClient     CoachingBookingSeries[]                     @relation("CoachingBookingSeriesClient")
+  coachingBookingSeriesAsCoach      CoachingBookingSeries[]                     @relation("CoachingBookingSeriesCoach")
+  coachingBookingSeriesCreated      CoachingBookingSeries[]                     @relation("CoachingBookingSeriesCreatedBy")
   coachingEngagementsCreated        CoachingEngagement[]                        @relation("CoachingEngagementCreatedBy")
   coachingEngagementsAsClient       CoachingEngagement[]                        @relation("CoachingEngagementPrimaryClient")
   coachingEngagementsAsCoach        CoachingEngagement[]                        @relation("CoachingEngagementPrimaryCoach")
@@ -1431,9 +1445,10 @@ model ServiceOffering {
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
-  coachProfile CoachProfile?     @relation(fields: [coachProfileId], references: [id], onDelete: SetNull)
-  bookingHolds BookingHold[]
-  bookings     CoachingBooking[]
+  coachProfile  CoachProfile?           @relation(fields: [coachProfileId], references: [id], onDelete: SetNull)
+  bookingHolds  BookingHold[]
+  bookings      CoachingBooking[]
+  bookingSeries CoachingBookingSeries[]
 
   @@index([coachProfileId, isActive])
   @@index([kind, isActive])
@@ -1498,6 +1513,8 @@ model CoachingBooking {
   clientUserId    String
   coachUserId     String?
   engagementId    String?
+  seriesId        String?
+  seriesSequence  Int?
   status          CoachingBookingStatus @default(REQUESTED)
   scheduledStart  DateTime
   scheduledEnd    DateTime
@@ -1516,6 +1533,7 @@ model CoachingBooking {
   clientUser             User                          @relation("CoachingBookingClient", fields: [clientUserId], references: [id], onDelete: Cascade)
   coachUser              User?                         @relation("CoachingBookingCoach", fields: [coachUserId], references: [id], onDelete: SetNull)
   engagement             CoachingEngagement?           @relation(fields: [engagementId], references: [id], onDelete: SetNull)
+  series                 CoachingBookingSeries?        @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   paymentRecord          PaymentRecord?                @relation(fields: [paymentRecordId], references: [id], onDelete: SetNull)
   hold                   BookingHold?
   callRoom               CallRoom?
@@ -1525,12 +1543,51 @@ model CoachingBooking {
   checkoutSessionLedgers StripeCheckoutSessionLedger[]
   calendarLinks          CalendarEventLink[]
 
+  @@unique([seriesId, seriesSequence])
   @@index([clientUserId, scheduledStart])
   @@index([coachUserId, scheduledStart])
   @@index([engagementId, scheduledStart])
+  @@index([seriesId, scheduledStart])
   @@index([status, scheduledStart])
   @@index([requestId])
   @@index([offeringId])
+}
+
+// A finite coaching series is a scheduling promise, not a hidden recurrence
+// rule. Every occurrence is still a normal CoachingBooking + CallRoom with its
+// own consent, recording, transcript, edit, and follow-up state. The series
+// records how those independently operable Sessions were created together.
+model CoachingBookingSeries {
+  id                  String                         @id @default(cuid())
+  requestId           String                         @unique @db.Uuid
+  clientUserId        String
+  coachUserId         String
+  engagementId        String
+  offeringId          String?
+  createdByUserId     String
+  title               String
+  timezone            String
+  frequency           CoachingBookingSeriesFrequency
+  intervalCount       Int                            @default(1)
+  occurrenceCount     Int
+  durationMinutes     Int
+  firstScheduledStart DateTime
+  lastScheduledStart  DateTime
+  status              CoachingBookingSeriesStatus    @default(ACTIVE)
+  metadataJson        Json                           @default("{}")
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+
+  client     User               @relation("CoachingBookingSeriesClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  coach      User               @relation("CoachingBookingSeriesCoach", fields: [coachUserId], references: [id], onDelete: Cascade)
+  engagement CoachingEngagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  offering   ServiceOffering?   @relation(fields: [offeringId], references: [id], onDelete: SetNull)
+  createdBy  User               @relation("CoachingBookingSeriesCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  bookings   CoachingBooking[]
+
+  @@index([coachUserId, status, firstScheduledStart], map: "CoachBookingSeries_coach_status_start_idx")
+  @@index([clientUserId, status, firstScheduledStart], map: "CoachBookingSeries_client_status_start_idx")
+  @@index([engagementId, status, firstScheduledStart], map: "CoachBookingSeries_engagement_status_start_idx")
 }
 
 // A Coaching Engagement is the durable, private collaboration boundary for a
@@ -1556,6 +1613,7 @@ model CoachingEngagement {
   invitations    CoachingEngagementInvitation[]
   memberReceipts CoachingEngagementMemberReceipt[]
   bookings       CoachingBooking[]
+  bookingSeries  CoachingBookingSeries[]
   callRooms      CallRoom[]
   notes          CoachingNote[]
   actionItems    ActionItem[]
