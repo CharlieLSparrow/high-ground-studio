@@ -6,6 +6,7 @@ repo_root="$(cd "${script_dir}/../.." && pwd -P)"
 source "${script_dir}/quipsly-recovery-lab-state.sh"
 
 state_dir="$(quipsly_recovery_lab_state_dir)"
+media_state_dir="$(quipsly_recovery_lab_media_state_dir)"
 database_container="quipsly-portable-recovery-lab-db"
 database_label="com.quipsly.recovery-lab"
 docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
@@ -127,14 +128,8 @@ rm -f \
   "${state_dir}/source-revision"
 
 retained_media_suffix="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-if [[ -d "${state_dir}/media" ]]; then
-  mv "${state_dir}/media" "${state_dir}/media-retained-${retained_media_suffix}"
-fi
-if [[ -d "${state_dir}/media-workspace" ]]; then
-  mv "${state_dir}/media-workspace" "${state_dir}/media-workspace-retained-${retained_media_suffix}"
-fi
-if [[ -d "${state_dir}/capture-vault" ]]; then
-  mv "${state_dir}/capture-vault" "${state_dir}/capture-vault-retained-${retained_media_suffix}"
+if [[ -d "${media_state_dir}" ]]; then
+  mv "${media_state_dir}" "${media_state_dir}-retained-${retained_media_suffix}"
 fi
 
 echo

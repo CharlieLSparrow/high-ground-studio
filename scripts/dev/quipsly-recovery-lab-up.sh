@@ -6,6 +6,7 @@ repo_root="$(cd "${script_dir}/../.." && pwd -P)"
 source "${script_dir}/quipsly-recovery-lab-state.sh"
 
 state_dir="$(quipsly_recovery_lab_state_dir)"
+media_state_dir="$(quipsly_recovery_lab_media_state_dir)"
 database_url="$(quipsly_recovery_lab_database_url)"
 database_container="quipsly-portable-recovery-lab-db"
 database_label="com.quipsly.recovery-lab"
@@ -73,9 +74,9 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789 \
     NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789:web:recoverylab \
     QUIPSLY_LOCAL_MEDIA_UPLOADS=true \
-    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${state_dir}/media" \
-    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${state_dir}/media-workspace" \
-    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${state_dir}/capture-vault" \
+    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${media_state_dir}/media" \
+    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${media_state_dir}/media-workspace" \
+    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${media_state_dir}/capture-vault" \
     QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN="${nest_url}" \
     QUIPSLY_APP_HOST="${nest_url}" \
     LIVEKIT_URL="${livekit_url}" \
@@ -241,9 +242,9 @@ start_macos_job() {
 }
 
 mkdir -p \
-  "${state_dir}/media" \
-  "${state_dir}/media-workspace" \
-  "${state_dir}/capture-vault"
+  "${media_state_dir}/media" \
+  "${media_state_dir}/media-workspace" \
+  "${media_state_dir}/capture-vault"
 
 livekit_status="$(quipsly_recovery_lab_http_status "${livekit_http_url}/")"
 if [[ "${livekit_status}" == "200" ]]; then
