@@ -1,36 +1,19 @@
 import React from "react";
 import Link from "next/link";
-import { CircleAlert, Database, RotateCcw } from "lucide-react";
+import { CircleAlert, RotateCcw } from "lucide-react";
 import { getOrgMembersAction, getOrgEventsAction, getOrgFeedbackTicketsAction } from "./actions";
 import { getPrismaClient } from "@/lib/prisma";
 import { SettingsClientView } from "./settings-client-view";
 import { auth } from "@/auth";
 import { StudioAccessShell } from "../studio-access-shell";
+import { ensureQuipslyBillingContext } from "@/lib/server/subscription-entitlements";
 
 export const metadata = {
-  title: "Workspace settings - Quipsly",
-  description: "Inspect and manage persisted workspace settings without simulated billing or access grants.",
+  title: "Settings - Quipsly",
+  description: "Manage your Quipsly workspace, access, subscription, and support.",
 };
 
 export const dynamic = "force-dynamic";
-
-function SettingsWorkspaceRequiredState() {
-  return (
-    <main className="mx-auto grid min-h-[70vh] max-w-3xl place-items-center px-4 py-10 text-studio-ink">
-      <section role="status" aria-label="Settings workspace required" className="w-full rounded-3xl border border-studio-line bg-[#032321] p-7 shadow-studio-panel">
-        <Database className="h-8 w-8 text-studio-tag" />
-        <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-studio-tag">No workspace membership</p>
-        <h1 className="mt-2 text-3xl font-black">Connect a real workspace deliberately</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-studio-muted">
-          Opening Settings does not silently create an organization, pricing plans, a trial subscription, or activity events. A deliberate workspace-provisioning flow is still required.
-        </p>
-        <Link href="/" className="mt-6 inline-flex rounded-xl border border-studio-line px-4 py-2 text-sm font-bold text-studio-ink transition hover:border-studio-tag">
-          Return to The Nest
-        </Link>
-      </section>
-    </main>
-  );
-}
 
 function SettingsUnavailableState() {
   return (
@@ -54,18 +37,17 @@ async function loadWorkspaceSettings(
   prisma: ReturnType<typeof getPrismaClient>,
   organizationId: string,
 ) {
-  const [members, events, feedbackTickets, plans, kbData] = await Promise.all([
+  const [members, events, feedbackTickets, kbData] = await Promise.all([
     getOrgMembersAction(organizationId),
     getOrgEventsAction(organizationId),
     getOrgFeedbackTicketsAction(organizationId),
-    prisma.subscriptionPlan.findMany({ orderBy: { price: "asc" } }),
     prisma.knowledgeCategory.findMany({
       include: { articles: { orderBy: { order: "asc" } } },
       orderBy: { order: "asc" },
     }),
   ]);
 
-  return { members, events, feedbackTickets, plans, kbData };
+  return { members, events, feedbackTickets, kbData };
 }
 
 export default async function SettingsPage() {
@@ -75,6 +57,20 @@ export default async function SettingsPage() {
   }
 
   const prisma = getPrismaClient();
+  let entitlement;
+  try {
+    // A signed-in person should never have to understand or provision an
+    // Organization record before Settings works. This idempotently supplies
+    // the private account workspace and its account-wide access record.
+    entitlement = await ensureQuipslyBillingContext({
+      prisma,
+      user: { id: session.user.id, name: session.user.name },
+    });
+  } catch (error) {
+    console.error("Failed to prepare Quipsly account settings:", error);
+    return <SettingsUnavailableState />;
+  }
+
   let membership;
   try {
     membership = await prisma.organizationMember.findFirst({
@@ -94,7 +90,7 @@ export default async function SettingsPage() {
     return <SettingsUnavailableState />;
   }
 
-  if (!membership) return <SettingsWorkspaceRequiredState />;
+  if (!membership) return <SettingsUnavailableState />;
 
   const { organization, role } = membership;
   let records: Awaited<ReturnType<typeof loadWorkspaceSettings>>;
@@ -109,7 +105,7 @@ export default async function SettingsPage() {
     <div className="max-w-7xl mx-auto py-8 px-4 md:px-6 flex flex-col gap-6 bg-transparent min-h-screen text-studio-ink">
       <header className="flex flex-col gap-1 border-b border-studio-line pb-6">
         <p className="text-xs font-bold text-studio-tag uppercase tracking-widest">Workspace controls</p>
-        <h1 id="settings-heading" className="text-3xl font-black text-studio-ink tracking-tight">Studio Settings</h1>
+        <h1 id="settings-heading" className="text-3xl font-black text-studio-ink tracking-tight">Quipsly Settings</h1>
         <p className="text-sm text-studio-muted">
           Manage persisted workspace details, existing access, support, and audit records for <span className="font-bold text-[#f0b765]">{organization.name}</span>.
         </p>
@@ -120,9 +116,9 @@ export default async function SettingsPage() {
         initialMembers={records.members}
         initialEvents={records.events}
         initialFeedback={records.feedbackTickets}
-        plans={records.plans}
         currentUserRole={role}
         currentUserId={session.user.id}
+        initialEntitlement={entitlement}
         initialKbData={records.kbData}
       />
     </div>

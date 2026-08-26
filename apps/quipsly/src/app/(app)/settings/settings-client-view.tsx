@@ -16,7 +16,10 @@ import {
   Edit,
   Eye,
   BookOpen,
-  EyeOff
+  EyeOff,
+  Check,
+  ExternalLink,
+  Sparkles
 } from "lucide-react";
 import { 
   updateOrgDetailsAction, 
@@ -51,6 +54,22 @@ interface Organization {
     status: SubscriptionStatus;
     currentPeriodEnd: Date | null;
   } | null;
+}
+
+interface AccountEntitlement {
+  entitled: boolean;
+  accessMode: string;
+  planName: string;
+  provider: string | null;
+  status: string;
+  currentPeriodEnd: string | null;
+  trialEnd: string | null;
+  trialDays: number;
+  cancelAtPeriodEnd: boolean;
+  management: {
+    appStoreURL: string;
+    webURL: string;
+  };
 }
 
 interface Member {
@@ -90,18 +109,18 @@ export function SettingsClientView({
   initialMembers,
   initialEvents,
   initialFeedback,
-  plans,
   currentUserRole,
   currentUserId,
+  initialEntitlement,
   initialKbData = []
 }: {
   initialOrg: any;
   initialMembers: any[];
   initialEvents: any[];
   initialFeedback: any[];
-  plans: any[];
   currentUserRole: OrganizationRole;
   currentUserId: string;
+  initialEntitlement: AccountEntitlement;
   initialKbData?: any[];
 }) {
   const [activeTab, setActiveTab] = useState<"team" | "billing" | "support" | "audit" | "kb">("team");
@@ -116,10 +135,7 @@ export function SettingsClientView({
   // Roster state
   const [members, setMembers] = useState<Member[]>(initialMembers);
 
-  // Subscription records are displayed as persisted data only. Quipsly does
-  // not currently expose a provider-backed checkout from this surface.
-  const activePlan = (initialOrg.subscription?.plan || null) as SubscriptionPlan | null;
-  const activeSubStatus = (initialOrg.subscription?.status || null) as SubscriptionStatus | null;
+  const entitlement = initialEntitlement;
 
   // Audit state
   const events = initialEvents as LogEvent[];
@@ -524,85 +540,67 @@ export function SettingsClientView({
         {/* TAB 2: BILLING & PLANS */}
         {activeTab === "billing" && (
           <div className="flex flex-col gap-6 animate-in fade-in duration-200">
-            <div role="status" className="rounded-2xl border border-amber-300/30 bg-amber-300/10 p-5 text-sm leading-6 text-amber-100">
-              <p className="font-black text-amber-200">Billing changes are not connected.</p>
-              <p className="mt-1 text-xs">
-                Quipsly is showing persisted subscription and plan-catalog records only. Prices, renewals, and entitlements are not verified checkout offers, and this page cannot charge a card or activate a plan.
-              </p>
-            </div>
-
             <div className="bg-[#032321]/90 border border-studio-line rounded-2xl p-6 shadow-studio-panel flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div className="flex gap-4 items-center">
                 <div className="w-12 h-12 rounded-xl bg-studio-tag/10 border border-studio-tag/30 flex items-center justify-center text-studio-tag">
-                  <CreditCard size={24} />
+                  {entitlement.accessMode === "TRIAL" ? <Sparkles size={24} /> : <CreditCard size={24} />}
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xs text-studio-dim uppercase font-bold tracking-widest">Persisted subscription record</span>
-                  <h3 className="text-xl font-black text-studio-ink mt-0.5">{activePlan?.name || "No plan recorded"}</h3>
+                  <span className="text-xs text-studio-dim uppercase font-bold tracking-widest">Your Quipsly access</span>
+                  <h3 className="text-xl font-black text-studio-ink mt-0.5">{entitlement.planName}</h3>
                   <p className="text-xs text-studio-muted mt-1">
-                    Status: <span className="font-bold text-studio-ink">{activeSubStatus || "No status recorded"}</span>
+                    <span className="font-bold text-studio-ink">
+                      {entitlement.accessMode === "TRIAL"
+                        ? "Full trial"
+                        : entitlement.accessMode === "SUBSCRIBED"
+                          ? "Active subscription"
+                          : entitlement.accessMode === "EARLY_ACCESS"
+                            ? "Full access"
+                            : "Subscription needed"}
+                    </span>
+                    {entitlement.cancelAtPeriodEnd ? " · Ends at the close of this billing period" : ""}
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-col md:items-end gap-1 font-mono">
-                <span className="text-2xl font-black text-studio-ink">
-                  {activePlan ? `$${(activePlan.price / 100).toFixed(2)}` : "—"}
-                  {activePlan && <span className="text-xs font-normal text-studio-dim"> / {activePlan.interval}</span>}
-                </span>
-                <span className="text-xs text-studio-muted">
-                  {org.subscription?.currentPeriodEnd
-                    ? `Recorded period end: ${new Date(org.subscription.currentPeriodEnd).toLocaleDateString()}`
-                    : "No renewal or period-end receipt recorded"}
-                </span>
+              <div className="flex flex-col md:items-end gap-3">
+                {(entitlement.trialEnd || entitlement.currentPeriodEnd) && (
+                  <span className="text-xs font-bold text-studio-muted">
+                    {entitlement.accessMode === "TRIAL" ? "Trial through " : entitlement.cancelAtPeriodEnd ? "Access through " : "Renews "}
+                    {new Date(entitlement.trialEnd || entitlement.currentPeriodEnd || "").toLocaleDateString()}
+                  </span>
+                )}
+                {entitlement.provider === "APP_STORE" && (
+                  <a
+                    href={entitlement.management.appStoreURL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 rounded-xl border border-studio-line px-4 py-2.5 text-xs font-black text-studio-ink transition hover:border-studio-tag"
+                  >
+                    Manage subscription <ExternalLink size={13} />
+                  </a>
+                )}
               </div>
             </div>
 
             <div className="bg-[#032321]/90 border border-studio-line rounded-2xl p-6 shadow-studio-panel">
-              <h3 className="text-lg font-bold text-studio-ink mb-2">Internal plan catalog</h3>
-              <p className="text-xs text-studio-muted mb-6">Reference records only. Checkout, provider verification, and entitlement changes are intentionally disabled.</p>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {plans.map((p) => {
-                  const isCurrent = p.id === activePlan?.id;
-                  return (
-                    <div key={p.id} className={`flex flex-col justify-between border rounded-2xl p-5 bg-[#062d2a]/40 ${
-                      isCurrent ? "border-studio-tag" : "border-studio-line"
-                    }`}>
-                      <div className="flex flex-col gap-2">
-                        <div className="flex justify-between items-start">
-                          <h4 className="font-bold text-sm text-studio-ink">{p.name}</h4>
-                          {isCurrent && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 bg-studio-tag text-[#032321] rounded-full uppercase tracking-wider">
-                              Active
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-baseline gap-1 mt-2">
-                          <span className="text-3xl font-black text-studio-ink">${(p.price / 100).toFixed(0)}</span>
-                          <span className="text-xs text-studio-dim">/{p.interval}</span>
-                        </div>
-                        
-                        <p className="mt-4 text-xs leading-5 text-studio-muted">
-                          No provider product, feature entitlement, or purchasable offer is asserted by this catalog row.
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled
-                        className="mt-6 w-full cursor-not-allowed rounded-xl border border-studio-line bg-[#062d2a] py-2.5 text-xs font-bold text-studio-dim opacity-75"
-                      >
-                        {isCurrent ? "Current database record" : "Checkout unavailable"}
-                      </button>
-                    </div>
-                  );
-                })}
+              <h3 className="text-lg font-bold text-studio-ink">Everything a coaching session needs</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-studio-muted">
+                Schedule, meet, record locally at each end, recover interrupted uploads, transcribe, make basic edits, and keep shared notes, tasks, and goals together.
+              </p>
+              <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+                {["Calls and high-quality recording", "Transcript and basic editing", "Shared notes, tasks, and goals"].map((feature) => (
+                  <div key={feature} className="flex items-start gap-2 rounded-xl border border-studio-line bg-[#062d2a]/40 p-4 text-sm font-bold text-studio-ink">
+                    <Check size={16} className="mt-0.5 shrink-0 text-studio-tag" /> {feature}
+                  </div>
+                ))}
               </div>
-
-              {plans.length === 0 && (
-                <div className="rounded-xl border border-studio-line bg-[#062d2a]/30 p-5 text-sm text-studio-muted">
-                  No plan catalog records are available.
+              <div className="mt-6 rounded-xl border border-studio-tag/30 bg-studio-tag/10 p-4 text-sm leading-6 text-studio-ink">
+                <span className="font-black">People you invite join free.</span> Clients can join your Session, participate in the call, and collaborate on its shared work without buying a coach subscription.
+              </div>
+              {entitlement.accessMode === "FREE" && (
+                <div role="status" className="mt-6 rounded-xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-100">
+                  Open Quipsly Capture on iPhone to subscribe or restore a purchase. Your existing Sessions and work remain saved.
                 </div>
               )}
             </div>

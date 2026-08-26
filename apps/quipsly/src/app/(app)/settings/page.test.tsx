@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
+import { ensureQuipslyBillingContext } from "@/lib/server/subscription-entitlements";
 
 import SettingsPage from "./page";
 import {
@@ -13,7 +14,9 @@ import {
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/lib/server/subscription-entitlements", () => ({ ensureQuipslyBillingContext: jest.fn() }));
 jest.mock("../studio-access-shell", () => ({ StudioAccessShell: ({ mode, redirectTo }: { mode: string; redirectTo: string }) => <div>{mode}:{redirectTo}</div> }));
+jest.mock("./settings-client-view", () => ({ SettingsClientView: ({ initialEntitlement }: { initialEntitlement: { planName: string } }) => <div>settings:{initialEntitlement.planName}</div> }));
 jest.mock("./actions", () => ({
   getOrgMembersAction: jest.fn(),
   getOrgEventsAction: jest.fn(),
@@ -32,12 +35,18 @@ jest.mock("./feedback-card", () => ({ FeedbackPortal: () => <div>Feedback portal
 
 const mockedAuth = jest.mocked(auth);
 const mockedPrisma = jest.mocked(getPrismaClient);
+const mockedEnsureBilling = jest.mocked(ensureQuipslyBillingContext);
+const entitlement = {
+  planName: "Quipsly Coach trial",
+  accessMode: "TRIAL",
+};
 
 describe("Settings page read boundary", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(console, "error").mockImplementation(() => undefined);
     mockedAuth.mockResolvedValue({ user: { id: "user-1" } } as never);
+    mockedEnsureBilling.mockResolvedValue(entitlement as never);
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -49,29 +58,38 @@ describe("Settings page read boundary", () => {
     expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
-  it("does not bootstrap an organization, plan, subscription, or event on page view", async () => {
+  it("prepares a private account workspace without asking the person to provision one", async () => {
+    const organization = {
+      id: "org-1",
+      name: "My Quipsly",
+      slug: "quipsly-user-1",
+      subscription: null,
+    };
     const prisma = {
-      organizationMember: { findFirst: jest.fn().mockResolvedValue(null) },
-      subscriptionPlan: { findMany: jest.fn() },
-      knowledgeCategory: { findMany: jest.fn() },
+      organizationMember: { findFirst: jest.fn().mockResolvedValue({ role: "OWNER", organization }) },
+      knowledgeCategory: { findMany: jest.fn().mockResolvedValue([]) },
     };
     mockedPrisma.mockReturnValue(prisma as never);
+    jest.mocked(getOrgMembersAction).mockResolvedValue([] as never);
+    jest.mocked(getOrgEventsAction).mockResolvedValue([] as never);
+    jest.mocked(getOrgFeedbackTicketsAction).mockResolvedValue([] as never);
 
     render(await SettingsPage());
 
-    expect(screen.getByRole("status", { name: "Settings workspace required" })).toBeInTheDocument();
-    expect(screen.getByText(/does not silently create an organization, pricing plans, a trial subscription, or activity events/i)).toBeInTheDocument();
+    expect(screen.getByText("settings:Quipsly Coach trial")).toBeInTheDocument();
+    expect(mockedEnsureBilling).toHaveBeenCalledWith({
+      prisma,
+      user: { id: "user-1", name: undefined },
+    });
     expect(prisma.organizationMember.findFirst).toHaveBeenCalledTimes(1);
-    expect(prisma.subscriptionPlan.findMany).not.toHaveBeenCalled();
-    expect(getOrgMembersAction).not.toHaveBeenCalled();
-    expect(getOrgEventsAction).not.toHaveBeenCalled();
-    expect(getOrgFeedbackTicketsAction).not.toHaveBeenCalled();
+    expect(getOrgMembersAction).toHaveBeenCalledWith("org-1");
+    expect(getOrgEventsAction).toHaveBeenCalledWith("org-1");
+    expect(getOrgFeedbackTicketsAction).toHaveBeenCalledWith("org-1");
   });
 
   it("shows an honest outage without substituting sample records", async () => {
     const prisma = {
       organizationMember: { findFirst: jest.fn().mockRejectedValue(new Error("ECONNREFUSED /private/schema.prisma")) },
-      subscriptionPlan: { findMany: jest.fn() },
       knowledgeCategory: { findMany: jest.fn() },
     };
     mockedPrisma.mockReturnValue(prisma as never);

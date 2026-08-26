@@ -56,6 +56,21 @@ const props = {
   plans: [plan, { ...plan, id: "plan-2", name: "Legacy Agency row", price: 9900 }],
   currentUserRole: OrganizationRole.OWNER,
   currentUserId: "user-1",
+  initialEntitlement: {
+    entitled: true,
+    accessMode: "SUBSCRIBED" as const,
+    planName: "Quipsly Coach monthly",
+    provider: "APP_STORE",
+    status: "ACTIVE",
+    currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+    trialEnd: null,
+    trialDays: 14,
+    cancelAtPeriodEnd: false,
+    management: {
+      appStoreURL: "https://apps.apple.com/account/subscriptions",
+      webURL: "/settings#subscription",
+    },
+  },
   initialKbData: [],
 };
 
@@ -69,15 +84,18 @@ describe("SettingsClientView truth UX", () => {
     expect(screen.queryByPlaceholderText(/editor@quipsly/i)).not.toBeInTheDocument();
   });
 
-  it("renders billing records as read-only and exposes no fake card checkout", () => {
+  it("renders the verified account access and free-invitee policy without internal catalog scaffolding", () => {
     render(<SettingsClientView {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Billing & Plans" }));
 
-    expect(screen.getByText("Billing changes are not connected.")).toBeInTheDocument();
-    expect(screen.getByText(/persisted subscription and plan-catalog records only/i)).toBeInTheDocument();
-    expect(screen.getByText("Current database record")).toBeDisabled();
-    expect(screen.getByText("Checkout unavailable")).toBeDisabled();
+    expect(screen.getByText("Quipsly Coach monthly")).toBeInTheDocument();
+    expect(screen.getByText("Active subscription")).toBeInTheDocument();
+    expect(screen.getByText("People you invite join free.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /manage subscription/i })).toHaveAttribute(
+      "href",
+      "https://apps.apple.com/account/subscriptions",
+    );
+    expect(screen.queryByText(/internal plan catalog|checkout unavailable|billing changes are not connected/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/card number|expiry|cvc/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/activation complete|Stripe Sandbox checkout/i)).not.toBeInTheDocument();
   });
 });
