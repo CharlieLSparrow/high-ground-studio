@@ -24,7 +24,6 @@ enum MicrophonePreflightState: String, Codable {
 final class AudioCaptureController: NSObject, ObservableObject {
     @Published private(set) var captureState: AudioCaptureState = .idle
     @Published private(set) var microphonePreflightState: MicrophonePreflightState = .undetermined
-    @Published private(set) var isRecording: Bool = false
     @Published private(set) var currentDuration: TimeInterval = 0
     @Published private(set) var currentTakeOrder: Int = 1
     @Published private(set) var currentSegmentOrder: Int = 1
@@ -37,8 +36,12 @@ final class AudioCaptureController: NSObject, ObservableObject {
     @Published private(set) var lastErrorMessage: String?
     @Published private(set) var automaticStopReason: String?
     @Published private(set) var availableCaptureCapacityBytes: Int64?
-    @Published private(set) var recordingConsentGranted: Bool = false
-    @Published private(set) var activeCallRoomLabel: String = "No coaching/podcast room selected"
+    // Capture authority and the source label are internal inputs to the durable
+    // recording receipt. The Session UI already presents canonical consent and
+    // title state, so publishing these duplicates only creates a second,
+    // transient SwiftUI truth during recorder startup.
+    private(set) var recordingConsentGranted: Bool = false
+    private(set) var activeCallRoomLabel: String = "No coaching/podcast room selected"
     @Published private(set) var localRecordingRecoveryNote: String = "Local recordings are preserved until Quipsly verifies upload."
 
     let localRecordingLibrary = LocalRecordingLibrary.shared
@@ -1542,34 +1545,60 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
     private func refreshInputRoute() {
         guard let input = audioSession.currentRoute.inputs.first ?? audioSession.availableInputs?.first else {
-            inputRouteName = "No microphone selected"
-            inputRoutePortType = nil
+            scheduleInputRoutePublication(
+                name: "No microphone selected",
+                portType: nil
+            )
             return
         }
 
-        inputRoutePortType = input.portType.rawValue
         let systemName = input.portName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedName: String
         switch input.portType {
         case .builtInMic:
-            inputRouteName = "iPhone microphone"
+            resolvedName = "iPhone microphone"
         case .headsetMic:
-            inputRouteName = systemName == input.portType.rawValue ? "Headset microphone" : systemName
+            resolvedName = systemName == input.portType.rawValue ? "Headset microphone" : systemName
         case .bluetoothHFP, .bluetoothLE:
-            inputRouteName = systemName == input.portType.rawValue ? "Bluetooth microphone" : systemName
+            resolvedName = systemName == input.portType.rawValue ? "Bluetooth microphone" : systemName
         case .usbAudio:
-            inputRouteName = systemName == input.portType.rawValue ? "USB microphone" : systemName
+            resolvedName = systemName == input.portType.rawValue ? "USB microphone" : systemName
         case .carAudio:
-            inputRouteName = systemName == input.portType.rawValue ? "Car microphone" : systemName
+            resolvedName = systemName == input.portType.rawValue ? "Car microphone" : systemName
         default:
-            inputRouteName = systemName.isEmpty || systemName == input.portType.rawValue
+            resolvedName = systemName.isEmpty || systemName == input.portType.rawValue
                 ? "External microphone"
                 : systemName
+        }
+        scheduleInputRoutePublication(
+            name: resolvedName,
+            portType: input.portType.rawValue
+        )
+    }
+
+    /// AVAudioSession commonly emits the same route more than once while it
+    /// moves from prepared to active. Route identity is state, not an event:
+    /// publishing identical values needlessly invalidates the recorder view
+    /// during iOS's own route update pass and can trip SwiftUI's mutation
+    /// guard even though nothing visible changed.
+    private func scheduleInputRoutePublication(name: String, portType: String?) {
+        guard inputRouteName != name || inputRoutePortType != portType else {
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if self.inputRouteName != name {
+                self.inputRouteName = name
+            }
+            if self.inputRoutePortType != portType {
+                self.inputRoutePortType = portType
+            }
         }
     }
 
     private func transition(to newState: AudioCaptureState) {
+        guard captureState != newState else { return }
         captureState = newState
-        isRecording = newState.isCaptureActive
 
         let commandCenter = MPRemoteCommandCenter.shared()
         commandCenter.pauseCommand.isEnabled = newState == .recording

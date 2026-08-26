@@ -44,6 +44,12 @@ private enum ProviderRoomRuntime {
 
 @MainActor
 final class ProviderRoomController: NSObject, ObservableObject {
+    /// CallKit represents one process-level calling endpoint. SwiftUI may
+    /// reconstruct view models while authenticated/offline roots transition;
+    /// sharing this controller prevents disposable CXProvider registrations
+    /// from occurring inside a view update and keeps one authoritative call.
+    static let shared = ProviderRoomController()
+
     @Published var statusText = "Provider room idle"
     @Published var connectionStateLabel = "Disconnected"
     @Published var isConnecting = false
@@ -131,7 +137,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private var callAudioWatchdogTask: Task<Void, Never>?
     #endif
 
-    override init() {
+    private override init() {
         let configuration = CXProviderConfiguration()
         configuration.supportsVideo = true
         configuration.maximumCallGroups = 1

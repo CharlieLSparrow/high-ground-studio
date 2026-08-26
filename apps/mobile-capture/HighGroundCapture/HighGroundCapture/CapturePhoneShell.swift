@@ -9,7 +9,7 @@ struct CapturePhoneShell: View {
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @EnvironmentObject private var deepLinkRouter: CaptureDeepLinkRouter
-    @StateObject private var model = CaptureExperienceModel()
+    @ObservedObject var model: CaptureExperienceModel
     @State private var showsNewSession = false
     @State private var isRoutingSessionLink = false
     @State private var localOnlyRecordingSessionID: String?
@@ -115,6 +115,10 @@ struct CapturePhoneShell: View {
             Text(model.errorMessage ?? "Try again.")
         }
         .onAppear {
+            // App init normally captures DEBUG launch URLs before auth mounts.
+            // Retry idempotently once the shell exists in case XCTest supplied
+            // its arguments after the first App-struct initialization.
+            deepLinkRouter.receiveConfiguredLaunchLinkIfNeeded()
             // SwiftUI can initially mount the first tab before applying a
             // non-default State value on iOS 26. Reapply the DEBUG-only launch
             // route after the TabView exists so deterministic UI journeys open
@@ -124,6 +128,11 @@ struct CapturePhoneShell: View {
             }
         }
         .task {
+            // Recovery validation belongs to the mounted destination shell,
+            // not the parent authentication transition. The shared library
+            // drains its pending candidates idempotently, so an offline-to-
+            // online shell swap cannot publish the same restoration twice.
+            await LocalRecordingLibrary.shared.validatePendingRecoveredSources()
             await model.load()
             showRejectedLinkNotice()
             await routePendingSessionLink()
@@ -189,10 +198,20 @@ struct CapturePhoneShell: View {
             }
         }
         .onChange(of: audioCapture.captureState) { _, state in
-            model.reconcileCaptureState(state)
+            // SwiftUI delivers onChange while it is reconciling this view.
+            // Reconcile the cross-controller projection on the next actor turn
+            // so terminal recorder callbacks never publish back into the same
+            // render transaction.
+            Task { @MainActor in
+                await Task.yield()
+                model.reconcileCaptureState(state)
+            }
         }
         .onChange(of: videoCapture.state) { _, state in
-            model.reconcileVideoCaptureState(state, using: videoCapture)
+            Task { @MainActor in
+                await Task.yield()
+                model.reconcileVideoCaptureState(state, using: videoCapture)
+            }
         }
     }
 
@@ -210,7 +229,7 @@ struct CapturePhoneShell: View {
             switch await model.focusSession(from: request) {
             case let .opened(tab):
                 visibleTab = tab
-                deepLinkRouter.consume(request)
+                deepLinkRouter.markOpened(request)
             case .rejected:
                 deepLinkRouter.consume(request)
             case .retryWhenOnline:
@@ -6455,6 +6474,7 @@ private struct CaptureRecorderView: View {
     @Binding var localOnlyRecordingSessionID: String?
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
+    @EnvironmentObject private var deepLinkRouter: CaptureDeepLinkRouter
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var showsSessionPicker = false
     @State private var showsSessionContext = false
@@ -6511,6 +6531,15 @@ private struct CaptureRecorderView: View {
                    notice.sessionID == model.selectedSession?.id {
                     CaptureInlineMessage(text: notice.message)
                         .accessibilityIdentifier("CaptureSessionEntryNotice")
+                } else if let openedSession = deepLinkRouter.openedSession
+                            ?? deepLinkRouter.pendingSession,
+                          openedSession.roomID == model.selectedSession?.id {
+                    CaptureInlineMessage(
+                        text: openedSession.mode == .live
+                            ? "Session opened. Nothing joined or recorded yet."
+                            : "Session opened. Nothing started automatically."
+                    )
+                    .accessibilityIdentifier("CaptureSessionEntryNotice")
                 }
 
                 if let session = model.selectedSession {
@@ -7004,15 +7033,7 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    if let sourcePlanStatus = model.sourcePlanOutbox.statusLine {
-                        if model.sourcePlanOutbox.pendingCount == 0 {
-                            CaptureInlineMessage(text: sourcePlanStatus)
-                                .accessibilityIdentifier("CaptureSourcePlanStatus")
-                        } else {
-                            CaptureInlineWarning(text: sourcePlanStatus)
-                                .accessibilityIdentifier("CaptureSourcePlanStatus")
-                        }
-                    }
+                    CaptureSourcePlanStatusView(outbox: model.sourcePlanOutbox)
 
                     CaptureQuickEntryBar(session: session) { kind in
                         quickEntryKind = kind
@@ -14651,7 +14672,7 @@ private struct LocalRecordingRow: View {
         case (.video, false):
             return "video.fill"
         case (.audio, true):
-            return "checkmark.waveform"
+            return "checkmark.circle.fill"
         case (.audio, false):
             return "waveform"
         }
@@ -15294,6 +15315,23 @@ private struct CaptureInlineMessage: View {
     }
 }
 
+private struct CaptureSourcePlanStatusView: View {
+    @ObservedObject var outbox: CaptureSourcePlanOutbox
+
+    @ViewBuilder
+    var body: some View {
+        if let status = outbox.statusLine {
+            if outbox.pendingCount == 0 {
+                CaptureInlineMessage(text: status)
+                    .accessibilityIdentifier("CaptureSourcePlanStatus")
+            } else {
+                CaptureInlineWarning(text: status)
+                    .accessibilityIdentifier("CaptureSourcePlanStatus")
+            }
+        }
+    }
+}
+
 private struct CaptureInlineWarning: View {
     let text: String
 
@@ -15528,7 +15566,10 @@ private extension String {
 }
 
 #Preview {
-    CapturePhoneShell(visibleTab: .constant(.today))
+    CapturePhoneShell(
+        model: CaptureExperienceModel(usesPreviewData: true),
+        visibleTab: .constant(.today)
+    )
         .environmentObject(AudioCaptureController())
         .environmentObject(VideoCaptureController())
 }

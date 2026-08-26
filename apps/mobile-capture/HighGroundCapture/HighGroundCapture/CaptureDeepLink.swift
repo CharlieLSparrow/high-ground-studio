@@ -75,6 +75,7 @@ final class CaptureDeepLinkRouter: ObservableObject {
     static let shared = CaptureDeepLinkRouter()
 
     @Published private(set) var pendingSession: CaptureSessionDeepLink?
+    @Published private(set) var openedSession: CaptureSessionDeepLink?
     @Published private(set) var rejectedLinkNotice: String?
     private var inspectedConfiguredLaunchLink = false
 
@@ -88,6 +89,7 @@ final class CaptureDeepLinkRouter: ObservableObject {
             return false
         }
         rejectedLinkNotice = nil
+        openedSession = nil
         pendingSession = request
         return true
     }
@@ -95,6 +97,21 @@ final class CaptureDeepLinkRouter: ObservableObject {
     func consume(_ request: CaptureSessionDeepLink) {
         guard pendingSession == request else { return }
         pendingSession = nil
+    }
+
+    /// Retains the inert navigation receipt until the person deliberately
+    /// joins or records. The authenticated SwiftUI shell can be rebuilt while
+    /// identity restoration settles; the safety explanation must survive that
+    /// ordinary lifecycle transition even though the URL itself is consumed.
+    func markOpened(_ request: CaptureSessionDeepLink) {
+        guard pendingSession == request else { return }
+        openedSession = request
+        pendingSession = nil
+    }
+
+    func clearOpenedSessionReceipt(for sessionID: String) {
+        guard openedSession?.roomID == sessionID else { return }
+        openedSession = nil
     }
 
     func consumeRejectedLinkNotice() -> String? {
@@ -105,12 +122,14 @@ final class CaptureDeepLinkRouter: ObservableObject {
     func receiveConfiguredLaunchLinkIfNeeded() {
 #if DEBUG
         guard !inspectedConfiguredLaunchLink else { return }
-        inspectedConfiguredLaunchLink = true
         let prefix = "--capture-runtime-session-link="
         guard let argument = ProcessInfo.processInfo.arguments.first(where: {
             $0.hasPrefix(prefix)
-        }),
-        let url = URL(string: String(argument.dropFirst(prefix.count))) else { return }
+        }) else { return }
+        inspectedConfiguredLaunchLink = true
+        guard let url = URL(
+            string: String(argument.dropFirst(prefix.count))
+        ) else { return }
         receive(url)
 #endif
     }

@@ -352,7 +352,7 @@ final class CaptureExperienceModel: ObservableObject {
     let coachingRunwayClient = MobileCoachingRunwayClient()
     let coachingFormsClient = MobileCoachingFormsClient()
     let sourceInboxClient = CaptureSourceInboxClient()
-    let providerRoom = ProviderRoomController()
+    let providerRoom = ProviderRoomController.shared
     let recordingCoordinator = CaptureRecordingCoordinator()
     let readinessClient = CaptureReadinessClient()
     let reviewDigestClient = CaptureReviewDigestClient()
@@ -385,6 +385,8 @@ final class CaptureExperienceModel: ObservableObject {
     private var initialSessionAuthorityVerifiedAt: Date?
     private var observedReceiptOwnerAccountID: String?
     private var automaticallyQueuedRecoveredRecordingIDs = Set<UUID>()
+    private var isChildModelRefreshScheduled = false
+    private var suppressesChildModelRefreshesUntilInitialLoadCompletes = true
     private var cancellables = Set<AnyCancellable>()
 
     init(usesPreviewData: Bool? = nil) {
@@ -392,64 +394,60 @@ final class CaptureExperienceModel: ObservableObject {
         observedReceiptOwnerAccountID = normalizedOwnerAccountID(AuthManager.currentStoredOwnerID())
         sessionClient.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         todayClient.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         workClient.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         calendarSubscriptionClient.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         coachingRunwayClient.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         coachingFormsClient.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         sourceInboxClient.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         providerRoom.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         recordingCoordinator.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         readinessClient.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         reviewDigestClient.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         uploadManager.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         receiptStore.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
-        endpointQueueOutbox.objectWillChange
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-        sourcePlanOutbox.objectWillChange
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
+        // Endpoint/source-plan outboxes are durable background coordinators.
+        // Their narrow status UI observes them directly; forwarding every
+        // ledger reconciliation through this root model needlessly rebuilds
+        // the entire Capture shell and can re-enter SwiftUI during launch.
         LocalRecordingLibrary.shared.$recordings
             .debounce(for: .milliseconds(350), scheduler: RunLoop.main)
             .sink { [weak self] recordings in
@@ -461,7 +459,7 @@ final class CaptureExperienceModel: ObservableObject {
             .store(in: &cancellables)
         sessionNoteEditOutbox.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
         taskReminderScheduler.activateOwner(observedReceiptOwnerAccountID)
         sessionNoteEditOutbox.activateOwner(observedReceiptOwnerAccountID)
@@ -489,6 +487,21 @@ final class CaptureExperienceModel: ObservableObject {
         }
         providerRoom.onCallTransportRestored = { [weak self] date in
             self?.activeAudioCapture?.noteProviderCallTransportRestored(at: date)
+        }
+    }
+
+    /// Child stores often finish authentication and recovery together while
+    /// SwiftUI is replacing the signed-in shell. Coalesce those notifications
+    /// into one refresh on the next run-loop turn instead of recursively
+    /// invalidating the root recorder surface from inside a view update.
+    private func scheduleChildModelRefresh() {
+        guard !suppressesChildModelRefreshesUntilInitialLoadCompletes else { return }
+        guard !isChildModelRefreshScheduled else { return }
+        isChildModelRefreshScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isChildModelRefreshScheduled = false
+            self.objectWillChange.send()
         }
     }
 
@@ -622,7 +635,10 @@ final class CaptureExperienceModel: ObservableObject {
     func load() async {
         guard !isRefreshing else { return }
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer {
+            suppressesChildModelRefreshesUntilInitialLoadCompletes = false
+            isRefreshing = false
+        }
         errorMessage = nil
 
         if usesPreviewData {
@@ -1109,6 +1125,11 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         if selectedSessionID != session.id {
+            if let selectedSessionID {
+                CaptureDeepLinkRouter.shared.clearOpenedSessionReceipt(
+                    for: selectedSessionID
+                )
+            }
             sessionEntryNotice = nil
         }
         selectedSessionID = session.id
@@ -1181,8 +1202,10 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     func clearSessionEntryNotice(for sessionID: String) {
-        guard sessionEntryNotice?.sessionID == sessionID else { return }
-        sessionEntryNotice = nil
+        if sessionEntryNotice?.sessionID == sessionID {
+            sessionEntryNotice = nil
+        }
+        CaptureDeepLinkRouter.shared.clearOpenedSessionReceipt(for: sessionID)
     }
 
     func requestWorkNavigation(

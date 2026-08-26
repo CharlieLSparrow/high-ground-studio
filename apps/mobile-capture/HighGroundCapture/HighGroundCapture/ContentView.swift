@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var authManager = AuthManager.shared
+    @StateObject private var captureModel = CaptureExperienceModel()
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @State private var runtimePlaybackFixtureReceipt: String?
@@ -12,7 +13,7 @@ struct ContentView: View {
             if CaptureLaunchConfiguration.usesLoginPreview {
                 LoginView()
             } else if authManager.isAuthenticated || CaptureLaunchConfiguration.usesPreviewData || mustKeepRecorderVisible {
-                CapturePhoneShell(visibleTab: $visibleTab)
+                CapturePhoneShell(model: captureModel, visibleTab: $visibleTab)
                     .overlay(alignment: .topLeading) {
                         CaptureRuntimeAccountIdentityReceipt(email: authManager.userEmail)
                     }
@@ -45,7 +46,10 @@ struct ContentView: View {
 #endif
                     }
             } else if authManager.hasProtectedOfflineAccess {
-                ProtectedOfflineLibraryShell(authManager: authManager)
+                ProtectedOfflineLibraryShell(
+                    authManager: authManager,
+                    captureModel: captureModel
+                )
             } else if authManager.accessMode == .checking {
                 CaptureIdentityCheckingView()
             } else {
@@ -63,22 +67,8 @@ struct ContentView: View {
             // Today and making the just-saved source appear to disappear.
             visibleTab = .library
         }
-        .task(id: authManager.accessMode) {
-            // Recovery may discover playable bytes before the saved account
-            // finishes its online/offline transition. Keep those candidates
-            // fail-closed until the identity shell has reached a stable mode;
-            // otherwise the Library's four published projections can land in
-            // the same SwiftUI transaction that replaces the launch shell.
-            guard authManager.accessMode == .online
-                    || authManager.accessMode == .offlineCachedIdentity else {
-                return
-            }
-            await withCheckedContinuation { continuation in
-                DispatchQueue.main.async {
-                    continuation.resume()
-                }
-            }
-            await LocalRecordingLibrary.shared.validatePendingRecoveredSources()
+        .task {
+            await authManager.resumeSavedSessionRefreshIfNeeded()
         }
     }
 
@@ -156,9 +146,9 @@ private struct CaptureIdentityCheckingView: View {
 
 private struct ProtectedOfflineLibraryShell: View {
     @ObservedObject var authManager: AuthManager
+    @ObservedObject var captureModel: CaptureExperienceModel
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var playback = LocalRecordingPlaybackController()
-    @StateObject private var captureModel = CaptureExperienceModel()
     @State private var quickEntryKind: MobileQuickEntryKind?
 
     var body: some View {
@@ -333,7 +323,19 @@ private struct ProtectedOfflineLibraryShell: View {
             CaptureQuickEntrySheet(kind: kind, session: captureModel.selectedSession, model: captureModel)
                 .presentationDetents([.medium, .large])
         }
-        .task { await captureModel.load() }
+        .task(id: authManager.accessMode) {
+            // This shell now owns recovered-source publication only after it is
+            // mounted. Publishing one restored row per verified local source
+            // must not overlap the parent authentication shell replacement.
+            await library.validatePendingRecoveredSources()
+            // During a normal launch this destination briefly protects local
+            // sources while the saved account is being verified. Do not start
+            // the canonical network graph only to cancel it when verification
+            // succeeds and the online shell replaces this one. A genuine
+            // offline fallback reruns this task with the stable offline mode.
+            guard authManager.accessMode == .offlineCachedIdentity else { return }
+            await captureModel.load()
+        }
         .onDisappear { playback.stop() }
     }
 
@@ -367,7 +369,7 @@ private struct ProtectedOfflineRecordingRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: recording.status.isVerified ? "checkmark.waveform" : "waveform")
+                Image(systemName: recording.status.isVerified ? "checkmark.circle.fill" : "waveform")
                     .foregroundStyle(recording.status.isVerified ? Color.green : Color.accentColor)
                     .frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 3) {

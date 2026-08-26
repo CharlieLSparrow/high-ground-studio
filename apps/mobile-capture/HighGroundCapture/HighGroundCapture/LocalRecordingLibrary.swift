@@ -523,8 +523,12 @@ final class LocalRecordingLibrary: ObservableObject {
     static let shared = LocalRecordingLibrary()
 
     @Published private(set) var recordings: [LocalRecording] = []
-    @Published private(set) var currentRecording: LocalRecording?
-    @Published private(set) var mostRecentRecording: LocalRecording?
+    var currentRecording: LocalRecording? {
+        recordings.first {
+            [.armed, .recording, .paused, .finalizing].contains($0.status)
+        }
+    }
+    var mostRecentRecording: LocalRecording? { recordings.first }
     @Published private(set) var persistenceError: String?
     @Published private(set) var quarantinedLedgerFileName: String?
 
@@ -587,6 +591,7 @@ final class LocalRecordingLibrary: ObservableObject {
     private var ledgerIsWritable = true
     private var activeOwnerAccountID: String?
     private var accountObserver: NSObjectProtocol?
+    private var projectionPublishTask: Task<Void, Never>?
 
     private static let fileNameFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -647,7 +652,11 @@ final class LocalRecordingLibrary: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             let ownerAccountID = notification.object as? String
-            MainActor.assumeIsolated { [weak self] in
+            // Auth restoration can publish while SwiftUI is replacing its
+            // launch shell. A main-actor yield may resume inside that same
+            // render transaction, so cross an actual run-loop boundary before
+            // exposing the new account partition.
+            DispatchQueue.main.async { [weak self] in
                 self?.activateOwner(ownerAccountID)
             }
         }
@@ -656,7 +665,9 @@ final class LocalRecordingLibrary: ObservableObject {
     /// Changes only the visible account partition. Source files and ledger rows
     /// for every other account, including legacy unowned rows, remain untouched.
     func activateOwner(_ ownerAccountID: String?) {
-        activeOwnerAccountID = normalizedOwnerID(ownerAccountID)
+        let normalizedOwnerAccountID = normalizedOwnerID(ownerAccountID)
+        guard normalizedOwnerAccountID != activeOwnerAccountID else { return }
+        activeOwnerAccountID = normalizedOwnerAccountID
         sortAndPublish()
     }
 
@@ -880,16 +891,26 @@ final class LocalRecordingLibrary: ObservableObject {
             statusMessage: nil
         )
 
-        try commit(upserting: recording)
+        // Persist the armed source before touching the microphone, but do not
+        // expose an intermediate Library row in the same UI transaction that
+        // initiated recording. `markRecording` publishes once the media writer
+        // has actually started; a crash before then still recovers this durable
+        // armed row from disk on next launch.
+        try commit(upserting: recording, publishProjection: false)
         return recording
     }
 
     func markRecording(_ id: UUID, durationSeconds: TimeInterval) throws {
-        try mutate(id, allowInactiveOwner: true) { recording in
+        try mutate(
+            id,
+            allowInactiveOwner: true,
+            publishProjection: false
+        ) { recording in
             recording.status = .recording
             recording.durationSeconds = max(0, durationSeconds)
             recording.statusMessage = nil
         }
+        scheduleProjectionPublish()
     }
 
     func markPaused(_ id: UUID, durationSeconds: TimeInterval, interruption: Bool) throws {
@@ -1493,7 +1514,10 @@ final class LocalRecordingLibrary: ObservableObject {
         return changed
     }
 
-    private func commit(upserting recording: LocalRecording) throws {
+    private func commit(
+        upserting recording: LocalRecording,
+        publishProjection: Bool = true
+    ) throws {
         var updated = storedRecordings
         if let index = updated.firstIndex(where: { $0.id == recording.id }) {
             updated[index] = recording
@@ -1502,12 +1526,15 @@ final class LocalRecordingLibrary: ObservableObject {
         }
         try persist(updated)
         storedRecordings = updated
-        sortAndPublish()
+        if publishProjection {
+            sortAndPublish()
+        }
     }
 
     private func mutate(
         _ id: UUID,
         allowInactiveOwner: Bool = false,
+        publishProjection: Bool = true,
         change: (inout LocalRecording) throws -> Void
     ) throws {
         var updated = storedRecordings
@@ -1523,7 +1550,22 @@ final class LocalRecordingLibrary: ObservableObject {
         try change(&updated[index])
         try persist(updated)
         storedRecordings = updated
-        sortAndPublish()
+        if publishProjection {
+            sortAndPublish()
+        }
+    }
+
+    /// Durable ledger transitions and SwiftUI projection invalidation are two
+    /// different responsibilities. Recording START is committed synchronously;
+    /// only its visible Library snapshot crosses to a fresh main-actor turn.
+    private func scheduleProjectionPublish() {
+        projectionPublishTask?.cancel()
+        projectionPublishTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard !Task.isCancelled, let self else { return }
+            self.sortAndPublish()
+            self.projectionPublishTask = nil
+        }
     }
 
     private func persist(_ recordings: [LocalRecording]) throws {
@@ -1542,9 +1584,14 @@ final class LocalRecordingLibrary: ObservableObject {
             // The canonical commit is deliberately last: a successful return
             // proves both recovery layers and the authoritative index landed.
             try data.write(to: ledgerURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-            persistenceError = nil
+            if persistenceError != nil {
+                persistenceError = nil
+            }
         } catch {
-            persistenceError = "The protected recording journal could not be saved: \(error.localizedDescription)"
+            let message = "The protected recording journal could not be saved: \(error.localizedDescription)"
+            if persistenceError != message {
+                persistenceError = message
+            }
             throw error
         }
     }
@@ -1632,33 +1679,46 @@ final class LocalRecordingLibrary: ObservableObject {
                     expectedSourceProfile: candidate.expectedSourceProfile
                 )
             }.value
-            do {
-                try mutate(candidate.recordingID, allowInactiveOwner: true) { recording in
-                    guard recording.status == .validatingRecovery else { return }
-                    if let recordedMedia = validation.recordedMedia,
-                       var sourceProfile = recording.sourceProfile {
-                        sourceProfile.recordedMedia = recordedMedia
-                        sourceProfile.audioSignal = validation.audioSignal
-                        sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis
-                        recording.sourceProfile = sourceProfile
+            // Deep validation can finish during SwiftUI's first authenticated
+            // render. Commit inside the next queue block itself. Resuming a
+            // continuation and mutating afterward can re-enter this task before
+            // that block returns, which is still inside the shell transition.
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else {
+                        continuation.resume()
+                        return
                     }
-                    recording.sourceIntegrityHoldReason =
-                        validation.sourceIntegrityHoldReason
-                    if validation.isPlayable {
-                        recording.status = .recovered
-                        recording.statusMessage =
-                            validation.sourceIntegrityHoldReason
-                            ?? candidate.playableMessage
-                        if let durationSeconds = validation.durationSeconds {
-                            recording.durationSeconds = durationSeconds
+                    do {
+                        try self.mutate(candidate.recordingID, allowInactiveOwner: true) { recording in
+                            guard recording.status == .validatingRecovery else { return }
+                            if let recordedMedia = validation.recordedMedia,
+                               var sourceProfile = recording.sourceProfile {
+                                sourceProfile.recordedMedia = recordedMedia
+                                sourceProfile.audioSignal = validation.audioSignal
+                                sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis
+                                recording.sourceProfile = sourceProfile
+                            }
+                            recording.sourceIntegrityHoldReason =
+                                validation.sourceIntegrityHoldReason
+                            if validation.isPlayable {
+                                recording.status = .recovered
+                                recording.statusMessage =
+                                    validation.sourceIntegrityHoldReason
+                                    ?? candidate.playableMessage
+                                if let durationSeconds = validation.durationSeconds {
+                                    recording.durationSeconds = durationSeconds
+                                }
+                            } else {
+                                recording.status = .needsRepair
+                                recording.statusMessage = validation.failureMessage
+                            }
                         }
-                    } else {
-                        recording.status = .needsRepair
-                        recording.statusMessage = validation.failureMessage
+                    } catch {
+                        self.persistenceError = "Recovery validation finished, but its protected result could not be committed: \(error.localizedDescription)"
                     }
+                    continuation.resume()
                 }
-            } catch {
-                persistenceError = "Recovery validation finished, but its protected result could not be committed: \(error.localizedDescription)"
             }
         }
     }
@@ -2381,15 +2441,21 @@ final class LocalRecordingLibrary: ObservableObject {
             }
             return lhs.startedAt > rhs.startedAt
         }
+        let visibleRecordings: [LocalRecording]
         if let activeOwnerAccountID = normalizedOwnerID(activeOwnerAccountID) {
-            recordings = storedRecordings.filter {
+            visibleRecordings = storedRecordings.filter {
                 normalizedOwnerID($0.ownerAccountID) == activeOwnerAccountID
             }
         } else {
-            recordings = []
+            visibleRecordings = []
         }
-        currentRecording = recordings.first { [.armed, .recording, .paused, .finalizing].contains($0.status) }
-        mostRecentRecording = recordings.first
+        // The current and most-recent rows are derived from this ordered array.
+        // Publish the account-scoped Library as one atomic consistency unit so
+        // SwiftUI never observes three successively different projections of
+        // the same durable ledger commit.
+        if recordings != visibleRecordings {
+            recordings = visibleRecordings
+        }
     }
 
     private func fileByteCount(at fileURL: URL) -> Int64 {

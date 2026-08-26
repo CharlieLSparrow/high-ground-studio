@@ -894,7 +894,15 @@ for (const forbidden of [
 requireIncludes(audioText, "guard recordingConsentGranted else", "recorder consent gate");
 requireIncludes(audioText, "Recording needs explicit consent before capture starts.", "recorder consent error");
 requireIncludes(audioText, "requestRecordPermission", "microphone permission request");
-requireIncludes(audioText, "isRecording = newState.isCaptureActive", "visible recording state source");
+requireIncludes(
+  audioText,
+  "@Published private(set) var captureState: AudioCaptureState = .idle",
+  "single visible recording state source",
+);
+assert(
+  !audioText.includes("@Published private(set) var isRecording"),
+  "Recorder must not publish a second Boolean recording truth alongside captureState.",
+);
 requireIncludes(audioText, "recordingConsentGranted ? \"granted\" : \"missing\"", "recorder state consent broadcast");
 requireIncludes(audioText, "Production capture rule: never silently delete local recordings.", "no silent recording deletion");
 requireIncludes(audioText, "UploadManager.shared.startUpload", "recording upload trigger");
@@ -982,7 +990,7 @@ for (const needle of [
   "Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.",
   "Allow recording",
   "Recording options",
-  "Setup needed",
+  "Recording consent",
   "Button(\"Cancel\")",
   "Revoke",
   "Try again",
@@ -1007,7 +1015,9 @@ for (const needle of [
   requireAnyIncludes(shippingCaptureUIText, [needle, needle.replace("\\(", "(")], "reachable capture reviewer UI");
 }
 
-requireIncludes(contentViewText, "CapturePhoneShell(visibleTab: $visibleTab)", "the app root opens the production capture-first shell with durable navigation ownership");
+requireIncludes(contentViewText, "@StateObject private var captureModel = CaptureExperienceModel()", "the app root owns one stable Capture model across authentication transitions");
+requireIncludes(contentViewText, "CapturePhoneShell(model: captureModel, visibleTab: $visibleTab)", "the app root opens the production capture-first shell with durable state and navigation ownership");
+requireIncludes(contentViewText, "captureModel: captureModel", "the protected offline shell receives the same app-owned Capture model");
 requireIncludes(contentViewText, "@State private var visibleTab: CaptureRootTab", "the app root owns navigation across online and protected-offline shell transitions");
 requireIncludes(contentViewText, "visibleTab = .library", "the app root returns a recovered source journey to Library after a transport failure");
 requireIncludes(capturePhoneShellText, "@Binding var visibleTab: CaptureRootTab", "the capture shell consumes app-root navigation instead of resetting it");

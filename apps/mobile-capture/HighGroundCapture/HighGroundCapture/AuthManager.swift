@@ -16,11 +16,23 @@ enum AuthAccessMode: String {
     case offlineCachedIdentity
 }
 
+private struct AuthAccessSnapshot: Equatable {
+    var isAuthenticated: Bool
+    var mode: AuthAccessMode
+    var offlineMessage: String?
+
+    static let signedOut = AuthAccessSnapshot(
+        isAuthenticated: false,
+        mode: .signedOut,
+        offlineMessage: nil
+    )
+}
+
 @MainActor
 final class AuthManager: ObservableObject {
     static let shared = AuthManager()
 
-    @Published var isAuthenticated: Bool = false
+    @Published private var accessSnapshot = AuthAccessSnapshot.signedOut
     @Published var userName: String?
     @Published var userEmail: String?
     @Published private(set) var accountOwnerID: String?
@@ -28,8 +40,9 @@ final class AuthManager: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var statusMessage: String?
     @Published private(set) var recentlyCreatedEmail: String?
-    @Published private(set) var accessMode: AuthAccessMode = .signedOut
-    @Published private(set) var offlineAccessMessage: String?
+    var isAuthenticated: Bool { accessSnapshot.isAuthenticated }
+    var accessMode: AuthAccessMode { accessSnapshot.mode }
+    var offlineAccessMessage: String? { accessSnapshot.offlineMessage }
 
     var hasProtectedOfflineAccess: Bool {
         accessMode == .checkingCachedIdentity || accessMode == .offlineCachedIdentity
@@ -53,6 +66,7 @@ final class AuthManager: ObservableObject {
     private var appleSignInCoordinator: AppleSignInCoordinator?
     private var accountIdentityGeneration: UInt64 = 0
     private var lastPublishedOwnerAccountID: String?
+    private var savedSessionRefreshIsPending = false
 
     private struct AuthenticatedOwnerBinding {
         let ownerAccountID: String
@@ -259,10 +273,17 @@ final class AuthManager: ObservableObject {
 
     private init() {
         if let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
-            accountOwnerID = previewOwner
-            isAuthenticated = false
-            accessMode = .offlineCachedIdentity
-            offlineAccessMessage = "Simulator Share Sheet proof · network actions disabled."
+            // The singleton is constructed from a SwiftUI StateObject factory.
+            // Initialize wrapper storage directly so launch state does not emit
+            // ObservableObject changes while SwiftUI is installing the object.
+            _accountOwnerID = Published(initialValue: previewOwner)
+            _accessSnapshot = Published(
+                initialValue: AuthAccessSnapshot(
+                    isAuthenticated: false,
+                    mode: .offlineCachedIdentity,
+                    offlineMessage: "Simulator Share Sheet proof · network actions disabled."
+                )
+            )
             return
         }
         checkExistingSession()
@@ -342,9 +363,12 @@ final class AuthManager: ObservableObject {
     }
 
     func checkExistingSession() {
-        userName = getKeychainItem(account: "userName")
-        userEmail = getKeychainItem(account: "userEmail")
-        accountOwnerID = Self.currentStoredOwnerID()
+        // This method is deliberately initializer-only. Replacing Published
+        // wrapper storage establishes the first snapshot without sending a
+        // change from inside SwiftUI's StateObject installation transaction.
+        _userName = Published(initialValue: getKeychainItem(account: "userName"))
+        _userEmail = Published(initialValue: getKeychainItem(account: "userEmail"))
+        _accountOwnerID = Published(initialValue: Self.currentStoredOwnerID())
         // This owner was restored before any account transition occurred in
         // the current process. Seed the publication boundary so a successful
         // refresh for the same person does not synchronously rebroadcast a
@@ -355,21 +379,36 @@ final class AuthManager: ObservableObject {
         ShareCaptureBridge.publishOwner(lastPublishedOwnerAccountID)
 
         if getKeychainItem(account: "refreshToken") != nil {
-            isAuthenticated = false
-            accessMode = hasRecentlyVerifiedCachedIdentity()
+            let initialAccessMode: AuthAccessMode = hasRecentlyVerifiedCachedIdentity()
                 ? .checkingCachedIdentity
                 : .checking
-            offlineAccessMessage = hasProtectedOfflineAccess
-                ? "Verifying your saved Quipsly identity. The protected local Library remains available."
-                : nil
-            Task { await refreshAccessTokenIfNeeded(force: false, allowOfflineRecovery: true) }
+            _accessSnapshot = Published(
+                initialValue: AuthAccessSnapshot(
+                    isAuthenticated: false,
+                    mode: initialAccessMode,
+                    offlineMessage: initialAccessMode == .checkingCachedIdentity
+                        ? "Verifying your saved Quipsly identity. The protected local Library remains available."
+                        : nil
+                )
+            )
+            savedSessionRefreshIsPending = true
         } else {
-            setSignedOutState()
+            _accessSnapshot = Published(initialValue: .signedOut)
         }
     }
 
     var googleSignInAvailable: Bool {
         Self.googleClientConfiguration != nil
+    }
+
+    /// Starts cached credential verification only after SwiftUI has mounted an
+    /// explicit checking/protected shell. Authentication object construction
+    /// must be side-effect free; otherwise a fast local refresh can replace
+    /// the root view while SwiftUI is still installing its subscriptions.
+    func resumeSavedSessionRefreshIfNeeded() async {
+        guard savedSessionRefreshIsPending else { return }
+        savedSessionRefreshIsPending = false
+        await refreshAccessTokenIfNeeded(force: false, allowOfflineRecovery: true)
     }
 
     func signInWithApple() {
@@ -804,6 +843,9 @@ final class AuthManager: ObservableObject {
             )
         } catch {
             try validateAuthenticatedOwnerBinding(ownerBinding)
+            if isRequestCancellation(error) {
+                throw CancellationError()
+            }
             if isNetworkAvailabilityError(error) {
                 enterProtectedOfflineAccess(reason: error.localizedDescription)
                 throw AuthenticatedRequestError.offlineAccess
@@ -849,6 +891,9 @@ final class AuthManager: ObservableObject {
             )
         } catch {
             try validateAuthenticatedOwnerBinding(ownerBinding)
+            if isRequestCancellation(error) {
+                throw CancellationError()
+            }
             if isNetworkAvailabilityError(error) {
                 enterProtectedOfflineAccess(reason: error.localizedDescription)
                 throw AuthenticatedRequestError.offlineAccess
@@ -903,6 +948,9 @@ final class AuthManager: ObservableObject {
             )
         } catch {
             try validateAuthenticatedOwnerBinding(ownerBinding)
+            if isRequestCancellation(error) {
+                throw CancellationError()
+            }
             if isNetworkAvailabilityError(error) {
                 enterProtectedOfflineAccess(reason: error.localizedDescription)
                 throw AuthenticatedRequestError.offlineAccess
@@ -947,6 +995,9 @@ final class AuthManager: ObservableObject {
             )
         } catch {
             try validateAuthenticatedOwnerBinding(ownerBinding)
+            if isRequestCancellation(error) {
+                throw CancellationError()
+            }
             if isNetworkAvailabilityError(error) {
                 enterProtectedOfflineAccess(reason: error.localizedDescription)
                 throw AuthenticatedRequestError.offlineAccess
@@ -1569,20 +1620,28 @@ final class AuthManager: ObservableObject {
         fallbackEmail: String?,
         fallbackDisplayName: String?
     ) -> Bool {
-        accountOwnerID = verifiedSession.ownerAccountID
+        if accountOwnerID != verifiedSession.ownerAccountID {
+            accountOwnerID = verifiedSession.ownerAccountID
+        }
         var saved = saveKeychainItem(account: "accountOwnerID", value: verifiedSession.ownerAccountID)
 
         let email = verifiedSession.email ?? fallbackEmail
         let displayName = verifiedSession.name ?? fallbackDisplayName ?? email
         if let email, !email.isEmpty {
-            userEmail = email
+            if userEmail != email {
+                userEmail = email
+            }
             saved = saveKeychainItem(account: "userEmail", value: email) && saved
         }
         if let displayName, !displayName.isEmpty {
-            userName = displayName
+            if userName != displayName {
+                userName = displayName
+            }
             saved = saveKeychainItem(account: "userName", value: displayName) && saved
         } else if let email, !email.isEmpty {
-            userName = email
+            if userName != email {
+                userName = email
+            }
             saved = saveKeychainItem(account: "userName", value: email) && saved
         }
         return saved
@@ -1605,39 +1664,60 @@ final class AuthManager: ObservableObject {
 
     private func setOnlineState() async {
         // A fast cached-token verification can finish while SwiftUI is still
-        // mounting the checking/offline shell. Cross one main-queue turn
-        // before publishing the authenticated shell so Combine never sends a
-        // nested view update from that launch transaction.
+        // mounting the checking/offline shell. A main-queue hop may still run
+        // inside that render turn; commit on the next default run-loop turn so
+        // the protected -> online snapshot is one post-render transaction.
+        let manager = self
         await withCheckedContinuation { continuation in
-            DispatchQueue.main.async {
-                continuation.resume()
+            RunLoop.main.perform(inModes: [.default]) {
+                Task { @MainActor in
+                    manager.applyOnlineState()
+                    continuation.resume()
+                }
             }
         }
-        isAuthenticated = true
-        accessMode = .online
-        offlineAccessMessage = nil
-        errorMessage = nil
+    }
+
+    private func applyOnlineState() {
+        let nextSnapshot = AuthAccessSnapshot(
+            isAuthenticated: true,
+            mode: .online,
+            offlineMessage: nil
+        )
+        if accessSnapshot != nextSnapshot {
+            accessSnapshot = nextSnapshot
+        }
+        if errorMessage != nil {
+            errorMessage = nil
+        }
         publishAccountIdentityChange()
     }
 
     private func setSignedOutState() {
-        isAuthenticated = false
-        accessMode = .signedOut
-        offlineAccessMessage = nil
+        if accessSnapshot != .signedOut {
+            accessSnapshot = .signedOut
+        }
     }
 
     private func enterProtectedOfflineAccess(reason: String) {
-        isAuthenticated = false
         guard hasRecentlyVerifiedCachedIdentity() else {
-            accessMode = .signedOut
-            offlineAccessMessage = nil
+            if accessSnapshot != .signedOut {
+                accessSnapshot = .signedOut
+            }
             errorMessage = reason
             return
         }
 
-        accessMode = .offlineCachedIdentity
-        offlineAccessMessage = "Nest could not verify this saved identity right now. Protected local recordings and a private work-capture outbox remain available; all network actions are disabled."
-        errorMessage = offlineAccessMessage
+        let offlineMessage = "Nest could not verify this saved identity right now. Protected local recordings and a private work-capture outbox remain available; all network actions are disabled."
+        let nextSnapshot = AuthAccessSnapshot(
+            isAuthenticated: false,
+            mode: .offlineCachedIdentity,
+            offlineMessage: offlineMessage
+        )
+        if accessSnapshot != nextSnapshot {
+            accessSnapshot = nextSnapshot
+        }
+        errorMessage = offlineMessage
         publishAccountIdentityChange()
     }
 
@@ -1646,6 +1726,9 @@ final class AuthManager: ObservableObject {
     }
 
     private func handleSessionRefreshFailure(_ error: Error) {
+        if isRequestCancellation(error) {
+            return
+        }
         if isDefinitiveAuthenticationFailure(error) {
             signOut()
             errorMessage = humanAuthError(error)
@@ -1682,6 +1765,7 @@ final class AuthManager: ObservableObject {
     }
 
     private func isNetworkAvailabilityError(_ error: Error) -> Bool {
+        guard !isRequestCancellation(error) else { return false }
         let nsError = error as NSError
         guard nsError.domain == NSURLErrorDomain else { return false }
         let codes: Set<Int> = [
@@ -1705,6 +1789,15 @@ final class AuthManager: ObservableObject {
             URLError.badServerResponse.rawValue,
         ]
         return codes.contains(nsError.code)
+    }
+
+    private func isRequestCancellation(_ error: Error) -> Bool {
+        if error is CancellationError || Task.isCancelled {
+            return true
+        }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain
+            && nsError.code == URLError.cancelled.rawValue
     }
 
     private func isTokenExpiringSoon() -> Bool {
