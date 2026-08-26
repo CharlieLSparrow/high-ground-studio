@@ -4543,6 +4543,7 @@ final class CaptureTodayClient: ObservableObject {
     }
 
     func loadPreview() {
+        let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
         let now = Date()
         if CaptureLaunchConfiguration.usesFocusOutboxUITest,
            let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
@@ -4588,24 +4589,28 @@ final class CaptureTodayClient: ObservableObject {
                 revision: 1,
                 contentSha256: String(repeating: "f", count: 64),
                 releasedAt: ISO8601DateFormatter().string(from: now.addingTimeInterval(-900)),
-                coachLabel: "Homer",
+                coachLabel: appStorePresentation ? "Coach" : "Homer",
                 selectedCount: 1,
                 href: "/sessions/preview-coaching-ready?mode=outputs#client-follow-up"
             ),
             tasks: [MobileCaptureTodayTask(
                 id: "preview-task",
-                title: "Proof-listen the coaching recap",
-                detail: "Check the source audio against the corrected transcript.",
+                title: appStorePresentation ? "Send the agreed reflection prompt" : "Proof-listen the coaching recap",
+                detail: appStorePresentation ? "Share the prompt before Friday's check-in." : "Check the source audio against the corrected transcript.",
                 status: "OPEN",
                 isOverdue: true,
                 dueAt: nil,
                 updatedAt: ISO8601DateFormatter().string(from: now),
                 roomId: "room-preview-coaching-ready",
                 sessionTitle: "Coaching session",
-                project: MobileCaptureTodayProject(id: "preview-high-ground", name: "High Ground Odyssey", slug: "preview-high-ground"),
+                project: MobileCaptureTodayProject(
+                    id: "preview-high-ground",
+                    name: appStorePresentation ? "My coaching practice" : "High Ground Odyssey",
+                    slug: "preview-high-ground"
+                ),
                 canEditTags: false,
                 tagIds: ["preview-proof-listen", "preview-episode-4"],
-                tagLabels: ["Proof listen", "Episode 4"],
+                tagLabels: appStorePresentation ? ["Follow-through", "Coaching"] : ["Proof listen", "Episode 4"],
                 sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(
                     schema: "quipsly-transcript-derived-task-v1",
                     roomId: "room-preview-coaching-ready",
@@ -6691,12 +6696,13 @@ final class CaptureWorkClient: ObservableObject {
     }
 
     func loadPreview(projectID: String? = nil) {
+        let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
         let now = ISO8601DateFormatter().string(from: Date())
         let projects = [
             MobileCaptureWorkProject(
                 id: "preview-home",
                 slug: "preview-home",
-                name: "Charlie Home Nest",
+                name: appStorePresentation ? "My Quipsly" : "Charlie Home Nest",
                 role: "OWNER",
                 canWrite: true,
                 isHomeNest: true,
@@ -6705,7 +6711,7 @@ final class CaptureWorkClient: ObservableObject {
             MobileCaptureWorkProject(
                 id: "preview-high-ground",
                 slug: "preview-high-ground",
-                name: "High Ground Odyssey",
+                name: appStorePresentation ? "My coaching practice" : "High Ground Odyssey",
                 role: "EDITOR",
                 canWrite: true,
                 isHomeNest: false,
@@ -6727,8 +6733,8 @@ final class CaptureWorkClient: ObservableObject {
                 tasks: [
                     MobileCaptureTodayTask(
                         id: "preview-work-task",
-                        title: "Proof-listen the episode opening",
-                        detail: "Compare the first two minutes against the corrected transcript.",
+                        title: appStorePresentation ? "Send the agreed reflection prompt" : "Proof-listen the episode opening",
+                        detail: appStorePresentation ? "Share the prompt before Friday's check-in." : "Compare the first two minutes against the corrected transcript.",
                         status: "OPEN",
                         isOverdue: false,
                         dueAt: now,
@@ -6738,7 +6744,7 @@ final class CaptureWorkClient: ObservableObject {
                         project: project,
                         canEditTags: true,
                         tagIds: ["preview-episode-4", "preview-proof-listen"],
-                        tagLabels: ["Episode 4", "Proof listen"],
+                        tagLabels: appStorePresentation ? ["Coaching", "Follow-through"] : ["Episode 4", "Proof listen"],
                         sourceAnchor: nil,
                         lastMergedTranscriptEvidence: nil,
                         todayReason: nil,
@@ -6747,7 +6753,7 @@ final class CaptureWorkClient: ObservableObject {
                     ),
                     MobileCaptureTodayTask(
                         id: "preview-work-task-complete",
-                        title: "Lock the audio spine",
+                        title: appStorePresentation ? "Share the session recap" : "Lock the audio spine",
                         detail: nil,
                         status: "COMPLETED",
                         isOverdue: false,
@@ -6758,7 +6764,7 @@ final class CaptureWorkClient: ObservableObject {
                         project: project,
                         canEditTags: true,
                         tagIds: ["preview-episode-4"],
-                        tagLabels: ["Episode 4"],
+                        tagLabels: appStorePresentation ? ["Coaching"] : ["Episode 4"],
                         sourceAnchor: nil,
                         lastMergedTranscriptEvidence: nil,
                         todayReason: nil,
@@ -6769,19 +6775,19 @@ final class CaptureWorkClient: ObservableObject {
                 goals: [
                     MobileCaptureTodayGoal(
                         id: "preview-work-goal",
-                        title: "Publish an episode we trust",
-                        description: "Complete the human proof loop before delivery.",
+                        title: appStorePresentation ? "Build a sustainable weekly practice" : "Publish an episode we trust",
+                        description: appStorePresentation ? "Turn the session insight into one small, repeatable action." : "Complete the human proof loop before delivery.",
                         status: "ACTIVE",
                         targetAt: nil,
                         progressPercent: 60,
-                        progressNote: "The first proof-listen is complete.",
+                        progressNote: appStorePresentation ? "The first weekly reflection is scheduled." : "The first proof-listen is complete.",
                         updatedAt: now,
                         roomId: nil,
                         sessionTitle: nil,
                         project: project,
                         canEditTags: true,
                         tagIds: ["preview-episode-4"],
-                        tagLabels: ["Episode 4"],
+                        tagLabels: appStorePresentation ? ["Coaching"] : ["Episode 4"],
                         sourceAnchor: nil,
                         lastMergedTranscriptEvidence: nil
                     ),
@@ -6790,8 +6796,8 @@ final class CaptureWorkClient: ObservableObject {
                     MobileCaptureWorkNote(
                         id: "preview-work-note",
                         stableId: "preview-work-note",
-                        title: "Opening idea",
-                        excerpt: "Begin with the moment the obvious answer stopped being obvious.",
+                        title: appStorePresentation ? "Session insight" : "Opening idea",
+                        excerpt: appStorePresentation ? "A smaller weekly commitment feels more achievable than a perfect daily routine." : "Begin with the moment the obvious answer stopped being obvious.",
                         tagRevision: 0,
                         updatedAt: now,
                         canEditTags: true,
@@ -6803,11 +6809,11 @@ final class CaptureWorkClient: ObservableObject {
                                 id: "preview-work-note-body",
                                 stableId: "preview-work-note-body",
                                 order: 0,
-                                body: "Begin with the moment the obvious answer stopped being obvious."
+                                body: appStorePresentation ? "A smaller weekly commitment feels more achievable than a perfect daily routine." : "Begin with the moment the obvious answer stopped being obvious."
                             ),
                         ],
                         tagIds: ["preview-episode-4"],
-                        tagLabels: ["Episode 4"],
+                        tagLabels: appStorePresentation ? ["Coaching"] : ["Episode 4"],
                         webPath: "/create?project=preview-high-ground&document=preview-work-note"
                     ),
                 ],
@@ -6815,8 +6821,8 @@ final class CaptureWorkClient: ObservableObject {
                     MobileCaptureWorkTag(
                         id: "preview-episode-4",
                         projectId: selected.id,
-                        slug: "episode-4",
-                        label: "Episode 4",
+                        slug: appStorePresentation ? "coaching" : "episode-4",
+                        label: appStorePresentation ? "Coaching" : "Episode 4",
                         isActive: true,
                         usageCount: 4,
                         archivedAt: nil,
@@ -6833,8 +6839,8 @@ final class CaptureWorkClient: ObservableObject {
                     MobileCaptureWorkTag(
                         id: "preview-proof-listen",
                         projectId: selected.id,
-                        slug: "proof-listen",
-                        label: "Proof listen",
+                        slug: appStorePresentation ? "follow-through" : "proof-listen",
+                        label: appStorePresentation ? "Follow-through" : "Proof listen",
                         isActive: true,
                         usageCount: 1,
                         archivedAt: nil,

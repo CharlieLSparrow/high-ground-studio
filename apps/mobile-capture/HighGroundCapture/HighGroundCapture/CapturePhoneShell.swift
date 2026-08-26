@@ -10692,9 +10692,13 @@ private struct CaptureLibraryView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Every source stays visible")
+                    Text(CaptureLaunchConfiguration.usesAppStorePresentation ? "Your recording is safe" : "Every source stays visible")
                         .font(.title2.weight(.bold))
-                    Text("Capture success means saved locally. Upload and server verification are separate steps.")
+                    Text(
+                        CaptureLaunchConfiguration.usesAppStorePresentation
+                            ? "The original stays on this iPhone while a verified copy becomes ready in Quipsly."
+                            : "Capture success means saved locally. Upload and server verification are separate steps."
+                    )
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -10727,7 +10731,7 @@ private struct CaptureLibraryView: View {
                     NavigationLink {
                         CapturePacketNoteReviewPreviewView()
                     } label: {
-                        Label("Review source-linked note", systemImage: "note.text.badge.plus")
+                        Label(CaptureLaunchConfiguration.usesAppStorePresentation ? "Open session note" : "Review source-linked note", systemImage: "note.text.badge.plus")
                             .font(.headline)
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }
@@ -10741,7 +10745,7 @@ private struct CaptureLibraryView: View {
                             previewOnly: true
                         )
                     } label: {
-                        Label("Review transcript", systemImage: "waveform.and.magnifyingglass")
+                        Label(CaptureLaunchConfiguration.usesAppStorePresentation ? "Open transcript" : "Review transcript", systemImage: "waveform.and.magnifyingglass")
                             .font(.headline)
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }

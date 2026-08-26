@@ -259,14 +259,20 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
     let boundaries: [String: Bool]
 
     static func preview(roomID: String) -> Self {
+        let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
+        let speakerLabel = appStorePresentation ? "Client" : "Speaker"
+        let participantLabel = appStorePresentation ? "Client" : "Charlie"
+        let transcriptText = appStorePresentation
+            ? "I’ll block thirty minutes Friday to write the reflection and send you what I notice."
+            : "My goal is to publish a thoughtful first episode, and I will review the final cut this week."
         let proposal = CaptureTranscriptCorrection(
             id: "preview-speaker-proposal",
             segmentId: "preview-segment",
             origin: "ai",
             status: "proposed",
             correctedText: nil,
-            correctedSpeakerLabel: "Charlie",
-            reason: "The isolated host track suggests this speaker label.",
+            correctedSpeakerLabel: participantLabel,
+            reason: "The isolated participant track suggests this speaker label.",
             reviewedAt: nil,
             createdAt: "2026-07-18T00:00:00.000Z",
             updatedAt: "2026-07-18T00:00:00.000Z",
@@ -274,14 +280,14 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
         )
         let segment = CaptureTranscriptSegment(
             id: "preview-segment",
-            speakerLabel: "Speaker",
-            providerSpeakerLabel: "Speaker",
+            speakerLabel: speakerLabel,
+            providerSpeakerLabel: speakerLabel,
             speakerAuthority: "source-binding",
             sourceBoundParticipantId: "preview-participant-charlie",
             startSeconds: 3.66,
             endSeconds: 4.84,
-            text: "My goal is to publish a thoughtful first episode, and I will review the final cut this week.",
-            providerText: "My goal is to publish a thoughtful first episode, and I will review the final cut this week.",
+            text: transcriptText,
+            providerText: transcriptText,
             providerTextSha256: "preview-provider-sha256",
             confidence: 0.58,
             acceptedCorrection: nil,
@@ -293,17 +299,17 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
                 .init(
                     artifactId: "preview-task",
                     artifactKind: "task",
-                    label: "Review the final cut this week",
+                    label: appStorePresentation ? "Write the reflection Friday" : "Review the final cut this week",
                     status: "OPEN",
                     href: "/tasks/preview-task",
                     artifactUpdatedAt: "2026-07-18T00:00:00.000Z",
                     canAcknowledge: true,
                     state: "needs-review",
                     evidenceSnapshotCount: 1,
-                    priorTextSnapshot: "I will review the final cat this week.",
-                    currentTextSnapshot: "I will review the final cut this week.",
-                    priorSpeakerLabelSnapshot: "Speaker",
-                    currentSpeakerLabel: "Charlie",
+                    priorTextSnapshot: transcriptText,
+                    currentTextSnapshot: transcriptText,
+                    priorSpeakerLabelSnapshot: speakerLabel,
+                    currentSpeakerLabel: participantLabel,
                     evidenceCorrectionId: nil,
                     currentCorrectionId: "preview-accepted-correction",
                     changes: .init(
@@ -317,9 +323,9 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
         let participant = CaptureTranscriptParticipant(
             id: "preview-participant-charlie",
             userId: "preview-user-charlie",
-            displayLabel: "Charlie",
-            role: "HOST",
-            isCurrentActor: true
+            displayLabel: participantLabel,
+            role: appStorePresentation ? "GUEST" : "HOST",
+            isCurrentActor: !appStorePresentation
         )
         return .init(
             ok: true,
@@ -338,7 +344,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
             participants: [participant],
             speakerGroups: [
                 .init(
-                    providerSpeakerLabel: "Speaker",
+                    providerSpeakerLabel: speakerLabel,
                     turnCount: 1,
                     providerSnapshotSha256: String(repeating: "a", count: 64),
                     attribution: nil,
@@ -360,8 +366,8 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
                     provider: "deepgram",
                     providerModel: "nova-3",
                     segmentCount: 1,
-                    wordCount: 17,
-                    confidenceWordCount: 17,
+                    wordCount: appStorePresentation ? 15 : 17,
+                    confidenceWordCount: appStorePresentation ? 15 : 17,
                     meanWordConfidence: 0.86,
                     medianWordConfidence: 0.91,
                     lowConfidenceThreshold: 0.65,
@@ -386,7 +392,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
                             minimumWordConfidence: 0.58,
                             lowConfidenceWords: [
                                 .init(
-                                    word: "thoughtful",
+                                    word: appStorePresentation ? "reflection" : "thoughtful",
                                     confidence: 0.58,
                                     startSeconds: 4.08,
                                     endSeconds: 4.46
@@ -969,17 +975,18 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 }
             }
             publishOutboxCounts()
-            packetGoalCandidates = [.preview(roomID: roomID)]
-            packetGoalMergeTargets = [.preview()]
-            packetNoteCandidates = [.preview(roomID: roomID)]
-            packetNoteMergeTargets = [.preview()]
-            packetActionCandidates = [.preview(roomID: roomID)]
-            packetTaskMergeTargets = [.preview()]
+            let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
+            packetGoalCandidates = appStorePresentation ? [] : [.preview(roomID: roomID)]
+            packetGoalMergeTargets = appStorePresentation ? [] : [.preview()]
+            packetNoteCandidates = appStorePresentation ? [] : [.preview(roomID: roomID)]
+            packetNoteMergeTargets = appStorePresentation ? [] : [.preview()]
+            packetActionCandidates = appStorePresentation ? [] : [.preview(roomID: roomID)]
+            packetTaskMergeTargets = appStorePresentation ? [] : [.preview()]
             packetTaskTags = [
                 .init(id: "preview-follow-through", label: "Follow-through", slug: "follow-through", selectedForSession: true),
                 .init(id: "preview-coaching", label: "Coaching", slug: "coaching", selectedForSession: true),
             ]
-            packetTaskProjectName = "High Ground Odyssey"
+            packetTaskProjectName = appStorePresentation ? "My coaching practice" : "High Ground Odyssey"
             packetGoalReviewContext = .init(summaryNoteId: "preview-summary", packetBuildId: "preview-build")
             packetReviewError = nil
             packetStatus = "RESULTS_READY"
@@ -990,7 +997,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetProviderOnlySegmentCount = 0
             packetSnapshotStale = false
             isUsingProtectedCache = false
-            message = "Preview only — no recording is played and no correction can be saved."
+            message = appStorePresentation ? nil : "Preview only — no recording is played and no correction can be saved."
             if !CaptureLaunchConfiguration.usesTranscriptReviewOutboxUITest {
                 errorMessage = nil
             }
@@ -2932,7 +2939,7 @@ struct CaptureTranscriptReviewView: View {
                         .accessibilityIdentifier("CaptureTranscriptSourceBoundary_\(focusSegmentID)")
                     }
 
-                    if previewOnly {
+                    if previewOnly && !CaptureLaunchConfiguration.usesAppStorePresentation {
                         reviewNotice(
                             title: "Preview data — no server actions",
                             detail: "This demonstrates the review workflow without claiming playback or saving a correction.",
@@ -3750,18 +3757,31 @@ struct CaptureTranscriptReviewView: View {
             recording.flatMap { $0.recordingAssetId == expectedAssetID ? $0 : nil }
         }
         let exactMatch = exactRecording.map { library.fileURL(for: $0) != nil } ?? false
+        let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
         return VStack(alignment: .leading, spacing: 10) {
-            Label(exactMatch ? "Recording ready to play" : "Transcript ready to review", systemImage: exactMatch ? "checkmark.circle.fill" : "text.bubble")
+            Label(
+                appStorePresentation
+                    ? "Recording and transcript stay linked"
+                    : (exactMatch ? "Recording ready to play" : "Transcript ready to review"),
+                systemImage: appStorePresentation ? "waveform.and.magnifyingglass" : (exactMatch ? "checkmark.circle.fill" : "text.bubble")
+            )
                 .font(.headline)
-                .foregroundStyle(exactMatch ? Color.green : Color.orange)
-            Text(exactMatch
-                ? "Quipsly found the matching recording on this iPhone."
-                : "This iPhone does not have the matching recording, so playback and source-confirmed corrections remain available in Nest.")
+                .foregroundStyle(appStorePresentation || exactMatch ? Color.green : Color.orange)
+            Text(
+                appStorePresentation
+                    ? "Play the session, correct any word, or make a basic cut from the words you said."
+                    : (exactMatch
+                        ? "Quipsly found the matching recording on this iPhone."
+                        : "This iPhone does not have the matching recording, so playback and source-confirmed corrections remain available in Nest.")
+            )
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
-                Label("\(desk.segments.count) segments", systemImage: "text.alignleft")
+                Label(
+                    "\(desk.segments.count) \(desk.segments.count == 1 ? "segment" : "segments")",
+                    systemImage: "text.alignleft"
+                )
                 if playback.currentTime > 0 {
                     Spacer()
                     Text(playback.currentTime.captureTranscriptTimestamp)

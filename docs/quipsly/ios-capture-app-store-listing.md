@@ -45,7 +45,7 @@ and demo-account identity; it never prints or stores the password or API key.
 ## Listing direction
 
 - Name: **Quipsly Capture**
-- Subtitle: **Capture work. Keep context.**
+- Subtitle: **Coach. Record. Follow through.**
 - Primary category: **Productivity**
 - Secondary category: **Photo & Video**
 - Support: `https://quipsly.com/support`
@@ -87,22 +87,22 @@ out of first-release scope.
 
 ## Screenshot story
 
-1. **Know what matters today** — Today with synthetic tasks, goals, and one
-   clear next action.
+1. **Every session, ready to move** — Today with an upcoming coaching Session,
+   an editable task, an active goal, and one clear next action.
 2. **Consent before capture** — independent audio and transcription choices
    before recording can start.
-3. **Turn the moment into work** — a project connecting notes, tasks, goals,
-   and flexible tags.
-4. **Keep the original safe** — Library showing local-source truth and
-   recoverable upload state.
-5. **Privacy you can reach** — Account with direct privacy and deletion
-   controls.
+3. **Notes, tasks, and goals together** — one coaching workspace connecting
+   editable follow-through and flexible tags.
+4. **Local-first. Recovery built in.** — Library showing the protected original
+   and recoverable sync state.
+5. **Edit from the words you said** — a speaker-attributed, timeline-linked
+   transcript with correction and basic editing inside Capture.
 
-Capture from the exact physical-device or TestFlight candidate using only the
-approved synthetic reviewer account. Do not show private coaching data,
-recordings, transcripts, unpublished research, credentials, notifications,
-device identifiers, or another person's name. Crop only system chrome that is
-outside the product story; do not fabricate product state.
+Capture from the exact release source using the deterministic presentation
+state, then inspect every image at full resolution. Do not show private coaching
+data, recordings, transcripts, unpublished research, credentials,
+notifications, device identifiers, or another person's name. Crop only system
+chrome that is outside the product story; do not fabricate product state.
 
 Before the signed candidate is available, generate private-data-safe layout
 drafts from the app's deterministic preview state. The preferred release
@@ -124,12 +124,10 @@ The preferred command uses a disposable detached worktree, operates all five
 real iPhone surfaces on an iPhone 17 Pro Max simulator, exports `1320 x 2868`
 PNG attachments, hashes them, and writes both `draft-receipt.json` and
 `committed-source-receipt.json` beside the images under `/tmp`. The receipts
-record the exact source revision, clean detached-source isolation, and
-`submissionEligible:false`. Drafts are for composition and clipping review;
-they do not satisfy the screenshot blocker and must never be copied into the
-canonical approved-assets directory. Re-run the same five stories on the exact
-signed candidate or its TestFlight install with the approved reviewer account,
-then inspect and approve those final captures separately.
+record the exact source revision and clean detached-source isolation. Once the
+release source is frozen, re-run this journey from that exact revision, inspect
+the five full-resolution images, and copy only the accepted outputs into the
+canonical assets directory.
 
 The 2026-08-05 clean detached source `9387c6254a1d5a6e78aae2ae01193ab38af72451`
 produced all five valid `1320 x 2868` layouts. An earlier exact-Build-28 journey

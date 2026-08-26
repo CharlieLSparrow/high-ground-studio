@@ -642,6 +642,7 @@ final class CaptureExperienceModel: ObservableObject {
         errorMessage = nil
 
         if usesPreviewData {
+            let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
             if let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
                 quickEntryOutbox.activateOwner(previewOwner)
                 sessionNoteEditOutbox.activateOwner(previewOwner)
@@ -658,7 +659,7 @@ final class CaptureExperienceModel: ObservableObject {
                 MobileCaptureProjectDestination(
                     id: "preview-home",
                     slug: "preview-home",
-                    name: "Charlie Home Nest",
+                    name: appStorePresentation ? "My Quipsly" : "Charlie Home Nest",
                     role: "OWNER",
                     isHomeNest: true,
                     availableTags: [
@@ -668,12 +669,20 @@ final class CaptureExperienceModel: ObservableObject {
                 MobileCaptureProjectDestination(
                     id: "preview-high-ground",
                     slug: "preview-high-ground",
-                    name: "High Ground Odyssey",
+                    name: appStorePresentation ? "My coaching practice" : "High Ground Odyssey",
                     role: "EDITOR",
                     isHomeNest: false,
                     availableTags: [
-                        MobileCaptureTag(id: "preview-episode-4", slug: "episode-4", label: "Episode 4"),
-                        MobileCaptureTag(id: "preview-proof-listen", slug: "proof-listen", label: "Proof listen"),
+                        MobileCaptureTag(
+                            id: "preview-episode-4",
+                            slug: appStorePresentation ? "coaching" : "episode-4",
+                            label: appStorePresentation ? "Coaching" : "Episode 4"
+                        ),
+                        MobileCaptureTag(
+                            id: "preview-proof-listen",
+                            slug: appStorePresentation ? "follow-through" : "proof-listen",
+                            label: appStorePresentation ? "Follow-through" : "Proof listen"
+                        ),
                     ]
                 ),
             ]
@@ -683,13 +692,13 @@ final class CaptureExperienceModel: ObservableObject {
             sessionClient.coachingEngagements = [
                 MobileCaptureCoachingEngagement(
                     id: "preview-engagement",
-                    title: "Coaching with Homer",
+                    title: appStorePresentation ? "Coaching with a new client" : "Coaching with Homer",
                     status: "ACTIVE",
                     projectId: "preview-high-ground",
                     projectSlug: "preview-high-ground",
-                    projectName: "High Ground Odyssey",
-                    clientLabel: "Homer",
-                    coachLabel: "Charlie Sparrow",
+                    projectName: appStorePresentation ? "My coaching practice" : "High Ground Odyssey",
+                    clientLabel: appStorePresentation ? "New client" : "Homer",
+                    coachLabel: appStorePresentation ? "Coach" : "Charlie Sparrow",
                     priority: MobileCaptureCoachingClientPriority(
                         schema: MobileCaptureCoachingClientPriority.schemaVersion,
                         kind: "PREPARE_UPCOMING_SESSION",
@@ -3428,6 +3437,7 @@ final class CaptureExperienceModel: ObservableObject {
 
 extension MobileCaptureSession {
     static var capturePreviewFixtures: [MobileCaptureSession] {
+        let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
         let consentNeededIsNext =
             CaptureLaunchConfiguration
                 .usesConsentNeededNextPreview
@@ -3450,8 +3460,8 @@ extension MobileCaptureSession {
             ),
             capturePreview(
                 id: "preview-podcast-consent",
-                title: "High Ground pre-show",
-                purpose: "PODCAST",
+                title: appStorePresentation ? "First coaching consultation" : "High Ground pre-show",
+                purpose: appStorePresentation ? "COACHING" : "PODCAST",
                 consentGranted: false,
                 scheduledStart: ISO8601DateFormatter().string(from: podcastStart),
                 scheduledEnd: ISO8601DateFormatter().string(from: podcastStart.addingTimeInterval(90 * 60))
@@ -3566,6 +3576,8 @@ extension MobileCaptureSession {
         packetReviewLanes: [MobileCapturePacketReviewLane] = [],
         clientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace? = nil
     ) -> MobileCaptureSession {
+        let appStoreCoachingPresentation = CaptureLaunchConfiguration.usesAppStorePresentation
+            && purpose == "COACHING"
         let audioConsentGranted = consentGranted && (canRecordAudio ?? true)
         let videoConsentGranted = consentGranted && (canRecordVideo ?? true)
         let readiness = MobileCaptureReadinessVerdict(
@@ -3612,18 +3624,24 @@ extension MobileCaptureSession {
             providerReadiness: "ready",
             providerNextAction: "Join only when the other participant is ready.",
             projectId: "preview-high-ground",
-            projectSlug: "high-ground-odyssey",
-            projectName: "High Ground Odyssey",
+            projectSlug: appStoreCoachingPresentation ? "my-coaching-practice" : "high-ground-odyssey",
+            projectName: appStoreCoachingPresentation ? "My coaching practice" : "High Ground Odyssey",
             availableTags: [
-                MobileCaptureTag(id: "preview-production", slug: "production", label: "Production"),
+                MobileCaptureTag(
+                    id: "preview-production",
+                    slug: appStoreCoachingPresentation ? "follow-through" : "production",
+                    label: appStoreCoachingPresentation ? "Follow-through" : "Production"
+                ),
                 MobileCaptureTag(id: "preview-coaching", slug: "coaching", label: "Coaching"),
             ],
             projectBindingSource: "canonical-session-project",
             projectLegacySlugDrift: false,
-            episodeSlug: "session-capture",
-            episodeProductionId: "preview-session-capture",
+            episodeSlug: appStoreCoachingPresentation ? nil : "session-capture",
+            episodeProductionId: appStoreCoachingPresentation ? nil : "preview-session-capture",
             coachingEngagementId: purpose == "COACHING" ? "preview-engagement" : nil,
-            coachingEngagementTitle: purpose == "COACHING" ? "Coaching with Homer" : nil,
+            coachingEngagementTitle: purpose == "COACHING"
+                ? (appStoreCoachingPresentation ? "Coaching with a new client" : "Coaching with Homer")
+                : nil,
             coachingEngagementStatus: purpose == "COACHING" ? "ACTIVE" : nil,
             scheduledStart: scheduledStart,
             scheduledEnd: scheduledEnd,
@@ -3648,8 +3666,8 @@ extension MobileCaptureSession {
             journeySummary: nil,
             lifecycle: nil,
             actionPacket: nil,
-            clientLabel: "Homer",
-            coachLabel: "Charlie",
+            clientLabel: appStoreCoachingPresentation ? "New client" : "Homer",
+            coachLabel: appStoreCoachingPresentation ? "Coach" : "Charlie",
             offeringTitle: nil,
             bookingStatus: "CONFIRMED",
             paymentPolicy: "NOT_REQUIRED",

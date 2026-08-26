@@ -4145,7 +4145,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
-        let consentNeededSession = app.staticTexts["High Ground pre-show"]
+        let consentNeededSession = app.staticTexts["First coaching consultation"]
         XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
         consentNeededSession.tap()
         let joinCall = app.buttons["ProviderJoinRoomButton"]
@@ -4194,17 +4194,15 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             "The source-linked transcript review must open inside Capture."
         )
         XCTAssertTrue(app.staticTexts["Coaching session"].exists)
-        let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"]
-        XCTAssertTrue(jumpMenu.waitForExistence(timeout: 5))
-        jumpMenu.tap()
-        let sessionFollowUp = app.buttons["CaptureTranscriptJumpToReviewQueue"]
-        XCTAssertTrue(sessionFollowUp.waitForExistence(timeout: 5))
-        sessionFollowUp.tap()
         XCTAssertTrue(
-            app.descendants(matching: .any)["CapturePacketCandidateReviewQueue"]
+            app.descendants(matching: .any)["CaptureTranscriptReviewView"]
                 .waitForExistence(timeout: 5)
         )
-        Thread.sleep(forTimeInterval: 2.0)
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CapturePacketCandidateReviewQueue"].exists,
+            "The paid-release transcript story must not advertise a legacy suggestion-approval queue."
+        )
+        Thread.sleep(forTimeInterval: 1.0)
         keepScreenshot("05-transcript.png")
     }
 
