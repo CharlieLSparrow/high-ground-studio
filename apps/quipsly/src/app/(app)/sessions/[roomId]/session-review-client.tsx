@@ -6158,6 +6158,8 @@ export function SessionReviewClient({
       sessionTitle,
     ],
   );
+  const browserCallFocused =
+    liveDock.isOpen && liveDock.activeCallRoomId === roomId;
 
   if (mode === "live") {
     return (
@@ -6191,7 +6193,7 @@ export function SessionReviewClient({
             </div>
           </header>
 
-          {preparation ? (
+          {preparation && !browserCallFocused ? (
             <SessionConsentControl roomId={roomId} preparation={preparation} />
           ) : null}
 
