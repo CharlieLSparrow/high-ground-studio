@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LockKeyhole, Plus, UsersRound } from "lucide-react";
+import { chooseQuipslyCoachingClientPriority } from "@high-ground/quipsly-domain/coaching-client-priority";
 
 import {
   CoachingClientPortfolio,
@@ -139,13 +140,13 @@ export default async function CoachingEngagementsPage() {
   const now = Date.now();
   const canSchedule = Boolean(
     session.user.isStaff ||
-      coachProfile ||
-      engagements.some((engagement) =>
-        engagement.members.some(
-          (member) =>
-            member.userId === session.user.id && member.role === "COACH",
-        ),
+    coachProfile ||
+    engagements.some((engagement) =>
+      engagement.members.some(
+        (member) =>
+          member.userId === session.user.id && member.role === "COACH",
       ),
+    ),
   );
   const clients: CoachingClientPortfolioItem[] = engagements.map(
     (engagement) => {
@@ -185,61 +186,114 @@ export default async function CoachingEngagementsPage() {
       const coachView = Boolean(
         session.user.isStaff || actorMembership?.role === "COACH",
       );
-      const followUpRoom = followUpRooms.sort(
-        (left, right) => roomTime(right) - roomTime(left),
-      )[0];
-      const releasedFollowUpRoom = engagement.callRooms
-        .filter((room) =>
-          room.outputs.some((output) => output.status === "RELEASED"),
-        )
-        .sort((left, right) => roomTime(right) - roomTime(left))[0];
+      const priority = chooseQuipslyCoachingClientPriority({
+        now: new Date(now).toISOString(),
+        viewerRole: coachView
+          ? "COACH"
+          : actorMembership?.role === "CLIENT"
+            ? "CLIENT"
+            : actorMembership?.role === "SUPPORT"
+              ? "SUPPORT"
+              : "OBSERVER",
+        overdueCommitmentCount: overdueTaskCount,
+        rooms: engagement.callRooms.map((room) => ({
+          id: room.id,
+          title: room.title,
+          status: room.status,
+          scheduledStart: room.scheduledStart?.toISOString() ?? null,
+          endedAt: room.endedAt?.toISOString() ?? null,
+          createdAt: room.createdAt.toISOString(),
+          recordingCount: room._count.recordingAssets,
+          transcriptStatus: room.transcriptJobs[0]?.status ?? null,
+          followUpReleased: room.outputs.some(
+            (output) => output.status === "RELEASED",
+          ),
+        })),
+      });
+      const priorityRoom = priority.roomId
+        ? (engagement.callRooms.find((room) => room.id === priority.roomId) ??
+          null)
+        : null;
+      const prioritizedSessionRoom =
+        priorityRoom &&
+        ["PLANNED", "OPEN", "RECORDING"].includes(priorityRoom.status)
+          ? priorityRoom
+          : null;
+      const displayedNextRoom = prioritizedSessionRoom ?? nextRoom;
+      const relationshipHref = `/coaching/engagements/${encodeURIComponent(engagement.id)}`;
+      const sessionHref = (mode: "live" | "outputs" | "transcript") =>
+        priorityRoom
+          ? `/sessions/${encodeURIComponent(priorityRoom.id)}?mode=${mode}`
+          : relationshipHref;
+      const sessionTitle = priorityRoom?.title || "Coaching Session";
 
-      const nextAction: CoachingClientPortfolioItem["nextAction"] = liveRoom
-        ? {
-            label: "Join now",
-            detail: `${liveRoom.title || "Coaching Session"} is open. Enter the familiar lobby, check devices, and join.`,
-            href: `/sessions/${encodeURIComponent(liveRoom.id)}?mode=live`,
-            tone: "live",
-          }
-        : coachView && followUpRoom
-          ? {
+      const nextAction: CoachingClientPortfolioItem["nextAction"] = (() => {
+        switch (priority.kind) {
+          case "JOIN_LIVE_SESSION":
+            return {
+              label: "Join now",
+              detail: `${sessionTitle} is open. Enter the familiar lobby, check devices, and join.`,
+              href: sessionHref("live"),
+              tone: priority.tone,
+            };
+          case "REVIEW_LATE_SESSION":
+            return {
+              label: "Open session",
+              detail:
+                "This planned Session’s time has passed. Open it or reschedule before creating more work.",
+              href: sessionHref("live"),
+              tone: priority.tone,
+            };
+          case "PREPARE_UPCOMING_SESSION":
+            return {
+              label: "Prepare session",
+              detail: `${sessionTitle} is next. Review the client space, invitation, devices, and agenda.`,
+              href: sessionHref("live"),
+              tone: priority.tone,
+            };
+          case "REVIEW_COACH_FOLLOW_UP":
+            return {
               label: "Review follow-up",
               detail:
-                followUpRoom.transcriptJobs[0]?.status === "COMPLETED"
+                priorityRoom?.transcriptJobs[0]?.status === "COMPLETED"
                   ? "The recording and transcript are ready for corrections, notes, tasks, goals, and client-safe sharing."
                   : "The recording is protected. Review its transcript status and prepare the useful follow-up.",
-              href: `/sessions/${encodeURIComponent(followUpRoom.id)}?mode=transcript`,
-              tone: "attention",
-            }
-          : upcomingRoom
-            ? {
-                label: "Prepare session",
-                detail: `${upcomingRoom.title || "Coaching Session"} is next. Review the client space, invitation, devices, and agenda.`,
-                href: `/sessions/${encodeURIComponent(upcomingRoom.id)}?mode=live`,
-                tone: "upcoming",
-              }
-            : !coachView && releasedFollowUpRoom
-              ? {
-                  label: "View follow-up",
-                  detail:
-                    "Your coach shared reviewed recording, transcript, notes, goals, or commitments from this Session.",
-                  href: `/sessions/${encodeURIComponent(releasedFollowUpRoom.id)}?mode=outputs`,
-                  tone: "steady",
-                }
-            : overdueTaskCount > 0
-              ? {
-                  label: "Review commitments",
-                  detail: `${overdueTaskCount} client ${overdueTaskCount === 1 ? "commitment is" : "commitments are"} past due. Review together before assigning anything new.`,
-                  href: `/coaching/engagements/${encodeURIComponent(engagement.id)}`,
-                  tone: "attention",
-                }
-              : {
-                  label: "Open client space",
-                  detail:
-                    "Review shared notes, active goals, commitments, and conversation—or schedule the next Session.",
-                  href: `/coaching/engagements/${encodeURIComponent(engagement.id)}`,
-                  tone: "steady",
-                };
+              href: sessionHref("transcript"),
+              tone: priority.tone,
+            };
+          case "VIEW_RELEASED_FOLLOW_UP":
+            return {
+              label: "View follow-up",
+              detail:
+                "Your coach shared reviewed recording, transcript, notes, goals, or commitments from this Session.",
+              href: sessionHref("outputs"),
+              tone: priority.tone,
+            };
+          case "PREPARE_UNSCHEDULED_SESSION":
+            return {
+              label: "Prepare session",
+              detail:
+                "This Session still needs a time. Open it to finish the plan and send a clear invitation.",
+              href: sessionHref("live"),
+              tone: priority.tone,
+            };
+          case "REVIEW_OVERDUE_COMMITMENTS":
+            return {
+              label: "Review commitments",
+              detail: `${overdueTaskCount} client ${overdueTaskCount === 1 ? "commitment is" : "commitments are"} past due. Review together before assigning anything new.`,
+              href: relationshipHref,
+              tone: priority.tone,
+            };
+          case "OPEN_RELATIONSHIP":
+            return {
+              label: "Open client space",
+              detail:
+                "Review shared notes, active goals, commitments, and conversation—or schedule the next Session.",
+              href: relationshipHref,
+              tone: priority.tone,
+            };
+        }
+      })();
 
       return {
         id: engagement.id,
@@ -252,12 +306,13 @@ export default async function CoachingEngagementsPage() {
         primaryClientLabel: primaryClient
           ? personLabel(primaryClient.user)
           : engagement.title,
-        nextSession: nextRoom
+        nextSession: displayedNextRoom
           ? {
-              id: nextRoom.id,
-              title: nextRoom.title || "Coaching Session",
-              scheduledStart: nextRoom.scheduledStart?.toISOString() ?? null,
-              status: nextRoom.status,
+              id: displayedNextRoom.id,
+              title: displayedNextRoom.title || "Coaching Session",
+              scheduledStart:
+                displayedNextRoom.scheduledStart?.toISOString() ?? null,
+              status: displayedNextRoom.status,
             }
           : null,
         lastSession: lastRoom

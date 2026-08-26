@@ -4601,3 +4601,33 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   test initially caught the missing no-Session primary action; after adding the
   canonical-work fallback, it passes on iPhone 17 Pro / iOS 26.3. Physical
   signed-in coach/client and recovery proof remains outstanding.
+
+### 2026-08-25 canonical coaching client priority
+
+- Nest and Quipsly Capture now consume one versioned, deterministic coaching
+  client-priority policy from `@high-ground/quipsly-domain`. Live Sessions,
+  late planned Sessions, Sessions within 24 hours, coach-only draft follow-up,
+  future Sessions, client-visible released follow-up, unscheduled Sessions,
+  overdue shared commitments, and the relationship fallback have an explicit
+  stable order instead of separate page and phone heuristics.
+- The policy is a read-only projection. It records its schema, rank, tone,
+  selected room, deterministic status, and absence of external side effects;
+  it never grants access, creates work, changes a calendar, starts a room, or
+  claims that recording/transcript/follow-up evidence exists unless canonical
+  inputs say so.
+- Capture receives the projection only inside its already actor-bounded,
+  writable engagement list. The response queries only shared overdue work and
+  bounded Session evidence. The native app trusts the server action only when
+  the schema and safety flags match, then falls back to its local protected
+  Session snapshot for older cached responses or temporary API skew.
+- Role tests prove draft follow-up remains coach-only, released follow-up is a
+  client action only, and support/observer projections do not inherit either
+  signal. Invalid clocks fail closed; invalid counts normalize to zero; equal
+  timestamps have a stable ID tie-break.
+- Three focused web suites pass (14 tests), Quipsly and shared-domain
+  TypeScript pass, and the retained local PostgreSQL mobile Session route suite
+  passes (8 tests), including exact engagement binding and priority readback.
+  The full production build, generic native build, and focused iPhone 17 Pro /
+  iOS 26.3 client-space UI test also pass against a server-style priority
+  fixture. Physical two-role agreement remains acceptance evidence, not an
+  inferred completion.

@@ -6,6 +6,7 @@ export * from "./recording";
 export * from "./coaching-public";
 export * from "./coaching-lifecycle";
 export * from "./coaching-meeting-spine";
+export * from "./coaching-client-priority";
 export * from "./mobile-capture-upload";
 export * from "./browser-source-capture";
 export * from "./nests";

@@ -2806,7 +2806,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                     .font(.caption2.weight(.black))
                     .textCase(.uppercase)
                     .foregroundStyle(.teal)
-                Text(pulseSession?.displayTitle ?? "Keep the relationship moving")
+                Text(relationshipPulseTitle(session: pulseSession))
                     .font(.title3.weight(.black))
                 Text(relationshipPulseDetail(session: pulseSession))
                     .font(.subheadline)
@@ -2828,15 +2828,34 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                     .accessibilityIdentifier("CaptureCoachingRelationshipPrimaryAction")
                 } else {
                     Button {
-                        isPresentingNewWork = true
+                        if canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS" {
+                            filter = .tasks
+                        } else {
+                            isPresentingNewWork = true
+                        }
                     } label: {
-                        Label("Add shared work", systemImage: "plus.circle.fill")
+                        Label(
+                            canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS"
+                                ? "Review commitments"
+                                : "Add shared work",
+                            systemImage: canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS"
+                                ? "exclamationmark.circle.fill"
+                                : "plus.circle.fill"
+                        )
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.teal)
-                    .disabled(previewOnly || client.workspace?.canWrite != true)
-                    .accessibilityHint("Adds a shared note, task, or goal to this coaching relationship.")
+                    .disabled(
+                        canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS"
+                            ? false
+                            : previewOnly || client.workspace?.canWrite != true
+                    )
+                    .accessibilityHint(
+                        canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS"
+                            ? "Shows shared coaching tasks so past-due commitments can be reviewed."
+                            : "Adds a shared note, task, or goal to this coaching relationship."
+                    )
                     .accessibilityIdentifier("CaptureCoachingRelationshipPrimaryAction")
                 }
             }
@@ -2896,7 +2915,18 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         .accessibilityIdentifier("CaptureCoachingRelationshipPulse")
     }
 
+    private var canonicalPriority: MobileCaptureCoachingClientPriority? {
+        guard let priority = engagement.priority, priority.isTrustedProjection else { return nil }
+        return priority
+    }
+
     private var relationshipPulseSession: MobileCaptureSession? {
+        if let roomID = canonicalPriority?.roomId,
+           let projected = sessions.first(where: {
+               $0.callRoomId == roomID || $0.id == roomID
+           }) {
+            return projected
+        }
         let now = Date()
         let live = sessions.first(where: relationshipPulseIsLive)
         let planned = sessions
@@ -2931,6 +2961,15 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
     }
 
     private func relationshipPulseEyebrow(session: MobileCaptureSession?) -> String {
+        switch canonicalPriority?.kind {
+        case "JOIN_LIVE_SESSION": return "Happening now"
+        case "REVIEW_LATE_SESSION": return "Needs review"
+        case "PREPARE_UPCOMING_SESSION", "PREPARE_UNSCHEDULED_SESSION": return "Next Session"
+        case "REVIEW_COACH_FOLLOW_UP": return "Follow-up needed"
+        case "VIEW_RELEASED_FOLLOW_UP": return "Follow-up ready"
+        case "REVIEW_OVERDUE_COMMITMENTS": return "Commitments"
+        default: break
+        }
         guard let session else { return "Next step" }
         if relationshipPulseIsLive(session) { return "Happening now" }
         if session.status?.uppercased() == "ENDED" { return "Last Session" }
@@ -2940,7 +2979,24 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         return "Next Session"
     }
 
+    private func relationshipPulseTitle(session: MobileCaptureSession?) -> String {
+        if canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS" {
+            return "Past-due commitments need review"
+        }
+        if canonicalPriority?.kind == "OPEN_RELATIONSHIP" {
+            return "Keep the relationship moving"
+        }
+        return session?.displayTitle
+            ?? canonicalPriority?.roomTitle?.nonemptyCoachingText
+            ?? "Keep the relationship moving"
+    }
+
     private func relationshipPulseDetail(session: MobileCaptureSession?) -> String {
+        if canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS" {
+            let count = canonicalPriority?.overdueCommitmentCount ?? 0
+            let subject = count == 1 ? "commitment is" : "commitments are"
+            return "\(count) shared \(subject) past due. Review together before assigning anything new."
+        }
         guard let session else {
             return "Use the conversation and shared work below until the next Session is scheduled."
         }
@@ -2969,6 +3025,14 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
     }
 
     private func relationshipPulseAction(session: MobileCaptureSession) -> String {
+        switch canonicalPriority?.kind {
+        case "JOIN_LIVE_SESSION": return "Join Session"
+        case "REVIEW_LATE_SESSION": return "Open Session"
+        case "PREPARE_UPCOMING_SESSION", "PREPARE_UNSCHEDULED_SESSION": return "Prepare Session"
+        case "REVIEW_COACH_FOLLOW_UP": return "Review follow-up"
+        case "VIEW_RELEASED_FOLLOW_UP": return "View follow-up"
+        default: break
+        }
         if relationshipPulseIsLive(session) { return "Join Session" }
         if session.status?.uppercased() == "ENDED" {
             return session.latestTranscriptStatus?.uppercased() == "COMPLETED"
@@ -2982,6 +3046,13 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
     }
 
     private func relationshipPulseIcon(session: MobileCaptureSession) -> String {
+        switch canonicalPriority?.kind {
+        case "REVIEW_COACH_FOLLOW_UP", "VIEW_RELEASED_FOLLOW_UP":
+            return "doc.text.magnifyingglass"
+        case "REVIEW_LATE_SESSION":
+            return "exclamationmark.circle.fill"
+        default: break
+        }
         if relationshipPulseIsLive(session) { return "video.fill" }
         if session.status?.uppercased() == "ENDED" { return "doc.text.magnifyingglass" }
         return "calendar.badge.clock"

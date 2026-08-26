@@ -1455,6 +1455,25 @@ struct MobileCaptureProjectDestination: Codable, Identifiable, Hashable {
     var tags: [MobileCaptureTag] { availableTags ?? [] }
 }
 
+struct MobileCaptureCoachingClientPriority: Codable, Hashable {
+    static let schemaVersion = "quipsly-coaching-client-priority-v1"
+
+    let schema: String
+    let kind: String
+    let tone: String
+    let rank: Int
+    let roomId: String?
+    let roomTitle: String?
+    let scheduledStart: String?
+    let overdueCommitmentCount: Int
+    let deterministic: Bool
+    let externalSideEffects: Bool
+
+    var isTrustedProjection: Bool {
+        schema == Self.schemaVersion && deterministic && !externalSideEffects
+    }
+}
+
 struct MobileCaptureCoachingEngagement: Codable, Identifiable, Hashable {
     let id: String
     let title: String
@@ -1464,6 +1483,7 @@ struct MobileCaptureCoachingEngagement: Codable, Identifiable, Hashable {
     let projectName: String
     let clientLabel: String?
     let coachLabel: String?
+    var priority: MobileCaptureCoachingClientPriority? = nil
 
     var participantLine: String {
         [clientLabel, coachLabel]

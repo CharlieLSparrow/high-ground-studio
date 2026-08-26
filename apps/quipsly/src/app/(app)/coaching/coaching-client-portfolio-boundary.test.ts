@@ -4,7 +4,10 @@ import path from "node:path";
 describe("coaching client portfolio boundaries", () => {
   it("projects only actor-readable engagements and shared relationship work", () => {
     const source = fs.readFileSync(
-      path.resolve(process.cwd(), "src/app/(app)/coaching/engagements/page.tsx"),
+      path.resolve(
+        process.cwd(),
+        "src/app/(app)/coaching/engagements/page.tsx",
+      ),
       "utf8",
     );
 
@@ -22,7 +25,10 @@ describe("coaching client portfolio boundaries", () => {
 
   it("keeps draft follow-up actions coach-only and client creation actions role-bound", () => {
     const portfolio = fs.readFileSync(
-      path.resolve(process.cwd(), "src/app/(app)/coaching/engagements/page.tsx"),
+      path.resolve(
+        process.cwd(),
+        "src/app/(app)/coaching/engagements/page.tsx",
+      ),
       "utf8",
     );
     const layout = fs.readFileSync(
@@ -30,13 +36,43 @@ describe("coaching client portfolio boundaries", () => {
       "utf8",
     );
 
-    expect(portfolio).toContain("session.user.isStaff || actorMembership?.role === \"COACH\"");
-    expect(portfolio).toContain(": coachView && followUpRoom");
+    expect(portfolio).toContain(
+      'import { chooseQuipslyCoachingClientPriority } from "@high-ground/quipsly-domain/coaching-client-priority"',
+    );
+    expect(portfolio).toContain(
+      'session.user.isStaff || actorMembership?.role === "COACH"',
+    );
+    expect(portfolio).toContain("chooseQuipslyCoachingClientPriority({");
+    expect(portfolio).toContain("viewerRole: coachView");
+    expect(portfolio).toContain('? "COACH"');
+    expect(portfolio).toContain('? "CLIENT"');
     expect(portfolio).toContain('output.status === "RELEASED"');
-    expect(portfolio).toContain("followUpCount: coachView ? followUpRooms.length : 0");
+    expect(portfolio).toContain(
+      "followUpCount: coachView ? followUpRooms.length : 0",
+    );
     expect(portfolio).toContain("const canSchedule = Boolean(");
     expect(portfolio).toContain("{canSchedule ? (");
     expect(layout).toContain("<CoachingSuiteNav canSchedule={canSchedule} />");
     expect(layout).toContain('role: "COACH"');
+  });
+
+  it("serves the same deterministic priority contract to Capture", () => {
+    const route = fs.readFileSync(
+      path.resolve(
+        process.cwd(),
+        "src/app/api/mobile/capture/sessions/route.ts",
+      ),
+      "utf8",
+    );
+
+    expect(route).toContain(
+      'import { chooseQuipslyCoachingClientPriority } from "@high-ground/quipsly-domain/coaching-client-priority"',
+    );
+    expect(route).toContain("chooseQuipslyCoachingClientPriority({");
+    expect(route).toContain(
+      "overdueCommitmentCount: engagement.actionItems.length",
+    );
+    expect(route).toContain("followUpReleased: room.outputs.length > 0");
+    expect(route).toContain("priority,");
   });
 });

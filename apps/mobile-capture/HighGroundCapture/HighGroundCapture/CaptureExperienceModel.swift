@@ -649,6 +649,9 @@ final class CaptureExperienceModel: ObservableObject {
                     ]
                 ),
             ]
+            let previewCoachingSession = sessionClient.sessions.first {
+                $0.coachingEngagementId == "preview-engagement"
+            }
             sessionClient.coachingEngagements = [
                 MobileCaptureCoachingEngagement(
                     id: "preview-engagement",
@@ -658,7 +661,19 @@ final class CaptureExperienceModel: ObservableObject {
                     projectSlug: "preview-high-ground",
                     projectName: "High Ground Odyssey",
                     clientLabel: "Homer",
-                    coachLabel: "Charlie Sparrow"
+                    coachLabel: "Charlie Sparrow",
+                    priority: MobileCaptureCoachingClientPriority(
+                        schema: MobileCaptureCoachingClientPriority.schemaVersion,
+                        kind: "PREPARE_UPCOMING_SESSION",
+                        tone: "upcoming",
+                        rank: 2,
+                        roomId: previewCoachingSession?.callRoomId,
+                        roomTitle: previewCoachingSession?.title,
+                        scheduledStart: previewCoachingSession?.scheduledStart,
+                        overdueCommitmentCount: 0,
+                        deterministic: true,
+                        externalSideEffects: false
+                    )
                 ),
             ]
             todayClient.loadPreview()

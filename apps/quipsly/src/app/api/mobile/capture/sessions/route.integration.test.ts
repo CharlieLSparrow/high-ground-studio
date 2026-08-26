@@ -312,6 +312,12 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
         title: "Exact retained coaching relationship",
         projectId,
         projectSlug,
+        priority: expect.objectContaining({
+          schema: "quipsly-coaching-client-priority-v1",
+          kind: "OPEN_RELATIONSHIP",
+          deterministic: true,
+          externalSideEffects: false,
+        }),
       }),
     ]));
 

@@ -44,6 +44,10 @@
       "types": "./src/coaching-meeting-spine.ts",
       "import": "./src/coaching-meeting-spine.ts"
     },
+    "./coaching-client-priority": {
+      "types": "./src/coaching-client-priority.ts",
+      "import": "./src/coaching-client-priority.ts"
+    },
     "./mobile-capture-upload": {
       "types": "./src/mobile-capture-upload.ts",
       "import": "./src/mobile-capture-upload.ts"

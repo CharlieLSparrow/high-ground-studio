@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
+import { chooseQuipslyCoachingClientPriority } from "@high-ground/quipsly-domain/coaching-client-priority";
 
 import {
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
@@ -385,6 +386,44 @@ export async function GET(request: Request) {
       project: { select: { id: true, slug: true, name: true } },
       primaryClient: { select: { name: true, primaryEmail: true } },
       primaryCoach: { select: { name: true, primaryEmail: true } },
+      members: {
+        where: { userId, status: "ACTIVE" },
+        take: 1,
+        select: { role: true },
+      },
+      actionItems: {
+        where: {
+          status: "OPEN",
+          dueAt: { lt: new Date() },
+          sourceJson: { path: ["visibility"], equals: "engagement-shared" },
+        },
+        take: 101,
+        select: { id: true },
+      },
+      callRooms: {
+        where: { status: { in: ["PLANNED", "OPEN", "RECORDING", "ENDED"] } },
+        orderBy: [{ scheduledStart: "desc" }, { createdAt: "desc" }],
+        take: 30,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          scheduledStart: true,
+          endedAt: true,
+          createdAt: true,
+          transcriptJobs: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { status: true },
+          },
+          outputs: {
+            where: { status: "RELEASED" },
+            take: 1,
+            select: { id: true },
+          },
+          _count: { select: { recordingAssets: true } },
+        },
+      },
     },
   });
   const captureProjectTags = captureProjects.length > 0
@@ -464,16 +503,43 @@ export async function GET(request: Request) {
         label: tag.label,
       })),
     })),
-    coachingEngagements: coachingEngagements.map((engagement: any) => ({
-      id: engagement.id,
-      title: engagement.title,
-      status: engagement.status,
-      projectId: engagement.project.id,
-      projectSlug: engagement.project.slug,
-      projectName: engagement.project.name,
-      clientLabel: engagement.primaryClient?.name || engagement.primaryClient?.primaryEmail || null,
-      coachLabel: engagement.primaryCoach?.name || engagement.primaryCoach?.primaryEmail || null,
-    })),
+    coachingEngagements: coachingEngagements.map((engagement: any) => {
+      const priority = chooseQuipslyCoachingClientPriority({
+        now: new Date().toISOString(),
+        viewerRole: session.user.isStaff
+          ? "COACH"
+          : engagement.members[0]?.role === "COACH"
+            ? "COACH"
+            : engagement.members[0]?.role === "CLIENT"
+              ? "CLIENT"
+              : engagement.members[0]?.role === "SUPPORT"
+                ? "SUPPORT"
+                : "OBSERVER",
+        overdueCommitmentCount: engagement.actionItems.length,
+        rooms: engagement.callRooms.map((room: any) => ({
+          id: room.id,
+          title: room.title,
+          status: room.status,
+          scheduledStart: room.scheduledStart?.toISOString() ?? null,
+          endedAt: room.endedAt?.toISOString() ?? null,
+          createdAt: room.createdAt.toISOString(),
+          recordingCount: room._count.recordingAssets,
+          transcriptStatus: room.transcriptJobs[0]?.status ?? null,
+          followUpReleased: room.outputs.length > 0,
+        })),
+      });
+      return {
+        id: engagement.id,
+        title: engagement.title,
+        status: engagement.status,
+        projectId: engagement.project.id,
+        projectSlug: engagement.project.slug,
+        projectName: engagement.project.name,
+        clientLabel: engagement.primaryClient?.name || engagement.primaryClient?.primaryEmail || null,
+        coachLabel: engagement.primaryCoach?.name || engagement.primaryCoach?.primaryEmail || null,
+        priority,
+      };
+    }),
     sessions: mapMobileCaptureSessionsForUser({
       rooms,
       userId,
