@@ -7,6 +7,8 @@ source "${script_dir}/quipsly-recovery-lab-state.sh"
 
 state_dir="$(quipsly_recovery_lab_state_dir)"
 media_state_dir="$(quipsly_recovery_lab_media_state_dir)"
+media_root="${media_state_dir}/media"
+capture_vault_root="${media_root}/capture-vault"
 database_url="$(quipsly_recovery_lab_database_url)"
 database_container="quipsly-portable-recovery-lab-db"
 database_label="com.quipsly.recovery-lab"
@@ -48,9 +50,9 @@ if [[ "${1:-}" == "--run-transcript-worker" ]]; then
   cd "${repo_root}"
   exec /usr/bin/env \
     DATABASE_URL="${database_url}" \
-    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${media_state_dir}/media" \
-    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${media_state_dir}/media-workspace" \
-    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${media_state_dir}/capture-vault" \
+    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${media_root}" \
+    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${media_root}" \
+    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${capture_vault_root}" \
     QUIPSLY_LOCAL_WHISPER_EXECUTABLE="${whisper_executable}" \
     QUIPSLY_LOCAL_WHISPER_MODEL="${whisper_model}" \
     QUIPSLY_LOCAL_WHISPER_DEVICE=cpu \
@@ -63,9 +65,9 @@ if [[ "${1:-}" == "--run-media-worker" ]]; then
   cd "${repo_root}"
   exec /usr/bin/env \
     DATABASE_URL="${database_url}" \
-    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${media_state_dir}/media" \
-    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${media_state_dir}/media-workspace" \
-    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${media_state_dir}/capture-vault" \
+    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${media_root}" \
+    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${media_root}" \
+    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${capture_vault_root}" \
     QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID="$(git rev-parse HEAD)" \
     node \
       --experimental-transform-types \
@@ -111,9 +113,9 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789 \
     NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789:web:recoverylab \
     QUIPSLY_LOCAL_MEDIA_UPLOADS=true \
-    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${media_state_dir}/media" \
-    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${media_state_dir}/media-workspace" \
-    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${media_state_dir}/capture-vault" \
+    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${media_root}" \
+    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${media_root}" \
+    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${capture_vault_root}" \
     QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN="${nest_url}" \
     QUIPSLY_APP_HOST="${nest_url}" \
     LIVEKIT_URL="${livekit_url}" \
@@ -280,9 +282,8 @@ start_macos_job() {
 }
 
 mkdir -p \
-  "${media_state_dir}/media" \
-  "${media_state_dir}/media-workspace" \
-  "${media_state_dir}/capture-vault"
+  "${media_root}" \
+  "${capture_vault_root}"
 
 livekit_status="$(quipsly_recovery_lab_http_status "${livekit_http_url}/")"
 if [[ "${livekit_status}" == "200" ]]; then

@@ -31,6 +31,9 @@ test("the recovery lab is isolated from the canonical local lane", () => {
   assert.match(up, /QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=1/);
   assert.match(up, /--run-transcript-worker/);
   assert.match(up, /--run-media-worker/);
+  assert.match(up, /media_root="\$\{media_state_dir\}\/media"/);
+  assert.match(up, /capture_vault_root="\$\{media_root\}\/capture-vault"/);
+  assert.match(up, /QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="\$\{media_root\}"/);
   assert.match(up, /QUIPSLY_RECOVERY_LAB_WHISPER_MODEL:-small/);
   assert.match(state, /TMPDIR:-\/tmp/);
   assert.match(firebaseConfig, /"port": 9199/);
