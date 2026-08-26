@@ -11542,7 +11542,6 @@ private struct ConsentStrip: View {
 
 struct CaptureConsentConfirmationSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let session: MobileCaptureSession
     let requiresStableOwner: Bool
     let onSave: @MainActor @Sendable (Bool, Bool, Bool, Bool, Date) async -> Bool
@@ -11552,8 +11551,6 @@ struct CaptureConsentConfirmationSheet: View {
     @State private var canRecordVideo: Bool
     @State private var canTranscribe: Bool
     @State private var isSubmitting = false
-    @State private var showsRecordingOptions = false
-    @State private var selectedDetent: PresentationDetent = .medium
     @State private var presentedAt = Date()
     @State private var presentationOwnerSnapshot: AuthManager.StableOwnerSnapshot?
     @State private var localErrorMessage: String?
@@ -11611,42 +11608,36 @@ struct CaptureConsentConfirmationSheet: View {
                 }
 
                 Section {
-                    DisclosureGroup(isExpanded: $showsRecordingOptions) {
-                        Toggle(isOn: $canRecordAudio) {
-                            ConsentChoiceLabel(
-                                title: "Record audio",
-                                detail: "Capture the conversation audio.",
-                                systemImage: "waveform"
-                            )
-                        }
-                        .accessibilityIdentifier("CaptureConsentRecordAudioToggle")
-
-                        Toggle(isOn: $canRecordVideo) {
-                            ConsentChoiceLabel(
-                                title: "Record video",
-                                detail: "Capture camera video when enabled.",
-                                systemImage: "video"
-                            )
-                        }
-                        .accessibilityIdentifier("CaptureConsentRecordVideoToggle")
-
-                        Toggle(isOn: $canTranscribe) {
-                            ConsentChoiceLabel(
-                                title: "Create a transcript",
-                                detail: "Create the transcript, notes, and follow-up items.",
-                                systemImage: "text.bubble"
-                            )
-                        }
-                        .accessibilityIdentifier("CaptureConsentTranscriptionToggle")
-                    } label: {
-                        Label("Recording options", systemImage: "slider.horizontal.3")
+                    Toggle(isOn: $canRecordAudio) {
+                        ConsentChoiceLabel(
+                            title: "Record audio",
+                            detail: "Capture the conversation audio.",
+                            systemImage: "waveform"
+                        )
                     }
-                }
+                    .accessibilityIdentifier("CaptureConsentRecordAudioToggle")
 
-                Section {
+                    Toggle(isOn: $canRecordVideo) {
+                        ConsentChoiceLabel(
+                            title: "Record video",
+                            detail: "Capture camera video when enabled.",
+                            systemImage: "video"
+                        )
+                    }
+                    .accessibilityIdentifier("CaptureConsentRecordVideoToggle")
+
+                    Toggle(isOn: $canTranscribe) {
+                        ConsentChoiceLabel(
+                            title: "Create a transcript",
+                            detail: "Create the transcript, notes, and follow-up items.",
+                            systemImage: "text.bubble"
+                        )
+                    }
+                    .accessibilityIdentifier("CaptureConsentTranscriptionToggle")
+                } header: {
+                    Label("Recording options", systemImage: "slider.horizontal.3")
+                } footer: {
                     Text("Everyone chooses for themselves. If anyone else is nearby, let them know before recording.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
 
                 if let localErrorMessage {
@@ -11679,20 +11670,7 @@ struct CaptureConsentConfirmationSheet: View {
             }
             .interactiveDismissDisabled(isSubmitting)
         }
-        .presentationDetents(
-            dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large],
-            selection: $selectedDetent
-        )
-        .onAppear {
-            if dynamicTypeSize.isAccessibilitySize {
-                selectedDetent = .large
-            }
-        }
-        .onChange(of: showsRecordingOptions) { _, isExpanded in
-            if isExpanded {
-                selectedDetent = .large
-            }
-        }
+        .presentationDetents([.large])
         .accessibilityIdentifier("CaptureConsentConfirmationSheet")
     }
 
