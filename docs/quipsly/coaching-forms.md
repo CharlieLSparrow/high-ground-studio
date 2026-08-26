@@ -137,6 +137,20 @@ DerivedData. Sequential execution deliberately follows a client process-death
 recovery with a coach launch, preventing a passing isolated test from hiding
 persona or account-state bleed.
 
+Native source `a8a62870` brings the canonical automation lifecycle onto that
+same phone surface. A coach can create or edit a before/after-Session rhythm,
+choose latest-published versus pinned version behavior, pause or resume it,
+inspect exact assignment receipts, check the schedule, and deliberately send,
+skip, or restore one Session. Those authenticated mutations retain an
+account-scoped idempotency identity across an ambiguous failure. Clients receive
+no automation policy or controls. Four sequential iPhone 17 Pro simulator
+scenarios passed with zero failures, including process-death draft recovery,
+coach shared-response review/private-answer non-disclosure, coach automation
+operation, client automation isolation, accessibility audits, and a retained
+operated screenshot. Exact result bundle:
+`Test-HighGroundCapture-2026.08.26_05-03-18--0600.xcresult` under Xcode
+DerivedData. The canonical web automation regression remained green at 12/12.
+
 The full flight used a local mailbox and fake browser-media adapters plus
 controlled text-to-speech. It did not prove physical devices, real inboxes,
 natural human comprehension, production deployment, or cohort scale. The
@@ -151,15 +165,12 @@ for, but do not yet claim:
 
 1. quiet in-product reminders and optional provider delivery backed by a
    durable outbox and visible receipt, never hidden notification side effects;
-2. Quipsly Capture controls for the existing pre/post-Session automation
-   policies, receipts, pause/resume, send-now, skip, and restore operations;
-3. reviewed promotion of submitted answers into notes, goals, or tasks;
-4. template retirement/restore and an explicit version-difference view;
-5. client export, expanded accessibility, locale/timezone, and aggregate
+2. reviewed promotion of submitted answers into notes, goals, or tasks;
+3. template retirement/restore and an explicit version-difference view;
+4. client export, expanded accessibility, locale/timezone, and aggregate
    outcome tools.
 
-The next build lane should bring the existing coach-controlled lifecycle
-automation to Quipsly Capture, then add quiet in-product reminders through a
-durable visible delivery ledger. Automatic promotion into tasks, goals, or
-notes should remain an explicit reviewed action rather than an unexplained side
-effect.
+The next build lane is reviewed promotion of shared answers into canonical
+notes, goals, and tasks, followed by quiet in-product reminders through a
+durable visible delivery ledger. Promotion must remain an explicit reviewed
+action rather than an unexplained side effect.

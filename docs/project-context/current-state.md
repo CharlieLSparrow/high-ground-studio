@@ -4906,3 +4906,27 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - This is local controlled-media and cohort proof, not a production SLO,
   physical-iPhone result, real-mailbox result, natural-speech result, or
   minimally instructed human acceptance.
+
+### 2026-08-26 native coaching form rhythm
+
+- Quipsly Capture now exposes the existing canonical form-automation model
+  instead of creating a phone-only scheduler: relationship-scoped before/after
+  policies, latest or pinned template-version behavior, immutable receipts,
+  pause/resume, reconcile, and one-Session send/skip/restore controls.
+- Policy and override writes use authenticated Nest requests and retain exact
+  account-scoped request identities through ambiguous failures. The client
+  validates ownership, immutable policy identity, bounded timing, exact
+  relationship/template membership, and `externalSideEffects: false` before it
+  accepts a response.
+- Clients receive neither coach policies nor controls. Protected cached state
+  remains exact-owner bound; an identity transition clears the visible
+  projection and pending mutation ledger before another account is restored.
+- The operated UI flight caught two SwiftUI accessibility-tree bugs where a
+  container identifier swallowed its independent controls. Semantic identity
+  now lives on headings, leaving setup, Session disclosure, and manual actions
+  separately reachable.
+- Exact source `a8a62870` passed four sequential iPhone 17 Pro scenarios with
+  zero failures and retained screenshot evidence. Result:
+  `Test-HighGroundCapture-2026.08.26_05-03-18--0600.xcresult`. Canonical form
+  automation suites remain green at 12/12. Physical-device mutation/readback
+  and minimally instructed human use remain honest release evidence.

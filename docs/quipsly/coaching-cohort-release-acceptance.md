@@ -2562,6 +2562,25 @@ roughly 6-second p95 for the heavyweight runway endpoint. The release remains
 held from claiming a fast first-paint coach home until a focused command read
 can load independently of the complete scheduling/operations payload.
 
+## Native form rhythm checkpoint — 2026-08-26
+
+Quipsly Capture now consumes and operates the same canonical pre/post-Session
+form automation policies as Nest. The phone supports setup, edit,
+latest-versus-pinned version strategy, pause/resume, visible receipts, schedule
+reconciliation, and per-Session send-now/skip/restore. Preview operation may
+inspect the complete workflow but cannot produce a mutation or external side
+effect.
+
+On exact native source `a8a62870`, four sequential iPhone 17 Pro simulator
+scenarios passed: protected client-draft recovery through process death, coach
+review with private-answer non-disclosure, coach automation operation with a
+retained screenshot and accessibility audit, and negative client isolation.
+Result bundle:
+`Test-HighGroundCapture-2026.08.26_05-03-18--0600.xcresult`. The three canonical
+web suites also passed 12/12. This checkpoint is local deterministic evidence;
+physical-device mutation/readback and natural human comprehension remain open
+acceptance lanes.
+
 ## Fast first-useful screen and full-regression checkpoint — 2026-08-26
 
 The held first-paint claim now has local evidence. The ordinary coach home and
