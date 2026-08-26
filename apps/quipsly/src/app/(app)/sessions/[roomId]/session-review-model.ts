@@ -190,6 +190,38 @@ export type SessionReviewPacket = {
     build: { packetBuildId: string | null; correlationMode: string } | null;
     summary: { id: string; title: string | null; body: string; source?: Record<string, unknown>; createdAt: string | null } | null;
     highlights: Array<{ id: string; title: string | null; body: string; createdAt: string | null }>;
+    results?: {
+      automaticallyCreated: true;
+      editable: true;
+      removable: true;
+      summary: { id: string; title: string | null; body: string };
+      notes: Array<{
+        id: string;
+        title: string | null;
+        body: string;
+        source: SessionTranscriptResultSource;
+      }>;
+      tasks: Array<{
+        id: string;
+        title: string;
+        detail: string | null;
+        status: string;
+        assignedUserId: string | null;
+        dueAt: string | null;
+        completedAt: string | null;
+        source: SessionTranscriptResultSource;
+      }>;
+      goals: Array<{
+        id: string;
+        title: string;
+        description: string | null;
+        status: string;
+        ownerUserId: string;
+        targetAt: string | null;
+        achievedAt: string | null;
+        source: SessionTranscriptResultSource;
+      }>;
+    } | null;
     noteCandidates?: SessionReviewNoteCandidate[];
     noteMergeTargets?: SessionReviewNoteMergeTarget[];
     actionCandidates: SessionReviewCandidate[];
@@ -216,6 +248,13 @@ export type SessionReviewPacket = {
       boundary: string;
     }>;
   };
+};
+
+export type SessionTranscriptResultSource = {
+  segmentId: string | null;
+  startSeconds: number | null;
+  endSeconds: number | null;
+  speakerLabel: string | null;
 };
 
 export type SessionCandidateReviewKind = "note" | "task" | "goal";

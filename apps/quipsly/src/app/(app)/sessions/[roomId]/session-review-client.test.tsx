@@ -572,6 +572,48 @@ describe("Session review goal candidates", () => {
     );
   });
 
+  it("shows shared transcript results to the client without exposing private review candidates", async () => {
+    const shared = participantPacket();
+    shared.packet!.status = "RESULTS_READY";
+    shared.packet!.summary = {
+      id: "summary-shared",
+      title: "Session recap",
+      body: "The client chose one practical next step.",
+      createdAt: "2026-08-26T12:00:00.000Z",
+    };
+    shared.packet!.results = {
+      automaticallyCreated: true,
+      editable: true,
+      removable: true,
+      summary: { id: "summary-shared", title: "Session recap", body: "The client chose one practical next step." },
+      notes: [],
+      tasks: [{
+        id: "client-task-1",
+        title: "Try the reset before Friday",
+        detail: null,
+        status: "OPEN",
+        assignedUserId: "client-1",
+        dueAt: null,
+        completedAt: null,
+        source: { segmentId: "segment-shared", startSeconds: 44, endSeconds: 51, speakerLabel: "Client" },
+      }],
+      goals: [],
+    };
+    shared.packet!.goalCandidates = [];
+    shared.packet!.noteCandidates = [];
+    shared.packet!.actionCandidates = [];
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse(shared));
+    global.fetch = fetchMock as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+
+    expect(await screen.findByRole("heading", { name: "Session results" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Try the reset before Friday" })[0]).toHaveAttribute("href", "/work?task=client-task-1");
+    expect(screen.getByRole("link", { name: "Client · 00:44–00:51" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript#transcript-segment-segment-shared");
+    expect(screen.queryByText("Candidate goals")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Review note")).not.toBeInTheDocument();
+  });
+
   it("summarizes source, timing, speaker, and human-review confidence without exposing diagnostics by default", async () => {
     const ready = packet();
     ready.transcriptJob!.wordCount = 14;
@@ -804,7 +846,40 @@ describe("Session review goal candidates", () => {
   });
 
   it("shows ready Session results without an approval queue", async () => {
-    const fetchMock = jest.fn().mockResolvedValueOnce(jsonResponse(packet()));
+    const ready = packet();
+    ready.packet!.results = {
+      automaticallyCreated: true,
+      editable: true,
+      removable: true,
+      summary: { id: "summary-1", title: "Session recap", body: "A practical reset emerged." },
+      notes: [{
+        id: "note-result-1",
+        title: "Reset insight",
+        body: "Pause before responding.",
+        source: { segmentId: "segment-note", startSeconds: 8, endSeconds: 12, speakerLabel: "Client" },
+      }],
+      tasks: [{
+        id: "task-result-1",
+        title: "Practice two-minute reset",
+        detail: "Try it before the next Session.",
+        status: "OPEN",
+        assignedUserId: "client-1",
+        dueAt: null,
+        completedAt: null,
+        source: { segmentId: "segment-task", startSeconds: 18, endSeconds: 24, speakerLabel: "Coach" },
+      }],
+      goals: [{
+        id: "goal-result-1",
+        title: "Respond with intention",
+        description: "Use the reset consistently.",
+        status: "ACTIVE",
+        ownerUserId: "client-1",
+        targetAt: null,
+        achievedAt: null,
+        source: { segmentId: "segment-goal", startSeconds: 30, endSeconds: 38, speakerLabel: "Client" },
+      }],
+    };
+    const fetchMock = jest.fn().mockResolvedValueOnce(jsonResponse(ready));
     global.fetch = fetchMock as typeof fetch;
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
@@ -819,6 +894,11 @@ describe("Session review goal candidates", () => {
     expect(screen.queryByLabelText("Review note")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve inside Quipsly" })).not.toBeInTheDocument();
     expect(screen.getByText(/ordinary editable items, not proposals waiting for approval/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "1 note" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reset insight" })).toHaveAttribute("href", "/sessions/room-1?mode=notes#session-note-note-result-1");
+    expect(screen.getAllByRole("link", { name: "Practice two-minute reset" })[0]).toHaveAttribute("href", "/work?task=task-result-1");
+    expect(screen.getByRole("link", { name: "Respond with intention" })).toHaveAttribute("href", "/work?goal=goal-result-1");
+    expect(screen.getByRole("link", { name: "Client · 00:30–00:38" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript#transcript-segment-segment-goal");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

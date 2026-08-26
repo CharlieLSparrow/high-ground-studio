@@ -4323,6 +4323,18 @@ export function SessionReviewClient({
   }
 
   const tasks = committedTasks(packet);
+  const sessionResults = packet?.packet?.results ?? null;
+  const resultTasks = sessionResults?.tasks ?? tasks.map((task) => ({
+    ...task,
+    source: {
+      segmentId: null,
+      startSeconds: null,
+      endSeconds: null,
+      speakerLabel: null,
+    },
+  }));
+  const resultNotes = sessionResults?.notes ?? [];
+  const resultGoals = sessionResults?.goals ?? [];
   const held = packet?.transcriptProcessingGate?.allowed === false;
   const packetStale = packet?.packet?.transcriptReview?.packetStale === true;
   const reviewHeld = held || packetStale;
@@ -4356,7 +4368,7 @@ export function SessionReviewClient({
       ? "Shared with you"
       : "Not shared yet"
     : followUpReadyForReview
-      ? "Ready to review"
+      ? "Ready to use"
       : buildingPacket && canPrepareReviewMaterial
         ? "Preparing"
         : packetStale
@@ -4985,7 +4997,7 @@ export function SessionReviewClient({
               </div>
             </section>
 
-            {canReviewPrivatePacket ? (
+            {canReviewPrivatePacket || sessionResults ? (
               <>
                 <section
                   id="review-material"
@@ -5105,8 +5117,8 @@ export function SessionReviewClient({
                   </div>
                   <p className="mb-4 max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">
                     Quipsly organized the transcript and created editable notes,
-                    tasks, and goals. Keep what helps, change anything, or
-                    remove it.
+                    tasks, and goals. Open any result to change it while its
+                    source stays linked to the recording.
                   </p>
                   {reviewHeld ? (
                     <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">
@@ -5114,7 +5126,7 @@ export function SessionReviewClient({
                         ? "Quipsly is refreshing the Session results after the transcript changed."
                         : "Session results will be ready after recording permission is complete."}
                     </div>
-                  ) : actionableReviewLanes.length ? (
+                  ) : canReviewPrivatePacket && actionableReviewLanes.length ? (
                     <div className="grid gap-4 xl:grid-cols-2">
                       {actionableReviewLanes.map((lane) => (
                         <article
@@ -5142,7 +5154,7 @@ export function SessionReviewClient({
                       No Session results are available in these categories yet.
                     </div>
                   )}
-                  {!reviewHeld && emptyReviewLanes.length ? (
+                  {!reviewHeld && canReviewPrivatePacket && emptyReviewLanes.length ? (
                     <details className="mt-4 rounded-xl border border-[#eadfc9] bg-white p-4 text-sm text-[#765f40]">
                       <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
                         {emptyReviewLanes.length}{" "}
@@ -5157,6 +5169,63 @@ export function SessionReviewClient({
                         creating filler.
                       </p>
                     </details>
+                  ) : null}
+                  {!reviewHeld && sessionResults ? (
+                    <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                      <section className="rounded-2xl border border-orange-200 bg-orange-50/45 p-5" aria-labelledby="session-result-notes-heading">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-800">Editable notes</p>
+                        <h3 id="session-result-notes-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{resultNotes.length} note{resultNotes.length === 1 ? "" : "s"}</h3>
+                        {resultNotes.length ? (
+                          <ul className="mt-4 space-y-3">
+                            {resultNotes.slice(0, 6).map((note) => (
+                              <li key={note.id} className="rounded-xl border border-orange-100 bg-white p-3">
+                                <Link href={`${sessionWorkspaceHref(roomId, "notes")}#session-note-${encodeURIComponent(note.id)}`} className="font-black text-[#3d3122] hover:underline">{note.title || "Session note"}</Link>
+                                <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-[#765f40]">{note.body}</p>
+                                {note.source.startSeconds !== null && note.source.endSeconds !== null ? (
+                                  <Link href={`${sessionWorkspaceHref(roomId, "transcript")}#transcript-segment-${encodeURIComponent(note.source.segmentId || "")}`} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{note.source.speakerLabel ? `${note.source.speakerLabel} · ` : ""}{timestampForSeconds(note.source.startSeconds)}–{timestampForSeconds(note.source.endSeconds)}</Link>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : <p className="mt-3 text-xs font-semibold text-[#765f40]">No source-linked notes were needed.</p>}
+                      </section>
+
+                      <section className="rounded-2xl border border-emerald-200 bg-emerald-50/45 p-5" aria-labelledby="session-result-tasks-heading">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Next actions</p>
+                        <h3 id="session-result-tasks-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{resultTasks.length} task{resultTasks.length === 1 ? "" : "s"}</h3>
+                        {resultTasks.length ? (
+                          <ul className="mt-4 space-y-3">
+                            {resultTasks.slice(0, 6).map((task) => (
+                              <li key={task.id} className="rounded-xl border border-emerald-100 bg-white p-3">
+                                <Link href={`/work?task=${encodeURIComponent(task.id)}`} className="font-black text-[#3d3122] hover:underline">{task.title}</Link>
+                                {task.detail ? <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-[#765f40]">{task.detail}</p> : null}
+                                {task.source.startSeconds !== null && task.source.endSeconds !== null ? (
+                                  <Link href={`${sessionWorkspaceHref(roomId, "transcript")}#transcript-segment-${encodeURIComponent(task.source.segmentId || "")}`} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{task.source.speakerLabel ? `${task.source.speakerLabel} · ` : ""}{timestampForSeconds(task.source.startSeconds)}–{timestampForSeconds(task.source.endSeconds)}</Link>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : <p className="mt-3 text-xs font-semibold text-[#765f40]">No next action was detected.</p>}
+                      </section>
+
+                      <section className="rounded-2xl border border-violet-200 bg-violet-50/45 p-5" aria-labelledby="session-result-goals-heading">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Ongoing goals</p>
+                        <h3 id="session-result-goals-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{resultGoals.length} goal{resultGoals.length === 1 ? "" : "s"}</h3>
+                        {resultGoals.length ? (
+                          <ul className="mt-4 space-y-3">
+                            {resultGoals.slice(0, 6).map((goal) => (
+                              <li key={goal.id} className="rounded-xl border border-violet-100 bg-white p-3">
+                                <Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="font-black text-[#3d3122] hover:underline">{goal.title}</Link>
+                                {goal.description ? <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-[#765f40]">{goal.description}</p> : null}
+                                {goal.source.startSeconds !== null && goal.source.endSeconds !== null ? (
+                                  <Link href={`${sessionWorkspaceHref(roomId, "transcript")}#transcript-segment-${encodeURIComponent(goal.source.segmentId || "")}`} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{goal.source.speakerLabel ? `${goal.source.speakerLabel} · ` : ""}{timestampForSeconds(goal.source.startSeconds)}–{timestampForSeconds(goal.source.endSeconds)}</Link>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : <p className="mt-3 text-xs font-semibold text-[#765f40]">No ongoing goal was detected.</p>}
+                      </section>
+                    </div>
                   ) : null}
                 </section>
 
@@ -5194,9 +5263,9 @@ export function SessionReviewClient({
                       </h2>
                     </div>
                   </div>
-                  {tasks.length ? (
+                  {resultTasks.length ? (
                     <div className="grid gap-3 lg:grid-cols-2">
-                      {tasks.map((task) => (
+                      {resultTasks.map((task) => (
                         <article
                           key={task.id}
                           className="rounded-2xl border border-[#e5d5b7] bg-white p-5"

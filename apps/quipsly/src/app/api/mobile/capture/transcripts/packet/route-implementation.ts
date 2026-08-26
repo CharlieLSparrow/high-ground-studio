@@ -30,6 +30,7 @@ import {
 import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
 import { buildSessionTranscriptConfidence } from "@/lib/session-transcript-confidence";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import { sessionTranscriptResults } from "@/lib/server/session-transcript-results";
 import {
   captureTranscriptFollowThroughAuthorId,
   reconcileCaptureTranscriptFollowThrough,
@@ -90,6 +91,21 @@ export function packetNoteVisibilityWhere(
 
 function sourceJson(value: unknown): Record<string, unknown> {
   return isObject(value) ? value : {};
+}
+
+function sharedTranscriptResultSource(value: unknown) {
+  const source = sourceJson(value);
+  return {
+    transcriptJobId: text(source.transcriptJobId) || null,
+    recordingAssetId: text(source.recordingAssetId) || null,
+    packetBuildId: text(source.packetBuildId) || null,
+    segmentId: text(source.segmentId) || null,
+    startSeconds:
+      typeof source.startSeconds === "number" ? source.startSeconds : null,
+    endSeconds:
+      typeof source.endSeconds === "number" ? source.endSeconds : null,
+    speakerLabel: text(source.speakerLabel) || null,
+  };
 }
 
 function asArray(value: unknown): unknown[] {
@@ -524,7 +540,7 @@ async function readJson(request: Request) {
 function packetBoundaries() {
   return {
     sideEffectFreeRead: true,
-    buildCreatesReviewArtifactsOnly: true,
+    buildCreatesEditableSessionWork: true,
     noRecordingStarted: true,
     noTranscriptProviderRunFromPacketRead: true,
     noExternalDelivery: true,
@@ -533,9 +549,9 @@ function packetBoundaries() {
     canonicalSessionMutationAccess: true,
     sessionAccessRecheckedOnMutation: true,
     recordingSourceTruth:
-      "Recording assets remain source evidence. Transcript segments are derived evidence. Coaching packet notes and action candidates are review projections built from completed transcript evidence. ActionItem records are committed work only after explicit human acceptance.",
-    reviewRule:
-      "Packet output is review-ready material, not client-delivered notes, published podcast copy, or canonical truth until a human approves the next action and a receipt is attached.",
+      "Recording assets remain source evidence. Transcript segments are derived evidence. Quipsly creates ordinary editable Session work with source timestamps and never mutates the recording.",
+    resultRule:
+      "Notes, tasks, and goals are ready to use immediately. External delivery, publication, charging, calendar changes, and notifications remain separate actions.",
     legacyCandidateCompatibility:
       "Older packets may still have candidate=true ActionItem rows. They remain preserved for auditability but are returned as uncommitted action candidates, not open work.",
     legacyBuildCompatibility:
@@ -566,7 +582,7 @@ function packetSafeActions(input: {
   return [
     {
       id: "build-review-packet",
-      label: "Build review packet",
+      label: "Prepare Session results",
       risk: "medium",
       enabled:
         input.canReviewPrivatePacket &&
@@ -577,28 +593,28 @@ function packetSafeActions(input: {
         : input.packetStale
           ? "Transcript review changed after this packet was built. Build a new append-only packet before reviewing candidates."
           : packetReady
-            ? "A packet already exists. Use force only when intentionally creating a new review artifact from the same transcript."
+            ? "Session results already exist. Retry only when the transcript changed or preparation was interrupted."
             : transcriptCompleted
-              ? "Completed transcript evidence is ready to become a reviewable summary, highlights, and uncommitted action candidates."
+              ? "Completed transcript evidence is ready to become editable notes, tasks, goals, and a recap."
               : transcriptRunning
                 ? "Transcription is still running. Wait for completed transcript evidence before packet building."
                 : "Packet building waits on a completed transcript job with segments.",
       boundary:
-        "Creates Nest-owned review notes and uncommitted action candidates only. It must not create open work, send follow-up, publish copy, charge money, or claim external delivery.",
+        "Creates editable in-product Session work with source links. It does not send follow-up, publish, charge, change calendars, or claim external delivery.",
     },
     {
       id: "review-packet",
-      label: "Review packet",
+      label: "Use Session results",
       enabled:
         input.transcriptProcessingAllowed && packetReady && !input.packetStale,
-      risk: "human-approval-required",
+      risk: "low",
       why: input.packetStale
-        ? "This packet is pinned to an older transcript-review snapshot and cannot be reviewed into canonical work."
-        : packetReady
-          ? `A packet exists with ${input.highlights.length} highlight(s), ${input.actionCandidates.length} action candidate(s), and ${input.actionItems.length} accepted action item(s).`
-          : "Review waits until a packet exists.",
+          ? "These results are pinned to an older transcript snapshot and are being refreshed."
+          : packetReady
+          ? `Session results include ${input.highlights.length} highlight note(s) and ${input.actionItems.length} task(s).`
+          : "Results appear when the completed transcript is ready.",
       boundary:
-        "Review can refine, approve, or route next work. External delivery still requires a separate explicit action and receipt.",
+        "People can edit, complete, archive, or reorganize the in-product work. External delivery remains a separate action.",
     },
     {
       id: "repair-transcript-first",
@@ -849,6 +865,7 @@ export async function GET(request: Request) {
     room,
     notes,
     actionItems,
+    goals,
     selectedRecordingAsset,
     latestTranscriptJob,
   ] = await Promise.all([
@@ -922,10 +939,25 @@ export async function GET(request: Request) {
         title: true,
         detail: true,
         status: true,
+        assignedUserId: true,
         dueAt: true,
         completedAt: true,
         sourceJson: true,
         createdAt: true,
+      },
+    }),
+    prisma.goal.findMany({
+      where: { roomId },
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        ownerUserId: true,
+        targetAt: true,
+        achievedAt: true,
+        sourceJson: true,
       },
     }),
     requestedRecordingAssetId
@@ -1032,7 +1064,7 @@ export async function GET(request: Request) {
     packetAuthorUserId && packetAuthorUserId === actor.id,
   );
   const packetNotes =
-    transcriptProcessingAllowed && canReviewPrivatePacket
+    transcriptProcessingAllowed
       ? notes.filter((note: any) => {
           const source = sourceJson(note.sourceJson);
           return (
@@ -1067,7 +1099,7 @@ export async function GET(request: Request) {
         })
       : [];
   const actionCandidates =
-    transcriptProcessingAllowed && summary
+    transcriptProcessingAllowed && canReviewPrivatePacket && summary
       ? mergePacketActionCandidates({
           sourceJson: summary.sourceJson,
           legacyActionItems: allPacketActionItems,
@@ -1093,6 +1125,14 @@ export async function GET(request: Request) {
   const reviewLanes = transcriptProcessingAllowed
     ? fallbackReviewLanes({ summary, highlights, actionCandidates })
     : [];
+  const transcriptResults = sessionTranscriptResults({
+    roomId,
+    transcriptJobId: latestTranscriptJob?.id,
+    summary,
+    highlights,
+    actionItems,
+    goals,
+  });
   const goalRows =
     transcriptProcessingAllowed && summary
       ? await prisma.goal.findMany({
@@ -1154,14 +1194,16 @@ export async function GET(request: Request) {
           },
         })
       : [];
-  const goalCandidates = buildPacketGoalCandidates({
-    summary,
-    latestTranscriptJob,
-    goals: goalRows,
-    packetBuildId: selectedPacketBuild.packetBuildId,
-  });
+  const goalCandidates = canReviewPrivatePacket
+    ? buildPacketGoalCandidates({
+        summary,
+        latestTranscriptJob,
+        goals: goalRows,
+        packetBuildId: selectedPacketBuild.packetBuildId,
+      })
+    : [];
   const noteCandidates =
-    transcriptProcessingAllowed && !packetStale
+    transcriptProcessingAllowed && canReviewPrivatePacket && !packetStale
       ? buildPacketNoteCandidates({
           summary,
           latestTranscriptJob,
@@ -1310,11 +1352,13 @@ export async function GET(request: Request) {
       status: transcriptHeld
         ? "TRANSCRIPT_HELD"
         : !canReviewPrivatePacket
-          ? "PRIVATE_REVIEWER_ONLY"
+          ? transcriptResults
+            ? "RESULTS_READY"
+            : "PRIVATE_REVIEWER_ONLY"
           : packetStale
             ? "TRANSCRIPT_REVIEW_CHANGED"
             : summary
-              ? "READY_FOR_REVIEW"
+              ? "RESULTS_READY"
               : latestTranscriptJob?.status === "COMPLETED"
                 ? "PACKET_READY_TO_BUILD"
                 : "NOT_READY",
@@ -1323,7 +1367,9 @@ export async function GET(request: Request) {
             id: summary.id,
             title: summary.title,
             body: summary.body,
-            source: sourceJson(summary.sourceJson),
+            source: canReviewPrivatePacket
+              ? sourceJson(summary.sourceJson)
+              : sharedTranscriptResultSource(summary.sourceJson),
             createdAt: summary.createdAt?.toISOString?.() ?? null,
             updatedAt: summary.updatedAt?.toISOString?.() ?? null,
           }
@@ -1332,9 +1378,12 @@ export async function GET(request: Request) {
         id: note.id,
         title: note.title,
         body: note.body,
-        source: sourceJson(note.sourceJson),
+        source: canReviewPrivatePacket
+          ? sourceJson(note.sourceJson)
+          : sharedTranscriptResultSource(note.sourceJson),
         createdAt: note.createdAt?.toISOString?.() ?? null,
       })),
+      results: transcriptResults,
       noteCandidates,
       noteMergeTargets,
       actionCandidates,

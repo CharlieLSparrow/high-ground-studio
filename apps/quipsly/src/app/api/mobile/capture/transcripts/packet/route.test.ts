@@ -547,6 +547,7 @@ describe("packet source selection", () => {
       },
       coachingNote: { findMany: jest.fn().mockResolvedValue([]) },
       actionItem: { findMany: jest.fn().mockResolvedValue([]) },
+      goal: { findMany: jest.fn().mockResolvedValue([]) },
       recordingAsset: { findFirst: jest.fn().mockResolvedValue(selectedRecordingAsset) },
       transcriptJob: { findFirst: jest.fn().mockResolvedValue(null) },
     };
