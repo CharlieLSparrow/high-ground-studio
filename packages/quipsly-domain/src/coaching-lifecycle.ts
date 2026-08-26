@@ -71,6 +71,8 @@ export interface QuipslyCoachingLifecycle {
   readonly readyForTranscript: boolean;
   readonly readyForPacket: boolean;
   readonly readyForReview: boolean;
+  readonly participantCount: number;
+  readonly requiredParticipantCount: number;
   readonly checks: readonly QuipslyCoachingLifecycleCheck[];
   readonly safeActions: readonly QuipslyCoachingLifecycleSafeAction[];
   readonly nextAction: string;
@@ -83,6 +85,8 @@ export interface BuildQuipslyCoachingLifecycleInput {
   readonly calendarReceiptExists?: boolean;
   readonly roomExists?: boolean;
   readonly participantsAttached?: boolean;
+  readonly participantCount?: number;
+  readonly requiredParticipantCount?: number;
   readonly consentGranted?: boolean;
   readonly providerReady?: boolean;
   readonly localFallbackReady?: boolean;
@@ -122,7 +126,17 @@ export function buildQuipslyCoachingLifecycle(
   const paymentRequired = input.paymentRequired === true;
   const paymentResolved = !paymentRequired || input.paymentResolved === true;
   const roomExists = input.roomExists === true;
-  const participantsAttached = input.participantsAttached === true;
+  const participantCount = Number.isFinite(input.participantCount)
+    ? Math.max(0, Math.floor(input.participantCount ?? 0))
+    : input.participantsAttached === true
+      ? 1
+      : 0;
+  const requiredParticipantCount = Number.isFinite(input.requiredParticipantCount)
+    ? Math.max(1, Math.floor(input.requiredParticipantCount ?? 1))
+    : 1;
+  const participantsAttached =
+    input.participantsAttached === true &&
+    participantCount >= requiredParticipantCount;
   const consentGranted = input.consentGranted === true;
   const captureRouteReady = input.providerReady === true || input.localFallbackReady === true;
   const recordingExists = input.recordingExists === true;
@@ -158,6 +172,8 @@ export function buildQuipslyCoachingLifecycle(
     readyForTranscript,
     readyForPacket,
     readyForReview,
+    participantCount,
+    requiredParticipantCount,
     checks: [
       check(
         "booking",
@@ -199,7 +215,7 @@ export function buildQuipslyCoachingLifecycle(
         participantsAttached ? "present" : "missing",
         participantsAttached
           ? "The session has participant records."
-          : "Attach participants so consent, recordings, and transcripts have clear owners.",
+          : `${participantCount}/${requiredParticipantCount} required participant records are attached. Attach everyone so consent, recordings, and transcripts have clear owners.`,
       ),
       check(
         "consent",

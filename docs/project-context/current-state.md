@@ -4642,14 +4642,25 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   participant record.
 - Lifecycle v2 adds a first-class `participants-needed` stage. Participant and
   consent evidence now gate capture, transcription, packet generation, and
-  review readiness; an upstream “start now” suggestion cannot override a
-  missing booking, payment, room, participant, consent, or capture-route gate.
+  review readiness. An ordinary coaching call requires two attached participant
+  records rather than accepting any single room member; the contract exposes
+  observed and required counts. An upstream “start now” suggestion cannot
+  override a missing booking, payment, room, participant, consent, or
+  capture-route gate.
+- Creating a coaching Session from an existing client relationship on iPhone
+  now attaches every active coach, client, and support member in one room write
+  and creates a separate **requested** consent record for each. It does not
+  grant consent, join a provider, start recording, send an invitation, or copy
+  unrelated Nest members. A non-relationship quick Session remains a one-person
+  host Session.
 - This is state-machine hardening rather than a new permission ceremony. The
   ordinary ready path is unchanged once the app has attached the invited coach
   and client, while an incomplete Session gets one plain next step: **Attach
   the Session participants before consent or capture.**
-- Focused lifecycle and client-priority suites pass (11 tests), the surrounding
+- Focused lifecycle and client-priority suites pass (12 tests), the surrounding
   mobile Session/coaching regressions pass (38 tests), shared-domain and Quipsly
-  TypeScript pass, and both the full coaching handoff smoke and 100-plus-check
-  mobile Capture source contract smoke pass. Physical two-participant readiness
-  and recording remain acceptance evidence.
+  TypeScript pass, and the retained local PostgreSQL mobile Session route suite
+  passes (8 tests), including exact two-member attachment and two independent
+  ungranted consent requests. Both the full coaching handoff smoke and
+  125-check mobile Capture source contract smoke pass. Physical two-participant
+  readiness and recording remain acceptance evidence.

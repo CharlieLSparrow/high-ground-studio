@@ -746,6 +746,10 @@ function checkMeetingSpineContractSources() {
   expect(
     sessionsRouteText.includes("coachingEngagements: coachingEngagements.map")
       && sessionsRouteText.includes("coachingEngagementId: coachingEngagement?.id || null")
+      && sessionsRouteText.includes('role: { in: ["COACH", "CLIENT", "SUPPORT"] }')
+      && sessionsRouteText.includes("create: participantRows")
+      && sessionsRouteText.includes("data: room.participants.map")
+      && sessionsRouteText.includes("relationshipParticipantsAttached")
       && bridgeText.includes("struct MobileCaptureCoachingEngagement")
       && bridgeText.includes("let coachingEngagements: [MobileCaptureCoachingEngagement]?")
       && bridgeText.includes('requestBody["coachingEngagementId"] = coachingEngagementId')
@@ -754,7 +758,7 @@ function checkMeetingSpineContractSources() {
       && capturePhoneShellText.includes('accessibilityIdentifier("CaptureOpenCoachingEngagement")')
       && capturePhoneShellText.includes("engagement chat in Nest"),
     "nativeCoachingEngagementContinuity",
-    "Native Capture decodes writable Coaching Engagements, binds new coaching Sessions to the exact engagement and Nest, preserves the identity offline, and exposes the private collaboration space.",
+    "Native Capture decodes writable Coaching Engagements, binds new coaching Sessions to the exact engagement and Nest, attaches the active relationship participants with requested consent receipts, preserves the identity offline, and exposes the private collaboration space.",
   );
   expect(
     captureRecorderViewText.indexOf("ConsentStrip(") >= 0
@@ -838,6 +842,8 @@ function checkMeetingSpineContractSources() {
       && lifecycleText.includes("confirm-recording-consent")
       && lifecycleText.includes('"participants-needed"')
       && lifecycleText.includes("participantsAttached && consentGranted")
+      && lifecycleText.includes("requiredParticipantCount")
+      && sessionsText.includes('requiredParticipantCount: room.purpose === "COACHING" ? 2 : 1')
       && lifecycleText.includes("readyForCapture")
       && lifecycleText.includes("readyForPacket"),
     "sharedCoachingLifecycleContract",

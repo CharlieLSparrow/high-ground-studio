@@ -61,6 +61,24 @@ describe("buildQuipslyCoachingLifecycle participant boundary", () => {
     ).toMatchObject({ enabled: false });
   });
 
+  it("requires both sides of an ordinary coaching call rather than accepting any one participant", () => {
+    const lifecycle = buildQuipslyCoachingLifecycle({
+      ...captureReadyInput(),
+      participantCount: 1,
+      requiredParticipantCount: 2,
+    });
+
+    expect(lifecycle).toMatchObject({
+      stage: "participants-needed",
+      participantCount: 1,
+      requiredParticipantCount: 2,
+      readyForCapture: false,
+    });
+    expect(
+      lifecycle.checks.find((check) => check.id === "participants"),
+    ).toMatchObject({ status: "missing" });
+  });
+
   it("preserves the ordinary one-action capture path after every core gate is present", () => {
     const lifecycle = buildQuipslyCoachingLifecycle(captureReadyInput());
 

@@ -1282,6 +1282,8 @@ export function mapMobileCaptureSessionsForUser(input: {
       calendarReceiptExists: calendarReceiptExists(booking),
       roomExists: Boolean(room.id),
       participantsAttached: room.participants.length > 0,
+      participantCount: room.participants.length,
+      requiredParticipantCount: room.purpose === "COACHING" ? 2 : 1,
       consentGranted: recordingConsentGranted,
       providerReady: provider.providerCanJoin === true,
       localFallbackReady: captureReadiness.safeToRecordLocally === true,

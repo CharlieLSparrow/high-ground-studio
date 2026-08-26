@@ -935,6 +935,8 @@ export async function GET(request: Request) {
       calendarReceiptExists: calendarLinkHasReceipt(latestCalendar),
       roomExists: Boolean(room.id),
       participantsAttached: safeCount(room.participants?.length) > 0,
+      participantCount: safeCount(room.participants?.length),
+      requiredParticipantCount: room.purpose === "COACHING" ? 2 : 1,
       consentGranted: journeySummary.evidence?.allParticipantConsentGranted === true,
       providerReady: Boolean(room.providerRoomId),
       localFallbackReady: Boolean(room.id),

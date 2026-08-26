@@ -658,7 +658,22 @@ export async function POST(request: Request) {
           projectId: captureProjectId,
           status: { in: ["ACTIVE", "PAUSED"] },
         },
-        select: { id: true, title: true },
+        select: {
+          id: true,
+          title: true,
+          members: {
+            where: {
+              status: "ACTIVE",
+              role: { in: ["COACH", "CLIENT", "SUPPORT"] },
+            },
+            orderBy: { joinedAt: "asc" },
+            select: {
+              userId: true,
+              role: true,
+              user: { select: { name: true, primaryEmail: true } },
+            },
+          },
+        },
       })
     : null;
   if (requestedEngagementId && !coachingEngagement) {
@@ -666,6 +681,25 @@ export async function POST(request: Request) {
       { ok: false, error: "The requested Coaching Engagement is unavailable or belongs to another Nest." },
       { status: 404 },
     );
+  }
+
+  const participantRows = (coachingEngagement?.members || []).map((member: any) => ({
+    userId: member.userId,
+    displayName: member.user.name || member.user.primaryEmail,
+    email: member.user.primaryEmail,
+    role: member.role === "COACH" ? "COACH" : member.role === "CLIENT" ? "CLIENT" : "GUEST",
+    deviceLabel: member.userId === userId
+      ? text(body.deviceLabel) || "Quipsly iOS Capture"
+      : "Quipsly coaching relationship",
+  }));
+  if (!participantRows.some((participant: any) => participant.userId === userId)) {
+    participantRows.unshift({
+      userId,
+      displayName: participantDisplayName,
+      email: session.user.primaryEmail,
+      role: coachingEngagement ? "GUEST" : "HOST",
+      deviceLabel: text(body.deviceLabel) || "Quipsly iOS Capture",
+    });
   }
 
   const room = await prisma.callRoom.create({
@@ -720,24 +754,18 @@ export async function POST(request: Request) {
         createdAt: now.toISOString(),
       },
       participants: {
-        create: {
-          userId,
-          displayName: participantDisplayName,
-          email: session.user.primaryEmail,
-          role: "HOST",
-          deviceLabel: text(body.deviceLabel) || "Quipsly iOS Capture",
-        },
+        create: participantRows,
       },
     },
     include: { participants: { where: { accessStatus: "ACTIVE" } } },
   });
 
   const hostParticipant = room.participants.find((item: any) => item.userId === userId) || room.participants[0] || null;
-  await prisma.recordingConsent.create({
-    data: {
+  await prisma.recordingConsent.createMany({
+    data: room.participants.map((participant: any) => ({
       roomId: room.id,
-      participantId: hostParticipant?.id ?? null,
-      userId,
+      participantId: participant.id,
+      userId: participant.userId,
       status: "REQUESTED",
       consentText: MOBILE_CAPTURE_CONSENT_TEXT,
       policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
@@ -754,7 +782,7 @@ export async function POST(request: Request) {
         consentEvidenceVersion: 2,
         requestedAt: now.toISOString(),
       },
-    },
+    })),
   });
 
   const createdRoom = await prisma.callRoom.findUnique({
@@ -807,6 +835,10 @@ export async function POST(request: Request) {
         appOwnedRoomCreated: true,
         episodeBound: Boolean(episodeBinding.episodeProductionId),
         participantCreated: Boolean(hostParticipant?.id),
+        participantCount: room.participants.length,
+        relationshipParticipantsAttached: Boolean(
+          coachingEngagement && room.participants.length >= 2,
+        ),
         consentRequested: true,
         recordingStarted: false,
         providerJoined: false,

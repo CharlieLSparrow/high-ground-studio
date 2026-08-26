@@ -340,12 +340,41 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
       projectId,
       projectSlug,
     });
+    expect(payload.boundaries).toMatchObject({
+      participantCount: 2,
+      relationshipParticipantsAttached: true,
+      recordingStarted: false,
+      providerJoined: false,
+    });
     engagementRoomId = payload.session.id;
 
-    await expect(prisma.callRoom.findUnique({
+    const relationshipRoom = await prisma.callRoom.findUnique({
       where: { id: engagementRoomId },
-      select: { projectId: true, coachingEngagementId: true },
-    })).resolves.toEqual({ projectId, coachingEngagementId: engagementId });
+      select: {
+        projectId: true,
+        coachingEngagementId: true,
+        participants: {
+          orderBy: { createdAt: "asc" },
+          select: { userId: true, role: true, accessStatus: true },
+        },
+        recordingConsents: {
+          orderBy: { createdAt: "asc" },
+          select: { userId: true, status: true, canRecordAudio: true },
+        },
+      },
+    });
+    expect(relationshipRoom).toMatchObject({
+      projectId,
+      coachingEngagementId: engagementId,
+      participants: expect.arrayContaining([
+        { userId: ownerUserId, role: "COACH", accessStatus: "ACTIVE" },
+        { userId: viewerUserId, role: "CLIENT", accessStatus: "ACTIVE" },
+      ]),
+      recordingConsents: expect.arrayContaining([
+        { userId: ownerUserId, status: "REQUESTED", canRecordAudio: false },
+        { userId: viewerUserId, status: "REQUESTED", canRecordAudio: false },
+      ]),
+    });
   });
 
   it("rejects an Episode relationship on a coaching Session without writing a room", async () => {
