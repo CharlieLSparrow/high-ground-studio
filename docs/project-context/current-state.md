@@ -4466,3 +4466,18 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   production build passes. A real multi-tab v1-to-v2 upgrade, forced late
   transaction abort, retry, exact-byte recovery, and playback remain explicit
   flight evidence.
+
+### 2026-08-25 ambiguous OPFS worker failures stop once
+
+- A timed-out synchronous OPFS write is now a terminal writer condition rather
+  than one rejected request against an otherwise apparently live worker.
+  Quipsly terminates the worker, rejects every outstanding operation with the
+  same cause, and lets recorder finalization enter the existing participant-
+  owned Held recovery path immediately.
+- Worker crashes, unreadable worker replies, and synchronous `postMessage`
+  failures use the same boundary. `close()` cannot send another request or wait
+  another minute after the write state has become ambiguous.
+- The focused behavioral suite proves initialization, one ambiguous write,
+  worker termination, immediate close rejection, and absence of a late close
+  command. Real worker termination during an OPFS flush followed by exact-byte
+  ledger recovery and playback remains explicit flight evidence.

@@ -219,6 +219,7 @@ async function createSyncFlushWorkerWriter(
   const worker = new Worker("/workers/quipsly-opfs-source-writer-v1.js");
   let sequence = 0;
   let closed = false;
+  let failure: Error | null = null;
   const pending = new Map<
     number,
     {
@@ -234,6 +235,12 @@ async function createSyncFlushWorkerWriter(
       request.reject(error);
     }
     pending.clear();
+  };
+  const failWorker = (error: Error) => {
+    if (!failure) failure = error;
+    worker.terminate();
+    rejectPending(failure);
+    return failure;
   };
   worker.addEventListener("message", (event: MessageEvent<WorkerReply>) => {
     const id = Number(event.data?.id);
@@ -252,7 +259,12 @@ async function createSyncFlushWorkerWriter(
       );
   });
   worker.addEventListener("error", () => {
-    rejectPending(new Error("The durable source writer stopped unexpectedly."));
+    failWorker(new Error("The durable source writer stopped unexpectedly."));
+  });
+  worker.addEventListener("messageerror", () => {
+    failWorker(
+      new Error("The durable source writer returned an unreadable response."),
+    );
   });
 
   const request = (
@@ -260,22 +272,34 @@ async function createSyncFlushWorkerWriter(
     payload: Record<string, unknown> = {},
     transfer: Transferable[] = [],
   ) => {
+    if (failure) return Promise.reject(failure);
     const id = ++sequence;
     return new Promise<WorkerReply>((resolve, reject) => {
       const timer = setTimeout(() => {
-        pending.delete(id);
-        reject(new Error("The durable source writer timed out."));
+        if (!pending.has(id)) return;
+        failWorker(
+          new Error(
+            "The durable source writer timed out; its final write state is being recovered from local storage.",
+          ),
+        );
       }, 60_000);
       pending.set(id, { resolve, reject, timer });
-      worker.postMessage({ id, action, ...payload }, transfer);
+      try {
+        worker.postMessage({ id, action, ...payload }, transfer);
+      } catch (error) {
+        failWorker(
+          error instanceof Error
+            ? error
+            : new Error("The durable source writer request could not be sent."),
+        );
+      }
     });
   };
 
   try {
     await request("init", { opfsFileName });
   } catch (error) {
-    worker.terminate();
-    rejectPending(
+    failWorker(
       error instanceof Error ? error : new Error("OPFS worker setup failed."),
     );
     throw error;
