@@ -1,6 +1,9 @@
 import "server-only";
 
-import { buildCoachingPacketFromTranscriptJob } from "@/lib/server/coaching-packets";
+import {
+  buildCoachingPacketFromTranscriptJob,
+  packetCreatesOrdinarySessionWork,
+} from "@/lib/server/coaching-packets";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
@@ -113,7 +116,7 @@ async function prepareSessionFollowThrough(input: {
       orderBy: { createdAt: "desc" },
       select: { id: true, sourceJson: true },
     });
-    if (existing) {
+    if (existing && packetCreatesOrdinarySessionWork(existing.sourceJson)) {
       const source = typeof existing.sourceJson === "object"
         && existing.sourceJson !== null
         && !Array.isArray(existing.sourceJson)
@@ -141,6 +144,8 @@ async function prepareSessionFollowThrough(input: {
     prisma: input.prisma,
     transcriptJobId: input.transcriptJobId,
     authorUserId,
+    // The builder reuses current automatic packets, but deliberately versions
+    // a historical candidate-only packet into ordinary editable Session work.
     force: false,
   });
   if (!packet.ok) {

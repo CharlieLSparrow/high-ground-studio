@@ -8,6 +8,7 @@ import {
   buildTranscriptPacketBrief,
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
+  packetCreatesOrdinarySessionWork,
   packetSnapshotMatches,
   packetSnapshotMatchesTranscriptJob,
   projectTranscriptSegmentsForPacket,
@@ -876,6 +877,66 @@ describe("transcript coaching follow-through", () => {
     expect(legacySelected.highlights.map((note) => note.id)).toEqual([
       "legacy-highlight",
     ]);
+  });
+
+  it("versions a legacy candidate-only packet into ordinary editable work", async () => {
+    const job = completedTranscriptJob();
+    const summaries: any[] = [];
+    let latestSummary: any = null;
+    let noteSequence = 0;
+    const coachingNoteCreate = jest.fn(async ({ data }: any) => {
+      noteSequence += 1;
+      const note = {
+        id: `note-${noteSequence}`,
+        ...data,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      if (data.kind === "SUMMARY") {
+        latestSummary = { ...note, actionItems: [] };
+        summaries.push(latestSummary);
+      }
+      return note;
+    });
+    const prisma = {
+      transcriptJob: { findUnique: jest.fn(async () => job) },
+      coachingNote: {
+        findFirst: jest.fn(async () => latestSummary),
+        create: coachingNoteCreate,
+      },
+      ...automaticWorkStores(),
+    };
+
+    const first = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    })) as any;
+    expect(packetCreatesOrdinarySessionWork(latestSummary.sourceJson)).toBe(true);
+
+    latestSummary.sourceJson = {
+      ...latestSummary.sourceJson,
+      reviewRequired: true,
+      packetBrief: {
+        ...latestSummary.sourceJson.packetBrief,
+        candidateOnly: true,
+        humanApprovalRequired: true,
+      },
+    };
+    expect(packetCreatesOrdinarySessionWork(latestSummary.sourceJson)).toBe(false);
+
+    const upgraded = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    })) as any;
+    expect(upgraded).toMatchObject({
+      reusedExistingPacket: false,
+      rebuiltForTranscriptReviewChange: true,
+    });
+    expect(upgraded.packetBuildId).not.toBe(first.packetBuildId);
+    expect(summaries).toHaveLength(2);
+    expect(packetCreatesOrdinarySessionWork(summaries[1].sourceJson)).toBe(true);
   });
 
   it("reuses an identical snapshot but automatically versions the packet after transcript review changes", async () => {

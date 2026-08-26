@@ -98,7 +98,7 @@ const appStoreReadiness = read(paths.appStoreReadiness);
   "secure Stripe payment page",
   "Open Stripe",
   "Recording stays off until consent is clear.",
-  "Follow-up notes appear after the session is captured and reviewed.",
+  "Follow-up notes appear automatically after recording and transcription.",
 ].forEach((marker) => assertIncludes(coacheeSessionsPage, marker, paths.coacheeSessionsPage));
 
 [

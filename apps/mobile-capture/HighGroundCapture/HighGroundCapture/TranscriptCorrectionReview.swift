@@ -1906,8 +1906,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             await loadPacketCandidates(roomID: roomID)
             followUpPreparationFailed = false
             message = payload.reusedExistingPacket == true
-                ? "Your current follow-up suggestions are ready to review."
-                : "Your follow-up suggestions are ready. Nothing was assigned, sent, or shared."
+                ? "Your Session results are ready."
+                : "Quipsly created editable notes, tasks, and goals from this Session."
             return true
         } catch {
             followUpPreparationFailed = true
@@ -3047,7 +3047,9 @@ struct CaptureTranscriptReviewView: View {
                             )
                             .accessibilityIdentifier("CaptureTranscriptPacketLoadedBoundary")
                         }
-                        if client.canReviewPrivatePacket && client.packetSegmentCount > 0 {
+                        if client.canReviewPrivatePacket
+                            && packetCandidateCount > 0
+                            && client.packetSegmentCount > 0 {
                             packetTranscriptReviewBoundary
                         }
                         speakerIdentitySection(desk)

@@ -35,6 +35,30 @@ export const TRANSCRIPT_PACKET_SEGMENT_ORDER_BY = [
   { id: "asc" as const },
 ];
 
+/**
+ * Distinguishes current packets that already materialize ordinary editable
+ * Session work from historical candidate-only packets. Keeping this check in
+ * the packet builder prevents a legacy summary from suppressing the modern
+ * notes, tasks, and goals during an idempotent replay.
+ */
+export function packetCreatesOrdinarySessionWork(value: unknown) {
+  const source =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const packetBrief =
+    typeof source.packetBrief === "object" &&
+    source.packetBrief !== null &&
+    !Array.isArray(source.packetBrief)
+      ? (source.packetBrief as Record<string, unknown>)
+      : {};
+  return source.reviewRequired === false || (
+    packetBrief.kind === "quipsly-transcript-packet-brief-v1" &&
+    packetBrief.candidateOnly === false &&
+    packetBrief.humanApprovalRequired === false
+  );
+}
+
 const ACTION_PATTERNS = [
   /\b(i|we|you|they)\s+(need|needs|should|will|can|could|must|have)\s+to\b/i,
   /\b(i'll|we'll|you'll|let's|follow up|send|schedule|prepare|finish|review|publish|record|write|draft|check)\b/i,
@@ -1163,6 +1187,7 @@ export async function buildCoachingPacketFromTranscriptJob(
   if (
     existing &&
     !args.force &&
+    packetCreatesOrdinarySessionWork(existing.sourceJson) &&
     packetTemplateMatches(existing.sourceJson) &&
     packetSnapshotMatchesTranscriptJob(existing.sourceJson, job)
   ) {

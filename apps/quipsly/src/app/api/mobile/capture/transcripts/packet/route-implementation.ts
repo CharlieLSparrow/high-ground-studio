@@ -19,6 +19,7 @@ import {
   buildCoachingPacketFromTranscriptJob,
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
+  packetCreatesOrdinarySessionWork,
   packetSnapshotMatchesTranscriptJob,
   packetTemplateMatches,
   projectTranscriptJobSegmentsForPacket,
@@ -94,13 +95,7 @@ function sourceJson(value: unknown): Record<string, unknown> {
 }
 
 export function packetUsesAutomaticFollowThrough(value: unknown) {
-  const source = sourceJson(value);
-  const packetBrief = sourceJson(source.packetBrief);
-  return source.reviewRequired === false || (
-    packetBrief.kind === "quipsly-transcript-packet-brief-v1" &&
-    packetBrief.candidateOnly === false &&
-    packetBrief.humanApprovalRequired === false
-  );
+  return packetCreatesOrdinarySessionWork(value);
 }
 
 export function isAutomaticTranscriptWorkForJob(
@@ -1426,14 +1421,14 @@ export async function GET(request: Request) {
       taskMergeTargets,
       goalCandidates,
       goalMergeTargets,
-      goalCandidateReview: {
+      goalCandidateReview: goalCandidates.length ? {
         endpoint: "/api/mobile/capture/transcripts/packet/goals",
         method: "POST",
         allowedDecisions: ["ACCEPT", "EDIT", "MERGE", "REJECT", "DEFER"],
         boundary:
           "ACCEPT creates one actor-owned ACTIVE Goal. MERGE appends reviewed source evidence to one explicitly selected existing actor-owned goal in this Nest without changing its definition, status, target, tags, tasks, or project. Ignoring, editing, rejecting, or deferring creates no goal or external side effect.",
-      },
-      actionCandidateReview: {
+      } : null,
+      actionCandidateReview: actionCandidates.length ? {
         endpoint: "/api/mobile/capture/transcripts/packet/actions",
         method: "POST",
         allowedDecisions: ["ACCEPT", "EDIT", "MERGE", "REJECT", "DEFER"],
@@ -1447,8 +1442,8 @@ export async function GET(request: Request) {
         ],
         boundary:
           "ACCEPT can materialize one canonical Quipsly ActionItem after the reviewer inspects owner, due date, and active same-project tags. MERGE appends reviewed source evidence to one explicitly selected existing actor-owned task in this Nest without changing task state. EDIT, REJECT, and DEFER preserve packet review state without creating open work or external side effects.",
-      },
-      taskMaterialization: {
+      } : null,
+      taskMaterialization: actionCandidates.length || goalCandidates.length ? {
         project: room?.project
           ? { id: room.project.id, name: room.project.name }
           : null,
@@ -1463,8 +1458,8 @@ export async function GET(request: Request) {
         ownerChoices: ["ACTOR", "UNASSIGNED"],
         defaultOwner: "ACTOR",
         boundary:
-          "This is a review form, not an inference. Tags are active canonical vocabulary from the exact Session project; no reminder, calendar event, delivery, or publication is implied.",
-      },
+          "Compatibility controls for older candidate-only packets. Current Session results are already ordinary editable work.",
+      } : null,
       actionItems: packetActionItems.map((item: any) => ({
         id: item.id,
         title: item.title,
@@ -1642,7 +1637,7 @@ export async function POST(request: Request) {
       generatedAt: new Date().toISOString(),
       boundaries: packetBoundaries(),
       nextAction: result.ok
-        ? "Read the packet, review highlights and action candidates, then explicitly accept any candidate that should become an ActionItem. Delivery and publishing remain separate human-approved actions."
+        ? "Use or adjust the summary, highlights, tasks, and goals Quipsly created from this Session. Sharing or publishing remains a separate choice."
         : "Resolve the packet blocker, then retry from the completed transcript evidence.",
     },
     { status },
