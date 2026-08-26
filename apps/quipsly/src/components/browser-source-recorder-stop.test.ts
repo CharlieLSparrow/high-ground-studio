@@ -99,7 +99,7 @@ describe("browser source stop confidence", () => {
     expect(onStop).toContain(
       "current = await rememberStopReceiptFailure(current, error)",
     );
-    expect(onStop).toContain("await uploadLedger(current)");
+    expect(onStop).toContain("await uploadLedger(current, {");
     expect(onStop).toContain(
       "Coordination delivery must not withhold protected media",
     );
@@ -150,5 +150,29 @@ describe("browser source stop confidence", () => {
     expect(source).not.toContain(
       'finalized.uploadStage === "verified" ||',
     );
+  });
+
+  it("proves the local file before creating or resuming a network upload", () => {
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/browser-source-recorder.tsx"),
+      "utf8",
+    );
+    const uploadStart = source.indexOf("const uploadLedger = useCallback(");
+    const uploadEnd = source.indexOf("const promoteStudioHandoff", uploadStart);
+    const upload = source.slice(uploadStart, uploadEnd);
+    const proofCheck = upload.indexOf(
+      "browserSourceLocalProofMatchesLedger(ledger, localProof)",
+    );
+    const reservation = upload.indexOf(
+      'fetch(\n            "/api/mobile/capture/uploads/resumable"',
+    );
+
+    expect(upload).toContain("await hashBrowserSourceFile(file)");
+    expect(proofCheck).toBeGreaterThan(0);
+    expect(reservation).toBeGreaterThan(proofCheck);
+    expect(upload).toContain(
+      "Upload is held; download the unchanged local source for recovery.",
+    );
+    expect(source).toContain("await uploadLedger(current, {");
   });
 });

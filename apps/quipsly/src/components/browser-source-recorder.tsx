@@ -76,6 +76,7 @@ import {
 } from "@/lib/browser-source-preferences";
 import {
   browserSourceInterruptedRecoveryCandidate,
+  browserSourceLocalProofMatchesLedger,
   browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
   browserSourcePostStopReceipt,
@@ -118,6 +119,12 @@ type BrowserSourceUploadReservationResponse = {
   storageBackend?: string;
   finalizeUrl?: string;
   upload?: { url: string };
+};
+
+type BrowserSourceVerifiedLocalFile = {
+  file: File;
+  sizeBytes: number;
+  sha256: string;
 };
 
 const IN_TAKE_CLOCK_SAMPLE_INTERVAL_MS = 5 * 60 * 1_000;
@@ -1198,7 +1205,10 @@ export function BrowserSourceRecorder({
   }, []);
 
   const uploadLedger = useCallback(
-    async (ledger: BrowserSourceCaptureLedger) => {
+    async (
+      ledger: BrowserSourceCaptureLedger,
+      suppliedProof?: BrowserSourceVerifiedLocalFile,
+    ) => {
       if (
         !ledger.sha256 ||
         !ledger.stoppedAt ||
@@ -1210,6 +1220,29 @@ export function BrowserSourceRecorder({
         );
       }
       setStatus("uploading");
+      setMessage("Checking the protected local source before upload…");
+      const file =
+        suppliedProof?.file ??
+        (await loadBrowserSourceFile(ledger.opfsFileName));
+      if (ledger.sizeBytes <= 0 || file.size <= 0) {
+        throw new Error(
+          "No media bytes were captured. Check the selected device, reopen the Session if needed, and record a new take; this empty local entry was not uploaded.",
+        );
+      }
+      const localProof =
+        suppliedProof ??
+        ({
+          file,
+          ...(await hashBrowserSourceFile(file)),
+        } satisfies BrowserSourceVerifiedLocalFile);
+      if (
+        file.size !== localProof.sizeBytes ||
+        !browserSourceLocalProofMatchesLedger(ledger, localProof)
+      ) {
+        throw new Error(
+          "The protected local file no longer matches its durable size and checksum. Upload is held; download the unchanged local source for recovery.",
+        );
+      }
       setMessage("Creating an immutable resumable upload reservation…");
       let current: BrowserSourceCaptureLedger = {
         ...ledger,
@@ -1217,12 +1250,6 @@ export function BrowserSourceRecorder({
         updatedAt: new Date().toISOString(),
       };
       await updateLedger(current);
-      const file = await loadBrowserSourceFile(current.opfsFileName);
-      if (current.sizeBytes <= 0 || file.size <= 0) {
-        throw new Error(
-          "No media bytes were captured. Check the selected device, reopen the Session if needed, and record a new take; this empty local entry was not uploaded.",
-        );
-      }
       const reservationRequest = {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1536,6 +1563,7 @@ export function BrowserSourceRecorder({
   const retryUploadLedger = useCallback(
     async (ledger: BrowserSourceCaptureLedger) => {
       let attempted = ledger;
+      let localProof: BrowserSourceVerifiedLocalFile | undefined;
       try {
         if (
           browserSourceInterruptedRecoveryCandidate(
@@ -1551,6 +1579,7 @@ export function BrowserSourceRecorder({
           );
           const file = await loadBrowserSourceFile(attempted.opfsFileName);
           const hash = await hashBrowserSourceFile(file);
+          localProof = { file, ...hash };
           attempted = finalizeInterruptedBrowserSourceLedger({
             ledger: attempted,
             sha256: hash.sha256,
@@ -1577,7 +1606,7 @@ export function BrowserSourceRecorder({
           await refreshRecovery();
           return;
         }
-        await uploadLedger(attempted);
+        await uploadLedger(attempted, localProof);
       } catch (error) {
         const failureReason =
           error instanceof Error ? error.message : "Upload retry failed.";
@@ -2305,7 +2334,11 @@ export function BrowserSourceRecorder({
               : "Local source is protected. Quipsly is uploading it while the Session stop status retries independently.",
           );
           await refreshRecovery();
-          await uploadLedger(current);
+          await uploadLedger(current, {
+            file,
+            sizeBytes: hash.sizeBytes,
+            sha256: hash.sha256,
+          });
         })()
           .catch(async (error) => {
             const current = ledgerRef.current;

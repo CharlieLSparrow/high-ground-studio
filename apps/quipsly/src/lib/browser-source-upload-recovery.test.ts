@@ -1,6 +1,7 @@
 import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
 import {
   browserSourceInterruptedRecoveryCandidate,
+  browserSourceLocalProofMatchesLedger,
   browserSourcePostStopReceipt,
   browserSourceNextReviewAction,
   browserSourceReviewHref,
@@ -37,6 +38,31 @@ function ledger(
 }
 
 describe("browser source upload recovery", () => {
+  it("binds local upload proof to the exact durable size and checksum", () => {
+    const protectedLedger = ledger("stopped", {
+      sizeBytes: 4_096,
+      sha256: "a".repeat(64),
+    });
+    expect(
+      browserSourceLocalProofMatchesLedger(protectedLedger, {
+        sizeBytes: 4_096,
+        sha256: "A".repeat(64),
+      }),
+    ).toBe(true);
+    expect(
+      browserSourceLocalProofMatchesLedger(protectedLedger, {
+        sizeBytes: 4_095,
+        sha256: "a".repeat(64),
+      }),
+    ).toBe(false);
+    expect(
+      browserSourceLocalProofMatchesLedger(protectedLedger, {
+        sizeBytes: 4_096,
+        sha256: "b".repeat(64),
+      }),
+    ).toBe(false);
+  });
+
   it("requires a canonical recording identity before verified media can drain", () => {
     expect(projectBrowserSourceFinalization({
       uploadStage: "verified",

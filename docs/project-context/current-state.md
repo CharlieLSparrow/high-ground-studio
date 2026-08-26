@@ -4503,3 +4503,21 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   segment suites pass (41 tests); Quipsly and shared-domain TypeScript pass.
   Real crash timing at each write boundary, OPFS byte inspection, exact hash,
   upload, canonical playback, and transcript handoff remain flight evidence.
+
+### 2026-08-25 resumed uploads re-prove the protected local source
+
+- Browser upload reservation and resumable byte transfer now require an exact
+  local size-and-SHA-256 proof first. A source that drifted from its durable
+  ledger is held locally with a visible download/recovery explanation before
+  any new network or storage work begins.
+- The ordinary stop path does not perform a wasteful second full-file hash: it
+  passes the exact `File`, size, and checksum it just computed into upload.
+  Interruption reconciliation does the same. A later online, visibility,
+  relaunch, verification, or manual retry has no ephemeral proof and therefore
+  streams the OPFS file through SHA-256 again before reusing the idempotent
+  reservation.
+- Eight focused recorder, proof, recovery, vault, endpoint, receipt, and
+  segment suites pass (43 tests), and Quipsly TypeScript passes. Real large-file
+  retry timing, deliberate local mutation, pre-network hold, unchanged
+  download, repaired source, upload, and canonical playback remain flight
+  evidence.

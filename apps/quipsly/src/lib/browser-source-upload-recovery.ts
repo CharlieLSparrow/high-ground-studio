@@ -48,6 +48,19 @@ export function projectBrowserSourceFinalization(packet: unknown) {
         : null,
   };
 }
+
+export function browserSourceLocalProofMatchesLedger(
+  ledger: BrowserSourceCaptureLedger,
+  proof: { sizeBytes: number; sha256: string },
+) {
+  return Boolean(
+    ledger.sizeBytes > 0 &&
+      proof.sizeBytes === ledger.sizeBytes &&
+      /^[a-f0-9]{64}$/i.test(proof.sha256) &&
+      proof.sha256.toLowerCase() === ledger.sha256?.toLowerCase(),
+  );
+}
+
 type InterruptedBrowserSourceLedger = BrowserSourceCaptureLedger & {
   state: "preparing" | "recording" | "held" | "failed";
 };
