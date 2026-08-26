@@ -242,6 +242,11 @@ enum CoachingBookingSeriesStatus {
   CANCELED
 }
 
+enum CoachingSessionPreparationLane {
+  CLIENT_SHARED
+  COACH_PRIVATE
+}
+
 enum CoachingEngagementStatus {
   ACTIVE
   PAUSED
@@ -827,130 +832,133 @@ model User {
   coachingFeatureGrants CoachingFeatureGrant[] @relation("CoachingFeatureGrantUser")
   weeklyCommitments     WeeklyCommitment[]     @relation("WeeklyCommitmentClient")
 
-  clientAppointments                Appointment[]                               @relation("AppointmentClient")
-  coachAppointments                 Appointment[]                               @relation("AppointmentCoach")
-  appointmentsCreated               Appointment[]                               @relation("AppointmentCreatedBy")
-  appointmentsUpdated               Appointment[]                               @relation("AppointmentUpdatedBy")
-  coachingRequests                  CoachingRequest[]                           @relation("CoachingRequestClient")
-  assignedCoachingRequests          CoachingRequest[]                           @relation("CoachingRequestCoach")
-  bookingHolds                      BookingHold[]                               @relation("BookingHoldClient")
-  coachingBookingsAsClient          CoachingBooking[]                           @relation("CoachingBookingClient")
-  coachingBookingsAsCoach           CoachingBooking[]                           @relation("CoachingBookingCoach")
-  coachingBookingSeriesAsClient     CoachingBookingSeries[]                     @relation("CoachingBookingSeriesClient")
-  coachingBookingSeriesAsCoach      CoachingBookingSeries[]                     @relation("CoachingBookingSeriesCoach")
-  coachingBookingSeriesCreated      CoachingBookingSeries[]                     @relation("CoachingBookingSeriesCreatedBy")
-  coachingEngagementsCreated        CoachingEngagement[]                        @relation("CoachingEngagementCreatedBy")
-  coachingEngagementsAsClient       CoachingEngagement[]                        @relation("CoachingEngagementPrimaryClient")
-  coachingEngagementsAsCoach        CoachingEngagement[]                        @relation("CoachingEngagementPrimaryCoach")
-  coachingEngagementMemberships     CoachingEngagementMember[]                  @relation("CoachingEngagementMemberUser")
-  coachingEngagementMembersAdded    CoachingEngagementMember[]                  @relation("CoachingEngagementMemberAddedBy")
-  coachingEngagementMembersRemoved  CoachingEngagementMember[]                  @relation("CoachingEngagementMemberRemovedBy")
-  coachingEngagementAccessChanges   CoachingEngagementMember[]                  @relation("CoachingEngagementMemberAccessChangedBy")
-  coachingEngagementInvitations     CoachingEngagementInvitation[]              @relation("CoachingEngagementInvitationUser")
-  coachingEngagementInvitesCreated  CoachingEngagementInvitation[]              @relation("CoachingEngagementInvitationCreatedBy")
-  coachingEngagementInvitesAccepted CoachingEngagementInvitation[]              @relation("CoachingEngagementInvitationAcceptedBy")
-  coachingEngagementMemberReceipts  CoachingEngagementMemberReceipt[]           @relation("CoachingEngagementMemberReceiptActor")
-  coachingEngagementSubjectReceipts CoachingEngagementMemberReceipt[]           @relation("CoachingEngagementMemberReceiptSubject")
-  stripeCustomerLinks               StripeCustomerLink[]                        @relation("StripeCustomerLinkUser")
-  paymentRecords                    PaymentRecord[]                             @relation("PaymentRecordUser")
-  callRoomsCreated                  CallRoom[]                                  @relation("CallRoomCreatedBy")
-  callParticipants                  CallParticipant[]                           @relation("CallParticipantUser")
-  callParticipantAccessChanges      CallParticipant[]                           @relation("CallParticipantAccessChangedBy")
-  callParticipantAccessReceipts     CallParticipantAccessReceipt[]              @relation("CallParticipantAccessReceiptActor")
-  callRoomInvitationsCreated        CallRoomInvitation[]                        @relation("CallRoomInvitationCreatedBy")
-  callRoomInvitationsAccepted       CallRoomInvitation[]                        @relation("CallRoomInvitationAcceptedBy")
-  callRoomInvitationDeliveries      CallRoomInvitationDeliveryReceipt[]         @relation("CallRoomInvitationDeliveryRequestedBy")
-  callExpectedSourcesCreated        CallExpectedSource[]                        @relation("CallExpectedSourceCreatedBy")
-  callExpectedSourceRevisions       CallExpectedSourceRevision[]                @relation("CallExpectedSourceRevisionActor")
-  recordingConsents                 RecordingConsent[]                          @relation("RecordingConsentUser")
-  coachingNotesAuthored             CoachingNote[]                              @relation("CoachingNoteAuthor")
-  coachingNoteRevisionsAuthored     CoachingNoteRevision[]                      @relation("CoachingNoteRevisionActor")
-  coachingNoteTagsCreated           CoachingNoteTagLink[]                       @relation("CoachingNoteTagCreatedBy")
-  sessionOutputsCreated             SessionOutput[]                             @relation("SessionOutputCreatedBy")
-  sessionOutputsReceived            SessionOutput[]                             @relation("SessionOutputRecipient")
-  sessionOutputRevisions            SessionOutputRevision[]                     @relation("SessionOutputRevisionActor")
-  deliveryEventsActed               DeliveryEvent[]                             @relation("DeliveryEventActor")
-  deliveryEventsReceived            DeliveryEvent[]                             @relation("DeliveryEventRecipient")
-  documentTagsCreated               StudioDocumentTagLink[]                     @relation("StudioDocumentTagCreatedBy")
-  personalWritingDocuments          StudioDocument[]                            @relation("StudioDocumentPersonalOwner")
-  actionItemsAssigned               ActionItem[]                                @relation("ActionItemAssignedTo")
-  taskEvidenceAuthored              ActionItemEvidenceReceipt[]                 @relation("ActionItemEvidenceActor")
-  taskReminders                     TaskReminder[]                              @relation("TaskReminderOwner")
-  taskReminderRevisionsAuthored     TaskReminderRevision[]                      @relation("TaskReminderRevisionActor")
-  calendarConnections               CalendarConnection[]                        @relation("CalendarConnectionUser")
-  calendarCollectionsOwned          CalendarCollection[]                        @relation("CalendarCollectionOwner")
-  calendarSyncReceiptsActed         CalendarSyncReceipt[]                       @relation("CalendarSyncReceiptActor")
-  calendarFeedsOwned                CalendarFeed[]                              @relation("CalendarFeedOwner")
-  goalsOwned                        Goal[]                                      @relation("GoalOwner")
-  goalTaskLinksCreated              GoalTaskLink[]                              @relation("GoalTaskLinkCreatedBy")
-  goalProgressAuthored              GoalProgressReceipt[]                       @relation("GoalProgressActor")
-  actionItemTagsCreated             ActionItemTagLink[]                         @relation("ActionItemTagCreatedBy")
-  goalTagsCreated                   GoalTagLink[]                               @relation("GoalTagCreatedBy")
-  callRoomTagsCreated               CallRoomTagLink[]                           @relation("CallRoomTagCreatedBy")
-  sessionConversationMessages       SessionConversationMessage[]                @relation("SessionConversationMessageAuthor")
-  sessionConversationRevisions      SessionConversationMessageRevision[]        @relation("SessionConversationRevisionActor")
-  sessionConversationReadCursors    SessionConversationReadCursor[]             @relation("SessionConversationReadCursorUser")
-  workPlanBlocks                    WorkPlanBlock[]                             @relation("WorkPlanBlockOwner")
-  taskRecurrenceSeries              TaskRecurrenceSeries[]                      @relation("TaskRecurrenceOwner")
-  episodeMilestonesAssigned         StudioEpisodeMilestone[]                    @relation("StudioEpisodeMilestoneAssignee")
-  episodeMilestonesCreated          StudioEpisodeMilestone[]                    @relation("StudioEpisodeMilestoneCreatedBy")
-  episodeMilestoneRevisions         StudioEpisodeMilestoneRevision[]            @relation("StudioEpisodeMilestoneRevisionActor")
-  sourceAnnotationsCreated          StudioSourceAnnotation[]                    @relation("StudioSourceAnnotationCreatedBy")
-  sourceAnnotationRevisions         StudioSourceAnnotationRevision[]            @relation("StudioSourceAnnotationRevisionActor")
-  sourceAnnotationUsesCreated       StudioSourceAnnotationUse[]                 @relation("StudioSourceAnnotationUseCreatedBy")
-  personalSourceCapturesCreated     StudioPersonalSourceCaptureReceipt[]        @relation("StudioPersonalSourceCaptureCreatedBy")
-  personalSourceFilingsCreated      StudioPersonalSourceFiling[]                @relation("StudioPersonalSourceFilingCreatedBy")
-  transcriptCorrectionsCreated      TranscriptCorrection[]                      @relation("TranscriptCorrectionCreatedBy")
-  transcriptCorrectionsReviewed     TranscriptCorrection[]                      @relation("TranscriptCorrectionReviewedBy")
-  transcriptCorrectionRevisions     TranscriptCorrectionRevision[]              @relation("TranscriptCorrectionRevisionActor")
-  transcriptSegmentsVerified        TranscriptSegmentVerification[]             @relation("TranscriptSegmentVerificationReviewer")
-  transcriptSpeakerAttributions     TranscriptSpeakerAttribution[]              @relation("TranscriptSpeakerAttributionReviewer")
-  transcriptEvaluationWindows       TranscriptEvaluationWindow[]                @relation("TranscriptEvaluationWindowApprover")
-  transcriptEvaluationCandidates    TranscriptEvaluationCandidate[]             @relation("TranscriptEvaluationCandidateSubmitter")
-  transcriptEvaluationRunsRequested TranscriptEvaluationRun[]                   @relation("TranscriptEvaluationRunRequester")
-  transcriptProviderPolicies        TranscriptProviderPolicyReceipt[]           @relation("TranscriptProviderPolicyCapturer")
-  transcriptEvaluationCorrections   TranscriptEvaluationCorrectionObservation[] @relation("TranscriptEvaluationCorrectionReviewer")
-  sessionAudioAlignmentJobs         SessionAudioAlignmentJob[]                  @relation("SessionAudioAlignmentRequester")
-  sessionAudioAlignmentDecisions    SessionAudioAlignmentDecisionReceipt[]      @relation("SessionAudioAlignmentDecisionActor")
-  sessionAudioAuditionJobs          SessionAudioAuditionJob[]                    @relation("SessionAudioAuditionRequester")
-  transcriptTerminologyTermsCreated StudioTranscriptTerminologyTerm[]           @relation("StudioTranscriptTerminologyTermCreator")
-  transcriptTerminologyRevisions    StudioTranscriptTerminologyRevision[]       @relation("StudioTranscriptTerminologyRevisionActor")
-  transcriptTerminologyCandidates   StudioTranscriptTerminologyCandidate[]      @relation("StudioTranscriptTerminologyCandidateCreator")
-  transcriptTerminologyDecisions    StudioTranscriptTerminologyCandidate[]      @relation("StudioTranscriptTerminologyCandidateDecider")
-  companySupportRequests            CompanySupportRequest[]
-  storyDraftsCreated                StoryDraft[]                                @relation("StoryDraftCreatedBy")
-  storyDraftsUpdated                StoryDraft[]                                @relation("StoryDraftUpdatedBy")
-  storyDraftsReviewed               StoryDraft[]                                @relation("StoryDraftReviewedBy")
-  externalMediaReferencesImported   StudioExternalMediaReference[]              @relation("StudioExternalMediaReferenceImportedBy")
-  externalMediaOperationsAuthored   StudioExternalMediaReferenceOperation[]     @relation("StudioExternalMediaReferenceOperationActor")
-  mediaProviderConnections          StudioMediaProviderConnection[]             @relation("StudioMediaProviderConnectionUser")
-  mediaProviderOperationsAuthored   StudioMediaProviderConnectionOperation[]    @relation("StudioMediaProviderConnectionOperationActor")
-  mediaSourceRevisionsCreated       StudioMediaSourceRevision[]                 @relation("StudioMediaSourceRevisionCreatedBy")
-  mediaSourceReplicasCreated        StudioMediaSourceReplica[]                  @relation("StudioMediaSourceReplicaCreatedBy")
-  mediaSourceSetsCreated            StudioMediaSourceSet[]                      @relation("StudioMediaSourceSetCreatedBy")
-  sourceRangesCreated               StudioSourceRange[]                         @relation("StudioSourceRangeCreatedBy")
-  storyCardsCreated                 StudioStoryCard[]                           @relation("StudioStoryCardCreatedBy")
-  storyCardsUpdated                 StudioStoryCard[]                           @relation("StudioStoryCardUpdatedBy")
-  storyCardRevisionsAuthored        StudioStoryCardRevision[]                   @relation("StudioStoryCardRevisionActor")
-  storyCardTagsCreated              StudioStoryCardTagLink[]                    @relation("StudioStoryCardTagCreatedBy")
-  storyTimelinePlacementsCreated    StudioStoryTimelinePlacement[]              @relation("StudioStoryTimelinePlacementCreatedBy")
-  storyTimelinePlacementsUpdated    StudioStoryTimelinePlacement[]              @relation("StudioStoryTimelinePlacementUpdatedBy")
-  storyTimelineOperationsAuthored   StudioStoryTimelinePlacementOperation[]     @relation("StudioStoryTimelinePlacementOperationActor")
-  storyBoardsCreated                StudioStoryBoard[]                          @relation("StudioStoryBoardCreatedBy")
-  storyBoardsUpdated                StudioStoryBoard[]                          @relation("StudioStoryBoardUpdatedBy")
-  storyBoardSectionsCreated         StudioStoryBoardSection[]                   @relation("StudioStoryBoardSectionCreatedBy")
-  storyBoardSectionsUpdated         StudioStoryBoardSection[]                   @relation("StudioStoryBoardSectionUpdatedBy")
-  storyBoardSectionOperations       StudioStoryBoardSectionOperation[]          @relation("StudioStoryBoardSectionOperationActor")
-  storyBoardPlacementsCreated       StudioStoryBoardPlacement[]                 @relation("StudioStoryBoardPlacementCreatedBy")
-  storyBoardOperationsAuthored      StudioStoryBoardOperation[]                 @relation("StudioStoryBoardOperationActor")
-  mediaDerivativesCreated           StudioMediaDerivative[]                     @relation("StudioMediaDerivativeCreatedBy")
-  sourceCollectionsOwned            StudioSourceCollection[]                    @relation("StudioSourceCollectionOwner")
-  sourceCollectionsCreated          StudioSourceCollection[]                    @relation("StudioSourceCollectionCreatedBy")
-  sourceCollectionsUpdated          StudioSourceCollection[]                    @relation("StudioSourceCollectionUpdatedBy")
-  sourceCollectionItemsAdded        StudioSourceCollectionItem[]                @relation("StudioSourceCollectionItemAddedBy")
-  sourceCollectionOperations        StudioSourceCollectionOperation[]           @relation("StudioSourceCollectionOperationActor")
-  externalMediaLibrariesCreated     StudioExternalMediaLibrary[]                @relation("StudioExternalMediaLibraryCreatedBy")
-  externalMediaLibraryOperations    StudioExternalMediaLibraryOperation[]       @relation("StudioExternalMediaLibraryOperationActor")
+  clientAppointments                  Appointment[]                               @relation("AppointmentClient")
+  coachAppointments                   Appointment[]                               @relation("AppointmentCoach")
+  appointmentsCreated                 Appointment[]                               @relation("AppointmentCreatedBy")
+  appointmentsUpdated                 Appointment[]                               @relation("AppointmentUpdatedBy")
+  coachingRequests                    CoachingRequest[]                           @relation("CoachingRequestClient")
+  assignedCoachingRequests            CoachingRequest[]                           @relation("CoachingRequestCoach")
+  bookingHolds                        BookingHold[]                               @relation("BookingHoldClient")
+  coachingBookingsAsClient            CoachingBooking[]                           @relation("CoachingBookingClient")
+  coachingBookingsAsCoach             CoachingBooking[]                           @relation("CoachingBookingCoach")
+  coachingBookingSeriesAsClient       CoachingBookingSeries[]                     @relation("CoachingBookingSeriesClient")
+  coachingBookingSeriesAsCoach        CoachingBookingSeries[]                     @relation("CoachingBookingSeriesCoach")
+  coachingBookingSeriesCreated        CoachingBookingSeries[]                     @relation("CoachingBookingSeriesCreatedBy")
+  coachingSessionPreparationsAsClient CoachingSessionPreparation[]                @relation("CoachingSessionPreparationClient")
+  coachingSessionPreparationsAsCoach  CoachingSessionPreparation[]                @relation("CoachingSessionPreparationCoach")
+  coachingSessionPreparationRevisions CoachingSessionPreparationRevision[]        @relation("CoachingSessionPreparationRevisionActor")
+  coachingEngagementsCreated          CoachingEngagement[]                        @relation("CoachingEngagementCreatedBy")
+  coachingEngagementsAsClient         CoachingEngagement[]                        @relation("CoachingEngagementPrimaryClient")
+  coachingEngagementsAsCoach          CoachingEngagement[]                        @relation("CoachingEngagementPrimaryCoach")
+  coachingEngagementMemberships       CoachingEngagementMember[]                  @relation("CoachingEngagementMemberUser")
+  coachingEngagementMembersAdded      CoachingEngagementMember[]                  @relation("CoachingEngagementMemberAddedBy")
+  coachingEngagementMembersRemoved    CoachingEngagementMember[]                  @relation("CoachingEngagementMemberRemovedBy")
+  coachingEngagementAccessChanges     CoachingEngagementMember[]                  @relation("CoachingEngagementMemberAccessChangedBy")
+  coachingEngagementInvitations       CoachingEngagementInvitation[]              @relation("CoachingEngagementInvitationUser")
+  coachingEngagementInvitesCreated    CoachingEngagementInvitation[]              @relation("CoachingEngagementInvitationCreatedBy")
+  coachingEngagementInvitesAccepted   CoachingEngagementInvitation[]              @relation("CoachingEngagementInvitationAcceptedBy")
+  coachingEngagementMemberReceipts    CoachingEngagementMemberReceipt[]           @relation("CoachingEngagementMemberReceiptActor")
+  coachingEngagementSubjectReceipts   CoachingEngagementMemberReceipt[]           @relation("CoachingEngagementMemberReceiptSubject")
+  stripeCustomerLinks                 StripeCustomerLink[]                        @relation("StripeCustomerLinkUser")
+  paymentRecords                      PaymentRecord[]                             @relation("PaymentRecordUser")
+  callRoomsCreated                    CallRoom[]                                  @relation("CallRoomCreatedBy")
+  callParticipants                    CallParticipant[]                           @relation("CallParticipantUser")
+  callParticipantAccessChanges        CallParticipant[]                           @relation("CallParticipantAccessChangedBy")
+  callParticipantAccessReceipts       CallParticipantAccessReceipt[]              @relation("CallParticipantAccessReceiptActor")
+  callRoomInvitationsCreated          CallRoomInvitation[]                        @relation("CallRoomInvitationCreatedBy")
+  callRoomInvitationsAccepted         CallRoomInvitation[]                        @relation("CallRoomInvitationAcceptedBy")
+  callRoomInvitationDeliveries        CallRoomInvitationDeliveryReceipt[]         @relation("CallRoomInvitationDeliveryRequestedBy")
+  callExpectedSourcesCreated          CallExpectedSource[]                        @relation("CallExpectedSourceCreatedBy")
+  callExpectedSourceRevisions         CallExpectedSourceRevision[]                @relation("CallExpectedSourceRevisionActor")
+  recordingConsents                   RecordingConsent[]                          @relation("RecordingConsentUser")
+  coachingNotesAuthored               CoachingNote[]                              @relation("CoachingNoteAuthor")
+  coachingNoteRevisionsAuthored       CoachingNoteRevision[]                      @relation("CoachingNoteRevisionActor")
+  coachingNoteTagsCreated             CoachingNoteTagLink[]                       @relation("CoachingNoteTagCreatedBy")
+  sessionOutputsCreated               SessionOutput[]                             @relation("SessionOutputCreatedBy")
+  sessionOutputsReceived              SessionOutput[]                             @relation("SessionOutputRecipient")
+  sessionOutputRevisions              SessionOutputRevision[]                     @relation("SessionOutputRevisionActor")
+  deliveryEventsActed                 DeliveryEvent[]                             @relation("DeliveryEventActor")
+  deliveryEventsReceived              DeliveryEvent[]                             @relation("DeliveryEventRecipient")
+  documentTagsCreated                 StudioDocumentTagLink[]                     @relation("StudioDocumentTagCreatedBy")
+  personalWritingDocuments            StudioDocument[]                            @relation("StudioDocumentPersonalOwner")
+  actionItemsAssigned                 ActionItem[]                                @relation("ActionItemAssignedTo")
+  taskEvidenceAuthored                ActionItemEvidenceReceipt[]                 @relation("ActionItemEvidenceActor")
+  taskReminders                       TaskReminder[]                              @relation("TaskReminderOwner")
+  taskReminderRevisionsAuthored       TaskReminderRevision[]                      @relation("TaskReminderRevisionActor")
+  calendarConnections                 CalendarConnection[]                        @relation("CalendarConnectionUser")
+  calendarCollectionsOwned            CalendarCollection[]                        @relation("CalendarCollectionOwner")
+  calendarSyncReceiptsActed           CalendarSyncReceipt[]                       @relation("CalendarSyncReceiptActor")
+  calendarFeedsOwned                  CalendarFeed[]                              @relation("CalendarFeedOwner")
+  goalsOwned                          Goal[]                                      @relation("GoalOwner")
+  goalTaskLinksCreated                GoalTaskLink[]                              @relation("GoalTaskLinkCreatedBy")
+  goalProgressAuthored                GoalProgressReceipt[]                       @relation("GoalProgressActor")
+  actionItemTagsCreated               ActionItemTagLink[]                         @relation("ActionItemTagCreatedBy")
+  goalTagsCreated                     GoalTagLink[]                               @relation("GoalTagCreatedBy")
+  callRoomTagsCreated                 CallRoomTagLink[]                           @relation("CallRoomTagCreatedBy")
+  sessionConversationMessages         SessionConversationMessage[]                @relation("SessionConversationMessageAuthor")
+  sessionConversationRevisions        SessionConversationMessageRevision[]        @relation("SessionConversationRevisionActor")
+  sessionConversationReadCursors      SessionConversationReadCursor[]             @relation("SessionConversationReadCursorUser")
+  workPlanBlocks                      WorkPlanBlock[]                             @relation("WorkPlanBlockOwner")
+  taskRecurrenceSeries                TaskRecurrenceSeries[]                      @relation("TaskRecurrenceOwner")
+  episodeMilestonesAssigned           StudioEpisodeMilestone[]                    @relation("StudioEpisodeMilestoneAssignee")
+  episodeMilestonesCreated            StudioEpisodeMilestone[]                    @relation("StudioEpisodeMilestoneCreatedBy")
+  episodeMilestoneRevisions           StudioEpisodeMilestoneRevision[]            @relation("StudioEpisodeMilestoneRevisionActor")
+  sourceAnnotationsCreated            StudioSourceAnnotation[]                    @relation("StudioSourceAnnotationCreatedBy")
+  sourceAnnotationRevisions           StudioSourceAnnotationRevision[]            @relation("StudioSourceAnnotationRevisionActor")
+  sourceAnnotationUsesCreated         StudioSourceAnnotationUse[]                 @relation("StudioSourceAnnotationUseCreatedBy")
+  personalSourceCapturesCreated       StudioPersonalSourceCaptureReceipt[]        @relation("StudioPersonalSourceCaptureCreatedBy")
+  personalSourceFilingsCreated        StudioPersonalSourceFiling[]                @relation("StudioPersonalSourceFilingCreatedBy")
+  transcriptCorrectionsCreated        TranscriptCorrection[]                      @relation("TranscriptCorrectionCreatedBy")
+  transcriptCorrectionsReviewed       TranscriptCorrection[]                      @relation("TranscriptCorrectionReviewedBy")
+  transcriptCorrectionRevisions       TranscriptCorrectionRevision[]              @relation("TranscriptCorrectionRevisionActor")
+  transcriptSegmentsVerified          TranscriptSegmentVerification[]             @relation("TranscriptSegmentVerificationReviewer")
+  transcriptSpeakerAttributions       TranscriptSpeakerAttribution[]              @relation("TranscriptSpeakerAttributionReviewer")
+  transcriptEvaluationWindows         TranscriptEvaluationWindow[]                @relation("TranscriptEvaluationWindowApprover")
+  transcriptEvaluationCandidates      TranscriptEvaluationCandidate[]             @relation("TranscriptEvaluationCandidateSubmitter")
+  transcriptEvaluationRunsRequested   TranscriptEvaluationRun[]                   @relation("TranscriptEvaluationRunRequester")
+  transcriptProviderPolicies          TranscriptProviderPolicyReceipt[]           @relation("TranscriptProviderPolicyCapturer")
+  transcriptEvaluationCorrections     TranscriptEvaluationCorrectionObservation[] @relation("TranscriptEvaluationCorrectionReviewer")
+  sessionAudioAlignmentJobs           SessionAudioAlignmentJob[]                  @relation("SessionAudioAlignmentRequester")
+  sessionAudioAlignmentDecisions      SessionAudioAlignmentDecisionReceipt[]      @relation("SessionAudioAlignmentDecisionActor")
+  sessionAudioAuditionJobs            SessionAudioAuditionJob[]                   @relation("SessionAudioAuditionRequester")
+  transcriptTerminologyTermsCreated   StudioTranscriptTerminologyTerm[]           @relation("StudioTranscriptTerminologyTermCreator")
+  transcriptTerminologyRevisions      StudioTranscriptTerminologyRevision[]       @relation("StudioTranscriptTerminologyRevisionActor")
+  transcriptTerminologyCandidates     StudioTranscriptTerminologyCandidate[]      @relation("StudioTranscriptTerminologyCandidateCreator")
+  transcriptTerminologyDecisions      StudioTranscriptTerminologyCandidate[]      @relation("StudioTranscriptTerminologyCandidateDecider")
+  companySupportRequests              CompanySupportRequest[]
+  storyDraftsCreated                  StoryDraft[]                                @relation("StoryDraftCreatedBy")
+  storyDraftsUpdated                  StoryDraft[]                                @relation("StoryDraftUpdatedBy")
+  storyDraftsReviewed                 StoryDraft[]                                @relation("StoryDraftReviewedBy")
+  externalMediaReferencesImported     StudioExternalMediaReference[]              @relation("StudioExternalMediaReferenceImportedBy")
+  externalMediaOperationsAuthored     StudioExternalMediaReferenceOperation[]     @relation("StudioExternalMediaReferenceOperationActor")
+  mediaProviderConnections            StudioMediaProviderConnection[]             @relation("StudioMediaProviderConnectionUser")
+  mediaProviderOperationsAuthored     StudioMediaProviderConnectionOperation[]    @relation("StudioMediaProviderConnectionOperationActor")
+  mediaSourceRevisionsCreated         StudioMediaSourceRevision[]                 @relation("StudioMediaSourceRevisionCreatedBy")
+  mediaSourceReplicasCreated          StudioMediaSourceReplica[]                  @relation("StudioMediaSourceReplicaCreatedBy")
+  mediaSourceSetsCreated              StudioMediaSourceSet[]                      @relation("StudioMediaSourceSetCreatedBy")
+  sourceRangesCreated                 StudioSourceRange[]                         @relation("StudioSourceRangeCreatedBy")
+  storyCardsCreated                   StudioStoryCard[]                           @relation("StudioStoryCardCreatedBy")
+  storyCardsUpdated                   StudioStoryCard[]                           @relation("StudioStoryCardUpdatedBy")
+  storyCardRevisionsAuthored          StudioStoryCardRevision[]                   @relation("StudioStoryCardRevisionActor")
+  storyCardTagsCreated                StudioStoryCardTagLink[]                    @relation("StudioStoryCardTagCreatedBy")
+  storyTimelinePlacementsCreated      StudioStoryTimelinePlacement[]              @relation("StudioStoryTimelinePlacementCreatedBy")
+  storyTimelinePlacementsUpdated      StudioStoryTimelinePlacement[]              @relation("StudioStoryTimelinePlacementUpdatedBy")
+  storyTimelineOperationsAuthored     StudioStoryTimelinePlacementOperation[]     @relation("StudioStoryTimelinePlacementOperationActor")
+  storyBoardsCreated                  StudioStoryBoard[]                          @relation("StudioStoryBoardCreatedBy")
+  storyBoardsUpdated                  StudioStoryBoard[]                          @relation("StudioStoryBoardUpdatedBy")
+  storyBoardSectionsCreated           StudioStoryBoardSection[]                   @relation("StudioStoryBoardSectionCreatedBy")
+  storyBoardSectionsUpdated           StudioStoryBoardSection[]                   @relation("StudioStoryBoardSectionUpdatedBy")
+  storyBoardSectionOperations         StudioStoryBoardSectionOperation[]          @relation("StudioStoryBoardSectionOperationActor")
+  storyBoardPlacementsCreated         StudioStoryBoardPlacement[]                 @relation("StudioStoryBoardPlacementCreatedBy")
+  storyBoardOperationsAuthored        StudioStoryBoardOperation[]                 @relation("StudioStoryBoardOperationActor")
+  mediaDerivativesCreated             StudioMediaDerivative[]                     @relation("StudioMediaDerivativeCreatedBy")
+  sourceCollectionsOwned              StudioSourceCollection[]                    @relation("StudioSourceCollectionOwner")
+  sourceCollectionsCreated            StudioSourceCollection[]                    @relation("StudioSourceCollectionCreatedBy")
+  sourceCollectionsUpdated            StudioSourceCollection[]                    @relation("StudioSourceCollectionUpdatedBy")
+  sourceCollectionItemsAdded          StudioSourceCollectionItem[]                @relation("StudioSourceCollectionItemAddedBy")
+  sourceCollectionOperations          StudioSourceCollectionOperation[]           @relation("StudioSourceCollectionOperationActor")
+  externalMediaLibrariesCreated       StudioExternalMediaLibrary[]                @relation("StudioExternalMediaLibraryCreatedBy")
+  externalMediaLibraryOperations      StudioExternalMediaLibraryOperation[]       @relation("StudioExternalMediaLibraryOperationActor")
 
   membershipsGranted           Membership[]           @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
@@ -1542,6 +1550,7 @@ model CoachingBooking {
   goals                  Goal[]
   checkoutSessionLedgers StripeCheckoutSessionLedger[]
   calendarLinks          CalendarEventLink[]
+  sessionPreparation     CoachingSessionPreparation?
 
   @@unique([seriesId, seriesSequence])
   @@index([clientUserId, scheduledStart])
@@ -1588,6 +1597,54 @@ model CoachingBookingSeries {
   @@index([coachUserId, status, firstScheduledStart], map: "CoachBookingSeries_coach_status_start_idx")
   @@index([clientUserId, status, firstScheduledStart], map: "CoachBookingSeries_client_status_start_idx")
   @@index([engagementId, status, firstScheduledStart], map: "CoachBookingSeries_engagement_status_start_idx")
+}
+
+// One calm preparation surface belongs to one independently operable coaching
+// Session. Client-shared answers and the assigned coach's private preparation
+// live in separate mutation lanes so simultaneous edits cannot overwrite one
+// another. Every save appends an intent-bound revision receipt.
+model CoachingSessionPreparation {
+  id                   String    @id @default(cuid())
+  bookingId            String    @unique
+  clientUserId         String
+  coachUserId          String?
+  revision             Int       @default(0)
+  clientFocus          String?   @db.Text
+  clientDesiredOutcome String?   @db.Text
+  clientSuccessMeasure String?   @db.Text
+  clientProgressScore  Int?
+  clientUpdate         String?   @db.Text
+  clientSubmittedAt    DateTime?
+  coachPrivateNote     String?   @db.Text
+  coachPreparedAt      DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  booking   CoachingBooking                      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  client    User                                 @relation("CoachingSessionPreparationClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  coach     User?                                @relation("CoachingSessionPreparationCoach", fields: [coachUserId], references: [id], onDelete: SetNull)
+  revisions CoachingSessionPreparationRevision[]
+
+  @@index([clientUserId, updatedAt], map: "CoachSessionPrep_client_updated_idx")
+  @@index([coachUserId, updatedAt], map: "CoachSessionPrep_coach_updated_idx")
+}
+
+model CoachingSessionPreparationRevision {
+  id            String                         @id @default(cuid())
+  requestId     String                         @unique @db.Uuid
+  preparationId String
+  actorUserId   String
+  lane          CoachingSessionPreparationLane
+  revision      Int
+  inputSha256   String
+  snapshotJson  Json
+  createdAt     DateTime                       @default(now())
+
+  preparation CoachingSessionPreparation @relation(fields: [preparationId], references: [id], onDelete: Cascade)
+  actor       User                       @relation("CoachingSessionPreparationRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([preparationId, revision], map: "CoachSessionPrepRevision_prep_revision_key")
+  @@index([actorUserId, createdAt], map: "CoachSessionPrepRevision_actor_created_idx")
 }
 
 // A Coaching Engagement is the durable, private collaboration boundary for a
@@ -2715,19 +2772,19 @@ model SessionAudioAlignmentJob {
 /// multi-gigabyte camera master. The retained RecordingAsset remains source
 /// truth and every worker result is re-bound to its generation and SHA-256.
 model SessionAudioAuditionJob {
-  id                     String    @id
-  roomId                 String
-  recordingAssetId       String
-  requestedByUserId      String
-  requestedByEmail       String
-  status                 String    @default("queued")
-  inputJson              Json
-  resultJson             Json?
-  error                  String?
-  startedAt              DateTime?
-  completedAt            DateTime?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  id                String    @id
+  roomId            String
+  recordingAssetId  String
+  requestedByUserId String
+  requestedByEmail  String
+  status            String    @default("queued")
+  inputJson         Json
+  resultJson        Json?
+  error             String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   room           CallRoom       @relation(fields: [roomId], references: [id], onDelete: Cascade)
   recordingAsset RecordingAsset @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict)

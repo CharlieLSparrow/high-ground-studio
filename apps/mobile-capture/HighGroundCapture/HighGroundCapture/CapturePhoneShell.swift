@@ -6466,6 +6466,7 @@ private struct CaptureRecorderView: View {
     @StateObject private var episodeWatch = MobileEpisodeWatchClient()
     @StateObject private var episodeChat = MobileEpisodeChatClient()
     @StateObject private var sessionConversation = MobileSessionConversationClient()
+    @StateObject private var sessionPreparation = MobileCoachingSessionPreparationClient()
 
     var body: some View {
         ScrollView {
@@ -6800,6 +6801,14 @@ private struct CaptureRecorderView: View {
                         episodeWatch.loadPreview(session: session)
                     }
                         }
+                    }
+
+                    if session.isCoachingSession {
+                        MobileCoachingSessionPreparationCard(
+                            client: sessionPreparation,
+                            session: session,
+                            previewOnly: model.usesPreviewData
+                        )
                     }
 
                     // Follow-through remains a primary Session outcome, but it

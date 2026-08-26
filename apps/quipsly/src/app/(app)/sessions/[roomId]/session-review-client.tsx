@@ -99,6 +99,7 @@ import { SessionSourceAlignmentCard } from "./session-source-alignment-card";
 import type { SessionSourceClockAttention } from "./session-source-clock-attention";
 import { SessionVersionedOutputGraphCard } from "./session-versioned-output-graph-card";
 import { SessionConversationThread } from "./session-conversation-thread";
+import { CoachingSessionPlanCard } from "./coaching-session-plan-card";
 import type { SessionVersionedOutputGraph } from "./session-versioned-output-graph";
 import { SessionNotesWorkspace } from "./session-notes-workspace";
 import type {
@@ -1399,6 +1400,10 @@ function SessionPreparationCard({
       </div>
 
       <SessionEntryReadinessLive roomId={roomId} initial={entry} />
+
+      {preparation.purpose.toUpperCase() === "COACHING" ? (
+        <CoachingSessionPlanCard roomId={roomId} />
+      ) : null}
 
       <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-white/90 bg-white/85 p-3">
