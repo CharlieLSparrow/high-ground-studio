@@ -21,7 +21,7 @@ livekit_http_url="http://127.0.0.1:7890"
 livekit_api_key="recoverykey"
 livekit_api_secret="recoverysecret"
 whisper_executable="${QUIPSLY_RECOVERY_LAB_WHISPER_EXECUTABLE:-/opt/homebrew/Caskroom/miniconda/base/bin/whisper}"
-whisper_model="${QUIPSLY_RECOVERY_LAB_WHISPER_MODEL:-tiny.en}"
+whisper_model="${QUIPSLY_RECOVERY_LAB_WHISPER_MODEL:-small}"
 firebase_project="quipsly-recovery-lab"
 pnpm_bin="${QUIPSLY_RECOVERY_LAB_PNPM_BIN:-$(command -v pnpm)}"
 

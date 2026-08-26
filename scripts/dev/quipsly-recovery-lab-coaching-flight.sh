@@ -22,7 +22,7 @@ cd "${repo_root}"
 bash "${script_dir}/quipsly-recovery-lab-doctor.sh"
 
 exec /usr/bin/env \
-  QUIPSLY_FRESH_COACHING_FLIGHT=1 \
+  QUIPSLY_FRESH_COACHING_SPEECH_FLIGHT=1 \
   QUIPSLY_LOCAL_BASE_URL="${base_url}" \
   QUIPSLY_LOCAL_FIREBASE_PROJECT="${firebase_project}" \
   FIREBASE_PROJECT_ID="${firebase_project}" \

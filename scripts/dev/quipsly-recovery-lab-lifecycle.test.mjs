@@ -30,6 +30,7 @@ test("the recovery lab is isolated from the canonical local lane", () => {
   assert.match(up, /LIVEKIT_URL="\$\{livekit_url\}"/);
   assert.match(up, /QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=1/);
   assert.match(up, /--run-transcript-worker/);
+  assert.match(up, /QUIPSLY_RECOVERY_LAB_WHISPER_MODEL:-small/);
   assert.match(state, /TMPDIR:-\/tmp/);
   assert.match(firebaseConfig, /"port": 9199/);
   assert.match(firebaseConfig, /"host": "127\.0\.0\.1"/);
