@@ -2,6 +2,43 @@
 
 Date: 2026-08-26
 
+## Coach-controlled pre/post form automation checkpoint
+
+- A coach can now attach an explicit **before Session** or **after Session**
+  rhythm to one published form and one active client relationship. The phone-
+  width Forms workspace shows when it will become available, when it is due,
+  whether it follows the latest published version or a pinned version, and
+  every exact assignment receipt.
+- Policies have visible pause/resume, edit, schedule-check, send-now, skip-once,
+  and restore controls. Pausing automatic delivery does not prevent a deliberate
+  send-now. Existing assignments never change when a form publishes a later
+  version.
+- Policy changes and per-Session overrides are append-only revisions. A unique
+  policy/event receipt, serializable transactions, advisory locks, and a
+  deterministic assignment request identity make page refreshes, concurrent
+  workers, and scheduler retries converge on one assignment.
+- The reconciler is relationship-, coach-, booking-, participant-, and exact-
+  form-version bound. It has a dedicated fail-closed bearer secret and creates
+  no hidden email, task, goal, calendar, chat, or recording side effects.
+  Deleting a relationship cleanly cascades its private automation evidence
+  instead of blocking account lifecycle work.
+- A repeated phone-width operation proved that the UI journey is safe to rerun
+  against retained data. The exact-source recovery lab then exposed and fixed a
+  stale generated-Prisma-client risk: source-bound services now restart when
+  Git changes, Prisma is regenerated, and the doctor compares the live health
+  SHA with the candidate SHA.
+- Exact committed source `c457cfdd916e55def9ff9e8cd800fa1b6e26cc7c`
+  passed the complete fresh controlled-speech coaching flight, including two
+  accounts plus a neighboring practice, dual-source call/capture, attributed
+  transcription, shared/private work, custom form authoring and draft recovery,
+  pre/post automation, reusable forms, edit/share/revoke, and automatic audio
+  readiness. Receipt:
+  `artifacts/coaching-acceptance/7edc333a/fresh-coaching-flight-receipt.json`.
+- This remains local automated evidence. Real provider scheduling, real
+  mailbox reminders, physical Capture use, natural speech/listening, and
+  minimally instructed coach/client acceptance stay on the continuous
+  validation ledger.
+
 ## Reusable coaching forms checkpoint
 
 - Coaching now has a phone-first Forms workspace for intake, preparation,

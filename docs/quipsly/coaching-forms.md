@@ -1,7 +1,7 @@
 # Coaching forms
 
 Date: 2026-08-26
-Status: production architecture implemented; local operated acceptance passed
+Status: production forms and explicit lifecycle automation implemented; exact-source local acceptance passed
 
 ## Product intent
 
@@ -33,6 +33,14 @@ assignment, optional Session, and revision integrity. Service operations use
 serializable transactions and advisory locks for publish, assignment, and
 response races.
 
+`CoachingFormAutomationPolicy` is the coach's current explicit pre/post-Session
+rule. `CoachingFormAutomationPolicyRevision` retains every immutable timing,
+status, and version-strategy change. `CoachingFormAutomationOverride` is an
+append-only Session-specific send-now, skip, or restore decision.
+`CoachingFormAutomationReceipt` is created in the same serializable transaction
+as the assignment and uniquely binds policy, booking event, exact template
+version, assignment, release time, due time, and manual-override state.
+
 Authorization rules are intentionally narrow:
 
 - only the owning coach can publish and assign;
@@ -44,11 +52,21 @@ Authorization rules are intentionally narrow:
 - inactive relationships do not expose historic forms through ordinary reads;
 - form operations do not implicitly send email, create messages, tasks, goals,
   reminders, calendar events, or recording actions.
+- one policy/event can materialize only one assignment even when the page,
+  scheduler, or retry reconciles concurrently;
+- pausing stops scheduled materialization while preserving visible deliberate
+  send-now control;
+- deleting a coaching relationship cascades its private form and automation
+  evidence without weakening retained evidence inside a live relationship.
 
 ## API and interface
 
 - `GET /api/coaching/forms` returns the actor's authorized forms workspace.
 - `POST /api/coaching/forms` publishes a starter or assigns an exact version.
+- The same POST boundary saves an automation policy, saves a Session override,
+  or asks the current coach's policies to reconcile.
+- `POST /api/cron/coaching-form-automation` runs one bounded reconciliation
+  pass only with its dedicated bearer secret. It fails closed when unconfigured.
 - `GET /api/coaching/forms/:assignmentId/response` returns only the actor's
   permitted response projection.
 - `PUT /api/coaching/forms/:assignmentId/response` saves a client draft or
@@ -73,41 +91,52 @@ version already held by an assignment.
 
 Focused proof:
 
-- form domain and service suite: 8/8;
+- automation cron/form regression suites: 12/12;
+- real-loopback PostgreSQL automation lifecycle suite: 3/3, including
+  concurrency, version changes, override isolation, and deletion cascade;
 - Session alignment service suite: 11/11;
 - shared media-processing, media-processor, and Quipsly strict TypeScript;
 - alignment evidence/job/cloud-worker suites: 11/11 total;
-- all 131 committed migrations applied from zero;
+- all 132 committed migrations current in the isolated recovery lab;
 - optimized Quipsly production build;
 - rendered phone-width form operation proving publish, assignment, private
   draft, coach non-disclosure, submission/readback, immutable version, no
   horizontal overflow, neighboring-list isolation, and unauthorized write 404.
 
 Integrated proof is the exact clean candidate
-`8748cb83a331b544edf941298d2646b5320c3eb8`, with receipt
-`artifacts/coaching-acceptance/26958043/fresh-coaching-flight-receipt.json`.
+`c457cfdd916e55def9ff9e8cd800fa1b6e26cc7c`, with receipt
+`artifacts/coaching-acceptance/7edc333a/fresh-coaching-flight-receipt.json`.
 That flight passed the form journey inside the complete fresh coach/client
 product journey. It also authored a two-question custom form at 390 pixels,
 reordered fields, previewed it, published and assigned version one, recovered a
 version-two edit after reload, and proved the assignment still referenced
-version one. It used local mailbox and fake browser-media adapters plus
+version one. It then authored two additional unique forms through the rendered
+phone-width builder, attached visible before/after rhythms, paused/resumed one,
+sent an after-form immediately, retained exact receipts, and proved the client
+received the forms without seeing coach automation controls. The operated
+automation journey also passed twice consecutively against retained test data.
+
+The full flight used a local mailbox and fake browser-media adapters plus
 controlled text-to-speech. It did not prove physical devices, real inboxes,
-natural human comprehension, production deployment, or cohort scale.
+natural human comprehension, production deployment, or cohort scale. The
+recovery lab now regenerates Prisma, restarts source-bound services when the
+commit changes, stamps the live Nest SHA, and refuses exact-source acceptance
+when the health endpoint and candidate do not match.
 
 ## Next mature extensions
 
-The implemented builder, storage, and version contracts are ready for, but do
-not yet claim:
+The implemented builder, automation, storage, and version contracts are ready
+for, but do not yet claim:
 
-1. explicit automation policies that assign pre/post forms exactly once from a
-   booking or Session lifecycle event;
-2. quiet in-product reminders and optional provider delivery backed by a
+1. quiet in-product reminders and optional provider delivery backed by a
    durable outbox and visible receipt, never hidden notification side effects;
-3. Quipsly Capture parity for completing and reviewing forms without a browser;
-4. reviewed promotion of submitted answers into notes, goals, or tasks;
-5. template retirement/restore and an explicit version-difference view;
-6. client export, accessibility, locale/timezone, and aggregate outcome tools.
+2. Quipsly Capture parity for completing and reviewing forms without a browser;
+3. reviewed promotion of submitted answers into notes, goals, or tasks;
+4. template retirement/restore and an explicit version-difference view;
+5. client export, accessibility, locale/timezone, and aggregate outcome tools.
 
-The next build lane should add explicit pre/post assignment policies with
-exactly-once receipts and visible manual override, without prematurely coupling
-the form lifecycle to email or automatic task/goal creation.
+The next build lane should bring the same calm Forms inbox, completion,
+submission, and coach review to Quipsly Capture, then add quiet in-product
+reminders through a durable visible delivery ledger. Automatic promotion into
+tasks, goals, or notes should remain an explicit reviewed action rather than an
+unexplained side effect.

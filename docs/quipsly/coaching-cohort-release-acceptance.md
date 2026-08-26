@@ -113,6 +113,31 @@ A green build or seeded script is not enough. The release note must name:
 The retained regression lane should continue to run. It complements this gate;
 it never replaces it.
 
+## Pre/post form automation and live-source recovery checkpoint — 2026-08-26
+
+Exact committed source `c457cfdd916e55def9ff9e8cd800fa1b6e26cc7c`
+passed the complete local controlled-speech product flight with explicit
+pre/post-Session form automation included. The generated coach authored two
+unique forms through the rendered 390-pixel builder, attached them to the exact
+generated client relationship, paused and resumed the before-Session rule, and
+used send-now for the after-Session rule. Database readback proved immutable
+policy revisions, exact template-version assignment receipts, and no duplicate
+policy/event materialization. The client saw both assigned forms and no coach
+automation controls.
+
+Before that pass, the flight caught a stale-runtime problem in the recovery
+lab: migrations had advanced but the reused Next process still held the prior
+generated Prisma client. The lab now regenerates Prisma on startup, restarts
+Nest and both source-bound workers whenever the committed revision changes,
+publishes the live Nest SHA through `/api/health`, and makes its doctor compare
+that SHA with Git. The repaired full-flight receipt is
+`artifacts/coaching-acceptance/7edc333a/fresh-coaching-flight-receipt.json`.
+
+This is strong exact-source local integration evidence, not physical-device,
+real-mailbox, natural-speech, minimally instructed human, or production-scale
+acceptance. Those remain on the continuous validation ledger while independent
+feature work continues.
+
 ## Reusable forms integrated checkpoint — 2026-08-26
 
 Candidate `8748cb83a331b544edf941298d2646b5320c3eb8` passed the entire local
