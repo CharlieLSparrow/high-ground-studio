@@ -93,6 +93,29 @@ function sourceJson(value: unknown): Record<string, unknown> {
   return isObject(value) ? value : {};
 }
 
+export function packetUsesAutomaticFollowThrough(value: unknown) {
+  const source = sourceJson(value);
+  const packetBrief = sourceJson(source.packetBrief);
+  return source.reviewRequired === false || (
+    packetBrief.kind === "quipsly-transcript-packet-brief-v1" &&
+    packetBrief.candidateOnly === false &&
+    packetBrief.humanApprovalRequired === false
+  );
+}
+
+export function isAutomaticTranscriptWorkForJob(
+  value: unknown,
+  transcriptJobId: string | null | undefined,
+) {
+  const source = sourceJson(value);
+  return Boolean(
+    transcriptJobId &&
+    text(source.transcriptJobId) === transcriptJobId &&
+    source.schema === "quipsly-transcript-follow-through-v1" &&
+    source.origin === "quipsly-session-follow-through",
+  );
+}
+
 function sharedTranscriptResultSource(value: unknown) {
   const source = sourceJson(value);
   return {
@@ -297,6 +320,12 @@ export function buildPacketNoteCandidates(input: {
   )
     return [];
   const summarySource = sourceJson(input.summary.sourceJson);
+  // Modern packets materialize editable summary/highlight notes directly.
+  // Re-projecting the same source moments as an approval queue makes the coach
+  // review work Quipsly has already created and obscures the ordinary notes.
+  // Keep this legacy candidate projection only for historical candidate-only
+  // packets so existing decisions remain readable and reversible.
+  if (packetUsesAutomaticFollowThrough(summarySource)) return [];
   const lanes = asArray(summarySource.reviewLanes).filter(isObject);
   if (!lanes.length) return [];
   const projectedSegments = projectTranscriptJobSegmentsForPacket(
@@ -1093,18 +1122,25 @@ export async function GET(request: Request) {
       ? actionItems.filter((item: any) => {
           const source = sourceJson(item.sourceJson);
           return (
-            source.source === "transcript-packet-builder" &&
-            text(source.transcriptJobId) === latestTranscriptJob?.id
+            (source.source === "transcript-packet-builder" &&
+              text(source.transcriptJobId) === latestTranscriptJob?.id) ||
+            isAutomaticTranscriptWorkForJob(
+              item.sourceJson,
+              latestTranscriptJob?.id,
+            )
           );
         })
       : [];
-  const actionCandidates =
+  const storedActionCandidates =
     transcriptProcessingAllowed && canReviewPrivatePacket && summary
       ? mergePacketActionCandidates({
           sourceJson: summary.sourceJson,
           legacyActionItems: allPacketActionItems,
         })
       : [];
+  const actionCandidates = summary && packetUsesAutomaticFollowThrough(summary.sourceJson)
+    ? []
+    : storedActionCandidates;
   const packetActionItems = allPacketActionItems.filter(
     (item: any) => !isUnreviewedTranscriptActionItem(item),
   );

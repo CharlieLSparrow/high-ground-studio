@@ -10,7 +10,14 @@ import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
-import { buildPacketGoalCandidates, buildPacketNoteCandidates, GET, packetNoteVisibilityWhere } from "./route-implementation";
+import {
+  buildPacketGoalCandidates,
+  buildPacketNoteCandidates,
+  GET,
+  isAutomaticTranscriptWorkForJob,
+  packetNoteVisibilityWhere,
+  packetUsesAutomaticFollowThrough,
+} from "./route-implementation";
 
 const packetBuildId = "packet-build-1";
 const summary = {
@@ -65,6 +72,31 @@ describe("packet note privacy", () => {
         },
       ],
     });
+  });
+});
+
+describe("automatic packet projections", () => {
+  it("recognizes modern ordinary-work packets without treating provenance as approval", () => {
+    expect(packetUsesAutomaticFollowThrough({
+      reviewRequired: false,
+      packetBrief: {
+        kind: "quipsly-transcript-packet-brief-v1",
+        candidateOnly: false,
+        humanApprovalRequired: false,
+      },
+    })).toBe(true);
+    expect(packetUsesAutomaticFollowThrough(summary.sourceJson)).toBe(false);
+  });
+
+  it("projects only exact automatic work from the current transcript job", () => {
+    const source = {
+      schema: "quipsly-transcript-follow-through-v1",
+      origin: "quipsly-session-follow-through",
+      transcriptJobId: "job-1",
+    };
+    expect(isAutomaticTranscriptWorkForJob(source, "job-1")).toBe(true);
+    expect(isAutomaticTranscriptWorkForJob(source, "job-2")).toBe(false);
+    expect(isAutomaticTranscriptWorkForJob({ ...source, origin: "other" }, "job-1")).toBe(false);
   });
 });
 
@@ -248,6 +280,26 @@ describe("packet note candidates", () => {
       }],
     },
   };
+
+  it("does not turn modern automatically created notes back into an approval queue", () => {
+    expect(buildPacketNoteCandidates({
+      summary: {
+        ...noteSummary,
+        sourceJson: {
+          ...noteSummary.sourceJson,
+          packetBrief: {
+            kind: "quipsly-transcript-packet-brief-v1",
+            candidateOnly: false,
+            humanApprovalRequired: false,
+          },
+        },
+      },
+      latestTranscriptJob,
+      notes: [],
+      packetBuildId,
+      actorUserId: "user-1",
+    })).toEqual([]);
+  });
 
   it("projects exact reviewed transcript evidence into an author-private note candidate", () => {
     expect(buildPacketNoteCandidates({
