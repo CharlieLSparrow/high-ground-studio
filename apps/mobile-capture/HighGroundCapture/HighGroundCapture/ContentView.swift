@@ -63,7 +63,21 @@ struct ContentView: View {
             // Today and making the just-saved source appear to disappear.
             visibleTab = .library
         }
-        .task {
+        .task(id: authManager.accessMode) {
+            // Recovery may discover playable bytes before the saved account
+            // finishes its online/offline transition. Keep those candidates
+            // fail-closed until the identity shell has reached a stable mode;
+            // otherwise the Library's four published projections can land in
+            // the same SwiftUI transaction that replaces the launch shell.
+            guard authManager.accessMode == .online
+                    || authManager.accessMode == .offlineCachedIdentity else {
+                return
+            }
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async {
+                    continuation.resume()
+                }
+            }
             await LocalRecordingLibrary.shared.validatePendingRecoveredSources()
         }
     }
