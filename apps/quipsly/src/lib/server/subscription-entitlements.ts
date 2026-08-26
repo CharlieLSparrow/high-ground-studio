@@ -266,7 +266,7 @@ export async function ensureQuipslyBillingContext(input: {
           planId: plans.earlyAccess.id,
           provider: "MANUAL",
           providerStatus: grantEarlyAccess ? "EARLY_ACCESS" : "AWAITING_APP_STORE_PURCHASE",
-          status: grantEarlyAccess ? "ACTIVE" : "INCOMPLETE",
+          status: grantEarlyAccess ? "ACTIVE" : "UNPAID",
           appAccountToken: randomUUID(),
           currentPeriodStart: grantEarlyAccess ? activatedAt : null,
           currentPeriodEnd: null,

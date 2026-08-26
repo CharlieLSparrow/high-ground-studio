@@ -153,7 +153,7 @@ describe("Quipsly SaaS entitlement projection", () => {
         billingOwnerUserId: "coach-new",
         planId: "plan-early",
         providerStatus: "AWAITING_APP_STORE_PURCHASE",
-        status: "INCOMPLETE",
+        status: "UNPAID",
         verifiedAt: null,
         currentPeriodStart: null,
         currentPeriodEnd: null,
