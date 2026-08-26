@@ -6022,7 +6022,6 @@ private struct CaptureTranscriptSegmentCard: View {
     @State private var noteKind = MobileSessionNoteKind.sessionNote
     @State private var noteVisibility = MobileSessionNoteVisibility.authorPrivate
     @State private var noteRequestID = "iphone-transcript-note-\(UUID().uuidString)"
-    @State private var confirmedImpactIDs: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -6305,10 +6304,10 @@ private struct CaptureTranscriptSegmentCard: View {
         _ impacts: [CaptureTranscriptDownstreamImpact]
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Linked work after transcript correction", systemImage: "arrow.triangle.branch")
+            Label("Linked work", systemImage: "arrow.triangle.branch")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(impacts.contains(where: \.needsReview) ? Color.orange : Color.green)
-            Text("These are canonical items whose saved transcript evidence points to this exact segment. Quipsly compares evidence; it never rewrites the item automatically.")
+            Text("These notes, tasks, goals, or follow-ups link back to this transcript moment. Your correction did not overwrite them.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -6369,22 +6368,6 @@ private struct CaptureTranscriptSegmentCard: View {
                 }
 
                 if impact.canAcknowledge {
-                    Toggle(
-                        "I read the corrected source and this \(impact.kindLabel.lowercased()) still says what I intend.",
-                        isOn: Binding(
-                            get: { confirmedImpactIDs.contains(impact.id) },
-                            set: { confirmed in
-                                if confirmed {
-                                    confirmedImpactIDs.insert(impact.id)
-                                } else {
-                                    confirmedImpactIDs.remove(impact.id)
-                                }
-                            }
-                        )
-                    )
-                    .font(.caption.weight(.semibold))
-                    .tint(.orange)
-                    .accessibilityIdentifier("CaptureTranscriptImpactConfirm_\(impact.artifactKind)_\(impact.artifactId)")
                     Button {
                         Task {
                             guard let transcriptJobID = client.desk?.transcriptJobId else { return }
@@ -6403,13 +6386,12 @@ private struct CaptureTranscriptSegmentCard: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.orange)
                     .disabled(
-                        !confirmedImpactIDs.contains(impact.id)
-                            || client.isMutating
+                        client.isMutating
                             || previewOnly
                             || decisionsLocked
                     )
                     .accessibilityIdentifier("CaptureTranscriptImpactAcknowledge_\(impact.artifactKind)_\(impact.artifactId)")
-                    .accessibilityHint("Appends a review receipt without changing the linked item's content or state.")
+                    .accessibilityHint("Keeps the item as written and updates its transcript source link.")
                 } else {
                     Label(
                         "The current owner must review this item. You can inspect the evidence, but Capture will not broaden write authority.",
@@ -6466,9 +6448,9 @@ private struct CaptureTranscriptSegmentCard: View {
 
     private func impactStateLabel(_ impact: CaptureTranscriptDownstreamImpact) -> String {
         switch impact.state {
-        case "needs-review": "NEEDS REVIEW"
-        case "snapshot-unavailable": "OLDER EVIDENCE"
-        default: "CURRENT"
+        case "needs-review": "SOURCE CHANGED"
+        case "snapshot-unavailable": "OLDER LINK"
+        default: "UP TO DATE"
         }
     }
 
@@ -6547,7 +6529,7 @@ private struct CaptureTranscriptSegmentCard: View {
     private var transcriptTaskComposer: some View {
         VStack(alignment: .leading, spacing: 9) {
             if isCreatingTask {
-                Label("Explicit task · source linked", systemImage: "checklist")
+                Label("Task", systemImage: "checklist")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.blue)
                 TextField("Task title", text: $taskTitle, axis: .vertical)
@@ -6584,7 +6566,7 @@ private struct CaptureTranscriptSegmentCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(minHeight: 44)
                 }
-                Text("Creates one OPEN task assigned to you with this room, segment, speaker, timestamp, provider hash, current reviewed overlay, and recording asset. It creates no deadline, reminder, calendar event, message, or publication.")
+                Text("Assigned to you with a link back to this transcript moment.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
@@ -6598,7 +6580,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .buttonStyle(.bordered)
                 .disabled(client.isMutating || decisionsLocked)
                 .accessibilityIdentifier("CaptureTranscriptMakeTaskButton")
-                .accessibilityHint("Creates nothing until you review the title and press Create my task.")
+                .accessibilityHint("Opens a task with the transcript wording ready to adjust.")
             }
         }
         .padding(12)
@@ -6608,7 +6590,7 @@ private struct CaptureTranscriptSegmentCard: View {
     private var transcriptGoalComposer: some View {
         VStack(alignment: .leading, spacing: 9) {
             if isCreatingGoal {
-                Label("Explicit goal · source linked", systemImage: "target")
+                Label("Goal", systemImage: "target")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.purple)
                 TextField("Goal title", text: $goalTitle, axis: .vertical)
@@ -6646,7 +6628,7 @@ private struct CaptureTranscriptSegmentCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(minHeight: 44)
                 }
-                Text("Creates one ACTIVE goal owned by you with this exact transcript and recording source. It creates no task, target date, reminder, calendar event, message, or publication.")
+                Text("Owned by you with a link back to this transcript moment.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -6662,7 +6644,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .buttonStyle(.bordered)
                 .disabled(client.isMutating || decisionsLocked)
                 .accessibilityIdentifier("CaptureTranscriptMakeGoalButton")
-                .accessibilityHint("Creates nothing until you review the title and press Create my goal.")
+                .accessibilityHint("Opens a goal with the transcript wording ready to adjust.")
             }
         }
         .padding(12)
@@ -6672,7 +6654,7 @@ private struct CaptureTranscriptSegmentCard: View {
     private var transcriptNoteComposer: some View {
         VStack(alignment: .leading, spacing: 9) {
             if isCreatingNote {
-                Label("Deliberate Session note · source linked", systemImage: "note.text.badge.plus")
+                Label("Session note", systemImage: "note.text.badge.plus")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.orange)
                 TextField("Note title (optional)", text: $noteTitle, axis: .vertical)
@@ -6733,7 +6715,7 @@ private struct CaptureTranscriptSegmentCard: View {
                         .frame(minHeight: 44)
                         .accessibilityIdentifier("CaptureTranscriptCancelNoteButton")
                 }
-                Text("Creates one revisioned canonical Session note with this exact transcript and recording source. It does not correct the transcript, create work, send, deliver, schedule, or publish anything.")
+                Text("Saved privately by default with a link back to this transcript moment. You can change who sees it.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -6751,7 +6733,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .buttonStyle(.bordered)
                 .disabled(client.isMutating || decisionsLocked)
                 .accessibilityIdentifier("CaptureTranscriptMakeNoteButton")
-                .accessibilityHint("Creates nothing until you choose the purpose and audience and press Save source-linked note.")
+                .accessibilityHint("Opens a note with this transcript moment ready to adjust.")
             }
         }
         .padding(12)

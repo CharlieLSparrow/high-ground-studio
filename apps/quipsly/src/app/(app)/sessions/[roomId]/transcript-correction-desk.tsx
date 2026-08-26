@@ -1083,7 +1083,6 @@ function ImpactReviewResolution({
   disabled: boolean;
   onSaved: (message: string) => Promise<void>;
 }) {
-  const [confirmed, setConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clientRequestId] = useState(() => requestId(`impact-${segment.id}-${impact.artifactKind}-${impact.artifactId}`));
@@ -1107,7 +1106,7 @@ function ImpactReviewResolution({
           expectedAcceptedCorrectionId: impact.currentCorrectionId,
           expectedEffectiveText: impact.currentTextSnapshot,
           expectedEffectiveSpeakerLabel: impact.currentSpeakerLabel,
-          confirmedContentStillValid: confirmed,
+          confirmedContentStillValid: true,
         }),
       });
       const body = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean };
@@ -1124,27 +1123,17 @@ function ImpactReviewResolution({
 
   return (
     <div className="mt-3 rounded-lg border border-amber-200 bg-white p-3">
-      <label className="flex items-start gap-3 text-xs font-bold leading-relaxed text-amber-950">
-        <input
-          type="checkbox"
-          checked={confirmed}
-          onChange={(event) => setConfirmed(event.target.checked)}
-          disabled={disabled || saving}
-          className="mt-0.5 size-4 accent-amber-800"
-        />
-        <span>I read the corrected source and this item still says what I intend.</span>
-      </label>
       {error && <p role="alert" className="mt-2 flex items-start gap-2 text-xs font-bold text-rose-800"><CircleAlert size={14} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
       <button
         type="button"
         onClick={() => void keepAsWritten()}
-        disabled={disabled || saving || !confirmed}
-        className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
+        disabled={disabled || saving}
+        className="inline-flex min-h-10 items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
       >
         {saving ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={14} aria-hidden="true" />}
         Keep item as written
       </button>
-      <p className="mt-2 text-[0.68rem] font-semibold text-amber-800">This appends a review receipt. It does not rewrite the item, transcript, recording, or delivery state.</p>
+      <p className="mt-2 text-[0.68rem] font-semibold text-amber-800">Use this when the linked work is still right. Quipsly updates its source link without changing its content.</p>
     </div>
   );
 }
@@ -1453,12 +1442,12 @@ function CorrectionEditor({
       )}
 
       {(segment.downstreamImpacts?.length ?? 0) > 0 && (
-        <details id={`transcript-impact-${segment.id}`} open={segment.downstreamImpacts?.some((impact) => impact.state === "needs-review")} className="mt-4 scroll-mt-28 rounded-xl border border-fuchsia-200 bg-fuchsia-50/60 p-4">
+        <details id={`transcript-impact-${segment.id}`} className="mt-4 scroll-mt-28 rounded-xl border border-fuchsia-200 bg-fuchsia-50/60 p-4">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-fuchsia-900">
-            Downstream evidence · {segment.downstreamImpacts?.length} linked item{segment.downstreamImpacts?.length === 1 ? "" : "s"}
+            Linked work · {segment.downstreamImpacts?.length} item{segment.downstreamImpacts?.length === 1 ? "" : "s"}
           </summary>
           <p className="mt-2 text-xs font-semibold leading-relaxed text-fuchsia-950">
-            Quipsly found these items through their canonical transcript provenance. Corrections never silently rewrite notes, tasks, goals, or follow-ups.
+            These notes, tasks, goals, or follow-ups link back to this transcript moment. Your correction did not overwrite them.
           </p>
           <ul className="mt-3 space-y-2">
             {segment.downstreamImpacts?.map((impact) => (
@@ -1466,26 +1455,26 @@ function CorrectionEditor({
                 <span className="flex flex-wrap items-center justify-between gap-2">
                   <Link href={impact.href} className="font-black underline decoration-current/30 underline-offset-2 hover:decoration-current">{humanize(impact.artifactKind)} · {impact.label}</Link>
                   <span className="rounded-full bg-white/80 px-2 py-1 text-[0.65rem] font-black uppercase tracking-wide">
-                    {impact.state === "needs-review" ? "review after correction" : impact.state === "current" ? "current evidence" : "legacy snapshot"}
+                    {impact.state === "needs-review" ? "source changed" : impact.state === "current" ? "up to date" : "older link"}
                   </span>
                 </span>
                 {impact.status && <span className="mt-1 block text-[0.68rem] uppercase tracking-wide opacity-75">{humanize(impact.status)}</span>}
                 {impact.state === "needs-review" && (impact.changes.text === "changed" || impact.changes.speaker === "changed") && (
                   <div className="mt-3 grid gap-2 lg:grid-cols-2">
                     <div className="rounded-lg border border-amber-200 bg-white p-3">
-                      <p className="text-[0.65rem] font-black uppercase tracking-wide text-amber-800">Evidence captured by this item</p>
+                      <p className="text-[0.65rem] font-black uppercase tracking-wide text-amber-800">When this was created</p>
                       <p className="mt-1 font-semibold text-amber-950">{impact.priorTextSnapshot || "Exact text snapshot unavailable."}</p>
                       {impact.priorSpeakerLabelSnapshot && <p className="mt-1 text-[0.68rem] text-amber-800">Speaker: {impact.priorSpeakerLabelSnapshot}</p>}
                     </div>
                     <div className="rounded-lg border border-emerald-200 bg-white p-3">
-                      <p className="text-[0.65rem] font-black uppercase tracking-wide text-emerald-800">Current reviewed transcript</p>
+                      <p className="text-[0.65rem] font-black uppercase tracking-wide text-emerald-800">Transcript now</p>
                       <p className="mt-1 font-semibold text-emerald-950">{impact.currentTextSnapshot}</p>
                       {impact.currentSpeakerLabel && <p className="mt-1 text-[0.68rem] text-emerald-800">Speaker: {impact.currentSpeakerLabel}</p>}
                     </div>
                   </div>
                 )}
                 {impact.state === "needs-review" && impact.changes.text !== "changed" && impact.changes.speaker !== "changed" && (
-                  <p className="mt-2 rounded-lg bg-white p-2 text-[0.7rem] font-semibold">The accepted correction receipt changed, but the preserved words and speaker are either unchanged or unavailable. Review the linked item before carrying the new evidence forward.</p>
+                  <p className="mt-2 rounded-lg bg-white p-2 text-[0.7rem] font-semibold">The source revision changed while the displayed words and speaker stayed the same.</p>
                 )}
                 {impact.state === "needs-review" && impact.canAcknowledge && (
                   <ImpactReviewResolution
@@ -1498,7 +1487,7 @@ function CorrectionEditor({
                   />
                 )}
                 {impact.state === "needs-review" && !impact.canAcknowledge && (
-                  <p className="mt-2 rounded-lg bg-white p-2 text-[0.7rem] font-semibold">Open the linked item to review it. Only its current owner can attach a keep-as-written receipt.</p>
+                  <p className="mt-2 rounded-lg bg-white p-2 text-[0.7rem] font-semibold">Open the linked item to update it. Only its owner can change this source link.</p>
                 )}
               </li>
             ))}
@@ -1506,7 +1495,7 @@ function CorrectionEditor({
           {segment.downstreamImpacts?.some((impact) => impact.state === "needs-review") && (
             <p role="status" className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-white p-3 text-xs font-black leading-relaxed text-amber-950">
               <TriangleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
-              A source correction changed after linked work captured its wording. The work remains preserved and needs a deliberate review; automatic regeneration is off.
+              The transcript changed after this work was created. Open an item to update it, or keep it as written.
             </p>
           )}
         </details>
@@ -1575,7 +1564,7 @@ function CorrectionEditor({
           </div>
         ) : creatingNote ? (
           <div className="space-y-3">
-            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-orange-900"><NotebookPen size={15} aria-hidden="true" />Deliberate Session note · source linked</p>
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-orange-900"><NotebookPen size={15} aria-hidden="true" />Session note</p>
             <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Note title <span className="normal-case tracking-normal text-orange-700">(optional)</span>
               <input value={noteTitle} onChange={(event) => setNoteTitle(event.target.value)} maxLength={500} className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
             </label>
@@ -1605,20 +1594,20 @@ function CorrectionEditor({
               {noteVisibility === "PROJECT_TEAM" && "Visible to Nest owners and editors; owner/editor authority is required. It is not public."}
             </p>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => void createNote()} disabled={busy || !playbackReady || !noteBody.trim()} className="inline-flex items-center gap-2 rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Save source-linked note</button>
+              <button type="button" onClick={() => void createNote()} disabled={busy || !noteBody.trim()} className="inline-flex items-center gap-2 rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Save note</button>
               <button type="button" onClick={() => setCreatingNote(false)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button>
             </div>
-            <p className="text-xs font-bold leading-relaxed text-orange-800">Creates one revisioned canonical Session note. It does not correct the transcript, create a task or goal, send a message, add a calendar event, deliver a follow-up, or publish.</p>
+            <p className="text-xs font-bold leading-relaxed text-orange-800">Saved privately by default with a link back to this moment. You can change who sees it.</p>
           </div>
         ) : (
-          <button type="button" onClick={() => setCreatingNote(true)} disabled={busy || !playbackReady} className="inline-flex items-center gap-2 rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-900 disabled:opacity-50"><NotebookPen size={15} aria-hidden="true" />Save as Session note</button>
+          <button type="button" onClick={() => setCreatingNote(true)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-900 disabled:opacity-50"><NotebookPen size={15} aria-hidden="true" />Save as Session note</button>
         )}
       </div>
 
       <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
         {creatingTask ? (
           <div className="space-y-3">
-            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-blue-900"><ListTodo size={15} aria-hidden="true" />Explicit task · source linked</p>
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-blue-900"><ListTodo size={15} aria-hidden="true" />Task</p>
             <label className="block text-xs font-black uppercase tracking-wide text-blue-950">Task title
               <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} maxLength={240} className="mt-1 block w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
             </label>
@@ -1626,20 +1615,20 @@ function CorrectionEditor({
               <textarea value={taskDetail} onChange={(event) => setTaskDetail(event.target.value)} maxLength={2000} rows={3} className="mt-1 block w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" />
             </label>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => void createTask()} disabled={busy || !playbackReady || !taskTitle.trim()} className="inline-flex items-center gap-2 rounded-full bg-blue-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Create my task</button>
+              <button type="button" onClick={() => void createTask()} disabled={busy || !taskTitle.trim()} className="inline-flex items-center gap-2 rounded-full bg-blue-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Create my task</button>
               <button type="button" onClick={() => setCreatingTask(false)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-blue-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-blue-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button>
             </div>
-            <p className="text-xs font-bold leading-relaxed text-blue-800">Creates one OPEN task assigned to you with this room, timestamp, speaker, provider hash, reviewed overlay, and recording asset. It creates no deadline, reminder, calendar event, message, or publication.</p>
+            <p className="text-xs font-bold leading-relaxed text-blue-800">Assigned to you with a link back to this transcript moment.</p>
           </div>
         ) : (
-          <button type="button" onClick={() => setCreatingTask(true)} disabled={busy || !playbackReady} className="inline-flex items-center gap-2 rounded-full border border-blue-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-blue-900 disabled:opacity-50"><ListTodo size={15} aria-hidden="true" />Make this my task</button>
+          <button type="button" onClick={() => setCreatingTask(true)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-blue-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-blue-900 disabled:opacity-50"><ListTodo size={15} aria-hidden="true" />Make this my task</button>
         )}
       </div>
       <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
-        {creatingGoal ? <div className="space-y-3"><p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-violet-900"><Target size={15} aria-hidden="true" />Explicit goal · source linked</p><label className="block text-xs font-black uppercase tracking-wide text-violet-950">Goal title<input value={goalTitle} onChange={(event) => setGoalTitle(event.target.value)} maxLength={240} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><label className="block text-xs font-black uppercase tracking-wide text-violet-950">Definition of progress <span className="normal-case tracking-normal text-violet-700">(optional)</span><textarea value={goalDescription} onChange={(event) => setGoalDescription(event.target.value)} maxLength={5000} rows={3} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" /></label><div className="flex flex-wrap gap-2"><button type="button" onClick={() => void createGoal()} disabled={busy || !playbackReady || !goalTitle.trim()} className="inline-flex items-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Create my goal</button><button type="button" onClick={() => setCreatingGoal(false)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button></div><p className="text-xs font-bold leading-relaxed text-violet-800">Creates one ACTIVE goal owned by you with this exact transcript and recording source. It creates no task, target date, reminder, calendar event, message, or publication.</p></div> : <button type="button" onClick={() => setCreatingGoal(true)} disabled={busy || !playbackReady} className="inline-flex items-center gap-2 rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Target size={15} aria-hidden="true" />Make this my goal</button>}
+        {creatingGoal ? <div className="space-y-3"><p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-violet-900"><Target size={15} aria-hidden="true" />Goal</p><label className="block text-xs font-black uppercase tracking-wide text-violet-950">Goal title<input value={goalTitle} onChange={(event) => setGoalTitle(event.target.value)} maxLength={240} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><label className="block text-xs font-black uppercase tracking-wide text-violet-950">Definition of progress <span className="normal-case tracking-normal text-violet-700">(optional)</span><textarea value={goalDescription} onChange={(event) => setGoalDescription(event.target.value)} maxLength={5000} rows={3} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" /></label><div className="flex flex-wrap gap-2"><button type="button" onClick={() => void createGoal()} disabled={busy || !goalTitle.trim()} className="inline-flex items-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Create my goal</button><button type="button" onClick={() => setCreatingGoal(false)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button></div><p className="text-xs font-bold leading-relaxed text-violet-800">Owned by you with a link back to this transcript moment.</p></div> : <button type="button" onClick={() => setCreatingGoal(true)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Target size={15} aria-hidden="true" />Make this my goal</button>}
       </div>
       <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-        {draftHref ? <div><p className="text-sm font-black text-emerald-950">Private source-linked draft created.</p><Link href={draftHref} className="mt-3 inline-flex min-h-11 items-center rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white">Open source-linked draft</Link><p className="mt-2 text-xs font-bold leading-relaxed text-emerald-800">The page carries this exact timestamp, transcript job, recording asset, provider hash, and reviewed text snapshot. The source recording and transcript remain unchanged.</p></div> : creatingDraft ? <div className="space-y-3"><p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-emerald-900"><FilePenLine size={15} aria-hidden="true" />Private writing page · source linked</p><label className="block text-xs font-black uppercase tracking-wide text-emerald-950">Page title<input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} maxLength={180} className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><label className="block text-xs font-black uppercase tracking-wide text-emerald-950">Starting thought <span className="normal-case tracking-normal text-emerald-700">(optional)</span><textarea value={draftOpeningNote} onChange={(event) => setDraftOpeningNote(event.target.value)} maxLength={10000} rows={4} placeholder="Write the first honest response; Quipsly keeps the source moment beside it." className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" /></label><div className="flex flex-wrap gap-2"><button type="button" onClick={() => void createDraft()} disabled={busy || !playbackReady || !draftTitle.trim()} className="inline-flex items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Create source-linked draft</button><button type="button" onClick={() => setCreatingDraft(false)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button></div><p className="text-xs font-bold leading-relaxed text-emerald-800">Creates one private Nest writing page with an immutable transcript-evidence block and a separate editable draft block. It does not correct the transcript, create a task or goal, send anything, or publish.</p></div> : <button type="button" onClick={() => setCreatingDraft(true)} disabled={busy || !playbackReady} className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900 disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />Start source-linked draft</button>}
+        {draftHref ? <div><p className="text-sm font-black text-emerald-950">Private writing page created.</p><Link href={draftHref} className="mt-3 inline-flex min-h-11 items-center rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white">Open writing page</Link><p className="mt-2 text-xs font-bold leading-relaxed text-emerald-800">It keeps a link back to this transcript moment.</p></div> : creatingDraft ? <div className="space-y-3"><p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-emerald-900"><FilePenLine size={15} aria-hidden="true" />Private writing page</p><label className="block text-xs font-black uppercase tracking-wide text-emerald-950">Page title<input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} maxLength={180} className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><label className="block text-xs font-black uppercase tracking-wide text-emerald-950">Starting thought <span className="normal-case tracking-normal text-emerald-700">(optional)</span><textarea value={draftOpeningNote} onChange={(event) => setDraftOpeningNote(event.target.value)} maxLength={10000} rows={4} placeholder="Write the first honest response; Quipsly keeps the source moment beside it." className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" /></label><div className="flex flex-wrap gap-2"><button type="button" onClick={() => void createDraft()} disabled={busy || !draftTitle.trim()} className="inline-flex items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Create writing page</button><button type="button" onClick={() => setCreatingDraft(false)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button></div><p className="text-xs font-bold leading-relaxed text-emerald-800">Private by default with a link back to this transcript moment.</p></div> : <button type="button" onClick={() => setCreatingDraft(true)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900 disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />Start writing page</button>}
       </div>
       </details>
     </li>

@@ -2649,7 +2649,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let downstreamImpact = app.descendants(matching: .any)["CaptureTranscriptImpact_task_preview-task"]
         XCTAssertTrue(downstreamImpact.exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptConfidenceAttention_preview-segment"].exists)
-        XCTAssertTrue(app.switches["CaptureTranscriptImpactConfirm_task_preview-task"].exists)
+        XCTAssertFalse(app.switches["CaptureTranscriptImpactConfirm_task_preview-task"].exists)
         XCTAssertFalse(
             app.buttons["CaptureTranscriptImpactAcknowledge_task_preview-task"].isEnabled,
             "Preview may explain transcript consequence review but must never append a canonical receipt."

@@ -288,17 +288,16 @@ describe("TranscriptCorrectionDesk", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
-    const summary = await screen.findByText("Downstream evidence · 2 linked items");
+    const summary = await screen.findByText("Linked work · 2 items");
     fireEvent.click(summary);
     expect(screen.getByText(/note · episode delivery plan/i)).toBeInTheDocument();
     expect(screen.getByText(/task · fix chapter title/i)).toBeInTheDocument();
-    expect(screen.getByText("review after correction")).toBeInTheDocument();
-    expect(screen.getByText("current evidence")).toBeInTheDocument();
+    expect(screen.getByText("source changed")).toBeInTheDocument();
+    expect(screen.getByText("up to date")).toBeInTheDocument();
     expect(screen.getByText("Publish on Wednesday.")).toBeInTheDocument();
     expect(screen.getByText("Publish on Thursday.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /note · episode delivery plan/i })).toHaveAttribute("href", "/sessions/room-1?mode=notes#session-note-note-1");
-    expect(screen.getByText(/automatic regeneration is off/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("checkbox", { name: /read the corrected source/i }));
+    expect(screen.getByText(/open an item to update it, or keep it as written/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /keep item as written/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
@@ -423,6 +422,11 @@ describe("TranscriptCorrectionDesk", () => {
     const button = await screen.findByRole("button", { name: "Edit transcript" });
     expect(button).toBeEnabled();
     expect(screen.getByText(/direct transcript edits remain available/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Create from this moment"));
+    expect(screen.getByRole("button", { name: /save as session note/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /make this my task/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /make this my goal/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /start writing page/i })).toBeEnabled();
   });
 
   it("revokes playback authority when protected source bytes fail to load", async () => {
@@ -769,7 +773,7 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByRole("heading", { name: "Transcript" })).toBeInTheDocument();
   });
 
-  it("saves a deliberate client-safe Session note with the exact transcript identity", async () => {
+  it("saves a client-safe Session note with exact transcript identity and no playback ceremony", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({
@@ -782,7 +786,6 @@ describe("TranscriptCorrectionDesk", () => {
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
-    await markProtectedPlaybackReady();
     fireEvent.click(screen.getByText("Create from this moment"));
     fireEvent.click(screen.getByRole("button", { name: /save as session note/i }));
     fireEvent.change(screen.getByLabelText(/note title/i), { target: { value: "Coaching insight" } });
@@ -790,7 +793,7 @@ describe("TranscriptCorrectionDesk", () => {
     fireEvent.change(screen.getByLabelText(/purpose/i), { target: { value: "DECISION" } });
     fireEvent.change(screen.getByLabelText(/audience/i), { target: { value: "CLIENT_SAFE" } });
     expect(screen.getByText(/eligible for a reviewed client follow-up.*not sent automatically/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /save source-linked note/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save note$/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     const request = fetchMock.mock.calls[1];
@@ -836,10 +839,10 @@ describe("TranscriptCorrectionDesk", () => {
     await screen.findByText("Welcome, everybody.");
     await markProtectedPlaybackReady();
     fireEvent.click(screen.getByText("Create from this moment"));
-    fireEvent.click(screen.getByRole("button", { name: /start source-linked draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start writing page/i }));
     fireEvent.change(screen.getByLabelText(/page title/i), { target: { value: "Episode opening" } });
     fireEvent.change(screen.getByLabelText(/starting thought/i), { target: { value: "This is why the story matters." } });
-    fireEvent.click(screen.getByRole("button", { name: /create source-linked draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /create writing page/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const request = fetchMock.mock.calls[1];
@@ -852,8 +855,8 @@ describe("TranscriptCorrectionDesk", () => {
       openingNote: "This is why the story matters.",
       surface: "nest-session-transcript-review",
     });
-    expect(await screen.findByRole("link", { name: "Open source-linked draft" })).toHaveAttribute("href", "/create?project=high-ground&document=document-1&block=draft-block");
-    expect(screen.getByText(/source recording and transcript remain unchanged/i)).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Open writing page" })).toHaveAttribute("href", "/create?project=high-ground&document=document-1&block=draft-block");
+    expect(screen.getByText(/keeps a link back to this transcript moment/i)).toBeInTheDocument();
   });
 
   it("separates provider confidence, measured accuracy, and review coverage", async () => {
